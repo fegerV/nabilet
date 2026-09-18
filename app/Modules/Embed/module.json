@@ -1,0 +1,11 @@
+{
+  "name": "embed",
+  "title": "Embed и iframe",
+  "version": "1.0.0",
+  "enabled": true,
+  "priority": 170,
+  "requires": ["events", "cart"],
+  "permissions": [],
+  "provides": ["embed.loaded", "embed.seat_selected", "embed.payment_success"],
+  "description": "Встраивание каталога, мероприятия, схемы, корзины и checkout в чужие сайты через iframe с PostMessage-протоколом, whitelist доменов и проверкой Origin на бэкенде, темизацией через параметры (ТЗ §48–51)."
+}

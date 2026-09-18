@@ -1,0 +1,11 @@
+{
+  "name": "users",
+  "title": "Пользователи и роли",
+  "version": "1.0.0",
+  "enabled": true,
+  "priority": 20,
+  "requires": ["auth", "organizations"],
+  "permissions": ["users.manage"],
+  "provides": ["user.created", "user.role_changed"],
+  "description": "Пользователи, роли (Super Admin…Customer) и гранулярные permissions (ТЗ §9). Customer создаётся автоматически после покупки без регистрации (ТЗ §83)."
+}

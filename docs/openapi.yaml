@@ -1,0 +1,2432 @@
+openapi: 3.1.0
+info:
+  title: NABILET Core API
+  version: 1.0.0
+  description: |
+    REST API v1 for NABILET Core ticketing platform.
+    Public catalog, checkout, customer account, admin, checker, embed and integration endpoints.
+servers:
+  - url: https://example.com
+    description: Production
+  - url: https://staging.example.com
+    description: Staging
+
+tags:
+  - name: Auth
+  - name: Catalog
+  - name: Sessions
+  - name: Cart
+  - name: Orders
+  - name: Payments
+  - name: Tickets
+  - name: Checkin
+  - name: Me
+  - name: Admin Events
+  - name: Admin Venues
+  - name: Admin Orders
+  - name: Admin Tickets
+  - name: Admin Checkin
+  - name: Admin Analytics
+  - name: Webhooks
+  - name: Embed
+  - name: Telegram
+  - name: System
+
+paths:
+  /api/v1/auth/register:
+    post:
+      tags: [Auth]
+      summary: Register customer
+      operationId: register
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: Registered
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResponse' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /api/v1/auth/login:
+    post:
+      tags: [Auth]
+      summary: Login by email and password
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Authenticated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /api/v1/auth/logout:
+    post:
+      tags: [Auth]
+      summary: Logout current session
+      operationId: logout
+      security: [{ bearerAuth: [] }]
+      responses:
+        '204': { description: Logged out }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/v1/auth/password/forgot:
+    post:
+      tags: [Auth]
+      summary: Request password reset
+      operationId: forgotPassword
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+      responses:
+        '204': { description: Request accepted }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /api/v1/auth/password/reset:
+    post:
+      tags: [Auth]
+      summary: Reset password
+      operationId: resetPassword
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, email, password, password_confirmation]
+              properties:
+                token: { type: string }
+                email: { type: string, format: email }
+                password: { type: string, minLength: 12 }
+                password_confirmation: { type: string }
+      responses:
+        '204': { description: Password reset }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /api/v1/auth/email/verify:
+    post:
+      tags: [Auth]
+      summary: Verify email
+      operationId: verifyEmail
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: { type: string }
+      responses:
+        '204': { description: Email verified }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /auth/yandex/callback:
+    get:
+      tags: [Auth]
+      summary: Yandex OAuth callback
+      operationId: yandexCallback
+      parameters:
+        - $ref: '#/components/parameters/OAuthCode'
+        - $ref: '#/components/parameters/OAuthState'
+      responses:
+        '302': { description: Redirect to application }
+
+  /auth/vk/callback:
+    get:
+      tags: [Auth]
+      summary: VK OAuth callback
+      operationId: vkCallback
+      parameters:
+        - $ref: '#/components/parameters/OAuthCode'
+        - $ref: '#/components/parameters/OAuthState'
+      responses:
+        '302': { description: Redirect to application }
+
+  /api/v1/events:
+    get:
+      tags: [Catalog]
+      summary: List public events
+      operationId: listEvents
+      parameters:
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/PerPage' }
+        - in: query
+          name: q
+          schema: { type: string }
+        - in: query
+          name: city
+          schema: { type: string }
+        - in: query
+          name: category
+          schema: { type: string }
+        - in: query
+          name: date_from
+          schema: { type: string, format: date }
+        - in: query
+          name: date_to
+          schema: { type: string, format: date }
+        - in: query
+          name: price_from
+          schema: { type: integer, minimum: 0 }
+        - in: query
+          name: price_to
+          schema: { type: integer, minimum: 0 }
+        - in: query
+          name: availability
+          schema: { type: string, enum: [any, available, sold_out] }
+      responses:
+        '200':
+          description: Event list
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EventListResponse' }
+
+  /api/v1/events/{event}:
+    get:
+      tags: [Catalog]
+      summary: Get public event
+      operationId: getEvent
+      parameters:
+        - $ref: '#/components/parameters/EventIdPath'
+      responses:
+        '200':
+          description: Event
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EventResponse' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/events/{event}/sessions:
+    get:
+      tags: [Sessions]
+      summary: List sessions of event
+      operationId: listEventSessions
+      parameters:
+        - $ref: '#/components/parameters/EventIdPath'
+        - in: query
+          name: from
+          schema: { type: string, format: date-time }
+        - in: query
+          name: to
+          schema: { type: string, format: date-time }
+      responses:
+        '200':
+          description: Session list
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SessionListResponse' }
+
+  /api/v1/sessions/{session}:
+    get:
+      tags: [Sessions]
+      summary: Get session
+      operationId: getSession
+      parameters:
+        - $ref: '#/components/parameters/SessionIdPath'
+      responses:
+        '200':
+          description: Session
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SessionResponse' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/sessions/{session}/seatmap:
+    get:
+      tags: [Sessions]
+      summary: Get seat map and inventory
+      operationId: getSeatMap
+      parameters:
+        - $ref: '#/components/parameters/SessionIdPath'
+      responses:
+        '200':
+          description: Seat map
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SeatMapResponse' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/carts:
+    post:
+      tags: [Cart]
+      summary: Create cart
+      operationId: createCart
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [session_id]
+              properties:
+                session_id: { type: string }
+      responses:
+        '201':
+          description: Cart created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CartResponse' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /api/v1/carts/{cart}:
+    get:
+      tags: [Cart]
+      summary: Get cart
+      operationId: getCart
+      security:
+        - bearerAuth: []
+        - checkoutAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CartIdPath'
+      responses:
+        '200':
+          description: Cart
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CartResponse' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/carts/{cart}/items:
+    post:
+      tags: [Cart]
+      summary: Hold inventory and add item to cart
+      operationId: addCartItem
+      security:
+        - bearerAuth: []
+        - checkoutAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CartIdPath'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddCartItemRequest'
+      responses:
+        '201':
+          description: Hold created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CartResponse' }
+        '409':
+          description: Inventory conflict
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /api/v1/carts/{cart}/items/{item}:
+    delete:
+      tags: [Cart]
+      summary: Release cart item/hold
+      operationId: deleteCartItem
+      security:
+        - bearerAuth: []
+        - checkoutAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CartIdPath'
+        - $ref: '#/components/parameters/CartItemIdPath'
+      responses:
+        '204': { description: Released }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/orders:
+    post:
+      tags: [Orders]
+      summary: Create order from cart
+      operationId: createOrder
+      security:
+        - bearerAuth: []
+        - checkoutAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrderRequest'
+      responses:
+        '201':
+          description: Order created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrderResponse' }
+        '409':
+          description: Hold expired or inventory changed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /api/v1/orders/{order}:
+    get:
+      tags: [Orders]
+      summary: Get order
+      operationId: getOrder
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/OrderIdPath'
+      responses:
+        '200':
+          description: Order
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrderResponse' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/orders/{order}/payment:
+    post:
+      tags: [Payments]
+      summary: Create payment for order
+      operationId: createOrderPayment
+      security:
+        - bearerAuth: []
+        - checkoutAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrderIdPath'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                provider:
+                  type: string
+                  default: yookassa
+      responses:
+        '201':
+          description: Payment created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaymentResponse' }
+        '409':
+          description: Order not payable
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /api/v1/payments/{payment}:
+    get:
+      tags: [Payments]
+      summary: Get payment
+      operationId: getPayment
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/PaymentIdPath'
+      responses:
+        '200':
+          description: Payment
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaymentResponse' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/tickets:
+    get:
+      tags: [Tickets]
+      summary: List customer tickets
+      operationId: listMyTickets
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PerPage'
+        - in: query
+          name: status
+          schema: { type: string }
+      responses:
+        '200':
+          description: Tickets
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TicketListResponse' }
+
+  /api/v1/tickets/{ticket}:
+    get:
+      tags: [Tickets]
+      summary: Get customer ticket
+      operationId: getTicket
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/TicketIdPath'
+      responses:
+        '200':
+          description: Ticket
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TicketResponse' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/tickets/{ticket}/qr:
+    get:
+      tags: [Tickets]
+      summary: Get ticket QR payload/image
+      description: >-
+        Returns an opaque, signed token. The payload MUST NOT contain personal
+        data (spec 43/44): no holder name, email, phone or seat owner. Verification
+        happens server-side against the signature, never by reading the token.
+      operationId: getTicketQr
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/TicketIdPath'
+      responses:
+        '200':
+          description: QR payload
+          content:
+            application/json:
+              schema:
+                type: object
+                description: Opaque signed token. Carries no personal data (spec 43/44).
+                required: [payload, version]
+                properties:
+                  payload: { type: string, description: Signed opaque token. No personal data. }
+                  version: { type: integer }
+
+  /api/v1/tickets/{ticket}/pdf:
+    get:
+      tags: [Tickets]
+      summary: Download ticket PDF
+      operationId: getTicketPdf
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/TicketIdPath'
+      responses:
+        '200':
+          description: PDF
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+        '202':
+          description: PDF generation queued
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AsyncJobResponse' }
+
+  /api/v1/me:
+    get:
+      tags: [Me]
+      summary: Get profile
+      operationId: getMe
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Profile
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserResponse' }
+    patch:
+      tags: [Me]
+      summary: Update profile
+      operationId: updateMe
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProfileUpdateRequest'
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserResponse' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /api/v1/me/password:
+    post:
+      tags: [Me]
+      summary: Change password
+      operationId: changePassword
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [current_password, password, password_confirmation]
+              properties:
+                current_password: { type: string }
+                password: { type: string, minLength: 12 }
+                password_confirmation: { type: string }
+      responses:
+        '204': { description: Password changed }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /api/v1/me/sessions:
+    get:
+      tags: [Me]
+      summary: List login sessions
+      operationId: listSessions
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Sessions
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/UserSession' }
+
+  /api/v1/me/sessions/{session}:
+    delete:
+      tags: [Me]
+      summary: Revoke one session
+      operationId: revokeSession
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/UserSessionIdPath'
+      responses:
+        '204': { description: Session revoked }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/me/orders:
+    get:
+      tags: [Me]
+      summary: List my orders
+      operationId: listMyOrders
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          description: Orders
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrderListResponse' }
+
+  /api/v1/checkin/validate:
+    post:
+      tags: [Checkin]
+      summary: Validate QR ticket without consuming it
+      operationId: validateCheckin
+      security: [{ checkerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CheckinValidateRequest'
+      responses:
+        '200':
+          description: Validation result
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CheckinResultResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /api/v1/checkin/use:
+    post:
+      tags: [Checkin]
+      summary: Atomically consume ticket
+      operationId: useCheckin
+      security: [{ checkerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CheckinUseRequest'
+      responses:
+        '200':
+          description: Check-in result
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CheckinResultResponse' }
+        '409':
+          description: Already used/conflict
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CheckinResultResponse' }
+
+  /api/v1/checkin/sync:
+    post:
+      tags: [Checkin]
+      summary: Sync offline scans
+      operationId: syncCheckin
+      security: [{ checkerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CheckinSyncRequest'
+      responses:
+        '200':
+          description: Sync result
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CheckinSyncResponse' }
+
+  /api/v1/admin/events:
+    get:
+      tags: [Admin Events]
+      summary: List events for admin
+      operationId: adminListEvents
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PerPage'
+        - in: query
+          name: status
+          schema: { type: string }
+        - in: query
+          name: organization_id
+          schema: { type: string }
+      responses:
+        '200':
+          description: Admin event list
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EventListResponse' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Admin Events]
+      summary: Create event
+      operationId: adminCreateEvent
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EventWriteRequest' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EventResponse' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /api/v1/admin/events/{event}:
+    get:
+      tags: [Admin Events]
+      summary: Get event in admin
+      operationId: adminGetEvent
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/EventIdPath'
+      responses:
+        '200':
+          description: Event
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EventResponse' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Admin Events]
+      summary: Update event
+      operationId: adminUpdateEvent
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/EventIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EventWriteRequest' }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EventResponse' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    delete:
+      tags: [Admin Events]
+      summary: Delete/archive event
+      operationId: adminDeleteEvent
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/EventIdPath'
+      responses:
+        '204': { description: Archived/deleted }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /api/v1/admin/sessions:
+    post:
+      tags: [Admin Events]
+      summary: Create session
+      operationId: adminCreateSession
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SessionWriteRequest' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SessionResponse' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /api/v1/admin/sessions/{session}:
+    patch:
+      tags: [Admin Events]
+      summary: Update session
+      operationId: adminUpdateSession
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/SessionIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SessionWriteRequest' }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SessionResponse' }
+
+  /api/v1/admin/venues:
+    get:
+      tags: [Admin Venues]
+      summary: List venues
+      operationId: adminListVenues
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          description: Venues
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VenueListResponse' }
+    post:
+      tags: [Admin Venues]
+      summary: Create venue
+      operationId: adminCreateVenue
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/VenueWriteRequest' }
+      responses:
+        '201':
+          description: Venue created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VenueResponse' }
+
+  /api/v1/admin/venues/{venue}/halls:
+    post:
+      tags: [Admin Venues]
+      summary: Create hall
+      operationId: adminCreateHall
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/VenueIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/HallWriteRequest' }
+      responses:
+        '201':
+          description: Hall created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HallResponse' }
+
+  /api/v1/admin/halls/{hall}/schema-versions:
+    get:
+      tags: [Admin Venues]
+      summary: List schema versions
+      operationId: adminListSchemaVersions
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/HallIdPath'
+      responses:
+        '200':
+          description: Versions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/HallSchemaVersion' }
+    post:
+      tags: [Admin Venues]
+      summary: Create schema version
+      operationId: adminCreateSchemaVersion
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/HallIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/HallSchemaWriteRequest' }
+      responses:
+        '201':
+          description: Schema draft
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HallSchemaResponse' }
+
+  /api/v1/admin/schema-versions/{schema}/publish:
+    post:
+      tags: [Admin Venues]
+      summary: Publish immutable schema version
+      operationId: adminPublishSchema
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/SchemaIdPath'
+      responses:
+        '200':
+          description: Published
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HallSchemaResponse' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /api/v1/admin/schema-versions/{schema}/export:
+    get:
+      tags: [Admin Venues]
+      summary: Export hall schema
+      operationId: exportSchema
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/SchemaIdPath'
+        - in: query
+          name: format
+          required: true
+          schema: { type: string, enum: [json, csv] }
+      responses:
+        '200':
+          description: Export file
+          content:
+            application/json:
+              schema: { type: object }
+            text/csv:
+              schema: { type: string }
+
+  /api/v1/admin/schema-versions/{schema}/import:
+    post:
+      tags: [Admin Venues]
+      summary: Import into new draft schema
+      operationId: importSchema
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/SchemaIdPath'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file, format]
+              properties:
+                file: { type: string, format: binary }
+                format: { type: string, enum: [json, csv] }
+                preview_only: { type: boolean, default: true }
+      responses:
+        '200':
+          description: Import preview/result
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ImportResult' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /api/v1/admin/orders:
+    get:
+      tags: [Admin Orders]
+      summary: List orders
+      operationId: adminListOrders
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PerPage'
+        - in: query
+          name: status
+          schema: { type: string }
+        - in: query
+          name: payment_status
+          schema: { type: string }
+        - in: query
+          name: event_id
+          schema: { type: string }
+      responses:
+        '200':
+          description: Orders
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrderListResponse' }
+
+  /api/v1/admin/orders/{order}/refund:
+    post:
+      tags: [Admin Orders]
+      summary: Request refund
+      operationId: adminRefundOrder
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/OrderIdPath'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefundRequest'
+      responses:
+        '201':
+          description: Refund created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RefundResponse' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /api/v1/admin/tickets:
+    get:
+      tags: [Admin Tickets]
+      summary: List tickets
+      operationId: adminListTickets
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PerPage'
+        - in: query
+          name: session_id
+          schema: { type: string }
+        - in: query
+          name: status
+          schema: { type: string }
+      responses:
+        '200':
+          description: Tickets
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TicketListResponse' }
+
+  /api/v1/admin/tickets/{ticket}/cancel:
+    post:
+      tags: [Admin Tickets]
+      summary: Cancel ticket
+      operationId: adminCancelTicket
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/TicketIdPath'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, maxLength: 500 }
+      responses:
+        '200':
+          description: Cancelled
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TicketResponse' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /api/v1/admin/checkin/scans:
+    get:
+      tags: [Admin Checkin]
+      summary: Check-in report
+      operationId: adminCheckinScans
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PerPage'
+        - in: query
+          name: session_id
+          schema: { type: string }
+        - in: query
+          name: result
+          schema: { type: string }
+      responses:
+        '200':
+          description: Scan log
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TicketScanListResponse'
+
+  /api/v1/admin/analytics/funnel:
+    get:
+      tags: [Admin Analytics]
+      summary: Conversion funnel
+      operationId: analyticsFunnel
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: event_id
+          schema: { type: string }
+        - in: query
+          name: from
+          schema: { type: string, format: date-time }
+        - in: query
+          name: to
+          schema: { type: string, format: date-time }
+      responses:
+        '200':
+          description: Funnel
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FunnelResponse' }
+
+  /api/v1/admin/analytics/events:
+    post:
+      tags: [Admin Analytics]
+      summary: Receive analytics event
+      operationId: captureAnalyticsEvent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AnalyticsEventRequest' }
+      responses:
+        '202': { description: Accepted }
+
+  /api/v1/webhooks/yookassa:
+    post:
+      tags: [Webhooks]
+      summary: Receive YooKassa webhook
+      operationId: yookassaWebhook
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: true }
+      responses:
+        '200': { description: Accepted }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  /api/v1/embed/events/{event}:
+    get:
+      tags: [Embed]
+      summary: Get event for embed
+      operationId: embedGetEvent
+      parameters:
+        - $ref: '#/components/parameters/EventIdPath'
+        - $ref: '#/components/parameters/EmbedToken'
+      responses:
+        '200':
+          description: Event
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EventResponse' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/v1/embed/events/{event}/sessions:
+    get:
+      tags: [Embed]
+      summary: Get event sessions for embed
+      operationId: embedListSessions
+      parameters:
+        - $ref: '#/components/parameters/EventIdPath'
+        - $ref: '#/components/parameters/EmbedToken'
+      responses:
+        '200':
+          description: Sessions
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SessionListResponse' }
+
+  /api/v1/embed/sessions/{session}/seatmap:
+    get:
+      tags: [Embed]
+      summary: Get seatmap for embed
+      operationId: embedSeatmap
+      parameters:
+        - $ref: '#/components/parameters/SessionIdPath'
+        - $ref: '#/components/parameters/EmbedToken'
+      responses:
+        '200':
+          description: Seat map
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SeatMapResponse' }
+
+  /api/v1/telegram/auth:
+    post:
+      tags: [Telegram]
+      summary: Authenticate Telegram Mini App initData
+      operationId: telegramAuth
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [init_data]
+              properties:
+                init_data: { type: string }
+      responses:
+        '200':
+          description: Authenticated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/v1/health:
+    get:
+      tags: [System]
+      summary: System health
+      operationId: health
+      responses:
+        '200':
+          description: Health status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+        '503':
+          description: Unhealthy
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HealthResponse' }
+
+
+  /api/v1/admin/halls/{hall}:
+    patch:
+      tags: [Admin Venues]
+      summary: Update hall
+      operationId: adminUpdateHall
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/HallIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/HallWriteRequest' }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HallResponse' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/v1/admin/schema-versions/{schema}:
+    get:
+      tags: [Admin Venues]
+      summary: Get schema version
+      operationId: adminGetSchemaVersion
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/SchemaIdPath'
+      responses:
+        '200':
+          description: Schema
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HallSchemaResponse' }
+    patch:
+      tags: [Admin Venues]
+      summary: Update draft schema version
+      operationId: adminUpdateSchemaVersion
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/SchemaIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/HallSchemaWriteRequest' }
+      responses:
+        '200':
+          description: Updated draft
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HallSchemaResponse' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /api/v1/admin/inventory/{inventory}/block:
+    post:
+      tags: [Admin Venues]
+      summary: Block inventory item
+      operationId: adminBlockInventory
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: inventory
+          required: true
+          schema: { type: string }
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason: { type: string, maxLength: 500 }
+      responses:
+        '200':
+          description: Inventory blocked
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InventoryItemResponse' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /api/v1/admin/inventory/{inventory}/unblock:
+    post:
+      tags: [Admin Venues]
+      summary: Unblock inventory item
+      operationId: adminUnblockInventory
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: inventory
+          required: true
+          schema: { type: string }
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: Inventory unblocked
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InventoryItemResponse' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /api/v1/admin/checkin/devices:
+    get:
+      tags: [Admin Checkin]
+      summary: List checker devices
+      operationId: adminListCheckinDevices
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Devices
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/CheckinDevice' }
+    post:
+      tags: [Admin Checkin]
+      summary: Register checker device
+      operationId: adminRegisterCheckinDevice
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CheckinDeviceCreateRequest'
+      responses:
+        '201':
+          description: Device registered; token is shown once
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CheckinDeviceCreateResponse' }
+
+  /api/v1/admin/checkin/devices/{device}:
+    patch:
+      tags: [Admin Checkin]
+      summary: Update/check revoke checker device
+      operationId: adminUpdateCheckinDevice
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: device
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                status: { type: string, enum: [active, revoked] }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CheckinDevice' }
+
+  /api/v1/admin/webhooks:
+    get:
+      tags: [System]
+      summary: List outbound webhooks
+      operationId: adminListWebhooks
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Webhooks
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Webhook' }
+    post:
+      tags: [System]
+      summary: Create outbound webhook
+      operationId: adminCreateWebhook
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/WebhookWriteRequest' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WebhookResponse' }
+
+  /api/v1/admin/webhooks/{webhook}:
+    patch:
+      tags: [System]
+      summary: Update outbound webhook
+      operationId: adminUpdateWebhook
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: webhook
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/WebhookWriteRequest' }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WebhookResponse' }
+
+  /api/v1/embed/carts:
+    post:
+      tags: [Embed]
+      summary: Create anonymous embed cart
+      operationId: embedCreateCart
+      parameters:
+        - $ref: '#/components/parameters/EmbedToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [session_id]
+              properties:
+                session_id: { type: string }
+      responses:
+        '201':
+          description: Cart created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CreateCartResponse' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/v1/embed/carts/{cart}/items:
+    post:
+      tags: [Embed]
+      summary: Add inventory to embed cart
+      operationId: embedAddCartItem
+      parameters:
+        - $ref: '#/components/parameters/CartIdPath'
+        - $ref: '#/components/parameters/EmbedToken'
+        - $ref: '#/components/parameters/CheckoutToken'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AddCartItemRequest' }
+      responses:
+        '201':
+          description: Cart updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CartResponse' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /api/v1/embed/orders:
+    post:
+      tags: [Embed]
+      summary: Create guest order from embed cart
+      operationId: embedCreateOrder
+      parameters:
+        - $ref: '#/components/parameters/EmbedToken'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CheckoutToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateOrderRequest' }
+      responses:
+        '201':
+          description: Order created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrderResponse' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /api/v1/embed/orders/{order}/payment:
+    post:
+      tags: [Embed]
+      summary: Create payment inside embed
+      operationId: embedCreatePayment
+      parameters:
+        - $ref: '#/components/parameters/OrderIdPath'
+        - $ref: '#/components/parameters/EmbedToken'
+        - $ref: '#/components/parameters/CheckoutToken'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '201':
+          description: Payment
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaymentResponse' }
+        '409': { $ref: '#/components/responses/Conflict' }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque
+    checkerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: device-token
+    checkoutAuth:
+      type: apiKey
+      in: header
+      name: X-Checkout-Token
+
+  parameters:
+    EventIdPath:
+      in: path
+      name: event
+      required: true
+      schema: { type: string }
+    SessionIdPath:
+      in: path
+      name: session
+      required: true
+      schema: { type: string }
+    CartIdPath:
+      in: path
+      name: cart
+      required: true
+      schema: { type: string }
+    CartItemIdPath:
+      in: path
+      name: item
+      required: true
+      schema: { type: string }
+    OrderIdPath:
+      in: path
+      name: order
+      required: true
+      schema: { type: string }
+    PaymentIdPath:
+      in: path
+      name: payment
+      required: true
+      schema: { type: string }
+    TicketIdPath:
+      in: path
+      name: ticket
+      required: true
+      schema: { type: string }
+    UserSessionIdPath:
+      in: path
+      name: session
+      required: true
+      schema: { type: string }
+    VenueIdPath:
+      in: path
+      name: venue
+      required: true
+      schema: { type: string }
+    HallIdPath:
+      in: path
+      name: hall
+      required: true
+      schema: { type: string }
+    SchemaIdPath:
+      in: path
+      name: schema
+      required: true
+      schema: { type: string }
+    PublicIdPath:
+      in: path
+      name: id
+      required: true
+      schema: { type: string }
+      description: Public ULID identifier. Route aliases may expose entity names in generated documentation.
+    Page:
+      in: query
+      name: page
+      schema: { type: integer, minimum: 1, default: 1 }
+    PerPage:
+      in: query
+      name: per_page
+      schema: { type: integer, minimum: 1, maximum: 100, default: 25 }
+    IdempotencyKey:
+      in: header
+      name: Idempotency-Key
+      required: true
+      schema: { type: string, minLength: 16, maxLength: 255 }
+    OAuthCode:
+      in: query
+      name: code
+      required: true
+      schema: { type: string }
+    OAuthState:
+      in: query
+      name: state
+      required: true
+      schema: { type: string }
+    EmbedToken:
+      in: query
+      name: embed_token
+      required: false
+      schema: { type: string }
+    CheckoutToken:
+      in: header
+      name: X-Checkout-Token
+      required: true
+      schema: { type: string }
+
+  responses:
+    ValidationError:
+      description: Validation error
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    Forbidden:
+      description: Forbidden
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    NotFound:
+      description: Not found
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    Conflict:
+      description: Conflict
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    RateLimited:
+      description: Rate limited
+      headers:
+        Retry-After:
+          schema: { type: integer }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  schemas:
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string, example: SEAT_ALREADY_HELD }
+            message: { type: string }
+            details: { type: object, additionalProperties: true }
+            request_id: { type: string }
+
+    PaginationMeta:
+      type: object
+      properties:
+        page: { type: integer }
+        per_page: { type: integer }
+        total: { type: integer }
+        last_page: { type: integer }
+
+    User:
+      type: object
+      required: [id, status, locale, timezone]
+      properties:
+        id: { type: string }
+        email: { type: string, format: email, nullable: true }
+        email_verified_at: { type: string, format: date-time, nullable: true }
+        first_name: { type: string, nullable: true }
+        last_name: { type: string, nullable: true }
+        phone: { type: string, nullable: true }
+        status: { type: string }
+        locale: { type: string }
+        timezone: { type: string }
+        created_at: { type: string, format: date-time }
+        last_login_at: { type: string, format: date-time, nullable: true }
+
+    UserResponse:
+      type: object
+      required: [data]
+      properties:
+        data: { $ref: '#/components/schemas/User' }
+
+    RegisterRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, minLength: 12 }
+        password_confirmation: { type: string }
+        first_name: { type: string, maxLength: 100 }
+        last_name: { type: string, maxLength: 100 }
+        phone: { type: string, maxLength: 50 }
+        locale: { type: string, default: ru }
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string }
+        remember: { type: boolean, default: false }
+
+    AuthResponse:
+      type: object
+      required: [user]
+      properties:
+        user: { $ref: '#/components/schemas/User' }
+        access_token: { type: string }
+        token_type: { type: string, example: Bearer }
+        expires_at: { type: string, format: date-time, nullable: true }
+
+    ProfileUpdateRequest:
+      type: object
+      properties:
+        first_name: { type: string, maxLength: 100 }
+        last_name: { type: string, maxLength: 100 }
+        email: { type: string, format: email }
+        phone: { type: string, maxLength: 50 }
+        locale: { type: string }
+        timezone: { type: string }
+
+    UserSession:
+      type: object
+      properties:
+        id: { type: string }
+        device_name: { type: string, nullable: true }
+        user_agent: { type: string, nullable: true }
+        last_seen_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
+
+    Organization:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        slug: { type: string }
+        status: { type: string }
+
+    Event:
+      type: object
+      required: [id, title, slug, status]
+      properties:
+        id: { type: string }
+        organization_id: { type: string }
+        category_id: { type: string, nullable: true }
+        title: { type: string }
+        slug: { type: string }
+        short_description: { type: string, nullable: true }
+        description: { type: string, nullable: true }
+        poster: { type: string, nullable: true }
+        cover: { type: string, nullable: true }
+        age_limit: { type: string, nullable: true }
+        duration_minutes: { type: integer, nullable: true }
+        status: { type: string }
+        published_at: { type: string, format: date-time, nullable: true }
+        seo:
+          $ref: '#/components/schemas/SeoMeta'
+
+    EventResponse:
+      type: object
+      required: [data]
+      properties:
+        data: { $ref: '#/components/schemas/Event' }
+
+    EventListResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/Event' }
+        meta: { $ref: '#/components/schemas/PaginationMeta' }
+
+    EventWriteRequest:
+      type: object
+      required: [organization_id, title, slug]
+      properties:
+        organization_id: { type: string }
+        category_id: { type: string, nullable: true }
+        title: { type: string, maxLength: 500 }
+        slug: { type: string, maxLength: 255 }
+        short_description: { type: string }
+        description: { type: string }
+        poster: { type: string }
+        cover: { type: string }
+        age_limit: { type: string }
+        duration_minutes: { type: integer, minimum: 0 }
+        status: { type: string, enum: [draft, scheduled, published, completed, canceled, archived] }
+        seo_title: { type: string }
+        seo_description: { type: string }
+        canonical_url: { type: string, format: uri }
+        robots: { type: string }
+
+    Venue:
+      type: object
+      properties:
+        id: { type: string }
+        organization_id: { type: string }
+        name: { type: string }
+        slug: { type: string }
+        city: { type: string, nullable: true }
+        address: { type: string, nullable: true }
+        latitude: { type: number, nullable: true }
+        longitude: { type: number, nullable: true }
+        status: { type: string }
+
+    VenueResponse:
+      type: object
+      properties:
+        data: { $ref: '#/components/schemas/Venue' }
+
+    VenueListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/Venue' }
+        meta: { $ref: '#/components/schemas/PaginationMeta' }
+
+    VenueWriteRequest:
+      type: object
+      required: [organization_id, name, slug]
+      properties:
+        organization_id: { type: string }
+        name: { type: string }
+        slug: { type: string }
+        description: { type: string }
+        country: { type: string }
+        region: { type: string }
+        city: { type: string }
+        address: { type: string }
+        latitude: { type: number }
+        longitude: { type: number }
+
+    Hall:
+      type: object
+      properties:
+        id: { type: string }
+        venue_id: { type: string }
+        name: { type: string }
+        capacity: { type: integer, nullable: true }
+        width: { type: integer, nullable: true }
+        height: { type: integer, nullable: true }
+        status: { type: string }
+
+    HallResponse:
+      type: object
+      properties:
+        data: { $ref: '#/components/schemas/Hall' }
+
+    HallWriteRequest:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        description: { type: string }
+        capacity: { type: integer, minimum: 0 }
+        width: { type: integer, minimum: 1 }
+        height: { type: integer, minimum: 1 }
+
+    HallSchemaVersion:
+      type: object
+      properties:
+        id: { type: string }
+        hall_id: { type: string }
+        version: { type: integer }
+        status: { type: string, enum: [draft, published, archived] }
+        width: { type: integer, nullable: true }
+        height: { type: integer, nullable: true }
+        background_url: { type: string, nullable: true }
+        schema: { $ref: '#/components/schemas/HallSchema' }
+        published_at: { type: string, format: date-time, nullable: true }
+
+    HallSchema:
+      type: object
+      required: [version, canvas, sectors, rows, seats, tables, objects]
+      properties:
+        version: { type: string }
+        canvas:
+          type: object
+          properties:
+            width: { type: number }
+            height: { type: number }
+        background:
+          type: object
+          nullable: true
+          additionalProperties: true
+        sectors:
+          type: array
+          items: { type: object, additionalProperties: true }
+        rows:
+          type: array
+          items: { type: object, additionalProperties: true }
+        seats:
+          type: array
+          items: { type: object, additionalProperties: true }
+        tables:
+          type: array
+          items: { type: object, additionalProperties: true }
+        objects:
+          type: array
+          items: { type: object, additionalProperties: true }
+
+    HallSchemaResponse:
+      type: object
+      properties:
+        data: { $ref: '#/components/schemas/HallSchemaVersion' }
+
+    HallSchemaWriteRequest:
+      type: object
+      required: [schema]
+      properties:
+        schema: { $ref: '#/components/schemas/HallSchema' }
+        background_url: { type: string }
+        width: { type: integer }
+        height: { type: integer }
+
+    Session:
+      type: object
+      required: [id, event_id, venue_id, hall_id, schema_version_id, starts_at, status]
+      properties:
+        id: { type: string }
+        event_id: { type: string }
+        venue_id: { type: string }
+        hall_id: { type: string }
+        schema_version_id: { type: string }
+        starts_at: { type: string, format: date-time }
+        ends_at: { type: string, format: date-time, nullable: true }
+        sales_start_at: { type: string, format: date-time, nullable: true }
+        sales_end_at: { type: string, format: date-time, nullable: true }
+        timezone: { type: string }
+        status: { type: string }
+
+    SessionResponse:
+      type: object
+      properties:
+        data: { $ref: '#/components/schemas/Session' }
+
+    SessionListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/Session' }
+        meta: { $ref: '#/components/schemas/PaginationMeta' }
+
+    SessionWriteRequest:
+      type: object
+      required: [event_id, venue_id, hall_id, schema_version_id, starts_at]
+      properties:
+        event_id: { type: string }
+        venue_id: { type: string }
+        hall_id: { type: string }
+        schema_version_id: { type: string }
+        starts_at: { type: string, format: date-time }
+        ends_at: { type: string, format: date-time, nullable: true }
+        sales_start_at: { type: string, format: date-time, nullable: true }
+        sales_end_at: { type: string, format: date-time, nullable: true }
+        timezone: { type: string }
+        status: { type: string }
+
+    InventoryItem:
+      type: object
+      required: [id, session_id, type, price_amount, currency, capacity, available_quantity, status]
+      properties:
+        id: { type: string }
+        session_id: { type: string }
+        type: { type: string, enum: [seat, standing] }
+        seat_id: { type: string, nullable: true }
+        standing_zone_id: { type: string, nullable: true }
+        price_amount: { type: integer }
+        currency: { type: string, example: RUB }
+        capacity: { type: integer }
+        available_quantity: { type: integer }
+        status: { type: string }
+
+    SeatMapResponse:
+      type: object
+      required: [session, schema, inventory]
+      properties:
+        session: { $ref: '#/components/schemas/Session' }
+        schema: { $ref: '#/components/schemas/HallSchemaVersion' }
+        inventory:
+          type: array
+          items: { $ref: '#/components/schemas/InventoryItem' }
+
+    Cart:
+      type: object
+      properties:
+        id: { type: string }
+        session_id: { type: string }
+        status: { type: string }
+        expires_at: { type: string, format: date-time, nullable: true }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/CartItem' }
+        totals: { $ref: '#/components/schemas/MoneyTotals' }
+
+    CartItem:
+      type: object
+      properties:
+        id: { type: string }
+        inventory_item_id: { type: string }
+        quantity: { type: integer }
+        unit_price: { type: integer }
+        total_price: { type: integer }
+        hold_expires_at: { type: string, format: date-time, nullable: true }
+        seat_snapshot: { type: object, additionalProperties: true, nullable: true }
+
+    CartResponse:
+      type: object
+      properties:
+        data: { $ref: '#/components/schemas/Cart' }
+
+    AddCartItemRequest:
+      type: object
+      required: [inventory_item_id, quantity]
+      properties:
+        inventory_item_id: { type: string }
+        quantity: { type: integer, minimum: 1 }
+
+    CreateOrderRequest:
+      type: object
+      required: [cart_id, customer_email]
+      properties:
+        cart_id: { type: string }
+        customer_email: { type: string, format: email }
+        customer_phone: { type: string }
+        holder_name: { type: string }
+        promo_code: { type: string }
+
+    MoneyTotals:
+      type: object
+      description: >-
+        Monetary amounts are integer minor units (kopecks), per spec 9. Never a
+        float: 5000 RUB is 500000. Clients must format for display; the API never
+        returns decimal strings.
+      properties:
+        subtotal_amount: { type: integer, description: Integer minor units (kopecks) }
+        discount_amount: { type: integer, description: Integer minor units (kopecks) }
+        fee_amount: { type: integer, description: Integer minor units (kopecks) }
+        total_amount: { type: integer, description: Integer minor units (kopecks) }
+        currency: { type: string, description: ISO 4217 code, e.g. RUB }
+
+    Order:
+      type: object
+      properties:
+        id: { type: string }
+        order_number: { type: string }
+        status: { type: string }
+        payment_status: { type: string }
+        totals: { $ref: '#/components/schemas/MoneyTotals' }
+        customer_email: { type: string, format: email }
+        customer_phone: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+        paid_at: { type: string, format: date-time, nullable: true }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/OrderItem' }
+
+    OrderItem:
+      type: object
+      properties:
+        id: { type: string }
+        quantity: { type: integer }
+        unit_price: { type: integer }
+        discount_amount: { type: integer }
+        fee_amount: { type: integer }
+        total_amount: { type: integer }
+        event_title: { type: string }
+        session_title: { type: string, nullable: true }
+        venue_title: { type: string, nullable: true }
+        seat_snapshot: { type: object, additionalProperties: true, nullable: true }
+
+    OrderResponse:
+      type: object
+      properties:
+        data: { $ref: '#/components/schemas/Order' }
+
+    OrderListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/Order' }
+        meta: { $ref: '#/components/schemas/PaginationMeta' }
+
+    Payment:
+      type: object
+      properties:
+        id: { type: string }
+        order_id: { type: string }
+        provider: { type: string, example: yookassa }
+        provider_payment_id: { type: string, nullable: true }
+        amount: { type: integer }
+        currency: { type: string }
+        status: { type: string }
+        payment_url: { type: string, format: uri, nullable: true }
+        created_at: { type: string, format: date-time }
+        paid_at: { type: string, format: date-time, nullable: true }
+
+    PaymentResponse:
+      type: object
+      properties:
+        data: { $ref: '#/components/schemas/Payment' }
+
+    RefundRequest:
+      type: object
+      required: [amount, reason]
+      properties:
+        amount: { type: integer, minimum: 1 }
+        reason: { type: string, maxLength: 500 }
+
+    Refund:
+      type: object
+      properties:
+        id: { type: string }
+        order_id: { type: string }
+        payment_id: { type: string }
+        amount: { type: integer }
+        currency: { type: string }
+        reason: { type: string, nullable: true }
+        status: { type: string }
+        provider_refund_id: { type: string, nullable: true }
+
+    RefundResponse:
+      type: object
+      properties:
+        data: { $ref: '#/components/schemas/Refund' }
+
+    Ticket:
+      type: object
+      properties:
+        id: { type: string }
+        ticket_number: { type: string }
+        ticket_index: { type: integer, minimum: 1 }
+        order_id: { type: string }
+        event_id: { type: string }
+        session_id: { type: string }
+        status: { type: string, enum: [issued, used, cancelled, refunded, expired] }
+        holder_name: { type: string, nullable: true }
+        seat: { type: object, nullable: true, additionalProperties: true }
+        issued_at: { type: string, format: date-time }
+        used_at: { type: string, format: date-time, nullable: true }
+
+    TicketResponse:
+      type: object
+      properties:
+        data: { $ref: '#/components/schemas/Ticket' }
+
+    TicketListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/Ticket' }
+        meta: { $ref: '#/components/schemas/PaginationMeta' }
+
+    CheckinValidateRequest:
+      type: object
+      required: [qr_payload, session_id]
+      properties:
+        qr_payload: { type: string }
+        session_id: { type: string }
+
+    CheckinUseRequest:
+      type: object
+      required: [qr_payload, session_id, client_scan_id]
+      properties:
+        qr_payload: { type: string }
+        session_id: { type: string }
+        client_scan_id: { type: string, format: uuid }
+        scanned_at: { type: string, format: date-time }
+        mode: { type: string, enum: [online, offline], default: online }
+
+    CheckinResult:
+      type: object
+      required: [result]
+      properties:
+        result:
+          type: string
+          enum: [valid, already_used, cancelled, refunded, expired, invalid_signature, wrong_session, wrong_event, unknown_ticket, conflict]
+        ticket: { $ref: '#/components/schemas/Ticket' }
+        message: { type: string }
+
+    CheckinResultResponse:
+      type: object
+      properties:
+        data: { $ref: '#/components/schemas/CheckinResult' }
+
+    CheckinSyncRequest:
+      type: object
+      required: [device_id, session_id, scans]
+      properties:
+        device_id: { type: string }
+        session_id: { type: string }
+        scans:
+          type: array
+          maxItems: 5000
+          items:
+            type: object
+            required: [client_scan_id, ticket_id, scanned_at, result]
+            properties:
+              client_scan_id: { type: string, format: uuid }
+              ticket_id: { type: string }
+              scanned_at: { type: string, format: date-time }
+              result: { type: string }
+              mode: { type: string, enum: [offline] }
+
+    CheckinSyncResponse:
+      type: object
+      properties:
+        accepted: { type: integer }
+        duplicates: { type: integer }
+        conflicts: { type: integer }
+        rejected: { type: integer }
+        results:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+
+    TicketScan:
+      type: object
+      properties:
+        id: { type: string }
+        ticket_id: { type: string }
+        session_id: { type: string }
+        device_id: { type: string, nullable: true }
+        mode: { type: string }
+        result: { type: string }
+        scanned_at: { type: string, format: date-time }
+
+    TicketScanListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/TicketScan' }
+        meta: { $ref: '#/components/schemas/PaginationMeta' }
+
+    SeoMeta:
+      type: object
+      properties:
+        title: { type: string, nullable: true }
+        description: { type: string, nullable: true }
+        canonical_url: { type: string, nullable: true }
+        robots: { type: string, nullable: true }
+        og_title: { type: string, nullable: true }
+        og_description: { type: string, nullable: true }
+        og_image: { type: string, nullable: true }
+        schema: { type: object, additionalProperties: true, nullable: true }
+
+    ImportResult:
+      type: object
+      properties:
+        dry_run: { type: boolean }
+        imported: { type: integer }
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              row: { type: integer, nullable: true }
+              code: { type: string }
+              message: { type: string }
+
+    FunnelResponse:
+      type: object
+      properties:
+        steps:
+          type: array
+          items:
+            type: object
+            properties:
+              event: { type: string }
+              users: { type: integer }
+              rate_from_previous: { type: number }
+              rate_from_first: { type: number }
+
+    AnalyticsEventRequest:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        anonymous_id: { type: string, format: uuid, nullable: true }
+        user_id: { type: string, nullable: true }
+        session_id: { type: string, nullable: true }
+        event_id: { type: string, nullable: true }
+        page_url: { type: string }
+        referrer: { type: string }
+        properties: { type: object, additionalProperties: true }
+        occurred_at: { type: string, format: date-time }
+
+    AsyncJobResponse:
+      type: object
+      properties:
+        job_id: { type: string }
+        status: { type: string, example: queued }
+
+    CreateCartResponse:
+      type: object
+      required: [data, checkout_token]
+      properties:
+        data: { $ref: '#/components/schemas/Cart' }
+        checkout_token:
+          type: string
+          description: One-time displayed access token for anonymous checkout operations.
+
+    InventoryItemResponse:
+      type: object
+      properties:
+        data: { $ref: '#/components/schemas/InventoryItem' }
+
+    CheckinDevice:
+      type: object
+      properties:
+        id: { type: string }
+        organization_id: { type: string }
+        name: { type: string }
+        platform: { type: string }
+        app_version: { type: string, nullable: true }
+        status: { type: string, enum: [active, revoked] }
+        last_seen_at: { type: string, format: date-time, nullable: true }
+
+    CheckinDeviceCreateRequest:
+      type: object
+      required: [organization_id, name]
+      properties:
+        organization_id: { type: string }
+        name: { type: string }
+
+    CheckinDeviceCreateResponse:
+      type: object
+      required: [device, token]
+      properties:
+        device: { $ref: '#/components/schemas/CheckinDevice' }
+        token:
+          type: string
+          description: Device token. Display only once; store only as hash server-side.
+
+    Webhook:
+      type: object
+      properties:
+        id: { type: string }
+        url: { type: string, format: uri }
+        events:
+          type: array
+          items: { type: string }
+        active: { type: boolean }
+        retry_limit: { type: integer }
+
+    WebhookWriteRequest:
+      type: object
+      required: [organization_id, url, events]
+      properties:
+        organization_id: { type: string }
+        url: { type: string, format: uri }
+        secret: { type: string, minLength: 16 }
+        events:
+          type: array
+          minItems: 1
+          items: { type: string }
+        active: { type: boolean }
+        retry_limit: { type: integer, minimum: 1, maximum: 20 }
+
+    WebhookResponse:
+      type: object
+      properties:
+        data: { $ref: '#/components/schemas/Webhook' }
+
+    HealthResponse:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [ok, degraded, down] }
+        database: { type: string }
+        redis: { type: string }
+        queue: { type: string }
+        version: { type: string }
+        timestamp: { type: string, format: date-time }

@@ -1,0 +1,11 @@
+{
+  "name": "events",
+  "title": "Мероприятия",
+  "version": "1.0.0",
+  "enabled": true,
+  "priority": 50,
+  "requires": ["organizations", "venues"],
+  "permissions": ["events.view", "events.create", "events.edit", "events.delete"],
+  "provides": ["event.created", "event.published", "event.canceled", "event.archived"],
+  "description": "Мероприятие, категории, медиа, переводы. Статусы: draft → scheduled → published → completed → canceled → archived (ТЗ §12). Публикация — единственный путь в каталог и sitemap."
+}

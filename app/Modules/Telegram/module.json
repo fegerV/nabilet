@@ -1,0 +1,11 @@
+{
+  "name": "telegram",
+  "title": "Telegram",
+  "version": "1.0.0",
+  "enabled": true,
+  "priority": 175,
+  "requires": ["notifications", "tickets"],
+  "permissions": [],
+  "provides": ["telegram.message_sent"],
+  "description": "Бот (/start, /help, /myorders, /status) с отправкой QR и напоминаниями за сутки, а также Telegram Mini App с каталогом, выбором места, оплатой и билетом, авторизация через Telegram (ТЗ §44, §45)."
+}

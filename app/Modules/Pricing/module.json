@@ -1,0 +1,11 @@
+{
+  "name": "pricing",
+  "title": "Ценообразование и промокоды",
+  "version": "1.0.0",
+  "enabled": true,
+  "priority": 75,
+  "requires": ["inventory"],
+  "permissions": ["events.edit"],
+  "provides": ["price.calculated", "promo.applied", "promo.rejected"],
+  "description": "Цена живёт на уровне InventoryItem, а не шаблона ряда, что даёт VIP-места, разные тарифы для сеансов, раннюю продажу, скидки и сервисный сбор (ТЗ §22). Промокоды: fixed, percent, first_purchase, event, category, date, quantity (ТЗ §86)."
+}

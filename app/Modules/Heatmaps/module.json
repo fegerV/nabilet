@@ -1,0 +1,11 @@
+{
+  "name": "heatmaps",
+  "title": "Heatmaps",
+  "version": "1.0.0",
+  "enabled": false,
+  "priority": 186,
+  "requires": ["analytics", "privacy"],
+  "permissions": [],
+  "provides": ["heatmap.event_recorded"],
+  "description": "Click map, scroll map, опционально move map и запись сессий (архитектурно предусмотрена, но выключена по умолчанию). Все инструменты обязаны учитывать consent/GDPR (ТЗ §55, §56)."
+}

@@ -1,0 +1,11 @@
+{
+  "name": "inventory",
+  "title": "Inventory и бронирование",
+  "version": "1.0.0",
+  "enabled": true,
+  "priority": 70,
+  "requires": ["sessions"],
+  "permissions": ["tickets.view"],
+  "provides": ["seat.held", "seat.released", "seat.hold_expired", "inventory.sold"],
+  "description": "Самый критичный модуль системы (ТЗ §24, §90). InventoryItem — реально продаваемая сущность; SeatHold с TTL реализует временное бронирование. Все операции проходят в транзакции с SELECT ... FOR UPDATE, чтобы два покупателя не оплатили одно место."
+}

@@ -1,0 +1,77 @@
+# ─── Secrets ────────────────────────────────────────────────────────────────────
+# Real environment files must never be committed. `.env.example` (placeholders
+# only) IS tracked and is the reference for required variables.
+.env
+.env.*
+!.env.example
+
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+id_rsa*
+id_ed25519*
+.ssh/
+
+# ─── Dependencies ───────────────────────────────────────────────────────────────
+/vendor/
+/node_modules/
+/public/build/
+/public/hot
+/public/storage
+/public/vendor/
+
+# ─── Laravel runtime ────────────────────────────────────────────────────────────
+/storage/*.key
+/storage/*.sqlite
+/storage/app/private/
+/storage/app/public/
+/storage/framework/cache/data/*
+/storage/framework/sessions/*
+/storage/framework/views/*
+/storage/logs/*
+!/storage/logs/.gitignore
+
+/bootstrap/cache/*.php
+/bootstrap/cache/services.php
+/bootstrap/cache/packages.php
+
+# The installer writes this on first run; it is per-deployment state.
+/storage/install.lock
+
+# ─── Database artifacts ─────────────────────────────────────────────────────────
+*.sqlite
+*.sqlite3
+*.db
+*.dump
+
+# ─── Test / tooling output ──────────────────────────────────────────────────────
+.phpunit.result.cache
+.phpunit.cache/
+/coverage/
+/build/
+*.out
+lint.out
+
+# ─── Editors / OS ───────────────────────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ─── Logs ───────────────────────────────────────────────────────────────────────
+*.log
+npm-debug.log*
+yarn-error.log*
+
+# ─── Local scratch ──────────────────────────────────────────────────────────────
+.tmp/
+.tmp-verify/
+*.local
+
+# ─── Internal documents not meant for the public repo ───────────────────────────
+Мысли о SEO.txt

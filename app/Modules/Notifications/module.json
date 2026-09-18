@@ -1,0 +1,11 @@
+{
+  "name": "notifications",
+  "title": "Уведомления",
+  "version": "1.0.0",
+  "enabled": true,
+  "priority": 130,
+  "requires": ["orders"],
+  "permissions": [],
+  "provides": ["notification.queued", "notification.sent", "notification.failed"],
+  "description": "Каналы Email / Telegram / Web Push, шаблоны с переменными, триггеры и журнал доставки. Администратор может отключить конкретный канал (ТЗ §43, §87, §88). Все отправки идут через очередь и идемпотентны."
+}

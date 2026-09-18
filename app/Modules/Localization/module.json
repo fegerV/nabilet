@@ -1,0 +1,11 @@
+{
+  "name": "localization",
+  "title": "Мультиязычность",
+  "version": "1.0.0",
+  "enabled": true,
+  "priority": 25,
+  "requires": ["organizations"],
+  "permissions": [],
+  "provides": ["locale.resolved", "translation.updated"],
+  "description": "Переводы интерфейса, мероприятий, категорий, площадок, страниц, SEO, email и билетов. Редактирование переводов через UI (ТЗ §39). Загружается рано: строки нужны почти всем модулям."
+}

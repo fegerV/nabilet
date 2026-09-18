@@ -1,0 +1,11 @@
+{
+  "name": "admin",
+  "title": "Административная панель",
+  "version": "1.0.0",
+  "enabled": true,
+  "priority": 200,
+  "requires": ["users", "events", "orders", "tickets"],
+  "permissions": ["settings.manage"],
+  "provides": ["admin.panel_booted"],
+  "description": "SPA-панель: дашборд, мероприятия, площадки и схемы, продажи, check-in, пользователи, маркетинг, контент, интеграции, AI, система. Регистрируется последней, потому что собирает навигацию и виджеты всех остальных модулей через хуки (ТЗ §71)."
+}
