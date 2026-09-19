@@ -31,6 +31,10 @@ tags:
   - name: Embed
   - name: Telegram
   - name: System
+  - name: Promo Codes
+  - name: Media
+  - name: Translations
+  - name: Admin Users
 
 paths:
   /api/v1/auth/register:
@@ -1536,6 +1540,394 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/PaymentResponse' }
         '409': { $ref: '#/components/responses/Conflict' }
+  /api/v1/promo-codes:
+    get:
+      tags: [Promo Codes]
+      summary: List promo codes
+      operationId: listPromoCodes
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/PerPage' }
+      responses:
+        '200':
+          description: Promo codes
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PromoCodeListResponse' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Promo Codes]
+      summary: Create promo code
+      operationId: createPromoCode
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PromoCodeCreate' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PromoCodeResponse' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /api/v1/promo-codes/validate:
+    post:
+      tags: [Promo Codes]
+      summary: Validate a promo code against a cart
+      description: >-
+        Checks scope, validity window and redemption limits without consuming
+        the code. The code is only consumed when the order is created.
+      operationId: validatePromoCode
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PromoCodeValidateRequest' }
+      responses:
+        '200':
+          description: Validation result
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PromoCodeValidationResponse' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /api/v1/promo-codes/{promoCode}:
+    get:
+      tags: [Promo Codes]
+      summary: Get promo code
+      operationId: getPromoCode
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/PromoCodeIdPath'
+      responses:
+        '200':
+          description: Promo code
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PromoCodeResponse' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Promo Codes]
+      summary: Update promo code
+      operationId: updatePromoCode
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/PromoCodeIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PromoCodeUpdate' }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PromoCodeResponse' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+    delete:
+      tags: [Promo Codes]
+      summary: Delete promo code
+      operationId: deletePromoCode
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/PromoCodeIdPath'
+      responses:
+        '204': { description: Deleted }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/media:
+    get:
+      tags: [Media]
+      summary: List media assets
+      operationId: listMedia
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/PerPage' }
+      responses:
+        '200':
+          description: Media assets
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MediaAssetListResponse' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Media]
+      summary: Upload media asset
+      operationId: createMedia
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MediaAssetCreate' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MediaAssetResponse' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /api/v1/media/{media}:
+    get:
+      tags: [Media]
+      summary: Get media asset
+      operationId: getMedia
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/MediaAssetIdPath'
+      responses:
+        '200':
+          description: Media asset
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MediaAssetResponse' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Media]
+      summary: Update media asset metadata
+      operationId: updateMedia
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/MediaAssetIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MediaAssetUpdate' }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MediaAssetResponse' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+    delete:
+      tags: [Media]
+      summary: Delete media asset
+      operationId: deleteMedia
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/MediaAssetIdPath'
+      responses:
+        '204': { description: Deleted }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/venues/{venue}/translations:
+    get:
+      tags: [Translations]
+      summary: List venue translations
+      operationId: listVenueTranslations
+      parameters:
+        - $ref: '#/components/parameters/VenueIdPath'
+      responses:
+        '200':
+          description: Venue translations
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VenueTranslationListResponse' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/venues/{venue}/translations/{locale}:
+    put:
+      tags: [Translations]
+      summary: Create or replace a venue translation
+      operationId: upsertVenueTranslation
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/VenueIdPath'
+        - in: path
+          name: locale
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/VenueTranslationUpsert' }
+      responses:
+        '200':
+          description: Saved
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VenueTranslationResponse' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /api/v1/pages/{page}/translations:
+    get:
+      tags: [Translations]
+      summary: List page translations
+      operationId: listPageTranslations
+      parameters:
+        - $ref: '#/components/parameters/PageIdPath'
+      responses:
+        '200':
+          description: Page translations
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PageTranslationListResponse' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/pages/{page}/translations/{locale}:
+    put:
+      tags: [Translations]
+      summary: Create or replace a page translation
+      description: >-
+        The localized slug is what makes /{locale}/pages/... URLs resolvable.
+      operationId: upsertPageTranslation
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/PageIdPath'
+        - in: path
+          name: locale
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PageTranslationUpsert' }
+      responses:
+        '200':
+          description: Saved
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PageTranslationResponse' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /api/v1/checkin-devices/{device}/bundles:
+    get:
+      tags: [Admin Checkin]
+      summary: List offline bundles issued to a device
+      operationId: listOfflineBundles
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/CheckinDeviceIdPath'
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/PerPage' }
+      responses:
+        '200':
+          description: Offline bundles
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OfflineBundleListResponse' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Admin Checkin]
+      summary: Issue an offline bundle to a device
+      description: >-
+        Bundles the event, the session, the valid and revoked ticket lists and
+        the public key so the Checker can work without a network.
+      operationId: createOfflineBundle
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/CheckinDeviceIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OfflineBundleCreate' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OfflineBundleResponse' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /api/v1/offline-bundles/{bundle}:
+    get:
+      tags: [Admin Checkin]
+      summary: Get offline bundle
+      operationId: getOfflineBundle
+      security:
+        - bearerAuth: []
+        - checkerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OfflineBundleIdPath'
+      responses:
+        '200':
+          description: Offline bundle
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OfflineBundleResponse' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/users/{user}/roles:
+    get:
+      tags: [Admin Users]
+      summary: List roles granted to a user in an organization
+      operationId: listUserRoles
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/UserIdPath'
+      responses:
+        '200':
+          description: Granted roles
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserRoleListResponse' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [Admin Users]
+      summary: Grant a role to a user
+      operationId: assignUserRole
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/UserIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UserRoleAssign' }
+      responses:
+        '201':
+          description: Granted
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserRoleResponse' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /api/v1/users/{user}/roles/{role}:
+    delete:
+      tags: [Admin Users]
+      summary: Revoke a role from a user
+      operationId: revokeUserRole
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/UserIdPath'
+        - $ref: '#/components/parameters/RoleIdPath'
+      responses:
+        '204': { description: Revoked }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -1644,6 +2036,42 @@ components:
     CheckoutToken:
       in: header
       name: X-Checkout-Token
+      required: true
+      schema: { type: string }
+
+    PromoCodeIdPath:
+      in: path
+      name: promoCode
+      required: true
+      schema: { type: string }
+    MediaAssetIdPath:
+      in: path
+      name: media
+      required: true
+      schema: { type: string }
+    PageIdPath:
+      in: path
+      name: page
+      required: true
+      schema: { type: string }
+    CheckinDeviceIdPath:
+      in: path
+      name: device
+      required: true
+      schema: { type: string }
+    OfflineBundleIdPath:
+      in: path
+      name: bundle
+      required: true
+      schema: { type: string }
+    UserIdPath:
+      in: path
+      name: user
+      required: true
+      schema: { type: string }
+    RoleIdPath:
+      in: path
+      name: role
       required: true
       schema: { type: string }
 
@@ -2188,11 +2616,13 @@ components:
         order_id: { type: string }
         event_id: { type: string }
         session_id: { type: string }
-        status: { type: string, enum: [issued, used, cancelled, refunded, expired] }
+        status: { type: string, enum: [issued, used, cancelled, refunded, expired, revoked] }
         holder_name: { type: string, nullable: true }
         seat: { type: object, nullable: true, additionalProperties: true }
         issued_at: { type: string, format: date-time }
         used_at: { type: string, format: date-time, nullable: true }
+        revoked_at: { type: string, format: date-time, nullable: true, description: Set when fraud chargeback or duplicate resolution voids the ticket }
+        revoked_reason: { type: string, nullable: true }
 
     TicketResponse:
       type: object
@@ -2430,3 +2860,299 @@ components:
         queue: { type: string }
         version: { type: string }
         timestamp: { type: string, format: date-time }
+
+    PromoCode:
+      type: object
+      description: >-
+        Discount source for orders.discount_amount. Conditions listed in spec 86
+        map onto discount_type plus scope plus the validity window and counters.
+      properties:
+        id: { type: string }
+        code: { type: string }
+        discount_type: { type: string, enum: [fixed, percent] }
+        value_amount: { type: integer, description: Fixed discount in integer minor units - fixed type only }
+        value_percent: { type: number, description: Discount percentage from 0 to 100 - percent type only }
+        currency: { type: string, description: ISO 4217 code such as RUB }
+        scope: { type: string, enum: [all, event, category, first_purchase] }
+        event_id: { type: string, nullable: true }
+        event_category_id: { type: string, nullable: true }
+        min_order_amount: { type: integer, description: Integer minor units (kopecks) }
+        max_redemptions: { type: integer, nullable: true }
+        per_user_limit: { type: integer }
+        redemptions_count: { type: integer }
+        status: { type: string, enum: [active, paused, expired] }
+        valid_from: { type: string, format: date-time, nullable: true }
+        valid_until: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    PromoCodeCreate:
+      type: object
+      required: [code, discount_type]
+      properties:
+        code: { type: string }
+        discount_type: { type: string, enum: [fixed, percent] }
+        value_amount: { type: integer, description: Integer minor units (kopecks) }
+        value_percent: { type: number }
+        scope: { type: string, enum: [all, event, category, first_purchase] }
+        event_id: { type: string, nullable: true }
+        event_category_id: { type: string, nullable: true }
+        min_order_amount: { type: integer, description: Integer minor units (kopecks) }
+        max_redemptions: { type: integer, nullable: true }
+        per_user_limit: { type: integer }
+        valid_from: { type: string, format: date-time, nullable: true }
+        valid_until: { type: string, format: date-time, nullable: true }
+
+    PromoCodeUpdate:
+      type: object
+      properties:
+        code: { type: string }
+        discount_type: { type: string, enum: [fixed, percent] }
+        value_amount: { type: integer, description: Integer minor units (kopecks) }
+        value_percent: { type: number }
+        scope: { type: string, enum: [all, event, category, first_purchase] }
+        min_order_amount: { type: integer, description: Integer minor units (kopecks) }
+        max_redemptions: { type: integer, nullable: true }
+        per_user_limit: { type: integer }
+        status: { type: string, enum: [active, paused, expired] }
+        valid_from: { type: string, format: date-time, nullable: true }
+        valid_until: { type: string, format: date-time, nullable: true }
+
+    PromoCodeValidateRequest:
+      type: object
+      required: [code]
+      properties:
+        code: { type: string }
+        cart_id: { type: string, nullable: true }
+        order_amount: { type: integer, description: Integer minor units (kopecks) }
+
+    PromoCodeValidation:
+      type: object
+      required: [valid]
+      properties:
+        valid: { type: boolean }
+        discount_amount: { type: integer, description: Integer minor units (kopecks) }
+        rejection_reason: { type: string, nullable: true }
+
+    PromoCodeResponse:
+      type: object
+      properties:
+        data: { $ref: '#/components/schemas/PromoCode' }
+
+    PromoCodeListResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/PromoCode' }
+        meta: { $ref: '#/components/schemas/PaginationMeta' }
+
+    PromoCodeValidationResponse:
+      type: object
+      properties:
+        data: { $ref: '#/components/schemas/PromoCodeValidation' }
+
+    MediaAsset:
+      type: object
+      properties:
+        id: { type: string }
+        disk: { type: string }
+        path: { type: string }
+        filename: { type: string }
+        mime_type: { type: string }
+        size_bytes: { type: integer }
+        width: { type: integer, nullable: true }
+        height: { type: integer, nullable: true }
+        checksum: { type: string, nullable: true }
+        title: { type: string, nullable: true }
+        alt_text: { type: string, nullable: true }
+        variants_json: { type: object, nullable: true, additionalProperties: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    MediaAssetCreate:
+      type: object
+      required: [filename, mime_type, path]
+      properties:
+        filename: { type: string }
+        mime_type: { type: string }
+        path: { type: string }
+        size_bytes: { type: integer }
+        width: { type: integer, nullable: true }
+        height: { type: integer, nullable: true }
+        checksum: { type: string, nullable: true }
+        title: { type: string, nullable: true }
+        alt_text: { type: string, nullable: true }
+        entity_type: { type: string, nullable: true }
+        entity_id: { type: string, nullable: true }
+        role: { type: string, nullable: true }
+        position: { type: integer, nullable: true }
+
+    MediaAssetUpdate:
+      type: object
+      properties:
+        title: { type: string, nullable: true }
+        alt_text: { type: string, nullable: true }
+        role: { type: string, nullable: true }
+        position: { type: integer, nullable: true }
+
+    MediaAssetResponse:
+      type: object
+      properties:
+        data: { $ref: '#/components/schemas/MediaAsset' }
+
+    MediaAssetListResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/MediaAsset' }
+        meta: { $ref: '#/components/schemas/PaginationMeta' }
+
+    VenueTranslation:
+      type: object
+      properties:
+        id: { type: string }
+        venue_id: { type: string }
+        locale: { type: string }
+        name: { type: string, nullable: true }
+        description: { type: string, nullable: true }
+        address: { type: string, nullable: true }
+        seo_title: { type: string, nullable: true }
+        seo_description: { type: string, nullable: true }
+
+    VenueTranslationUpsert:
+      type: object
+      properties:
+        name: { type: string, nullable: true }
+        description: { type: string, nullable: true }
+        address: { type: string, nullable: true }
+        seo_title: { type: string, nullable: true }
+        seo_description: { type: string, nullable: true }
+
+    VenueTranslationResponse:
+      type: object
+      properties:
+        data: { $ref: '#/components/schemas/VenueTranslation' }
+
+    VenueTranslationListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/VenueTranslation' }
+
+    PageTranslation:
+      type: object
+      properties:
+        id: { type: string }
+        page_id: { type: string }
+        locale: { type: string }
+        title: { type: string, nullable: true }
+        content: { type: string, nullable: true }
+        slug: { type: string, nullable: true, description: Localized URL segment }
+        seo_title: { type: string, nullable: true }
+        seo_description: { type: string, nullable: true }
+
+    PageTranslationUpsert:
+      type: object
+      properties:
+        title: { type: string, nullable: true }
+        content: { type: string, nullable: true }
+        slug: { type: string, nullable: true, description: Localized URL segment }
+        seo_title: { type: string, nullable: true }
+        seo_description: { type: string, nullable: true }
+
+    PageTranslationResponse:
+      type: object
+      properties:
+        data: { $ref: '#/components/schemas/PageTranslation' }
+
+    PageTranslationListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/PageTranslation' }
+
+    OfflineBundle:
+      type: object
+      description: >-
+        An offline bundle for the Android Checker (spec 43). The payload holds
+        the event plus session plus valid and revoked ticket lists plus the
+        public key. Ticket entries carry public ids and statuses only - the
+        bundle never contains holder names or any other personal data.
+      properties:
+        id: { type: string }
+        checkin_device_id: { type: string }
+        event_id: { type: string }
+        session_id: { type: string, nullable: true }
+        bundle_hash: { type: string }
+        schema_version: { type: integer }
+        public_key_fingerprint: { type: string, nullable: true }
+        ticket_count: { type: integer }
+        revoked_count: { type: integer }
+        payload_json: { type: object, nullable: true, additionalProperties: true }
+        status: { type: string, enum: [generated, downloaded, expired, revoked] }
+        generated_at: { type: string, format: date-time }
+        downloaded_at: { type: string, format: date-time, nullable: true }
+        expires_at: { type: string, format: date-time, nullable: true }
+
+    OfflineBundleCreate:
+      type: object
+      required: [event_id]
+      properties:
+        event_id: { type: string }
+        session_id: { type: string, nullable: true }
+        expires_at: { type: string, format: date-time, nullable: true }
+
+    OfflineBundleResponse:
+      type: object
+      properties:
+        data: { $ref: '#/components/schemas/OfflineBundle' }
+
+    OfflineBundleListResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/OfflineBundle' }
+        meta: { $ref: '#/components/schemas/PaginationMeta' }
+
+    UserRole:
+      type: object
+      description: >-
+        A role granted to a user inside an organization. A user may hold several
+        roles at once which user_organization.role_id cannot express.
+      properties:
+        id: { type: string }
+        user_id: { type: string }
+        organization_id: { type: string }
+        role_id: { type: string }
+        granted_by: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+
+    UserRoleAssign:
+      type: object
+      required: [role_id]
+      properties:
+        role_id: { type: string }
+        organization_id: { type: string, nullable: true }
+
+    UserRoleResponse:
+      type: object
+      properties:
+        data: { $ref: '#/components/schemas/UserRole' }
+
+    UserRoleListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/UserRole' }
