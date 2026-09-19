@@ -1,15 +1,15 @@
 # NABILET Core — Модель данных
 
 > **Источник истины — пакет `nabilet_core_spec/`.**
-> DDL: `migrations.sql` (консолидированный) и `nabilet_core_spec/migrations/001..009` (сплит).
-> Оба представления проверены на идентичность: **583 колонки, 231 ограничение — совпадают побайтово.**
+> DDL: `migrations.sql` (консолидированный) и `nabilet_core_spec/migrations/001..010` (сплит).
+> Оба представления проверены на идентичность: **678 колонок, 273 ограничения — совпадают побайтово.**
 >
 > **Проверено исполнением на MySQL 8.4.11**, а не чтением. Факты в этом документе —
 > результат запросов к `information_schema` работающей базы. Разбор пробелов и их причин:
 > `docs/REVIEW-spec-bundle.md`.
 
-**Схема:** 56 таблиц · 583 колонки · 73 внешних ключа · 71 уникальный ключ ·
-206 индексов · 24 CHECK-ограничения · 1 триггер.
+**Схема:** 64 таблицы · 678 колонок · 93 внешних ключа · 81 уникальный ключ ·
+244 индекса · 35 CHECK-ограничений · 1 триггер.
 
 ---
 
@@ -55,20 +55,30 @@ standing-зона:  capacity = 1000,  available_quantity ∈ [0, 1000]
 
 ---
 
-## 2. Группы таблиц (56)
+## 2. Группы таблиц (64)
 
-### 2.1 Идентичность и аренда — 9
+### 2.1 Идентичность и аренда — 10
 `organizations` · `roles` · `permissions` · `role_permissions` · `users` ·
-`user_organization` · `user_sessions` · `login_logs` · `api_keys`
+`user_organization` · `user_roles` · `user_sessions` · `login_logs` · `api_keys`
 
 Членство в организации — через `user_organization(user_id, organization_id, role_id)`
-с составным первичным ключом. Роль одна на пару (пользователь, организация).
+с составным первичным ключом: это **основная** роль пользователя в организации.
+Поверх неё `user_roles(user_id, organization_id, role_id)` даёт одному пользователю
+несколько ролей — например, менеджер мероприятий и кассир одновременно. Уникальность
+`(user_id, organization_id, role_id)` не даёт выдать одну роль дважды.
 
-### 2.2 Контент и SEO — 6
-`event_categories` · `events` · `event_translations` · `pages` · `seo_meta` · `redirects`
+### 2.2 Контент и SEO — 10
+`event_categories` · `events` · `event_translations` · `pages` · `seo_meta` · `redirects` ·
+`venue_translations` · `page_translations` · `media_assets` · `media_links`
 
-Переводы вынесены в `event_translations` с `uq_event_translations(event_id, locale)`.
+Переводы вынесены в отдельные таблицы с уникальностью по `(entity_id, locale)`:
+`event_translations`, `venue_translations`, `page_translations`. Локальный `slug` в
+`page_translations` — то, что делает URLs вида `/{locale}/...` разрешимыми (§73).
 `seo_meta` — полиморфная по `(entity_type, entity_id, locale)`.
+
+Медиатека: `media_assets` хранит файл, его производные (`variants_json`) и alt-текст;
+`media_links` — полиморфная привязка `(entity_type, entity_id)` с `role` и `position`,
+то есть назначение и порядок в галерее.
 
 ### 2.3 Площадки и схемы залов — 8
 `venues` · `halls` · `hall_schema_versions` · `sectors` · `hall_rows` · `seats` ·
@@ -89,19 +99,30 @@ standing-зона:  capacity = 1000,  available_quantity ∈ [0, 1000]
 `sessions` ссылается на **версию** схемы (`schema_version_id`), не на зал. Это и есть
 механизм неизменяемости: сеанс навсегда привязан к той геометрии, что была при публикации.
 
-### 2.5 Продажи — 5
-`carts` · `cart_items` · `seat_holds` · `orders` · `order_items`
+### 2.5 Продажи — 7
+`carts` · `cart_items` · `seat_holds` · `orders` · `order_items` ·
+`promo_codes` · `promo_code_redemptions`
 
 Одна корзина = один сеанс. `cart_items` уникален по `(cart_id, inventory_item_id)`.
 `order_items` хранит снапшоты (`event_title_snapshot`, `venue_title_snapshot`,
 `seat_snapshot_json`) — заказ должен отображаться исторически корректно даже после
 переименования мероприятия.
 
+Промокоды (§86): `promo_codes` — справочник кодов с условиями `fixed / percent`,
+`scope` (`all / event / category / first_purchase`), окном действия и лимитами;
+`promo_code_redemptions` — счётчик использований и аудит-след. `orders.promo_code_id`
+связывает заказ с кодом, и `orders.discount_amount` перестаёт быть «скидкой из ниоткуда».
+
 ### 2.6 Платежи — 3
 `payments` · `payment_transactions` · `refunds`
 
-### 2.7 Билеты и check-in — 4
-`ticket_templates` · `tickets` · `checkin_devices` · `ticket_scans`
+### 2.7 Билеты и check-in — 5
+`ticket_templates` · `tickets` · `checkin_devices` · `ticket_scans` · `offline_bundles`
+
+`offline_bundles` учитывает, что именно и когда получило устройство Checker перед
+сеансом: мероприятие, сеанс, списки действительных и отозванных билетов и публичный
+ключ (§43). Персональных данных в бандле нет — только публичные идентификаторы и
+статусы билетов, так же как в QR-полезной нагрузке.
 
 ### 2.8 Уведомления и приватность — 4
 `notification_templates` · `notifications` · `consents` · `privacy_requests`
@@ -171,6 +192,9 @@ uq_tickets_order_item_index   (order_item_id, ticket_index)
 До него инварианты держались **только** в коде приложения, и база молча принимала
 `available_quantity = -1`.
 
+`010_tz_gaps.sql` добавляет ещё 11 ограничений на новые таблицы и расширяет
+`ck_tickets_status` — итого **35 CHECK-ограничений на 18 таблицах**.
+
 ```sql
 ck_inventory_available_qty  CHECK (available_quantity BETWEEN 0 AND capacity)
 ck_inventory_target         CHECK (type='seat' AND seat_id IS NOT NULL AND standing_zone_id IS NULL
@@ -180,10 +204,11 @@ ck_tickets_terminal_exclusive CHECK (NOT (used_at IS NOT NULL
                                       AND (cancelled_at IS NOT NULL OR refunded_at IS NOT NULL)))
 ```
 
-Полный список — 24 ограничения на 13 таблицах: `inventory_items` (5), `tickets` (3),
-`orders` (2), `order_items` (2), `payments` (2), `refunds` (2), `seats` (2),
-`cart_items`, `hall_schema_versions`, `seat_holds`, `sectors`, `sessions`,
-`standing_zones` (по одному).
+Полный список — 35 ограничений на 18 таблицах: `inventory_items` (5), `tickets` (3),
+`promo_codes` (6), `orders` (2), `order_items` (2), `payments` (2), `refunds` (2),
+`seats` (2), `offline_bundles` (2), а также по одному — `cart_items`,
+`hall_schema_versions`, `seat_holds`, `sectors`, `sessions`, `standing_zones`,
+`promo_code_redemptions`, `media_assets`, `media_links`.
 
 > Клаузул 21, а не 24, потому что три ограничения используют один и тот же текст
 > `(quantity > 0)`, и два — `(amount >= 0)`. Уникальны именно ограничения (по имени
@@ -263,12 +288,17 @@ inventory. Удаление корзины — позиции и holds. Это �
 
 ## 6. Мультитенантность — сильное ограничение схемы
 
-`organization_id` присутствует только у **12 из 56** таблиц:
+`organization_id` присутствует только у **16 из 64** таблиц:
 
 ```
 ab_experiments · api_keys · audit_logs · checkin_devices · embed_domains · events ·
-orders · pages · ticket_templates · user_organization · venues · webhooks
+media_assets · offline_bundles · orders · pages · promo_codes · ticket_templates ·
+user_organization · user_roles · venues · webhooks
 ```
+
+Из добавленных в `010_tz_gaps.sql` тенантность получили `promo_codes`, `media_assets`,
+`offline_bundles` и `user_roles`. У `media_assets.organization_id` допустим NULL —
+актив без организации (глобальная медиатека) не ломает схему.
 
 **Отсутствует** у `tickets`, `payments`, `refunds`, `carts`, `cart_items`, `order_items`,
 `inventory_items`, `seat_holds`, `ticket_scans`, `sessions`, `payment_transactions`,
