@@ -4,82 +4,49 @@ declare(strict_types=1);
 
 namespace App\Modules\Sessions\Http\Controllers;
 
-use App\Http\Controllers\Controller;
 use App\Modules\Sessions\Models\Session;
-use App\Modules\Sessions\Http\Resources\SessionResource;
-use App\Modules\Inventory\Items\Models\InventoryItem;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Routing\Controller;
 
 class SessionController extends Controller
 {
-    /**
-     * Get session details with seatmap
-     */
-    public function show(string $publicId): JsonResponse
+    public function index(Request $request): JsonResponse
     {
-        $session = Session::with([
-            'event.organization',
-            'hall.venue',
-            'schemaVersion.sectors.rows.seats',
-            'schemaVersion.sectors.standingZones'
-        ])
-        ->where('public_id', $publicId)
-        ->firstOrFail();
-
+        $filters = $request->only(['event_id', 'hall_id', 'status']);
+        $perPage = (int) $request->get('per_page', 20);
+        
+        $query = Session::query()->with(['event', 'hall', 'schemaVersion']);
+        
+        if (isset($filters['event_id'])) {
+            $query->where('event_id', $filters['event_id']);
+        }
+        
+        if (isset($filters['hall_id'])) {
+            $query->where('hall_id', $filters['hall_id']);
+        }
+        
+        if (isset($filters['status'])) {
+            $query->where('status', $filters['status']);
+        }
+        
+        $sessions = $query->paginate($perPage);
+        
         return response()->json([
-            'data' => new SessionResource($session)
+            'data' => $sessions,
+            'meta' => [
+                'current_page' => $sessions->currentPage(),
+                'per_page' => $sessions->perPage(),
+                'total' => $sessions->total(),
+                'last_page' => $sessions->lastPage(),
+            ],
         ]);
     }
 
-    /**
-     * Get session seatmap with availability
-     */
-    public function seatmap(string $publicId): JsonResponse
+    public function show(Session $session): JsonResponse
     {
-        $session = Session::with([
-            'schemaVersion.sectors.rows.seats',
-            'schemaVersion.sectors.standingZones'
-        ])
-        ->where('public_id', $publicId)
-        ->firstOrFail();
-
-        // Load inventory items for this session
-        $inventory = InventoryItem::with(['seat.row.sector', 'standingZone'])
-            ->where('session_id', $session->id)
-            ->get()
-            ->keyBy(fn($item) => $item->seat_id ?? $item->standing_zone_id . '_standing');
-
-        return response()->json([
-            'data' => [
-                'session' => [
-                    'id' => $session->public_id,
-                    'starts_at' => $session->starts_at?->toIso8601String(),
-                ],
-                'seatmap' => [
-                    'sectors' => $session->schemaVersion->sectors->map(fn($sector) => [
-                        'id' => $sector->public_id,
-                        'name' => $sector->name,
-                        'type' => $sector->type,
-                        'rows' => $sector->rows->map(fn($row) => [
-                            'number' => $row->number,
-                            'seats' => $row->seats->map(fn($seat) => [
-                                'id' => $seat->public_id,
-                                'number' => $seat->number,
-                                'type' => $seat->type,
-                                'status' => $inventory[$seat->id]?->status ?? 'available',
-                                'price' => $inventory[$seat->id]?->price ?? 0,
-                            ]),
-                        ]),
-                        'standing_zones' => $sector->standingZones->map(fn($zone) => [
-                            'id' => $zone->public_id,
-                            'name' => $zone->name,
-                            'capacity' => $zone->capacity,
-                            'available' => $inventory[$zone->id . '_standing']?->available_quantity ?? 0,
-                            'price' => $inventory[$zone->id . '_standing']?->price ?? 0,
-                        ]),
-                    ]),
-                ],
-            ]
-        ]);
+        $session->load(['event', 'hall', 'schemaVersion', 'inventoryItems']);
+        
+        return response()->json(['data' => $session]);
     }
 }
