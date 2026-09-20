@@ -1,3 +1,10 @@
-(docs/audit/TICKETING_TRANSACTION_AUDIT.md is just a markdown documentation file, which doesn't fall under any of the categories that need to be ignored - it's a source/config file)
+```
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
 
-# No changes needed - only a documentation file was modified
+# Generated migrations cache
+tools/__pycache__/
+```
