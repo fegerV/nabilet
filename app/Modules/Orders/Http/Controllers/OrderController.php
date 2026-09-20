@@ -4,12 +4,12 @@ declare(strict_types=1);
 
 namespace App\Modules\Orders\Http\Controllers;
 
-use App\Http\Controllers\Controller;
+use App\Modules\Orders\Http\Requests\StoreOrderRequest;
 use App\Modules\Orders\Models\Order;
-use App\Modules\Orders\Http\Resources\OrderResource;
 use App\Modules\Orders\Services\OrderService;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Response;
+use Illuminate\Http\Request;
+use Illuminate\Routing\Controller;
 
 class OrderController extends Controller
 {
@@ -17,87 +17,45 @@ class OrderController extends Controller
         private readonly OrderService $orderService
     ) {}
 
-    /**
-     * List user orders
-     */
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
-        $orders = Order::where('user_id', auth()->id())
-            ->with(['items.inventoryItem.seat.row.sector', 'payments'])
-            ->orderBy('created_at', 'desc')
-            ->paginate(20);
-
+        $filters = $request->only(['organization_id', 'user_id', 'status']);
+        $perPage = (int) $request->get('per_page', 20);
+        
+        $orders = $this->orderService->paginate($filters, $perPage);
+        
         return response()->json([
-            'data' => OrderResource::collection($orders->items()),
+            'data' => $orders,
             'meta' => [
                 'current_page' => $orders->currentPage(),
-                'last_page' => $orders->lastPage(),
                 'per_page' => $orders->perPage(),
                 'total' => $orders->total(),
-            ]
+                'last_page' => $orders->lastPage(),
+            ],
         ]);
     }
 
-    /**
-     * Get single order
-     */
-    public function show(string $publicId): JsonResponse
+    public function show(Order $order): JsonResponse
     {
-        $order = Order::with([
-            'items.inventoryItem.seat.row.sector',
-            'payments.transactions',
-            'tickets',
-            'organization'
-        ])
-        ->where('public_id', $publicId)
-        ->where('user_id', auth()->id())
-        ->firstOrFail();
-
-        return response()->json([
-            'data' => new OrderResource($order)
-        ]);
+        $order->load(['items', 'payments', 'tickets', 'user']);
+        
+        return response()->json(['data' => $order]);
     }
 
-    /**
-     * Create order from cart
-     */
-    public function store(\Illuminate\Http\Request $request): JsonResponse
+    public function store(StoreOrderRequest $request): JsonResponse
     {
-        $request->validate([
-            'cart_id' => ['required', 'uuid', 'exists:carts,id'],
-            'payment_method' => ['required', 'in:yookassa,sberpay,card,cash'],
-        ]);
-
-        $order = $this->orderService->createFromCart(
-            $request->cart_id,
-            auth()->user(),
-            $request->payment_method
-        );
-
+        $data = $request->validated();
+        $order = $this->orderService->create($data);
+        
         return response()->json([
-            'data' => new OrderResource($order)
+            'data' => $order->fresh(),
         ], 201);
     }
 
-    /**
-     * Get order payment status
-     */
-    public function payment(string $publicId): JsonResponse
+    public function cancel(Order $order): JsonResponse
     {
-        $order = Order::with(['payments.latest'])
-            ->where('public_id', $publicId)
-            ->where('user_id', auth()->id())
-            ->firstOrFail();
-
-        $payment = $order->payments->first();
-
-        return response()->json([
-            'data' => [
-                'order_id' => $order->public_id,
-                'status' => $payment?->status ?? 'pending',
-                'amount' => $payment?->amount ?? $order->total_amount,
-                'payment_url' => $payment?->payment_url,
-            ]
-        ]);
+        $order = $this->orderService->cancel($order);
+        
+        return response()->json(['data' => $order]);
     }
 }
