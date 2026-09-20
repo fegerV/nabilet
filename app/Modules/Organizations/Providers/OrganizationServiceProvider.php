@@ -32,6 +32,6 @@ class OrganizationServiceProvider extends ServiceProvider
     public function boot(): void
     {
         // Load routes from Core/Organizations module
-        $this->loadRoutesFrom(__DIR__ . '/../Core/Organizations/routes/api.php');
+        $this->loadRoutesFrom(__DIR__ . '/../../Core/Organizations/routes/api.php');
     }
 }
