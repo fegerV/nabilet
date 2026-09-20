@@ -5,12 +5,17 @@ declare(strict_types=1);
 namespace App\Modules\Carts\Http\Controllers;
 
 use App\Modules\Carts\Models\Cart;
+use App\Modules\Carts\Services\CartService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 
 class CartController extends Controller
 {
+    public function __construct(
+        protected CartService $cartService
+    ) {}
+
     public function show(Request $request): JsonResponse
     {
         $sessionId = $request->get('session_id');
@@ -39,16 +44,47 @@ class CartController extends Controller
             'quantity' => ['required', 'integer', 'min:1', 'max:10'],
         ]);
 
-        // TODO: Implement cart add item logic
-        
-        return response()->json(['message' => 'Not implemented yet'], 501);
+        try {
+            $cartItem = $this->cartService->addItem(
+                $request->input('session_id'),
+                $request->input('inventory_item_id'),
+                $request->input('quantity', 1)
+            );
+
+            return response()->json([
+                'message' => 'Item added to cart successfully',
+                'data' => $cartItem,
+            ], 201);
+        } catch (\RuntimeException $e) {
+            return response()->json([
+                'error' => $e->getMessage(),
+            ], 422);
+        }
     }
 
     public function removeItem(Request $request, int $itemId): JsonResponse
     {
-        // TODO: Implement cart remove item logic
-        
-        return response()->json(['message' => 'Not implemented yet'], 501);
+        $sessionId = $request->input('session_id');
+
+        if (!$sessionId) {
+            return response()->json(['error' => 'session_id required'], 422);
+        }
+
+        try {
+            $this->cartService->removeItem($sessionId, $itemId);
+
+            return response()->json([
+                'message' => 'Item removed from cart successfully',
+            ]);
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return response()->json([
+                'error' => 'Cart item not found',
+            ], 404);
+        } catch (\RuntimeException $e) {
+            return response()->json([
+                'error' => $e->getMessage(),
+            ], 422);
+        }
     }
 
     public function checkout(Request $request): JsonResponse
@@ -57,8 +93,17 @@ class CartController extends Controller
             'session_id' => ['required', 'exists:sessions,id'],
         ]);
 
-        // TODO: Implement checkout logic
-        
-        return response()->json(['message' => 'Not implemented yet'], 501);
+        try {
+            $checkoutResult = $this->cartService->checkout($request->input('session_id'));
+
+            return response()->json([
+                'message' => 'Checkout successful',
+                'data' => $checkoutResult,
+            ]);
+        } catch (\RuntimeException $e) {
+            return response()->json([
+                'error' => $e->getMessage(),
+            ], 422);
+        }
     }
 }
