@@ -198,6 +198,7 @@ namespace Illuminate\Database\Schema {
             public string $column,
             public string $table,
             public string $onColumn = 'id',
+            public ?string $name = null,
         ) {
             $this->references = $onColumn;
         }
@@ -311,6 +312,21 @@ namespace Illuminate\Database\Schema {
             return $this->add(new ColumnDefinition('text', $column));
         }
 
+        public function mediumText(string $column): ColumnDefinition
+        {
+            return $this->add(new ColumnDefinition('text', $column));
+        }
+
+        public function binary(string $column, ?int $length = null): ColumnDefinition
+        {
+            return $this->add(new ColumnDefinition('binary', $column, $length));
+        }
+
+        public function uuid(string $column): ColumnDefinition
+        {
+            return $this->add(new ColumnDefinition('string', $column, 36));
+        }
+
         public function integer(string $column): ColumnDefinition
         {
             return $this->add(new ColumnDefinition('integer', $column));
@@ -327,6 +343,16 @@ namespace Illuminate\Database\Schema {
         }
 
         public function unsignedBigInteger(string $column): ColumnDefinition
+        {
+            return $this->add(new ColumnDefinition('integer', $column));
+        }
+
+        public function smallInteger(string $column): ColumnDefinition
+        {
+            return $this->add(new ColumnDefinition('integer', $column));
+        }
+
+        public function mediumInteger(string $column): ColumnDefinition
         {
             return $this->add(new ColumnDefinition('integer', $column));
         }
@@ -393,7 +419,11 @@ namespace Illuminate\Database\Schema {
         public function foreign(string|array $columns, ?string $name = null): ForeignKeyDefinition
         {
             $column = is_array($columns) ? $columns[0] : $columns;
-            $fk = new ForeignKeyDefinition($column, '');
+
+            // The explicit constraint name matters: the spec names every FK, and
+            // verify-migrations.php diffs those names. Dropping it here would make
+            // the diff silently vacuous.
+            $fk = new ForeignKeyDefinition($column, '', 'id', $name);
             $this->foreignKeys[] = $fk;
 
             return $fk;
@@ -479,6 +509,12 @@ namespace Illuminate\Database\Schema {
 
         public function table(string $table, callable $callback): void
         {
+            if (! isset($this->tables[$table])) {
+                throw new RuntimeException(
+                    sprintf('Schema::table("%s") — no such table has been created yet', $table)
+                );
+            }
+
             $blueprint = new Blueprint($table);
             $callback($blueprint);
 
@@ -516,6 +552,8 @@ namespace Illuminate\Database\Schema {
     {
         private static ?SchemaRecorder $recorder = null;
 
+        private static ?RawStatements $rawStatements = null;
+
         public static function recorder(): SchemaRecorder
         {
             return self::$recorder ??= new SchemaRecorder();
@@ -549,6 +587,65 @@ namespace Illuminate\Database\Schema {
         public static function hasColumn(string $table, string $column): bool
         {
             return self::recorder()->hasColumn($table, $column);
+        }
+
+        public static function rawStatements(): RawStatements
+        {
+            return self::$rawStatements ??= new RawStatements();
+        }
+    }
+
+    /**
+     * Collects raw SQL issued through the DB facade (CHECK constraints, triggers).
+     *
+     * The sandbox has no database, so `statement()`/`unprepared()` cannot prove the
+     * SQL runs. What they DO prove is that the migration reached them, and the
+     * recorder lets verify-migrations.php diff the emitted DDL against the spec.
+     */
+    class RawStatements
+    {
+        /** @var list<string> */
+        public array $statements = [];
+
+        public function add(string $sql): void
+        {
+            $this->statements[] = $sql;
+        }
+    }
+
+    /**
+     * Stand-in for Illuminate\Database\Connection. The driver name is what the
+     * MySQL-only migrations guard on, so it defaults to `mysql`.
+     */
+    class Connection
+    {
+        public function getDriverName(): string
+        {
+            return getenv('NABILET_STUB_DRIVER') ?: 'mysql';
+        }
+    }
+}
+
+namespace Illuminate\Support\Facades {
+    class DB
+    {
+        public static function statement(string $sql): bool
+        {
+            \Illuminate\Database\Schema\Schema::rawStatements()->add($sql);
+
+            return true;
+        }
+
+        public static function unprepared(string $sql): bool
+        {
+            \Illuminate\Database\Schema\Schema::rawStatements()->add($sql);
+
+            return true;
+        }
+
+        public static function connection(?string $name = null): \Illuminate\Database\Schema\Connection
+        {
+            return new \Illuminate\Database\Schema\Connection();
         }
     }
 }

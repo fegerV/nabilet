@@ -55,7 +55,8 @@
         "verify": [
             "@lint",
             "@test",
-            "php tools/verify-schema.php"
+            "php tools/verify-openapi.php",
+            "php tools/verify-migrations.php"
         ]
     },
     "extra": {

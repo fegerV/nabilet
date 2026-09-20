@@ -240,7 +240,7 @@ Marketplace, multi-organization, White Label, Partner API, Affiliate, cashier, s
 | R4 | Производительность редактора схемы на 1000+ мест | Средне | Canvas + разделение static/dynamic слоёв + spatial index; замер FPS в DoD |
 | R5 | Отсутствие Redis на хостинге клиента | Средне | Кэш/очередь/сессии с fallback на database/file; система деградирует, но работает |
 | R6 | Утечка данных между организациями | Критично | Fail-closed global scope; тест «запрос без контекста → исключение» |
-| R7 | Расхождение документации и кода при быстром росте | Средне | `tools/verify-schema.php` сверяет миграции с `DATABASE.md` в CI |
+| R7 | Расхождение документации и кода при быстром росте | Средне | `tools/verify-migrations.php` сверяет миграции с `nabilet_core_spec/migrations.sql` в CI |
 | R8 | Импорт «грязных» схем залов от клиентов | Низко | Импорт всегда в draft-версию + превью с ошибками до применения |
 
 ---
