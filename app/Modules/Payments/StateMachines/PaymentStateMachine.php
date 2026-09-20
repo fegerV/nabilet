@@ -23,16 +23,33 @@ use Nabilet\Core\StateMachine\StateMachine;
  * rejects — so the handler must treat "already in target state" as success, not as
  * an error. That is what guarantees "three webhooks → one paid order, one ticket
  * issuance".
+ *
+ * NO `refunded` / `partially_refunded` STATE, ON PURPOSE.
+ * ck_payments_status allows exactly five values and refunds are not among them.
+ * Refund progress lives on the `refunds` table with its own machine
+ * (requested → processing → succeeded / failed), which is the right place for it:
+ * a payment can be refunded several times, partially, and each attempt has its own
+ * outcome — none of that fits in one column on the payment.
+ *
+ * If the product ever needs "this payment was fully refunded" as a top-level
+ * status, widen ck_payments_status in the spec bundle FIRST. Adding the state here
+ * alone would produce a row the database refuses to store.
  */
 final class PaymentStateMachine
 {
     public const PENDING = 'pending';
     public const WAITING_FOR_CAPTURE = 'waiting_for_capture';
     public const SUCCEEDED = 'succeeded';
+    /**
+     * `canceled`, ONE L — this one is deliberate and is the exception in the
+     * codebase. ck_payments_status spells it that way because the vocabulary is
+     * the provider's (YooKassa), and translating provider statuses into our own
+     * spelling would create a mapping that has to be maintained forever.
+     *
+     * Everything else (orders, sessions, events, tickets) uses `cancelled`.
+     */
     public const CANCELED = 'canceled';
     public const FAILED = 'failed';
-    public const PARTIALLY_REFUNDED = 'partially_refunded';
-    public const REFUNDED = 'refunded';
 
     public static function make(): StateMachine
     {
@@ -45,8 +62,6 @@ final class PaymentStateMachine
                 self::SUCCEEDED,
                 self::CANCELED,
                 self::FAILED,
-                self::PARTIALLY_REFUNDED,
-                self::REFUNDED,
             ],
             transitions: [
                 self::PENDING => [
@@ -56,28 +71,12 @@ final class PaymentStateMachine
                     self::FAILED,
                 ],
                 self::WAITING_FOR_CAPTURE => [self::SUCCEEDED, self::CANCELED, self::FAILED],
-                self::SUCCEEDED => [self::PARTIALLY_REFUNDED, self::REFUNDED],
-                self::PARTIALLY_REFUNDED => [self::REFUNDED],
+                self::SUCCEEDED => [],
                 self::CANCELED => [],
                 self::FAILED => [],
-                self::REFUNDED => [],
             ],
-            terminal: [self::CANCELED, self::FAILED, self::REFUNDED],
+            terminal: [self::SUCCEEDED, self::CANCELED, self::FAILED],
         );
-
-        $machine->guard(self::PARTIALLY_REFUNDED, self::REFUNDED, static function (array $ctx): bool {
-            $amount = $ctx['amount_minor'] ?? null;
-            $refunded = $ctx['refunded_minor'] ?? null;
-
-            return is_int($amount) && is_int($refunded) && $amount > 0 && $refunded >= $amount;
-        });
-
-        $machine->guard(self::SUCCEEDED, self::REFUNDED, static function (array $ctx): bool {
-            $amount = $ctx['amount_minor'] ?? null;
-            $refunded = $ctx['refunded_minor'] ?? null;
-
-            return is_int($amount) && is_int($refunded) && $amount > 0 && $refunded >= $amount;
-        });
 
         return $machine;
     }
@@ -85,6 +84,6 @@ final class PaymentStateMachine
     /** @return list<string> statuses meaning "money has been received" */
     public static function moneyReceived(): array
     {
-        return [self::SUCCEEDED, self::PARTIALLY_REFUNDED, self::REFUNDED];
+        return [self::SUCCEEDED];
     }
 }

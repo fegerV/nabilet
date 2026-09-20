@@ -20,7 +20,12 @@ final class EventStateMachine
     public const SCHEDULED = 'scheduled';
     public const PUBLISHED = 'published';
     public const COMPLETED = 'completed';
-    public const CANCELED = 'canceled';
+    /**
+     * `cancelled`, two L — the same convention as orders, sessions and tickets.
+     * events.status has no CHECK constraint to enforce it, which is why this is
+     * pinned by convention (and by tests) rather than by the database.
+     */
+    public const CANCELED = 'cancelled';
     public const ARCHIVED = 'archived';
 
     public static function make(): StateMachine

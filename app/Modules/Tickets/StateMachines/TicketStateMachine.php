@@ -30,7 +30,12 @@ final class TicketStateMachine
     public const ISSUED = 'issued';
     public const USED = 'used';
     public const REFUNDED = 'refunded';
-    public const CANCELED = 'canceled';
+    /**
+     * `cancelled`, two L — ck_tickets_status. Only PAYMENTS use the one-L
+     * `canceled`, because that spelling comes from the payment provider's
+     * vocabulary rather than from us.
+     */
+    public const CANCELED = 'cancelled';
     public const REVOKED = 'revoked';
     public const EXPIRED = 'expired';
 

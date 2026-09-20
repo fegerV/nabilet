@@ -98,12 +98,19 @@ php tools/modules.php --validate    # граф зависимостей моду
 php tools/verify-openapi.php        # целостность контракта + инварианты §9/§43
 php tools/verify-openapi.php nabilet_core_spec/openapi.yaml   # то же для копии пакета
 php tools/verify-migrations.php     # миграции ≡ пакет: 64 таблицы, 93 FK, 35 CHECK
+php tools/verify-state-machines.php # статусы в коде ≡ CHECK-ограничениям в БД
 ```
 
 > `verify-migrations.php` исполняет все миграции и сверяет результат с
 > `nabilet_core_spec/migrations.sql`: таблицы, колонки, именованные индексы,
 > внешние ключи (включая `ON DELETE`), CHECK-ограничения и триггер
 > иммутабельности. Расхождение — это падение, а не предупреждение.
+>
+> `verify-state-machines.php` сверяет статусы из PHP-машин состояний с
+> CHECK-ограничениями схемы. Он появился после того, как машины и схема разошлись
+> втройне: `canceled` вместо `cancelled`, `finished` вместо `closed`/`completed`,
+> `failed` вместо `payment_failed` и выдуманный `refunded` у платежа — всё это
+> всплыло бы только в продакшене, на первом же возврате или отмене.
 
 ### Проверка схемы пакета (нужен Docker)
 

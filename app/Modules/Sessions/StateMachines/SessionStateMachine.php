@@ -14,8 +14,19 @@ use Nabilet\Core\StateMachine\StateMachine;
  * time-based gate, `on_sale` is the operational switch an organizer flips to stop
  * selling immediately (weather, artist illness) without touching the schedule.
  *
- * `finished` and `canceled` are terminal — a session that happened cannot be
+ * `closed` and `completed` are two different things and the schema keeps them
+ * apart (ck_sessions_status): `closed` means selling has stopped — the box office
+ * is shut, but the performance has not happened yet. `completed` means it has.
+ * Conflating them would make "can I still sell?" and "did this happen?" the same
+ * question, and they are not.
+ *
+ * `completed` and `cancelled` are terminal — a session that happened cannot be
  * un-happened, and its inventory is historical record.
+ *
+ * SPELLING: sessions use `cancelled` (two L), matching ck_sessions_status. Only
+ * PAYMENTS use the one-L `canceled`, because that is YooKassa's vocabulary and
+ * the provider names are not ours to change. `tools/verify-state-machines.php`
+ * pins every state here against the schema so this cannot drift again.
  */
 final class SessionStateMachine
 {
@@ -23,8 +34,9 @@ final class SessionStateMachine
     public const SCHEDULED = 'scheduled';
     public const ON_SALE = 'on_sale';
     public const SOLD_OUT = 'sold_out';
-    public const FINISHED = 'finished';
-    public const CANCELED = 'canceled';
+    public const CLOSED = 'closed';
+    public const COMPLETED = 'completed';
+    public const CANCELED = 'cancelled';
 
     public static function make(): StateMachine
     {
@@ -36,19 +48,28 @@ final class SessionStateMachine
                 self::SCHEDULED,
                 self::ON_SALE,
                 self::SOLD_OUT,
-                self::FINISHED,
+                self::CLOSED,
+                self::COMPLETED,
                 self::CANCELED,
             ],
             transitions: [
                 self::DRAFT => [self::SCHEDULED, self::ON_SALE, self::CANCELED],
                 self::SCHEDULED => [self::ON_SALE, self::DRAFT, self::CANCELED],
                 // sold_out can reopen if a hold expires or a ticket is refunded
-                self::ON_SALE => [self::SOLD_OUT, self::FINISHED, self::CANCELED],
-                self::SOLD_OUT => [self::ON_SALE, self::FINISHED, self::CANCELED],
-                self::FINISHED => [],
+                self::ON_SALE => [self::SOLD_OUT, self::CLOSED, self::CANCELED],
+                self::SOLD_OUT => [self::ON_SALE, self::CLOSED, self::CANCELED],
+                // sales shut, then the performance happens
+                self::CLOSED => [self::COMPLETED, self::CANCELED],
+                self::COMPLETED => [],
                 self::CANCELED => [],
             ],
-            terminal: [self::FINISHED, self::CANCELED],
+            terminal: [self::COMPLETED, self::CANCELED],
         );
+    }
+
+    /** @return list<string> statuses in which tickets can still be sold */
+    public static function sellable(): array
+    {
+        return [self::ON_SALE];
     }
 }

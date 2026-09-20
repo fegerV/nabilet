@@ -32,9 +32,17 @@ final class OrderStateMachine
     public const PAID = 'paid';
     public const PARTIALLY_REFUNDED = 'partially_refunded';
     public const REFUNDED = 'refunded';
-    public const CANCELED = 'canceled';
+    public const CANCELED = 'cancelled';
     public const EXPIRED = 'expired';
-    public const FAILED = 'failed';
+
+    /**
+     * The schema spells this `payment_failed` (ck_orders_status), not `failed` —
+     * because on an order, "failed" is ambiguous: the order did not fail, the
+     * PAYMENT did. Keeping the constant name FAILED with the value 'failed' is
+     * exactly how this drifted out of sync with the database in the first place,
+     * so the constant is named after what it actually means.
+     */
+    public const PAYMENT_FAILED = 'payment_failed';
 
     public static function make(): StateMachine
     {
@@ -49,18 +57,18 @@ final class OrderStateMachine
                 self::REFUNDED,
                 self::CANCELED,
                 self::EXPIRED,
-                self::FAILED,
+                self::PAYMENT_FAILED,
             ],
             transitions: [
-                self::PENDING => [self::AWAITING_PAYMENT, self::CANCELED, self::EXPIRED, self::FAILED],
-                self::AWAITING_PAYMENT => [self::PAID, self::CANCELED, self::EXPIRED, self::FAILED],
+                self::PENDING => [self::AWAITING_PAYMENT, self::CANCELED, self::EXPIRED, self::PAYMENT_FAILED],
+                self::AWAITING_PAYMENT => [self::PAID, self::CANCELED, self::EXPIRED, self::PAYMENT_FAILED],
                 self::PAID => [self::PARTIALLY_REFUNDED, self::REFUNDED],
                 self::PARTIALLY_REFUNDED => [self::REFUNDED],
                 self::REFUNDED => [],
                 self::CANCELED => [],
                 self::EXPIRED => [],
                 // a declined card must not trap the customer
-                self::FAILED => [self::AWAITING_PAYMENT, self::CANCELED, self::EXPIRED],
+                self::PAYMENT_FAILED => [self::AWAITING_PAYMENT, self::CANCELED, self::EXPIRED],
             ],
             terminal: [self::REFUNDED, self::CANCELED, self::EXPIRED],
         );
