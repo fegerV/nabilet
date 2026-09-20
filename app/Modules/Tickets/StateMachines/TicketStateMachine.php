@@ -35,7 +35,7 @@ final class TicketStateMachine
      * `canceled`, because that spelling comes from the payment provider's
      * vocabulary rather than from us.
      */
-    public const CANCELED = 'cancelled';
+    public const CANCELLED = 'cancelled';
     public const REVOKED = 'revoked';
     public const EXPIRED = 'expired';
 
@@ -48,7 +48,7 @@ final class TicketStateMachine
                 self::ISSUED,
                 self::USED,
                 self::REFUNDED,
-                self::CANCELED,
+                self::CANCELLED,
                 self::REVOKED,
                 self::EXPIRED,
             ],
@@ -56,18 +56,18 @@ final class TicketStateMachine
                 self::ISSUED => [
                     self::USED,
                     self::REFUNDED,
-                    self::CANCELED,
+                    self::CANCELLED,
                     self::REVOKED,
                     self::EXPIRED,
                 ],
                 // a used ticket can only be revoked — never returned to `issued`
                 self::USED => [self::REVOKED],
                 self::REFUNDED => [],
-                self::CANCELED => [],
+                self::CANCELLED => [],
                 self::REVOKED => [],
                 self::EXPIRED => [],
             ],
-            terminal: [self::REFUNDED, self::CANCELED, self::REVOKED, self::EXPIRED],
+            terminal: [self::REFUNDED, self::CANCELLED, self::REVOKED, self::EXPIRED],
         );
     }
 

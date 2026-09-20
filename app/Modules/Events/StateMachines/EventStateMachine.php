@@ -25,7 +25,7 @@ final class EventStateMachine
      * events.status has no CHECK constraint to enforce it, which is why this is
      * pinned by convention (and by tests) rather than by the database.
      */
-    public const CANCELED = 'cancelled';
+    public const CANCELLED = 'cancelled';
     public const ARCHIVED = 'archived';
 
     public static function make(): StateMachine
@@ -38,15 +38,15 @@ final class EventStateMachine
                 self::SCHEDULED,
                 self::PUBLISHED,
                 self::COMPLETED,
-                self::CANCELED,
+                self::CANCELLED,
                 self::ARCHIVED,
             ],
             transitions: [
                 self::DRAFT => [self::SCHEDULED, self::PUBLISHED, self::ARCHIVED],
-                self::SCHEDULED => [self::PUBLISHED, self::DRAFT, self::CANCELED],
-                self::PUBLISHED => [self::COMPLETED, self::CANCELED, self::ARCHIVED, self::SCHEDULED],
+                self::SCHEDULED => [self::PUBLISHED, self::DRAFT, self::CANCELLED],
+                self::PUBLISHED => [self::COMPLETED, self::CANCELLED, self::ARCHIVED, self::SCHEDULED],
                 self::COMPLETED => [self::ARCHIVED],
-                self::CANCELED => [self::ARCHIVED],
+                self::CANCELLED => [self::ARCHIVED],
                 self::ARCHIVED => [],
             ],
             terminal: [self::ARCHIVED],

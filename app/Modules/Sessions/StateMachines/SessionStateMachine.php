@@ -36,7 +36,7 @@ final class SessionStateMachine
     public const SOLD_OUT = 'sold_out';
     public const CLOSED = 'closed';
     public const COMPLETED = 'completed';
-    public const CANCELED = 'cancelled';
+    public const CANCELLED = 'cancelled';
 
     public static function make(): StateMachine
     {
@@ -50,20 +50,20 @@ final class SessionStateMachine
                 self::SOLD_OUT,
                 self::CLOSED,
                 self::COMPLETED,
-                self::CANCELED,
+                self::CANCELLED,
             ],
             transitions: [
-                self::DRAFT => [self::SCHEDULED, self::ON_SALE, self::CANCELED],
-                self::SCHEDULED => [self::ON_SALE, self::DRAFT, self::CANCELED],
+                self::DRAFT => [self::SCHEDULED, self::ON_SALE, self::CANCELLED],
+                self::SCHEDULED => [self::ON_SALE, self::DRAFT, self::CANCELLED],
                 // sold_out can reopen if a hold expires or a ticket is refunded
-                self::ON_SALE => [self::SOLD_OUT, self::CLOSED, self::CANCELED],
-                self::SOLD_OUT => [self::ON_SALE, self::CLOSED, self::CANCELED],
+                self::ON_SALE => [self::SOLD_OUT, self::CLOSED, self::CANCELLED],
+                self::SOLD_OUT => [self::ON_SALE, self::CLOSED, self::CANCELLED],
                 // sales shut, then the performance happens
-                self::CLOSED => [self::COMPLETED, self::CANCELED],
+                self::CLOSED => [self::COMPLETED, self::CANCELLED],
                 self::COMPLETED => [],
-                self::CANCELED => [],
+                self::CANCELLED => [],
             ],
-            terminal: [self::COMPLETED, self::CANCELED],
+            terminal: [self::COMPLETED, self::CANCELLED],
         );
     }
 
