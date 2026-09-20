@@ -394,6 +394,6 @@ final class DomainStateMachineTest extends TestCase
 
         $this->assertFalse($m->isKnownState('canceled'));
         $this->assertTrue($m->isKnownState('cancelled'));
-        $this->assertSame('cancelled', SessionStateMachine::CANCELED);
+        $this->assertSame('cancelled', SessionStateMachine::CANCELLED);
     }
 }

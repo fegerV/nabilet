@@ -32,7 +32,7 @@ final class OrderStateMachine
     public const PAID = 'paid';
     public const PARTIALLY_REFUNDED = 'partially_refunded';
     public const REFUNDED = 'refunded';
-    public const CANCELED = 'cancelled';
+    public const CANCELLED = 'cancelled';
     public const EXPIRED = 'expired';
 
     /**
@@ -55,22 +55,22 @@ final class OrderStateMachine
                 self::PAID,
                 self::PARTIALLY_REFUNDED,
                 self::REFUNDED,
-                self::CANCELED,
+                self::CANCELLED,
                 self::EXPIRED,
                 self::PAYMENT_FAILED,
             ],
             transitions: [
-                self::PENDING => [self::AWAITING_PAYMENT, self::CANCELED, self::EXPIRED, self::PAYMENT_FAILED],
-                self::AWAITING_PAYMENT => [self::PAID, self::CANCELED, self::EXPIRED, self::PAYMENT_FAILED],
+                self::PENDING => [self::AWAITING_PAYMENT, self::CANCELLED, self::EXPIRED, self::PAYMENT_FAILED],
+                self::AWAITING_PAYMENT => [self::PAID, self::CANCELLED, self::EXPIRED, self::PAYMENT_FAILED],
                 self::PAID => [self::PARTIALLY_REFUNDED, self::REFUNDED],
                 self::PARTIALLY_REFUNDED => [self::REFUNDED],
                 self::REFUNDED => [],
-                self::CANCELED => [],
+                self::CANCELLED => [],
                 self::EXPIRED => [],
                 // a declined card must not trap the customer
-                self::PAYMENT_FAILED => [self::AWAITING_PAYMENT, self::CANCELED, self::EXPIRED],
+                self::PAYMENT_FAILED => [self::AWAITING_PAYMENT, self::CANCELLED, self::EXPIRED],
             ],
-            terminal: [self::REFUNDED, self::CANCELED, self::EXPIRED],
+            terminal: [self::REFUNDED, self::CANCELLED, self::EXPIRED],
         );
 
         // A partial refund may only complete the order when everything was returned.
@@ -100,6 +100,6 @@ final class OrderStateMachine
 
     public static function isTerminal(string $status): bool
     {
-        return in_array($status, [self::REFUNDED, self::CANCELED, self::EXPIRED], true);
+        return in_array($status, [self::REFUNDED, self::CANCELLED, self::EXPIRED], true);
     }
 }
