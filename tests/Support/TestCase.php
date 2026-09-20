@@ -158,6 +158,19 @@ abstract class TestCase
         $this->assertSame($expected, count($actual), $message);
     }
 
+    protected function assertStringContainsString(string $needle, string $haystack, string $message = ''): void
+    {
+        $this->assertions++;
+        if (! str_contains($haystack, $needle)) {
+            $this->fail(sprintf(
+                '%sExpected "%s" to contain "%s".',
+                $this->prefix($message),
+                $haystack,
+                $needle
+            ));
+        }
+    }
+
     /**
      * Assert that $callback throws an instance of $expectedClass.
      */
