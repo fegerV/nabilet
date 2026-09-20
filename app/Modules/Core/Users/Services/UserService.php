@@ -29,6 +29,11 @@ class UserService
         return $this->repository->find($userId);
     }
 
+    public function findUserByPublicId(string $publicId): ?User
+    {
+        return $this->repository->findByPublicId($publicId);
+    }
+
     public function updateUser(User $user, array $data): User
     {
         if (isset($data['email']) && $data['email'] !== $user->email) {

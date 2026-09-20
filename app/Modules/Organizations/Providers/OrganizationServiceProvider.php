@@ -33,5 +33,11 @@ class OrganizationServiceProvider extends ServiceProvider
     {
         // Load routes from Core/Organizations module
         $this->loadRoutesFrom(__DIR__ . '/../../Core/Organizations/routes/api.php');
+        
+        // Register middleware
+        $this->app['router']->aliasMiddleware(
+            'check.organization.access',
+            \App\Modules\Core\Organizations\Http\Middleware\CheckOrganizationAccess::class
+        );
     }
 }

@@ -16,6 +16,7 @@ return [
         'orders' => \App\Modules\Orders\Providers\OrderServiceProvider::class,
         'payments' => \App\Modules\Payments\Providers\PaymentServiceProvider::class,
         'tickets' => \App\Modules\Tickets\Providers\TicketServiceProvider::class,
+        'users' => \App\Modules\Users\Providers\UserServiceProvider::class,
     ],
     
     'ticket' => [
