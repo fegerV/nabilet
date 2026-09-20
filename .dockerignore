@@ -1,0 +1,46 @@
+# Keep the build context small and keep secrets out of the image.
+#
+# `vendor/` is excluded on purpose: it is built inside the image by the `build`
+# stage. Copying a host vendor tree would silently produce an image whose
+# dependencies were resolved against a different PHP or platform than the one
+# running it — and it would also copy dev-only packages into production.
+#
+# `migrations.sql` and the spec bundle ARE included: the schema is the source of
+# truth and belongs next to the code, and it is tiny.
+
+.git
+.gitignore
+.gitattributes
+.github
+
+vendor/
+node_modules/
+
+storage/logs/*
+storage/framework/cache/*
+storage/framework/sessions/*
+storage/framework/views/*
+storage/app/*
+!storage/app/.gitignore
+
+.env
+.env.*
+!.env.example
+
+tests/
+tools/
+docs/
+*.md
+Мысли.md
+Мысли о SEO.txt
+NABILET_Core_Technical_Spec_v1.md
+state-diagrams.md
+
+docker-compose.yml
+Dockerfile
+.dockerignore
+
+# `docker/php/opcache.ini` is COPYed by the Dockerfile, so it must NOT be ignored
+# here. The context is filtered before any COPY runs, and an ignored file makes
+# the COPY fail with "file not found" rather than silently skipping it.
+# (docker/nginx/ is only read by compose at run time and never enters the image.)

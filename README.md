@@ -142,6 +142,36 @@ docker exec -i nabilet-mysql mysql -uroot -prootpass -D v < nabilet_core_spec/mi
 `--security-opt seccomp=unconfined` обязателен для Docker 18.09.2 — иначе MySQL падает
 с `Can't create thread to handle bootstrap`.
 
+### Запуск стека
+
+```bash
+cp .env.example .env && php artisan key:generate   # ключ нужен до старта
+docker compose up -d --build
+docker compose exec app php artisan migrate --force
+# http://localhost:8080
+```
+
+Состав: `app` (php-fpm), `nginx`, `mysql:8.4`, `redis:7`. Переменные — в
+`docker-compose.yml` со значениями по умолчанию; переопределяйте через `.env`
+(`DB_PASSWORD`, `DB_ROOT_PASSWORD`, `HTTP_PORT`, `DB_EXTERNAL_PORT`).
+
+Два места, где легко ошибиться, поэтому они зафиксированы и в файлах:
+
+- **Исходники не смонтированы с хоста.** Обычный для Laravel паттерн
+  `.:/var/www/html` здесь ловушка: в репозитории нет `vendor/` (Composer не запускался),
+  и монтирование подменило бы `vendor` из образа пустым каталогом — каждый запрос
+  падал бы с «class not found», что выглядит как баг фреймворка. Код живёт в образе
+  и отдаётся nginx через именованный volume.
+- **После `docker compose build` нужен `docker compose down -v`.** Именованный volume
+  заполняется из образа только при первом создании, иначе изменения не появятся.
+
+**Статус: образ ни разу не собирался.** Pull образов с машины разработки не работает
+(прокси подменяет TLS: `x509: certificate has expired or is not yet valid`), Docker там
+18.09.2 без Compose. CI проверяет `docker compose config` и линтит Dockerfile
+(hadolint); полная сборка добавлена в CI, когда появится `composer.lock` — без него
+`composer install` не пройдёт, а сборка должна падать на дефекте файлов, а не на
+нерешённом вопросе.
+
 ---
 
 ## Ключевые архитектурные решения
