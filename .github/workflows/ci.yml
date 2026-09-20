@@ -38,6 +38,13 @@ jobs:
       - name: Kernel test suite
         run: php tests/run.php
 
+      # The dependency-free test suite only proves what it can load. This keeps
+      # the domain loadable in the first place: one `use Illuminate\...` inside a
+      # Domain/ class would still lint, and would then be untestable here — the
+      # failure would surface only on a machine that has vendor/.
+      - name: Domain stays free of the framework
+        run: php tools/verify-purity.php
+
       - name: Module dependency graph
         run: php tools/modules.php --validate
 
