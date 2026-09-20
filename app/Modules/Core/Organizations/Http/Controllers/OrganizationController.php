@@ -74,17 +74,56 @@ class OrganizationController extends Controller
         return response()->json(['message' => 'Organization deleted successfully']);
     }
 
-    public function addMember(StoreOrganizationRequest $request, string $publicId): JsonResponse
+    public function addMember(Request $request, string $publicId): JsonResponse
     {
+        $request->validate([
+            'user_id' => ['required', 'exists:users,id'],
+            'role' => ['required', 'in:admin,member,cashier,manager'],
+        ]);
+
         $organization = $this->service->repository->findByPublicId($publicId);
 
         if (!$organization) {
             abort(404, 'Organization not found');
         }
 
-        // TODO: Implement member addition logic
+        $user = \App\Modules\Core\Users\Models\User::findOrFail($request->input('user_id'));
+        $role = $request->input('role', 'member');
 
-        return response()->json(['message' => 'Member added successfully']);
+        // Prevent adding owner as regular member
+        if ($user->id === $organization->owner_id && $role !== 'admin') {
+            return response()->json([
+                'error' => 'Organization owner must have admin role',
+            ], 422);
+        }
+
+        // Check if user is already a member
+        $existingMembership = $organization->members()
+            ->where('users.id', $user->id)
+            ->first();
+
+        if ($existingMembership) {
+            // Update existing membership role
+            $this->service->updateMemberRole($organization, $user, $role);
+            
+            return response()->json([
+                'message' => 'Member role updated successfully',
+                'data' => [
+                    'user_id' => $user->id,
+                    'role' => $role,
+                ],
+            ]);
+        }
+
+        $this->service->addMember($organization, $user, $role);
+
+        return response()->json([
+            'message' => 'Member added successfully',
+            'data' => [
+                'user_id' => $user->id,
+                'role' => $role,
+            ],
+        ], 201);
     }
 
     public function removeMember(string $publicId, int $userId): JsonResponse
@@ -95,8 +134,33 @@ class OrganizationController extends Controller
             abort(404, 'Organization not found');
         }
 
-        // TODO: Implement member removal logic
+        $user = \App\Modules\Core\Users\Models\User::findOrFail($userId);
 
-        return response()->json(['message' => 'Member removed successfully']);
+        // Prevent removing the owner
+        if ($user->id === $organization->owner_id) {
+            return response()->json([
+                'error' => 'Cannot remove organization owner',
+            ], 422);
+        }
+
+        // Check if user is a member
+        $isMember = $organization->members()
+            ->where('users.id', $userId)
+            ->exists();
+
+        if (!$isMember) {
+            return response()->json([
+                'error' => 'User is not a member of this organization',
+            ], 404);
+        }
+
+        $this->service->removeMember($organization, $user);
+
+        return response()->json([
+            'message' => 'Member removed successfully',
+            'data' => [
+                'user_id' => $userId,
+            ],
+        ]);
     }
 }
