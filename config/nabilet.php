@@ -7,6 +7,7 @@ return [
     
     'modules' => [
         'core' => \App\Modules\Core\Providers\CoreServiceProvider::class,
+        'organizations' => \App\Modules\Organizations\Providers\OrganizationServiceProvider::class,
         'events' => \App\Modules\Events\Providers\EventServiceProvider::class,
         'sessions' => \App\Modules\Sessions\Providers\SessionServiceProvider::class,
         'venues' => \App\Modules\Venues\Providers\VenueServiceProvider::class,
