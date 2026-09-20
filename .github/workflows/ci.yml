@@ -1,0 +1,202 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Nothing here needs credentials. The checks below are deliberately runnable
+# without Composer: the kernel and every verifier are dependency-free by design,
+# so a broken `composer install` (or a package registry outage) cannot stop the
+# invariants from being enforced. That separation is the whole point.
+permissions:
+  contents: read
+
+jobs:
+  # ───────────────────────────────────────────────────────────────────────────
+  # The fast, dependency-free gate. Runs on every push.
+  # ───────────────────────────────────────────────────────────────────────────
+  verify:
+    name: Verifiers (no Composer required)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: json, mbstring, openssl, pdo
+          coverage: none
+          tools: none
+
+      - name: Syntax lint
+        run: php tools/lint.php
+
+      - name: Kernel test suite
+        run: php tests/run.php
+
+      - name: Module dependency graph
+        run: php tools/modules.php --validate
+
+      - name: Migrations are equivalent to the spec bundle
+        run: php tools/verify-migrations.php
+
+      - name: State machines match the schema CHECK constraints
+        run: php tools/verify-state-machines.php
+
+      - name: OpenAPI contract (docs copy)
+        run: php tools/verify-openapi.php
+
+      - name: OpenAPI contract (spec bundle copy)
+        run: php tools/verify-openapi.php nabilet_core_spec/openapi.yaml
+
+      - name: Composer manifest is valid
+        run: composer validate --no-check-publish --no-check-lock
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # The authoritative check: does the DDL actually execute on MySQL 8.4?
+  #
+  # The verifier above proves the Laravel migrations MATCH the spec. This proves
+  # the spec ITSELF runs — engine, collation, the trigger, every CHECK. That is
+  # the part no amount of static analysis can substitute for.
+  #
+  # migrations.sql and nabilet_core_spec/migrations/*.sql are two renderings of
+  # the same schema. Both are applied to separate databases and diffed, so a
+  # change made to one copy and forgotten in the other fails loudly here.
+  # ───────────────────────────────────────────────────────────────────────────
+  schema:
+    name: Apply the spec bundle to MySQL 8.4
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: rootpass
+          MYSQL_DATABASE: nabilet
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -prootpass"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Wait for MySQL to accept connections
+        run: |
+          for i in $(seq 1 60); do
+            if mysql -h 127.0.0.1 -P 3306 -uroot -prootpass -e "SELECT 1" >/dev/null 2>&1; then
+              echo "mysql is ready after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::mysql never became ready"
+          exit 1
+
+      - name: Apply the consolidated bundle
+        run: mysql -h 127.0.0.1 -P 3306 -uroot -prootpass nabilet < migrations.sql
+
+      - name: Apply the split bundle into a second database
+        run: |
+          mysql -h 127.0.0.1 -P 3306 -uroot -prootpass \
+            -e "CREATE DATABASE split CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+          set -e
+          for f in nabilet_core_spec/migrations/*.sql; do
+            echo "applying $f"
+            mysql -h 127.0.0.1 -P 3306 -uroot -prootpass split < "$f"
+          done
+
+      # These numbers are the documented shape of the schema (docs/DATABASE.md).
+      # If the schema legitimately grows, update them here in the same commit —
+      # that is the point: a table silently dropped from the bundle must fail.
+      - name: Assert the expected object counts
+        run: |
+          set -e
+          Q() { mysql -h 127.0.0.1 -P 3306 -uroot -prootpass -N -B -e "$1" 2>/dev/null; }
+          EXPECT_TABLES=64
+          EXPECT_COLUMNS=678
+          EXPECT_TRIGGERS=1
+
+          for db in nabilet split; do
+            tables=$(Q "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='${db}' AND table_type='BASE TABLE';")
+            cols=$(Q   "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema='${db}';")
+            echo "${db}: ${tables} tables, ${cols} columns"
+            [ "$tables" = "$EXPECT_TABLES" ]   || { echo "::error::${db} has ${tables} tables, expected ${EXPECT_TABLES}"; exit 1; }
+            [ "$cols"   = "$EXPECT_COLUMNS" ]  || { echo "::error::${db} has ${cols} columns, expected ${EXPECT_COLUMNS}"; exit 1; }
+          done
+
+          triggers=$(Q "SELECT COUNT(*) FROM information_schema.triggers WHERE trigger_schema='nabilet';")
+          [ "$triggers" = "$EXPECT_TRIGGERS" ] || { echo "::error::expected ${EXPECT_TRIGGERS} trigger, found ${triggers}"; exit 1; }
+          echo "triggers: ${triggers}"
+
+      - name: Consolidated and split must agree
+        run: |
+          set -e
+          COLS="SELECT table_name, column_name, ordinal_position, column_type, is_nullable,
+                       COALESCE(column_default,''), column_key, extra
+                FROM information_schema.columns WHERE table_schema='%s'
+                ORDER BY table_name, ordinal_position;"
+          mysql -h 127.0.0.1 -P 3306 -uroot -prootpass -N -B -e "$(printf "$COLS" nabilet)" 2>/dev/null > /tmp/consolidated.tsv
+          mysql -h 127.0.0.1 -P 3306 -uroot -prootpass -N -B -e "$(printf "$COLS" split)"    2>/dev/null > /tmp/split.tsv
+          if ! diff -u /tmp/consolidated.tsv /tmp/split.tsv; then
+            echo "::error::migrations.sql and the split set produce different schemas"
+            exit 1
+          fi
+          echo "consolidated == split ($(wc -l < /tmp/consolidated.tsv) columns)"
+
+      # The trigger is the one integrity rule MySQL cannot express as a CHECK
+      # (a CHECK cannot reference OLD). It is also the easiest thing in the world
+      # to break silently, so assert both directions: a frozen version cannot be
+      # mutated, and a draft still can.
+      - name: The immutability trigger actually fires
+        run: |
+          set -e
+          MY="mysql -h 127.0.0.1 -P 3306 -uroot -prootpass nabilet"
+
+          $MY <<'SQL'
+          INSERT INTO organizations (id, public_id, name, slug, status, created_at, updated_at)
+            VALUES (1, 'org_test_aaaaaaaaaaaaaaaaa', 'T', 't', 'active', NOW(6), NOW(6));
+          INSERT INTO venues (id, public_id, organization_id, name, slug, created_at, updated_at)
+            VALUES (1, 'ven_test_aaaaaaaaaaaaaaaaa', 1, 'V', 'v', NOW(6), NOW(6));
+          INSERT INTO halls (id, public_id, venue_id, name, created_at, updated_at)
+            VALUES (1, 'hal_test_aaaaaaaaaaaaaaaaa', 1, 'H', NOW(6), NOW(6));
+          INSERT INTO hall_schema_versions (id, public_id, hall_id, version, status, schema_json, created_at, updated_at)
+            VALUES (1, 'hsv_test_aaaaaaaaaaaaaaaaa', 1, 1, 'published', '{}', NOW(6), NOW(6));
+          SQL
+
+          # Negative: mutating the payload of a published version must be rejected.
+          set +e
+          $MY -e "UPDATE hall_schema_versions SET schema_json = '{\"changed\":true}' WHERE id = 1;" 2>/tmp/trigger.err
+          code=$?
+          set -e
+          [ "$code" -ne 0 ] || { echo "::error::a published schema version was mutated — the trigger did not fire"; exit 1; }
+          grep -q "immutable" /tmp/trigger.err || { echo "::error::failed for an unrelated reason: $(cat /tmp/trigger.err)"; exit 1; }
+          echo "published payload is immutable"
+
+          # Negative: renumbering a frozen version must be rejected too.
+          set +e
+          $MY -e "UPDATE hall_schema_versions SET version = 2 WHERE id = 1;" 2>/dev/null
+          code=$?
+          set -e
+          [ "$code" -ne 0 ] || { echo "::error::a published version was renumbered — the trigger did not fire"; exit 1; }
+          echo "published version number is immutable"
+
+          # Positive: publishing/archiving is a status change and must still work,
+          # otherwise the trigger would freeze the table permanently.
+          $MY -e "UPDATE hall_schema_versions SET status = 'archived' WHERE id = 1;"
+          echo "status transitions still allowed"
+
+          # Positive: a draft is still freely editable.
+          $MY <<'SQL'
+          INSERT INTO hall_schema_versions (id, public_id, hall_id, version, status, schema_json, created_at, updated_at)
+            VALUES (2, 'hsv_draft_aaaaaaaaaaaaaaaa', 1, 2, 'draft', '{}', NOW(6), NOW(6));
+          UPDATE hall_schema_versions SET schema_json = '{"draft":true}' WHERE id = 2;
+          SQL
+          echo "draft versions remain editable"

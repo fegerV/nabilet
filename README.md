@@ -20,9 +20,9 @@ Redis (опционально) · REST API · PWA · Android Checker
 ```
 nabilet_core_spec/
 ├── NABILET_Core_Technical_Spec_v1.md   обзорная спецификация
-├── migrations.sql                      консолидированный DDL (56 таблиц)
-├── migrations/001..009                 сплит-миграции в порядке исполнения
-├── openapi.yaml                        OpenAPI 3.1 (68 путей, 77 операций)
+├── migrations.sql                      консолидированный DDL (64 таблицы)
+├── migrations/001..010                 сплит-миграции в порядке исполнения
+├── openapi.yaml                        OpenAPI 3.1 (98 операций)
 └── state-diagrams.md                   машины состояний
 ```
 
@@ -93,7 +93,7 @@ php artisan serve
 
 ```bash
 php tools/lint.php                  # синтаксис всех PHP-файлов
-php tests/run.php                   # 152 теста ядра, 330 утверждений
+php tests/run.php                   # тесты ядра (247 методов, 531 утверждение)
 php tools/modules.php --validate    # граф зависимостей модулей
 php tools/verify-openapi.php        # целостность контракта + инварианты §9/§43
 php tools/verify-openapi.php nabilet_core_spec/openapi.yaml   # то же для копии пакета
@@ -111,6 +111,23 @@ php tools/verify-state-machines.php # статусы в коде ≡ CHECK-ог�
 > втройне: `canceled` вместо `cancelled`, `finished` вместо `closed`/`completed`,
 > `failed` вместо `payment_failed` и выдуманный `refunded` у платежа — всё это
 > всплыло бы только в продакшене, на первом же возврате или отмене.
+
+### CI
+
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) — два job, оба без `vendor/`:
+
+| Job | Что делает | Зачем |
+| --- | --- | --- |
+| `verify` | lint, тесты, граф модулей, `verify-migrations`, `verify-state-machines`, `verify-openapi` для обеих копий, `composer validate` | ловит расхождения кода и контракта |
+| `schema` | накатывает `migrations.sql` и сплит-сет в два разных database на MySQL 8.4, сверяет счетчики (64 таблицы / 678 колонок / 1 триггер), диффит `information_schema.columns`, проверяет триггер иммутабельности в обе стороны | доказывает, что DDL реально исполняется |
+
+Смысл разделения: верификаторы — это статическое сравнение, они ничего не говорят о том,
+примет ли MySQL схему. А триггер нельзя выразить CHECK (нельзя сослаться на `OLD`), поэтому
+он проверяется исполнением: опубликованная версия схемы зала должна rejected при попытке
+изменить `schema_json` или `version`, но смена `status` и правка `draft` — должны пройти.
+
+Ожидаемые счетчики в `schema`-job заданы числами. Если схема растёт — меняйте их в том же
+коммите: именно так потеря таблицы становится падением CI, а не тихим diff.
 
 ### Проверка схемы пакета (нужен Docker)
 
