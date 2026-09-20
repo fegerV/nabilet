@@ -540,8 +540,8 @@ return response()->json($e->toProblem($requestId), $e->status, [
 
 | Проверка | Команда | Результат |
 |---|---|---|
-| Синтаксис | `php tools/lint.php` | 135 файлов, 0 ошибок |
-| Ядро | `php tests/run.php` | **341 тест, 724 утверждения, 0 падений** |
+| Синтаксис | `php tools/lint.php` | 139 файлов, 0 ошибок |
+| Ядро | `php tests/run.php` | **358 тестов, 776 утверждений, 0 падений** |
 | Граф модулей | `php tools/modules.php --validate` | 30 модулей, 27 включены, 72 события, граф валиден |
 | Контракт | `php tools/verify-openapi.php` | **11 из 11** (98 операций, 100 схем) — на обеих копиях |
 | Миграции ≡ пакет | `php tools/verify-migrations.php` | **13 из 13** |
