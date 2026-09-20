@@ -28,8 +28,8 @@ Usage:
 import os
 import re
 
-ROOT = r"C:/Project/nabilet"
-DUMP = r"C:/Users/Professional/AppData/Local/Temp/nabilet-probe/schema"
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DUMP = os.path.join(ROOT, "schema_dump")
 OUT = os.path.join(ROOT, "database", "migrations")
 SPEC = os.path.join(ROOT, "nabilet_core_spec", "migrations")
 
