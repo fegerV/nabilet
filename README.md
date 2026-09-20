@@ -93,7 +93,7 @@ php artisan serve
 
 ```bash
 php tools/lint.php                  # синтаксис всех PHP-файлов
-php tests/run.php                   # тесты ядра (304 метода, 656 утверждений)
+php tests/run.php                   # тесты ядра (318 методов, 689 утверждений)
 php tools/modules.php --validate    # граф зависимостей модулей
 php tools/verify-openapi.php        # целостность контракта + инварианты §9/§43
 php tools/verify-openapi.php nabilet_core_spec/openapi.yaml   # то же для копии пакета
@@ -204,7 +204,7 @@ add_filter('ticket.price', fn (int $price) => $price + 300, priority: 20);
 
 | Область | Состояние |
 |---|---|
-| Ядро (хуки, модули, ошибки, Money, QR, state machines, tenancy) | ✅ 304 теста, 656 утверждений |
+| Ядро (хуки, модули, ошибки, Money, QR, state machines, tenancy) | ✅ 318 тестов, 689 утверждений |
 | Схема пакета (64 таблицы, 35 CHECK, 1 триггер) | ✅ проверена на MySQL 8.4.11 |
 | Матрица конкурентности ТЗ §26 | ✅ 6 из 6 сценариев |
 | API-контракт пакета (81 путь, 98 операций) | ✅ описан и проверен |
