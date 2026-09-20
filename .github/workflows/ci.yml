@@ -60,6 +60,16 @@ jobs:
       - name: OpenAPI contract (spec bundle copy)
         run: php tools/verify-openapi.php nabilet_core_spec/openapi.yaml
 
+      # The contract and the DDL describe the same world and are maintained
+      # separately. Where they disagree, the API promises a field the table
+      # cannot store. Known drift is listed in the tool with a reason; anything
+      # new fails here.
+      - name: Contract and schema agree (docs copy)
+        run: php tools/verify-contract-schema.php
+
+      - name: Contract and schema agree (spec bundle copy)
+        run: php tools/verify-contract-schema.php nabilet_core_spec/openapi.yaml
+
       - name: Composer manifest is valid
         run: composer validate --no-check-publish --no-check-lock
 
