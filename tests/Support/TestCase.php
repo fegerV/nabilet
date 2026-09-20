@@ -105,6 +105,18 @@ abstract class TestCase
         }
     }
 
+    protected function assertNotSame(mixed $expected, mixed $actual, string $message = ''): void
+    {
+        $this->assertions++;
+        if ($expected === $actual) {
+            $this->fail(sprintf(
+                '%sExpected a value different from %s.',
+                $this->prefix($message),
+                $this->describe($actual)
+            ));
+        }
+    }
+
     protected function assertNull(mixed $actual, string $message = ''): void
     {
         $this->assertSame(null, $actual, $message);
