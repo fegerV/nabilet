@@ -1,83 +1,42 @@
-```
-# Documentation
-docs/audit/*.log
-docs/audit/*~
-
-# General logs and temp files
-*.log
-*.tmp
-*.swp
-
-# Environment files
-.env
-.env.local
-*.env.*
-
-# Editor/IDE files
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# System files
-.DS_Store
-Thumbs.db
-
-# Coverage reports
-coverage/
-htmlcov/
-.coverage
-
-# Python specific
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-.Python
-*.so
-*.egg-info/
-.eggs/
-
-# Build outputs
-dist/
-build/
+```php
+# Compiled and build artifacts
+*.o
+*.obj
 *.out
 *.exe
 *.dll
 *.so
 *.a
-*.class
 
 # Dependencies
-node_modules/
-.venv/
-venv/
-.mypy_cache/
-.pytest_cache/
-target/
-.gradle/
+vendor/
+composer.lock
 
-# Compressed files
-*.zip
-*.gz
-*.tar
-*.tgz
-*.bz2
-*.xz
-*.7z
-*.rar
-*.zst
-*.lz4
-*.lzh
-*.cab
-*.arj
-*.rpm
-*.deb
-*.Z
-*.lz
-*.lzo
-*.tar.gz
-*.tar.bz2
-*.tar.xz
-*.tar.zst
+# Logs and temp files
+*.log
+*.tmp
+*.swp
+*.swo
+
+# Environment
+.env
+.env.local
+.env.*
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Laravel/PHP specific
+bootstrap/cache/
+storage/logs/
+storage/framework/
+public/storage
+artisan
+
+# OS generated files
+.DS_Store
+Thumbs.db
 ```
