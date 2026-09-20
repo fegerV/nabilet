@@ -148,22 +148,103 @@ class PaymentService
                 throw new \RuntimeException('Can only refund succeeded payments');
             }
 
-            $refundAmount = $amount ?? $payment->amount;
+            // Prevent duplicate refunds
+            if ($payment->refunds()->where('status', '!=', 'failed')->exists()) {
+                // Check if total refunded amount already equals payment amount
+                $totalRefunded = $payment->refunds()->where('status', 'succeeded')->sum('amount');
+                if ($totalRefunded >= $payment->amount) {
+                    throw new \RuntimeException('Payment already fully refunded');
+                }
+            }
+
+            $refundAmount = $amount ?? ($payment->amount - ($payment->refunds()->where('status', 'succeeded')->sum('amount')));
+            
+            // Validate refund amount
+            $totalRefunded = $payment->refunds()->where('status', 'succeeded')->sum('amount');
+            if ($totalRefunded + $refundAmount > $payment->amount) {
+                throw new \RuntimeException('Refund amount exceeds remaining payment balance');
+            }
 
             // Create refund record
             $refund = $payment->refunds()->create([
+                'public_id' => Str::uuid()->toString(),
                 'amount' => $refundAmount,
                 'reason' => $reason,
                 'status' => 'pending',
+                'provider_refund_id' => null,
+                'metadata' => [],
             ]);
 
-            // Process refund through provider
-            // TODO: Implement provider-specific refund logic
+            // Process refund through provider based on payment provider type
+            try {
+                $providerName = $payment->provider ?? 'yookassa';
+                
+                // Get appropriate provider instance
+                $provider = $this->getProvider($providerName);
+                
+                if ($provider === null) {
+                    throw new \RuntimeException("Payment provider '{$providerName}' not found");
+                }
 
-            $refund->update(['status' => 'succeeded']);
+                // Call provider-specific refund method
+                $providerResponse = $provider->refund([
+                    'payment_id' => $payment->provider_payment_id,
+                    'amount' => $refundAmount,
+                    'currency' => $payment->currency,
+                    'reason' => $reason,
+                ]);
+
+                // Update refund with provider response
+                $refund->update([
+                    'provider_refund_id' => $providerResponse['refund_id'] ?? null,
+                    'status' => 'pending', // Will be updated by webhook
+                    'metadata' => array_merge($refund->metadata ?? [], ['provider_response' => $providerResponse]),
+                ]);
+
+                // Add refund transaction record
+                $this->repository->addTransaction($payment, [
+                    'type' => 'refund',
+                    'amount' => -$refundAmount,
+                    'status' => 'pending',
+                    'metadata' => ['refund_id' => $refund->id, 'reason' => $reason],
+                ]);
+
+            } catch (\Exception $e) {
+                // Mark refund as failed
+                $refund->update([
+                    'status' => 'failed',
+                    'metadata' => array_merge($refund->metadata ?? [], ['failure_reason' => $e->getMessage()]),
+                ]);
+
+                throw new \RuntimeException('Refund processing failed: ' . $e->getMessage());
+            }
 
             return $payment->fresh();
         });
+    }
+
+    /**
+     * Get payment provider instance
+     */
+    protected function getProvider(string $name): ?object
+    {
+        // Try to resolve from container first
+        try {
+            $className = match(strtolower($name)) {
+                'yookassa' => '\\App\\Modules\\Payments\\Payments\\Providers\\YooKassaProvider',
+                'stripe' => '\\App\\Modules\\Payments\\Payments\\Providers\\StripeProvider',
+                'kaspi' => '\\App\\Modules\\Payments\\Payments\\Providers\\KaspiProvider',
+                default => null,
+            };
+
+            if ($className && class_exists($className)) {
+                return app($className);
+            }
+        } catch (\Throwable $e) {
+            return null;
+        }
+
+        return null;
     }
 
     public function getPaymentsByOrder(int $orderId): array
