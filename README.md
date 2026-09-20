@@ -94,6 +94,7 @@ php artisan serve
 ```bash
 php tools/lint.php                  # синтаксис всех PHP-файлов
 php tests/run.php                   # тесты ядра (388 методов, 824 утверждений)
+php tools/verify-purity.php         # домен не зависит от фреймворка (65 файлов)
 php tools/modules.php --validate    # граф зависимостей модулей
 php tools/verify-openapi.php        # целостность контракта + инварианты §9/§43
 php tools/verify-openapi.php nabilet_core_spec/openapi.yaml   # то же для копии пакета
@@ -111,6 +112,13 @@ php tools/verify-state-machines.php # статусы в коде ≡ CHECK-ог�
 > втройне: `canceled` вместо `cancelled`, `finished` вместо `closed`/`completed`,
 > `failed` вместо `payment_failed` и выдуманный `refunded` у платежа — всё это
 > всплыло бы только в продакшене, на первом же возврате или отмене.
+>
+> `verify-purity.php` держит домен свободным от фреймворка: ни одного импорта
+> `Illuminate\*`, фасада, глобального хелпера, файлового или процессного вызова.
+> Половина проверки — статическая (по токенам, комментарии и строки отброшены),
+> вторая — динамическая: каждый класс реально загружается без `vendor/`. Именно
+> вторая половина доказывает утверждение, а не выводит его: класс с родителем из
+> Laravel не резолвится и падает здесь, а не в CI.
 
 ### CI
 
@@ -118,7 +126,7 @@ php tools/verify-state-machines.php # статусы в коде ≡ CHECK-ог�
 
 | Job | Что делает | Зачем |
 | --- | --- | --- |
-| `verify` | lint, тесты, граф модулей, `verify-migrations`, `verify-state-machines`, `verify-openapi` для обеих копий, `composer validate` | ловит расхождения кода и контракта |
+| `verify` | lint, тесты, `verify-purity`, граф модулей, `verify-migrations`, `verify-state-machines`, `verify-openapi` для обеих копий, `composer validate` | ловит расхождения кода и контракта |
 | `schema` | накатывает `migrations.sql` и сплит-сет в два разных database на MySQL 8.4, сверяет счетчики (64 таблицы / 678 колонок / 1 триггер), диффит `information_schema.columns`, проверяет триггер иммутабельности в обе стороны | доказывает, что DDL реально исполняется |
 
 Смысл разделения: верификаторы — это статическое сравнение, они ничего не говорят о том,
