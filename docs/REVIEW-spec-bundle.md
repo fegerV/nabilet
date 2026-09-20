@@ -494,8 +494,8 @@ return response()->json($e->toProblem($requestId), $e->status, [
 
 | Проверка | Команда | Результат |
 |---|---|---|
-| Синтаксис | `php tools/lint.php` | 120 файлов, 0 ошибок |
-| Ядро | `php tests/run.php` | **277 тестов, 595 утверждений, 0 падений** |
+| Синтаксис | `php tools/lint.php` | 126 файлов, 0 ошибок |
+| Ядро | `php tests/run.php` | **304 теста, 656 утверждений, 0 падений** |
 | Граф модулей | `php tools/modules.php --validate` | 30 модулей, 27 включены, 72 события, граф валиден |
 | Контракт | `php tools/verify-openapi.php` | **11 из 11** (98 операций, 100 схем) — на обеих копиях |
 | Миграции ≡ пакет | `php tools/verify-migrations.php` | **13 из 13** |
