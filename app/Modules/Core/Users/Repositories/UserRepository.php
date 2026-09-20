@@ -37,10 +37,13 @@ class UserRepository
     {
         return $this->model->create([
             'email' => $data['email'],
-            'name' => $data['name'],
+            'name' => $data['name'] ?? ($data['first_name'] . ' ' . $data['last_name'] ?? ''),
             'password' => bcrypt($data['password']),
             'public_id' => \Str::uuid()->toString(),
             'email_verified_at' => now(),
+            'first_name' => $data['first_name'] ?? null,
+            'last_name' => $data['last_name'] ?? null,
+            'phone' => $data['phone'] ?? null,
         ]);
     }
 
@@ -71,15 +74,16 @@ class UserRepository
 
     public function hasPermission(User $user, string $permission): bool
     {
-        return $user->roles()->whereHas('permissions', function ($query) use ($permission) {
-            $query->where('name', $permission);
+        return $user->roles()->whereHas('permissions', function ($q) use ($permission) {
+            $q->where('name', $permission);
         })->exists();
     }
 
     public function search(string $query, int $limit = 15): Collection
     {
         return $this->model->where(function ($q) use ($query) {
-                $q->where('name', 'like', "%{$query}%")
+                $q->where('first_name', 'like', "%{$query}%")
+                  ->orWhere('last_name', 'like', "%{$query}%")
                   ->orWhere('email', 'like', "%{$query}%");
             })
             ->with(['roles'])
