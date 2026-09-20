@@ -82,6 +82,24 @@ jobs:
       - name: Eloquent models name real columns
         run: php tools/verify-models-schema.php
 
+      # A namespace is a claim that a class can be found, and nothing checked that
+      # claim. The tree is currently split across three roots -- 86 files say
+      # `Nabilet\Modules\`, 78 say `App\Modules\`, 40 say `NabileT\Modules\` -- and
+      # composer.json maps only the first, so 121 files cannot be autoloaded at all.
+      # PSR-4 prefix matching is case-sensitive, which is why `NabileT\` can never
+      # resolve. They are listed in the tool with a reason each, and that list is a
+      # ratchet: it may only shrink, anything new fails here.
+      - name: Declared namespaces can be autoloaded
+        run: php tools/verify-autoload.php
+
+      # `modules.php --validate` reads the manifests that exist, so it is blind to
+      # a module directory that has none -- which is how `Carts/`, `Core/`,
+      # `Content/` and `System/` ended up outside the registry. This closes that
+      # gap, and checks that every class-string in config/nabilet.php matches the
+      # file it names (all nine currently point at a root that cannot load).
+      - name: Module directories match the registry
+        run: php tools/verify-module-structure.php
+
       - name: Composer manifest is valid
         run: composer validate --no-check-publish --no-check-lock
 
