@@ -1,42 +1,147 @@
-```php
+```
 # Compiled and build artifacts
+*.pyc
+__pycache__/
 *.o
 *.obj
-*.out
+*.class
 *.exe
 *.dll
 *.so
 *.a
+*.out
 
 # Dependencies
 vendor/
-composer.lock
+node_modules/
+.npm/
+.yarn/
+bower_components/
+.jspm/
 
-# Logs and temp files
-*.log
-*.tmp
-*.swp
-*.swo
+# Build directories
+build/
+dist/
+target/
+release/
+debug/
 
-# Environment
+# Python specific
+*.pyc
+__pycache__/
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
 .env
 .env.local
+.env.
+.envrc
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.hypothesis/
+
+# PHP specific
+*.phar
+*.so
+*.o
+*.a
+*.la
+.libs/
+.libs/
+vendor/
+
+# Laravel specific
+bootstrap/cache/
+storage/
+public/storage/
+!.env.example
 .env.*
 
-# Editors
+# IDE and editor files
 .vscode/
 .idea/
 *.swp
 *.swo
+*~
+.DS_Store
+Thumbs.db
 
-# Laravel/PHP specific
-bootstrap/cache/
-storage/logs/
-storage/framework/
-public/storage
-artisan
+# Logs
+*.log
+logs/
+log/
 
 # OS generated files
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.backup
+
+# Coverage
+coverage/
+*.gcov
+*.lcov
+
+# Compression
+*.zip
+*.gz
+*.tar
+*.tgz
+*.bz2
+*.xz
+*.7z
+*.rar
+*.zst
+*.lz4
+*.lzh
+*.cab
+*.arj
+*.rpm
+*.deb
+*.Z
+*.lz
+*.lzo
+*.tar.gz
+*.tar.bz2
+*.tar.xz
+*.tar.zst
+
+# Web specific
+*.min.js
+*.min.css
+.sass-cache/
+*.css.map
+*.js.map
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Authentication
+*.key
+*.pem
+*.crt
+*.cert
+
+# Environment specific
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.staging.local
 ```
