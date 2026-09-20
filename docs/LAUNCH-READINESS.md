@@ -400,10 +400,11 @@ Compose. Поэтому CI добавлен job `docker`: `docker compose config
 **Статус 2026-09-20: CI добавлен (часть P7 закрыта раньше срока).**
 `.github/workflows/ci.yml` — два job, оба без `vendor/`:
 
-- `verify` — lint (152 файлов), тесты (403 методов / 860 утверждений),
+- `verify` — lint (153 файлов), тесты (403 методов / 860 утверждений),
   **`verify-purity` (68 файлов: домен без фреймворка)**, граф модулей,
   `verify-migrations` (13/13), `verify-state-machines` (5/5), `verify-openapi` для
-  обеих копий контракта (11/11), `composer validate`.
+  обеих копий контракта (11/11), **`verify-contract-schema` для обеих копий**
+  (28 сущностных схем, 0 нового дрейфа), `composer validate`.
 - `schema` — service `mysql:8.4`: накатывает `migrations.sql` и сплит-сет
   `nabilet_core_spec/migrations/001..010` в два разных database, сверяет 64 таблицы /
   678 колонок / 1 триггер, диффит `information_schema.columns` между копиями и
@@ -433,9 +434,25 @@ CI выбран первым инфраструктурным шагом пот�
 - `composer.json`: `laravel/framework` `^11.0` → `^13.0` (по `PLAN.md`).
 - `database/migrations/README.md` актуализирован под пакет из 64 таблиц.
 
-Проверено: линт 152 файлов / 0 ошибок, 403 тестов / 860 утверждений, OpenAPI 11/11
+Проверено: линт 153 файлов / 0 ошибок, 403 тестов / 860 утверждений, OpenAPI 11/11
 для обеих копий, граф модулей валиден, `verify-purity` — 68 файлов / 67 класса
-загружаются без `vendor/` / 0 нарушений.
+загружаются без `vendor/` / 0 нарушений, `verify-contract-schema` — 28 сущностных
+схем / 0 нового дрейфа.
+
+**Контракт ≡ схема: найдено системно, а не повезло.** `verify-contract-schema.php`
+сравнивает поля OpenAPI с колонками DDL. Мотивирующий случай найден был вручную:
+`Ticket` объявляет `revoked_at` и `revoked_reason`, а в `tickets` нет ни того, ни
+другого — при этом домен читает `TicketSnapshot::$revokedAt`. Упало бы на первом
+же отзыве билета. Теперь это класс дефектов, который ловится автоматически.
+
+Побочно инструмент нашёл четыре расхождения, которые **не** являются дефектами, и
+эти решения зафиксированы в нём же с причиной: `CartItem.hold_expires_at` —
+производное (живёт в `seat_holds.expires_at`), `OrderItem.event_title` /
+`session_title` / `venue_title` хранятся как `*_title_snapshot`, и суффикс
+«снимок на момент покупки» контракт теряет. Отдельно отмечено: шесть таблиц без
+`public_id` (`user_sessions`, `cart_items`, `order_items`, `user_roles`,
+`venue_translations`, `page_translations`) отдают наружу `id` — это противоречит
+`DATABASE.md` §9.
 
 **Заблокировано средой, а не проектом:** `composer install` выполнить нельзя — прокси
 отвечает `CONNECT ... 200`, но TLS-рукопожатие до внешних хостов обрывается

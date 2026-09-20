@@ -98,6 +98,8 @@ php tools/verify-purity.php         # домен не зависит от фре
 php tools/modules.php --validate    # граф зависимостей модулей
 php tools/verify-openapi.php        # целостность контракта + инварианты §9/§43
 php tools/verify-openapi.php nabilet_core_spec/openapi.yaml   # то же для копии пакета
+php tools/verify-contract-schema.php        # контракт ≡ схема: нет поля, которого нет в БД
+php tools/verify-contract-schema.php nabilet_core_spec/openapi.yaml
 php tools/verify-migrations.php     # миграции ≡ пакет: 64 таблицы, 93 FK, 35 CHECK
 php tools/verify-state-machines.php # статусы в коде ≡ CHECK-ограничениям в БД
 ```
@@ -113,6 +115,14 @@ php tools/verify-state-machines.php # статусы в коде ≡ CHECK-ог�
 > `failed` вместо `payment_failed` и выдуманный `refunded` у платежа — всё это
 > всплыло бы только в продакшене, на первом же возврате или отмене.
 >
+> `verify-contract-schema.php` сравнивает поля контракта с колонками схемы.
+> Контракт и DDL описывают один мир, но ведутся раздельно; там, где они расходятся,
+> API обещает поле, которое база не умеет хранить. Именно так нашёлся `revoked_at`:
+> контракт объявляет его и `revoked_reason` у `Ticket`, а в `tickets` нет ни того,
+> ни другого — при этом домен уже читает `TicketSnapshot::$revokedAt`. Упало бы на
+> первом же отзыве. Известные расхождения перечислены в самом инструменте с
+> причиной; новое — падение сборки.
+>
 > `verify-purity.php` держит домен свободным от фреймворка: ни одного импорта
 > `Illuminate\*`, фасада, глобального хелпера, файлового или процессного вызова.
 > Половина проверки — статическая (по токенам, комментарии и строки отброшены),
@@ -126,7 +136,7 @@ php tools/verify-state-machines.php # статусы в коде ≡ CHECK-ог�
 
 | Job | Что делает | Зачем |
 | --- | --- | --- |
-| `verify` | lint, тесты, `verify-purity`, граф модулей, `verify-migrations`, `verify-state-machines`, `verify-openapi` для обеих копий, `composer validate` | ловит расхождения кода и контракта |
+| `verify` | lint, тесты, `verify-purity`, граф модулей, `verify-migrations`, `verify-state-machines`, `verify-openapi` и `verify-contract-schema` для обеих копий, `composer validate` | ловит расхождения кода, контракта и схемы |
 | `schema` | накатывает `migrations.sql` и сплит-сет в два разных database на MySQL 8.4, сверяет счетчики (64 таблицы / 678 колонок / 1 триггер), диффит `information_schema.columns`, проверяет триггер иммутабельности в обе стороны | доказывает, что DDL реально исполняется |
 
 Смысл разделения: верификаторы — это статическое сравнение, они ничего не говорят о том,
