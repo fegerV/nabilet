@@ -132,6 +132,53 @@ foreach ($machines as $table => $class) {
     }
 }
 
+// ── the reverse direction ────────────────────────────────────────────────────
+//
+// The map above only covers tables that already have a state machine, so a status
+// column nobody wrote a machine for was invisible. `carts.status` is exactly that
+// case: it is VARCHAR(32) DEFAULT 'active' with no CHECK anywhere, and the
+// OpenAPI declares it as a bare string — so "which statuses exist" is currently
+// whatever some future controller happens to write.
+//
+// This pass walks the DDL instead of the PHP, and lists every status-ish column
+// the database does not constrain. It cannot fail the build (an unconstrained
+// status is a decision, not an error), but it must be visible.
+$statusColumns = [];   // table => list<string> column names
+
+preg_match_all(
+    '/CREATE TABLE IF NOT EXISTS\s+`?(\w+)`?\s*\((.*?)\)\s*ENGINE=/si',
+    $specSql,
+    $creates,
+    PREG_SET_ORDER
+);
+
+foreach ($creates as $create) {
+    $table = $create[1];
+
+    preg_match_all('/^\s*(\w*status)\s+/mi', $create[2], $cols);
+
+    foreach ($cols[1] as $column) {
+        $statusColumns[$table][$column] = true;
+    }
+}
+
+$schemaGaps = [];
+
+foreach ($statusColumns as $table => $columns) {
+    foreach (array_keys($columns) as $column) {
+        // Only the bare `status` column can carry a CHECK here; the parser above
+        // keys constraints by table, and a table with two status columns would
+        // otherwise look constrained when only one of them is.
+        $constrained = $column === 'status' && isset($allowed[$table]);
+
+        if (! $constrained) {
+            $schemaGaps[] = sprintf('%s.%s', $table, $column);
+        }
+    }
+}
+
+sort($schemaGaps);
+
 echo "\n" . str_repeat('─', 74), "\n";
 printf("  %d machines verified, %d failed\n", $passed, $failed);
 
@@ -141,6 +188,17 @@ if ($notes !== []) {
     foreach ($notes as $note) {
         echo '    - ' . $note . "\n";
     }
+}
+
+if ($schemaGaps !== []) {
+    printf("\n  %d status columns are unconstrained by the database:\n", count($schemaGaps));
+
+    foreach ($schemaGaps as $gap) {
+        echo '    - ' . $gap . "\n";
+    }
+
+    echo "\n    Each one is a vocabulary the application invents on its own. Either\n";
+    echo "    add a CHECK to the spec bundle, or record why it stays free-form.\n";
 }
 
 echo "\n";
