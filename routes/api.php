@@ -5,19 +5,55 @@ declare(strict_types=1);
 use Illuminate\Support\Facades\Route;
 
 /*
- * API Routes - v1
- * 
- * The API surface is described by docs/openapi.yaml (81 paths, 98 operations) and
- * is implemented by the modules — not here.
- *
- * Module routes are loaded from app/Modules/*/routes/api.php files automatically.
- */
+|--------------------------------------------------------------------------
+| API Routes
+|--------------------------------------------------------------------------
+*/
 
-Route::get('/ping', static function (): array {
-    return ['data' => ['status' => 'ok']];
-})->name('api.ping');
+Route::get('/ping', fn() => response()->json(['status' => 'ok', 'timestamp' => now()->toIso8601String()]));
 
-// Load module-specific API routes
-foreach (glob(base_path('app/Modules/*/routes/api.php')) ?: [] as $moduleRoutes) {
-    require $moduleRoutes;
+/*
+|--------------------------------------------------------------------------
+| Module Routes - Auto-loaded from each module's routes/api.php
+|--------------------------------------------------------------------------
+*/
+
+// Events Module
+if (file_exists(__DIR__ . '/../app/Modules/Events/routes/api.php')) {
+    require __DIR__ . '/../app/Modules/Events/routes/api.php';
+}
+
+// Sessions Module
+if (file_exists(__DIR__ . '/../app/Modules/Sessions/routes/api.php')) {
+    require __DIR__ . '/../app/Modules/Sessions/routes/api.php';
+}
+
+// Venues Module
+if (file_exists(__DIR__ . '/../app/Modules/Venues/routes/api.php')) {
+    require __DIR__ . '/../app/Modules/Venues/routes/api.php';
+}
+
+// Inventory Module
+if (file_exists(__DIR__ . '/../app/Modules/Inventory/routes/api.php')) {
+    require __DIR__ . '/../app/Modules/Inventory/routes/api.php';
+}
+
+// Carts Module
+if (file_exists(__DIR__ . '/../app/Modules/Carts/routes/api.php')) {
+    require __DIR__ . '/../app/Modules/Carts/routes/api.php';
+}
+
+// Orders Module
+if (file_exists(__DIR__ . '/../app/Modules/Orders/routes/api.php')) {
+    require __DIR__ . '/../app/Modules/Orders/routes/api.php';
+}
+
+// Payments Module
+if (file_exists(__DIR__ . '/../app/Modules/Payments/routes/api.php')) {
+    require __DIR__ . '/../app/Modules/Payments/routes/api.php';
+}
+
+// Tickets Module
+if (file_exists(__DIR__ . '/../app/Modules/Tickets/routes/api.php')) {
+    require __DIR__ . '/../app/Modules/Tickets/routes/api.php';
 }

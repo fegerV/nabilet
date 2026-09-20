@@ -4,71 +4,61 @@ declare(strict_types=1);
 
 namespace App\Modules\Carts\Http\Controllers;
 
-use App\Http\Controllers\Controller;
 use App\Modules\Carts\Models\Cart;
-use App\Modules\Carts\Http\Resources\CartResource;
-use App\Modules\Carts\Services\CartService;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Response;
+use Illuminate\Http\Request;
+use Illuminate\Routing\Controller;
 
 class CartController extends Controller
 {
-    public function __construct(
-        private readonly CartService $cartService
-    ) {}
-
-    /**
-     * Get or create current user cart
-     */
-    public function show(): JsonResponse
+    public function show(Request $request): JsonResponse
     {
-        $cart = $this->cartService->getOrCreateForUser(auth()->user());
+        $sessionId = $request->get('session_id');
+        
+        if (!$sessionId) {
+            return response()->json(['error' => 'session_id required'], 422);
+        }
 
-        return response()->json([
-            'data' => new CartResource($cart)
-        ]);
+        $cart = Cart::query()
+            ->where('session_id', $sessionId)
+            ->with(['items.inventoryItem', 'items.inventoryItem.seat'])
+            ->first();
+
+        if (!$cart) {
+            return response()->json(['data' => null]);
+        }
+
+        return response()->json(['data' => $cart]);
     }
 
-    /**
-     * Add item to cart
-     */
-    public function addItem(\Illuminate\Http\Request $request): JsonResponse
+    public function addItem(Request $request): JsonResponse
     {
         $request->validate([
-            'inventory_item_id' => ['required', 'uuid', 'exists:inventory_items,id'],
+            'session_id' => ['required', 'exists:sessions,id'],
+            'inventory_item_id' => ['required', 'exists:inventory_items,id'],
             'quantity' => ['required', 'integer', 'min:1', 'max:10'],
         ]);
 
-        $cart = $this->cartService->getOrCreateForUser(auth()->user());
+        // TODO: Implement cart add item logic
         
-        $item = $this->cartService->addItem(
-            $cart,
-            $request->inventory_item_id,
-            $request->quantity
-        );
-
-        return response()->json([
-            'data' => new CartResource($cart->fresh())
-        ], 201);
+        return response()->json(['message' => 'Not implemented yet'], 501);
     }
 
-    /**
-     * Remove item from cart
-     */
-    public function removeItem(Cart $cart, string $itemId): Response
+    public function removeItem(Request $request, int $itemId): JsonResponse
     {
-        $this->cartService->removeItem($cart, $itemId);
-
-        return response(null, 204);
+        // TODO: Implement cart remove item logic
+        
+        return response()->json(['message' => 'Not implemented yet'], 501);
     }
 
-    /**
-     * Clear cart
-     */
-    public function clear(Cart $cart): Response
+    public function checkout(Request $request): JsonResponse
     {
-        $this->cartService->clear($cart);
+        $request->validate([
+            'session_id' => ['required', 'exists:sessions,id'],
+        ]);
 
-        return response(null, 204);
+        // TODO: Implement checkout logic
+        
+        return response()->json(['message' => 'Not implemented yet'], 501);
     }
 }

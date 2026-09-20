@@ -4,38 +4,40 @@ declare(strict_types=1);
 
 namespace App\Modules\Events\Http\Resources;
 
+use App\Modules\Events\Models\Event;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 class EventResource extends JsonResource
 {
-    public function toArray(Request $request): array
+    /**
+     * @param Request $request
+     * @return array<string, mixed>
+     */
+    public function toArray($request): array
     {
+        /** @var Event $this */
         return [
-            'id' => $this->public_id,
+            'id' => $this->id,
+            'public_id' => $this->public_id,
             'slug' => $this->slug,
-            'title' => $this->title,
-            'description' => $this->description,
-            'city' => $this->city,
-            'venue_name' => $this->venue?->name,
-            'hall_name' => $this->halls->first()?->name,
-            'starts_at' => $this->starts_at?->toIso8601String(),
-            'ends_at' => $this->ends_at?->toIso8601String(),
+            'organization_id' => $this->organization_id,
+            'category' => $this->whenLoaded('category', fn() => new EventCategoryResource($this->category)),
+            'title' => $this->getTranslation('title'),
+            'description' => $this->getTranslation('description'),
+            'short_description' => $this->getTranslation('short_description'),
+            'start_date' => $this->start_date?->toIso8601String(),
+            'end_date' => $this->end_date?->toIso8601String(),
+            'timezone' => $this->timezone,
+            'status' => $this->status,
+            'is_featured' => $this->is_featured,
             'min_price' => $this->min_price,
             'max_price' => $this->max_price,
-            'currency' => $this->currency ?? 'RUB',
-            'available_tickets' => $this->available_tickets,
-            'is_published' => $this->is_published,
-            'category' => $this->whenLoaded('category', fn() => [
-                'id' => $this->category->public_id,
-                'name' => $this->category->name,
-                'slug' => $this->category->slug,
-            ]),
-            'organization' => $this->whenLoaded('organization', fn() => [
-                'id' => $this->organization->public_id,
-                'name' => $this->organization->name,
-            ]),
-            'sessions_count' => $this->whenCounted('sessions'),
+            'currency' => $this->currency,
+            'image_url' => $this->image_url,
+            'seo_title' => $this->seo_title,
+            'seo_description' => $this->seo_description,
+            'metadata' => $this->metadata,
             'created_at' => $this->created_at?->toIso8601String(),
             'updated_at' => $this->updated_at?->toIso8601String(),
         ];
