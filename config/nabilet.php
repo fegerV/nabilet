@@ -42,7 +42,7 @@ return [
     ],
     
     'ticket' => [
-        'qr_secret' => env('TICKET_QR_SECRET', 'change-me-in-production'),
+        'qr_secret' => env('TICKET_QR_SECRET'),
         'qr_ttl' => (int) env('TICKET_QR_TTL', 3600),
     ],
     
