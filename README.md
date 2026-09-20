@@ -102,6 +102,7 @@ php tools/verify-contract-schema.php        # контракт ≡ схема: �
 php tools/verify-contract-schema.php nabilet_core_spec/openapi.yaml
 php tools/verify-migrations.php     # миграции ≡ пакет: 64 таблицы, 93 FK, 35 CHECK
 php tools/verify-state-machines.php # статусы в коде ≡ CHECK-ограничениям в БД
+php tools/verify-models-schema.php  # модели Eloquent называют только реальные колонки
 ```
 
 > `verify-migrations.php` исполняет все миграции и сверяет результат с
@@ -136,7 +137,7 @@ php tools/verify-state-machines.php # статусы в коде ≡ CHECK-ог�
 
 | Job | Что делает | Зачем |
 | --- | --- | --- |
-| `verify` | lint, тесты, `verify-purity`, граф модулей, `verify-migrations`, `verify-state-machines`, `verify-openapi` и `verify-contract-schema` для обеих копий, `composer validate` | ловит расхождения кода, контракта и схемы |
+| `verify` | lint, тесты, `verify-purity`, граф модулей, `verify-migrations`, `verify-state-machines`, `verify-openapi` и `verify-contract-schema` для обеих копий, `verify-models-schema`, `composer validate` | ловит расхождения кода, контракта и схемы |
 | `schema` | накатывает `migrations.sql` и сплит-сет в два разных database на MySQL 8.4, сверяет счетчики (64 таблицы / 678 колонок / 1 триггер), диффит `information_schema.columns`, проверяет триггер иммутабельности в обе стороны | доказывает, что DDL реально исполняется |
 
 Смысл разделения: верификаторы — это статическое сравнение, они ничего не говорят о том,

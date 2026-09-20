@@ -55,15 +55,12 @@ $ddl = dirname(__DIR__) . '/nabilet_core_spec/migrations.sql';
  * @var array<string, array<string, string>> schema => [property => reason]
  */
 const ACCEPTED_DRIFT = [
-    // The gap that motivated this tool. The contract promises two fields the
-    // tickets table simply does not have, and the domain already reads one of
-    // them (TicketSnapshot::$revokedAt). It would fail on the first revocation.
-    'Ticket' => [
-        'revoked_at' => 'tickets has no revoked_at column; REVIEW-spec-bundle.md §3.11. '
-            . 'Needs a column in the spec bundle, which is the source of truth.',
-        'revoked_reason' => 'same gap as revoked_at: the reason a ticket was revoked is '
-            . 'not stored anywhere.',
-    ],
+    // Ticket.revoked_at and revoked_reason used to be listed here with the reason
+    // "tickets has no revoked_at column". That was FALSE: both columns exist,
+    // appended by ALTER TABLE in migration 010. The parser was reading only CREATE
+    // blocks, and the wrong answer was recorded as a known gap instead of being
+    // investigated. Removed once the parser learned to read ALTER TABLE.
+    //
     // Derived, not missing: the hold lives on seat_holds.expires_at and the API
     // composes it onto the line. Not something the table should store.
     'CartItem' => [
@@ -184,7 +181,69 @@ function parseDdlColumns(string $file): array
         $tables[$match[1]] = $columns;
     }
 
+    // Columns added by ALTER TABLE.
+    //
+    // Migration 010 closes the ТЗ gaps by appending columns to tables that already
+    // exist, so `tickets.revoked_at`, `tickets.revoked_reason` and
+    // `orders.promo_code_id` appear in NO CREATE block. Reading only CREATE blocks
+    // made this tool report all three as missing — and the false conclusion was
+    // then frozen into ACCEPTED_DRIFT as a "known gap", which is how a parser bug
+    // turns into policy. `verify-migrations.php` learned this lesson first; the
+    // fix was never carried across to here.
+    preg_match_all('/ALTER TABLE\s+`?(\w+)`?\s+(.*?);\s*(?:\n|$)/si', $sql, $alters, \PREG_SET_ORDER);
+
+    foreach ($alters as $alter) {
+        $table = $alter[1];
+
+        if (! isset($tables[$table])) {
+            continue;
+        }
+
+        if (preg_match_all('/ADD\s+COLUMN\s+`?(\w+)`?/i', $alter[2], $added)) {
+            foreach ($added[1] as $name) {
+                $tables[$table][] = $name;
+            }
+        }
+    }
+
     return $tables;
+}
+
+/**
+ * What the DDL is known to contain, used to prove the parser above actually
+ * parsed something.
+ *
+ * A parser that silently under-reads is the failure mode this whole file exists to
+ * catch, and it caught this one the hard way: three columns were invisible, and
+ * rather than the parser being suspected, the schema was. These constants come
+ * from a real MySQL 8.4 (`information_schema`), and they are asserted before any
+ * drift is reported, so a broken parser fails loudly instead of quietly inventing
+ * drift. If the schema legitimately grows, update these in the same commit.
+ */
+const EXPECTED_TABLES = 64;
+const EXPECTED_COLUMNS = 678;
+
+/**
+ * @param array<string, list<string>> $tables
+ */
+function assertParserSawTheSchema(array $tables): void
+{
+    $columns = array_sum(array_map('count', $tables));
+
+    if (count($tables) !== EXPECTED_TABLES || $columns !== EXPECTED_COLUMNS) {
+        fwrite(\STDERR, sprintf(
+            "\n  FAIL  the DDL parser read %d tables / %d columns, expected %d / %d.\n"
+            . "        The parser is wrong, not the schema — fix parseDdlColumns() before\n"
+            . "        trusting any drift reported below. (Run verify-migrations.php, which\n"
+            . "        cross-checks the same file a different way.)\n\n",
+            count($tables),
+            $columns,
+            EXPECTED_TABLES,
+            EXPECTED_COLUMNS
+        ));
+
+        exit(1);
+    }
 }
 
 function snakePlural(string $name): string
@@ -216,9 +275,12 @@ echo str_repeat('─', 74), "\n\n";
 $schemas = parseOpenApiSchemas($openApi);
 $tables = parseDdlColumns($ddl);
 
+// Before any drift is reported: prove the parser actually read the schema.
+assertParserSawTheSchema($tables);
+
 printf("  Contract: %s\n", $openApi);
 printf("  Schema:   %s\n\n", $ddl);
-printf("  %d schemas, %d tables\n\n", count($schemas), count($tables));
+printf("  %d schemas, %d tables, %d columns\n\n", count($schemas), count($tables), array_sum(array_map('count', $tables)));
 
 $compared = 0;
 $drift = [];

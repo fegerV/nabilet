@@ -70,6 +70,18 @@ jobs:
       - name: Contract and schema agree (spec bundle copy)
         run: php tools/verify-contract-schema.php nabilet_core_spec/openapi.yaml
 
+      # The Eloquent layer was generated from a description of the domain rather
+      # than from the DDL, and it cannot run here -- no vendor/, no reachable
+      # MySQL -- so every column name in it is an untested claim. The same class
+      # of mistake already shipped once, in the idempotency middleware, which read
+      # `key` and `response_code`, neither of which exists.
+      #
+      # 88 fields are currently known to be wrong; they are listed in the tool with
+      # a reason each, and that list is a ratchet -- it may only shrink. Anything
+      # new fails here.
+      - name: Eloquent models name real columns
+        run: php tools/verify-models-schema.php
+
       - name: Composer manifest is valid
         run: composer validate --no-check-publish --no-check-lock
 
