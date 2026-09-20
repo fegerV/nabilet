@@ -437,3 +437,13 @@ SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='v' AND table_
 
 PHP из песочницы к MySQL не подключается (sandbox блокирует сокеты), поэтому проверки
 выполняются через `docker exec` — для верификации DDL это эквивалентно.
+
+### Laravel-миграции
+
+```bash
+php tools/verify-migrations.php     # миграции ≡ migrations.sql: 13 проверок
+```
+
+Исполняет `database/migrations/*.php` через стабы Laravel Schema и сверяет результат с
+этим файлом: таблицы, колонки, именованные индексы, внешние ключи вместе с `ON DELETE`,
+CHECK-ограничения, триггер. Подробности — `database/migrations/README.md`.

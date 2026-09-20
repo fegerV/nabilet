@@ -97,12 +97,13 @@ php tests/run.php                   # 152 теста ядра, 330 утверж�
 php tools/modules.php --validate    # граф зависимостей модулей
 php tools/verify-openapi.php        # целостность контракта + инварианты §9/§43
 php tools/verify-openapi.php nabilet_core_spec/openapi.yaml   # то же для копии пакета
-php tools/verify-schema.php         # УСТАРЕЛО: схема сессии 1, не источник истины
+php tools/verify-migrations.php     # миграции ≡ пакет: 64 таблицы, 93 FK, 35 CHECK
 ```
 
-> `verify-schema.php` разбирает Laravel-миграции сессии 1 (66 таблиц) и без
-> `pdo_sqlite` пропускает исполнение DDL — он больше не является проверкой
-> актуальной схемы. Настоящая проверка — MySQL-пробы (ниже) и `docs/DATABASE.md §10`.
+> `verify-migrations.php` исполняет все миграции и сверяет результат с
+> `nabilet_core_spec/migrations.sql`: таблицы, колонки, именованные индексы,
+> внешние ключи (включая `ON DELETE`), CHECK-ограничения и триггер
+> иммутабельности. Расхождение — это падение, а не предупреждение.
 
 ### Проверка схемы пакета (нужен Docker)
 
