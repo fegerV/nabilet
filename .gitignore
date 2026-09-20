@@ -4,45 +4,63 @@
 __pycache__/
 *.o
 *.obj
-dist/
-build/
-target/
+*.class
+*.exe
+*.dll
+*.so
+*.a
+*.out
 
 # Dependencies
-node_modules/
 vendor/
-composer.lock
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build directories
+build/
+dist/
+target/
+coverage/
+htmlcov/
+*.egg-info/
+
+# Environment specific
 .env
 .env.local
 .env.*
+.env.local.*
 
-# Logs and temp files
+# Cache directories
+.cache/
+.mypy_cache/
+.pytest_cache/
+.coverage
+
+# Logs
 *.log
-*.tmp
-*.swp
 
-# Editors
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE specific
 .vscode/
 .idea/
 *.swp
 *.swo
+*.tmp
 
-# OS
-.DS_Store
-Thumbs.db
-
-# Coverage
-coverage/
-htmlcov/
-.coverage
-
-# Python specific
-*.pyc
-__pycache__/
-.pytest_cache/
-.mypy_cache/
-
-# Laravel/PHP specific
-/storage/
-/bootstrap/cache/
+# Laravel/Lumen specific
+bootstrap/cache/
+storage/logs/
+storage/framework/
+public/storage
+composer.lock
 ```
