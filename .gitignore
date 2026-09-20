@@ -5,73 +5,43 @@ __pycache__/
 *.o
 *.obj
 *.class
+*.exe
 *.dll
 *.so
 *.a
-*.exe
 *.out
 
 # Dependencies
 vendor/
 node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# Build directories
-dist/
-build/
-target/
-coverage/
-htmlcov/
-*.egg-info/
-
-# Environment specific
 .env
 .env.local
 .env.*
-!.env.example
 
-# IDE and editor files
-.vscode/
-.idea/
+# Logs and temp files
+*.log
+*.tmp
 *.swp
 *.swo
-*.tmp
-*.log
-*~
+
+# Editors
+.vscode/
+.idea/
 
 # OS generated files
 .DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
 Thumbs.db
 
-# PHP specific
-*.php~
-*.bak
-*.orig
-*.rej
-*.swp
-*.swo
-*.tmp
+# Coverage reports
+coverage/
+htmlcov/
+.coverage
 
-# Laravel/PHP frameworks
+# Laravel/Lumen specific
 bootstrap/cache/
 storage/logs/
 storage/framework/
 public/storage
-
-# Composer
-composer.lock
-vendor/
-
-# Cache
-.cache/
-.mypy_cache/
-.pytest_cache/
-.gradle/
+.npm
+.yarn
 ```
