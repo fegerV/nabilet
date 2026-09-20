@@ -1,0 +1,108 @@
+# NABILET Core — local stack.
+#
+# WHY THE SOURCE IS NOT BIND-MOUNTED
+#   The usual Laravel-on-docker pattern is `.:/var/www/html`. That is a trap here:
+#   this repository has no `vendor/` (Composer cannot run on the machine that
+#   produced it), so a bind mount would shadow the image's vendor directory with
+#   an empty one and every request would fail with "class not found" — an error
+#   that looks like a framework bug and costs an afternoon. The code therefore
+#   lives in the image and is shared with nginx through a named volume.
+#
+#   The consequence: a named volume is seeded from the image only when it is first
+#   created, so after `docker compose build` you must recreate it:
+#       docker compose down -v && docker compose up -d
+#   or changes will not appear. Documented rather than hidden.
+#
+# VALIDATION
+#   This file is checked by CI with `docker compose config`. It has never been
+#   brought up on the machine that wrote it — Docker there is 18.09.2 with no
+#   Compose, and image pulls fail behind the proxy (x509). The first real run is
+#   on a runner or on your machine.
+
+version: "3.8"
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: nabilet/app:local
+    restart: unless-stopped
+    working_dir: /var/www/html
+    volumes:
+      - app-code:/var/www/html
+      - storage-data:/var/www/html/storage/app
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      APP_DEBUG: ${APP_DEBUG:-false}
+      APP_KEY: ${APP_KEY:-}
+      DB_CONNECTION: mysql
+      DB_HOST: mysql
+      DB_PORT: "3306"
+      DB_DATABASE: ${DB_DATABASE:-nabilet}
+      DB_USERNAME: ${DB_USERNAME:-nabilet}
+      DB_PASSWORD: ${DB_PASSWORD:-nabilet}
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      CACHE_DRIVER: ${CACHE_DRIVER:-redis}
+      QUEUE_CONNECTION: ${QUEUE_CONNECTION:-redis}
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-8080}:80"
+    volumes:
+      - app-code:/var/www/html:ro
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - app
+
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-rootpass}
+      MYSQL_DATABASE: ${DB_DATABASE:-nabilet}
+      MYSQL_USER: ${DB_USERNAME:-nabilet}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-nabilet}
+    ports:
+      - "${DB_EXTERNAL_PORT:-3307}:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      # `mysqladmin ping` is the standard probe; the credentials have to match
+      # MYSQL_ROOT_PASSWORD above or every check fails and `app` never starts.
+      test:
+        - CMD
+        - mysqladmin
+        - ping
+        - -h
+        - "127.0.0.1"
+        - -uroot
+        - -p${DB_ROOT_PASSWORD:-rootpass}
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    ports:
+      - "${REDIS_EXTERNAL_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+
+volumes:
+  app-code:
+  storage-data:
+  mysql-data:
+  redis-data:

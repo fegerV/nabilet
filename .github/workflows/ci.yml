@@ -57,6 +57,39 @@ jobs:
         run: composer validate --no-check-publish --no-check-lock
 
   # ───────────────────────────────────────────────────────────────────────────
+  # The container files, checked where Docker actually works.
+  #
+  # Neither the Dockerfile nor docker-compose.yml can be exercised on the machine
+  # that wrote them: image pulls fail there behind an intercepting proxy
+  # (`x509: certificate has expired or is not yet valid`), and the local Docker is
+  # 18.09.2 with no Compose. Shipping them unvalidated is how a stack file ends up
+  # referencing a service that does not exist, so here a runner does the checking.
+  #
+  # This deliberately does NOT build the image. `composer install` needs a
+  # composer.lock, and none is committed — it cannot be generated without network
+  # access to Packagist. A build job today would fail on an unresolved question
+  # rather than on a defect in these files. Once the lock is committed, add
+  # `docker build .` here; that is the check this job is holding the place for.
+  # ───────────────────────────────────────────────────────────────────────────
+  docker:
+    name: Container files
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compose file is valid
+        run: docker compose config --quiet
+
+      - name: Dockerfile lint
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: Dockerfile
+          # `error` only: the default threshold fails on style warnings such as
+          # "pin the apk version", which is noise for an internal image.
+          failure-threshold: error
+
+  # ───────────────────────────────────────────────────────────────────────────
   # The authoritative check: does the DDL actually execute on MySQL 8.4?
   #
   # The verifier above proves the Laravel migrations MATCH the spec. This proves
