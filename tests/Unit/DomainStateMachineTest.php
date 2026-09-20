@@ -42,24 +42,28 @@ final class DomainStateMachineTest extends TestCase
         $m = OrderStateMachine::make();
 
         $m->assert('awaiting_payment', 'expired');
-        $m->assert('awaiting_payment', 'canceled');
+        $m->assert('awaiting_payment', 'cancelled');
 
         $this->assertTrue($m->isTerminal('expired'));
-        $this->assertTrue($m->isTerminal('canceled'));
+        $this->assertTrue($m->isTerminal('cancelled'));
         $this->assertFalse($m->can('expired', 'paid'));
-        $this->assertFalse($m->can('canceled', 'paid'));
+        $this->assertFalse($m->can('cancelled', 'paid'));
     }
 
     /**
-     * A declined card must not trap the customer: failed -> awaiting_payment is
-     * legal so they can retry with another card.
+     * A declined card must not trap the customer: payment_failed ->
+     * awaiting_payment is legal so they can retry with another card.
+     *
+     * The status is `payment_failed`, not `failed` — on an order, the PAYMENT
+     * failed, not the order. ck_orders_status spells it that way and
+     * OrderStateMachine::PAYMENT_FAILED is the constant.
      */
     public function testFailedPaymentAllowsRetry(): void
     {
         $m = OrderStateMachine::make();
 
-        $m->assert('awaiting_payment', 'failed');
-        $m->assert('failed', 'awaiting_payment');
+        $m->assert('awaiting_payment', 'payment_failed');
+        $m->assert('payment_failed', 'awaiting_payment');
         $m->assert('awaiting_payment', 'paid');
         $this->assertTrue(true);
     }
@@ -68,7 +72,7 @@ final class DomainStateMachineTest extends TestCase
     {
         $m = OrderStateMachine::make();
 
-        $this->assertFalse($m->can('paid', 'canceled'), 'money was taken; only a refund path is legal');
+        $this->assertFalse($m->can('paid', 'cancelled'), 'money was taken; only a refund path is legal');
         $this->assertFalse($m->can('paid', 'expired'));
     }
 
@@ -158,28 +162,33 @@ final class DomainStateMachineTest extends TestCase
         $this->assertFalse($m->can('succeeded', 'canceled'));
     }
 
-    public function testPartialRefundRequiresMatchingAmounts(): void
+    /**
+     * A succeeded payment is terminal — there is no `refunded` state on a payment.
+     *
+     * ck_payments_status allows exactly five values and refunds are not among
+     * them. Refund progress is its own row in `refunds` with its own machine
+     * (requested → processing → succeeded/failed), which is the right shape: one
+     * payment can carry several partial refunds, each with its own outcome, and
+     * none of that fits in a single column.
+     *
+     * This test exists because the machine previously claimed a `refunded` state
+     * the database would have rejected — an invented state that only surfaces as a
+     * constraint violation the first time someone refunds in production.
+     */
+    public function testSucceededPaymentIsTerminalAndHasNoRefundState(): void
     {
         $m = PaymentStateMachine::make();
 
-        $this->assertThrows(
-            InvalidStateTransitionError::class,
-            static fn () => $m->assert('succeeded', 'refunded', [
-                'amount_minor' => 5300,
-                'refunded_minor' => 1000,
-            ])
-        );
-
-        $m->assert('succeeded', 'refunded', ['amount_minor' => 5300, 'refunded_minor' => 5300]);
-        $this->assertTrue(true);
+        $this->assertTrue($m->isTerminal('succeeded'));
+        $this->assertFalse($m->can('succeeded', 'refunded'));
+        $this->assertFalse($m->can('succeeded', 'partially_refunded'));
+        $this->assertFalse($m->isKnownState('refunded'));
+        $this->assertFalse($m->isKnownState('partially_refunded'));
     }
 
     public function testMoneyReceivedStatuses(): void
     {
-        $this->assertSame(
-            ['succeeded', 'partially_refunded', 'refunded'],
-            PaymentStateMachine::moneyReceived()
-        );
+        $this->assertSame(['succeeded'], PaymentStateMachine::moneyReceived());
     }
 
     // ----------------------------------------------------------------- Refund
@@ -341,14 +350,23 @@ final class DomainStateMachineTest extends TestCase
 
     // ----------------------------------------------------------------- Session
 
-    public function testSessionGoesOnSaleAndFinishes(): void
+    /**
+     * `closed` (selling stopped) and `completed` (the performance happened) are
+     * two different states, and the schema keeps them apart. A session whose box
+     * office has shut has NOT yet happened — conflating the two would make "can I
+     * still sell?" and "did this happen?" the same question.
+     */
+    public function testSessionClosesThenCompletes(): void
     {
         $m = SessionStateMachine::make();
 
         $m->assert('draft', 'scheduled');
         $m->assert('scheduled', 'on_sale');
-        $m->assert('on_sale', 'finished');
-        $this->assertTrue($m->isTerminal('finished'));
+        $m->assert('on_sale', 'closed');
+        $m->assert('closed', 'completed');
+
+        $this->assertFalse($m->isTerminal('closed'), 'sales are shut but the event has not happened');
+        $this->assertTrue($m->isTerminal('completed'));
     }
 
     public function testSoldOutSessionCanReopenAfterRefund(): void
@@ -360,10 +378,22 @@ final class DomainStateMachineTest extends TestCase
         $this->assertTrue(true);
     }
 
-    public function testFinishedSessionIsFinal(): void
+    public function testCompletedSessionIsFinal(): void
     {
         $m = SessionStateMachine::make();
 
-        $this->assertFalse($m->can('finished', 'on_sale'));
+        $this->assertFalse($m->can('completed', 'on_sale'));
+        $this->assertFalse($m->can('completed', 'draft'));
+    }
+
+    public function testCancelledSessionSpellsCancelledWithTwoL(): void
+    {
+        // ck_sessions_status says 'cancelled'. Only PAYMENTS use the one-L
+        // 'canceled', and that is the provider's vocabulary, not ours.
+        $m = SessionStateMachine::make();
+
+        $this->assertFalse($m->isKnownState('canceled'));
+        $this->assertTrue($m->isKnownState('cancelled'));
+        $this->assertSame('cancelled', SessionStateMachine::CANCELED);
     }
 }
