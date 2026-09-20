@@ -1,0 +1,25 @@
+parameters:
+    level: 5
+
+    paths:
+        - app
+        - config
+        - routes
+        - database
+        - tests
+
+    # The kernel (app/Core) must stay framework-free. app/Modules may depend on
+    # Laravel, app/Core may not — this is asserted here rather than in review,
+    # because a single Illuminate import in the kernel would quietly make the
+    # dependency-free test runner (tests/run.php) unable to cover it.
+    excludePaths:
+        - app/Core/Support/helpers.php
+
+    ignoreErrors:
+        # Config files legitimately reference classes created in later phases
+        # (e.g. the User model). `::class` resolves to a string without loading.
+        -
+            message: '#Class Nabilet\\Modules\\Users\\Models\\User not found#'
+            path: config/auth.php
+
+    checkMissingIterableValueType: false
