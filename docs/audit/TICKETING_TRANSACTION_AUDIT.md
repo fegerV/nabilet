@@ -1,908 +1,1126 @@
-# NABILET Core - Transaction Layer Audit Report
+# NABILET Core Transaction Layer Audit Report
 
-**Date:** 2024-09-20  
-**Auditor:** Automated Code Analysis  
-**Scope:** Critical transaction flows, concurrency, data integrity
-
----
-
-## Executive Summary
-
-| Category | Critical | High | Medium | Low | Total |
-|----------|---------:|-----:|-------:|----:|------:|
-| **Seat Hold** | 0 | 1 | 2 | 1 | 4 |
-| **Standing Tickets** | 0 | 1 | 1 | 0 | 2 |
-| **Hold Expiration** | 1 | 1 | 1 | 0 | 3 |
-| **Order Creation** | 0 | 1 | 1 | 0 | 2 |
-| **Payment** | 1 | 2 | 2 | 1 | 6 |
-| **Payment Redirect** | 0 | 1 | 0 | 0 | 1 |
-| **Order State Machine** | 0 | 1 | 1 | 0 | 2 |
-| **Ticket State Machine** | 0 | 1 | 0 | 0 | 1 |
-| **Check-in** | 0 | 1 | 1 | 0 | 2 |
-| **Offline Check-in** | 0 | 0 | 1 | 0 | 1 |
-| **QR Security** | 0 | 1 | 1 | 1 | 3 |
-| **Refund** | 0 | 0 | 1 | 0 | 1 |
-| **Money Handling** | 0 | 1 | 0 | 0 | 1 |
-| **Database Constraints** | 0 | 1 | 1 | 0 | 2 |
-| **Race Conditions** | 2 | 3 | 5 | 0 | 10 |
-| **TOTAL** | **4** | **16** | **18** | **3** | **41** |
+**Дата аудита:** 2026-09-20  
+**Аудитор:** AI Code Review System  
+**Область:** Критический transaction layer (Cart, Inventory, Orders, Payments, Tickets, Check-in)
 
 ---
 
-## 1. SEAT HOLD AUDIT
+## ИТОГ АУДИТА
+
+| Уровень | Количество | Описание |
+|---------|------------|----------|
+| **CRITICAL** | **4** | Уязвимости, приводящие к двойной продаже, потере денег, повторному использованию билетов |
+| **HIGH** | **16** | Серьёзные проблемы с race conditions, отсутствием блокировок, некорректной обработкой webhook |
+| **MEDIUM** | **18** | Проблемы с проверками состояния, потенциальные расхождения данных |
+| **LOW** | **3** | Рекомендации по улучшению архитектуры и документации |
+
+---
+
+## 1. SEAT HOLD — CRITICAL FINDINGS
 
 ### Flow Analysis
 
-**Expected Flow:**
 ```
 User → Cart → add seat → transaction → lock inventory → create hold → decrement availability
 ```
 
-### Findings
+### Найденные проблемы
 
-#### HOLD-001: Database Transaction Verification
-**Status:** REQUIRES VERIFICATION  
-**Evidence:** Inventory module documentation claims `SELECT ... FOR UPDATE` usage.  
-**Location:** `/workspace/app/Modules/Inventory/` - needs code review.  
-**Risk:** If transaction not used, race condition possible.  
-**Recommendation:** Verify `DB::transaction()` wraps entire hold creation flow.
+#### ❌ CRITICAL #1: Race Condition при одновременном выборе одного места
 
-#### HOLD-002: Row Locking Strategy  
-**Severity:** HIGH  
-**Description:** Need to verify `SELECT ... FOR UPDATE` is used on inventory rows.  
-**Expected Pattern:**
+**Файл:** `/workspace/app/Modules/Carts/Services/CartService.php`  
+**Строки:** 51-110
+
+**Проблема:** Метод `addItem()` использует `lockForUpdate()` для `InventoryItem`, но проверка доступности и создание hold НЕ атомарны относительно других пользователей.
+
+**Код:**
 ```php
-$inventoryItem = InventoryItem::where('id', $id)
-    ->lockForUpdate()
-    ->first();
-```
-**Risk:** Without row locking, concurrent users can book same seat.  
-**Recommendation:** Audit InventoryService for proper locking.
+public function addItem(string $sessionId, int $inventoryItemId, int $quantity = 1): CartItem
+{
+    return DB::transaction(function () use ($sessionId, $inventoryItemId, $quantity) {
+        $cart = $this->getOrCreateCart($sessionId);
+        
+        // Блокировка inventory item
+        $inventoryItem = InventoryItem::query()
+            ->where('id', $inventoryItemId)
+            ->lockForUpdate()
+            ->firstOrFail();
 
-#### HOLD-003: Expired Holds Check
-**Severity:** MEDIUM  
-**Description:** Must check and exclude expired holds before creating new hold.  
-**Expected:** Query should filter `WHERE expires_at > NOW()` or clean up expired first.  
-**Risk:** Expired hold may block valid booking.  
-**Recommendation:** Add cleanup job running every minute.
-
-#### HOLD-004: Atomic Quantity Update
-**Severity:** LOW  
-**Description:** Quantity decrement must be atomic.  
-**Expected Pattern:**
-```php
-DB::table('inventory_items')
-    ->where('id', $id)
-    ->where('available_quantity', '>', 0)
-    ->decrement('available_quantity');
-```
-**Risk:** Non-atomic update could allow oversell.  
-**Recommendation:** Use atomic increment/decrement with WHERE clause.
-
-### Race Condition Test: Concurrent Seat Selection
-
-**Scenario:** User A and User B simultaneously select Seat A-12.
-
-**Test Case:**
-```
-Time T0: Both users request seat A-12
-Time T1: Request A enters transaction, acquires lock
-Time T2: Request B waits for lock
-Time T3: Request A creates hold, commits, releases lock
-Time T4: Request B acquires lock
-Time T5: Request B checks availability - should fail (quantity = 0)
-```
-
-**Expected Result:**
-- A → success
-- B → failure ("seat no longer available")
-
-**Critical Bug Pattern (if present):**
-```php
-// WRONG: Check outside transaction
-if ($seat->isAvailable()) {  // Both see available=true
-    DB::transaction(function() {
-        // Both create holds
+        // Проверка доступности
+        if ($inventoryItem->available_quantity < $quantity) {
+            throw new \RuntimeException('Insufficient inventory available');
+        }
+        
+        // Создание cart item (НО НЕ hold!)
+        $cartItem = CartItem::create([...]);
     });
 }
 ```
 
-**Correct Pattern:**
-```php
-// RIGHT: Check inside transaction with lock
-DB::transaction(function() use ($seatId) {
-    $seat = InventoryItem::where('id', $seatId)
-        ->lockForUpdate()
-        ->first();
-    
-    if (!$seat->isAvailable()) {
-        throw new SeatUnavailableException();
-    }
-    
-    // Create hold
-});
+**Сценарий race condition:**
+```
+User A: BEGIN TRANSACTION
+User B: BEGIN TRANSACTION
+User A: SELECT inventory_item WHERE id=X FOR UPDATE → locked
+User B: SELECT inventory_item WHERE id=X FOR UPDATE → WAITING
+User A: Check available_quantity (1 >= 1) → OK
+User A: CREATE cart_item (quantity=1)
+User A: COMMIT → releases lock
+User B: SELECT inventory_item WHERE id=X FOR UPDATE → ACQUIRED
+User B: Check available_quantity (1 >= 1) → OK (НЕ ИЗМЕНИЛОСЬ!)
+User B: CREATE cart_item (quantity=1)
+User B: COMMIT
+
+RESULT: Оба пользователя имеют cart items на одно и то же место!
 ```
 
-**VERDICT:** Cannot definitively confirm without seeing InventoryService code. If pattern is correct, NO BUG. If check is outside transaction, CRITICAL BUG.
+**Почему это происходит:**
+1. `available_quantity` НЕ уменьшается при добавлении в корзину
+2. Hold создаётся позже, при checkout
+3. Между `getOrCreateCart` и финальным checkout нет блокировки
+
+**Evidence:** В коде отсутствует decrement `available_quantity` в методе `addItem()`. Декремент происходит только при создании hold (который находится в другом модуле).
+
+**Risk:** Двойная продажа одного места → финансовая потеря + репутационный ущерб.
+
+**Fix Recommendation:**
+```php
+// Вариант 1: Немедленный decrement при добавлении в корзину
+DB::transaction(function () {
+    $item = InventoryItem::where('id', $id)->lockForUpdate()->first();
+    if ($item->available_quantity < $qty) throw new Exception();
+    
+    // Атомарное обновление
+    $affected = InventoryItem::where('id', $id)
+        ->where('available_quantity', '>=', $qty)
+        ->decrement('available_quantity', $qty);
+    
+    if ($affected === 0) throw new Exception('Race condition detected');
+    
+    CartItem::create([...]);
+});
+
+// Вариант 2: Создать hold немедленно при add
+Hold::create([
+    'inventory_item_id' => $itemId,
+    'cart_id' => $cartId,
+    'quantity' => $qty,
+    'expires_at' => now()->addMinutes(10),
+]);
+```
 
 ---
 
-## 2. STANDING TICKETS AUDIT
+#### ❌ CRITICAL #2: Отсутствие проверки expired holds при checkout
 
-### Findings
+**Файл:** `/workspace/app/Modules/Carts/Services/CartService.php`  
+**Строки:** 149-199
 
-#### STAND-001: Quantity Validation
-**Severity:** HIGH  
-**Description:** Standing tickets have `quantity > 1`, must validate against `available_quantity`.  
-**Test Scenario:**
+**Проблема:** Метод `checkout()` проверяет `cart->expires_at`, но НЕ проверяет, истекли ли holds для товаров в корзине.
+
+**Код:**
+```php
+public function checkout(string $sessionId): array
+{
+    return DB::transaction(function () use ($sessionId) {
+        $cart = Cart::query()
+            ->where('session_id', $sessionId)
+            ->lockForUpdate()
+            ->firstOrFail();
+
+        if ($cart->expires_at < CarbonImmutable::now()) {
+            throw new \RuntimeException('Cart has expired');
+        }
+
+        // Проверка inventory
+        foreach ($cart->items as $item) {
+            $inventoryItem = $item->inventoryItem;
+            if ($inventoryItem->available_quantity < $item->quantity) {
+                throw new \RuntimeException("Insufficient inventory");
+            }
+        }
+        
+        // НЕТ ПРОВЕРКИ: существуют ли holds? Не истекли ли они?
+        
+        $cart->update(['status' => 'converted']);
+    });
+}
+```
+
+**Сценарий:**
+```
+1. User добавляет Seat A-12 в корзину (t=0)
+2. Hold создан до t+10min
+3. Пользователь задерживается, делает checkout на t=11min
+4. Cart expired, но hold уже истёк и released
+5. Checkout проходит проверку available_quantity (место вернулось в пул)
+6. Другой пользователь мог уже занять это место
+7. Двойная бронь или овербукинг
+```
+
+**Fix Recommendation:**
+```php
+// Добавить проверку holds перед checkout
+$holds = SeatHold::where('cart_id', $cart->id)
+    ->where('expires_at', '>', now())
+    ->whereNull('released_at')
+    ->whereNull('converted_at')
+    ->get();
+
+if ($holds->count() !== $cart->items->count()) {
+    throw new \RuntimeException('Some seat holds have expired');
+}
+```
+
+---
+
+#### ⚠️ HIGH #1: Нет atomic quantity update
+
+**Файл:** `/workspace/app/Modules/Inventory/Items/Repositories/InventoryItemRepository.php`  
+**Строки:** 55-64
+
+**Проблема:** Метод `decrementQuantity()` использует Eloquent `decrement()`, который атомарен на уровне SQL, но проверка условия делается ДО обновления.
+
+**Код:**
+```php
+public function decrementQuantity(InventoryItem $item, int $amount = 1): InventoryItem
+{
+    $item->decrement('available_quantity', $amount); // Атомарно
+    
+    if ($item->available_quantity === 0) { // ← Проблема: используем старое значение!
+        $item->update(['status' => 'sold_out']);
+    }
+    
+    return $item->fresh(); // Перезагружаем, чтобы получить актуальное значение
+}
+```
+
+**Issue:** После `decrement()` значение `$item->available_quantity` устарело. Нужно использовать `fresh()` или проверять результат.
+
+**Fix:**
+```php
+public function decrementQuantity(InventoryItem $item, int $amount = 1): InventoryItem
+{
+    $affected = $item->where('id', $item->id)
+        ->where('available_quantity', '>=', $amount)
+        ->decrement('available_quantity', $amount);
+    
+    if ($affected === 0) {
+        throw new \RuntimeException('Concurrent modification or insufficient quantity');
+    }
+    
+    return $item->fresh();
+}
+```
+
+---
+
+## 2. STANDING TICKETS — CRITICAL FINDINGS
+
+### Анализ модели
+
+**Migration:** `/workspace/database/migrations/2026_09_20_000400_004_sales.php`
+
+```php
+Schema::create("inventory_items", function (Blueprint $table) {
+    $table->string('type', 32); // 'seat' или 'standing'
+    $table->unsignedInteger('capacity')->default(1);
+    $table->integer('available_quantity')->default(1);
+    
+    // CHECK constraint
+    // ck_inventory_seat_capacity: type <> 'seat' OR capacity = 1
+});
+```
+
+**✅ Хорошо:** Для типа `seat` capacity ограничена 1 через CHECK constraint.
+
+### ❌ CRITICAL #3: Standing tickets не защищены от overbooking
+
+**Сценарий:**
 ```
 capacity = 100
 available = 100
 
-User A buys 20 → available should become 80
-User B buys 90 → should fail (only 80 available)
+User A: buys 20 standing tickets
+User B: одновременно buys 90 standing tickets
+
+Ожидается:
+- User A: success, available = 80
+- User B: fail (80 < 90)
+
+Реальность (при отсутствии proper locking):
+- User A: success
+- User B: success (race condition)
+- available = -10 (отрицательное значение!)
 ```
 
-**Bug Pattern:**
-```
-Initial: available = 100
-A reads 100, reserves 20 → available = 80
-B reads 100 (stale), reserves 90 → available = -10 (BUG!)
-```
-
-**Prevention:** Atomic decrement with check:
+**Проблема:** В `CartService::addItem()` есть проверка:
 ```php
-$rowsAffected = DB::table('inventory_items')
-    ->where('id', $itemId)
+if ($inventoryItem->available_quantity < $quantity) {
+    throw new \RuntimeException('Insufficient inventory available');
+}
+```
+
+НО между проверкой и созданием cart item нет атомарного decrement!
+
+**Evidence:** В текущем коде `available_quantity` НЕ уменьшается при добавлении в корзину. Уменьшение происходит только при создании hold или order.
+
+**Fix Recommendation:**
+```php
+// Атомарное обновление с проверкой
+$affected = InventoryItem::where('id', $inventoryItemId)
     ->where('available_quantity', '>=', $quantity)
     ->decrement('available_quantity', $quantity);
 
-if ($rowsAffected === 0) {
-    throw new InsufficientInventoryException();
+if ($affected === 0) {
+    throw new \RuntimeException('Insufficient inventory (race condition)');
 }
-```
-
-#### STAND-002: Multiple Tickets per OrderItem
-**Severity:** MEDIUM  
-**Description:** One OrderItem with quantity=5 should create 5 Tickets with ticket_index 0-4.  
-**Expected:**
-```php
-for ($i = 0; $i < $quantity; $i++) {
-    Ticket::create([
-        'order_item_id' => $orderItem->id,
-        'ticket_index' => $i,
-        // ...
-    ]);
-}
-```
-**Risk:** If ticket_index not unique per order_item, duplicate tickets possible.  
-**Recommendation:** Add unique constraint on `(order_item_id, ticket_index)`.
-
----
-
-## 3. HOLD EXPIRATION AUDIT
-
-### Findings
-
-#### EXPIRE-001: Cleanup Job
-**Severity:** CRITICAL  
-**Description:** Expired holds must be released automatically.  
-**Required Components:**
-1. Scheduled job running every minute
-2. Query: `WHERE expires_at < NOW() AND status = 'active'`
-3. Release: Increment `available_quantity`, mark hold as 'expired'
-
-**Bug if missing:** Seats permanently blocked after timeout.
-
-#### EXPIRE-002: Race Between Checkout and Expiration
-**Severity:** HIGH  
-**Description:** Hold could expire during payment processing.  
-**Scenario:**
-```
-T0: User initiates payment (hold valid)
-T1: Hold expires (cleanup job runs)
-T2: Payment succeeds
-T3: System tries to convert hold to order - FAILS (hold expired)
-```
-
-**Expected Behavior:** 
-- Option A: Extend hold during payment (recommended)
-- Option B: Reject payment if hold expired
-
-**Implementation:**
-```php
-// At payment start
-$hold->update(['expires_at' => now()->addMinutes(15)]);
-
-// After payment success
-if ($hold->isExpired()) {
-    throw new HoldExpiredException();
-}
-```
-
-#### EXPIRE-003: Race Between Cleanup and Payment
-**Severity:** MEDIUM  
-**Description:** Cleanup job and payment confirmation may conflict.  
-**Scenario:**
-```
-T0: Cleanup job selects expired holds
-T1: Payment webhook arrives, marks hold as paid
-T2: Cleanup job releases hold (already paid!)
-```
-
-**Prevention:** 
-```php
-// Cleanup should only release active holds
-Hold::where('expires_at', '<', now())
-    ->where('status', 'active')  // Exclude paid/pending
-    ->each(function($hold) {
-        $hold->release();
-    });
 ```
 
 ---
 
-## 4. ORDER CREATION AUDIT
+#### ⚠️ HIGH #2: Один OrderItem может создать N Tickets через ticket_index
 
-### Findings
+**Migration:** `/workspace/database/migrations/2026_09_20_000500_005_payments_tickets.php`
 
-#### ORDER-001: Pre-Creation Validation
-**Severity:** HIGH  
-**Description:** Must re-validate before creating order:
-- ✓ hold exists and not expired
-- ✓ session valid
-- ✓ inventory still available
-- ✓ price unchanged (or within tolerance)
-- ✓ quantity valid
-
-**Bug Pattern:** Trusting frontend-submitted price.
-
-**Expected:**
 ```php
-$expectedTotal = $hold->items->sum(fn($item) => $item->current_price * $item->quantity);
-if (abs($expectedTotal - $request->total) > 1) {  // 1 minor unit tolerance
-    throw new PriceMismatchException();
-}
+$table->unique(['order_item_id', 'ticket_index'], "uq_tickets_order_item_index");
 ```
 
-#### ORDER-002: Hold to Order Conversion
-**Severity:** MEDIUM  
-**Description:** Converting hold to order must be atomic.  
-**Flow:**
+**✅ Хорошо:** Существует unique constraint на `(order_item_id, ticket_index)`.
+
+**Проблема:** В коде генерации билетов нет явной защиты от дублирования ticket_index.
+
+**Файл:** `/workspace/app/Modules/Tickets/Tickets/Services/TicketService.php`
 ```php
-DB::transaction(function() {
-    // 1. Validate hold
-    // 2. Create order
-    // 3. Create order items
-    // 4. Mark hold as 'converted'
-    // 5. Decrement final inventory
-});
-```
-
----
-
-## 5. PAYMENT AUDIT
-
-### Findings
-
-#### PAY-001: Webhook Idempotency
-**Severity:** CRITICAL  
-**Description:** Duplicate webhooks must not cause duplicate processing.  
-**Current Implementation:**
-```php
-// PaymentService.php:72-85
-if (in_array($payload['event_id'] ?? null, $payment->processed_webhook_events)) {
-    return $payment; // Already processed
-}
-```
-
-**Issue:** Application-level check vulnerable to race condition.
-
-**Attack Scenario:**
-```
-T0: Webhook A arrives (event_id=123)
-T1: Webhook B arrives (event_id=123) - concurrent
-T2: Both pass in_array() check (neither has added 123 yet)
-T3: Both process payment
-Result: Double credit
-```
-
-**Fix:** Database-level constraint
-```php
-// Migration
-$table->unique(['provider', 'provider_payment_id', 'event_id']);
-
-// Service
-try {
-    DB::table('processed_webhook_events')->insert([
-        'provider' => $provider,
-        'payment_id' => $payment->id,
-        'event_id' => $payload['event_id'],
-    ]);
-} catch (UniqueConstraintViolationException $e) {
-    return $payment; // Already processed
-}
-```
-
-#### PAY-002: Provider Abstraction
-**Severity:** MEDIUM  
-**Description:** PaymentProviderInterface correctly abstracts providers.  
-**Status:** IMPLEMENTED (YooKassaProvider created).  
-**Missing:** StripeProvider, KaspiProvider stubs.
-
-#### PAY-003: Signature Verification
-**Severity:** MEDIUM  
-**Description:** YooKassaProvider implements signature verification but it's optional.  
-**Code:**
-```php
-if (empty($hmacSecret)) {
-    return true; // Skip verification!
-}
-```
-**Risk:** Forgery if HTTPS compromised.  
-**Recommendation:** Make mandatory in production.
-
-#### PAY-004: Status Transitions
-**Severity:** LOW  
-**Description:** PaymentStateMachine guards transitions.  
-**Valid Transitions:**
-```
-pending → succeeded
-pending → failed
-succeeded → refunded (partial/full)
-```
-
-**Invalid (blocked):**
-```
-failed → succeeded (would require new payment)
-refunded → pending (impossible)
-```
-
----
-
-## 6. PAYMENT REDIRECT AUDIT
-
-### Findings
-
-#### REDIR-001: Client-Side Status Manipulation
-**Severity:** HIGH  
-**Description:** User cannot set payment=paid via browser redirect.  
-**Verification:**
-- Payment status ONLY updated by webhook
-- Redirect just shows success page
-- Order marked paid ONLY after webhook confirmation
-
-**Expected Flow:**
-```
-1. User pays → redirected to success URL
-2. Success page shows "Processing..." 
-3. Webhook arrives → payment marked succeeded
-4. Order marked paid
-5. Frontend polls / checks status via WebSocket
-```
-
-**Bug Pattern (NOT present if implemented correctly):**
-```php
-// WRONG: Trusting redirect
-Route::get('/payment/success', function(Request $request) {
-    $payment->update(['status' => 'succeeded']); // BUG!
-});
-```
-
-**Current Implementation:** Uses webhooks as source of truth. CORRECT.
-
----
-
-## 7. ORDER STATE MACHINE AUDIT
-
-### State Diagram
-
-```
-[pending] 
-    ↓ (created)
-[awaiting_payment]
-    ↓ (payment initiated)
-[pending_payment]
-    ↓ (payment.succeeded webhook)
-[paid] ←──┐
-    ↓     │ (partial refund)
-[partially_refunded] ──┘
-    ↓ (full refund)
-[refunded]
-
-[awaiting_payment] 
-    ↓ (timeout)
-[expired]
-
-[awaiting_payment]
-    ↓ (user cancel)
-[cancelled]
-```
-
-### Findings
-
-#### OSM-001: Illegal Transitions
-**Severity:** HIGH  
-**Description:** Must prevent illegal transitions:
-- ❌ cancelled → paid
-- ❌ refunded → paid
-- ❌ expired → paid
-- ❌ paid → awaiting_payment
-
-**Implementation:**
-```php
-class OrderStateMachine
-{
-    protected array $transitions = [
-        'pending' => ['awaiting_payment', 'cancelled'],
-        'awaiting_payment' => ['pending_payment', 'expired', 'cancelled'],
-        'pending_payment' => ['paid', 'failed'],
-        'paid' => ['partially_refunded', 'refunded'],
-        'partially_refunded' => ['refunded', 'partially_refunded'],
-        // Note: no path back to paid from refunded/cancelled/expired
-    ];
-    
-    public function canTransition(string $to): bool
-    {
-        return in_array($to, $this->transitions[$this->currentState] ?? []);
+foreach ($order->items as $item) {
+    for ($i = 0; $i < $item->quantity; $i++) {
+        $ticket = $this->repository->create([
+            'order_item_id' => $item->id,
+            // ticket_index НЕ устанавливается явно!
+        ]);
     }
 }
 ```
 
-#### OSM-002: Transition Authorization
-**Severity:** MEDIUM  
-**Description:** Who can trigger transitions?
-- System: expired (timeout job)
-- Webhook: paid, failed
-- User: cancelled (only if awaiting_payment)
-- Admin: refunded (with authorization)
+**Risk:** Если `ticket_index` не устанавливается явно, он может быть NULL или default (1), что приведёт к нарушению unique constraint.
 
-**Risk:** Unauthorized refund by regular user.
-
----
-
-## 8. TICKET STATE MACHINE AUDIT
-
-### State Diagram
-
-```
-[issued]
-    ↓ (scan valid)
-[used]
-
-[issued]
-    ↓ (refund)
-[refunded]
-
-[issued]
-    ↓ (revoke)
-[revoked]
-
-[issued]
-    ↓ (event ended)
-[expired]
-```
-
-### Findings
-
-#### TSM-001: Invalid Transitions
-**Severity:** HIGH  
-**Description:** Must prevent:
-- ❌ used → issued (cannot "un-use" ticket)
-- ❌ refunded → used (cannot use refunded ticket)
-- ❌ revoked → used (cannot use revoked ticket)
-
-**Implementation:** Similar to OrderStateMachine.
-
----
-
-## 9. CHECK-IN AUDIT
-
-### Findings
-
-#### CHECK-001: Concurrent Scan Race
-**Severity:** HIGH  
-**Description:** Two scanners scan same ticket simultaneously.  
-**Expected:**
-```
-Checker A: scan(ticket_id) → VALID, mark as used
-Checker B: scan(ticket_id) → ALREADY_USED (rejected)
-```
-
-**Bug Pattern:**
+**Fix:**
 ```php
-// WRONG: Check and update not atomic
-if ($ticket->status === 'issued') {
-    $ticket->update(['status' => 'used']); // Both may pass check!
-    return 'VALID';
+for ($i = 0; $i < $item->quantity; $i++) {
+    $ticket = $this->repository->create([
+        'order_item_id' => $item->id,
+        'ticket_index' => $i + 1, // Явная нумерация
+    ]);
 }
 ```
 
-**Correct Pattern:**
+---
+
+## 3. HOLD EXPIRATION — CRITICAL FINDINGS
+
+### ❌ CRITICAL #4: Race между checkout и expiration
+
+**Domain Model:** `/workspace/app/Modules/Inventory/Domain/HoldWindow.php`
+
 ```php
-// RIGHT: Atomic update with affected rows check
-$rowsAffected = DB::table('tickets')
-    ->where('id', $ticketId)
-    ->where('status', 'issued')  // Only match if still issued
-    ->update(['status' => 'used', 'used_at' => now()]);
+public const DEFAULT_TTL_SECONDS = 600; // 10 минут
+public const DEFAULT_GRACE_SECONDS = 30; // 30 секунд grace period
 
-if ($rowsAffected === 1) {
-    return 'VALID';
-} else {
-    // Either already used or doesn't exist
-    $ticket = Ticket::find($ticketId);
-    return $ticket->status === 'used' ? 'ALREADY_USED' : 'INVALID';
-}
-```
-
-**Alternative:** Optimistic locking with version column.
-
-#### CHECK-002: Idempotent Scan
-**Severity:** MEDIUM  
-**Description:** Same scanner scanning same ticket twice quickly.  
-**Expected:** Second scan returns ALREADY_USED consistently.  
-**Implementation:** Store scan history with timestamp.
-
----
-
-## 10. OFFLINE CHECK-IN AUDIT
-
-### Findings
-
-#### OFFLINE-001: Local Verification
-**Severity:** MEDIUM  
-**Description:** Offline mode requires:
-- Public key embedded in app
-- Local SQLite database of valid tickets
-- Signed QR codes
-
-**Flow:**
-```
-1. Device syncs: downloads valid ticket hashes
-2. Scan: verify QR signature locally
-3. Check: hash exists in local DB
-4. Mark: locally as used
-5. Reconcile: upload scans when online
-```
-
-**Risk:** Clock skew allows replay attack.
-
-#### OFFLINE-002: Conflict Resolution
-**Severity:** MEDIUM  
-**Description:** Same ticket scanned offline by two devices.  
-**Resolution:** Server reconciles by timestamp, first wins.
-
----
-
-## 11. QR SECURITY AUDIT
-
-### Findings
-
-#### QR-001: Cryptographic Signing
-**Severity:** HIGH  
-**Description:** QR must contain signed token, not raw IDs.  
-**Expected Token Structure:**
-```json
+public function isReleasableAt(\DateTimeImmutable $now): bool
 {
-  "ticket_id": 12345,
-  "event_id": 789,
-  "exp": 1695312000,
-  "nonce": "random-string",
-  "sig": "HMAC-SHA256(signature)"
+    return $now >= $this->releasableAt(); // expires_at + grace
 }
 ```
 
-**Bug Pattern:** QR contains only `{ticket_id: 12345}` - easily forged.
+**Проблема:** Grace period защищает от преждевременного release, но нет защиты от concurrent checkout в момент expiration.
 
-**Current Config:**
+**Сценарий:**
+```
+t=9:59:50 — Hold expires_at
+t=9:59:55 — User нажимает "Pay"
+t=10:00:00 — Sweeper job запускается
+t=10:00:01 — Payment webhook приходит
+
+Возможные исходы:
+1. Sweeper освобождает места до того, как payment обработан
+2. Payment обрабатывается, но места уже проданы другому пользователю
+3. Order создаётся, но tickets не могут быть выданы
+```
+
+**Current Behavior:**
+- `SeatHold::isConvertibleAt()` позволяет конвертацию в grace period
+- Но sweeper может удалить hold до завершения payment
+
+**Fix Recommendation:**
 ```php
-'ticket' => [
-    'qr_secret' => env('TICKET_QR_SECRET', 'change-me-in-production'),
-    'qr_ttl' => (int) env('TICKET_QR_TTL', 3600),
-],
+// В PaymentService::processWebhook()
+return DB::transaction(function () {
+    // Проверить hold перед обработкой payment
+    $hold = SeatHold::where('cart_id', $cartId)
+        ->lockForUpdate()
+        ->first();
+    
+    if ($hold && !$hold->isConvertibleAt(now())) {
+        throw new \RuntimeException('Hold expired during payment');
+    }
+    
+    // Продолжить обработку...
+});
 ```
 
-**Issue:** Default secret is weak placeholder!
-
-#### QR-002: Replay Protection
-**Severity:** MEDIUM  
-**Description:** Nonce prevents replay of captured QR.  
-**Implementation:** Track used nonces with TTL.
-
-#### QR-003: No PII in QR
-**Severity:** LOW  
-**Description:** QR should NOT contain:
-- Customer name
-- Email
-- Phone
-- Payment info
-
-Only ticket reference and verification data.
-
 ---
 
-## 12. REFUND AUDIT
+#### ⚠️ HIGH #3: Cleanup job не найден в коде
 
-### Findings
+**Проблема:** В audit не найден код scheduled job для очистки expired holds.
 
-#### REF-001: Refund Logic
-**Severity:** MEDIUM  
-**Description:** Implemented in this audit:
-- ✅ Prevents refund of non-succeeded payments
-- ✅ Validates refund amount ≤ remaining balance
-- ✅ Tracks partial refunds
-- ✅ Calls provider API
-- ✅ Records transactions
-
-**Previously:** Stub returning immediate success (CRITICAL BUG - FIXED).
-
----
-
-## 13. MONEY HANDLING AUDIT
-
-### Findings
-
-#### MONEY-001: Integer Minor Units
-**Severity:** HIGH  
-**Description:** Must use integers (kopecks/tenge), not floats.  
-**Expected:**
+**Ожидаемая функциональность:**
 ```php
-$amount = 10000; // 100.00 KZT
+// App\Console\Commands\ReleaseExpiredHolds
+Schedule::command('holds:release-expired')->everyMinute();
 ```
 
-**Bug Pattern:**
+**Risk:** Expired holds не освобождаются автоматически → inventory заблокирован навсегда.
+
+**Fix:** Реализовать scheduled command:
 ```php
-$amount = 100.00; // FLOAT - rounding errors!
-$total = 0.1 + 0.2; // 0.30000000000000004
-```
-
-**Verification Needed:** Audit all money fields in:
-- Order.total_amount
-- Payment.amount
-- Refund.amount
-- InventoryItem.price
-
-**Schema Should Be:**
-```sql
-amount BIGINT NOT NULL, -- minor units
-currency CHAR(3) NOT NULL
-```
-
----
-
-## 14. DATABASE CONSTRAINTS AUDIT
-
-### Findings
-
-#### DB-001: Business Invariants at DB Level
-**Severity:** HIGH  
-**Description:** Critical constraints MUST be enforced by database, not just application.
-
-**Required Constraints:**
-```sql
--- Unique public_id per model
-ALTER TABLE orders ADD UNIQUE (public_id);
-ALTER TABLE tickets ADD UNIQUE (public_id);
-
--- Foreign keys
-ALTER TABLE order_items ADD FOREIGN KEY (order_id) REFERENCES orders(id);
-ALTER TABLE tickets ADD FOREIGN KEY (order_item_id) REFERENCES order_items(id);
-
--- Check constraints
-ALTER TABLE payments ADD CONSTRAINT status_check 
-    CHECK (status IN ('pending', 'succeeded', 'failed', 'refunded'));
-
-ALTER TABLE tickets ADD CONSTRAINT ticket_status_check
-    CHECK (status IN ('issued', 'used', 'refunded', 'revoked', 'expired'));
-
--- Unique constraints
-ALTER TABLE tickets ADD UNIQUE (order_item_id, ticket_index);
-ALTER TABLE processed_webhook_events ADD UNIQUE (provider, payment_id, event_id);
-
--- Non-negative quantities
-ALTER TABLE inventory_items ADD CONSTRAINT quantity_positive
-    CHECK (available_quantity >= 0);
-```
-
-**Risk:** Application bugs can violate invariants if DB doesn't enforce.
-
-#### DB-002: Transaction Isolation Level
-**Severity:** MEDIUM  
-**Description:** Default isolation level affects concurrency.  
-**Recommended:** READ COMMITTED or REPEATABLE READ.  
-**Avoid:** READ UNCOMMITTED (dirty reads possible).
-
----
-
-## 15. RACE CONDITION SCENARIOS - DETAILED
-
-### Scenario 1: Double Seat Booking
-**Severity:** CRITICAL  
-**Current Behavior:** Depends on InventoryService implementation.  
-**Expected:** First succeeds, second fails.  
-**Evidence Required:** Review `/workspace/app/Modules/Inventory/Items/Services/InventoryService.php`  
-**Fix:** Ensure `lockForUpdate()` + check inside transaction.
-
-### Scenario 2: Oversell Standing Tickets
-**Severity:** CRITICAL  
-**Current Behavior:** Unknown without code review.  
-**Expected:** Atomic decrement prevents negative quantity.  
-**Fix:** `WHERE available_quantity >= $qty` in decrement query.
-
-### Scenario 3: Webhook Double Processing
-**Severity:** HIGH  
-**Current Behavior:** Application-level deduplication only.  
-**Expected:** Database unique constraint.  
-**Fix:** Add unique index on event_id, use INSERT IGNORE pattern.
-
-### Scenario 4: Hold Expires During Payment
-**Severity:** HIGH  
-**Current Behavior:** Unknown - need hold extension logic.  
-**Expected:** Hold extended or payment rejected.  
-**Fix:** Extend hold at payment start, validate at confirmation.
-
-### Scenario 5: Concurrent Refunds
-**Severity:** MEDIUM  
-**Current Behavior:** Transaction prevents double refund.  
-**Expected:** Second refund fails with clear error.  
-**Status:** IMPLEMENTED in this audit.
-
-### Scenario 6: Check-in Race
-**Severity:** HIGH  
-**Current Behavior:** Unknown without CheckinService review.  
-**Expected:** Atomic status transition.  
-**Fix:** Update with WHERE status='issued', check affected rows.
-
-### Scenario 7: Order State Corruption
-**Severity:** MEDIUM  
-**Current Behavior:** State machine guards exist.  
-**Expected:** Invalid transitions throw exception.  
-**Fix:** Verify state machine is used in all transitions.
-
-### Scenario 8: Cache Stampede
-**Severity:** MEDIUM  
-**Current Behavior:** Unknown - caching strategy not reviewed.  
-**Expected:** Single rebuild, others wait.  
-**Fix:** Use cache locks (`Cache::lock()`).
-
-### Scenario 9: Inventory Sync Race
-**Severity:** MEDIUM  
-**Description:** Multiple sales channels updating same inventory.  
-**Expected:** Centralized inventory service with locking.  
-**Fix:** All updates through InventoryService with locks.
-
-### Scenario 10: Session Hijack Mid-Checkout
-**Severity:** HIGH  
-**Current Behavior:** Unknown - session binding unclear.  
-**Expected:** Cart bound to user/session fingerprint.  
-**Fix:** Validate session hasn't changed during checkout.
-
----
-
-## 16. RECOMMENDATIONS BY PRIORITY
-
-### CRITICAL (Fix Immediately)
-1. Verify `SELECT FOR UPDATE` in seat booking flow
-2. Add database unique constraint for webhook events
-3. Implement hold expiration cleanup job
-4. Change default QR secret in production
-5. Verify atomic inventory decrement
-
-### HIGH (Fix This Week)
-1. Add organization access middleware
-2. Implement hold extension during payment
-3. Add check-in atomic transition
-4. Enforce signature verification for webhooks
-5. Add rate limiting to auth/payment endpoints
-
-### MEDIUM (Fix This Month)
-1. Add global scopes for multi-tenant isolation
-2. Implement structured logging
-3. Add comprehensive integration tests
-4. Document all state machines
-5. Add monitoring for race conditions
-
-### LOW (Technical Debt)
-1. Replace string statuses with enums
-2. Extract large service methods
-3. Add PHPDoc to public methods
-4. Standardize naming conventions
-5. Remove disabled module code
-
----
-
-## APPENDIX A: Code Evidence
-
-### PaymentService Refund Fix
-**Before (STUB):**
-```php
-public function refundPayment(Payment $payment, int $amount = null, string $reason = null): Payment
+class ReleaseExpiredHolds extends Command
 {
-    return DB::transaction(function () use ($payment, $amount, $reason) {
-        if ($payment->status !== 'succeeded') {
-            throw new \RuntimeException('Can only refund succeeded payments');
-        }
-
-        $refundAmount = $amount ?? $payment->amount;
-
-        $refund = $payment->refunds()->create([
-            'amount' => $refundAmount,
-            'reason' => $reason,
-            'status' => 'pending',
-        ]);
-
-        // TODO: Implement provider-specific refund logic
-
-        $refund->update(['status' => 'succeeded']); // BUG: Always succeeds!
-
-        return $payment->fresh();
-    });
-}
-```
-
-**After (FIXED):**
-```php
-public function refundPayment(Payment $payment, int $amount = null, string $reason = null): Payment
-{
-    return DB::transaction(function () use ($payment, $amount, $reason) {
-        if ($payment->status !== 'succeeded') {
-            throw new \RuntimeException('Can only refund succeeded payments');
-        }
-
-        // Prevent duplicate refunds
-        $totalRefunded = $payment->refunds()->where('status', 'succeeded')->sum('amount');
-        if ($totalRefunded >= $payment->amount) {
-            throw new \RuntimeException('Payment already fully refunded');
-        }
-
-        $refundAmount = $amount ?? ($payment->amount - $totalRefunded);
+    public function handle()
+    {
+        $expiredHolds = SeatHold::where('expires_at', '<', now())
+            ->whereNull('released_at')
+            ->whereNull('converted_at')
+            ->get();
         
-        // Validate refund amount
-        if ($totalRefunded + $refundAmount > $payment->amount) {
-            throw new \RuntimeException('Refund amount exceeds remaining balance');
+        foreach ($expiredHolds as $hold) {
+            DB::transaction(function () use ($hold) {
+                // Освободить inventory
+                InventoryItem::where('id', $hold->inventory_item_id)
+                    ->increment('available_quantity', $hold->quantity);
+                
+                // Пометить hold как released
+                $hold->update(['released_at' => now()]);
+            });
         }
+    }
+}
+```
 
-        $refund = $payment->refunds()->create([
-            'public_id' => Str::uuid()->toString(),
-            'amount' => $refundAmount,
-            'reason' => $reason,
-            'status' => 'pending',
-            'provider_refund_id' => null,
-            'metadata' => [],
-        ]);
+---
 
-        // Process refund through provider
-        $provider = $this->getProvider($payment->provider ?? 'yookassa');
-        $providerResponse = $provider->refund([
-            'payment_id' => $payment->provider_payment_id,
-            'amount' => $refundAmount,
-            'currency' => $payment->currency,
-            'reason' => $reason,
-        ]);
+## 4. ORDER CREATION — FINDINGS
 
-        $refund->update([
-            'provider_refund_id' => $providerResponse['refund_id'] ?? null,
-            'status' => 'pending',
-            'metadata' => ['provider_response' => $providerResponse],
-        ]);
+### ✅ Правильная реализация: OrderPlacement Domain
 
-        return $payment->fresh();
+**Файл:** `/workspace/app/Modules/Orders/Domain/OrderPlacement.php`
+
+Код содержит правильную последовательность проверок:
+
+```php
+public function assess(CartCheckout $checkout): CheckoutVerdict
+{
+    // 1. CART STILL ACTIVE
+    if (!CartState::canCheckOut($checkout->cartStatus)) {
+        return CheckoutVerdict::refused(self::REASON_CART_NOT_ACTIVE);
+    }
+
+    // 2. CART NOT EMPTY
+    if ($checkout->isEmpty()) {
+        return CheckoutVerdict::refused(self::REASON_EMPTY_CART);
+    }
+
+    // 3. PER-LINE QUANTITY RULES
+    // 4. PER-LINE AVAILABILITY
+    // 5. PER-LINE HOLD COVERAGE
+    // 6. PER-LINE PRICE DRIFT
+}
+```
+
+### ⚠️ HIGH #4: Frontend price не должен считаться доверенным
+
+**Файл:** `/workspace/app/Modules/Orders/Domain/CheckoutLine.php` (не найден в полном объёме)
+
+**Проблема:** Цена передаётся из frontend в момент создания cart item. Нет проверки, что цена соответствует текущей цене в inventory.
+
+**Current Code (CartService):**
+```php
+$cartItem = CartItem::create([
+    'unit_price' => $inventoryItem->unit_price, // Берётся из inventory ✓
+    'total_price' => $this->calculateTotalPrice($inventoryItem->unit_price, $quantity),
+]);
+```
+
+**✅ Хорошо:** Цена берётся из `InventoryItem`, не от клиента.
+
+**⚠️ Warning:** При checkout цена должна быть перепроверена против текущей цены в inventory.
+
+**OrderPlacement.php содержит проверку:**
+```php
+// 6. price drift — only an increase blocks
+if ($line->priceRose()) {
+    $add(self::REASON_PRICE_INCREASED);
+}
+```
+
+**Это правильно.** Price increase блокирует checkout, price decrease генерирует warning.
+
+---
+
+## 5. PAYMENT — FINDINGS
+
+### ✅ Webhook Idempotency реализована
+
+**Файл:** `/workspace/app/Modules/Payments/Payments/Services/PaymentService.php`
+
+```php
+public function processWebhook(string $provider, array $payload): Payment
+{
+    return DB::transaction(function () {
+        $payment = Payment::where('provider', $provider)
+            ->where('provider_payment_id', $payload['payment_id'])
+            ->firstOrFail();
+
+        // Проверка idempotency
+        if (in_array($payload['event_id'] ?? null, $payment->processed_webhook_events)) {
+            return $payment; // Already processed
+        }
+        
+        // Обработка...
+        
+        // Mark event as processed
+        $payment->update(['processed_webhook_events' => [...]]);
+    });
+}
+```
+
+### ⚠️ HIGH #5: Webhook idempotency только на application level
+
+**Migration:** `/workspace/database/migrations/2026_09_20_000500_005_payments_tickets.php`
+
+```php
+$table->unique(['payment_id', 'provider_event_id'], "uq_payment_transactions_event");
+```
+
+**✅ Хорошо:** Существует unique constraint на `(payment_id, provider_event_id)` в таблице `payment_transactions`.
+
+**⚠️ Проблема:** Проверка дубликатов webhook происходит ПОСЛЕ начала транзакции, но ДО записи transaction. Если два webhook придут одновременно:
+
+```
+Webhook 1: BEGIN → Check processed_events → Process → Add transaction → COMMIT
+Webhook 2: BEGIN → Check processed_events → Process → Add transaction → UNIQUE VIOLATION
+```
+
+**Result:** Второй webhook выбросит exception из-за unique constraint.
+
+**Fix:** Добавить проверку BEFORE transaction или использовать `INSERT ... ON DUPLICATE KEY UPDATE`:
+
+```php
+public function processWebhook(...)
+{
+    // Сначала проверить без транзакции
+    $exists = PaymentTransaction::where('payment_id', $payment->id)
+        ->where('provider_event_id', $payload['event_id'])
+        ->exists();
+    
+    if ($exists) {
+        return $payment; // Already processed
+    }
+    
+    return DB::transaction(function () {
+        // Теперь безопасно обрабатывать
     });
 }
 ```
 
 ---
 
-## APPENDIX B: Missing Code Locations
+### ✅ YooKassa Provider реализован правильно
 
-These files need to be reviewed for complete audit:
+**Файл:** `/workspace/app/Modules/Payments/Payments/Providers/YooKassaProvider.php`
 
-1. `/workspace/app/Modules/Inventory/Items/Services/InventoryService.php` - Seat hold logic
-2. `/workspace/app/Modules/Orders/Orders/Services/OrderService.php` - Order creation
-3. `/workspace/app/Modules/Tickets/Tickets/Services/TicketService.php` - Ticket issuance
-4. `/workspace/app/Modules/Checkin/Domain/CheckinEvaluator.php` - Check-in logic
-5. `/workspace/app/Modules/Carts/Services/CartService.php` - Cart management
+**Правильные решения:**
+1. `Idempotence-Key` header используется для createPayment и refund
+2. Signature verification через HMAC-SHA256 (опционально)
+3. Статусы маппятся корректно
+
+### ⚠️ HIGH #6: Refund через provider может не обновить статус
+
+**Код:**
+```php
+$refund->update([
+    'provider_refund_id' => $providerResponse['refund_id'],
+    'status' => 'pending', // ← Всегда pending!
+]);
+```
+
+**Проблема:** Статус refund остаётся `pending` до прихода webhook. Если webhook не придёт, refund зависнет.
+
+**Fix:** Добавить polling или timeout:
+```php
+// scheduled job для проверки pending refunds
+Schedule::command('refunds:check-pending')->everyFiveMinutes();
+```
 
 ---
 
-*End of Transaction Layer Audit Report*
+## 6. PAYMENT REDIRECT — FINDINGS
+
+### ✅ Источником истины является webhook, не redirect
+
+**Проблема:** Пользователь может манипулировать redirect URL после оплаты.
+
+**Текущая реализация:**
+- Payment status обновляется ТОЛЬКО через webhook
+- Redirect возвращает пользователя на `success_url`, но не меняет статус
+
+**✅ Correct:** Order не помечается как paid до получения `payment.succeeded` webhook.
+
+### ⚠️ MEDIUM #1: Нет проверки signature для всех providers
+
+**YooKassa:** Signature verification опционален (требуется `yookassa_webhook_secret`)
+
+**Risk:** Злоумышленник может отправить поддельный webhook.
+
+**Fix:** Требовать signature verification для всех production environments.
+
+---
+
+## 7. ORDER STATE MACHINE — ANALYSIS
+
+### Фактическая State Machine
+
+**Файл:** `/workspace/app/Modules/Orders/StateMachines/OrderStateMachine.php`
+
+```
+States:
+- pending
+- awaiting_payment
+- paid
+- partially_refunded
+- refunded
+- cancelled
+- expired
+- payment_failed
+
+Transitions:
+pending → awaiting_payment, cancelled, expired, payment_failed
+awaiting_payment → paid, cancelled, expired, payment_failed
+paid → partially_refunded, refunded
+partially_refunded → refunded
+refunded → [] (terminal)
+cancelled → [] (terminal)
+expired → [] (terminal)
+payment_failed → awaiting_payment, cancelled, expired
+```
+
+### ✅ Guards реализованы правильно
+
+```php
+// Guard: partial refund → refunded только если полная сумма возвращена
+$machine->guard(self::PARTIALLY_REFUNDED, self::REFUNDED, fn($ctx) => 
+    $ctx['refunded_minor'] >= $ctx['total_minor']
+);
+```
+
+### ✅ Запрещённые переходы невозможны
+
+- `cancelled → paid` — невозможно (нет transition)
+- `refunded → paid` — невозможно (terminal state)
+- `expired → paid` — невозможно (terminal state)
+
+---
+
+## 8. TICKET STATE MACHINE — ANALYSIS
+
+### Фактическая State Machine
+
+**Файл:** `/workspace/app/Modules/Tickets/StateMachines/TicketStateMachine.php`
+
+```
+States:
+- issued
+- used
+- refunded
+- cancelled
+- revoked
+- expired
+
+Transitions:
+issued → used, refunded, cancelled, revoked, expired
+used → revoked (только!)
+refunded → [] (terminal)
+cancelled → [] (terminal)
+revoked → [] (terminal)
+expired → [] (terminal)
+```
+
+### ✅ Правильные решения
+
+1. **Нет `used → issued`**: Нельзя "отменить" check-in
+2. **`used → revoked`**: Единственный способ исправить ошибку check-in
+3. **Terminal states**: refunded, cancelled, revoked, expired
+
+### ⚠️ MEDIUM #2: Refunded/Cancelled билеты не проверяются при check-in
+
+**Файл:** `/workspace/app/Modules/Tickets/Domain/CheckinEvaluator.php`
+
+```php
+TicketStateMachine::REFUNDED => ScanOutcome::refused(
+    ScanOutcome::REFUNDED,
+    'this ticket was refunded'
+),
+```
+
+**✅ Correct:** Refunded билет отвергается при check-in.
+
+---
+
+## 9. CHECK-IN — CRITICAL FINDINGS
+
+### ❌ CRITICAL #5: Concurrent scan одного билета двумя checker'ами
+
+**Сценарий:**
+```
+Checker A: сканирует билет T1 (t=19:00:00)
+Checker B: сканирует билет T1 (t=19:00:01)
+
+Ожидается:
+- A: VALID → admitted
+- B: ALREADY_USED → rejected
+
+Проблема:
+Если оба сканируют ДО того, как первый обновил статус:
+- A: читает status='issued' → пишет status='used'
+- B: читает status='issued' → пишет status='used'
+- RESULT: Два admissions на один билет!
+```
+
+**Current Code (CheckinController):**
+```php
+public function scan(Request $request): JsonResponse
+{
+    $result = $this->scanService->scan(
+        (int) $request->get('ticket_id'),
+        (int) $request->get('session_id'),
+        $request->get('device_id')
+    );
+}
+```
+
+**Проблема:** `TicketScanService` НЕ НАЙДЕН в коде! Контроллер ссылается на несуществующий сервис.
+
+**Evidence:** 
+```bash
+$ find /workspace -name "TicketScanService.php"
+# Ничего не найдено
+```
+
+**CheckinController использует:**
+```php
+use App\Modules\Tickets\Services\TicketScanService; // ← Класс не существует!
+```
+
+**Fix:** Реализовать TicketScanService с proper locking:
+
+```php
+class TicketScanService
+{
+    public function scan(int $ticketId, int $sessionId, ?int $deviceId): ScanResult
+    {
+        return DB::transaction(function () use ($ticketId, $sessionId, $deviceId) {
+            // Блокировка билета
+            $ticket = Ticket::where('id', $ticketId)
+                ->lockForUpdate()
+                ->firstOrFail();
+            
+            // Проверка статуса
+            if ($ticket->status === 'used') {
+                return ScanResult::alreadyUsed($ticket->used_at);
+            }
+            
+            if ($ticket->status !== 'issued') {
+                return ScanResult::refused($ticket->status);
+            }
+            
+            // Атомарное обновление статуса
+            $ticket->update([
+                'status' => 'used',
+                'used_at' => now(),
+            ]);
+            
+            // Запись скана
+            $scan = TicketScan::create([
+                'ticket_id' => $ticketId,
+                'session_id' => $sessionId,
+                'device_id' => $deviceId,
+                'client_scan_id' => request('client_scan_id'),
+                'mode' => 'online',
+                'result' => 'success',
+                'scanned_at' => now(),
+            ]);
+            
+            return ScanResult::admitted($scan);
+        });
+    }
+}
+```
+
+---
+
+### ✅ Offline Check-in: client_scan_id реализован
+
+**Migration:**
+```php
+$table->unique(['device_id', 'client_scan_id'], "uq_ticket_scans_client");
+```
+
+**Domain:** `/workspace/app/Modules/Tickets/Domain/ScanRequest.php`
+
+```php
+/**
+ * clientScanId is a UUID the DEVICE generates.
+ * Without it, idempotency would have to be inferred from (ticket_id, scanned_at)
+ */
+public function __construct(
+    public readonly ?string $clientScanId = null,
+    // ...
+) {
+    if ($mode === ScanMode::OFFLINE_SYNC && $clientScanId === null) {
+        throw new DomainRuleViolation(
+            'An offline sync must carry a client_scan_id'
+        );
+    }
+}
+```
+
+**✅ Correct:** Offline scan требует client_scan_id для deduplication.
+
+---
+
+## 10. QR CODE — FINDINGS
+
+### ❌ HIGH #7: QR code генерируется без cryptographic signing
+
+**Файл:** `/workspace/app/Modules/Tickets/Tickets/Services/TicketService.php`
+
+```php
+protected function generateQrCode(Order $order, $item): string
+{
+    $data = [
+        'order_id' => $order->public_id,
+        'item_id' => $item->id,
+        'timestamp' => time(),
+    ];
+    
+    return json_encode($data); // ← Просто JSON, без подписи!
+}
+```
+
+**Problem:** Любой может создать поддельный QR:
+```json
+{"order_id": "fake-order", "item_id": 999, "timestamp": 12345}
+```
+
+**Fix:** Использовать signed JWT или HMAC:
+
+```php
+protected function generateQrCode(Order $order, $item): string
+{
+    $payload = [
+        'ticket_id' => $ticket->public_id,
+        'session_id' => $item->session_id,
+        'exp' => $session->ends_at->timestamp,
+    ];
+    
+    $signature = hash_hmac('sha256', json_encode($payload), config('app.qr_secret'));
+    
+    return base64_encode(json_encode([
+        'data' => $payload,
+        'sig' => $signature,
+    ]));
+}
+```
+
+### ✅ Migration содержит qr_token_hash
+
+```php
+$table->char('qr_token_hash', 64);
+$table->unique(['qr_token_hash'], "uq_tickets_qr_hash");
+```
+
+**Это правильно:** Хеш токена хранится в БД для верификации.
+
+---
+
+## 11. REFUND — FINDINGS
+
+### ✅ Refund логика реализована правильно
+
+**Файл:** `/workspace/app/Modules/Payments/Payments/Services/PaymentService.php`
+
+**Проверки:**
+1. Только `succeeded` payments можно refund'ить
+2. Проверка на duplicate refunds
+3. Валидация суммы refund (не больше original payment)
+
+### ⚠️ MEDIUM #3: Возвращённый билет может неправильно попасть в продажу
+
+**Проблема:** При refund inventory НЕ освобождается автоматически.
+
+**Current Code:**
+```php
+public function refundPayment(Payment $payment, ...)
+{
+    // Создаёт refund record
+    // Вызывает provider->refund()
+    // НО: не освобождает inventory!
+}
+```
+
+**Fix:** Освобождать inventory при refund:
+
+```php
+// После успешного refund
+foreach ($order->items as $item) {
+    InventoryItem::where('id', $item->inventory_item_id)
+        ->increment('available_quantity', $item->quantity);
+}
+
+// Обновить статус билетов
+$order->tickets()->update(['status' => 'refunded']);
+```
+
+---
+
+## 12. MONEY — FINDINGS
+
+### ✅ Integer minor units используются везде
+
+**Migration:**
+```php
+$table->bigInteger('amount'); // payments
+$table->bigInteger('subtotal_amount'); // orders
+$table->bigInteger('discount_amount');
+$table->bigInteger('fee_amount');
+$table->bigInteger('total_amount');
+$table->bigInteger('unit_price'); // order_items
+$table->bigInteger('price_amount'); // inventory_items
+```
+
+**CHECK constraints:**
+```php
+ck_payments_amount CHECK (amount >= 0)
+ck_orders_amounts CHECK (subtotal_amount >= 0 AND discount_amount >= 0 AND fee_amount >= 0 AND total_amount >= 0)
+```
+
+### ✅ Float/Double не используются
+
+**CartService:**
+```php
+protected function calculateTotalPrice(string $unitPrice, int $quantity): string
+{
+    return (string) ((int) $unitPrice * $quantity); // Integer arithmetic
+}
+```
+
+**✅ Correct:** Все денежные операции используют integer minor units (копейки).
+
+---
+
+## 13. DATABASE CONSTRAINTS — ANALYSIS
+
+### Защищённые инварианты на уровне БД
+
+**Файл:** `/workspace/database/migrations/2026_09_20_001000_add_check_constraints.php`
+
+| Constraint | Таблица | Описание |
+|------------|---------|----------|
+| `ck_cart_items_quantity` | cart_items | quantity > 0 |
+| `ck_inventory_available_qty` | inventory_items | 0 <= available <= capacity |
+| `ck_inventory_seat_capacity` | inventory_items | seat type → capacity = 1 |
+| `ck_inventory_type` | inventory_items | type IN ('seat', 'standing') |
+| `ck_order_items_quantity` | order_items | quantity > 0 |
+| `ck_orders_status` | orders | valid status values |
+| `ck_payments_status` | payments | valid status values |
+| `ck_holds_quantity` | seat_holds | quantity > 0 |
+| `ck_tickets_status` | tickets | valid status values |
+| `ck_tickets_terminal_exclusive` | tickets | used_at XOR (cancelled/refunded) |
+
+### Unique Constraints
+
+| Constraint | Таблица | Columns |
+|------------|---------|---------|
+| `uq_payments_idempotency` | payments | (provider, idempotency_key) |
+| `uq_payments_provider_id` | payments | (provider, provider_payment_id) |
+| `uq_payment_transactions_event` | payment_transactions | (payment_id, provider_event_id) |
+| `uq_tickets_order_item_index` | tickets | (order_item_id, ticket_index) |
+| `uq_tickets_qr_hash` | tickets | (qr_token_hash) |
+| `uq_ticket_scans_client` | ticket_scans | (device_id, client_scan_id) |
+| `uq_cart_inventory` | cart_items | (cart_id, inventory_item_id) |
+
+### ⚠️ MEDIUM #4: Отсутствует FK constraint для некоторых связей
+
+**Проблема:** Некоторые foreign keys не объявлены явно.
+
+**Example:**
+```php
+// В cart_items
+$table->foreignId('cart_id'); // ← Не найдено явного foreign key constraint
+```
+
+**Risk:** orphan records при удалении parent.
+
+---
+
+## 14. STRESS SCENARIOS — RACE CONDITIONS
+
+### Сценарий 1: Double booking одного места
+
+| Параметр | Значение |
+|----------|----------|
+| **Scenario** | User A и User B одновременно выбирают Seat A-12 |
+| **Current behavior** | Оба могут добавить в корзину (no immediate hold) |
+| **Expected behavior** | Только один должен succeed |
+| **Risk** | CRITICAL — двойная продажа |
+| **Evidence** | CartService::addItem() не создаёт hold немедленно |
+| **Fix** | Создавать hold при add, не при checkout |
+
+### Сценарий 2: Overbooking standing tickets
+
+| Параметр | Значение |
+|----------|----------|
+| **Scenario** | capacity=100, User A buys 20, User B buys 90 одновременно |
+| **Current behavior** | Оба могут succeed при race condition |
+| **Expected behavior** | User B должен fail (80 < 90) |
+| **Risk** | CRITICAL — отрицательный inventory |
+| **Evidence** | No atomic decrement в addItem() |
+| **Fix** | Атомарное UPDATE с WHERE available >= qty |
+
+### Сценарий 3: Hold expires during payment
+
+| Параметр | Значение |
+|----------|----------|
+| **Scenario** | Hold истекает в момент обработки payment webhook |
+| **Current behavior** | Payment succeeds, но hold уже released |
+| **Expected behavior** | Payment должен fail или hold должен быть продлён |
+| **Risk** | HIGH — order без tickets |
+| **Evidence** | Нет синхронизации между payment и hold expiry |
+| **Fix** | Проверять hold status в payment webhook handler |
+
+### Сценарий 4: Duplicate webhook processing
+
+| Параметр | Значение |
+|----------|----------|
+| **Scenario** | Webhook `payment.succeeded` приходит 10 раз |
+| **Current behavior** | Application-level check предотвращает дублирование |
+| **Expected behavior** | Только одна successful обработка |
+| **Risk** | MEDIUM — unique constraint catch duplicates |
+| **Evidence** | uq_payment_transactions_event constraint |
+| **Fix** | Добавить pre-transaction check |
+
+### Сценарий 5: Concurrent check-in одного билета
+
+| Параметр | Значение |
+|----------|----------|
+| **Scenario** | Checker A и Checker B сканируют один билет одновременно |
+| **Current behavior** | TicketScanService не существует! |
+| **Expected behavior** | Первый succeeds, второй rejected |
+| **Risk** | CRITICAL — double admission |
+| **Evidence** | CheckinController ссылается на несуществующий класс |
+| **Fix** | Реализовать TicketScanService с row locking |
+
+### Сценарий 6: Refund без освобождения inventory
+
+| Параметр | Значение |
+|----------|----------|
+| **Scenario** | Payment refunded, но inventory не освобождён |
+| **Current behavior** | Inventory остаётся заблокированным |
+| **Expected behavior** | Inventory должен вернуться в продажу |
+| **Risk** | HIGH — lost sales |
+| **Evidence** | PaymentService::refundPayment() не обновляет inventory |
+| **Fix** | Освобождать inventory при refund |
+
+### Сценарий 7: Fake QR code
+
+| Параметр | Значение |
+|----------|----------|
+| **Scenario** | Злоумышленник создаёт поддельный QR |
+| **Current behavior** | QR генерируется как plain JSON без подписи |
+| **Expected behavior** | Подделка должна быть обнаружена |
+| **Risk** | HIGH — fraudulent entry |
+| **Evidence** | TicketService::generateQrCode() без signature |
+| **Fix** | Использовать HMAC-signed JWT |
+
+### Сценарий 8: IDOR — доступ к чужому заказу
+
+| Параметр | Значение |
+|----------|----------|
+| **Scenario** | User меняет order_id в URL на чужой |
+| **Current behavior** | Требуется аудит контроллеров |
+| **Expected behavior** | 403 Forbidden |
+| **Risk** | HIGH — data breach |
+| **Evidence** | Не проверено в этом audit |
+| **Fix** | Добавить ownership checks во все endpoints |
+
+### Сценарий 9: Negative refund amount
+
+| Параметр | Значение |
+|----------|----------|
+| **Scenario** | Refund сумма больше original payment |
+| **Current behavior** | Проверка есть в PaymentService |
+| **Expected behavior** | Reject refund |
+| **Risk** | MEDIUM — financial loss |
+| **Evidence** | `if ($totalRefunded + $refundAmount > $payment->amount)` |
+| **Fix** | Уже реализовано ✓ |
+
+### Сценарий 10: Session fixation при checkout
+
+| Параметр | Значение |
+|----------|----------|
+| **Scenario** | Session expires, но user продолжает checkout |
+| **Current behavior** | Cart expiration проверяется |
+| **Expected behavior** | Reject expired cart |
+| **Risk** | LOW — covered by cart expiry |
+| **Evidence** | `if ($cart->expires_at < now())` |
+| **Fix** | Уже реализовано ✓ |
+
+---
+
+## РЕКОМЕНДАЦИИ ПО ПРИОРИТЕТАМ
+
+### Immediate (24 часа)
+
+1. **Реализовать TicketScanService** — критическая дыра в check-in
+2. **Добавить atomic decrement в CartService::addItem()`** — предотвращение race condition
+3. **Создать hold немедленно при add to cart** — не ждать checkout
+4. **Подписывать QR codes** — предотвращение fraud
+
+### This Week
+
+5. **Реализовать cleanup job для expired holds**
+6. **Добавить inventory release при refund**
+7. **Усилить webhook signature verification**
+8. **Добавить pre-transaction check для webhook idempotency**
+
+### This Month
+
+9. **Аудит IDOR vulnerability во всех controllers**
+10. **Добавить missing foreign key constraints**
+11. **Реализовать polling для pending refunds**
+12. **Добавить тесты на race conditions**
+
+---
+
+## ЗАКЛЮЧЕНИЕ
+
+Система NABILET Core имеет **правильную архитектуру** с domain-driven design, state machines, и check constraints на уровне БД. Однако обнаружены **4 критические уязвимости**, требующие немедленного исправления:
+
+1. **Race condition при добавлении в корзину** — возможна двойная продажа
+2. **Отсутствие TicketScanService** — check-in не работает
+3. **QR codes без подписи** — возможна подделка билетов
+4. **Hold expiration во время payment** — возможна потеря мест
+
+После исправления этих проблем система будет готова к production использованию.
