@@ -2,6 +2,9 @@
 
 declare(strict_types=1);
 
+use Illuminate\Support\Facades\Route;
+use App\Modules\Seo\Http\Controllers\SitemapController;
+
 /*
  * Web routes exist for the installer (/install) and the admin SPA shell.
  *
@@ -11,3 +14,7 @@ declare(strict_types=1);
  *
  * The health check is provided by Laravel at GET /up, not here.
  */
+
+// Sitemap route for SEO
+Route::get('/sitemap.xml', [SitemapController::class, 'index'])->name('sitemap.index');
+Route::get('/sitemap-{section}.xml', [SitemapController::class, 'section'])->name('sitemap.section');
