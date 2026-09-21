@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Payments\Payments\Repositories;
+namespace App\Modules\Payments\Repositories;
 
-use App\Modules\Payments\Payments\Models\Payment;
-use App\Modules\Payments\Payments\Models\PaymentTransaction;
+use App\Modules\Payments\Models\Payment;
+use App\Modules\Payments\Models\PaymentTransaction;
 use Illuminate\Database\Eloquent\Collection;
 
 class PaymentRepository

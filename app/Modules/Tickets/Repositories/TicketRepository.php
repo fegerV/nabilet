@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Tickets\Tickets\Repositories;
+namespace App\Modules\Tickets\Repositories;
 
-use App\Modules\Tickets\Tickets\Models\Ticket;
-use App\Modules\Tickets\Tickets\Models\TicketScan;
+use App\Modules\Tickets\Models\Ticket;
+use App\Modules\Tickets\Models\TicketScan;
 use Illuminate\Database\Eloquent\Collection;
 
 class TicketRepository
