@@ -1,41 +1,48 @@
-```
+```php
+# Compiled and build artifacts
+*.o
+*.obj
+*.out
+*.class
+*.pyc
+__pycache__/
+*.so
+*.dll
+*.exe
+
 # Dependencies
 vendor/
 node_modules/
-
-# Build artifacts
-build/
+composer.lock
+*.lock
+.cache/
+.gradle/
+target/
 dist/
-storage/
-
-# Logs
-*.log
+build/
+coverage/
+htmlcov/
+.coverage
+.mypy_cache/
+.pytest_cache/
 
 # Environment
 .env
 .env.local
 .env.*
+.env.local.*
 
-# Cache
-.cache/
-*.cache
-**/__pycache__/
-**/*.pyc
-**/*.pyo
-**/.DS_Store
-
-# IDE
+# Editors
 .vscode/
 .idea/
 *.swp
 *.swo
+*.tmp
 
-# Tests
-.coverage
-coverage/
-htmlcov/
-
-# System
-Thumbs.db
+# OS
 .DS_Store
+Thumbs.db
+
+# Logs
+*.log
 ```
