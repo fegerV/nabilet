@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Payments\Payments\Providers;
+namespace App\Modules\Payments\Providers;
 
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;

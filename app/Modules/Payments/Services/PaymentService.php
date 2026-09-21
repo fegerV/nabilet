@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Payments\Payments\Services;
+namespace App\Modules\Payments\Services;
 
-use App\Modules\Payments\Payments\Models\Payment;
-use App\Modules\Payments\Payments\Repositories\PaymentRepository;
-use App\Modules\Payments\Payments\Domain\PaymentStateMachine;
-use App\Modules\Orders\Orders\Models\Order;
+use App\Modules\Payments\Models\Payment;
+use App\Modules\Payments\Repositories\PaymentRepository;
+use App\Modules\Payments\Domain\PaymentStateMachine;
+use App\Modules\Orders\Models\Order;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 

@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Tickets\Tickets\Services;
+namespace App\Modules\Tickets\Services;
 
-use App\Modules\Tickets\Tickets\Models\Ticket;
-use App\Modules\Tickets\Tickets\Repositories\TicketRepository;
-use App\Modules\Tickets\Tickets\Domain\TicketIssuance;
-use App\Modules\Tickets\Tickets\Domain\CheckinEvaluator;
-use App\Modules\Orders\Orders\Models\Order;
+use App\Modules\Tickets\Models\Ticket;
+use App\Modules\Tickets\Repositories\TicketRepository;
+use App\Modules\Tickets\Domain\TicketIssuance;
+use App\Modules\Tickets\Domain\CheckinEvaluator;
+use App\Modules\Orders\Models\Order;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 

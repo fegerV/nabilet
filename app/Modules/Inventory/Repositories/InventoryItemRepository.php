@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Inventory\Items\Repositories;
+namespace App\Modules\Inventory\Repositories;
 
-use App\Modules\Inventory\Items\Models\InventoryItem;
+use App\Modules\Inventory\Models\InventoryItem;
 use Illuminate\Database\Eloquent\Collection;
 
 class InventoryItemRepository
