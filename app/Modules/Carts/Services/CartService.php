@@ -40,7 +40,7 @@ class CartService
     }
 
     /**
-     * Add an item to the cart.
+     * Add an item to the cart with atomic inventory reservation.
      * 
      * @param string $sessionId
      * @param int $inventoryItemId
@@ -59,14 +59,15 @@ class CartService
                 throw new \RuntimeException('Cart has expired');
             }
 
-            // Get inventory item with lock
-            $inventoryItem = InventoryItem::query()
+            // Atomically reserve inventory with lock and affected rows check
+            // This prevents race conditions where multiple users try to book the same seat
+            $affected = DB::table('inventory_items')
                 ->where('id', $inventoryItemId)
+                ->where('available_quantity', '>=', $quantity)
                 ->lockForUpdate()
-                ->firstOrFail();
+                ->decrement('available_quantity', $quantity);
 
-            // Check availability
-            if ($inventoryItem->available_quantity < $quantity) {
+            if ($affected === 0) {
                 throw new \RuntimeException('Insufficient inventory available');
             }
 
@@ -79,21 +80,19 @@ class CartService
             if ($existingItem) {
                 // Update quantity
                 $newQuantity = $existingItem->quantity + $quantity;
-                
-                // Re-check availability with new quantity
-                if ($inventoryItem->available_quantity < $newQuantity) {
-                    throw new \RuntimeException('Insufficient inventory available for requested quantity');
-                }
 
                 $existingItem->update([
                     'quantity' => $newQuantity,
-                    'total_price' => $this->calculateTotalPrice($inventoryItem->unit_price, $newQuantity),
+                    'total_price' => $this->calculateTotalPrice($inventoryItem->unit_price ?? '0', $newQuantity),
                 ]);
 
                 $this->recalculateCartTotal($cart);
 
                 return $existingItem->fresh();
             }
+
+            // Get inventory item for price info (after reservation)
+            $inventoryItem = InventoryItem::findOrFail($inventoryItemId);
 
             // Create new cart item
             $cartItem = CartItem::create([
