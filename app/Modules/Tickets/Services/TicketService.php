@@ -125,13 +125,87 @@ class TicketService
 
     protected function generateQrCode(Order $order, $item): string
     {
-        // Generate QR code data (could be a signed JWT or URL)
-        $data = [
+        // Generate QR code data with HMAC-SHA256 signature for security
+        // This prevents ticket forgery - the signature must match to be valid
+        $ticketData = [
             'order_id' => $order->public_id,
             'item_id' => $item->id,
             'timestamp' => time(),
         ];
 
-        return json_encode($data);
+        // Get the secret key for signing (use APP_KEY or a dedicated QR_SECRET)
+        $secret = config('app.key') ?? config('tickets.qr_secret');
+        
+        if (empty($secret)) {
+            throw new \RuntimeException('QR code signing key not configured. Set APP_KEY or tickets.qr_secret');
+        }
+
+        // Create the payload JSON
+        $payload = json_encode($ticketData, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        
+        if ($payload === false) {
+            throw new \RuntimeException('Failed to encode ticket data for QR code');
+        }
+
+        // Generate HMAC-SHA256 signature
+        $signature = hash_hmac('sha256', $payload, $secret);
+
+        // Return signed payload: base64(payload.signature)
+        // This format is compact and can be easily decoded by the checker app
+        $signedData = base64_encode($payload . '.' . $signature);
+
+        return $signedData;
+    }
+
+    /**
+     * Verify QR code signature to prevent forgery.
+     * 
+     * @param string $qrCodeData The QR code data to verify
+     * @return array{valid: bool, data?: array, reason?: string}
+     */
+    public function verifyQrCodeSignature(string $qrCodeData): array
+    {
+        try {
+            // Decode the base64 data
+            $decoded = base64_decode($qrCodeData, true);
+            
+            if ($decoded === false) {
+                return ['valid' => false, 'reason' => 'INVALID_BASE64'];
+            }
+
+            // Split payload and signature
+            $parts = explode('.', $decoded);
+            
+            if (count($parts) !== 2) {
+                return ['valid' => false, 'reason' => 'INVALID_FORMAT'];
+            }
+
+            [$payload, $providedSignature] = $parts;
+
+            // Get the secret key
+            $secret = config('app.key') ?? config('tickets.qr_secret');
+            
+            if (empty($secret)) {
+                return ['valid' => false, 'reason' => 'SIGNING_KEY_NOT_CONFIGURED'];
+            }
+
+            // Verify the signature
+            $expectedSignature = hash_hmac('sha256', $payload, $secret);
+            
+            if (!hash_equals($expectedSignature, $providedSignature)) {
+                return ['valid' => false, 'reason' => 'SIGNATURE_MISMATCH'];
+            }
+
+            // Decode the payload
+            $data = json_decode($payload, true);
+            
+            if ($data === null) {
+                return ['valid' => false, 'reason' => 'INVALID_PAYLOAD_JSON'];
+            }
+
+            return ['valid' => true, 'data' => $data];
+        } catch (\Exception $e) {
+            return ['valid' => false, 'reason' => 'VERIFICATION_ERROR'];
+        }
     }
 }
