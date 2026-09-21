@@ -211,11 +211,11 @@ if ($nameMismatches !== []) {
 //
 // All three roots are checked, not just `App\Modules\`. The tree is currently
 // split across them — 86 files say `Nabilet\Modules\`, 78 say `App\Modules\` and
-// 40 say `NabileT\Modules\` — and a check that watches only one root is blind to
+// 40 say `Nabilet\Modules\` — and a check that watches only one root is blind to
 // two thirds of the damage. An earlier draft of this tool did exactly that and
 // reported 25 of 34 modules as "referenced from nowhere", which was false: the
 // registered modules are referenced as `Nabilet\Modules\X\`, not `App\Modules\X\`.
-const MODULE_NAMESPACE_ROOTS = ['Nabilet\\Modules\\', 'App\\Modules\\', 'NabileT\\Modules\\'];
+const MODULE_NAMESPACE_ROOTS = ['Nabilet\\Modules\\', 'App\\Modules\\', 'Nabilet\\Modules\\'];
 
 $files = phpFilesUnder([
     $root . '/app',
@@ -368,7 +368,7 @@ $configRoots = [];
 
 if (is_file($configFile)) {
     preg_match_all(
-        '/(?:App|Nabilet|NabileT)\\\\Modules\\\\[\w\\\\]+::class/',
+        '/(?:App|Nabilet|)\\\\Modules\\\\[\w\\\\]+::class/',
         (string) file_get_contents($configFile),
         $classStrings
     );
