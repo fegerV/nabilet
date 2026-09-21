@@ -2,13 +2,15 @@
 
 declare(strict_types=1);
 
-namespace NabileT\Modules\Orders\Models;
+namespace App\Modules\Orders\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use NabileT\Modules\Inventory\Models\InventoryItem;
+use App\Modules\Inventory\Models\InventoryItem;
 
 /**
+ * SeatHold Model - Database Persistence Layer
+ * 
  * @property int $id
  * @property string $public_id
  * @property int $inventory_item_id
