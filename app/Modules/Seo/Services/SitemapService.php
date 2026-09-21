@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Seo\Services;
 
 use App\Modules\Events\Models\Event;
-use App\Modules\Events\StateMachines\EventStateMachine;
+use App\Modules\Events\Domain\EventStatus;
 use App\Modules\Venues\Models\Venue;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
@@ -26,6 +26,12 @@ class SitemapService
     /** Cache TTL in seconds (1 hour) */
     private const CACHE_TTL = 3600;
 
+    /** Default priority for events */
+    private const DEFAULT_EVENT_PRIORITY = 0.8;
+
+    /** High priority for recently published events */
+    private const HIGH_EVENT_PRIORITY = 0.9;
+
     /**
      * @param array<string, mixed> $filters
      */
@@ -34,7 +40,7 @@ class SitemapService
         $perPage = self::MAX_URLS_PER_SITEMAP;
 
         return Event::query()
-            ->whereIn('status', EventStateMachine::publiclyVisible())
+            ->whereIn('status', EventStatus::publiclyVisible())
             ->whereNotNull('published_at')
             ->where('published_at', '<=', now())
             ->orderBy('published_at', 'desc')
@@ -97,7 +103,7 @@ class SitemapService
     public function generateSitemapIndex(): string
     {
         $eventCount = Event::query()
-            ->whereIn('status', EventStateMachine::publiclyVisible())
+            ->whereIn('status', EventStatus::publiclyVisible())
             ->whereNotNull('published_at')
             ->count();
 
@@ -159,7 +165,7 @@ class SitemapService
 
             $loc = $xml->createElement(
                 'loc',
-                route('events.show', ['slug' => $event->slug, 'publicId' => $event->public_id])
+                $this->getCanonicalUrl($event)
             );
 
             $lastmod = $xml->createElement(
@@ -169,8 +175,10 @@ class SitemapService
 
             $changefreq = $xml->createElement('changefreq', 'weekly');
 
-            // Priority based on recency and status
-            $priorityValue = $event->status === EventStateMachine::PUBLISHED ? 0.9 : 0.7;
+            // Priority based on status
+            $priorityValue = $event->status === EventStatus::PUBLISHED 
+                ? self::HIGH_EVENT_PRIORITY 
+                : self::DEFAULT_EVENT_PRIORITY;
             $priority = $xml->createElement('priority', (string) $priorityValue);
 
             $url->appendChild($loc);
@@ -183,6 +191,22 @@ class SitemapService
         $xml->appendChild($urlset);
 
         return $xml->saveXML();
+    }
+
+    /**
+     * Get canonical URL for an event.
+     */
+    private function getCanonicalUrl(Event $event): string
+    {
+        // Use explicit canonical_url if set
+        if (!empty($event->canonical_url)) {
+            return $event->canonical_url;
+        }
+
+        return route('events.show', [
+            'slug' => $event->slug,
+            'publicId' => $event->public_id,
+        ]);
     }
 
     /**
