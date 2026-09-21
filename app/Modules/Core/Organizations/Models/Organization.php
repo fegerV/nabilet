@@ -132,7 +132,7 @@ class Organization extends Model
      */
     public function checkinDevices(): HasMany
     {
-        return $this->hasMany(\Nabilet\Modules\Checkin\Models\CheckinDevice::class, 'organization_id');
+        return $this->hasMany(\Nabilet\Modules\Tickets\Models\CheckinDevice::class, 'organization_id');
     }
 
     /**
