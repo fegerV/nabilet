@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use App\Modules\Core\Users\Models\User;
 
 /**
- * Organization Model
+ * Organization Model - Canonical Implementation
  * 
  * Represents a tenant/organization in the multi-tenant system.
  * 
@@ -76,7 +76,7 @@ class Organization extends Model
      */
     public function venues(): HasMany
     {
-        return $this->hasMany(\Nabilet\Modules\Venues\Models\Venue::class, 'organization_id');
+        return $this->hasMany(\App\Modules\Venues\Models\Venue::class, 'organization_id');
     }
 
     /**
@@ -84,7 +84,7 @@ class Organization extends Model
      */
     public function events(): HasMany
     {
-        return $this->hasMany(\Nabilet\Modules\Events\Models\Event::class, 'organization_id');
+        return $this->hasMany(\App\Modules\Events\Models\Event::class, 'organization_id');
     }
 
     /**
@@ -92,15 +92,39 @@ class Organization extends Model
      */
     public function orders(): HasMany
     {
-        return $this->hasMany(\Nabilet\Modules\Orders\Models\Order::class, 'organization_id');
+        return $this->hasMany(\App\Modules\Orders\Models\Order::class, 'organization_id');
     }
 
     /**
-     * Get the API keys belonging to this organization.
+     * Get the pages belonging to this organization.
      */
-    public function apiKeys(): HasMany
+    public function pages(): HasMany
     {
-        return $this->hasMany(\Nabilet\Modules\ApiKeys\Models\ApiKey::class, 'organization_id');
+        return $this->hasMany(\NabileT\Modules\Content\Models\Page::class, 'organization_id');
+    }
+
+    /**
+     * Get the media assets belonging to this organization.
+     */
+    public function mediaAssets(): HasMany
+    {
+        return $this->hasMany(\NabileT\Modules\Content\Models\MediaAsset::class, 'organization_id');
+    }
+
+    /**
+     * Get the promo codes belonging to this organization.
+     */
+    public function promoCodes(): HasMany
+    {
+        return $this->hasMany(\NabileT\Modules\Orders\Models\PromoCode::class, 'organization_id');
+    }
+
+    /**
+     * Get the ticket templates belonging to this organization.
+     */
+    public function ticketTemplates(): HasMany
+    {
+        return $this->hasMany(\NabileT\Modules\Tickets\Models\TicketTemplate::class, 'organization_id');
     }
 
     /**
@@ -108,6 +132,54 @@ class Organization extends Model
      */
     public function checkinDevices(): HasMany
     {
-        return $this->hasMany(\Nabilet\Modules\Checkin\Models\CheckinDevice::class, 'organization_id');
+        return $this->hasMany(\NabileT\Modules\Checkin\Models\CheckinDevice::class, 'organization_id');
+    }
+
+    /**
+     * Get the offline bundles belonging to this organization.
+     */
+    public function offlineBundles(): HasMany
+    {
+        return $this->hasMany(\NabileT\Modules\Tickets\Models\OfflineBundle::class, 'organization_id');
+    }
+
+    /**
+     * Get the API keys belonging to this organization.
+     */
+    public function apiKeys(): HasMany
+    {
+        return $this->hasMany(\NabileT\Modules\System\Models\ApiKey::class, 'organization_id');
+    }
+
+    /**
+     * Get the audit logs belonging to this organization.
+     */
+    public function auditLogs(): HasMany
+    {
+        return $this->hasMany(\NabileT\Modules\System\Models\AuditLog::class, 'organization_id');
+    }
+
+    /**
+     * Get the embed domains belonging to this organization.
+     */
+    public function embedDomains(): HasMany
+    {
+        return $this->hasMany(\NabileT\Modules\Analytics\Models\EmbedDomain::class, 'organization_id');
+    }
+
+    /**
+     * Get the webhook endpoints belonging to this organization.
+     */
+    public function webhookEndpoints(): HasMany
+    {
+        return $this->hasMany(\NabileT\Modules\System\Models\WebhookEndpoint::class, 'organization_id');
+    }
+
+    /**
+     * Get the AB experiments belonging to this organization.
+     */
+    public function abExperiments(): HasMany
+    {
+        return $this->hasMany(\NabileT\Modules\Analytics\Models\AbExperiment::class, 'organization_id');
     }
 }
