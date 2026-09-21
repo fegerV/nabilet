@@ -57,3 +57,23 @@ if (file_exists(__DIR__ . '/../app/Modules/Payments/routes/api.php')) {
 if (file_exists(__DIR__ . '/../app/Modules/Tickets/routes/api.php')) {
     require __DIR__ . '/../app/Modules/Tickets/routes/api.php';
 }
+
+// Webhooks Module
+if (file_exists(__DIR__ . '/../app/Modules/Webhooks/routes/api.php')) {
+    require __DIR__ . '/../app/Modules/Webhooks/routes/api.php';
+}
+
+// Core Users Module
+if (file_exists(__DIR__ . '/../app/Modules/Core/Users/routes/api.php')) {
+    require __DIR__ . '/../app/Modules/Core/Users/routes/api.php';
+}
+
+// Core Organizations Module
+if (file_exists(__DIR__ . '/../app/Modules/Core/Organizations/routes/api.php')) {
+    require __DIR__ . '/../app/Modules/Core/Organizations/routes/api.php';
+}
+
+// Venues Halls Module
+if (file_exists(__DIR__ . '/../app/Modules/Venues/Halls/routes/api.php')) {
+    require __DIR__ . '/../app/Modules/Venues/Halls/routes/api.php';
+}

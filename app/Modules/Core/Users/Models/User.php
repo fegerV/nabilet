@@ -11,17 +11,17 @@ use App\Modules\Core\Organizations\Models\Organization;
 use App\Modules\Core\Users\Models\Role;
 use App\Modules\Core\Orders\Models\Order;
 use App\Modules\Core\Tickets\Models\Ticket;
-use NabileT\Modules\Carts\Models\Cart;
-use NabileT\Modules\Notifications\Models\Consent;
-use NabileT\Modules\Notifications\Models\Notification;
-use NabileT\Modules\Notifications\Models\PrivacyRequest;
-use NabileT\Modules\System\Models\UserRole;
-use NabileT\Modules\System\Models\UserSession;
-use NabileT\Modules\System\Models\LoginLog;
-use NabileT\Modules\Analytics\Models\MediaAsset;
-use NabileT\Modules\Analytics\Models\HeatmapEvent;
-use NabileT\Modules\Analytics\Models\AnalyticsEvent;
-use NabileT\Modules\Analytics\Models\AbAssignment;
+use Nabilet\Modules\Carts\Models\Cart;
+use Nabilet\Modules\Notifications\Models\Consent;
+use Nabilet\Modules\Notifications\Models\Notification;
+use Nabilet\Modules\Notifications\Models\PrivacyRequest;
+use Nabilet\Modules\System\Models\UserRole;
+use Nabilet\Modules\System\Models\UserSession;
+use Nabilet\Modules\System\Models\LoginLog;
+use Nabilet\Modules\Analytics\Models\MediaAsset;
+use Nabilet\Modules\Analytics\Models\HeatmapEvent;
+use Nabilet\Modules\Analytics\Models\AnalyticsEvent;
+use Nabilet\Modules\Analytics\Models\AbAssignment;
 
 /**
  * User Model - Canonical Implementation

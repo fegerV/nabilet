@@ -16,12 +16,12 @@ declare(strict_types=1);
  *     * 78 declare `namespace App\Modules\…`, and `composer.json` has no `App\`
  *       PSR-4 prefix at all — only `Nabilet\Core\`, `Nabilet\Modules\`,
  *       `Nabilet\Plugins\` and the two `Database\` roots;
- *     * 40 declare `namespace NabileT\Modules\…` — a typo. PSR-4 prefix matching
- *       is case-sensitive, so `NabileT\` does not match `Nabilet\`.
+ *     * 40 declare `namespace Nabilet\Modules\…` — a typo. PSR-4 prefix matching
+ *       is case-sensitive, so `Nabilet\` does not match `Nabilet\`.
  *
  *   The damage is worse than "these files do not load". Some modules are split
  *   across all three roots, so their own classes cannot see each other:
- *   `Orders` is 6 `Nabilet\` + 7 `App\` + 5 `NabileT\`, `Tickets` 10/5/5,
+ *   `Orders` is 6 `Nabilet\` + 7 `App\` + 5 `Nabilet\`, `Tickets` 10/5/5,
  *   `Payments` 7/4/3. Within one module a `Model` cannot reference its `Domain`.
  *
  *   Every gate this project had passed anyway: `lint.php` checks syntax only,
@@ -63,7 +63,7 @@ const UNLOADABLE_ALLOWED = [
         . 'Either add the prefix (giving one tree two names) or rewrite the files to '
         . '`Nabilet\\Modules\\`. The second is right: the domain, the tests and the module '
         . 'registry all use `Nabilet\\Modules\\`.',
-    'NabileT\\Modules\\' => '40 files declare this root. It is a typo for `Nabilet\\Modules\\`, '
+    'Nabilet\\Modules\\' => '40 files declare this root. It is a typo for `Nabilet\\Modules\\`, '
         . 'and PSR-4 prefix matching is case-sensitive, so it can never resolve. Fix is a '
         . 'rename, not a decision.',
     'Tests\\Feature\\' => '3 files declare `Tests\\Feature\\Api`. composer.json maps '
