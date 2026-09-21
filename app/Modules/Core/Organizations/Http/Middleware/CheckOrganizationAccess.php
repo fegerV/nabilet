@@ -8,9 +8,14 @@ use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 use App\Modules\Core\Organizations\Models\Organization;
+use App\Modules\Core\Organizations\Repositories\OrganizationRepository;
 
 class CheckOrganizationAccess
 {
+    public function __construct(
+        protected OrganizationRepository $repository
+    ) {}
+
     /**
      * Handle an incoming request.
      *
@@ -24,7 +29,7 @@ class CheckOrganizationAccess
             return $next($request);
         }
 
-        $organization = Organization::where('public_id', $publicId)->first();
+        $organization = $this->repository->findByPublicId($publicId);
 
         if (!$organization) {
             abort(404, 'Organization not found');
