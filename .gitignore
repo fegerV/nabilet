@@ -1,23 +1,44 @@
-# Examples 1:
+```
+# Compiled and build artifacts
+*.pyc
+__pycache__/
+*.o
+*.obj
+*.class
+*.exe
+*.dll
+*.so
+*.a
+*.out
 
-# Project with artifacts
-dist/
-build/
+# Dependencies
+vendor/
+node_modules/
 .env
 .env.local
-.vscode/
+.env.*
+
+# Logs and temp files
 *.log
 *.tmp
 *.swp
+*.swo
 
-# Dependencies
-node_modules/
-.venv/
-venv/
+# Editors
+.vscode/
+.idea/
 
-# Compiled files
-*.pyc
-__pycache__/
+# System files
+.DS_Store
+Thumbs.db
 
-# Original rules preserved
-*.log
+# Coverage
+coverage/
+htmlcov/
+.coverage
+
+# Build directories
+dist/
+build/
+target/
+```

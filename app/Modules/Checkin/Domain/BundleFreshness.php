@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Nabilet\Modules\Checkin\Domain;
+namespace App\Modules\Checkin\Domain;
 
 /**
  * Whether an offline decision was made under an authority that was still valid.

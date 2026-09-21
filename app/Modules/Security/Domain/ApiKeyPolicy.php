@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Nabilet\Modules\Security\Domain;
+namespace App\Modules\Security\Domain;
 
 /**
  * What an API key may do (ТЗ §78, §79).

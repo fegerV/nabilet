@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Nabilet\Modules\System\Models;
+namespace App\Modules\System\Models;
 
 use Illuminate\Database\Eloquent\Model;
 

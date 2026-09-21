@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Nabilet\Modules\Security\Domain;
+namespace App\Modules\Security\Domain;
 
 /**
  * The answer to "may this address through?" and, separately, whether the ruleset

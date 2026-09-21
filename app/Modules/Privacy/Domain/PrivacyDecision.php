@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Nabilet\Modules\Privacy\Domain;
+namespace App\Modules\Privacy\Domain;
 
 /**
  * Whether a privacy request may move to a given state.

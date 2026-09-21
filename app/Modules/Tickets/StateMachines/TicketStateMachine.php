@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Nabilet\Modules\Tickets\StateMachines;
+namespace App\Modules\Tickets\StateMachines;
 
 use Nabilet\Core\StateMachine\StateMachine;
 

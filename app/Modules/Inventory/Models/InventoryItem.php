@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-namespace Nabilet\Modules\Inventory\Models;
+namespace App\Modules\Inventory\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Nabilet\Modules\Events\Models\Session;
-use Nabilet\Modules\Venues\Models\Seat;
-use Nabilet\Modules\Venues\Models\StandingZone;
+use App\Modules\Events\Models\Session;
+use App\Modules\Venues\Models\Seat;
+use App\Modules\Venues\Models\StandingZone;
 
 /**
  * @property int $id
