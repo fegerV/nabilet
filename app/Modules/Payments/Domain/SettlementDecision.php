@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Nabilet\Modules\Payments\Domain;
+namespace App\Modules\Payments\Domain;
 
 /**
  * What a webhook is allowed to do — or why it is not allowed to do anything.

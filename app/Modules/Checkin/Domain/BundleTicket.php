@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Nabilet\Modules\Checkin\Domain;
+namespace App\Modules\Checkin\Domain;
 
 use Nabilet\Core\Errors\DomainRuleViolation;
-use Nabilet\Modules\Tickets\Domain\TicketSnapshot;
+use App\Modules\Tickets\Domain\TicketSnapshot;
 
 /**
  * One ticket entry as it appears in an offline bundle.

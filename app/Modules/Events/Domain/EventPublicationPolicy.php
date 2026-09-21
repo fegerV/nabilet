@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Nabilet\Modules\Events\Domain;
+namespace App\Modules\Events\Domain;
 
 /**
  * Publishing and cancelling an event (ТЗ §10, §13).

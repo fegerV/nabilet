@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Nabilet\Modules\Privacy\Domain;
+namespace App\Modules\Privacy\Domain;
 
 /**
  * Lifecycle and consequences of a privacy request (ТЗ §72, 152-ФЗ).

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Nabilet\Modules\Orders\StateMachines;
+namespace App\Modules\Orders\StateMachines;
 
 use Nabilet\Core\StateMachine\StateMachine;
 

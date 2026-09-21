@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Nabilet\Modules\HallSchemas\Domain;
+namespace App\Modules\HallSchemas\Domain;
 
 /**
  * What may happen to a hall schema version, and what must be refused (ТЗ §20, §46).

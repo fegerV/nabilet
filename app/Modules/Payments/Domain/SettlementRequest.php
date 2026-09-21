@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace Nabilet\Modules\Payments\Domain;
+namespace App\Modules\Payments\Domain;
 
 use Nabilet\Core\Errors\DomainRuleViolation;
 use Nabilet\Core\Support\Money;
-use Nabilet\Modules\Payments\StateMachines\PaymentStateMachine;
+use App\Modules\Payments\StateMachines\PaymentStateMachine;
 
 /**
  * One provider callback about one payment, with the order state it would change.

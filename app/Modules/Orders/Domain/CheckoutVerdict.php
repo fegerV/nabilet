@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace Nabilet\Modules\Orders\Domain;
+namespace App\Modules\Orders\Domain;
 
 use Nabilet\Core\Errors\ConflictError;
 use Nabilet\Core\Support\Money;
-use Nabilet\Modules\Inventory\Domain\SeatHold;
+use App\Modules\Inventory\Domain\SeatHold;
 
 /**
  * The answer to "may this cart become an order right now?".

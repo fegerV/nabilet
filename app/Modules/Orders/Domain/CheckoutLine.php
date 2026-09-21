@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace Nabilet\Modules\Orders\Domain;
+namespace App\Modules\Orders\Domain;
 
 use Nabilet\Core\Errors\DomainRuleViolation;
 use Nabilet\Core\Support\Money;
-use Nabilet\Modules\Inventory\Domain\InventoryStock;
+use App\Modules\Inventory\Domain\InventoryStock;
 
 /**
  * One cart line re-examined at the moment of checkout.

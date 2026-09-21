@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace Nabilet\Modules\Payments\Models;
+namespace App\Modules\Payments\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Nabilet\Modules\Orders\Models\Order;
+use App\Modules\Orders\Models\Order;
 
 /**
  * @property int $id
