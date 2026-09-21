@@ -1,3 +1,23 @@
-```php
+# Examples 1:
 
-```
+# Project with artifacts
+dist/
+build/
+.env
+.env.local
+.vscode/
+*.log
+*.tmp
+*.swp
+
+# Dependencies
+node_modules/
+.venv/
+venv/
+
+# Compiled files
+*.pyc
+__pycache__/
+
+# Original rules preserved
+*.log
