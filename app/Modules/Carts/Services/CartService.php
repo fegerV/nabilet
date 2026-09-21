@@ -61,6 +61,7 @@ class CartService
 
             // Atomically reserve inventory with lock and affected rows check
             // This prevents race conditions where multiple users try to book the same seat
+            // CRITICAL FIX: Use atomic decrement with WHERE clause to ensure availability
             $affected = DB::table('inventory_items')
                 ->where('id', $inventoryItemId)
                 ->where('available_quantity', '>=', $quantity)
@@ -75,11 +76,18 @@ class CartService
             $existingItem = CartItem::query()
                 ->where('cart_id', $cart->id)
                 ->where('inventory_item_id', $inventoryItemId)
+                ->lockForUpdate()
                 ->first();
 
             if ($existingItem) {
-                // Update quantity
+                // Update quantity with additional atomic check
                 $newQuantity = $existingItem->quantity + $quantity;
+                
+                // Verify the inventory item still exists and get its price
+                $inventoryItem = InventoryItem::query()
+                    ->where('id', $inventoryItemId)
+                    ->lockForUpdate()
+                    ->firstOrFail();
 
                 $existingItem->update([
                     'quantity' => $newQuantity,
@@ -92,7 +100,10 @@ class CartService
             }
 
             // Get inventory item for price info (after reservation)
-            $inventoryItem = InventoryItem::findOrFail($inventoryItemId);
+            $inventoryItem = InventoryItem::query()
+                ->where('id', $inventoryItemId)
+                ->lockForUpdate()
+                ->firstOrFail();
 
             // Create new cart item
             $cartItem = CartItem::create([
