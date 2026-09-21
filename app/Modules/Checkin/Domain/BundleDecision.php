@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Nabilet\Modules\Checkin\Domain;
+namespace App\Modules\Checkin\Domain;
 
 /**
  * Whether a bundle may be generated, and if not, why.

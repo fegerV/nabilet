@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Nabilet\Modules\Privacy\Domain;
+namespace App\Modules\Privacy\Domain;
 
 /**
  * What an erasure request actually has to do.

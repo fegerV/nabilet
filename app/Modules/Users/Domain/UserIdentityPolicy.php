@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Nabilet\Modules\Users\Domain;
+namespace App\Modules\Users\Domain;
 
 /**
  * The lifecycle of an account's identity (ТЗ §5, §6; 152-ФЗ через §3.15).

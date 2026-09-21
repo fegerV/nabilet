@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Nabilet\Modules\Tickets\Domain;
+namespace App\Modules\Tickets\Domain;
 
 /**
  * How a scan reached the server.

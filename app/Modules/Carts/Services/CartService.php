@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace App\Modules\Carts\Services;
 
-use Nabilet\Modules\Carts\Models\Cart;
-use Nabilet\Modules\Carts\Models\CartItem;
-use Nabilet\Modules\Inventory\Models\InventoryItem;
-use Nabilet\Modules\Sessions\Models\Session;
+use App\Modules\Carts\Models\Cart;
+use App\Modules\Carts\Models\CartItem;
+use App\Modules\Inventory\Models\InventoryItem;
+use App\Modules\Sessions\Models\Session;
 use Illuminate\Support\Facades\DB;
 use Carbon\CarbonImmutable;
 

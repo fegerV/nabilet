@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Nabilet\Modules\Webhooks\Domain;
+namespace App\Modules\Webhooks\Domain;
 
 /**
  * When a failed webhook delivery is worth trying again (ТЗ §80).

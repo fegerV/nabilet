@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Nabilet\Modules\Tickets\Domain;
+namespace App\Modules\Tickets\Domain;
 
-use Nabilet\Modules\Tickets\StateMachines\TicketStateMachine;
+use App\Modules\Tickets\StateMachines\TicketStateMachine;
 
 /**
  * Decides what happens at the door.

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Nabilet\Modules\Pricing\Domain;
+namespace App\Modules\Pricing\Domain;
 
 use Nabilet\Core\Errors\DomainRuleViolation;
 
