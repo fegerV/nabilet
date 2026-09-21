@@ -100,7 +100,7 @@ class Organization extends Model
      */
     public function pages(): HasMany
     {
-        return $this->hasMany(\Nabilet\Modules\Content\Models\Page::class, 'organization_id');
+        return $this->hasMany(\App\Modules\Content\Models\Page::class, 'organization_id');
     }
 
     /**
@@ -108,7 +108,7 @@ class Organization extends Model
      */
     public function mediaAssets(): HasMany
     {
-        return $this->hasMany(\Nabilet\Modules\Content\Models\MediaAsset::class, 'organization_id');
+        return $this->hasMany(\App\Modules\Content\Models\MediaAsset::class, 'organization_id');
     }
 
     /**
@@ -116,7 +116,7 @@ class Organization extends Model
      */
     public function promoCodes(): HasMany
     {
-        return $this->hasMany(\Nabilet\Modules\Orders\Models\PromoCode::class, 'organization_id');
+        return $this->hasMany(\App\Modules\Orders\Models\PromoCode::class, 'organization_id');
     }
 
     /**
@@ -124,7 +124,7 @@ class Organization extends Model
      */
     public function ticketTemplates(): HasMany
     {
-        return $this->hasMany(\Nabilet\Modules\Tickets\Models\TicketTemplate::class, 'organization_id');
+        return $this->hasMany(\App\Modules\Tickets\Models\TicketTemplate::class, 'organization_id');
     }
 
     /**
@@ -132,7 +132,7 @@ class Organization extends Model
      */
     public function checkinDevices(): HasMany
     {
-        return $this->hasMany(\Nabilet\Modules\Checkin\Models\CheckinDevice::class, 'organization_id');
+        return $this->hasMany(\App\Modules\Tickets\Models\CheckinDevice::class, 'organization_id');
     }
 
     /**
@@ -140,7 +140,7 @@ class Organization extends Model
      */
     public function offlineBundles(): HasMany
     {
-        return $this->hasMany(\Nabilet\Modules\Tickets\Models\OfflineBundle::class, 'organization_id');
+        return $this->hasMany(\App\Modules\Tickets\Models\OfflineBundle::class, 'organization_id');
     }
 
     /**
@@ -148,23 +148,7 @@ class Organization extends Model
      */
     public function apiKeys(): HasMany
     {
-        return $this->hasMany(\Nabilet\Modules\System\Models\ApiKey::class, 'organization_id');
-    }
-
-    /**
-     * Get the audit logs belonging to this organization.
-     */
-    public function auditLogs(): HasMany
-    {
-        return $this->hasMany(\Nabilet\Modules\System\Models\AuditLog::class, 'organization_id');
-    }
-
-    /**
-     * Get the embed domains belonging to this organization.
-     */
-    public function embedDomains(): HasMany
-    {
-        return $this->hasMany(\Nabilet\Modules\Analytics\Models\EmbedDomain::class, 'organization_id');
+        return $this->hasMany(\App\Modules\System\Models\ApiKey::class, 'organization_id');
     }
 
     /**
@@ -172,7 +156,7 @@ class Organization extends Model
      */
     public function webhookEndpoints(): HasMany
     {
-        return $this->hasMany(\Nabilet\Modules\System\Models\WebhookEndpoint::class, 'organization_id');
+        return $this->hasMany(\App\Modules\System\Models\Webhook::class, 'organization_id');
     }
 
     /**
@@ -180,6 +164,6 @@ class Organization extends Model
      */
     public function abExperiments(): HasMany
     {
-        return $this->hasMany(\Nabilet\Modules\Analytics\Models\AbExperiment::class, 'organization_id');
+        return $this->hasMany(\App\Modules\Analytics\Models\AbExperiment::class, 'organization_id');
     }
 }
