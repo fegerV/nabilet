@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Modules\Tickets\Domain;
 
+use App\Modules\Tickets\StateMachines\TicketStateMachine;
+
 /**
  * What the door should do, and what should be recorded.
  *
@@ -62,7 +64,7 @@ final class ScanOutcome implements \JsonSerializable
         return new self(
             result: self::ADMITTED,
             admits: true,
-            resultingStatus: \Nabilet\Modules\Tickets\StateMachines\TicketStateMachine::USED,
+            resultingStatus: TicketStateMachine::USED,
         );
     }
 
@@ -106,7 +108,7 @@ final class ScanOutcome implements \JsonSerializable
         return new self(
             result: self::CONFLICT_REVOKED,
             admits: false,
-            resultingStatus: \Nabilet\Modules\Tickets\StateMachines\TicketStateMachine::REVOKED,
+            resultingStatus: TicketStateMachine::REVOKED,
             reason: $reason,
         );
     }
