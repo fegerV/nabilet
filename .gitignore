@@ -1,96 +1,47 @@
-```php
-<?php
+```
+# Compiled and build artifacts
+*.pyc
+__pycache__/
+*.o
+*.obj
+dist/
+build/
+target/
 
-namespace App\Modules\Tickets\Domain;
+# Dependencies
+node_modules/
+vendor/
+composer.lock
+.env
+.env.local
+.env.*
 
-use Spatie\LaravelData\Data;
-use App\Modules\Tickets\Domain\ValueObjects\TicketStatus;
-use App\Modules\Tickets\Domain\ValueObjects\TicketPriority;
-use App\Modules\Tickets\Domain\ValueObjects\TicketType;
+# Logs and temp files
+*.log
+*.tmp
+*.swp
+*.swo
 
-/**
- * Represents the outcome of scanning a ticket barcode
- */
-final class ScanOutcome extends Data
-{
-    public function __construct(
-        public readonly string $barcode,
-        public readonly TicketStatus $status,
-        public readonly ?string $message = null,
-        public readonly ?int $ticketId = null,
-        public readonly ?string $ticketNumber = null,
-        public readonly ?TicketType $type = null,
-        public readonly ?TicketPriority $priority = null,
-        public readonly ?string $title = null,
-        public readonly ?string $description = null,
-        public readonly ?string $assignee = null,
-        public readonly ?string $dueDate = null,
-        public readonly ?array $tags = null,
-        public readonly ?array $customFields = null,
-    ) {
-    }
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
 
-    /**
-     * Create a successful scan outcome
-     */
-    public static function success(
-        string $barcode,
-        TicketStatus $status,
-        int $ticketId,
-        string $ticketNumber,
-        ?string $message = null,
-        ?TicketType $type = null,
-        ?TicketPriority $priority = null,
-        ?string $title = null,
-        ?string $description = null,
-        ?string $assignee = null,
-        ?string $dueDate = null,
-        ?array $tags = null,
-        ?array $customFields = null,
-    ): self {
-        return new self(
-            barcode: $barcode,
-            status: $status,
-            message: $message ?? 'Ticket scanned successfully',
-            ticketId: $ticketId,
-            ticketNumber: $ticketNumber,
-            type: $type,
-            priority: $priority,
-            title: $title,
-            description: $description,
-            assignee: $assignee,
-            dueDate: $dueDate,
-            tags: $tags,
-            customFields: $customFields,
-        );
-    }
+# OS specific
+.DS_Store
+Thumbs.db
 
-    /**
-     * Create a failed scan outcome
-     */
-    public static function failure(string $barcode, string $message): self
-    {
-        return new self(
-            barcode: $barcode,
-            status: TicketStatus::NotFound,
-            message: $message,
-        );
-    }
+# Coverage
+.coverage
+coverage/
+htmlcov/
 
-    /**
-     * Check if the scan was successful
-     */
-    public function isSuccess(): bool
-    {
-        return $this->status !== TicketStatus::NotFound && $this->ticketId !== null;
-    }
+# PHP specific
+*.php~
+*.bak
 
-    /**
-     * Check if the ticket was not found
-     */
-    public function isNotFound(): bool
-    {
-        return $this->status === TicketStatus::NotFound || $this->ticketId === null;
-    }
-}
+# Laravel specific
+storage/
+bootstrap/cache/
 ```
