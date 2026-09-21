@@ -68,6 +68,7 @@ return new class extends Migration
             $table->dateTime('processed_at', 6)->nullable();
             $table->dateTime('created_at', 6);
             $table->index(['processed_at'], "idx_webhook_events_processed");
+            // Unique constraint for idempotency: prevents duplicate processing of same webhook event
             $table->unique(['provider', 'provider_event_id'], "uq_webhook_events_provider_id");
         });
 
