@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Checkin\Domain;
+namespace Nabilet\Modules\Checkin\Domain;
 
 use Nabilet\Core\Errors\DomainRuleViolation;
 

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Core\Organizations\Http\Requests;
+namespace Nabilet\Modules\Core\Organizations\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
 

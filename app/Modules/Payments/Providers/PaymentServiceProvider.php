@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Payments\Providers;
+namespace Nabilet\Modules\Payments\Providers;
 
-use App\Modules\Payments\Repositories\PaymentRepository;
-use App\Modules\Payments\Services\PaymentService;
+use Nabilet\Modules\Payments\Repositories\PaymentRepository;
+use Nabilet\Modules\Payments\Services\PaymentService;
 use Illuminate\Support\ServiceProvider;
 
 class PaymentServiceProvider extends ServiceProvider

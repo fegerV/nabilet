@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Telegram\Providers;
+namespace Nabilet\Modules\Telegram\Providers;
 
 use Illuminate\Support\ServiceProvider;
 

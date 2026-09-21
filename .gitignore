@@ -1,50 +1,115 @@
-```
-# Dependencies
-vendor/
-node_modules/
+# ─── Secrets ────────────────────────────────────────────────────────────────────
+# Real environment files must never be committed. `.env.example` (placeholders
+# only) IS tracked and is the reference for required variables.
+.env
+.env.*
+!.env.example
+
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+id_rsa*
+id_ed25519*
+.ssh/
+
+# ─── Dependencies ───────────────────────────────────────────────────────────────
+# NOTE: composer.lock is deliberately NOT ignored. This is an application, not a
+# library: the lock file is the only record of which dependency versions the code
+# was written against, `composer install` is not reproducible without it, and both
+# the CI `docker` job and the deferred `docker build` are waiting on it. A merged
+# branch added `composer.lock` to this list; that was removed, because ignoring the
+# lock file does not remove the problem, it hides it.
+/vendor/
+/node_modules/
+/public/build/
+/public/hot
+/public/storage
+/public/vendor/
+
+# ─── Laravel runtime ────────────────────────────────────────────────────────────
+/storage/*.key
+/storage/*.sqlite
+/storage/app/private/
+/storage/app/public/
+/storage/framework/cache/data/*
+/storage/framework/sessions/*
+/storage/framework/views/*
+/storage/logs/*
+!/storage/logs/.gitignore
+
+/bootstrap/cache/*.php
+/bootstrap/cache/services.php
+/bootstrap/cache/packages.php
+
+# The installer writes this on first run; it is per-deployment state.
+/storage/install.lock
+
+# ─── Database artifacts ─────────────────────────────────────────────────────────
+*.sqlite
+*.sqlite3
+*.db
+*.dump
+
+# ─── Test / tooling output ──────────────────────────────────────────────────────
+.phpunit.result.cache
+.phpunit.cache/
+/coverage/
+coverage/
+/build/
+build/
+dist/
+*.out
+lint.out
+*.phar
+.cache/
+*.cache
+
+# ─── Mobile / Android (added 2026-09-21) ────────────────────────────────────────
+# Build outputs of the Android Checker app. Source lives in android/, the APK/AAB
+# and the native libs are build products and must never be committed.
+*.apk
+*.aab
+*.aar
+*.so
+
+# ─── Package-manager caches ─────────────────────────────────────────────────────
 .npm/
 .yarn/
 
-# Build artifacts
-dist/
-build/
-target/
-*.apk
-*.aab
-*.so
-*.aar
-
-# Logs
-*.log
-logs/
-
-# Environment
-.env
-.env.local
-.env.*
-
-# Editor/IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*.tmp
-
-# OS
-.DS_Store
-Thumbs.db
-
-# PHP specific
-vendor/
-composer.lock
-*.phar
-
-# Database
+# ─── Database dumps and backups ─────────────────────────────────────────────────
+# The backup scripts write here. Deliberately narrow: a blanket `*.sql` was added
+# by a merged branch and removed again, because it would silently ignore the next
+# `tools/repro-*.sql` — and this project's rule is that every schema claim ships one.
 database/backup/*.sql
 database/dumps/
-*.sql
 
-# Cache
-.cache/
-*.cache
-```
+# ─── Editors / OS ───────────────────────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+*.php~
+*.php.bak
+*.tmp
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ─── Logs ───────────────────────────────────────────────────────────────────────
+*.log
+logs/
+npm-debug.log*
+yarn-error.log*
+
+# ─── Local scratch ──────────────────────────────────────────────────────────────
+.tmp/
+.tmp-verify/
+*.local
+
+# ─── Internal documents not meant for the public repo ───────────────────────────
+# Restored after the merge dropped it. This line is the only thing standing between
+# a private planning document and a public repository; `git add -A` is a single
+# keystroke, and it was in fact run in the same session that noticed the line gone.
+Мысли о SEO.txt

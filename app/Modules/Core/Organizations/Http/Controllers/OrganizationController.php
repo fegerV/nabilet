@@ -2,15 +2,15 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Core\Organizations\Http\Controllers;
+namespace Nabilet\Modules\Core\Organizations\Http\Controllers;
 
-use App\Http\Controllers\Controller;
-use App\Modules\Core\Organizations\Services\OrganizationService;
-use App\Modules\Core\Organizations\Http\Requests\StoreOrganizationRequest;
-use App\Modules\Core\Organizations\Http\Requests\UpdateOrganizationRequest;
-use App\Modules\Core\Organizations\Http\Resources\OrganizationResource;
-use App\Modules\Core\Organizations\Http\Resources\OrganizationCollection;
-use App\Modules\Core\Users\Repositories\UserRepository;
+use Illuminate\Routing\Controller;
+use Nabilet\Modules\Core\Organizations\Services\OrganizationService;
+use Nabilet\Modules\Core\Organizations\Http\Requests\StoreOrganizationRequest;
+use Nabilet\Modules\Core\Organizations\Http\Requests\UpdateOrganizationRequest;
+use Nabilet\Modules\Core\Organizations\Http\Resources\OrganizationResource;
+use Nabilet\Modules\Core\Organizations\Http\Resources\OrganizationCollection;
+use Nabilet\Modules\Core\Users\Repositories\UserRepository;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 

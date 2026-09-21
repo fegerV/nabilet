@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Venues\Http\Controllers;
+namespace Nabilet\Modules\Venues\Http\Controllers;
 
-use App\Modules\Venues\Models\Venue;
+use Nabilet\Modules\Venues\Models\Venue;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;

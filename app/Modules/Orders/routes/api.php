@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use App\Modules\Orders\Http\Controllers\OrderController;
+use Nabilet\Modules\Orders\Http\Controllers\OrderController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1/orders')->group(function () {

@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Events\Providers;
+namespace Nabilet\Modules\Events\Providers;
 
-use App\Modules\Events\Repositories\EventRepository;
-use App\Modules\Events\Services\EventService;
+use Nabilet\Modules\Events\Repositories\EventRepository;
+use Nabilet\Modules\Events\Services\EventService;
 use Illuminate\Support\ServiceProvider;
 
 class EventServiceProvider extends ServiceProvider

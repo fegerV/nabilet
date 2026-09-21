@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Tickets\Domain;
+namespace Nabilet\Modules\Tickets\Domain;
 
-use App\Modules\Tickets\StateMachines\TicketStateMachine;
+use Nabilet\Modules\Tickets\StateMachines\TicketStateMachine;
 
 /**
  * What the door should do, and what should be recorded.

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use App\Modules\Sessions\Http\Controllers\SessionController;
+use Nabilet\Modules\Sessions\Http\Controllers\SessionController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1/sessions')->group(function () {

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Webhooks\Domain;
+namespace Nabilet\Modules\Webhooks\Domain;
 
 /**
  * What to do after an attempt: deliver it, retry it later, or stop.

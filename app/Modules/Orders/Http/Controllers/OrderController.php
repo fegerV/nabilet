@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Orders\Http\Controllers;
+namespace Nabilet\Modules\Orders\Http\Controllers;
 
-use App\Modules\Orders\Http\Requests\StoreOrderRequest;
-use App\Modules\Orders\Models\Order;
-use App\Modules\Orders\Services\OrderService;
+use Nabilet\Modules\Orders\Http\Requests\StoreOrderRequest;
+use Nabilet\Modules\Orders\Models\Order;
+use Nabilet\Modules\Orders\Services\OrderService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;

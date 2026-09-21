@@ -209,13 +209,19 @@ if ($nameMismatches !== []) {
 
 // ── 3. Every Modules\X namespace must resolve to a directory ──────────────────
 //
-// All three roots are checked, not just `App\Modules\`. The tree is currently
-// split across them — 86 files say `Nabilet\Modules\`, 78 say `App\Modules\` and
-// 40 say `Nabilet\Modules\` — and a check that watches only one root is blind to
-// two thirds of the damage. An earlier draft of this tool did exactly that and
-// reported 25 of 34 modules as "referenced from nowhere", which was false: the
-// registered modules are referenced as `Nabilet\Modules\X\`, not `App\Modules\X\`.
-const MODULE_NAMESPACE_ROOTS = ['Nabilet\\Modules\\', 'App\\Modules\\', 'Nabilet\\Modules\\'];
+// All three roots are checked, not just `Nabilet\Modules\`. The tree once was split
+// across them, and a check that watches only one root is blind to the rest. An
+// earlier draft of this tool did exactly that and reported 25 of 34 modules as
+// "referenced from nowhere", which was false: the registered modules are referenced
+// as `Nabilet\Modules\X\`, not `App\Modules\X\`.
+//
+// The list deliberately still names all three even though the tree is now
+// consolidated onto the first. It is a detection list, not an allow-list: a
+// re-introduced `App\Modules\X\` is then caught as a dangling reference instead of
+// passing unnoticed. (An upstream rename once collapsed the third alternative in
+// the regex below to an empty string, which made the pattern match anything — the
+// kind of silent loosening that only ever shows up as a false negative.)
+const MODULE_NAMESPACE_ROOTS = ['Nabilet\\Modules\\', 'App\\Modules\\', 'NabileT\\Modules\\'];
 
 $files = phpFilesUnder([
     $root . '/app',
@@ -368,7 +374,7 @@ $configRoots = [];
 
 if (is_file($configFile)) {
     preg_match_all(
-        '/(?:App|Nabilet|)\\\\Modules\\\\[\w\\\\]+::class/',
+        '/(?:App|Nabilet|NabileT)\\\\Modules\\\\[\w\\\\]+::class/',
         (string) file_get_contents($configFile),
         $classStrings
     );

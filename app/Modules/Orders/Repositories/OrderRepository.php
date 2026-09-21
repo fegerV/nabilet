@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Orders\Orders\Repositories;
+namespace Nabilet\Modules\Orders\Repositories;
 
-use App\Modules\Orders\Orders\Models\Order;
-use App\Modules\Orders\Orders\Models\OrderItem;
+use Nabilet\Modules\Orders\Models\Order;
+use Nabilet\Modules\Orders\Models\OrderItem;
 use Illuminate\Database\Eloquent\Collection;
 
 class OrderRepository

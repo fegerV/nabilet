@@ -2,8 +2,8 @@
 
 declare(strict_types=1);
 
-use App\Modules\Tickets\Http\Controllers\TicketController;
-use App\Modules\Tickets\Http\Controllers\CheckinController;
+use Nabilet\Modules\Tickets\Http\Controllers\TicketController;
+use Nabilet\Modules\Tickets\Http\Controllers\CheckinController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1/tickets')->group(function () {

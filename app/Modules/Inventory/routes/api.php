@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use App\Modules\Inventory\Http\Controllers\InventoryController;
+use Nabilet\Modules\Inventory\Http\Controllers\InventoryController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1/inventory')->group(function () {

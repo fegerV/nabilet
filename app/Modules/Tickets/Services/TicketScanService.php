@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Tickets\Services;
+namespace Nabilet\Modules\Tickets\Services;
 
-use App\Modules\Tickets\Models\Ticket;
-use App\Modules\Tickets\Models\TicketScan;
-use App\Modules\Tickets\Repositories\TicketRepository;
-use App\Modules\Checkin\Domain\CheckinEvaluator;
-use App\Modules\Sessions\Models\Session;
+use Nabilet\Modules\Tickets\Models\Ticket;
+use Nabilet\Modules\Tickets\Models\TicketScan;
+use Nabilet\Modules\Tickets\Repositories\TicketRepository;
+use Nabilet\Modules\Checkin\Domain\CheckinEvaluator;
+use Nabilet\Modules\Sessions\Models\Session;
 use Illuminate\Support\Facades\DB;
 use Carbon\CarbonImmutable;
 

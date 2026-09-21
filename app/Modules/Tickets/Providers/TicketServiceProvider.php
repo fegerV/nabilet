@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Tickets\Providers;
+namespace Nabilet\Modules\Tickets\Providers;
 
 use Illuminate\Support\ServiceProvider;
 

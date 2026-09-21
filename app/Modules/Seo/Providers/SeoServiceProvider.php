@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Seo\Providers;
+namespace Nabilet\Modules\Seo\Providers;
 
 use Illuminate\Support\ServiceProvider;
 

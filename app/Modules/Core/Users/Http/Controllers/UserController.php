@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Core\Users\Http\Controllers;
+namespace Nabilet\Modules\Core\Users\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
-use App\Modules\Core\Users\Models\User;
-use App\Modules\Core\Users\Services\UserService;
+use Nabilet\Modules\Core\Users\Models\User;
+use Nabilet\Modules\Core\Users\Services\UserService;
 
 class UserController
 {

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Auth\Domain;
+namespace Nabilet\Modules\Auth\Domain;
 
 /**
  * One row of `user_sessions`.

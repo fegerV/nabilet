@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Events\Repositories;
+namespace Nabilet\Modules\Events\Repositories;
 
-use App\Modules\Events\Models\Event;
+use Nabilet\Modules\Events\Models\Event;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Orders\Http\Resources;
+namespace Nabilet\Modules\Orders\Http\Resources;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;

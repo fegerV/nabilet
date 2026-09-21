@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use App\Modules\Payments\Http\Controllers\PaymentController;
+use Nabilet\Modules\Payments\Http\Controllers\PaymentController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1/payments')->middleware(['auth:sanctum'])->group(function () {

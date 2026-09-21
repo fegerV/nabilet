@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Tickets\Domain;
+namespace Nabilet\Modules\Tickets\Domain;
 
 use Nabilet\Core\Errors\DomainRuleViolation;
-use App\Modules\Tickets\StateMachines\TicketStateMachine;
+use Nabilet\Modules\Tickets\StateMachines\TicketStateMachine;
 
 /**
  * A ticket as refund sees it: just enough to decide whether it can be taken back.

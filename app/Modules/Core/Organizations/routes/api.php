@@ -3,8 +3,8 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Facades\Route;
-use App\Modules\Core\Organizations\Http\Controllers\OrganizationController;
-use App\Modules\Core\Organizations\Http\Middleware\CheckOrganizationAccess;
+use Nabilet\Modules\Core\Organizations\Http\Controllers\OrganizationController;
+use Nabilet\Modules\Core\Organizations\Http\Middleware\CheckOrganizationAccess;
 
 /*
  * Organizations Module API Routes

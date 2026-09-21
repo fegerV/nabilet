@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\HallSchemas\Domain;
+namespace Nabilet\Modules\HallSchemas\Domain;
 
 use Nabilet\Core\Errors\DomainRuleViolation;
 

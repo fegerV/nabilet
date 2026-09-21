@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Payments\Services;
+namespace Nabilet\Modules\Payments\Services;
 
-use App\Modules\Payments\Models\Payment;
-use App\Modules\Payments\Repositories\PaymentRepository;
-use App\Modules\Payments\Domain\PaymentStateMachine;
-use App\Modules\Orders\Models\Order;
-use App\Modules\Orders\Models\SeatHold;
-use App\Modules\Inventory\Services\HoldSweeper;
+use Nabilet\Modules\Payments\Models\Payment;
+use Nabilet\Modules\Payments\Repositories\PaymentRepository;
+use Nabilet\Modules\Payments\Domain\PaymentStateMachine;
+use Nabilet\Modules\Orders\Models\Order;
+use Nabilet\Modules\Orders\Models\SeatHold;
+use Nabilet\Modules\Inventory\Services\HoldSweeper;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Log;
@@ -72,11 +72,30 @@ class PaymentService
                 ->where('provider_payment_id', $payload['payment_id'] ?? null)
                 ->firstOrFail();
 
-            // Check idempotency - prevent duplicate processing
-            if ($payment->processed_webhook_events ?? []) {
-                if (in_array($payload['event_id'] ?? null, $payment->processed_webhook_events)) {
-                    return $payment; // Already processed this event
-                }
+            $eventId = (string) ($payload['event_id'] ?? '');
+
+            if ($eventId === '') {
+                throw new \RuntimeException('Webhook payload carries no event_id, so it cannot be deduplicated');
+            }
+
+            // Idempotency belongs to the database, not to this method. The schema
+            // already provides it: `webhook_events` carries
+            // UNIQUE (provider, provider_event_id). Claiming the event with an
+            // insert is atomic, so a replayed delivery loses the race and stops
+            // here. The previous implementation appended the event id to a JSON
+            // column on `payments` -- a read-modify-write that two concurrent
+            // replays can both win, which is the opposite of what it was for.
+            $claimed = DB::table('webhook_events')->insertOrIgnore([
+                'provider' => $provider,
+                'provider_event_id' => $eventId,
+                'event_name' => (string) ($payload['event_type'] ?? ''),
+                'payload_json' => json_encode($payload, JSON_THROW_ON_ERROR),
+                'processed_at' => null,
+                'created_at' => now(),
+            ]);
+
+            if ($claimed === 0) {
+                return $payment; // Already processed this event.
             }
 
             // Process based on event type
@@ -84,19 +103,22 @@ class PaymentService
                 case 'payment.succeeded':
                     $this->handlePaymentSucceeded($payment, $payload);
                     break;
-                    
+
                 case 'payment.failed':
                     $this->handlePaymentFailed($payment, $payload);
                     break;
-                    
+
                 default:
+                    // Throwing rolls the claim back with the rest of the
+                    // transaction, so an event we cannot handle is not recorded
+                    // as processed and can be retried once the handler exists.
                     throw new \RuntimeException('Unknown webhook event type');
             }
 
-            // Mark event as processed
-            $processedEvents = $payment->processed_webhook_events ?? [];
-            $processedEvents[] = $payload['event_id'] ?? null;
-            $payment->update(['processed_webhook_events' => $processedEvents]);
+            DB::table('webhook_events')
+                ->where('provider', $provider)
+                ->where('provider_event_id', $eventId)
+                ->update(['processed_at' => now()]);
 
             return $payment->fresh();
         });
@@ -323,9 +345,9 @@ class PaymentService
         // Try to resolve from container first
         try {
             $className = match(strtolower($name)) {
-                'yookassa' => '\\App\\Modules\\Payments\\Payments\\Providers\\YooKassaProvider',
-                'stripe' => '\\App\\Modules\\Payments\\Payments\\Providers\\StripeProvider',
-                'kaspi' => '\\App\\Modules\\Payments\\Payments\\Providers\\KaspiProvider',
+                'yookassa' => '\\Nabilet\\Modules\\Payments\\Payments\\Providers\\YooKassaProvider',
+                'stripe' => '\\Nabilet\\Modules\\Payments\\Payments\\Providers\\StripeProvider',
+                'kaspi' => '\\Nabilet\\Modules\\Payments\\Payments\\Providers\\KaspiProvider',
                 default => null,
             };
 

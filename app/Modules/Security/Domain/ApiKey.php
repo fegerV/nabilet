@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Security\Domain;
+namespace Nabilet\Modules\Security\Domain;
 
 /**
  * One row of `api_keys`.

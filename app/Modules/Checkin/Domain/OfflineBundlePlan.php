@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Checkin\Domain;
+namespace Nabilet\Modules\Checkin\Domain;
 
 /**
  * The bundle that should be written to `offline_bundles` — computed, not trusted.

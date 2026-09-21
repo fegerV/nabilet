@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\System\Models;
+namespace Nabilet\Modules\System\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use App\Modules\Core\Users\Models\User;
+use Nabilet\Modules\Core\Users\Models\User;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**

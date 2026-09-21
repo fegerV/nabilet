@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Auth\Domain;
+namespace Nabilet\Modules\Auth\Domain;
 
 /**
  * Whether something may be done to a session, and if not, why.

@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Payments\Domain;
+namespace Nabilet\Modules\Payments\Domain;
 
-use App\Modules\Orders\StateMachines\OrderStateMachine;
-use App\Modules\Payments\StateMachines\PaymentStateMachine;
+use Nabilet\Modules\Orders\StateMachines\OrderStateMachine;
+use Nabilet\Modules\Payments\StateMachines\PaymentStateMachine;
 
 /**
  * Decides what a payment callback may do to a payment and its order (ТЗ §27, §28).

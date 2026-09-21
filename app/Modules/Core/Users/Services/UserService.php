@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Core\Users\Services;
+namespace Nabilet\Modules\Core\Users\Services;
 
-use App\Modules\Core\Users\Models\User;
-use App\Modules\Core\Users\Repositories\UserRepository;
+use Nabilet\Modules\Core\Users\Models\User;
+use Nabilet\Modules\Core\Users\Repositories\UserRepository;
 use Illuminate\Support\Facades\Hash;
 
 class UserService

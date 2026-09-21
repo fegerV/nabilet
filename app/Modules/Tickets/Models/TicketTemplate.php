@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Tickets\Models;
+namespace Nabilet\Modules\Tickets\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use App\Modules\Events\Models\Session;
+use Nabilet\Modules\Events\Models\Session;
 
 /**
  * @property int $id

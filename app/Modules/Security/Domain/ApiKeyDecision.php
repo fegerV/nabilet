@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Security\Domain;
+namespace Nabilet\Modules\Security\Domain;
 
 /**
  * Whether an API key may be used, issued or revoked, and if not, why.

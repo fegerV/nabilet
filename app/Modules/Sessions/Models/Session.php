@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Sessions\Models;
+namespace Nabilet\Modules\Sessions\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -45,41 +45,41 @@ class Session extends Model
 
     public function event(): BelongsTo
     {
-        return $this->belongsTo(\App\Modules\Events\Models\Event::class);
+        return $this->belongsTo(\Nabilet\Modules\Events\Models\Event::class);
     }
 
     public function venue(): BelongsTo
     {
-        return $this->belongsTo(\App\Modules\Venues\Models\Venue::class);
+        return $this->belongsTo(\Nabilet\Modules\Venues\Models\Venue::class);
     }
 
     public function hall(): BelongsTo
     {
-        return $this->belongsTo(\App\Modules\Venues\Models\Hall::class);
+        return $this->belongsTo(\Nabilet\Modules\Venues\Models\Hall::class);
     }
 
     public function schemaVersion(): BelongsTo
     {
-        return $this->belongsTo(\App\Modules\Venues\Models\HallSchemaVersion::class, 'schema_version_id');
+        return $this->belongsTo(\Nabilet\Modules\Venues\Models\HallSchemaVersion::class, 'schema_version_id');
     }
 
     public function inventoryItems(): HasMany
     {
-        return $this->hasMany(\App\Modules\Inventory\Models\InventoryItem::class);
+        return $this->hasMany(\Nabilet\Modules\Inventory\Models\InventoryItem::class);
     }
 
     public function carts(): HasMany
     {
-        return $this->hasMany(\App\Modules\Carts\Models\Cart::class);
+        return $this->hasMany(\Nabilet\Modules\Cart\Models\Cart::class);
     }
 
     public function seatHolds(): HasMany
     {
-        return $this->hasMany(\App\Modules\Orders\Models\SeatHold::class);
+        return $this->hasMany(\Nabilet\Modules\Orders\Models\SeatHold::class);
     }
 
     public function ticketScans(): HasMany
     {
-        return $this->hasMany(\App\Modules\Tickets\Models\TicketScan::class);
+        return $this->hasMany(\Nabilet\Modules\Tickets\Models\TicketScan::class);
     }
 }

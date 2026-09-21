@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Venues\Models;
+namespace Nabilet\Modules\Venues\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -53,11 +53,11 @@ class Seat extends Model
 
     public function inventoryItems(): HasMany
     {
-        return $this->hasMany(\App\Modules\Inventory\Models\InventoryItem::class, 'seat_id');
+        return $this->hasMany(\Nabilet\Modules\Inventory\Models\InventoryItem::class, 'seat_id');
     }
 
     public function tickets(): HasMany
     {
-        return $this->hasMany(\App\Modules\Tickets\Models\Ticket::class, 'seat_id');
+        return $this->hasMany(\Nabilet\Modules\Tickets\Models\Ticket::class, 'seat_id');
     }
 }

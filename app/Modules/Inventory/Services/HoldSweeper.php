@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Inventory\Services;
+namespace Nabilet\Modules\Inventory\Services;
 
-use App\Modules\Inventory\Models\SeatHold;
+use Nabilet\Modules\Inventory\Models\SeatHold;
 use Illuminate\Support\Facades\DB;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Log;

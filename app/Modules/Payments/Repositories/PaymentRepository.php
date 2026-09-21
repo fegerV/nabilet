@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Payments\Repositories;
+namespace Nabilet\Modules\Payments\Repositories;
 
-use App\Modules\Payments\Models\Payment;
-use App\Modules\Payments\Models\PaymentTransaction;
+use Nabilet\Modules\Payments\Models\Payment;
+use Nabilet\Modules\Payments\Models\PaymentTransaction;
 use Illuminate\Database\Eloquent\Collection;
 
 class PaymentRepository

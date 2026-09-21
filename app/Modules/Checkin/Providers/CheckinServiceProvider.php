@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Checkin\Providers;
+namespace Nabilet\Modules\Checkin\Providers;
 
 use Illuminate\Support\ServiceProvider;
 

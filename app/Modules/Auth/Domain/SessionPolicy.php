@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Auth\Domain;
+namespace Nabilet\Modules\Auth\Domain;
 
 /**
  * The lifecycle of a login session (ТЗ §5, §6).

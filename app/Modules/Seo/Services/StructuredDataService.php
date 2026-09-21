@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Seo\Services;
+namespace Nabilet\Modules\Seo\Services;
 
-use App\Modules\Events\Models\Event;
-use App\Modules\Events\StateMachines\EventStateMachine;
+use Nabilet\Modules\Events\Models\Event;
+use Nabilet\Modules\Events\StateMachines\EventStateMachine;
 
 /**
  * Structured data (JSON-LD) generator for events (ТЗ §38).

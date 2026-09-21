@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Events\Http\Requests;
+namespace Nabilet\Modules\Events\Http\Requests;
 
-use App\Modules\Events\Models\Event;
+use Nabilet\Modules\Events\Models\Event;
 use Illuminate\Foundation\Http\FormRequest;
 
 class UpdateEventRequest extends FormRequest

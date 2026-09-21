@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Payments\Domain;
+namespace Nabilet\Modules\Payments\Domain;
 
 use Nabilet\Core\Errors\DomainRuleViolation;
 use Nabilet\Core\Support\Money;
-use App\Modules\Orders\StateMachines\OrderStateMachine;
+use Nabilet\Modules\Orders\StateMachines\OrderStateMachine;
 
 /**
  * How much of a payment has come back, and what that makes the order (ТЗ §85).

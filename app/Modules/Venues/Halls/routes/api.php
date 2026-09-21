@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Facades\Route;
-use App\Modules\Venues\Halls\Http\Controllers\HallController;
+use Nabilet\Modules\Venues\Halls\Http\Controllers\HallController;
 
 /*
  * Halls Module API Routes

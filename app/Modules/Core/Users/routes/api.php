@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Facades\Route;
-use App\Modules\Core\Users\Http\Controllers\UserController;
+use Nabilet\Modules\Core\Users\Http\Controllers\UserController;
 
 /*
  * Users Module API Routes

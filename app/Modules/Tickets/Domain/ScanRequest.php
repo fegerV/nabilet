@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Tickets\Domain;
+namespace Nabilet\Modules\Tickets\Domain;
 
 use Nabilet\Core\Errors\DomainRuleViolation;
 

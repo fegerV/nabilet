@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Payments\Domain;
+namespace Nabilet\Modules\Payments\Domain;
 
 use Nabilet\Core\Support\Money;
 

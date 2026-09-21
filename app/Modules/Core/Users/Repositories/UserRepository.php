@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Core\Users\Repositories;
+namespace Nabilet\Modules\Core\Users\Repositories;
 
-use App\Modules\Core\Users\Models\User;
+use Nabilet\Modules\Core\Users\Models\User;
 use Illuminate\Database\Eloquent\Collection;
 
 class UserRepository

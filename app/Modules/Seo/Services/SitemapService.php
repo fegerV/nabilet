@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Seo\Services;
+namespace Nabilet\Modules\Seo\Services;
 
-use App\Modules\Events\Models\Event;
-use App\Modules\Events\Domain\EventStatus;
-use App\Modules\Venues\Models\Venue;
+use Nabilet\Modules\Events\Models\Event;
+use Nabilet\Modules\Events\Domain\EventStatus;
+use Nabilet\Modules\Venues\Models\Venue;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;

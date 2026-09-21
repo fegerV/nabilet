@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Orders\Domain;
+namespace Nabilet\Modules\Orders\Domain;
 
 use Nabilet\Core\Support\Money;
-use App\Modules\Inventory\Domain\ReservationPolicy;
-use App\Modules\Inventory\Domain\SeatHold;
+use Nabilet\Modules\Inventory\Domain\ReservationPolicy;
+use Nabilet\Modules\Inventory\Domain\SeatHold;
 
 /**
  * Decides whether a cart may become an order, and at what price (ТЗ §23, §24, §84).

@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Core\Organizations\Services;
+namespace Nabilet\Modules\Core\Organizations\Services;
 
-use App\Modules\Core\Organizations\Models\Organization;
-use App\Modules\Core\Organizations\Repositories\OrganizationRepository;
-use App\Modules\Core\Users\Models\User;
+use Nabilet\Modules\Core\Organizations\Models\Organization;
+use Nabilet\Modules\Core\Organizations\Repositories\OrganizationRepository;
+use Nabilet\Modules\Core\Users\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 

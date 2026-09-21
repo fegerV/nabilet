@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Venues\Halls\Repositories;
+namespace Nabilet\Modules\Venues\Halls\Repositories;
 
-use App\Modules\Venues\Halls\Models\Hall;
-use App\Modules\Venues\Halls\Models\HallSchemaVersion;
+use Nabilet\Modules\Venues\Halls\Models\Hall;
+use Nabilet\Modules\Venues\Halls\Models\HallSchemaVersion;
 use Illuminate\Database\Eloquent\Collection;
 
 class HallRepository

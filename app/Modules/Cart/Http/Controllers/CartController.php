@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Carts\Http\Controllers;
+namespace Nabilet\Modules\Cart\Http\Controllers;
 
-use App\Modules\Carts\Models\Cart;
-use App\Modules\Carts\Services\CartService;
+use Nabilet\Modules\Cart\Models\Cart;
+use Nabilet\Modules\Cart\Services\CartService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;

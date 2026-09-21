@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use App\Modules\Events\Http\Controllers\EventController;
+use Nabilet\Modules\Events\Http\Controllers\EventController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1/events')->group(function () {

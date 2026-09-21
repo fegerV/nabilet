@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Payments\Providers;
+namespace Nabilet\Modules\Payments\Providers;
 
 /**
  * Interface for payment providers.

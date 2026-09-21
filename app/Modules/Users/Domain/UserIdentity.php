@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Users\Domain;
+namespace Nabilet\Modules\Users\Domain;
 
 /**
  * The contact surface of an account, and the two lifecycle markers that matter.
