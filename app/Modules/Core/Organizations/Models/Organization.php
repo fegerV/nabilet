@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Core\Organizations\Models;
+namespace Nabilet\Modules\Core\Organizations\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use App\Modules\Core\Users\Models\User;
+use Nabilet\Modules\Core\Users\Models\User;
 
 /**
  * Organization Model - Canonical Implementation
@@ -76,7 +76,7 @@ class Organization extends Model
      */
     public function venues(): HasMany
     {
-        return $this->hasMany(\App\Modules\Venues\Models\Venue::class, 'organization_id');
+        return $this->hasMany(\Nabilet\Modules\Venues\Models\Venue::class, 'organization_id');
     }
 
     /**
@@ -84,7 +84,7 @@ class Organization extends Model
      */
     public function events(): HasMany
     {
-        return $this->hasMany(\App\Modules\Events\Models\Event::class, 'organization_id');
+        return $this->hasMany(\Nabilet\Modules\Events\Models\Event::class, 'organization_id');
     }
 
     /**
@@ -92,7 +92,7 @@ class Organization extends Model
      */
     public function orders(): HasMany
     {
-        return $this->hasMany(\App\Modules\Orders\Models\Order::class, 'organization_id');
+        return $this->hasMany(\Nabilet\Modules\Orders\Models\Order::class, 'organization_id');
     }
 
     /**
@@ -100,7 +100,7 @@ class Organization extends Model
      */
     public function pages(): HasMany
     {
-        return $this->hasMany(\App\Modules\Content\Models\Page::class, 'organization_id');
+        return $this->hasMany(\Nabilet\Modules\Content\Models\Page::class, 'organization_id');
     }
 
     /**
@@ -108,7 +108,7 @@ class Organization extends Model
      */
     public function mediaAssets(): HasMany
     {
-        return $this->hasMany(\App\Modules\Content\Models\MediaAsset::class, 'organization_id');
+        return $this->hasMany(\Nabilet\Modules\Content\Models\MediaAsset::class, 'organization_id');
     }
 
     /**
@@ -116,7 +116,7 @@ class Organization extends Model
      */
     public function promoCodes(): HasMany
     {
-        return $this->hasMany(\App\Modules\Orders\Models\PromoCode::class, 'organization_id');
+        return $this->hasMany(\Nabilet\Modules\Orders\Models\PromoCode::class, 'organization_id');
     }
 
     /**
@@ -124,7 +124,7 @@ class Organization extends Model
      */
     public function ticketTemplates(): HasMany
     {
-        return $this->hasMany(\App\Modules\Tickets\Models\TicketTemplate::class, 'organization_id');
+        return $this->hasMany(\Nabilet\Modules\Tickets\Models\TicketTemplate::class, 'organization_id');
     }
 
     /**
@@ -132,7 +132,7 @@ class Organization extends Model
      */
     public function checkinDevices(): HasMany
     {
-        return $this->hasMany(\App\Modules\Tickets\Models\CheckinDevice::class, 'organization_id');
+        return $this->hasMany(\Nabilet\Modules\Tickets\Models\CheckinDevice::class, 'organization_id');
     }
 
     /**
@@ -140,7 +140,7 @@ class Organization extends Model
      */
     public function offlineBundles(): HasMany
     {
-        return $this->hasMany(\App\Modules\Tickets\Models\OfflineBundle::class, 'organization_id');
+        return $this->hasMany(\Nabilet\Modules\Tickets\Models\OfflineBundle::class, 'organization_id');
     }
 
     /**
@@ -148,7 +148,7 @@ class Organization extends Model
      */
     public function apiKeys(): HasMany
     {
-        return $this->hasMany(\App\Modules\System\Models\ApiKey::class, 'organization_id');
+        return $this->hasMany(\Nabilet\Modules\System\Models\ApiKey::class, 'organization_id');
     }
 
     /**
@@ -156,7 +156,7 @@ class Organization extends Model
      */
     public function webhookEndpoints(): HasMany
     {
-        return $this->hasMany(\App\Modules\System\Models\Webhook::class, 'organization_id');
+        return $this->hasMany(\Nabilet\Modules\System\Models\Webhook::class, 'organization_id');
     }
 
     /**
@@ -164,6 +164,6 @@ class Organization extends Model
      */
     public function abExperiments(): HasMany
     {
-        return $this->hasMany(\App\Modules\Analytics\Models\AbExperiment::class, 'organization_id');
+        return $this->hasMany(\Nabilet\Modules\Analytics\Models\AbExperiment::class, 'organization_id');
     }
 }

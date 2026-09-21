@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Privacy\Domain;
+namespace Nabilet\Modules\Privacy\Domain;
 
 /**
  * Whether processing is permitted for a purpose.

@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Events\Http\Resources;
+namespace Nabilet\Modules\Events\Http\Resources;
 
-use App\Modules\Events\Models\Event;
+use Nabilet\Modules\Events\Models\Event;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 

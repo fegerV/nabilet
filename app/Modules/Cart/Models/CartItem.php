@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Carts\Models;
+namespace Nabilet\Modules\Cart\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use App\Modules\Inventory\Models\InventoryItem;
+use Nabilet\Modules\Inventory\Models\InventoryItem;
 
 /**
  * @property int $id

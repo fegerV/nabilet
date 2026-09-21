@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Core\Organizations\Http\Middleware;
+namespace Nabilet\Modules\Core\Organizations\Http\Middleware;
 
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
-use App\Modules\Core\Organizations\Models\Organization;
-use App\Modules\Core\Organizations\Repositories\OrganizationRepository;
+use Nabilet\Modules\Core\Organizations\Models\Organization;
+use Nabilet\Modules\Core\Organizations\Repositories\OrganizationRepository;
 
 class CheckOrganizationAccess
 {

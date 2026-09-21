@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Inventory\Services;
+namespace Nabilet\Modules\Inventory\Services;
 
-use App\Modules\Inventory\Models\InventoryItem;
-use App\Modules\Inventory\Repositories\InventoryItemRepository;
-use App\Modules\Sessions\Models\Session;
-use App\Modules\Venues\Halls\Models\HallSchemaVersion;
+use Nabilet\Modules\Inventory\Models\InventoryItem;
+use Nabilet\Modules\Inventory\Repositories\InventoryItemRepository;
+use Nabilet\Modules\Sessions\Models\Session;
+use Nabilet\Modules\Venues\Halls\Models\HallSchemaVersion;
 use Illuminate\Support\Facades\DB;
 
 class InventoryService

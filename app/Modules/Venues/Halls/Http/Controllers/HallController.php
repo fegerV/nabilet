@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Venues\Halls\Http\Controllers;
+namespace Nabilet\Modules\Venues\Halls\Http\Controllers;
 
-use App\Http\Controllers\Controller;
-use App\Modules\Venues\Halls\Services\HallService;
-use App\Modules\Venues\Halls\Http\Resources\HallResource;
-use App\Modules\Venues\Halls\Http\Resources\HallCollection;
-use App\Modules\Venues\Halls\Http\Resources\SchemaVersionResource;
+use Illuminate\Routing\Controller;
+use Nabilet\Modules\Venues\Halls\Services\HallService;
+use Nabilet\Modules\Venues\Halls\Http\Resources\HallResource;
+use Nabilet\Modules\Venues\Halls\Http\Resources\HallCollection;
+use Nabilet\Modules\Venues\Halls\Http\Resources\SchemaVersionResource;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 

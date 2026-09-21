@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Events\Http\Resources;
+namespace Nabilet\Modules\Events\Http\Resources;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\ResourceCollection;

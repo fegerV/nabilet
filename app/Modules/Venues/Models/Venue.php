@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Venues\Models;
+namespace Nabilet\Modules\Venues\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -44,7 +44,7 @@ class Venue extends Model
 
     public function organization(): BelongsTo
     {
-        return $this->belongsTo(\App\Modules\Core\Organizations\Models\Organization::class);
+        return $this->belongsTo(\Nabilet\Modules\Core\Organizations\Models\Organization::class);
     }
 
     public function halls(): HasMany

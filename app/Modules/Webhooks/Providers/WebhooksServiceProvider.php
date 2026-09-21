@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Webhooks\Providers;
+namespace Nabilet\Modules\Webhooks\Providers;
 
 use Illuminate\Support\ServiceProvider;
 

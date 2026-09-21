@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Payments\Http\Controllers;
+namespace Nabilet\Modules\Payments\Http\Controllers;
 
-use App\Modules\Payments\Models\Payment;
-use App\Modules\Payments\Services\PaymentService;
+use Nabilet\Modules\Payments\Models\Payment;
+use Nabilet\Modules\Payments\Services\PaymentService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;

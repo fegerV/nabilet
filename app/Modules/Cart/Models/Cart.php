@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Carts\Models;
+namespace Nabilet\Modules\Cart\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use App\Modules\Core\Users\Models\User;
+use Nabilet\Modules\Core\Users\Models\User;
 
 /**
  * @property int $id

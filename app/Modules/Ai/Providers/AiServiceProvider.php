@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Ai\Providers;
+namespace Nabilet\Modules\Ai\Providers;
 
 use Illuminate\Support\ServiceProvider;
 

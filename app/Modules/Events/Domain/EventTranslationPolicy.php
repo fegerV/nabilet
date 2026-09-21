@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Events\Domain;
+namespace Nabilet\Modules\Events\Domain;
 
 /**
  * Whether a translation row may be written (ТЗ §73).

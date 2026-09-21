@@ -2,26 +2,26 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Core\Users\Models;
+namespace Nabilet\Modules\Core\Users\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use App\Modules\Core\Organizations\Models\Organization;
-use App\Modules\Core\Models\Role;
-use App\Modules\Core\Models\UserRole;
-use App\Modules\Core\Models\UserSession;
-use App\Modules\Core\Models\LoginLog;
-use App\Modules\Orders\Models\Order;
-use App\Modules\Tickets\Models\Ticket;
-use App\Modules\Carts\Models\Cart;
-use App\Modules\Notifications\Models\Consent;
-use App\Modules\Notifications\Models\Notification;
-use App\Modules\Notifications\Models\PrivacyRequest;
-use App\Modules\Content\Models\MediaAsset;
-use App\Modules\Analytics\Models\HeatmapEvent;
-use App\Modules\Analytics\Models\AnalyticsEvent;
-use App\Modules\Analytics\Models\AbAssignment;
+use Nabilet\Modules\Core\Organizations\Models\Organization;
+use Nabilet\Modules\Core\Models\Role;
+use Nabilet\Modules\Core\Models\UserRole;
+use Nabilet\Modules\Core\Models\UserSession;
+use Nabilet\Modules\Core\Models\LoginLog;
+use Nabilet\Modules\Orders\Models\Order;
+use Nabilet\Modules\Tickets\Models\Ticket;
+use Nabilet\Modules\Cart\Models\Cart;
+use Nabilet\Modules\Notifications\Models\Consent;
+use Nabilet\Modules\Notifications\Models\Notification;
+use Nabilet\Modules\Notifications\Models\PrivacyRequest;
+use Nabilet\Modules\Content\Models\MediaAsset;
+use Nabilet\Modules\Analytics\Models\HeatmapEvent;
+use Nabilet\Modules\Analytics\Models\AnalyticsEvent;
+use Nabilet\Modules\Analytics\Models\AbAssignment;
 
 /**
  * User Model - Canonical Implementation

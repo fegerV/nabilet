@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Core\Organizations\Repositories;
+namespace Nabilet\Modules\Core\Organizations\Repositories;
 
-use App\Modules\Core\Organizations\Models\Organization;
+use Nabilet\Modules\Core\Organizations\Models\Organization;
 use Illuminate\Database\Eloquent\Collection;
 
 class OrganizationRepository

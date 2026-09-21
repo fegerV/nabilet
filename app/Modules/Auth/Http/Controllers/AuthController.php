@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Auth\Http\Controllers;
+namespace Nabilet\Modules\Auth\Http\Controllers;
 
-use App\Http\Controllers\Controller;
-use App\Modules\Auth\Http\Requests\RegisterRequest;
-use App\Modules\Auth\Http\Requests\LoginRequest;
-use App\Modules\Auth\Http\Resources\AuthResource;
-use App\Modules\Core\Users\Services\UserService;
+use Illuminate\Routing\Controller;
+use Nabilet\Modules\Auth\Http\Requests\RegisterRequest;
+use Nabilet\Modules\Auth\Http\Requests\LoginRequest;
+use Nabilet\Modules\Auth\Http\Resources\AuthResource;
+use Nabilet\Modules\Core\Users\Services\UserService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Response;
 

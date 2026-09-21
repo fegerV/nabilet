@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Tickets\Http\Controllers;
+namespace Nabilet\Modules\Tickets\Http\Controllers;
 
-use App\Modules\Tickets\Models\Ticket;
-use App\Modules\Tickets\Models\TicketScan;
-use App\Modules\Tickets\Services\TicketScanService;
+use Nabilet\Modules\Tickets\Models\Ticket;
+use Nabilet\Modules\Tickets\Models\TicketScan;
+use Nabilet\Modules\Tickets\Services\TicketScanService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;

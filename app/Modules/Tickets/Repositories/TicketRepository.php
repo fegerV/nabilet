@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Tickets\Repositories;
+namespace Nabilet\Modules\Tickets\Repositories;
 
-use App\Modules\Tickets\Models\Ticket;
-use App\Modules\Tickets\Models\TicketScan;
+use Nabilet\Modules\Tickets\Models\Ticket;
+use Nabilet\Modules\Tickets\Models\TicketScan;
 use Illuminate\Database\Eloquent\Collection;
 
 class TicketRepository

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Orders\Domain;
+namespace Nabilet\Modules\Orders\Domain;
 
 use Nabilet\Core\Errors\DomainRuleViolation;
 

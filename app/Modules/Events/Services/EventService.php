@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Events\Services;
+namespace Nabilet\Modules\Events\Services;
 
-use App\Modules\Events\Domain\EventStatus;
-use App\Modules\Events\Models\Event;
-use App\Modules\Events\Repositories\EventRepository;
+use Nabilet\Modules\Events\Domain\EventStatus;
+use Nabilet\Modules\Events\Models\Event;
+use Nabilet\Modules\Events\Repositories\EventRepository;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 

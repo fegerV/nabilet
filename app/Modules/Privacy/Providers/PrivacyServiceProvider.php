@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Privacy\Providers;
+namespace Nabilet\Modules\Privacy\Providers;
 
 use Illuminate\Support\ServiceProvider;
 

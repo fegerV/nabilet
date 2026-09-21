@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Sessions\Http\Controllers;
+namespace Nabilet\Modules\Sessions\Http\Controllers;
 
-use App\Modules\Sessions\Models\Session;
+use Nabilet\Modules\Sessions\Models\Session;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;

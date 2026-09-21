@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Facades\Route;
-use App\Modules\Webhooks\Http\Controllers\WebhookController;
+use Nabilet\Modules\Webhooks\Http\Controllers\WebhookController;
 
 /*
  * Webhooks Module API Routes

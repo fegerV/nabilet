@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Notifications\Providers;
+namespace Nabilet\Modules\Notifications\Providers;
 
 use Illuminate\Support\ServiceProvider;
 

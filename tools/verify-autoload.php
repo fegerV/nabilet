@@ -10,19 +10,31 @@ declare(strict_types=1);
  *
  * WHY THIS EXISTS
  *   A namespace is a claim that a class can be found. Nothing checked that claim,
- *   and a merged branch shipped 118 PHP files under `app/` that no autoloader can
- *   resolve:
+ *   and a merged branch shipped 118 PHP files under `app/` that no autoloader could
+ *   resolve: 78 declared `namespace App\Modules\…` when `composer.json` has no
+ *   `App\` PSR-4 prefix at all — only `Nabilet\Core\`, `Nabilet\Modules\`,
+ *   `Nabilet\Plugins\` and the two `Database\` roots — and 40 declared
+ *   `namespace NabileT\Modules\…`, a typo, and PSR-4 prefix matching is
+ *   case-sensitive.
  *
- *     * 78 declare `namespace App\Modules\…`, and `composer.json` has no `App\`
- *       PSR-4 prefix at all — only `Nabilet\Core\`, `Nabilet\Modules\`,
- *       `Nabilet\Plugins\` and the two `Database\` roots;
- *     * 40 declare `namespace Nabilet\Modules\…` — a typo. PSR-4 prefix matching
- *       is case-sensitive, so `Nabilet\` does not match `Nabilet\`.
+ *   The damage was worse than "these files do not load". Some modules were split
+ *   across all three roots, so their own classes could not see each other:
+ *   `Orders` was 6 `Nabilet\` + 7 `App\` + 5 `NabileT\`, `Tickets` 10/5/5,
+ *   `Payments` 7/4/3. Within one module a `Model` could not reference its `Domain`.
  *
- *   The damage is worse than "these files do not load". Some modules are split
- *   across all three roots, so their own classes cannot see each other:
- *   `Orders` is 6 `Nabilet\` + 7 `App\` + 5 `Nabilet\`, `Tickets` 10/5/5,
- *   `Payments` 7/4/3. Within one module a `Model` cannot reference its `Domain`.
+ *   The tree has since been consolidated onto `Nabilet\Modules\`, the canonical
+ *   root. How it got consolidated is the part worth remembering: an upstream pass
+ *   renamed `NabileT` → `Nabilet` textually and swept this file's own docblock and
+ *   ratchet keys with it, then a later pass moved all 233 module files to
+ *   `App\Modules\` — the root with no prefix. The result was 460 of 596 tests
+ *   failing with `Class "Nabilet\Modules\…" not found`, and a verifier whose
+ *   allow-list had silently become two entries under one key. A "namespace fix"
+ *   that points the tree at an unmapped root is worse than the inconsistency it
+ *   replaces, and only this gate and the test runner could see it.
+ *
+ *   Lesson for this file specifically: never let a repository-wide rename touch a
+ *   verifier's own strings. Its docblock describes history and its ratchet keys
+ *   name roots; both are data, and a rename makes them lie.
  *
  *   Every gate this project had passed anyway: `lint.php` checks syntax only,
  *   `verify-purity.php` loads the `Domain/` subdirectory of each module and the
@@ -59,13 +71,6 @@ $listMode = in_array('--list', $argv, true);
  * @var array<string, string>
  */
 const UNLOADABLE_ALLOWED = [
-    'App\\Modules\\' => '78 files declare this root and composer.json has no `App\\` prefix. '
-        . 'Either add the prefix (giving one tree two names) or rewrite the files to '
-        . '`Nabilet\\Modules\\`. The second is right: the domain, the tests and the module '
-        . 'registry all use `Nabilet\\Modules\\`.',
-    'Nabilet\\Modules\\' => '40 files declare this root. It is a typo for `Nabilet\\Modules\\`, '
-        . 'and PSR-4 prefix matching is case-sensitive, so it can never resolve. Fix is a '
-        . 'rename, not a decision.',
     'Tests\\Feature\\' => '3 files declare `Tests\\Feature\\Api`. composer.json maps '
         . '`Nabilet\\Tests\\`, so the same files under that root would resolve. These also '
         . '`use Tests\\TestCase`, which does not exist (the runner\'s base class is '

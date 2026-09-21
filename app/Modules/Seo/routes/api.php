@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use App\Modules\Seo\Http\Controllers\SitemapController;
+use Nabilet\Modules\Seo\Http\Controllers\SitemapController;
 use Illuminate\Support\Facades\Route;
 
 /*

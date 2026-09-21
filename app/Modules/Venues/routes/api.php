@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use App\Modules\Venues\Http\Controllers\VenueController;
+use Nabilet\Modules\Venues\Http\Controllers\VenueController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1/venues')->group(function () {

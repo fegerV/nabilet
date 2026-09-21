@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Sessions\Domain;
+namespace Nabilet\Modules\Sessions\Domain;
 
 /**
  * Whether a change to a session's seating is permitted, and if not, why.

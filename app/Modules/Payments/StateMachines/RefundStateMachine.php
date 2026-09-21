@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Payments\StateMachines;
+namespace Nabilet\Modules\Payments\StateMachines;
 
 use Nabilet\Core\StateMachine\StateMachine;
 

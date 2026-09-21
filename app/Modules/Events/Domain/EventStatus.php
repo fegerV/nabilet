@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Events\Domain;
+namespace Nabilet\Modules\Events\Domain;
 
 /**
  * Event status constants (ТЗ §12).

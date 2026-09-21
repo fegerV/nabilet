@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Inventory\Repositories;
+namespace Nabilet\Modules\Inventory\Repositories;
 
-use App\Modules\Inventory\Models\InventoryItem;
+use Nabilet\Modules\Inventory\Models\InventoryItem;
 use Illuminate\Database\Eloquent\Collection;
 
 class InventoryItemRepository

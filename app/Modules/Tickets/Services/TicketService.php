@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Tickets\Services;
+namespace Nabilet\Modules\Tickets\Services;
 
-use App\Modules\Tickets\Models\Ticket;
-use App\Modules\Tickets\Repositories\TicketRepository;
-use App\Modules\Tickets\Domain\TicketIssuance;
-use App\Modules\Tickets\Domain\CheckinEvaluator;
-use App\Modules\Orders\Models\Order;
+use Nabilet\Modules\Tickets\Models\Ticket;
+use Nabilet\Modules\Tickets\Repositories\TicketRepository;
+use Nabilet\Modules\Tickets\Domain\TicketIssuance;
+use Nabilet\Modules\Tickets\Domain\CheckinEvaluator;
+use Nabilet\Modules\Orders\Models\Order;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 

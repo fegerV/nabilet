@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Heatmaps\Providers;
+namespace Nabilet\Modules\Heatmaps\Providers;
 
 use Illuminate\Support\ServiceProvider;
 

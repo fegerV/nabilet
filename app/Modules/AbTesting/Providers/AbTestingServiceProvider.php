@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\AbTesting\Providers;
+namespace Nabilet\Modules\AbTesting\Providers;
 
 use Illuminate\Support\ServiceProvider;
 

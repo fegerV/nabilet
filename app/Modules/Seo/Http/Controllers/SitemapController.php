@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Seo\Http\Controllers;
+namespace Nabilet\Modules\Seo\Http\Controllers;
 
-use App\Modules\Seo\Services\SitemapService;
+use Nabilet\Modules\Seo\Services\SitemapService;
 use Illuminate\Http\Response;
 
 /**

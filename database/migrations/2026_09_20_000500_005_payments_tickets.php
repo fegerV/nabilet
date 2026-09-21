@@ -41,7 +41,6 @@ return new class extends Migration
             $table->dateTime('created_at', 6);
             $table->dateTime('updated_at', 6);
             $table->dateTime('paid_at', 6)->nullable();
-            $table->json('processed_webhook_events')->nullable();
             $table->index(['order_id'], "idx_payments_order");
             $table->index(['status'], "idx_payments_status");
             $table->unique(['provider', 'idempotency_key'], "uq_payments_idempotency");

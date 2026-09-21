@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Orders\Orders\Services;
+namespace Nabilet\Modules\Orders\Services;
 
-use App\Modules\Orders\Orders\Models\Order;
-use App\Modules\Orders\Orders\Repositories\OrderRepository;
-use App\Modules\Orders\Orders\Domain\OrderStateMachine;
-use App\Modules\Inventory\Items\Models\InventoryItem;
-use App\Modules\Payments\Payments\Models\Payment;
+use Nabilet\Modules\Orders\Models\Order;
+use Nabilet\Modules\Orders\Repositories\OrderRepository;
+use Nabilet\Modules\Orders\Domain\OrderStateMachine;
+use Nabilet\Modules\Inventory\Items\Models\InventoryItem;
+use Nabilet\Modules\Payments\Payments\Models\Payment;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 

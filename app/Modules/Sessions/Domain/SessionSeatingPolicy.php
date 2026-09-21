@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Sessions\Domain;
+namespace Nabilet\Modules\Sessions\Domain;
 
-use App\Modules\HallSchemas\Domain\SchemaVersion;
+use Nabilet\Modules\HallSchemas\Domain\SchemaVersion;
 
 /**
  * What may be done to a session's hall map (ТЗ §13, §46).

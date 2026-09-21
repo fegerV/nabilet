@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Events\Http\Controllers;
+namespace Nabilet\Modules\Events\Http\Controllers;
 
-use App\Modules\Events\Http\Requests\StoreEventRequest;
-use App\Modules\Events\Http\Requests\UpdateEventRequest;
-use App\Modules\Events\Http\Resources\EventResource;
-use App\Modules\Events\Models\Event;
-use App\Modules\Events\Services\EventService;
+use Nabilet\Modules\Events\Http\Requests\StoreEventRequest;
+use Nabilet\Modules\Events\Http\Requests\UpdateEventRequest;
+use Nabilet\Modules\Events\Http\Resources\EventResource;
+use Nabilet\Modules\Events\Models\Event;
+use Nabilet\Modules\Events\Services\EventService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;

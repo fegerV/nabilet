@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Payments\Services;
+namespace Nabilet\Modules\Payments\Services;
 
 use Nabilet\Core\Errors\DomainRuleViolation;
 

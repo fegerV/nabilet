@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\HallSchemas\Domain;
+namespace Nabilet\Modules\HallSchemas\Domain;
 
 /**
  * The answer to "may this version be published / archived / edited?".

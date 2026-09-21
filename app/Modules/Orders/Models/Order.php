@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Orders\Models;
+namespace Nabilet\Modules\Orders\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use App\Modules\Core\Users\Models\User;
-use App\Modules\Core\Organizations\Models\Organization;
+use Nabilet\Modules\Core\Users\Models\User;
+use Nabilet\Modules\Core\Organizations\Models\Organization;
 
 /**
  * @property int $id

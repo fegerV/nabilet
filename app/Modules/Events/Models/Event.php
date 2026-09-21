@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Events\Models;
+namespace Nabilet\Modules\Events\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -50,7 +50,7 @@ class Event extends Model
 
     public function organization(): BelongsTo
     {
-        return $this->belongsTo(\App\Modules\Core\Organizations\Models\Organization::class);
+        return $this->belongsTo(\Nabilet\Modules\Core\Organizations\Models\Organization::class);
     }
 
     public function category(): BelongsTo
@@ -60,7 +60,7 @@ class Event extends Model
 
     public function sessions(): HasMany
     {
-        return $this->hasMany(\App\Modules\Sessions\Models\Session::class);
+        return $this->hasMany(\Nabilet\Modules\Sessions\Models\Session::class);
     }
 
     public function translations(): HasMany
@@ -70,11 +70,11 @@ class Event extends Model
 
     public function promoCodes(): HasMany
     {
-        return $this->hasMany(\App\Modules\Orders\Models\PromoCode::class);
+        return $this->hasMany(\Nabilet\Modules\Orders\Models\PromoCode::class);
     }
 
     public function tickets(): HasMany
     {
-        return $this->hasMany(\App\Modules\Tickets\Models\Ticket::class);
+        return $this->hasMany(\Nabilet\Modules\Tickets\Models\Ticket::class);
     }
 }

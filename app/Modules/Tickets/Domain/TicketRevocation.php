@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Tickets\Domain;
+namespace Nabilet\Modules\Tickets\Domain;
 
 use Nabilet\Core\Errors\DomainRuleViolation;
-use App\Modules\Tickets\StateMachines\TicketStateMachine;
+use Nabilet\Modules\Tickets\StateMachines\TicketStateMachine;
 
 /**
  * Turns "refund N units of order item X" into per-ticket actions (ТЗ §29, §85).

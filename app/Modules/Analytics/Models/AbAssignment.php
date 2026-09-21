@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Analytics\Models;
+namespace Nabilet\Modules\Analytics\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use App\Modules\Core\Users\Models\User;
+use Nabilet\Modules\Core\Users\Models\User;
 
 /**
  * @property int $id

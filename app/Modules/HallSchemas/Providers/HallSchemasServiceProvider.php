@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\HallSchemas\Providers;
+namespace Nabilet\Modules\HallSchemas\Providers;
 
 use Illuminate\Support\ServiceProvider;
 

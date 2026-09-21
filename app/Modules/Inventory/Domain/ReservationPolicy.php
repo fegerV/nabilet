@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Inventory\Domain;
+namespace Nabilet\Modules\Inventory\Domain;
 
 /**
  * Whether a cart may take N units of an item, and why not (ТЗ §24).

@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Orders\Models;
+namespace Nabilet\Modules\Orders\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use App\Modules\Inventory\Models\InventoryItem;
-use App\Modules\Carts\Models\Cart;
+use Nabilet\Modules\Inventory\Models\InventoryItem;
+use Nabilet\Modules\Cart\Models\Cart;
 
 /**
  * SeatHold Model - Database Persistence Layer
