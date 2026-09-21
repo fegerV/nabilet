@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace NabileT\Modules\Analytics\Models;
+namespace Nabilet\Modules\Analytics\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;

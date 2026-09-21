@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace NabileT\Modules\Carts\Models;
+namespace Nabilet\Modules\Carts\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
