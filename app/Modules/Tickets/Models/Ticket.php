@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace NabileT\Modules\Tickets\Models;
+namespace Nabilet\Modules\Tickets\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use NabileT\Modules\Orders\Models\OrderItem;
+use Nabilet\Modules\Orders\Models\OrderItem;
 
 /**
  * @property int $id

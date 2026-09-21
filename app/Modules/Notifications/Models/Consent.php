@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace NabileT\Modules\Notifications\Models;
+namespace Nabilet\Modules\Notifications\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
