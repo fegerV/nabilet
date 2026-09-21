@@ -32,7 +32,10 @@ final class SetLocale
 
     private function resolve(Request $request): string
     {
-        $supported = array_filter(explode(',', (string) config('app.locales', 'ru')));
+        $locales = config('app.locales', ['ru']);
+        $supported = is_array($locales)
+            ? array_filter($locales, 'is_string')
+            : array_filter(explode(',', (string) $locales));
         $supported = $supported === [] ? ['ru'] : $supported;
         $fallback = (string) config('app.fallback_locale', 'ru');
 

@@ -6,7 +6,7 @@ namespace Nabilet\Modules\Orders\Services;
 
 use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Orders\Repositories\OrderRepository;
-use Nabilet\Modules\Orders\Domain\OrderStateMachine;
+use Nabilet\Modules\Orders\StateMachines\OrderStateMachine;
 use Nabilet\Modules\Inventory\Items\Models\InventoryItem;
 use Nabilet\Modules\Payments\Payments\Models\Payment;
 use Illuminate\Support\Facades\DB;
