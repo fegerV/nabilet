@@ -1,1 +1,50 @@
-Nothing should be ignored since the changes only include PHP source files (.php) which are not build artifacts, dependencies, or temporary files.
+```
+# Dependencies
+vendor/
+node_modules/
+.npm/
+.yarn/
+
+# Build artifacts
+dist/
+build/
+target/
+*.apk
+*.aab
+*.so
+*.aar
+
+# Logs
+*.log
+logs/
+
+# Environment
+.env
+.env.local
+.env.*
+
+# Editor/IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*.tmp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# PHP specific
+vendor/
+composer.lock
+*.phar
+
+# Database
+database/backup/*.sql
+database/dumps/
+*.sql
+
+# Cache
+.cache/
+*.cache
+```
