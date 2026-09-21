@@ -10,13 +10,15 @@ use App\Modules\Core\Organizations\Http\Requests\StoreOrganizationRequest;
 use App\Modules\Core\Organizations\Http\Requests\UpdateOrganizationRequest;
 use App\Modules\Core\Organizations\Http\Resources\OrganizationResource;
 use App\Modules\Core\Organizations\Http\Resources\OrganizationCollection;
+use App\Modules\Core\Users\Repositories\UserRepository;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class OrganizationController extends Controller
 {
     public function __construct(
-        protected OrganizationService $service
+        protected OrganizationService $service,
+        protected UserRepository $userRepository
     ) {}
 
     public function index(Request $request): OrganizationCollection
@@ -87,7 +89,12 @@ class OrganizationController extends Controller
             abort(404, 'Organization not found');
         }
 
-        $user = \App\Modules\Core\Users\Models\User::findOrFail($request->input('user_id'));
+        $user = $this->userRepository->find($request->input('user_id'));
+        
+        if (!$user) {
+            abort(404, 'User not found');
+        }
+        
         $role = $request->input('role', 'member');
 
         // Prevent adding owner as regular member
@@ -134,7 +141,11 @@ class OrganizationController extends Controller
             abort(404, 'Organization not found');
         }
 
-        $user = \App\Modules\Core\Users\Models\User::findOrFail($userId);
+        $user = $this->userRepository->find($userId);
+
+        if (!$user) {
+            abort(404, 'User not found');
+        }
 
         // Prevent removing the owner
         if ($user->id === $organization->owner_id) {
