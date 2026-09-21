@@ -6,7 +6,7 @@ namespace NabileT\Modules\Analytics\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use NabileT\Modules\Core\Models\Organization;
+use App\Modules\Core\Organizations\Models\Organization;
 
 /**
  * @property int $id

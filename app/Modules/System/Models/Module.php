@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace NabileT\Modules\System\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use NabileT\Modules\Core\Models\User;
+use App\Modules\Core\Users\Models\User;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
