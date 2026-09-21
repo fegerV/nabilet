@@ -4,11 +4,18 @@ declare(strict_types=1);
 
 namespace App\Modules\Events\Services;
 
+use App\Modules\Events\Domain\EventStatus;
 use App\Modules\Events\Models\Event;
 use App\Modules\Events\Repositories\EventRepository;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 
+/**
+ * Event service layer (ТЗ §12).
+ *
+ * Coordinates business logic for events, using domain objects and
+ * repositories. Avoids magic strings by using EventStatus constants.
+ */
 class EventService
 {
     public function __construct(
@@ -51,6 +58,16 @@ class EventService
      */
     public function create(array $data): Event
     {
+        // Ensure status is valid if provided
+        if (isset($data['status']) && !EventStatus::isValid($data['status'])) {
+            throw new \InvalidArgumentException(
+                sprintf('Invalid event status: %s', $data['status'])
+            );
+        }
+
+        // Default to draft if no status provided
+        $data['status'] = $data['status'] ?? EventStatus::DRAFT;
+
         return $this->eventRepository->create($data);
     }
 
@@ -59,6 +76,13 @@ class EventService
      */
     public function update(Event $event, array $data): Event
     {
+        // Validate status if being updated
+        if (isset($data['status']) && !EventStatus::isValid($data['status'])) {
+            throw new \InvalidArgumentException(
+                sprintf('Invalid event status: %s', $data['status'])
+            );
+        }
+
         return $this->eventRepository->update($event, $data);
     }
 
@@ -67,18 +91,59 @@ class EventService
         return $this->eventRepository->delete($event);
     }
 
+    /**
+     * Publish an event (transition to PUBLISHED status).
+     */
     public function publish(Event $event): Event
     {
-        return $this->eventRepository->update($event, ['status' => 'published']);
+        return $this->eventRepository->update($event, ['status' => EventStatus::PUBLISHED]);
     }
 
+    /**
+     * Archive an event (transition to ARCHIVED status).
+     */
     public function archive(Event $event): Event
     {
-        return $this->eventRepository->update($event, ['status' => 'archived']);
+        return $this->eventRepository->update($event, ['status' => EventStatus::ARCHIVED]);
     }
 
+    /**
+     * Cancel an event (transition to CANCELLED status).
+     */
     public function cancel(Event $event): Event
     {
-        return $this->eventRepository->update($event, ['status' => 'cancelled']);
+        return $this->eventRepository->update($event, ['status' => EventStatus::CANCELLED]);
+    }
+
+    /**
+     * Schedule an event for future publication.
+     */
+    public function schedule(Event $event): Event
+    {
+        return $this->eventRepository->update($event, ['status' => EventStatus::SCHEDULED]);
+    }
+
+    /**
+     * Mark event as completed.
+     */
+    public function complete(Event $event): Event
+    {
+        return $this->eventRepository->update($event, ['status' => EventStatus::COMPLETED]);
+    }
+
+    /**
+     * Check if event can be published.
+     */
+    public function canPublish(Event $event): bool
+    {
+        return in_array($event->status, [EventStatus::DRAFT, EventStatus::SCHEDULED], true);
+    }
+
+    /**
+     * Check if event is publicly visible.
+     */
+    public function isPubliclyVisible(Event $event): bool
+    {
+        return EventStatus::isPubliclyVisible($event->status);
     }
 }
