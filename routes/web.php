@@ -3,7 +3,6 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Facades\Route;
-use App\Modules\Seo\Http\Controllers\SitemapController;
 
 /*
  * Web routes exist for the installer (/install) and the admin SPA shell.
@@ -13,8 +12,6 @@ use App\Modules\Seo\Http\Controllers\SitemapController;
  * registers it, and an empty file is honest: no half-wired routes.
  *
  * The health check is provided by Laravel at GET /up, not here.
+ *
+ * Sitemap routes are now handled by the SEO module via api.php.
  */
-
-// Sitemap route for SEO
-Route::get('/sitemap.xml', [SitemapController::class, 'index'])->name('sitemap.index');
-Route::get('/sitemap-{section}.xml', [SitemapController::class, 'section'])->name('sitemap.section');
