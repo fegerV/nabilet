@@ -1,8 +1,14 @@
 {
     "name": "nabilet/core",
     "type": "project",
-    "description": "NABILET Core — universal ticketing engine (modular monolith: commerce, ticketing, CMS, integrations).",
-    "keywords": ["ticketing", "events", "seating", "laravel", "modular-monolith"],
+    "description": "NABILET Core \u2014 universal ticketing engine (modular monolith: commerce, ticketing, CMS, integrations).",
+    "keywords": [
+        "ticketing",
+        "events",
+        "seating",
+        "laravel",
+        "modular-monolith"
+    ],
     "license": "proprietary",
     "require": {
         "php": "^8.3",
@@ -10,8 +16,9 @@
         "ext-mbstring": "*",
         "ext-openssl": "*",
         "ext-pdo": "*",
+        "filament/filament": "^3.2",
         "laravel/framework": "^13.0",
-        "laravel/tinker": "^2.9",
+        "laravel/tinker": "^3.0",
         "predis/predis": "^2.2"
     },
     "require-dev": {
@@ -24,6 +31,7 @@
     },
     "autoload": {
         "psr-4": {
+            "App\\": "app/",
             "Nabilet\\Core\\": "app/Core/",
             "Nabilet\\Modules\\": "app/Modules/",
             "Nabilet\\Plugins\\": "plugins/",
@@ -36,12 +44,14 @@
     },
     "autoload-dev": {
         "psr-4": {
-            "Nabilet\\Tests\\": "tests/"
+            "Nabilet\\Tests\\": "tests/",
+            "Tests\\": "tests/"
         }
     },
     "scripts": {
         "post-autoload-dump": [
-            "@php artisan package:discover --ansi"
+            "@php artisan package:discover --ansi",
+            "@php artisan filament:upgrade"
         ],
         "post-update-cmd": [
             "@php artisan vendor:publish --tag=laravel-assets --ansi --force"

@@ -31,7 +31,7 @@ return [
     'providers' => [
         'users' => [
             'driver' => 'eloquent',
-            'model' => \Nabilet\Modules\Users\Models\User::class,
+            'model' => \App\Models\User::class,
         ],
     ],
 

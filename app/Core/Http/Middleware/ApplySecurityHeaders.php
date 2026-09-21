@@ -49,18 +49,18 @@ final class ApplySecurityHeaders
         $frameAncestors = $isEmbed ? $this->embedAncestors($request) : "'self'";
 
         $headers['Content-Security-Policy'] = implode('; ', [
-            "default-src 'self'",
-            "base-uri 'self'",
-            "object-src 'none'",
-            "frame-ancestors {$frameAncestors}",
-            "form-action 'self'",
-            "script-src 'self' 'nonce-" . $this->nonce($request) . "'",
-            "style-src 'self' 'unsafe-inline'",
-            "img-src 'self' data: blob: https:",
-            "font-src 'self' data:",
-            "connect-src 'self'",
-            'upgrade-insecure-requests',
-        ]);
+                    "default-src 'self'",
+                    "base-uri 'self'",
+                    "object-src 'none'",
+                    "frame-ancestors {$frameAncestors}",
+                    "form-action 'self'",
+                    "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+                    "style-src 'self' 'unsafe-inline' https://fonts.bunny.net",
+                    "img-src 'self' data: blob: https:",
+                    "font-src 'self' data: https://fonts.bunny.net",
+                    "connect-src 'self'",
+                    'upgrade-insecure-requests',
+                ]);
 
         foreach ($headers as $name => $value) {
             if (! $response->headers->has($name)) {

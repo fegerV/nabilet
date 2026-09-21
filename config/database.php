@@ -18,8 +18,8 @@ return [
             'password' => env('DB_PASSWORD', ''),
             'unix_socket' => env('DB_SOCKET', ''),
             // The whole schema is utf8mb4 / utf8mb4_unicode_ci (see migrations.sql).
-            'charset' => env('DB_CHARSET', 'utf8mb4'),
-            'collation' => env('DB_COLLATION', 'utf8mb4_unicode_ci'),
+            'charset' => env('DB_CHARSET', 'utf8'),
+            'collation' => env('DB_COLLATION', ''),
             'prefix' => '',
             'prefix_indexes' => true,
             // Strict mode is load-bearing: money is stored as integer minor units
