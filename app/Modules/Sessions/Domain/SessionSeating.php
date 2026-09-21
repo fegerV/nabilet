@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace Nabilet\Modules\Sessions\Domain;
+namespace App\Modules\Sessions\Domain;
 
 use Nabilet\Core\Errors\DomainRuleViolation;
-use Nabilet\Modules\HallSchemas\Domain\SchemaVersion;
-use Nabilet\Modules\Sessions\StateMachines\SessionStateMachine;
+use App\Modules\HallSchemas\Domain\SchemaVersion;
+use App\Modules\Sessions\StateMachines\SessionStateMachine;
 
 /**
  * The seating facts about one session at a point in time.

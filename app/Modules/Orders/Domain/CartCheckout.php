@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Nabilet\Modules\Orders\Domain;
+namespace App\Modules\Orders\Domain;
 
 use Nabilet\Core\Errors\DomainRuleViolation;
-use Nabilet\Modules\Inventory\Domain\SeatHold;
+use App\Modules\Inventory\Domain\SeatHold;
 
 /**
  * Everything checkout must know, assembled once and passed in.

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Nabilet\Modules\Security\Domain;
+namespace App\Modules\Security\Domain;
 
 /**
  * One row of `ip_rules`.

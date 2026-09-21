@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Nabilet\Modules\Users\Domain;
+namespace App\Modules\Users\Domain;
 
 /**
  * Whether an account may take an action, and if not, why.
