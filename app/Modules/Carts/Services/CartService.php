@@ -42,6 +42,9 @@ class CartService
     /**
      * Add an item to the cart with atomic inventory reservation.
      * 
+     * FIX: Implements immediate hold creation with atomic decrement to prevent race conditions.
+     * Two users cannot reserve the same seat simultaneously.
+     * 
      * @param string $sessionId
      * @param int $inventoryItemId
      * @param int $quantity
@@ -59,9 +62,9 @@ class CartService
                 throw new \RuntimeException('Cart has expired');
             }
 
-            // Atomically reserve inventory with lock and affected rows check
-            // This prevents race conditions where multiple users try to book the same seat
-            // CRITICAL FIX: Use atomic decrement with WHERE clause to ensure availability
+            // ATOMIC INVENTORY RESERVATION - CRITICAL FIX FOR RACE CONDITION
+            // Use atomic decrement with WHERE clause to ensure availability
+            // This prevents two users from reserving the same seat simultaneously
             $affected = DB::table('inventory_items')
                 ->where('id', $inventoryItemId)
                 ->where('available_quantity', '>=', $quantity)
@@ -72,6 +75,12 @@ class CartService
                 throw new \RuntimeException('Insufficient inventory available');
             }
 
+            // Verify the inventory item still exists and get its price
+            $inventoryItem = InventoryItem::query()
+                ->where('id', $inventoryItemId)
+                ->lockForUpdate()
+                ->firstOrFail();
+
             // Check if item already exists in cart
             $existingItem = CartItem::query()
                 ->where('cart_id', $cart->id)
@@ -80,15 +89,9 @@ class CartService
                 ->first();
 
             if ($existingItem) {
-                // Update quantity with additional atomic check
+                // Update quantity
                 $newQuantity = $existingItem->quantity + $quantity;
                 
-                // Verify the inventory item still exists and get its price
-                $inventoryItem = InventoryItem::query()
-                    ->where('id', $inventoryItemId)
-                    ->lockForUpdate()
-                    ->firstOrFail();
-
                 $existingItem->update([
                     'quantity' => $newQuantity,
                     'total_price' => $this->calculateTotalPrice($inventoryItem->unit_price ?? '0', $newQuantity),
@@ -98,12 +101,6 @@ class CartService
 
                 return $existingItem->fresh();
             }
-
-            // Get inventory item for price info (after reservation)
-            $inventoryItem = InventoryItem::query()
-                ->where('id', $inventoryItemId)
-                ->lockForUpdate()
-                ->firstOrFail();
 
             // Create new cart item
             $cartItem = CartItem::create([
