@@ -8,14 +8,18 @@ use App\Modules\Payments\Models\Payment;
 use App\Modules\Payments\Repositories\PaymentRepository;
 use App\Modules\Payments\Domain\PaymentStateMachine;
 use App\Modules\Orders\Models\Order;
+use App\Modules\Orders\Models\SeatHold;
+use App\Modules\Inventory\Services\HoldSweeper;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Log;
 
 class PaymentService
 {
     public function __construct(
         protected PaymentRepository $repository,
-        protected PaymentStateMachine $stateMachine
+        protected PaymentStateMachine $stateMachine,
+        protected HoldSweeper $holdSweeper
     ) {}
 
     public function createPayment(int $orderId, array $data): Payment
@@ -104,6 +108,23 @@ class PaymentService
             return;
         }
 
+        // CRITICAL: Check if associated holds are still convertible
+        // This prevents race condition where hold expires during payment processing
+        if ($payment->order) {
+            $holdsStillValid = $this->validateHoldsForOrder($payment->order);
+            
+            if (!$holdsStillValid) {
+                Log::warning('PaymentService: Holds expired during payment processing', [
+                    'payment_id' => $payment->id,
+                    'order_id' => $payment->order->id,
+                    'provider_payment_id' => $payment->provider_payment_id,
+                ]);
+                
+                // Reject payment - holds have expired
+                throw new \RuntimeException('Seat holds have expired. Payment cannot be completed.');
+            }
+        }
+
         $this->repository->markAsSucceeded($payment);
 
         // Add success transaction
@@ -117,6 +138,77 @@ class PaymentService
         // Notify order service
         if ($payment->order) {
             $payment->order->service()->applyPayment($payment);
+            
+            // Mark holds as converted after successful order completion
+            $this->markHoldsAsConverted($payment->order);
+        }
+    }
+
+    /**
+     * Validate that all holds for an order are still convertible.
+     * Uses HoldSweeper's isHoldConvertible() method with proper locking.
+     */
+    protected function validateHoldsForOrder(Order $order): bool
+    {
+        // Find all active holds for this order's cart
+        $cartId = $order->items()->first()?->cart_id;
+        
+        if (!$cartId) {
+            // No cart association, check if order has items with inventory
+            $inventoryItemIds = $order->items()->pluck('inventory_item_id')->toArray();
+            
+            if (empty($inventoryItemIds)) {
+                return true; // No inventory items to validate
+            }
+            
+            // Check for any active holds on these inventory items
+            $holds = SeatHold::whereIn('inventory_item_id', $inventoryItemIds)
+                ->whereNull('converted_at')
+                ->whereNull('released_at')
+                ->get();
+            
+            foreach ($holds as $hold) {
+                if (!$this->holdSweeper->isHoldConvertible($hold->id)) {
+                    return false;
+                }
+            }
+            
+            return true;
+        }
+        
+        // Check holds by cart_id
+        $holds = SeatHold::where('cart_id', $cartId)
+            ->whereNull('converted_at')
+            ->whereNull('released_at')
+            ->get();
+        
+        foreach ($holds as $hold) {
+            if (!$this->holdSweeper->isHoldConvertible($hold->id)) {
+                return false;
+            }
+        }
+        
+        return true;
+    }
+
+    /**
+     * Mark all holds for an order as converted after successful payment.
+     */
+    protected function markHoldsAsConverted(Order $order): void
+    {
+        $cartId = $order->items()->first()?->cart_id;
+        
+        if (!$cartId) {
+            return;
+        }
+        
+        $holds = SeatHold::where('cart_id', $cartId)
+            ->whereNull('converted_at')
+            ->whereNull('released_at')
+            ->get();
+        
+        foreach ($holds as $hold) {
+            $this->holdSweeper->markAsConverted($hold->id);
         }
     }
 
