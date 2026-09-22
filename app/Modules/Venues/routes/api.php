@@ -9,4 +9,9 @@ use Illuminate\Support\Facades\Route;
 Route::prefix('venues')->group(function () {
     Route::get('/', [VenueController::class, 'index']);
     Route::get('/{venue}', [VenueController::class, 'show']);
+    
+    // Hall Schema routes
+    Route::post('/{venue}/schemas', [VenueController::class, 'storeSchema']);
+    Route::put('/schemas/{hallSchema}', [VenueController::class, 'updateSchema']);
+    Route::delete('/schemas/{hallSchema}', [VenueController::class, 'deleteSchema']);
 });
