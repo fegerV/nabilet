@@ -39,6 +39,7 @@ class AdminPanelProvider extends PanelProvider
                 'gray' => Color::Slate,
                 'success' => Color::Emerald,
                 'warning' => Color::Orange,
+                'info' => Color::Blue,
             ])
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\\Filament\\Resources')
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\\Filament\\Pages')
@@ -66,6 +67,27 @@ class AdminPanelProvider extends PanelProvider
                 Authenticate::class,
             ])
             ->sidebarCollapsibleOnDesktop()
-            ->breadcrumbs(true);
+            ->breadcrumbs(true)
+            ->brandName('Nabilet Admin')
+            ->brandLogo(fn () => view('filament.components.brand-logo'))
+            ->darkModeBrandLogo(fn () => view('filament.components.brand-logo-dark'))
+            ->favicon(asset('favicon.ico'))
+            ->navigationGroups([
+                'Venue Management' => [
+                    'icon' => 'heroicon-o-building-office',
+                ],
+                'Events & Tickets' => [
+                    'icon' => 'heroicon-o-calendar',
+                ],
+                'Sales & Payments' => [
+                    'icon' => 'heroicon-o-currency-dollar',
+                ],
+                'System' => [
+                    'icon' => 'heroicon-o-cog-6-tooth',
+                ],
+            ])
+            ->globalSearchKeyBindings(['command+k', 'ctrl+k'])
+            ->databaseNotifications()
+            ->databaseNotificationsPolling('30s');
     }
 }
