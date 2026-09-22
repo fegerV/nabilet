@@ -9,6 +9,12 @@ export default defineConfig({
             '@': path.resolve(__dirname, './resources/js'),
         },
     },
+    test: {
+        globals: true,
+        environment: 'jsdom',
+        include: ['tests/**/*.test.js'],
+        setupFiles: [],
+    },
     build: {
         outDir: 'public_html/build',
         emptyOutDir: true,
