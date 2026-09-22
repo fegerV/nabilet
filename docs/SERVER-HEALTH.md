@@ -18,23 +18,26 @@ $PHP artisan migrate:status
 
 ## 1. Verdict
 
-The server **boots, connects, and serves traffic**. Two P0 blockers remain. A third — the database
-enforcing none of the spec's invariants — was found and **fixed and verified live**. A fourth — the
-error contract being violated on every framework-owned path — was found and **fixed and verified
-live**.
+The server **boots, connects, and serves traffic**. Two of the P0s below were found and **fixed and
+verified live**: the database enforcing none of the spec's invariants (§3), and the error contract
+being violated on every framework-owned path (§7). A third — the API being unable to authenticate
+anyone — is now **fixed and verified live** as well (§4.4).
 
-The most serious finding of this check is **not** one of the ones carried in from the previous
-session: **the authentication module is a facade**. All six auth endpoints return 500, and the cause
-is not a missing package but four methods that were never written. See §4.
+What remains is **not** what was carried in from the previous session. The API can now authenticate,
+but **four `UserService` methods still do not exist**, so the auth endpoints that need them still fail
+(§4) — and, discovered while fixing the guard, **no module service provider has ever booted**, which
+makes `config/nabilet.php`'s provider list dead config and leaves `role:admin` pointing at an alias
+nobody registers (§4.4).
 
 | # | Finding | Severity | Evidence |
 |---|---------|----------|----------|
-| 1 | **The authentication module is a facade** — all 6 endpoints 500. `AuthController` calls 4 `UserService` methods that do not exist, plus 2 Sanctum methods on a model without the trait. | **P0** | `Call to undefined method …UserService::registerCustomer()` |
-| 2 | `auth:sanctum` guards 7 routes but **no such guard is defined** → every authenticated endpoint 500 | **P0** | `Auth guard [sanctum] is not defined.` |
+| 1 | **The authentication module is a facade** — `AuthController` calls 4 `UserService` methods that do not exist, plus 2 Sanctum methods on a model without the trait. | **P0** (half closed) | `Call to undefined method …UserService::registerCustomer()`. The guard half is **fixed and verified** — see §4.4; the four service methods are still missing |
+| 2 | ~~`auth:sanctum` guarded 7 routes but **no such guard is defined**~~ **FIXED** — replaced by an `api` guard backed by `user_sessions`, as the spec intends | ~~P0~~ **closed** | was `Auth guard [sanctum] is not defined.` → now **401** on all four protected route groups, and a live token authenticates: `tools/verify-auth-live.php` 28/28 |
 | 3 | ~~The database enforces **none** of the spec's CHECK constraints, and the immutability trigger is absent — while `migrate:status` reports every migration as `Ran`~~ **FIXED** — see §3 | ~~P0~~ **closed** | was `check 0/35`, `trigger 0/1` → now `check 35/35`, `trigger 1/1`, both proven to reject bad writes |
 | 4 | ~~Every error body on every framework-owned path was outside the §66 envelope, and `APP_DEBUG=true` published stack traces with absolute paths~~ **FIXED** — see §7 | ~~P0~~ **closed** | 34 call sites across 8 files; live bodies now `{"error":{"code":…,"request_id":…}}` |
 | 5 | `APP_ENV=production` with **`APP_DEBUG=true`** — still leaks traces on **HTML** surfaces (`/admin`, the installer) | **P0** (deployment) | API paths are now redacted by §7; the `.env` flag still needs to be `false` |
 | 6 | **67 of the spec's 81 API paths are not served** | **P0** | `tools/verify-live.php` §2 |
+| 7 | **No module service provider ever boots** — `Nabilet\Core\NabiletServiceProvider` is referenced **nowhere**, so `config/nabilet.php`'s nine providers are dead config, the kernel's "load-bearing" singletons are not singletons, and `role:admin` names an alias nobody registers — so every Halls management route **500s for an authenticated caller** | **P0** | `getLoadedProviders()` returned **0** `Modules\` entries (§4.4); `tools/repro-role-alias.php` → 401 anonymous / **500** authenticated |
 
 ---
 
@@ -56,10 +59,12 @@ is not a missing package but four methods that were never written. See §4.
 | Live schema — CHECK constraints | 35 live / 35 spec — and proven to reject violating writes (§3) |
 | Live schema — immutability trigger | 1 live / 1 spec — and proven to reject published-geometry edits (§3) |
 | `GET /api/v1/venues/1/halls` | 200, paginated JSON — the Halls read path works end-to-end against the live DB |
-| Error contract | `tools/verify-error-envelope.php` — 407 files, 0 violations, 4 reasoned exceptions (§7) |
-| Full lint | 510 files, 0 syntax errors |
-| Test suite | 599 tests, 0 failed, 1227 assertions |
-| All other verifiers | purity 99 files/0 violations · openapi 11/11 · contract-schema 28/0 drift · migrations 13/0 · state-machines · models-schema · autoload · module-structure · verify-live — all PASS |
+| Error contract | `tools/verify-error-envelope.php` — 412 files, 0 violations, 4 reasoned exceptions (§7) |
+| Full lint | 521 files, 0 syntax errors |
+| Test suite | 639 tests, 0 failed, 1324 assertions |
+| **API authentication** | `tools/verify-auth-live.php` — **28 checks, 0 failed**: 401 (not 500) on every protected route, a live token authenticates, and tampered / expired / unbounded / revoked / soft-deleted are all refused |
+| **Not working — measured, not inferred** | `POST /api/v1/halls` returns **500** to an *authenticated* caller (`Target class [role] does not exist`); anonymous callers get 401 first. `tools/repro-role-alias.php`, §9 |
+| All other verifiers | purity 101 files/0 violations · openapi 11/11 (98 operations) · contract-schema 28/0 drift · migrations 13/0 · models-schema no new drift (387 fields/67 models) · autoload · module-structure 33 dirs · state-machines · `modules.php --validate` · verify-live — all PASS |
 
 ---
 
@@ -146,7 +151,7 @@ applies them normally.
 
 ---
 
-## 4. P0 — the authentication module is a facade
+## 4. P0 — authentication: the module was a facade, and the guard is now built
 
 **This section corrects the conclusion reached earlier in the same session.** The previous finding
 was "`laravel/sanctum` is not installed". That is true but it is not the main problem, and
@@ -229,12 +234,84 @@ a table the spec does not define, and would leave `user_sessions` — which the 
 a `CHAR(64)` token hash and a unique index — permanently unused. The correct fix is a bearer guard
 backed by `user_sessions`, which is what the config comment says was always intended.
 
-**Not fixed in this session.** This is a feature build (a guard driver plus four service methods),
-and it changes the authentication mechanism, so it is recorded rather than improvised. It is now the
-top item in §9.
+**The guard is now built — see §4.4.** What remains of this section is the service layer: four
+`UserService` methods and the controller rewrite that uses them.
 
 Affected today: Users, Organizations, Payments (index/show), the protected half of Halls, and
 `/auth/logout` + `/auth/verify-email`.
+
+### 4.4 The guard is built, verified live, and it exposed a second P0
+
+**Fixed and verified.** The API now authenticates through `user_sessions`, which is what the spec
+describes, and every protected route answers **401** instead of 500.
+
+| Piece | File |
+|-------|------|
+| Token + hash | `app/Modules/Auth/Domain/SessionToken.php` — 64 random bytes; `sha256` hex is exactly the `CHAR(64)` the column declares; framework-free, so it is unit-tested |
+| Issue / honour / revoke | `app/Modules/Auth/Services/SessionIssuer.php` — the only writer of `user_sessions`; asks `Domain\SessionPolicy` for every decision |
+| Client context | `app/Modules/Auth/Services/ClientContext.php` — IP, user agent, device name, truncated to the declared column widths |
+| The guard | `app/Modules/Auth/Guards/SessionTokenGuard.php` — a real `Illuminate\Contracts\Auth\Guard` |
+| Driver | `AuthServiceProvider::registerSessionTokenDriver()` — `Auth::extend('session_token', …)` |
+| The guard entry | `config/auth.php` — `'api' => ['driver' => 'session_token', 'provider' => 'api_users']` |
+| Routes | 7 `auth:sanctum` occurrences in 5 files → `auth:api` |
+
+`SessionTokenGuard` deliberately does **not** extend `TokenGuard`: that class asks the provider for
+`retrieveByCredentials(['api_token' => …])`, which builds `where api_token = ?`, but the credential is
+a **hash in a different table with an expiry**, so the lookup cannot be expressed as a provider
+credential query at all. `TokenGuard::validate()` also returns false unconditionally in Laravel 12+.
+So the guard implements `Guard` directly and lets `SessionIssuer` own the lookup.
+
+`tools/verify-auth-live.php` proves it: **28 checks, 0 failed**. It asserts 401-not-500 on four
+protected routes, then every decision the session rules describe — unknown, tampered, expired,
+`expires_at IS NULL` (fails closed), revoked, and a soft-deleted account — and the storage invariants:
+the token is not stored in plaintext, and `ip_address` holds 4 bytes for `127.0.0.1`.
+
+#### Two traps found while building it, both invisible to every other check
+
+**1. `Container::refresh()` does not call the method it is given.** It *registers a rebinding
+callback* that fires the next time `request` is rebound. The provider originally called only
+`$app->refresh('request', $guard, 'setRequest')` — which reads exactly like Laravel's own idiom — so
+the guard kept a **null request** and refused **every** token. Every refusal test still passed,
+because "no token" and "bad token" are indistinguishable from outside. Only the *positive* case caught
+it. The fix pushes the current request in immediately and keeps the rebinding for long-running
+workers; `tests/Unit/AuthWiringTest` now asserts both calls exist.
+
+**2. A packed IP silently truncates when bound as a string.** `ip_address` is `VARBINARY(16)` per the
+spec, which is `bytea` on PostgreSQL. Binding `inet_pton('127.0.0.1')` as an ordinary string stored
+**one byte** (`7f`) instead of four — no error, no warning — and a `10.x.x.x` address is almost all
+zero bytes, so it stored one byte too. Reproduced in `tools/repro-binary-ip.php`, which also shows the
+forms that do work: `PDO::PARAM_LOB` and `decode('<hex>', 'hex')` are exact. `Nabilet\Core\Support\
+PackedIp` emits the latter, and `UNHEX()` for MySQL — the spec's actual target.
+
+#### The P0 this uncovered: no module service provider boots
+
+The driver had to be registered somewhere that actually runs, and establishing that produced the more
+serious finding. **`Nabilet\Core\NabiletServiceProvider` is referenced nowhere.** It is the kernel's
+documented single entry point — "Register each module's own service provider", in its own docblock —
+and nothing registers it. Measured:
+
+```
+getLoadedProviders()  →  53 providers, of which 0 are under Modules\
+config/nabilet.php    →  names 9 module providers, none of them registered
+```
+
+The routes still work, which is why this stayed invisible: `routes/api.php` **hardcodes a `require` of
+13 module route files**, so the endpoints exist while the providers that own them never boot.
+Consequences beyond auth:
+
+- `HookRegistry` and `OrganizationContext` are documented as singletons that "must be the SAME
+  instance for the whole request". They are not — `$this->app->singleton()` never runs — so every
+  `make()` returns a new object, which is precisely the bug their comment warns about.
+- `role:admin` on the hall management routes names an alias **nobody registers**. The comment in
+  `bootstrap/app.php` says modules register their own aliases "from their service providers", and
+  those providers do not run.
+- The nine providers in `config/nabilet.php` are dead config.
+
+**Only the Auth provider was registered** (`bootstrap/providers.php`) — the minimum that makes the API
+authenticate. Registering the whole registry is the real fix and is deliberately **not** attempted
+here: every module provider calls `loadRoutesFrom()`, which is a bare `require` with no prefix, so
+booting them all would register every module's endpoints a second time at an unversioned path. That
+refactor needs its own change, and it is now the top item in §9.
 
 ---
 
@@ -440,11 +517,19 @@ invariants (§3) and the error contract being violated everywhere (§7).
 | 10 | **The §66 envelope was violated on every framework-owned path**, and 34 hand-rolled error responses bypassed `AppError` entirely. | `ApiExceptionRenderer` maps framework exceptions onto the envelope; 34 call sites replaced. Details in §7. |
 | 11 | **No `lang/` directory** → every validation message was a raw key (`validation.required`). | Published the framework's files and added the `ru` set with a field-label map. |
 | 12 | **A non-numeric id produced 500 instead of 422** (`SQLSTATE[22P02]`, BIGINT cast). | `bail` + `integer` added before `exists` at 6 sites. |
+| 13 | **No module service provider was ever registered.** `Nabilet\Core\NabiletServiceProvider` — the class whose docblock says it registers each module's provider — is referenced nowhere, and `getLoadedProviders()` returned **0** entries under `Modules\`. `config/nabilet.php` names 9 module providers; none was loaded. Nothing failed loudly, because `routes/api.php` mounts the module route files itself with hardcoded `require`s. | Registered `Nabilet\Modules\Auth\Providers\AuthServiceProvider` — the one provider the auth driver needs. Registering the rest is deliberately deferred: `ServiceProvider::loadRoutesFrom()` is a bare `require` with no prefix, so booting every provider would mount each module's routes a *second* time at an unprefixed path. It must land together with dropping the hardcoded `require`s. See §9. |
+| 14 | **Every protected route answered 500, not 401** — `Auth driver [session_token] for guard [api] is not defined.`, a direct consequence of #13. This is why swapping `auth:sanctum` for `auth:api` changed the symptom instead of fixing it. | The `user_sessions` bearer guard is built and registered (§4.4). All four protected route groups now answer **401** in the §66 envelope, and a live token authenticates end-to-end. `tools/verify-auth-live.php`: 28 checks, 0 failed. |
+| 15 | **`inet_pton()` written into a `VARBINARY(16)` / `bytea` column stored 1 byte instead of 4.** `127.0.0.1` became `7f`. Silent — no error, no truncation warning — and it hits only the private IPv4 ranges, because an IPv6 address has a non-zero first byte. | `Nabilet\Core\Support\PackedIp::toSqlLiteral()` emits `decode('<hex>','hex')` on PostgreSQL and `UNHEX('<hex>')` elsewhere, wrapped in an `Expression`. Proven by `tools/repro-binary-ip.php` (`len=1 hex=7f` for the bug, `len=4 hex=7f000001` for the fix) and by `length(ip_address) = 4` in the live verifier. 15 unit tests. |
+| 16 | **`Container::refresh()` does not call the method it is handed.** It registers a rebinding callback for the *next* time the abstract is rebound. The guard therefore kept a null request and refused **every** token — while all thirteen refusal checks passed, because "no token" and "bad token" look identical from outside. | The driver closure now pushes the request in directly (`$guard->setRequest($app->make('request'))`) and keeps `refresh()` for long-running workers. Only the positive-case checks caught it. |
+| 17 | **`role:admin` guards the Halls management routes and resolves to nothing.** `role` is not a registered alias, and no `RequireRole` class exists to alias in the first place; `bootstrap/app.php` aliases only kernel middleware and states that modules register their own. An anonymous caller gets 401 (because `auth:api` runs first); an **authenticated** caller gets **500** — `Target class [role] does not exist`, logged with `"userId":1`. | **Not fixed** — it needs a decision, not a patch. Recorded in §9 with a permanent repro: `tools/repro-role-alias.php`. |
 
 **New tools:** `tools/verify-live.php` (the checks that would have caught the constraint and route
-gaps; reads the running system, so it is not a CI gate) and `tools/verify-error-envelope.php`
-(§7.5). Both self-check before reporting: the first against 64 tables / 678 columns, the second via
-`--selftest`.
+gaps; reads the running system, so it is not a CI gate), `tools/verify-error-envelope.php` (§7.5) and
+`tools/verify-auth-live.php` (§4.4 — the only gate that can tell that `auth:api` throws, because both
+faults behind #13/#14 parse cleanly and every route is declared). The two live verifiers self-check
+before reporting: against 64 tables / 678 columns, and by asserting the row counts are back where they
+started. The repro scripts are `tools/repro-binary-ip.php` (#15) and `tools/repro-role-alias.php`
+(#17); each exits non-zero if the behaviour it documents changes, so a fix forces the doc to move.
 
 ---
 
@@ -452,14 +537,30 @@ gaps; reads the running system, so it is not a CI gate) and `tools/verify-error-
 
 **New in this session, and the top of the list:**
 
-- **The auth rebuild (§4).** A bearer guard backed by `user_sessions`, plus four `UserService`
-  methods (`registerCustomer`, `sendPasswordResetLink`, `resetPassword`, `verifyEmail`). This
-  changes the authentication mechanism and adds no table the spec does not already define, but it is
-  a feature build rather than a patch, so it is recorded rather than improvised. It also unblocks
-  the last `E1` ratchet entry and the 7 `auth:sanctum` routes.
-- **`AuthController` is the last §66 envelope exception** (its flat `{"error":"Invalid credentials"}`),
-  accepted in the ratchet with a reason pointing here, because fixing the string before the rebuild
-  would mean touching the file twice.
+- **No module service provider is registered (§8 #13, §4.4).** `Nabilet\Core\NabiletServiceProvider` is
+  referenced nowhere; `getLoadedProviders()` returns **0** entries under `Modules\`; `config/nabilet.php`
+  names 9 module providers that nobody loads. The application still serves requests because
+  `routes/api.php` mounts the module route files with hardcoded `require`s — which is exactly why the
+  fault stayed invisible for so long. Two consequences are already visible: `HookRegistry` and
+  `OrganizationContext` are not the singletons their docblocks claim, and every module-level middleware
+  alias is missing (#17). The fix is not additive: registering the providers while those `require`s
+  remain would mount each module's routes twice — once prefixed, once not. The two changes must land
+  together.
+- **`role:admin` cannot be resolved (§8 #17).** `tools/repro-role-alias.php` measures it: 401 anonymous,
+  **500 authenticated**, `Target class [role] does not exist` logged with `"userId":1`. Two remedies
+  exist and the choice between them is a design decision, which is why this is recorded rather than
+  applied: either build a `RequireRole` middleware and have the module that owns roles register the
+  alias (the spec's RBAC is `roles` / `permissions` / `role_permissions`), or move these routes onto the
+  `permission` gate the kernel already ships (`RequirePermission`, aliased, fail-closed). The second is
+  a one-line change but it changes the authorization *model* on those endpoints, and the spec's OpenAPI
+  expresses only `bearerAuth` — it does not settle which of the two the HTTP layer should use.
+- **The four `UserService` methods and the `AuthController` rewrite (§4.4).** The guard half is built;
+  the module is still a facade. `registerCustomer`, `sendPasswordResetLink`, `resetPassword` and
+  `verifyEmail` do not exist, and `AuthController` still returns the flat
+  `{"error":"Invalid credentials"}` — the last `E1` ratchet exception.
+- **Password reset and email verification have no storage.** `password_reset_tokens` does not exist in
+  the live database (0 columns) although `config/auth.php` names it. The plan is a signed stateless
+  token — an HMAC over user id + email + expiry — rather than a table the spec does not define.
 - **`/api/v1/cart` vs `/api/v1/carts` is structural, not a rename.** The spec models a cart as a
   resource addressed by `{cart}`; the app keys the cart by `session_id` in the body/query and has no
   cart id in the URL at all. `GET /api/v1/carts/{cart}` cannot be produced by adding a prefix — the
@@ -502,20 +603,26 @@ gaps; reads the running system, so it is not a CI gate) and `tools/verify-error-
 
 ## 10. Uncommitted work in the tree
 
-The working tree holds **48 changed entries that are not mine** — 33 `app/Models/*`, Filament
-resources and widgets, `phpunit.xml`, `routes/api.php`, `OrderService`, `TicketScanService`,
-`AdminPanelProvider`, and untracked directories the app already loads
-(`app/Modules/Auth/routes/`, `app/Modules/Venues/Halls/{Domain,Http/Resources,Models}/`,
-`app/Modules/Webhooks/Http/`). `HEAD` was `b1b333e` (PR #39) at the start of this check.
+The working tree holds **48 entries that are not mine** (68 in total, 20 of which are this session's
+work): 33 `app/Models/*`, Filament resources and widgets, `phpunit.xml`, `routes/api.php`,
+`OrderService`, `PaymentService`, `TicketScanService`, `AdminPanelProvider`, `.sec3.md`, and untracked
+files the application already loads (`app/Modules/Checkin/Domain/CheckinEvaluator.php`,
+`app/Modules/Events/Models/Session.php`, `app/Modules/Inventory/Models/SeatHold.php`,
+`app/Modules/Venues/Halls/{Domain,Http/Resources,Models}/`, `app/Modules/Webhooks/Http/`).
+`HEAD` was `dbb9d59` at the start of this check.
 
-**None of it was committed, reverted or reformatted.** The fixes were committed with explicit
-pathspecs, so nothing outside this report's scope was swept in:
+**None of it was committed, reverted or reformatted.** This session's work was committed with explicit
+pathspecs, so nothing outside its scope was swept in:
 
 | Commit | Scope |
 |--------|-------|
 | `a9ba178` | route prefixes, Halls read path, two verifier gaps, `.gitignore` (21 files, +840/−40) |
 | `b33ad14` | `SERVER-HEALTH.md` §9 |
 | `9fb4d97` | the 35 CHECK constraints and the trigger on PostgreSQL |
+| `c000000` | the `user_sessions` auth guard, the `bytea` IP fix, the `role:admin` repro, and the docs for all three (22 files) |
 
-The untracked directories deserve attention on their own: the application loads them, so a
-fresh clone would not run.
+One of those 22 files needs calling out: **`app/Modules/Auth/routes/api.php` was untracked** before
+this session, as were `app/Modules/Venues/Halls/{Domain,Http/Resources,Models}/` and
+`app/Modules/Webhooks/Http/`. The auth route file is part of the auth build and was committed with it;
+the others were left alone. They deserve attention on their own — the application loads them, so a
+fresh clone would not run. The 48 are otherwise not touched here.
