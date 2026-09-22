@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Cart\Services;
 
+use Nabilet\Core\Errors\ConflictError;
+use Nabilet\Core\Errors\DomainRuleViolation;
 use Nabilet\Modules\Cart\Models\Cart;
 use Nabilet\Modules\Cart\Models\CartItem;
 use Nabilet\Modules\Inventory\Models\InventoryItem;
@@ -11,6 +13,22 @@ use Nabilet\Modules\Sessions\Models\Session;
 use Illuminate\Support\Facades\DB;
 use Carbon\CarbonImmutable;
 
+/**
+ * Cart domain service.
+ *
+ * Failures are raised as `AppError` subclasses, not `\RuntimeException`. That is not
+ * stylistic: the client branches on `error.code` and must never parse `error.message`
+ * (see `AppError`), so a bare `\RuntimeException` leaves the caller with nothing
+ * machine-readable to branch on. The controller therefore has nothing to catch — the
+ * exception travels to `ApiExceptionRenderer`, which renders the §66 envelope.
+ *
+ * Status codes follow `nabilet_core_spec/openapi.yaml`:
+ *   POST /api/v1/carts/{cart}/items  →  '409': Inventory conflict,  '422': ValidationError
+ *
+ * An expired cart and an exhausted inventory item are both *expected* outcomes under
+ * concurrency, not bugs — hence `ConflictError` (409), which is exactly what that
+ * class documents itself as being for.
+ */
 class CartService
 {
     /**
@@ -25,7 +43,7 @@ class CartService
 
         if (!$cart) {
             $session = Session::findOrFailBySessionId($sessionId);
-            
+
             $cart = Cart::create([
                 'session_id' => $sessionId,
                 'user_id' => $session->user_id ?? null,
@@ -41,15 +59,12 @@ class CartService
 
     /**
      * Add an item to the cart with atomic inventory reservation.
-     * 
-     * FIX: Implements immediate hold creation with atomic decrement to prevent race conditions.
-     * Two users cannot reserve the same seat simultaneously.
-     * 
-     * @param string $sessionId
-     * @param int $inventoryItemId
-     * @param int $quantity
-     * @return CartItem
-     * @throws \RuntimeException If inventory is unavailable or cart is expired
+     *
+     * Implements immediate hold creation with atomic decrement to prevent race
+     * conditions: two users cannot reserve the same seat simultaneously.
+     *
+     * @throws ConflictError          cart expired, or inventory exhausted
+     * @throws \Illuminate\Database\Eloquent\ModelNotFoundException session or item missing
      */
     public function addItem(string $sessionId, int $inventoryItemId, int $quantity = 1): CartItem
     {
@@ -59,7 +74,7 @@ class CartService
 
             // Check cart expiration
             if ($cart->expires_at < CarbonImmutable::now()) {
-                throw new \RuntimeException('Cart has expired');
+                throw self::cartExpired();
             }
 
             // ATOMIC INVENTORY RESERVATION - CRITICAL FIX FOR RACE CONDITION
@@ -72,7 +87,7 @@ class CartService
                 ->decrement('available_quantity', $quantity);
 
             if ($affected === 0) {
-                throw new \RuntimeException('Insufficient inventory available');
+                throw ConflictError::seatUnavailable((string) $inventoryItemId);
             }
 
             // Verify the inventory item still exists and get its price
@@ -91,7 +106,7 @@ class CartService
             if ($existingItem) {
                 // Update quantity
                 $newQuantity = $existingItem->quantity + $quantity;
-                
+
                 $existingItem->update([
                     'quantity' => $newQuantity,
                     'total_price' => $this->calculateTotalPrice($inventoryItem->unit_price ?? '0', $newQuantity),
@@ -119,11 +134,8 @@ class CartService
 
     /**
      * Remove an item from the cart.
-     * 
-     * @param string $sessionId
-     * @param int $itemId
-     * @return bool
-     * @throws \RuntimeException If item not found or cart doesn't belong to session
+     *
+     * @throws \Illuminate\Database\Eloquent\ModelNotFoundException cart or item missing
      */
     public function removeItem(string $sessionId, int $itemId): bool
     {
@@ -148,10 +160,11 @@ class CartService
 
     /**
      * Checkout the cart - convert to order.
-     * 
-     * @param string $sessionId
+     *
      * @return array Returns checkout result with order info
-     * @throws \RuntimeException If cart is empty or expired
+     * @throws ConflictError          cart expired, or inventory exhausted meanwhile
+     * @throws DomainRuleViolation    cart is empty
+     * @throws \Illuminate\Database\Eloquent\ModelNotFoundException cart missing
      */
     public function checkout(string $sessionId): array
     {
@@ -166,22 +179,24 @@ class CartService
             // Check cart expiration
             if ($cart->expires_at < CarbonImmutable::now()) {
                 $cart->update(['status' => 'abandoned']);
-                throw new \RuntimeException('Cart has expired');
+
+                throw self::cartExpired();
             }
 
             // Check cart has items
             if ($cart->items->isEmpty()) {
-                throw new \RuntimeException('Cart is empty');
+                throw new DomainRuleViolation('Cart is empty.', 'CART_EMPTY');
             }
 
             // Validate all items still have available inventory
             foreach ($cart->items as $item) {
                 $inventoryItem = $item->inventoryItem;
-                
+
                 if ($inventoryItem->available_quantity < $item->quantity) {
-                    throw new \RuntimeException(
-                        "Insufficient inventory for item {$inventoryItem->id}"
-                    );
+                    throw ConflictError::seatUnavailable((string) $inventoryItem->id, [
+                        'requested_quantity' => $item->quantity,
+                        'available_quantity' => $inventoryItem->available_quantity,
+                    ]);
                 }
             }
 
@@ -221,13 +236,26 @@ class CartService
             }
 
             CartItem::where('cart_id', $cart->id)->delete();
-            
+
             $cart->update([
                 'total_amount' => '0',
             ]);
 
             return true;
         });
+    }
+
+    /**
+     * An expired cart is a conflict, not a validation failure: the request was
+     * well-formed and the client cannot fix it by editing a field — it must start a
+     * new cart. 409 lets the frontend distinguish that from a 422 it can retry.
+     */
+    private static function cartExpired(): ConflictError
+    {
+        return new ConflictError(
+            'The cart has expired. Please select your seats again.',
+            'CART_EXPIRED'
+        );
     }
 
     /**

@@ -7,6 +7,7 @@ namespace Nabilet\Modules\Core\Organizations\Services;
 use Nabilet\Modules\Core\Organizations\Models\Organization;
 use Nabilet\Modules\Core\Organizations\Repositories\OrganizationRepository;
 use Nabilet\Modules\Core\Users\Models\User;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -15,6 +16,24 @@ class OrganizationService
     public function __construct(
         protected OrganizationRepository $repository
     ) {}
+
+    /**
+     * Read accessors.
+     *
+     * `$repository` is protected, so `$controller->service->repository->…` is a fatal
+     * `Cannot access protected property` — not a style preference. These methods are the
+     * only supported way for a controller to reach the repository, and they keep the
+     * dependency pointing inward (controller → service → repository).
+     */
+    public function all(int $limit = 15): Collection
+    {
+        return $this->repository->all($limit);
+    }
+
+    public function findByPublicId(string $publicId): ?Organization
+    {
+        return $this->repository->findByPublicId($publicId);
+    }
 
     public function createOrganization(array $data, User $owner): Organization
     {

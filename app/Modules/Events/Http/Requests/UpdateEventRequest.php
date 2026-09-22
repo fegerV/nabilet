@@ -19,7 +19,8 @@ class UpdateEventRequest extends FormRequest
         $eventId = $this->route('event')?->id;
         
         return [
-            'category_id' => ['nullable', 'exists:event_categories,id'],
+            // `bail`/`integer` guard the BIGINT cast — see `CartController::addItem()`.
+            'category_id' => ['bail', 'nullable', 'integer', 'exists:event_categories,id'],
             'slug' => ['sometimes', 'string', 'max:255'],
             'title' => ['sometimes', 'string', 'max:255'],
             'description' => ['nullable', 'string'],

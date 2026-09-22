@@ -7,9 +7,22 @@ namespace Nabilet\Modules\Core\Organizations\Http\Middleware;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
-use Nabilet\Modules\Core\Organizations\Models\Organization;
+use Nabilet\Core\Errors\AuthError;
+use Nabilet\Core\Errors\NotFoundError;
 use Nabilet\Modules\Core\Organizations\Repositories\OrganizationRepository;
 
+/**
+ * Refuses access to an organization the caller is not a member of.
+ *
+ * The three `abort()` calls this middleware used to contain each produced a body
+ * outside the §66 envelope (`{"message":"Unauthorized","exception":"…"}`), so a
+ * client could not branch on a stable code. They now throw `AuthError` /
+ * `NotFoundError` and are rendered by `ApiExceptionRenderer`.
+ *
+ * 401 and 403 stay distinct on purpose: 401 tells the client to refresh the token and
+ * retry, 403 tells it that retrying is pointless. Collapsing them into one status is
+ * what makes a frontend retry-loop forever against a permission it will never have.
+ */
 class CheckOrganizationAccess
 {
     public function __construct(
@@ -32,21 +45,24 @@ class CheckOrganizationAccess
         $organization = $this->repository->findByPublicId($publicId);
 
         if (!$organization) {
-            abort(404, 'Organization not found');
+            throw new NotFoundError('Organization', $publicId);
         }
 
         // Проверка: пользователь является участником организации
         $user = $request->user();
-        
+
         if (!$user) {
-            abort(401, 'Unauthorized');
+            throw AuthError::unauthenticated();
         }
 
         // Проверка наличия пользователя в членах организации
         $isMember = $organization->members()->where('user_id', $user->id)->exists();
 
         if (!$isMember) {
-            abort(403, 'Access denied to this organization');
+            // 403, not 404: the caller already proved they know this organization exists
+            // by naming it, and `NotFoundError` here would be misleading rather than
+            // protective.
+            throw new AuthError('Access denied to this organization.', 'FORBIDDEN', 403);
         }
 
         // Добавляем организацию в запрос для дальнейшего использования

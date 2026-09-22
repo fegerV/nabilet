@@ -7,6 +7,7 @@ namespace Nabilet\Core\Http\Middleware;
 use Closure;
 use Illuminate\Cache\RateLimiter as LaravelRateLimiter;
 use Illuminate\Http\Request;
+use Nabilet\Core\Errors\AppError;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -30,14 +31,24 @@ class RateLimiter
     public function handle(Request $request, Closure $next, string $limit = 'api'): Response
     {
         if ($this->limiter->tooManyAttempts($this->resolveSignature($request, $limit), 1)) {
-            return response()->json([
-                'error' => [
-                    'code' => 'TOO_MANY_REQUESTS',
-                    'message' => 'Too many requests. Please try again later.',
-                    'retry_after' => $this->limiter->availableIn($this->resolveSignature($request, $limit)),
-                ],
-            ], 429, [
-                'Retry-After' => (string) $this->limiter->availableIn($this->resolveSignature($request, $limit)),
+            $retryAfter = $this->limiter->availableIn($this->resolveSignature($request, $limit));
+
+            // Built from `AppError` rather than hand-rolled so the body cannot drift
+            // from the §66 envelope. `retry_after` belongs in `details`, not beside
+            // `code`/`message` — the contract reserves those two keys and puts
+            // everything else under `details`, so a client can read the error
+            // generically without special-casing this middleware.
+            $error = new AppError(
+                'Too many requests. Please try again later.',
+                'TOO_MANY_REQUESTS',
+                429,
+                ['retry_after' => $retryAfter],
+            );
+
+            $requestId = (string) ($request->attributes->get('request_id') ?? '');
+
+            return response()->json($error->toResponse($requestId), 429, [
+                'Retry-After' => (string) $retryAfter,
                 'X-RateLimit-Limit' => (string) $this->getLimit($limit),
                 'X-RateLimit-Remaining' => '0',
             ]);

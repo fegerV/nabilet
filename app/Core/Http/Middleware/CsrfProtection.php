@@ -6,6 +6,7 @@ namespace Nabilet\Core\Http\Middleware;
 
 use Closure;
 use Illuminate\Http\Request;
+use Nabilet\Core\Errors\AppError;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -45,12 +46,20 @@ class CsrfProtection
         }
 
         if ($this->isStateChangingRequest($request) && !$this->hasValidCsrfToken($request)) {
-            return response()->json([
-                'error' => [
-                    'code' => 'CSRF_TOKEN_MISMATCH',
-                    'message' => 'CSRF token mismatch. Please refresh the page and try again.',
-                ],
-            ], 419);
+            // Same reasoning as `RateLimiter`: the envelope is built from `AppError` so
+            // it cannot drift, and `request_id` is included so a 419 a user reports can
+            // be matched to a log line.
+            $error = new AppError(
+                'CSRF token mismatch. Please refresh the page and try again.',
+                'CSRF_TOKEN_MISMATCH',
+                419,
+            );
+
+            $requestId = (string) ($request->attributes->get('request_id') ?? '');
+
+            return response()->json($error->toResponse($requestId), 419, [
+                'Content-Type' => 'application/json',
+            ]);
         }
 
         return $next($request);

@@ -6,8 +6,7 @@ use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
-use Nabilet\Core\Errors\AppError;
-use Nabilet\Core\Errors\TenantContextMissingError;
+use Nabilet\Core\Http\ApiExceptionRenderer;
 
 /**
  * Application bootstrap (Laravel 13 style).
@@ -73,35 +72,19 @@ return Application::configure(basePath: dirname(__DIR__))
         );
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        // Every JSON failure is rendered by `ApiExceptionRenderer`, which maps both
+        // `AppError` and the framework's own exceptions (validation, 404, 401, 403,
+        // 429) onto the §66 envelope. Read that class before changing this: Laravel's
+        // defaults are not merely differently-shaped, they leak model namespaces and
+        // — with APP_DEBUG on — stack traces and absolute paths.
         $exceptions->render(function (Throwable $e, Request $request) {
-            $requestId = (string) ($request->attributes->get('request_id') ?? '');
-
-            if ($e instanceof AppError && $e->operational) {
-                return response()->json($e->toResponse($requestId), $e->status, [
-                    'Content-Type' => 'application/json',
-                ]);
+            // HTML surfaces (the admin SPA, the installer, Filament) keep Laravel's own
+            // rendering; a JSON envelope in a browser would be a regression.
+            if (! $request->is('api/*') && ! $request->expectsJson()) {
+                return null;
             }
 
-            // Tenant-context bugs are programming errors. Report them loudly but
-            // never expose the reason — an attacker probing for a scoping bypass
-            // must not learn that a bypass exists. The body still uses the §66
-            // envelope, with a generic code and no internal detail.
-            if ($e instanceof TenantContextMissingError) {
-                report($e);
-
-                $payload = ['error' => [
-                    'code' => 'INTERNAL_ERROR',
-                    'message' => 'Something went wrong. Please try again.',
-                ]];
-
-                if ($requestId !== '') {
-                    $payload['error']['request_id'] = $requestId;
-                }
-
-                return response()->json($payload, 500, ['Content-Type' => 'application/json']);
-            }
-
-            return null; // fall through to Laravel's default handling
+            return ApiExceptionRenderer::render($e, $request);
         });
 
         $exceptions->shouldRenderJsonWhen(
