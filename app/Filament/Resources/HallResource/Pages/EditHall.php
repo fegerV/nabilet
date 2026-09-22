@@ -15,7 +15,14 @@ class EditHall extends EditRecord
     protected function getHeaderActions(): array
     {
         return [
-            \Filament\Actions\DeleteAction::make()
+            Actions\DeleteAction::make(),
+            Actions\Action::make('editSchema')
+                ->label('Редактировать схему зала')
+                ->icon('heroicon-o-cog-6-tooth')
+                ->url(fn () => url('/admin/halls/' . $this->getRecord()->id . '/schema/edit'))
+                ->requiresConfirmation(false)
+                ->color('success')
+                ->openUrlInNewTab(),
         ];
     }
 }
