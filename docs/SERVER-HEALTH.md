@@ -17,12 +17,13 @@ $PHP artisan migrate:status
 
 ## 1. Verdict
 
-The server **boots, connects, and serves traffic**. It is **not fit to face users**, for
-four reasons that are independent of each other — any one of them alone would block launch.
+The server **boots, connects, and serves traffic**. It is **not fit to face users**: three P0
+blockers remain, each sufficient on its own to stop a launch. A fourth — the database enforcing
+none of the spec's invariants — was found in this check and **has been fixed and verified live**.
 
 | # | Finding | Severity | Evidence |
 |---|---------|----------|----------|
-| 1 | The database enforces **none** of the spec's CHECK constraints, and the immutability trigger is absent — while `migrate:status` reports every migration as `Ran` | **P0** | `check live 0 / spec 35`, `trigger live 0 / spec 1` |
+| 1 | ~~The database enforces **none** of the spec's CHECK constraints, and the immutability trigger is absent — while `migrate:status` reports every migration as `Ran`~~ **FIXED** — see §3 | ~~P0~~ **closed** | was `check 0/35`, `trigger 0/1` → now `check 35/35`, `trigger 1/1`, both proven to reject bad writes |
 | 2 | `laravel/sanctum` is not a dependency, but `auth:sanctum` guards 7 routes → **every authenticated endpoint returns 500** | **P0** | `Auth guard [sanctum] is not defined.` |
 | 3 | `APP_ENV=production` with **`APP_DEBUG=true`** → full stack traces with absolute filesystem paths returned to callers | **P0** | `GET /api/v1/halls/xyz` returns a traced exception body |
 | 4 | **67 of the spec's 81 API paths are not served** | **P0** | `tools/verify-live.php` §2 |
@@ -44,6 +45,8 @@ four reasons that are independent of each other — any one of them alone would 
 | Live schema — columns | 678 spec columns all present; **1 extra** (`users.remember_token`) |
 | Live schema — foreign keys | 93 live / 93 spec |
 | Live schema — unique constraints | 81 live / 81 spec |
+| Live schema — CHECK constraints | 35 live / 35 spec — and proven to reject violating writes (§3) |
+| Live schema — immutability trigger | 1 live / 1 spec — and proven to reject published-geometry edits (§3) |
 | `GET /api/v1/venues/1/halls` | 200, paginated JSON — the Halls read path works end-to-end against the live DB |
 | Full lint | 505 files, 0 syntax errors |
 | Test suite | 596 tests, 0 failed, 1216 assertions |
@@ -51,9 +54,9 @@ four reasons that are independent of each other — any one of them alone would 
 
 ---
 
-## 3. P0 — the database does not enforce the spec
+## 3. P0 — the database did not enforce the spec · **FIXED AND VERIFIED**
 
-**The migrations are correct for MySQL and were run against PostgreSQL.**
+**The migrations were MySQL-only; the server runs PostgreSQL.**
 
 `database/migrations/2026_09_20_001000_add_check_constraints.php` guards all 35
 `ALTER TABLE ... ADD CONSTRAINT ... CHECK` statements behind:
@@ -65,17 +68,17 @@ return in_array(DB::connection()->getDriverName(), ['mysql', 'mariadb'], true);
 and `…_001100_add_schema_version_immutability_trigger.php` does the same for the one
 trigger. `.env` says `DB_CONNECTION=pgsql`, so both migrations take the early-return path.
 
-**A migration that returns early still counts as run.** `migrate:status` shows all 13 as
-`Ran`, and `tools/verify-migrations.php` passes 13/13 — because that verifier parses the
+**A migration that returns early still counts as run.** `migrate:status` showed all 13 as
+`Ran`, and `tools/verify-migrations.php` passed 13/13 — because that verifier parses the
 migration *files*, not the database. Two independent green signals over a database that
-enforces nothing:
+enforced nothing:
 
 ```
 check    live    0   spec   35   MISMATCH
 trigger  live    0   spec    1   MISMATCH
 ```
 
-What is therefore unenforced right now: every status enum (`ck_orders_status`,
+What was therefore unenforced: every status enum (`ck_orders_status`,
 `ck_payments_status`, `ck_tickets_status`, `ck_sessions_status`, `ck_schema_status`),
 non-negative money on orders/payments/refunds/promo codes, `ck_inventory_target`
 (a seat row must have a seat and no standing zone, or the reverse), and
@@ -90,15 +93,47 @@ Two things make this worse than a plain omission:
   are skipped loudly, not silently"). Nothing in the output hinted that 35 invariants had
   just been dropped. (001100 *did* warn on stderr; 001000 did not.)
 
-**Remedy applied:** 001000 now writes the same kind of loud stderr warning as 001100, naming
-the driver and stating that `migrate:status` will still say `Ran`. Verified by invoking the
-migration directly on the live connection.
+### What was done
 
-**Still open — needs a decision, not a patch:** either run MySQL (what the spec describes),
-or port the 35 CHECK constraints to PostgreSQL (the expressions are portable) and rewrite the
-trigger as a `PL/pgSQL` function. Do not leave a deployment whose database enforces none of
-the contract.
+Every expression in the file is standard SQL, so the contract was no longer withheld on
+PostgreSQL — it was made portable, without changing MySQL behaviour:
 
+- **001000** — `supportsCheckConstraints()` now accepts `pgsql` as well. The loud skip is kept
+  for drivers that genuinely cannot add a CHECK to an existing table (SQLite needs a table
+  rebuild), and the silent early return was replaced with the same stderr warning 001100 uses.
+- **001100** — the trigger is now implemented for both dialects: MySQL keeps
+  `SIGNAL SQLSTATE '45000'` with `<=>`, PostgreSQL gets a `PL/pgSQL` function using
+  `RAISE ... ERRCODE '45000'` and `IS DISTINCT FROM` (the null-safe counterpart of `<=>`). Same
+  six columns compared, same message.
+
+Applied to the live database and verified:
+
+```
+check    live   35   spec   35   ok
+trigger  live    1   spec    1   ok
+```
+
+### Proof that they are enforced, not merely present
+
+A row in `pg_constraint` shows a constraint exists; it does not show the database refuses a bad
+write. So the minimum valid parent chain
+(`organizations → venues → halls → hall_schema_versions`) was built inside a transaction and then
+deliberately broken — **with a control for every attempt**, because a rejection only means
+something if the same statement succeeds when the value is legal:
+
+| Attempt | Result |
+|---------|--------|
+| `INSERT` a schema version with `status='bogus'` | **rejected by `ck_schema_status`** |
+| control: the same insert with `status='published'` | accepted — so the rejection was the constraint, not the row shape |
+| `UPDATE` the geometry of the published version | **rejected: immutability exception raised** |
+| control: the same edit while `status='draft'` | allowed — so the trigger blocks only published/archived, as designed |
+
+The transaction was rolled back and the database left as found (`org_probe` absent; only the
+pre-existing "NABILET Demo" organisation remains).
+
+**For whoever deploys next:** these migrations are recorded as already run on *this* database, so
+they were applied here by invoking them directly. A fresh `php artisan migrate` on a new database
+applies them normally.
 ---
 
 ## 4. P0 — authentication is not installed
@@ -170,6 +205,8 @@ re-costed — see `docs/REVIEW-spec-bundle.md`.
 
 ## 7. Defects found and fixed
 
+The largest fix — the database enforcing none of the spec's invariants — is documented in §3.
+
 | # | Defect | Fix |
 |---|--------|-----|
 | 1 | **53 routes carried a second version prefix** — `/api/v1/v1/events`, `/api/v1/api/v1/halls`. The global `apiPrefix` in `bootstrap/app.php` already mounts every module file at `/api/v1`, and 11 module route files repeated the segment. Only 3 of 81 spec paths were reachable. | Removed the duplicate segment from all 11 files. Spec paths served went **3 → 14**; zero doubled routes remain. |
@@ -178,6 +215,7 @@ re-costed — see `docs/REVIEW-spec-bundle.md`.
 | 4 | **`verify-models-schema.php` reported a false positive.** It read only a file's own text for `$table`, so four thin alias models that inherit `$table` from a sibling (`Halls\Models\Hall extends Venues\Models\Hall`) were reported as "no `$table`" and the gate failed on correct code. | The verifier now follows `extends` (resolving `use … as …` aliases) up to 4 levels. Mutation-tested in both directions: a bogus parent `$table` is reported against *both* the parent and the alias; an unresolvable parent still fails as "no `$table`". 67 models now checked, gate green. |
 | 5 | **`verify-migrations.php` crashed (exit 255)** on `2026_09_22_001300_add_remember_token.php`: the Laravel stub had no `rememberToken()`, so the whole gate aborted and every later migration went unchecked. | Added `rememberToken()` to `tools/laravel-stub.php`. Gate now 13/13. |
 | 6 | **`.gitignore` had lost its protections again** (4th occurrence). `Мысли о SEO.txt` — an internal document — was untracked and **not** ignored, one `git add -A` away from publication. No `*.pem` / `*.key` / `id_rsa*` / `.ssh/` patterns either. | Restored the private-document and key-material patterns, plus `!.env.example`. Verified: the document is now ignored, `.env.example` and `composer.lock` remain tracked (they are already in the index), CRLF preserved (135 CRLF / 0 bare LF). No key material exists on disk, so nothing was exposed. |
+| 7 | **The 35 CHECK constraints and the immutability trigger existed in migration files only.** Both migrations were guarded to `mysql|mariadb`, so on PostgreSQL they returned early — and still counted as `Ran`. | Made portable: `pgsql` added to both guards; the trigger reimplemented in `PL/pgSQL` (`IS DISTINCT FROM`, `RAISE … ERRCODE '45000'`) alongside the MySQL version. Applied to the live DB and proven to reject violating writes, with controls. Details and proof in §3. |
 
 **New tool:** `tools/verify-live.php` — the checks that would have caught findings 1 and the
 route gap. It reads the running system (booted app, connected DB, registered route table)
@@ -199,6 +237,11 @@ reporting, because an under-reading parser invents drift.
 - **Docker daemon is not running** (`open //./pipe/docker_engine` fails). Irrelevant to this
   instance — it connects to PostgreSQL, not the MySQL container — but `docker exec
   nabilet-mysql` is unavailable.
+- **The spec's production target is MySQL; this instance runs PostgreSQL.** The invariants are
+  now enforced on both (§3), but the deployment still does not match the product. Two dialects
+  are maintained in the migrations, and the MySQL path is no longer exercised by anything on
+  this machine — so it can rot silently. Either run MySQL or record PostgreSQL as the supported
+  target.
 - **Filament errors earlier in the day** (in `storage/logs/laravel-2026-09-22.log`):
   `Panel::maxUploadSize does not exist`, `Panel::twoFactorAuthentication does not exist`,
   `Resource::canViewAny($record)` signature mismatch, `Widget::$view` uninitialised,

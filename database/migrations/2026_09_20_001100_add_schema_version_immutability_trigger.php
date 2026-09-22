@@ -33,19 +33,26 @@ use Illuminate\Support\Facades\DB;
  *   designed workflow, not a workaround.
  *
  * PORTABILITY
- *   Triggers with SIGNAL are MySQL/MariaDB-only. On another driver this migration
- *   is skipped loudly rather than half-applied: an immutability guarantee that
- *   quietly does nothing is worse than one that is visibly absent.
+ *   Implemented for MySQL/MariaDB (SIGNAL) and PostgreSQL (RAISE ... ERRCODE
+ *   '45000', with `IS DISTINCT FROM` as the null-safe counterpart of `<=>`).
+ *   Both carry the same six-column comparison and the same message, so the
+ *   guarantee does not depend on which database the instance runs on. Any other
+ *   driver is skipped loudly rather than half-applied: an immutability guarantee
+ *   that quietly does nothing is worse than one that is visibly absent.
  */
 return new class extends Migration
 {
     private const TRIGGER = 'trg_schema_version_immutable';
 
+    private const FUNCTION = 'trg_schema_version_immutable_fn';
+
+    private const MESSAGE = 'Published hall schema versions are immutable (spec 20/98). Duplicate to a new version instead.';
+
     public function up(): void
     {
         if (! $this->supportsTriggers()) {
             fwrite(STDERR, sprintf(
-                "\n  ! SKIPPED %s: driver \"%s\" has no MySQL-compatible triggers.\n"
+                "\n  ! SKIPPED %s: driver \"%s\" has no supported trigger dialect.\n"
                 . "    Hall schema immutability (TZ 20/98) is NOT enforced. Do not\n"
                 . "    run production on this driver without an equivalent guard.\n\n",
                 self::TRIGGER,
@@ -55,6 +62,48 @@ return new class extends Migration
             return;
         }
 
+        if (DB::connection()->getDriverName() === 'pgsql') {
+            $this->createPostgresTrigger();
+
+            return;
+        }
+
+        $this->createMySqlTrigger();
+    }
+
+    /**
+     * PostgreSQL. The comparison is identical to the MySQL version; only the
+     * dialect differs — `IS DISTINCT FROM` is null-safe where `=` yields NULL,
+     * and RAISE with ERRCODE '45000' mirrors SIGNAL SQLSTATE '45000'.
+     */
+    private function createPostgresTrigger(): void
+    {
+        DB::unprepared(
+            'CREATE OR REPLACE FUNCTION ' . self::FUNCTION . "() RETURNS trigger AS \$\$\n"
+            . "BEGIN\n"
+            . "  IF OLD.status IN ('published', 'archived') THEN\n"
+            . "    IF NEW.schema_json IS DISTINCT FROM OLD.schema_json\n"
+            . "       OR NEW.version IS DISTINCT FROM OLD.version\n"
+            . "       OR NEW.hall_id IS DISTINCT FROM OLD.hall_id\n"
+            . "       OR NEW.width IS DISTINCT FROM OLD.width\n"
+            . "       OR NEW.height IS DISTINCT FROM OLD.height\n"
+            . "       OR NEW.background_url IS DISTINCT FROM OLD.background_url\n"
+            . "    THEN\n"
+            . "      RAISE EXCEPTION '" . self::MESSAGE . "' USING ERRCODE = '45000';\n"
+            . "    END IF;\n"
+            . "  END IF;\n"
+            . "  RETURN NEW;\n"
+            . "END;\n"
+            . "\$\$ LANGUAGE plpgsql;\n"
+            . 'DROP TRIGGER IF EXISTS ' . self::TRIGGER . " ON hall_schema_versions;\n"
+            . 'CREATE TRIGGER ' . self::TRIGGER . "\n"
+            . "BEFORE UPDATE ON hall_schema_versions\n"
+            . "FOR EACH ROW EXECUTE FUNCTION " . self::FUNCTION . '()'
+        );
+    }
+
+    private function createMySqlTrigger(): void
+    {
         // DB::unprepared(), not statement(): a trigger body contains semicolons in
         // BEGIN...END. DELIMITER is a *client* directive, not server syntax, so it
         // is absent here — the body is sent as one statement.
@@ -73,9 +122,7 @@ return new class extends Migration
             . "       OR NOT (NEW.background_url <=> OLD.background_url)\n"
             . "    THEN\n"
             . "      SIGNAL SQLSTATE '45000'\n"
-            . "        SET MESSAGE_TEXT = '"
-            . 'Published hall schema versions are immutable (spec 20/98). '
-            . "Duplicate to a new version instead.';\n"
+            . "        SET MESSAGE_TEXT = '" . self::MESSAGE . "';\n"
             . "    END IF;\n"
             . "  END IF;\n"
             . 'END'
@@ -84,7 +131,7 @@ return new class extends Migration
 
     private function supportsTriggers(): bool
     {
-        return in_array(DB::connection()->getDriverName(), ['mysql', 'mariadb'], true);
+        return in_array(DB::connection()->getDriverName(), ['mysql', 'mariadb', 'pgsql'], true);
     }
 
     public function down(): void

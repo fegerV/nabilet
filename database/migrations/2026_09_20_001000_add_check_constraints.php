@@ -13,27 +13,32 @@ use Illuminate\Support\Facades\DB;
  * minor units; timestamps are DATETIME(6); every name matches the spec.
  *
  * Raw SQL on purpose: Blueprint has no portable CHECK API, and these
- * constraints are the whole point of migrations/009 hardening. Guarded to
- * MySQL/MariaDB; on any other driver they are skipped loudly, not silently.
+ * constraints are the whole point of migrations/009 hardening.
+ *
+ * PORTABLE BY DESIGN — MySQL/MariaDB AND PostgreSQL.
+ *   The spec targets MySQL, but the running instance is PostgreSQL. Every
+ *   expression below is standard SQL, so there is no reason to withhold the
+ *   contract on PostgreSQL: refusing to apply it there left the deployment
+ *   enforcing none of these invariants while `migrate:status` still said "Ran".
+ *   Only drivers that cannot add a CHECK to an existing table (SQLite needs a
+ *   table rebuild) are skipped, and they are skipped loudly.
  */
 return new class extends Migration
 {
     public function up(): void
     {
         if (! $this->supportsCheckConstraints()) {
-            // The class docblock above promises these are "skipped loudly, not
-            // silently", but this branch used to `return` with no output at all.
-            // That is how the running server ended up on PostgreSQL with zero of
-            // the 35 constraints while `migrate:status` reported this migration as
-            // "Ran" — a green migration table over an unenforced contract. Match
-            // migration 001100: say it out loud.
+            // Skipping is a real decision, so it must be audible: a migration that
+            // returns early still counts as Ran, and a green migration table over
+            // an unenforced contract is the failure mode this whole file exists to
+            // prevent.
             fwrite(STDERR, sprintf(
-                "\n  ! SKIPPED add_check_constraints: driver \"%s\" does not enforce\n"
-                . "    these. Every CHECK constraint below (status enums, non-negative\n"
-                . "    money, inventory target exclusivity, ticket terminal-state\n"
-                . "    exclusivity) is NOT enforced. migrate:status will still show this\n"
-                . "    migration as Ran. Do not run production on this driver without an\n"
-                . "    equivalent guard.\n\n",
+                "\n  ! SKIPPED add_check_constraints: driver \"%s\" cannot add a CHECK\n"
+                . "    to an existing table. Every constraint below (status enums,\n"
+                . "    non-negative money, inventory target exclusivity, ticket\n"
+                . "    terminal-state exclusivity) is NOT enforced. migrate:status will\n"
+                . "    still show this migration as Ran. Do not run production on this\n"
+                . "    driver without an equivalent guard.\n\n",
                 DB::connection()->getDriverName()
             ));
 
@@ -83,12 +88,17 @@ return new class extends Migration
     }
 
     /**
-     * CHECK constraints here are MySQL/MariaDB-only. Skipping on another driver is a
-     * deliberate decision — applying half a contract would be worse than refusing.
+     * Drivers that can add a CHECK constraint to an existing table.
+     *
+     * PostgreSQL is included deliberately: its CHECK syntax is identical for every
+     * expression in this file, and the alternative — silently enforcing nothing on
+     * the database the application actually runs against — is the worse failure.
+     * SQLite is excluded because ALTER TABLE cannot add a constraint without
+     * rebuilding the table.
      */
     private function supportsCheckConstraints(): bool
     {
-        return in_array(DB::connection()->getDriverName(), ['mysql', 'mariadb'], true);
+        return in_array(DB::connection()->getDriverName(), ['mysql', 'mariadb', 'pgsql'], true);
     }
 
     public function down(): void
