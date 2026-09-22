@@ -1,1 +1,35 @@
-Nothing needs to be added to .gitignore since only a markdown file (use_cases.md) was added, which is a source/config file and not a build artifact, dependency, or temporary file.
+```
+# Dependencies
+vendor/
+
+# Build artifacts
+public/build/
+bootstrap/cache/
+storage/logs/
+storage/framework/cache/
+storage/framework/sessions/
+storage/framework/views/
+storage/app/public/
+
+# Environment
+.env
+.env.local
+.env.*
+!.env.example
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+```
