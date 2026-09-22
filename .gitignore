@@ -120,3 +120,16 @@ Icon?
 *.msp.swp
 *.msp.swo
 *.msp~
+
+# ─── Private / internal documents — must never be published ───
+Мысли о SEO.txt
+# ─── Key material ───
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa*
+id_ed25519*
+.ssh/
+# .env.* above would hide the documented example; keep it tracked.
+!.env.example

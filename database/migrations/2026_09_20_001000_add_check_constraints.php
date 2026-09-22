@@ -21,6 +21,22 @@ return new class extends Migration
     public function up(): void
     {
         if (! $this->supportsCheckConstraints()) {
+            // The class docblock above promises these are "skipped loudly, not
+            // silently", but this branch used to `return` with no output at all.
+            // That is how the running server ended up on PostgreSQL with zero of
+            // the 35 constraints while `migrate:status` reported this migration as
+            // "Ran" — a green migration table over an unenforced contract. Match
+            // migration 001100: say it out loud.
+            fwrite(STDERR, sprintf(
+                "\n  ! SKIPPED add_check_constraints: driver \"%s\" does not enforce\n"
+                . "    these. Every CHECK constraint below (status enums, non-negative\n"
+                . "    money, inventory target exclusivity, ticket terminal-state\n"
+                . "    exclusivity) is NOT enforced. migrate:status will still show this\n"
+                . "    migration as Ran. Do not run production on this driver without an\n"
+                . "    equivalent guard.\n\n",
+                DB::connection()->getDriverName()
+            ));
+
             return;
         }
 

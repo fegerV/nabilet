@@ -21,14 +21,14 @@ class HallController extends Controller
     public function index(int $venueId, Request $request): HallCollection
     {
         $limit = (int) $request->get('limit', 15);
-        $halls = $this->service->repository->findByVenue($venueId, $limit);
+        $halls = $this->service->findByVenue($venueId, $limit);
 
         return new HallCollection($halls);
     }
 
     public function show(string $publicId): HallResource
     {
-        $hall = $this->service->repository->findByPublicId($publicId);
+        $hall = $this->service->findByPublicId($publicId);
 
         if (!$hall) {
             abort(404, 'Hall not found');
@@ -52,7 +52,7 @@ class HallController extends Controller
 
     public function update(Request $request, string $publicId): HallResource
     {
-        $hall = $this->service->repository->findByPublicId($publicId);
+        $hall = $this->service->findByPublicId($publicId);
 
         if (!$hall) {
             abort(404, 'Hall not found');
@@ -70,7 +70,7 @@ class HallController extends Controller
 
     public function destroy(string $publicId): JsonResponse
     {
-        $hall = $this->service->repository->findByPublicId($publicId);
+        $hall = $this->service->findByPublicId($publicId);
 
         if (!$hall) {
             abort(404, 'Hall not found');
@@ -83,13 +83,13 @@ class HallController extends Controller
 
     public function getSchemaVersions(string $publicId): JsonResponse
     {
-        $hall = $this->service->repository->findByPublicId($publicId);
+        $hall = $this->service->findByPublicId($publicId);
 
         if (!$hall) {
             abort(404, 'Hall not found');
         }
 
-        $versions = $this->service->repository->getSchemaVersions($hall);
+        $versions = $this->service->getSchemaVersions($hall);
 
         return response()->json([
             'data' => SchemaVersionResource::collection($versions),
@@ -98,7 +98,7 @@ class HallController extends Controller
 
     public function createSchemaDraft(Request $request, string $publicId): SchemaVersionResource
     {
-        $hall = $this->service->repository->findByPublicId($publicId);
+        $hall = $this->service->findByPublicId($publicId);
 
         if (!$hall) {
             abort(404, 'Hall not found');

@@ -412,19 +412,75 @@ $unknownFields = [];
 $noTable = [];
 $checkedFields = 0;
 
+/**
+ * FQCN => source, for every model we scan.
+ *
+ * Needed to follow `extends`. A module may declare a thin alias model that
+ * inherits $table from a sibling (e.g.
+ * Nabilet\Modules\Venues\Halls\Models\Hall extends Nabilet\Modules\Venues\Models\Hall).
+ * Reading only the file's own text reported those as "no $table" and failed the
+ * gate on code that is correct — a false positive, which is worse than no check,
+ * because the tempting fix is to sprinkle redundant $table properties around
+ * until the checker stops complaining.
+ */
+$srcByFqcn = [];
+foreach ($models as $path) {
+    $src = file_get_contents($path);
+    $ns = preg_match('/^\s*namespace\s+([^;]+);/m', $src, $nm) ? trim($nm[1]) : '';
+    if (preg_match('/^\s*(?:final\s+|abstract\s+)?class\s+(\w+)/m', $src, $cm)) {
+        $srcByFqcn[($ns !== '' ? $ns . '\\' : '') . $cm[1]] = $src;
+    }
+}
+
+/**
+ * Find `$table` in a model, following `extends` up to 4 levels.
+ * Returns null when nothing in the chain declares one.
+ */
+$findTable = function (string $src, string $fqcn, int $depth = 0) use (&$findTable, $srcByFqcn): ?string {
+    if (preg_match('/\$table\s*=\s*[\'"]([^\'"]+)[\'"]/', $src, $tm)) {
+        return $tm[1];
+    }
+    if ($depth >= 4 || ! preg_match('/\bclass\s+\w+\s+extends\s+([\\\\\w]+)/', $src, $em)) {
+        return null;
+    }
+
+    $parent = ltrim($em[1], '\\');
+
+    // Unqualified parent: either a `use ... as X;` alias, or a sibling in the
+    // same namespace.
+    if (! str_contains($parent, '\\')) {
+        $aliases = [];
+        if (preg_match_all('/^use\s+([\\\\\w]+?)(?:\s+as\s+(\w+))?\s*;/m', $src, $um, \PREG_SET_ORDER)) {
+            foreach ($um as $u) {
+                $aliases[$u[2] ?? substr($u[1], (int) strrpos('\\' . $u[1], '\\'))] = ltrim($u[1], '\\');
+            }
+        }
+        if (isset($aliases[$parent])) {
+            $parent = $aliases[$parent];
+        } else {
+            $ns = preg_match('/^\s*namespace\s+([^;]+);/m', $src, $nm) ? trim($nm[1]) : '';
+            $parent = ($ns !== '' ? $ns . '\\' : '') . $parent;
+        }
+    }
+
+    return isset($srcByFqcn[$parent]) ? $findTable($srcByFqcn[$parent], $parent, $depth + 1) : null;
+};
+
 foreach ($models as $path) {
     $src = file_get_contents($path);
     $rel = str_replace($rootPrefix, '', str_replace('\\', '/', $path));
     $class = pathinfo($path, \PATHINFO_FILENAME);
 
-    if (! preg_match('/\$table\s*=\s*[\'"]([^\'"]+)[\'"]/', $src, $tm)) {
-        // No $table: Eloquent would pluralise the class name, which for this schema
-        // is wrong often enough to be worth naming rather than guessing at.
+    $ownNs = preg_match('/^\s*namespace\s+([^;]+);/m', $src, $onm) ? trim($onm[1]) : '';
+    $table = $findTable($src, ($ownNs !== '' ? $ownNs . '\\' : '') . $class);
+
+    if ($table === null) {
+        // No $table anywhere in the chain: Eloquent would pluralise the class
+        // name, which for this schema is wrong often enough to be worth naming
+        // rather than guessing at.
         $noTable[] = $rel;
         continue;
     }
-
-    $table = $tm[1];
 
     if (! isset($tables[$table])) {
         $unknownTables[] = sprintf('%s (%s) -> %s', $rel, $class, $table);

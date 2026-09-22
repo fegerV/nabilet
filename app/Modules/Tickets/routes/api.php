@@ -6,7 +6,8 @@ use Nabilet\Modules\Tickets\Http\Controllers\TicketController;
 use Nabilet\Modules\Tickets\Http\Controllers\CheckinController;
 use Illuminate\Support\Facades\Route;
 
-Route::prefix('v1/tickets')->group(function () {
+// Mounted at /api/v1 by bootstrap/app.php — do not repeat the version segment.
+Route::prefix('tickets')->group(function () {
     Route::get('/', [TicketController::class, 'index']);
     Route::get('/{ticket}', [TicketController::class, 'show']);
     Route::get('/{ticket}/qr', [TicketController::class, 'qrCode']);

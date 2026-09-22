@@ -10,7 +10,9 @@ use Nabilet\Modules\Core\Organizations\Http\Middleware\CheckOrganizationAccess;
  * Organizations Module API Routes
  */
 
-Route::prefix('api/v1')->middleware(['auth:sanctum'])->group(function () {
+// Mounted at /api/v1 by bootstrap/app.php — the prefix used to be repeated here,
+// which produced /api/v1/api/v1/organizations.
+Route::middleware(['auth:sanctum'])->group(function () {
     // Organization management - list and create don't need org access check
     Route::get('/organizations', [OrganizationController::class, 'index'])->name('organizations.index');
     Route::post('/organizations', [OrganizationController::class, 'store'])->name('organizations.store');
