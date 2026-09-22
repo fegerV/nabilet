@@ -619,7 +619,7 @@ pathspecs, so nothing outside its scope was swept in:
 | `a9ba178` | route prefixes, Halls read path, two verifier gaps, `.gitignore` (21 files, +840/−40) |
 | `b33ad14` | `SERVER-HEALTH.md` §9 |
 | `9fb4d97` | the 35 CHECK constraints and the trigger on PostgreSQL |
-| `c000000` | the `user_sessions` auth guard, the `bytea` IP fix, the `role:admin` repro, and the docs for all three (22 files) |
+| `0cdcff1` | the `user_sessions` auth guard, the `bytea` IP fix, the `role:admin` repro, and the docs for all three (22 files, +2351/−59) |
 
 One of those 22 files needs calling out: **`app/Modules/Auth/routes/api.php` was untracked** before
 this session, as were `app/Modules/Venues/Halls/{Domain,Http/Resources,Models}/` and
