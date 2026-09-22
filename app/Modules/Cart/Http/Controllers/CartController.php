@@ -10,6 +10,17 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 
+/**
+ * Cart endpoints.
+ *
+ * There is deliberately no `try`/`catch` and no `response()->json(['error' => …])`
+ * anywhere in this controller. Every failure — a missing `session_id`, an exhausted
+ * inventory item, an expired cart — is raised as an `AppError` (by the validator or by
+ * `CartService`) and rendered by `ApiExceptionRenderer` into the §66 envelope. Catching
+ * and re-shaping here is what produced bodies like `{"error":"session_id required"}`:
+ * a flat string with no `code` to branch on and no `request_id` to correlate a support
+ * ticket with a log line.
+ */
 class CartController extends Controller
 {
     public function __construct(
@@ -18,14 +29,12 @@ class CartController extends Controller
 
     public function show(Request $request): JsonResponse
     {
-        $sessionId = $request->get('session_id');
-        
-        if (!$sessionId) {
-            return response()->json(['error' => 'session_id required'], 422);
-        }
+        $validated = $request->validate([
+            'session_id' => ['required', 'string'],
+        ]);
 
         $cart = Cart::query()
-            ->where('session_id', $sessionId)
+            ->where('session_id', $validated['session_id'])
             ->with(['items.inventoryItem', 'items.inventoryItem.seat'])
             ->first();
 
@@ -38,72 +47,63 @@ class CartController extends Controller
 
     public function addItem(Request $request): JsonResponse
     {
-        $request->validate([
-            'session_id' => ['required', 'exists:sessions,id'],
-            'inventory_item_id' => ['required', 'exists:inventory_items,id'],
+        $validated = $request->validate([
+            // `bail` + `integer` are load-bearing here, not decoration. `sessions.id`
+            // and `inventory_items.id` are BIGINT, so `exists:sessions,id` issues
+            // `where id = 'nope'` and PostgreSQL rejects the cast with
+            // SQLSTATE[22P02] "invalid syntax for type bigint" — a QueryException,
+            // which means a client could turn a validation error into a 500 simply by
+            // sending a string. Verified live before this change.
+            //
+            // `bail` is the part that actually prevents it: Laravel only stops
+            // evaluating an attribute's remaining rules when `bail` is present, so
+            // `integer` failing is not enough on its own — `exists` would still run.
+            'session_id' => ['bail', 'required', 'integer', 'exists:sessions,id'],
+            'inventory_item_id' => ['bail', 'required', 'integer', 'exists:inventory_items,id'],
             'quantity' => ['required', 'integer', 'min:1', 'max:10'],
         ]);
 
-        try {
-            $cartItem = $this->cartService->addItem(
-                $request->input('session_id'),
-                $request->input('inventory_item_id'),
-                $request->input('quantity', 1)
-            );
+        // `CartService::addItem()` declares `string $sessionId`, and this file is under
+        // `strict_types=1`, so an integer `session_id` in the JSON body would be a
+        // TypeError rather than a cast. The spec types `session_id` as a string, but a
+        // client that sends a number must not get a 500.
+        $cartItem = $this->cartService->addItem(
+            (string) $validated['session_id'],
+            (int) $validated['inventory_item_id'],
+            (int) $validated['quantity'],
+        );
 
-            return response()->json([
-                'message' => 'Item added to cart successfully',
-                'data' => $cartItem,
-            ], 201);
-        } catch (\RuntimeException $e) {
-            return response()->json([
-                'error' => $e->getMessage(),
-            ], 422);
-        }
+        return response()->json([
+            'message' => 'Item added to cart successfully',
+            'data' => $cartItem,
+        ], 201);
     }
 
     public function removeItem(Request $request, int $itemId): JsonResponse
     {
-        $sessionId = $request->input('session_id');
+        $validated = $request->validate([
+            'session_id' => ['required', 'string'],
+        ]);
 
-        if (!$sessionId) {
-            return response()->json(['error' => 'session_id required'], 422);
-        }
+        $this->cartService->removeItem((string) $validated['session_id'], $itemId);
 
-        try {
-            $this->cartService->removeItem($sessionId, $itemId);
-
-            return response()->json([
-                'message' => 'Item removed from cart successfully',
-            ]);
-        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
-            return response()->json([
-                'error' => 'Cart item not found',
-            ], 404);
-        } catch (\RuntimeException $e) {
-            return response()->json([
-                'error' => $e->getMessage(),
-            ], 422);
-        }
+        return response()->json([
+            'message' => 'Item removed from cart successfully',
+        ]);
     }
 
     public function checkout(Request $request): JsonResponse
     {
-        $request->validate([
-            'session_id' => ['required', 'exists:sessions,id'],
+        $validated = $request->validate([
+            // `bail`/`integer` guard the BIGINT cast — see `addItem()`.
+            'session_id' => ['bail', 'required', 'integer', 'exists:sessions,id'],
         ]);
 
-        try {
-            $checkoutResult = $this->cartService->checkout($request->input('session_id'));
+        $checkoutResult = $this->cartService->checkout((string) $validated['session_id']);
 
-            return response()->json([
-                'message' => 'Checkout successful',
-                'data' => $checkoutResult,
-            ]);
-        } catch (\RuntimeException $e) {
-            return response()->json([
-                'error' => $e->getMessage(),
-            ], 422);
-        }
+        return response()->json([
+            'message' => 'Checkout successful',
+            'data' => $checkoutResult,
+        ]);
     }
 }

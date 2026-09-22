@@ -1517,8 +1517,16 @@ GET /api/v1/users → 500
 
 Затронуты Users, Organizations, Payments (index/show) и защищённая половина Halls. В этом
 окружении починить нельзя: доступа к Packagist нет, пакет не установить и `composer.lock` не
-перегенерировать. Схема безопасности спеки — `bearerAuth`, то есть именно то, что выдаёт
-Sanctum, так что зависимость действительно нужна, а не заменяема.
+перегенерировать.
+
+> **Вывод этого пункта исправлен — см. 3.24.8.** Установка Sanctum была бы неверным решением:
+> спека не описывает схему Sanctum вообще (`personal_access_tokens` не встречается в
+> `nabilet_core_spec/` ни разу), а определяет собственную таблицу `user_sessions` с
+> `session_token_hash CHAR(64)` и уникальным индексом. `config/auth.php` прямо фиксирует
+> замысел: токены опираются на `user_sessions`/`api_keys`, а драйвер guard'а регистрирует
+> модуль Auth на фазе P2. То есть `auth:sanctum` — ошибка проводки, а не отсутствующая
+> зависимость. Более того, неверна и формулировка «все 6 эндпоинтов аутентификации падают из-за
+> guard'а»: у четырёх из них другая причина — методы `UserService`, которых не существует.
 
 ### 3.24.3 `APP_DEBUG=true` при `APP_ENV=production`
 
@@ -1619,3 +1627,249 @@ trigger  live    1   spec    1   ok
 поддерживаются два диалекта, и путь MySQL на этой машине ничем не проверяется, то есть может
 тихо деградировать. Это по-прежнему требует решения — либо запускать MySQL, либо зафиксировать
 PostgreSQL как поддерживаемую цель.
+---
+
+### 3.24.8 Главный блокер: модуль аутентификации — фасад, а не «не установлен Sanctum»
+
+**Это исправление вывода пункта 3.24.2.** Ранее было зафиксировано: «`laravel/sanctum` отсутствует
+в зависимостях». Это верно, но это не главная проблема, и установка Sanctum была бы неверным
+решением.
+
+**Что происходит на самом деле.** Все шесть эндпоинтов аутентификации падают. Измерено живыми
+запросами:
+
+| Эндпоинт | Живой результат |
+|---|---|
+| `POST /auth/register` | **500** — `Call to undefined method …UserService::registerCustomer()` |
+| `POST /auth/login` (неверные данные) | 401 `{"error":"Invalid credentials"}` — плоская строка, не конверт |
+| `POST /auth/login` (верные данные) | дойдёт до `$user->createToken()` → **500**, см. ниже |
+| `POST /auth/logout` | **500** — `Auth guard [sanctum] is not defined.` |
+| `POST /auth/verify-email` | **500** — `Auth guard [sanctum] is not defined.` |
+| `POST /auth/forgot-password` | **500** — `Call to undefined method …UserService::sendPasswordResetLink()` |
+| `POST /auth/reset-password` | **500** — `Call to undefined method …UserService::resetPassword()` |
+
+`UserService` объявляет десять методов. `AuthController` вызывает пять из них:
+
+| Вызов из `AuthController` | Существует? |
+|---|---|
+| `authenticate()` | да |
+| `registerCustomer()` | **нет** |
+| `sendPasswordResetLink()` | **нет** |
+| `resetPassword()` | **нет** |
+| `verifyEmail()` | **нет** |
+
+То есть контроллер, его `FormRequest` и `AuthResource` написаны, а сервисный слой под ними — нет.
+Ничто этого не поймало: единственные тесты, которые эти классы исполняют, требуют `vendor/`
+(это те самые три `tests/Feature/Api/*`, которые в этой среде ни разу не запускались), а
+`lint.php` читает только код возврата `php -l` — неопределённый метод это ошибка времени
+выполнения, а не синтаксиса.
+
+**Механизм токенов тоже отсутствует, и это не Sanctum.** `AuthController` вызывает
+`$user->createToken('customer-token')->plainTextToken` и
+`auth()->user()?->currentAccessToken()->delete()` — оба метода из Sanctum. При этом
+`laravel/sanctum`: в `composer.json` — нет; в `composer.lock` — 0 вхождений; в `vendor/laravel/` —
+отсутствует. Модель `User` не использует трейт `HasApiTokens`, поэтому даже с установленным
+пакетом `createToken()` был бы неопределённым методом. Дополнительно:
+`app/Modules/Auth/Providers/AuthServiceProvider.php` содержит
+`use Laravel\Sanctum\Sanctum;` — импорт класса, которого нет на диске. Сейчас он инертен (на него
+ссылается только комментарий), но это ловушка для следующей правки.
+
+**Sanctum — не тот механизм, а не просто отсутствующая зависимость.** Спека вообще не описывает
+схему Sanctum:
+
+- `personal_access_tokens` не встречается в `nabilet_core_spec/` **ни разу** (проверено grep по
+  всему бандлу);
+- спека определяет собственную таблицу сессий:
+
+  ```sql
+  CREATE TABLE IF NOT EXISTS user_sessions (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    user_id BIGINT UNSIGNED NOT NULL,
+    session_token_hash CHAR(64) NOT NULL,
+    …
+    UNIQUE KEY uq_user_sessions_token (session_token_hash),
+  ```
+
+- `config/auth.php` в собственном заголовочном комментарии фиксирует замысел: «The public API is
+  bearer-token based (OpenAPI `bearerAuth`) and tokens are backed by `user_sessions` / `api_keys`,
+  not by a session cookie. The guard driver for that is registered by the Auth module in phase P2;
+  defining it here would leave a dangling guard if the module were disabled»;
+- заготовки для этого уже существуют и не используются:
+  `app/Modules/Core/Models/UserSession.php`, `app/Modules/Auth/Domain/UserSession.php`,
+  `app/Modules/Auth/Domain/SessionPolicy.php`, `app/Modules/Auth/Domain/SessionDecision.php`.
+
+**Следовательно `auth:sanctum` — это ошибка проводки, а не отсутствующая зависимость.** Установка
+Sanctum добавила бы таблицу, которой в спеке нет, и навсегда оставила бы `user_sessions` —
+таблицу, которая в спеке есть, с `CHAR(64)`-хешем токена и уникальным индексом — неиспользуемой.
+Правильное решение — bearer-guard на `user_sessions`, то есть ровно то, что и записано в
+комментарии `config/auth.php`.
+
+**В этой сессии не исправлено.** Это разработка функциональности (драйвер guard'а плюс четыре
+метода сервиса), и она меняет механизм аутентификации, поэтому решение зафиксировано, а не
+сымпровизировано. Затронуто сейчас: Users, Organizations, Payments (index/show), защищённая
+половина Halls, а также `/auth/logout` и `/auth/verify-email`.
+
+---
+
+### 3.24.9 Решено: контракт §66 нарушался на каждом пути, принадлежащем фреймворку
+
+**Находка.** `AppError` и восемь его подклассов существовали, `bootstrap/app.php` рендерил их
+правильно, контракт был задокументирован в трёх местах. Но **ни один контроллер модуля никогда
+его не бросал**, а собственные исключения Laravel не отображались — поэтому конверт соблюдался
+лишь на тех немногих путях, которые принадлежат домену, и нарушался везде остальном. Измерено
+живыми запросами, до правки:
+
+| Запрос | Тело ответа | Почему неверно |
+|---|---|---|
+| `POST /api/v1/cart/items` `{}` | `{"message":"validation.required","errors":{…}}` | нет объекта `error`, нет `code`, нет `request_id`; сообщение — сырой ключ перевода |
+| `GET /api/v1/cart` | `{"error":"session_id required"}` | `error` — **строка**, а не объект |
+| `GET /api/v1/halls/xyz` | `{"message":"Hall not found","exception":"NotFoundHttpException","trace":[…]}` | не конверт, плюс утечка трассировки |
+| `GET /api/v1/events/999999` | `{"message":"No query results for model [Nabilet\Modules\Events\Models\Event] 999999"}` | утечка внутренней структуры пространств имён |
+| `GET /api/v1/organizations/x` | 500 с полной трассировкой | `auth:sanctum`, см. 3.24.8 |
+
+Ни один статический гейт этого не видел: они разбирают файлы, а эти тела порождает Laravel во
+время выполнения. Набор тестов оставался зелёным, потому что три теста, которые действительно
+исполняют фреймворк, в этой среде не запускаются.
+
+**Что сделано.** Один маппер `app/Core/Http/ApiExceptionRenderer.php`, подключённый в обработчик
+исключений `bootstrap/app.php`. Он отображает исключения фреймворка в тот же конверт, которым
+пользуется домен:
+
+| Исключение фреймворка | Рендерится как |
+|---|---|
+| `ValidationException` | 422 `VALIDATION_ERROR`, сообщения по полям в `details.fields` |
+| `AuthenticationException` | 401 `UNAUTHENTICATED` |
+| `AuthorizationException` / `AccessDeniedHttpException` | 403 `FORBIDDEN` |
+| `ModelNotFoundException` (обёрнутый Laravel) | 404 `<RESOURCE>_NOT_FOUND`, из короткого имени класса |
+| `NotFoundHttpException` | 404 `NOT_FOUND` |
+| `MethodNotAllowedHttpException` | 405 `METHOD_NOT_ALLOWED` |
+| `ThrottleRequestsException` | 429 `TOO_MANY_REQUESTS` |
+| прочие `HttpExceptionInterface` | свой статус, `HTTP_<status>` |
+| всё остальное | 500 `INTERNAL_ERROR`, настоящее сообщение заменено, вызван `report()` |
+
+Два правила, оба проверены живьём:
+
+- **Полное имя класса модели никогда не попадает клиенту.** `Event` → `EVENT_NOT_FOUND` /
+  `"Event not found."`. Стандартный 404 Laravel встраивает пространство имён, а это раскрывает
+  внутреннюю структуру модулей.
+- **Неожидаемое исключение — это баг, поэтому его сообщение заменяется.** Ошибки с
+  `operational: false` логируются и отдаются как обобщённый 500. Именно это закрывает утечку
+  `APP_DEBUG` на путях API.
+
+Рядом исправлены 34 ответа, написанных вручную, в 8 файлах — включая 15 вызовов `abort(404, …)`,
+которые рендерятся в форме Laravel, а не в нашей:
+
+| Файл | Мест |
+|---|---|
+| `Core/Organizations/Http/Controllers/OrganizationController.php` | 10 (3 плоских + 7 `abort`) |
+| `Core/Users/Http/Controllers/UserController.php` | 7 (`['message' => …]` с 4xx — ключа `error` нет вовсе) |
+| `Modules/Cart/Http/Controllers/CartController.php` | 6 |
+| `Venues/Halls/Http/Controllers/HallController.php` | 5 `abort` |
+| `Core/Organizations/Http/Middleware/CheckOrganizationAccess.php` | 3 `abort` |
+| `Modules/Tickets/Http/Controllers/CheckinController.php` | 1 |
+| `Core/Http/Middleware/RateLimiter.php` | 1 — `retry_after` стоял рядом с `code`, а не внутри `details` |
+| `Core/Http/Middleware/CsrfProtection.php` | 1 |
+
+`CartService` теперь бросает `ConflictError`/`DomainRuleViolation` вместо `\RuntimeException`,
+поэтому клиент получает `CART_EXPIRED`, `SEAT_UNAVAILABLE`, `CART_EMPTY`, а не сообщение для
+разбора. Статусы приведены к спеке: `POST /api/v1/carts/{cart}/items` объявляет **409** при
+конфликте склада, а код отвечал 422.
+
+---
+
+### 3.24.10 Решено: валидационные сообщения были «сырыми» ключами
+
+Каталога `lang/` не было **вообще**, поэтому `__('validation.required')` возвращал сам ключ.
+`config/app.php` берёт `locale` из `APP_FALLBACK_LOCALE=ru`, и клиент видел
+`{"message":"validation.required"}`.
+
+Исправлено: опубликованы языковые файлы фреймворка и добавлен набор `ru` (язык продукта по
+умолчанию) — `lang/ru/{validation,auth,passwords,pagination}.php`, с картой `attributes`, чтобы
+сообщение читалось как «Поле «Сессия» обязательно для заполнения», а не называло сырую колонку.
+
+---
+
+### 3.24.11 Решено: нечисловой идентификатор превращал 422 в 500
+
+`POST /api/v1/cart/items` с `{"session_id":"nope"}` возвращал **500**, а не 422. Причина,
+воспроизведённая изолированно:
+
+```
+Illuminate\Database\QueryException: SQLSTATE[22P02]: Invalid text representation:
+неверный синтаксис для типа bigint: "nope"
+```
+
+`sessions.id`, `inventory_items.id`, `tickets.id`, `users.id`, `venues.id` и `roles.id` — все
+BIGINT, поэтому правило `exists:sessions,id` выполняет `where id = 'nope'`, и PostgreSQL
+отклоняет приведение типа. **Любой клиент мог превратить ошибку валидации в 500, просто отправив
+строку.** Исправлено в 6 местах добавлением `bail` + `integer` перед `exists`.
+
+Несущая часть здесь — именно `bail`, а не `integer`: Laravel прекращает проверку остальных правил
+атрибута только при наличии `bail`, поэтому одного `integer` недостаточно. В `UserController`
+`integer` уже стоял, и это правило всё равно было уязвимо ровно по этой причине.
+
+---
+
+### 3.24.12 Новый ратчет `tools/verify-error-envelope.php` с мутационным тестом
+
+407 файлов, 0 нарушений, 4 обоснованных исключения. Шесть проверок:
+
+| Проверка | Что ловит |
+|---|---|
+| E1 | `'error' => '<строка>'` |
+| E2 | `'error' => $x->getMessage()` |
+| E3 | `'error' => […]` с ключом вне `{code, message, details, request_id}` |
+| E4 | `response()->json(…)` с 4xx/5xx и без ключа `error` |
+| E5 | `abort(…)` |
+| E6 | `exists/unique:…,id` без защиты `bail` + `integer` |
+
+Два свойства, без которых зелёная проверка ничего не стоит:
+
+- **Комментарии вырезаются собственным лексером PHP** (`token_get_all`) с сохранением байтовых
+  смещений. Без этого файл самого ратчета и классы, которые *документируют* эти антипаттерны,
+  спотыкались бы о собственную проверку — докблоки `ApiExceptionRenderer`, `HallController` и
+  `OrganizationController` цитируют плохие формы дословно.
+- **`--selftest` мутационно проверяет каждую проверку** на нарушающем фрагменте *и* на корректном
+  почти-совпадении, причём в обе стороны. Все шесть проходят; проверка, которая не умеет
+  краснеть, не доказывает ничего. Дополнительно утверждается, что докблоки не сканируются, —
+  эта регрессия была бы молчаливой.
+
+Записи ратчета обязаны оставаться живыми: запись, нарушение которой уже исправлено, помечается
+как **устаревшая** и валит гейт, чтобы исключение не могло тихо разрешить повторное внесение того
+же дефекта.
+
+---
+
+### 3.24.13 Урок: страж чистоты был прав, а адаптер стоял не там
+
+`ApiExceptionRenderer` сначала был написан в `app/Core/Errors/` — рядом с `AppError`, что
+выглядело естественным. `tools/verify-purity.php` немедленно упал с **12 нарушениями**:
+`app/Core/Errors` охраняется как свободный от фреймворка, потому что `AppError` и его подклассы —
+это словарь, на котором говорит *домен*, а доменный класс обязан загружаться вообще без vendor.
+
+Этот класс — противоположность: он существует только чтобы знать типы исключений Illuminate и
+Symfony. Это адаптер HTTP-слоя, поэтому он переехал в `app/Core/Http/`, где и живёт
+Laravel-осведомлённый HTTP-слой. Чистота вернулась к 99 файлам / 0 нарушений.
+
+Продолжение урока — в тесте: `ErrorEnvelopeWiringTest` утверждал точную строку импорта, поэтому
+переезд его сломал. Теперь утверждение не зависит от пространства имён (`preg_match` по импорту),
+потому что закрепление расположения в тесте превращает корректный рефакторинг в падение.
+
+---
+
+### 3.24.14 Что по-прежнему открыто из этой области
+
+- **Перестройка аутентификации** (3.24.8) — bearer-guard на `user_sessions` плюс четыре метода
+  `UserService`. Это верхний пункт списка: он разблокирует и 7 маршрутов `auth:sanctum`, и
+  последнюю запись `E1` в ратчете.
+- **`AuthController` — последнее исключение §66** (плоский `{"error":"Invalid credentials"}`),
+  принято в ратчете с обоснованием, потому что править строку до перестройки значило бы трогать
+  файл дважды.
+- **`/api/v1/cart` против `/api/v1/carts` — это структурное расхождение, а не переименование.**
+  Спека моделирует корзину как ресурс с адресацией `{cart}`; приложение адресует корзину по
+  `session_id` в теле/строке запроса и вообще не имеет идентификатора корзины в URL.
+  `GET /api/v1/carts/{cart}` нельзя получить добавлением префикса — и контроллер, и сигнатура
+  сервиса исходят из сессионного ключа. Зафиксировано, не патчилось.
+- **`/api/v1/checkin/{validate,use,sync}` против `/api/v1/tickets/checkin/{scan,verify}`** — тот же
+  класс расхождения, другое пространство имён. Заодно это API, которое нужно Android-клиенту
+  проверяющего, и оно не построено.

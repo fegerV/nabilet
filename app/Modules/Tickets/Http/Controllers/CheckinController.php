@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Nabilet\Modules\Tickets\Http\Controllers;
 
 use Nabilet\Modules\Tickets\Models\Ticket;
-use Nabilet\Modules\Tickets\Models\TicketScan;
 use Nabilet\Modules\Tickets\Services\TicketScanService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -19,30 +18,45 @@ class CheckinController extends Controller
 
     public function scan(Request $request): JsonResponse
     {
-        $request->validate([
-            'ticket_id' => ['required', 'exists:tickets,id'],
-            'device_id' => ['nullable', 'exists:checkin_devices,id'],
-            'session_id' => ['required', 'exists:sessions,id'],
+        $validated = $request->validate([
+            // `bail`/`integer` guard the BIGINT cast: `tickets.id`, `sessions.id` and
+            // `checkin_devices.id` are BIGINT, so `exists` reached with a non-numeric
+            // value raises SQLSTATE[22P02] and answers 500 instead of 422. See
+            // `CartController::addItem()` for the full explanation.
+            'ticket_id' => ['bail', 'required', 'integer', 'exists:tickets,id'],
+            'device_id' => ['bail', 'nullable', 'integer', 'exists:checkin_devices,id'],
+            'session_id' => ['bail', 'required', 'integer', 'exists:sessions,id'],
         ]);
 
         $result = $this->scanService->scan(
-            (int) $request->get('ticket_id'),
-            (int) $request->get('session_id'),
-            $request->get('device_id') ? (int) $request->get('device_id') : null
+            (int) $validated['ticket_id'],
+            (int) $validated['session_id'],
+            isset($validated['device_id']) ? (int) $validated['device_id'] : null
         );
 
         return response()->json(['data' => $result]);
     }
 
-    public function verify(Ticket $ticket, Request $request): JsonResponse
+    /**
+     * Check whether a ticket may be admitted to a session, without consuming it.
+     *
+     * The ticket arrives in the body as `ticket_id`, matching `scan()`. It used to be
+     * declared as a `Ticket $ticket` controller parameter, but `POST
+     * /tickets/checkin/verify` carries no `{ticket}` route segment for Laravel to bind,
+     * so the container tried to construct an empty `Ticket` and the endpoint returned
+     * 500 on every call — verified live before this change.
+     */
+    public function verify(Request $request): JsonResponse
     {
-        $sessionId = $request->get('session_id');
-        
-        if (!$sessionId) {
-            return response()->json(['error' => 'session_id required'], 422);
-        }
+        $validated = $request->validate([
+            // `bail`/`integer` guard the BIGINT cast — see `scan()`.
+            'ticket_id' => ['bail', 'required', 'integer', 'exists:tickets,id'],
+            'session_id' => ['bail', 'required', 'integer', 'exists:sessions,id'],
+        ]);
 
-        $isValid = $this->scanService->canCheckin($ticket, (int) $sessionId);
+        $ticket = Ticket::findOrFail($validated['ticket_id']);
+
+        $isValid = $this->scanService->canCheckin($ticket, (int) $validated['session_id']);
 
         return response()->json([
             'data' => [
