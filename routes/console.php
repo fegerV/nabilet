@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use Illuminate\Support\Facades\Schedule;
+
 /*
  * Closure commands and scheduled tasks live here.
  *
@@ -13,3 +15,9 @@ declare(strict_types=1);
  * Until then this stays empty; an artisan schedule that references missing jobs
  * fails the whole scheduler.
  */
+
+// Очистка просроченных броней мест — запуск каждую минуту
+// Требуется для шаред-хостинга где нет постоянных воркеров
+// На Timeweb настроить в Crontab: * * * * * /opt/php82/bin/php /path/to/artisan schedule:run
+Schedule::command('seats:clear-expired')->everyMinute();
+
