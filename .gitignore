@@ -1,35 +1,4 @@
 ```
-# Dependencies
-vendor/
-
-# Build artifacts
-public/build/
-bootstrap/cache/
-storage/logs/
-storage/framework/cache/
-storage/framework/sessions/
-storage/framework/views/
-storage/app/public/
-
-# Environment
-.env
-.env.local
-.env.*
-!.env.example
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Logs
-*.log
-
-# Temporary files
-*.tmp
+# Documentation
+docs/*.md
 ```
