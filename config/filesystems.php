@@ -50,6 +50,9 @@ return [
     ],
 
     'links' => [
+        // Для шаред-хостинга (Timeweb) где public переименован в public_html
+        // Если используется стандартная структура - оставить public_path('storage')
+        // Путь будет автоматически адаптирован при установке через installer
         public_path('storage') => storage_path('app/public'),
     ],
 

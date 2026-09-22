@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Facades\Route;
+use Illuminate\Console\Scheduling\Schedule;
 
 /*
 |--------------------------------------------------------------------------
@@ -17,6 +18,11 @@ Route::get('/ping', fn() => response()->json(['status' => 'ok', 'timestamp' => n
 | Module Routes - Auto-loaded from each module's routes/api.php
 |--------------------------------------------------------------------------
 */
+
+// Installer Module (должен быть первым для доступа к установщику)
+if (file_exists(__DIR__ . '/../app/Modules/Installer/routes/web.php')) {
+    require __DIR__ . '/../app/Modules/Installer/routes/web.php';
+}
 
 // Events Module
 if (file_exists(__DIR__ . '/../app/Modules/Events/routes/api.php')) {
