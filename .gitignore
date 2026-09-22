@@ -1,4 +1,3 @@
-```
 # Compiled and build artifacts
 *.pyc
 __pycache__/
@@ -14,52 +13,49 @@ __pycache__/
 # Dependencies
 vendor/
 node_modules/
-.npm/
-.yarn/
-.bower-cache/
-.bower-registry/
-.bower-tmp/
-composer.lock
+.env
+.env.local
+.env.*
 
 # Logs and temp files
 *.log
 *.tmp
 *.swp
 *.swo
-*.bak
-*.backup
-
-# Environment
-.env
-.env.local
-.env.*
-!.env.example
 
 # Editors
 .vscode/
 .idea/
-*.sublime-project
-*.sublime-workspace
-.DS_Store
-Thumbs.db
-
-# Laravel specific
-bootstrap/cache/
-storage/
-public/storage
-.coverage
-coverage/
-htmlcov/
 
 # Build and distribution
 dist/
 build/
 target/
-.sass-cache/
-.cache/
-webpack.config.js.map
+*.tar
+*.tar.gz
+*.zip
+*.rar
+*.7z
+
+# OS generated files
+.DS_Store
+Thumbs.db
 
 # Testing
+.coverage
+coverage/
+htmlcov/
+
+# Laravel/Lumen specific
+bootstrap/cache/
+storage/logs/
+*.sqlite
+public/storage
+
+# PHP specific
+.php_cs.cache
 .phpunit.result.cache
-.phpunit-watcher/
-```
+
+# Filament specific cache/config
+.filament/
+cache/filament/
