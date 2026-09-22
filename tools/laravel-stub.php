@@ -440,6 +440,19 @@ namespace Illuminate\Database\Schema {
             $this->timestamp($column)->nullable();
         }
 
+        /**
+         * Laravel's rememberToken() is a shorthand for a nullable 100-char string.
+         * Without it here, verify-migrations.php died with an uncaught
+         * BadMethodCallException on database/migrations/
+         * 2026_09_22_001300_add_remember_token.php — the whole gate exited 255, so
+         * every later migration went unchecked. Note: this column is NOT in the
+         * spec bundle; see docs/REVIEW-spec-bundle.md.
+         */
+        public function rememberToken(): ColumnDefinition
+        {
+            return $this->string('remember_token', 100)->nullable();
+        }
+
         /** @param list<string>|string $columns */
         public function unique(array|string $columns, ?string $name = null): void
         {

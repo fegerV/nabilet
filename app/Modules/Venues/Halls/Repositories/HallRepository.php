@@ -7,6 +7,7 @@ namespace Nabilet\Modules\Venues\Halls\Repositories;
 use Nabilet\Modules\Venues\Halls\Models\Hall;
 use Nabilet\Modules\Venues\Halls\Models\HallSchemaVersion;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Pagination\LengthAwarePaginator;
 
 class HallRepository
 {
@@ -24,7 +25,14 @@ class HallRepository
         return $this->model->where('public_id', $publicId)->first();
     }
 
-    public function findByVenue(int $venueId, int $limit = 15): Collection
+    /**
+     * Returns a paginator, not a plain Collection: the body calls paginate(), and
+     * the declared Eloquent Collection type made every call a TypeError. The type
+     * is corrected rather than the call, because HallCollection is a
+     * ResourceCollection and the controller feeds it straight through — the
+     * paginated envelope is what the caller expects.
+     */
+    public function findByVenue(int $venueId, int $limit = 15): LengthAwarePaginator
     {
         return $this->model->where('venue_id', $venueId)
             ->with(['currentSchemaVersion'])

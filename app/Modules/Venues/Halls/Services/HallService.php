@@ -8,6 +8,8 @@ use Nabilet\Modules\Venues\Halls\Models\Hall;
 use Nabilet\Modules\Venues\Halls\Models\HallSchemaVersion;
 use Nabilet\Modules\Venues\Halls\Repositories\HallRepository;
 use Nabilet\Modules\Venues\Halls\Domain\SchemaVersionPolicy;
+use Illuminate\Support\Collection;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 
 class HallService
@@ -30,6 +32,30 @@ class HallService
     public function deleteHall(Hall $hall): bool
     {
         return $this->repository->delete($hall);
+    }
+
+    /**
+     * Read accessors.
+     *
+     * The controller used to call `$this->service->repository->...` directly.
+     * `$repository` is protected, so every one of those calls was a fatal
+     * "Cannot access protected property" — index() and show() returned 500 for
+     * any hall. Reading through the service keeps the repository private and
+     * gives one place to add scoping later.
+     */
+    public function findByVenue(int $venueId, int $limit = 15): LengthAwarePaginator
+    {
+        return $this->repository->findByVenue($venueId, $limit);
+    }
+
+    public function findByPublicId(string $publicId): ?Hall
+    {
+        return $this->repository->findByPublicId($publicId);
+    }
+
+    public function getSchemaVersions(Hall $hall): Collection
+    {
+        return $this->repository->getSchemaVersions($hall);
     }
 
     public function createSchemaDraft(Hall $hall, array $payload, int $userId): HallSchemaVersion

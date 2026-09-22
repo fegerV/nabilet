@@ -9,7 +9,10 @@ use Nabilet\Modules\Core\Users\Http\Controllers\UserController;
  * Users Module API Routes
  */
 
-Route::prefix('api/v1')->middleware(['auth:sanctum'])->group(function () {
+// Mounted at /api/v1 by bootstrap/app.php — the prefix used to be repeated here,
+// which produced /api/v1/api/v1/users and left these routes unreachable at the
+// spec paths (/api/v1/users/{user}/roles).
+Route::middleware(['auth:sanctum'])->group(function () {
     // User management
     Route::get('/users', [UserController::class, 'index'])->name('users.index');
     Route::get('/users/{publicId}', [UserController::class, 'show'])->name('users.show');
