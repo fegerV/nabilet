@@ -1,10 +1,11 @@
 ```
 # Dependencies
-vendor/
+node_modules/
 
-# Logs and temp files
-*.log
-*.tmp
+# Build artifacts
+dist/
+build/
+*.js.map
 
 # Environment
 .env
@@ -15,4 +16,43 @@ vendor/
 .vscode/
 .idea/
 
+# Logs
+*.log
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Temporary files
+*.tmp
+*.swp
+*~
+.DS_Store
+Thumbs.db
+
+# Coverage
+coverage/
+htmlcov/
+.coverage
+
+# Testing
+.pytest_cache/
+.mypy_cache/
+
+# Distribution / packaging
+*.tar.gz
+*.whl
+*.egg
+*.egg-info/
+
+# IDE
+.vs/
+*.sublime-project
+*.sublime-workspace
+
+# OS generated files
+ehthumbs.db
+Icon?
 ```
