@@ -10,6 +10,8 @@ use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Filament\Tables\Columns\BadgeColumn;
+use Filament\Tables\Columns\TextColumn;
 
 class HallResource extends Resource
 {
@@ -86,29 +88,29 @@ class HallResource extends Resource
     {
         return $table
             ->columns([
-                Tables\Columns\TextColumn::make('id')
+                TextColumn::make('id')
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
-                Tables\Columns\TextColumn::make('venue.name')
+                TextColumn::make('venue.name')
                     ->sortable()
                     ->searchable()
                     ->label('Venue'),
-                Tables\Columns\TextColumn::make('name')
+                TextColumn::make('name')
                     ->searchable()
                     ->sortable()
                     ->label('Hall Name'),
-                Tables\Columns\TextColumn::make('capacity')
+                TextColumn::make('capacity')
                     ->numeric()
                     ->sortable()
                     ->label('Capacity'),
-                Tables\Columns\BadgeColumn::make('status')
+                BadgeColumn::make('status')
                     ->colors([
                         'success' => 'active',
                         'danger' => 'inactive',
                         'warning' => 'maintenance',
                     ])
                     ->label('Status'),
-                Tables\Columns\TextColumn::make('created_at')
+                TextColumn::make('created_at')
                     ->dateTime()
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true)

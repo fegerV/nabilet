@@ -10,6 +10,9 @@ use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Filament\Tables\Columns\BadgeColumn;
+use Filament\Tables\Columns\ImageColumn;
+use Filament\Tables\Columns\TextColumn;
 
 class EventResource extends Resource
 {
@@ -127,18 +130,18 @@ class EventResource extends Resource
     {
         return $table
             ->columns([
-                Tables\Columns\TextColumn::make('id')
+                TextColumn::make('id')
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
-                Tables\Columns\TextColumn::make('title')
+                TextColumn::make('title')
                     ->searchable()
                     ->sortable()
                     ->limit(50)
                     ->label('Title'),
-                Tables\Columns\ImageColumn::make('poster')
+                ImageColumn::make('poster')
                     ->circular()
                     ->label('Poster'),
-                Tables\Columns\BadgeColumn::make('status')
+                BadgeColumn::make('status')
                     ->colors([
                         'success' => 'published',
                         'warning' => 'draft',
@@ -146,11 +149,11 @@ class EventResource extends Resource
                         'gray' => 'archived',
                     ])
                     ->label('Status'),
-                Tables\Columns\TextColumn::make('published_at')
+                TextColumn::make('published_at')
                     ->date()
                     ->sortable()
                     ->label('Published'),
-                Tables\Columns\TextColumn::make('created_at')
+                TextColumn::make('created_at')
                     ->dateTime()
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true)

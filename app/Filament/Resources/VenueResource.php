@@ -10,6 +10,8 @@ use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Filament\Tables\Columns\BadgeColumn;
+use Filament\Tables\Columns\TextColumn;
 
 class VenueResource extends Resource
 {
@@ -107,34 +109,34 @@ class VenueResource extends Resource
     {
         return $table
             ->columns([
-                Tables\Columns\TextColumn::make('id')
+                TextColumn::make('id')
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
-                Tables\Columns\TextColumn::make('organization.name')
+                TextColumn::make('organization.name')
                     ->sortable()
                     ->searchable()
                     ->label('Organization'),
-                Tables\Columns\TextColumn::make('name')
+                TextColumn::make('name')
                     ->searchable()
                     ->sortable()
                     ->label('Venue Name'),
-                Tables\Columns\TextColumn::make('city')
+                TextColumn::make('city')
                     ->searchable()
                     ->sortable()
                     ->label('City'),
-                Tables\Columns\TextColumn::make('country')
+                TextColumn::make('country')
                     ->searchable()
                     ->sortable()
                     ->toggleable()
                     ->label('Country'),
-                Tables\Columns\BadgeColumn::make('status')
+                BadgeColumn::make('status')
                     ->colors([
                         'success' => 'active',
                         'danger' => 'inactive',
                         'warning' => 'maintenance',
                     ])
                     ->label('Status'),
-                Tables\Columns\TextColumn::make('created_at')
+                TextColumn::make('created_at')
                     ->dateTime()
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true)
