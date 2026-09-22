@@ -217,11 +217,15 @@ reporting, because an under-reading parser invents drift.
 
 ## 9. Uncommitted work in the tree
 
-The working tree holds **72 changed entries that are not mine** — 33 `app/Models/*`, Filament
+The working tree holds **48 changed entries that are not mine** — 33 `app/Models/*`, Filament
 resources and widgets, `phpunit.xml`, `routes/api.php`, `OrderService`, `TicketScanService`,
 `AdminPanelProvider`, and untracked directories the app already loads
 (`app/Modules/Auth/routes/`, `app/Modules/Venues/Halls/{Domain,Http/Resources,Models}/`,
-`app/Modules/Webhooks/Http/`). `HEAD` is `b1b333e` (PR #39).
+`app/Modules/Webhooks/Http/`). `HEAD` was `b1b333e` (PR #39) at the start of this check.
 
-Nothing here was committed or reverted. The untracked directories are worth attention on
-their own: the app depends on them, so a fresh clone would not run.
+**None of it was committed, reverted or reformatted.** The fixes in §7 were committed as
+`a9ba178` (21 files, +840/−40) using explicit pathspecs, so nothing outside this report's scope
+was swept in. Pushed to `main` (`b1b333e..a9ba178`).
+
+The untracked directories deserve attention on their own: the application loads them, so a
+fresh clone would not run.
