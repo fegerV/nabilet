@@ -1,3 +1,65 @@
-(public/hall-editor.html) is a source file, not a build artifact, dependency, or temporary file. No files in the change list match the criteria for ignoring (compiled files, dependency directories, editor files, system files, etc.). Therefore, no additions to .gitignore are needed.
+```
+# Compiled and build artifacts
+*.pyc
+__pycache__/
+*.o
+*.obj
+*.class
+*.exe
+*.dll
+*.so
+*.a
+*.out
 
-Output: (nothing)
+# Dependencies
+vendor/
+node_modules/
+.npm/
+.yarn/
+.bower-cache/
+.bower-registry/
+.bower-tmp/
+composer.lock
+
+# Logs and temp files
+*.log
+*.tmp
+*.swp
+*.swo
+*.bak
+*.backup
+
+# Environment
+.env
+.env.local
+.env.*
+!.env.example
+
+# Editors
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+.DS_Store
+Thumbs.db
+
+# Laravel specific
+bootstrap/cache/
+storage/
+public/storage
+.coverage
+coverage/
+htmlcov/
+
+# Build and distribution
+dist/
+build/
+target/
+.sass-cache/
+.cache/
+webpack.config.js.map
+
+# Testing
+.phpunit.result.cache
+.phpunit-watcher/
+```
