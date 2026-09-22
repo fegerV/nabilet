@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Core\Users\Models;
 
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Foundation\Auth\User as Authenticatable;
 use Nabilet\Modules\Core\Organizations\Models\Organization;
 use Nabilet\Modules\Core\Models\Role;
 use Nabilet\Modules\Core\Models\UserRole;
@@ -25,12 +25,37 @@ use Nabilet\Modules\Analytics\Models\AbAssignment;
 
 /**
  * User Model - Canonical Implementation
- * 
+ *
  * Represents a user in the system with all relationships.
+ *
+ * WHY IT EXTENDS `Illuminate\Foundation\Auth\User`
+ *   This was a plain `Model`, which meant it could not be the subject of a guard:
+ *   `Illuminate\Contracts\Auth\Authenticatable` is what `Auth::user()`,
+ *   `$request->user()` and every policy expect, and `EloquentUserProvider` refuses
+ *   anything else. The auth provider in `config/auth.php` pointed at
+ *   `App\Models\User` instead — the Filament panel's model — while every module in
+ *   the tree uses *this* one. A guard that returned the Filament model would hand
+ *   controllers a different class for the same row, so `instanceof` checks and
+ *   `userSessions()` would be missing exactly where they are needed.
+ *
+ *   The base class brings `Authenticatable`, `Authorizable`, `CanResetPassword`
+ *   and `MustVerifyEmail`. It declares no `$fillable`, no `$table` and no
+ *   `$timestamps`, so nothing declared below is overridden, and it adds no
+ *   attribute — `verify-models-schema.php` sees the same field set as before.
  */
-class User extends Model
+class User extends Authenticatable
 {
     protected $table = 'users';
+
+    /**
+     * `password` and `remember_token` never leave the process.
+     *
+     * The base class does not declare `$hidden` (Laravel removed it), so without
+     * this a `toArray()` — in a log line, an exception context, or a resource that
+     * forgets a field — would carry the password hash. `AuthResource` lists its
+     * fields explicitly, so this is defence in depth rather than the only guard.
+     */
+    protected $hidden = ['password', 'remember_token'];
 
     protected $fillable = [
         'public_id',
