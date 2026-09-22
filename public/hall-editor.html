@@ -49,6 +49,14 @@
             background: #e74c3c;
         }
 
+        .toolbar button.btn-image {
+            background: #9b59b6;
+        }
+
+        .toolbar button.btn-image:hover {
+            background: #8e44ad;
+        }
+
         .toolbar select, .toolbar input[type="color"] {
             padding: 8px;
             border-radius: 4px;
@@ -212,6 +220,8 @@
         
         <div style="flex: 1;"></div>
         
+        <button class="btn-image" id="btnLoadImage">🖼️ Схема зала</button>
+        
         <label class="grid-toggle">
             <input type="checkbox" id="chkGrid" checked> Сетка
         </label>
@@ -223,10 +233,11 @@
         </div>
         
         <button class="btn-save" id="btnSave">💾 Сохранить</button>
-        <button id="btnLoad">📂 Загрузить</button>
+        <button id="btnLoad">📂 Загрузить JSON</button>
         <button class="btn-delete" id="btnClear">🗑️ Очистить</button>
         
         <input type="file" id="fileInput" accept=".json" style="display: none;">
+        <input type="file" id="imageInput" accept="image/*" style="display: none;">
     </div>
 
     <div class="main-container">
@@ -289,6 +300,18 @@
 
                 <button class="btn-delete" id="btnDeleteObject" style="width: 100%; margin-top: 10px;">Удалить объект</button>
             </div>
+
+            <div class="properties-panel" id="imagePropertiesPanel" style="display: none;">
+                <h3>Настройки изображения</h3>
+                
+                <div class="property-group">
+                    <label>Прозрачность схемы зала</label>
+                    <input type="range" id="propImageOpacity" min="0.1" max="1" step="0.1" value="0.5">
+                    <span id="imageOpacityValue">50%</span>
+                </div>
+
+                <button class="btn-delete" id="btnRemoveImage" style="width: 100%; margin-top: 10px;">Удалить изображение</button>
+            </div>
         </div>
 
         <div class="canvas-container" id="canvasContainer">
@@ -319,6 +342,8 @@
                 this.showGrid = true;
                 this.zoom = 1;
                 this.gridSize = 20;
+                this.backgroundImage = null;
+                this.imageOpacity = 0.5;
                 
                 this.objectTypes = {
                     table: { name: 'Стол', icon: '🪑', defaultColor: '#3498db', defaultWidth: 80, defaultHeight: 80 },
@@ -370,6 +395,10 @@
                     this.render();
                 };
 
+                // Image load
+                document.getElementById('btnLoadImage').onclick = () => document.getElementById('imageInput').click();
+                document.getElementById('imageInput').onchange = (e) => this.loadBackgroundImage(e);
+
                 // Zoom controls
                 document.getElementById('btnZoomIn').onclick = () => this.setZoom(this.zoom + 0.1);
                 document.getElementById('btnZoomOut').onclick = () => this.setZoom(this.zoom - 0.1);
@@ -396,6 +425,14 @@
                 document.getElementById('propWidth').oninput = () => this.updateSelectedObject();
                 document.getElementById('propHeight').oninput = () => this.updateSelectedObject();
                 document.getElementById('btnDeleteObject').onclick = () => this.deleteSelectedObject();
+
+                // Image properties panel
+                document.getElementById('propImageOpacity').oninput = (e) => {
+                    this.imageOpacity = parseFloat(e.target.value);
+                    document.getElementById('imageOpacityValue').textContent = Math.round(this.imageOpacity * 100) + '%';
+                    this.render();
+                };
+                document.getElementById('btnRemoveImage').onclick = () => this.removeBackgroundImage();
 
                 // Window resize
                 window.onresize = () => this.resizeCanvas();
@@ -451,6 +488,12 @@
 
             updatePropertiesPanel() {
                 const panel = document.getElementById('propertiesPanel');
+                const imagePanel = document.getElementById('imagePropertiesPanel');
+                
+                // Hide both panels first
+                panel.style.display = 'none';
+                imagePanel.style.display = 'none';
+                
                 if (this.selectedObject) {
                     panel.style.display = 'block';
                     document.getElementById('propName').value = this.selectedObject.name;
@@ -461,9 +504,19 @@
                     document.getElementById('propY').value = Math.round(this.selectedObject.y);
                     document.getElementById('propWidth').value = Math.round(this.selectedObject.width);
                     document.getElementById('propHeight').value = Math.round(this.selectedObject.height);
-                } else {
-                    panel.style.display = 'none';
+                } else if (this.backgroundImage) {
+                    // Show image properties panel when no object is selected but image is loaded
+                    imagePanel.style.display = 'block';
+                    document.getElementById('propImageOpacity').value = this.imageOpacity;
+                    document.getElementById('imageOpacityValue').textContent = Math.round(this.imageOpacity * 100) + '%';
                 }
+            }
+
+            removeBackgroundImage() {
+                this.backgroundImage = null;
+                document.getElementById('imagePropertiesPanel').style.display = 'none';
+                this.render();
+                this.setStatus('Изображение удалено');
             }
 
             updateSelectedObject() {
@@ -699,6 +752,11 @@
                 this.ctx.save();
                 this.ctx.scale(this.zoom, this.zoom);
 
+                // Draw background image (if loaded)
+                if (this.backgroundImage) {
+                    this.drawBackgroundImage();
+                }
+
                 // Draw grid
                 if (this.showGrid) {
                     this.drawGrid();
@@ -714,6 +772,12 @@
                 }
 
                 this.ctx.restore();
+            }
+
+            drawBackgroundImage() {
+                this.ctx.globalAlpha = this.imageOpacity;
+                this.ctx.drawImage(this.backgroundImage, 0, 0, this.canvas.width / this.zoom, this.canvas.height / this.zoom);
+                this.ctx.globalAlpha = 1;
             }
 
             drawGrid() {
@@ -834,6 +898,27 @@
                     }
                 };
                 reader.readAsText(file);
+                e.target.value = '';
+            }
+
+            loadBackgroundImage(e) {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        this.backgroundImage = img;
+                        this.render();
+                        this.setStatus('Изображение схемы зала загружено');
+                    };
+                    img.onerror = () => {
+                        alert('Ошибка при загрузке изображения');
+                    };
+                    img.src = event.target.result;
+                };
+                reader.readAsDataURL(file);
                 e.target.value = '';
             }
 
