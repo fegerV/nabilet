@@ -1,0 +1,1 @@
+{"version":2,"defects":{"Tests\\Feature\\Api\\EventApiTest::test_ping_endpoint":8,"Tests\\Feature\\Api\\EventApiTest::test_events_endpoint_exists":8,"Tests\\Feature\\Api\\OrderApiTest::test_orders_endpoint_exists":8,"Tests\\Feature\\Api\\TicketApiTest::test_tickets_endpoint_exists":8,"Tests\\Feature\\Api\\TicketApiTest::test_checkin_scan_endpoint_exists":8},"times":[]}
