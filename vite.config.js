@@ -22,6 +22,7 @@ export default defineConfig({
         rollupOptions: {
             input: {
                 'hall-editor': 'resources/js/app/hall-editor.js',
+                'ticket-builder': 'resources/js/app/ticket-builder.js',
             },
             output: {
                 entryFileNames: `assets/[name].[hash].js`,
