@@ -2,43 +2,55 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Визуальный редактор схем залов</title>
     <style>
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
         }
 
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background: #f5f5f5;
             height: 100vh;
+            height: 100dvh;
             display: flex;
             flex-direction: column;
+            overflow: hidden;
+            touch-action: none;
         }
 
         .toolbar {
             background: #2c3e50;
             color: white;
-            padding: 10px 20px;
+            padding: 8px 10px;
             display: flex;
-            gap: 10px;
+            gap: 6px;
             align-items: center;
             flex-wrap: wrap;
             box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            min-height: 50px;
         }
 
         .toolbar button {
             background: #3498db;
             color: white;
             border: none;
-            padding: 8px 16px;
-            border-radius: 4px;
+            padding: 10px 12px;
+            border-radius: 6px;
             cursor: pointer;
-            font-size: 14px;
-            transition: background 0.3s;
+            font-size: 13px;
+            transition: background 0.3s, transform 0.1s;
+            min-width: 44px;
+            min-height: 44px;
+            touch-action: manipulation;
+        }
+
+        .toolbar button:active {
+            transform: scale(0.95);
         }
 
         .toolbar button:hover {
@@ -58,10 +70,11 @@
         }
 
         .toolbar select, .toolbar input[type="color"] {
-            padding: 8px;
-            border-radius: 4px;
+            padding: 10px;
+            border-radius: 6px;
             border: none;
             font-size: 14px;
+            min-height: 44px;
         }
 
         .toolbar label {
@@ -74,6 +87,7 @@
             display: flex;
             flex: 1;
             overflow: hidden;
+            position: relative;
         }
 
         .sidebar {
@@ -85,6 +99,27 @@
             display: flex;
             flex-direction: column;
             gap: 15px;
+            transition: transform 0.3s ease;
+            z-index: 100;
+        }
+
+        .sidebar.collapsed {
+            transform: translateX(-100%);
+            position: absolute;
+            height: 100%;
+        }
+
+        @media (max-width: 768px) {
+            .sidebar {
+                position: absolute;
+                transform: translateX(-100%);
+                width: 85%;
+                max-width: 320px;
+            }
+
+            .sidebar.open {
+                transform: translateX(0);
+            }
         }
 
         .sidebar h3 {
@@ -102,15 +137,17 @@
         }
 
         .object-list li {
-            padding: 8px 12px;
+            padding: 12px 12px;
             margin: 5px 0;
             background: #ecf0f1;
-            border-radius: 4px;
+            border-radius: 6px;
             cursor: pointer;
             display: flex;
             justify-content: space-between;
             align-items: center;
             transition: background 0.3s;
+            min-height: 44px;
+            touch-action: manipulation;
         }
 
         .object-list li:hover {
@@ -126,10 +163,13 @@
             background: #e74c3c;
             color: white;
             border: none;
-            padding: 4px 8px;
-            border-radius: 3px;
+            padding: 6px 10px;
+            border-radius: 4px;
             cursor: pointer;
             font-size: 12px;
+            min-width: 36px;
+            min-height: 36px;
+            touch-action: manipulation;
         }
 
         .properties-panel {
@@ -144,17 +184,32 @@
 
         .property-group label {
             display: block;
-            margin-bottom: 5px;
+            margin-bottom: 8px;
             color: #555;
-            font-size: 13px;
+            font-size: 14px;
+            font-weight: 500;
         }
 
         .property-group input, .property-group select {
             width: 100%;
-            padding: 8px;
+            padding: 12px;
             border: 1px solid #ddd;
-            border-radius: 4px;
-            font-size: 14px;
+            border-radius: 6px;
+            font-size: 16px;
+            min-height: 48px;
+            touch-action: manipulation;
+        }
+
+        .property-group input[type="range"] {
+            padding: 0;
+            min-height: auto;
+            height: 30px;
+        }
+
+        .property-group input[type="color"] {
+            padding: 5px;
+            height: 48px;
+            cursor: pointer;
         }
 
         .canvas-container {
@@ -162,11 +217,13 @@
             position: relative;
             overflow: auto;
             background: #fff;
+            touch-action: none;
         }
 
         #hallCanvas {
             display: block;
             cursor: crosshair;
+            touch-action: none;
         }
 
         .grid-toggle {
@@ -202,15 +259,65 @@
         .status-bar {
             background: #34495e;
             color: white;
-            padding: 5px 20px;
+            padding: 8px 20px;
             font-size: 12px;
             display: flex;
             justify-content: space-between;
+            min-height: 36px;
+        }
+
+        .mobile-menu-btn {
+            display: none;
+            background: transparent;
+            border: none;
+            color: white;
+            font-size: 24px;
+            padding: 8px;
+            cursor: pointer;
+            min-width: 44px;
+            min-height: 44px;
+        }
+
+        @media (max-width: 768px) {
+            .mobile-menu-btn {
+                display: block;
+            }
+
+            .toolbar {
+                padding: 6px 8px;
+            }
+
+            .toolbar button {
+                padding: 8px 10px;
+                font-size: 12px;
+                min-width: 40px;
+                min-height: 40px;
+            }
+
+            .zoom-controls span {
+                font-size: 12px;
+            }
+
+            .sidebar-overlay {
+                display: none;
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background: rgba(0,0,0,0.5);
+                z-index: 99;
+            }
+
+            .sidebar-overlay.active {
+                display: block;
+            }
         }
     </style>
 </head>
 <body>
     <div class="toolbar">
+        <button class="mobile-menu-btn" id="mobileMenuBtn">☰</button>
         <button id="btnSelect" class="active">🖱️ Выделение</button>
         <button id="btnTable">🪑 Стол</button>
         <button id="btnStage">🎭 Сцена</button>
@@ -220,7 +327,7 @@
         
         <div style="flex: 1;"></div>
         
-        <button class="btn-image" id="btnLoadImage">🖼️ Схема зала</button>
+        <button class="btn-image" id="btnLoadImage">🖼️ Схема</button>
         
         <label class="grid-toggle">
             <input type="checkbox" id="chkGrid" checked> Сетка
@@ -232,16 +339,18 @@
             <button id="btnZoomIn">+</button>
         </div>
         
-        <button class="btn-save" id="btnSave">💾 Сохранить</button>
-        <button id="btnLoad">📂 Загрузить JSON</button>
-        <button class="btn-delete" id="btnClear">🗑️ Очистить</button>
+        <button class="btn-save" id="btnSave">💾</button>
+        <button id="btnLoad">📂</button>
+        <button class="btn-delete" id="btnClear">🗑️</button>
         
         <input type="file" id="fileInput" accept=".json" style="display: none;">
         <input type="file" id="imageInput" accept="image/*" style="display: none;">
     </div>
 
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
     <div class="main-container">
-        <div class="sidebar">
+        <div class="sidebar" id="sidebar">
             <div>
                 <h3>Объекты на схеме</h3>
                 <ul class="object-list" id="objectList"></ul>
@@ -381,6 +490,25 @@
             }
 
             bindEvents() {
+                // Mobile menu toggle
+                const mobileMenuBtn = document.getElementById('mobileMenuBtn');
+                const sidebar = document.getElementById('sidebar');
+                const sidebarOverlay = document.getElementById('sidebarOverlay');
+                
+                if (mobileMenuBtn) {
+                    mobileMenuBtn.addEventListener('click', () => {
+                        sidebar.classList.toggle('open');
+                        sidebarOverlay.classList.toggle('active');
+                    });
+                }
+                
+                if (sidebarOverlay) {
+                    sidebarOverlay.addEventListener('click', () => {
+                        sidebar.classList.remove('open');
+                        sidebarOverlay.classList.remove('active');
+                    });
+                }
+
                 // Tool buttons
                 document.getElementById('btnSelect').onclick = () => this.setTool('select');
                 document.getElementById('btnTable').onclick = () => this.addObject('table');
@@ -399,7 +527,7 @@
                 document.getElementById('btnLoadImage').onclick = () => document.getElementById('imageInput').click();
                 document.getElementById('imageInput').onchange = (e) => this.loadBackgroundImage(e);
 
-                // Zoom controls
+                // Zoom controls with pinch-to-zoom support
                 document.getElementById('btnZoomIn').onclick = () => this.setZoom(this.zoom + 0.1);
                 document.getElementById('btnZoomOut').onclick = () => this.setZoom(this.zoom - 0.1);
 
@@ -409,11 +537,43 @@
                 document.getElementById('fileInput').onchange = (e) => this.loadSchema(e);
                 document.getElementById('btnClear').onclick = () => this.clearAll();
 
-                // Canvas events
+                // Canvas events - mouse
                 this.canvas.onmousedown = (e) => this.onMouseDown(e);
                 this.canvas.onmousemove = (e) => this.onMouseMove(e);
                 this.canvas.onmouseup = () => this.onMouseUp();
                 this.canvas.onmouseleave = () => this.onMouseUp();
+                
+                // Canvas events - touch
+                this.canvas.ontouchstart = (e) => this.onTouchStart(e);
+                this.canvas.ontouchmove = (e) => this.onTouchMove(e);
+                this.canvas.ontouchend = () => this.onTouchEnd();
+                
+                // Pinch to zoom
+                let initialPinchDistance = null;
+                let initialZoom = 1;
+                
+                this.canvas.addEventListener('touchstart', (e) => {
+                    if (e.touches.length === 2) {
+                        initialPinchDistance = this.getPinchDistance(e.touches);
+                        initialZoom = this.zoom;
+                        e.preventDefault();
+                    }
+                }, { passive: false });
+                
+                this.canvas.addEventListener('touchmove', (e) => {
+                    if (e.touches.length === 2 && initialPinchDistance) {
+                        const currentDistance = this.getPinchDistance(e.touches);
+                        const scale = currentDistance / initialPinchDistance;
+                        this.setZoom(initialZoom * scale);
+                        e.preventDefault();
+                    }
+                }, { passive: false });
+                
+                this.canvas.addEventListener('touchend', (e) => {
+                    if (e.touches.length < 2) {
+                        initialPinchDistance = null;
+                    }
+                });
 
                 // Properties panel
                 document.getElementById('propName').oninput = () => this.updateSelectedObject();
@@ -436,6 +596,12 @@
 
                 // Window resize
                 window.onresize = () => this.resizeCanvas();
+            }
+            
+            getPinchDistance(touches) {
+                const dx = touches[0].clientX - touches[1].clientX;
+                const dy = touches[0].clientY - touches[1].clientY;
+                return Math.sqrt(dx * dx + dy * dy);
             }
 
             setTool(tool) {
@@ -647,6 +813,48 @@
                 this.isDragging = false;
                 this.isResizing = false;
                 this.resizeHandle = null;
+            }
+            
+            onTouchStart(e) {
+                if (e.touches.length === 1) {
+                    const touch = e.touches[0];
+                    const rect = this.canvas.getBoundingClientRect();
+                    const x = (touch.clientX - rect.left) / this.zoom;
+                    const y = (touch.clientY - rect.top) / this.zoom;
+                    
+                    // Simulate mouse down
+                    this.onMouseDown({
+                        clientX: touch.clientX,
+                        clientY: touch.clientY,
+                        preventDefault: () => {}
+                    });
+                }
+            }
+            
+            onTouchMove(e) {
+                if (e.touches.length === 1 && !this.isPinching) {
+                    const touch = e.touches[0];
+                    const rect = this.canvas.getBoundingClientRect();
+                    const x = (touch.clientX - rect.left) / this.zoom;
+                    const y = (touch.clientY - rect.top) / this.zoom;
+                    
+                    document.getElementById('mousePos').textContent = `X: ${Math.round(x)}, Y: ${Math.round(y)}`;
+                    
+                    if (this.isDragging && this.selectedObject) {
+                        this.selectedObject.x = Math.round((x - this.dragOffset.x) / this.gridSize) * this.gridSize;
+                        this.selectedObject.y = Math.round((y - this.dragOffset.y) / this.gridSize) * this.gridSize;
+                        this.updatePropertiesPanel();
+                        this.render();
+                        e.preventDefault();
+                    } else if (this.isResizing && this.selectedObject && this.resizeHandle) {
+                        this.resizeObject(x, y);
+                        e.preventDefault();
+                    }
+                }
+            }
+            
+            onTouchEnd() {
+                this.onMouseUp();
             }
 
             resizeObject(x, y) {
