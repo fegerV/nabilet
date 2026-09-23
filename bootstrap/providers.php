@@ -27,4 +27,9 @@ return [
     // Registers the `session_token` auth driver that the `api` guard names.
     // Its route file is loaded by routes/api.php, not by the provider.
     Nabilet\Modules\Auth\Providers\AuthServiceProvider::class,
+
+    // PaymentService и его провайдер (YooKassa) — PaymentServiceProvider не
+    // регистрируется через NabiletServiceProvider (см. комментарий выше), поэтому
+    // перечисляем его явно, чтобы биндинги работали для вебхуков и рефандов.
+    Nabilet\Modules\Payments\Providers\PaymentServiceProvider::class,
 ];

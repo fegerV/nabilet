@@ -117,10 +117,6 @@ const INVENTED_FIELDS = [
         'key' => 'names key/value; idempotency_keys stores key_hash and has no value column. This is the SAME defect the middleware had before it was fixed, reintroduced in the model',
         'value' => 'names key/value; idempotency_keys stores key_hash and has no value column. This is the SAME defect the middleware had before it was fixed, reintroduced in the model',
     ],
-    'InventoryItem' => [
-        'price' => 'names quantity/price; inventory_items stores capacity/available_quantity and price_amount (the quantity model, not the old status enum)',
-        'quantity' => 'names quantity/price; inventory_items stores capacity/available_quantity and price_amount (the quantity model, not the old status enum)',
-    ],
     'IpRule' => [
         'is_active' => 'names is_active; ip_rules stores active',
     ],
@@ -152,27 +148,11 @@ const INVENTED_FIELDS = [
         'encrypted_payload' => 'names name/created_by/encrypted_payload; offline_bundles stores bundle_hash/payload_json and no creator column',
         'name' => 'names name/created_by/encrypted_payload; offline_bundles stores bundle_hash/payload_json and no creator column',
     ],
-    'Order' => [
-        'metadata' => 'names subtotal/tax_amount/metadata; orders stores subtotal_amount, has no tax column, and stores no metadata',
-        'subtotal' => 'names subtotal/tax_amount/metadata; orders stores subtotal_amount, has no tax column, and stores no metadata',
-        'tax_amount' => 'names subtotal/tax_amount/metadata; orders stores subtotal_amount, has no tax column, and stores no metadata',
-    ],
-    'OrderItem' => [
-        'metadata' => 'names total_price/metadata; order_items stores total_amount and has no metadata',
-        'total_price' => 'names total_price/metadata; order_items stores total_amount and has no metadata',
-    ],
     'Page' => [
         'is_published' => 'names is_published; pages stores status and published_at',
     ],
     'PageTranslation' => [
         'meta_description' => 'names meta_description; page_translations stores description/seo_description',
-    ],
-    'Payment' => [
-        'metadata' => 'names transaction_id/metadata; payments stores provider_payment_id/metadata_json',
-        'transaction_id' => 'names transaction_id/metadata; payments stores provider_payment_id/metadata_json',
-    ],
-    'PaymentTransaction' => [
-        'provider_response' => 'names provider_response; payment_transactions stores response_json',
     ],
     'PrivacyRequest' => [
         'reason' => 'names reason; privacy_requests stores type/status/payload_json',

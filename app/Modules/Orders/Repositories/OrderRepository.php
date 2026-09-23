@@ -117,12 +117,12 @@ class OrderRepository
     }
 
     public function getRevenueByOrganization(int $organizationId, string $dateFrom, string $dateTo): float
-    {
-        return $this->model->where('organization_id', $organizationId)
-            ->where('status', 'completed')
-            ->whereBetween('created_at', [$dateFrom, $dateTo])
-            ->sum('total_amount');
-    }
+        {
+            return (float) $this->model->where('organization_id', $organizationId)
+                ->where('status', 'paid')
+                ->whereBetween('created_at', [$dateFrom, $dateTo])
+                ->sum('total_amount');
+        }
 
     public function getCountByStatus(int $organizationId): array
     {

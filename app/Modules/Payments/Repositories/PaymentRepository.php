@@ -17,26 +17,26 @@ class PaymentRepository
     public function find(int $id, int $organizationId = null): ?Payment
     {
         $query = $this->model->with(['order', 'transactions']);
-        
+
         if ($organizationId) {
             $query->whereHas('order', function ($q) use ($organizationId) {
                 $q->where('organization_id', $organizationId);
             });
         }
-        
+
         return $query->find($id);
     }
 
     public function findByPublicId(string $publicId, int $organizationId = null): ?Payment
     {
         $query = $this->model->where('public_id', $publicId);
-        
+
         if ($organizationId) {
             $query->whereHas('order', function ($q) use ($organizationId) {
                 $q->where('organization_id', $organizationId);
             });
         }
-        
+
         return $query->with(['order', 'transactions'])->first();
     }
 
@@ -85,22 +85,33 @@ class PaymentRepository
             ->toArray();
     }
 
+    /**
+     * Отметить платёж успешным. В схеме `paid_at`, а не `succeeded_at`.
+     */
     public function markAsSucceeded(Payment $payment): Payment
     {
         $payment->update([
             'status' => 'succeeded',
-            'succeeded_at' => now(),
+            'paid_at' => now(),
         ]);
         return $payment;
     }
 
+    /**
+     * Отметить платёж неудавшимся. Причина пишется в `metadata_json` под ключом
+     * `failure` — отдельных колонок failure_code/failure_message/failed_at в схеме нет.
+     */
     public function markAsFailed(Payment $payment, string $failureCode = null, string $failureMessage = null): Payment
     {
+        $metadata = (array) ($payment->metadata_json ?? []);
+        $metadata['failure'] = [
+            'code' => $failureCode,
+            'message' => $failureMessage,
+        ];
+
         $payment->update([
             'status' => 'failed',
-            'failure_code' => $failureCode,
-            'failure_message' => $failureMessage,
-            'failed_at' => now(),
+            'metadata_json' => $metadata,
         ]);
         return $payment;
     }
@@ -108,7 +119,7 @@ class PaymentRepository
     public function findPendingWebhookPayments(): Collection
     {
         return $this->model->where('status', 'pending')
-            ->whereNotNull('webhook_url')
+            ->whereNotNull('payment_url')
             ->get();
     }
 }

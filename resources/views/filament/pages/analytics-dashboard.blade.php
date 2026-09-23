@@ -66,11 +66,11 @@
                             <span class="w-8 h-8 bg-primary-600 text-white rounded-full flex items-center justify-center font-bold">
                                 {{ $index + 1 }}
                             </span>
-                            <span class="font-medium">{{ $event->name }}</span>
+                            <span class="font-medium">{{ $event['name'] }}</span>
                         </div>
                         <div class="text-right">
-                            <p class="font-bold text-primary-600">{{ number_format($event->revenue, 2) }} ₽</p>
-                            <p class="text-sm text-gray-500">{{ $event->orders }} заказов</p>
+                            <p class="font-bold text-primary-600">{{ number_format($event['revenue'], 2) }} ₽</p>
+                            <p class="text-sm text-gray-500">{{ $event['orders'] }} заказов</p>
                         </div>
                     </div>
                 @empty
@@ -80,15 +80,19 @@
         </x-filament::card>
 
         <!-- Export Actions -->
+        {{-- Кнопки вели на route('analytics.export.csv') и route('analytics.export.excel'),
+             которых в проекте нет: страница падала с RouteNotFoundException ещё до отрисовки.
+             Экспорт теперь выполняет метод Livewire exportCsv(), поэтому ссылка не нужна.
+             Кнопки .xlsx нет — пакет maatwebsite/excel не подключён; CSV открывается в Excel. --}}
         <div class="flex gap-4">
-            <a href="{{ route('analytics.export.csv', ['period' => $period]) }}" 
-               class="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">
-                📊 Экспорт в CSV
-            </a>
-            <a href="{{ route('analytics.export.excel', ['period' => $period]) }}" 
-               class="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-                📈 Экспорт в Excel
-            </a>
+            <button
+                type="button"
+                wire:click="exportCsv"
+                wire:loading.attr="disabled"
+                class="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+            >
+                📊 Экспорт заказов в CSV
+            </button>
         </div>
     </div>
 </x-filament-panels::page>

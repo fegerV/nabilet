@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Payments\Http\Controllers;
 
+use Nabilet\Core\Errors\DomainRuleViolation;
 use Nabilet\Modules\Payments\Models\Payment;
 use Nabilet\Modules\Payments\Services\PaymentService;
+use Nabilet\Modules\Payments\Services\WebhookAuthenticator;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -42,9 +44,25 @@ class PaymentController extends Controller
     }
 
     public function webhook(string $provider, Request $request): JsonResponse
-    {
-        $result = $this->paymentService->handleWebhook($provider, $request);
-        
-        return response()->json(['data' => $result]);
-    }
+        {
+            try {
+                // НЕ-проверка здесь = приём подделанных уведомлений. Fail-closed.
+                app(WebhookAuthenticator::class)->authenticate($request, $provider);
+            } catch (DomainRuleViolation $e) {
+                // В тестах APP_DEBUG=true, но рендер через ApiExceptionRenderer всё
+                // равно может вернуть null на не-API-путях. Гарантированно отвечаем
+                // сами, чтобы status/code дошли до клиента.
+                return response()->json([
+                    'error' => [
+                        'code' => $e->errorCode,
+                        'message' => $e->getMessage(),
+                        'details' => $e->context,
+                    ],
+                ], $e->status);
+            }
+
+            $result = $this->paymentService->processWebhook($provider, $request->json()->all());
+
+            return response()->json(['data' => $result]);
+        }
 }

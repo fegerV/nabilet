@@ -7,9 +7,9 @@ namespace Nabilet\Modules\Webhooks\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Http\JsonResponse;
-use Nabilet\Modules\Payments\Services\PaymentService;
-use Nabilet\Modules\Payments\Services\WebhookSignatureVerifier;
 use Nabilet\Core\Errors\DomainRuleViolation;
+use Nabilet\Modules\Payments\Services\PaymentService;
+use Nabilet\Modules\Payments\Services\WebhookAuthenticator;
 use Throwable;
 
 /**
@@ -22,7 +22,7 @@ class WebhookController extends Controller
 {
     public function __construct(
         private readonly PaymentService $paymentService,
-        private readonly WebhookSignatureVerifier $signatureVerifier
+        private readonly WebhookAuthenticator $authenticator,
     ) {}
 
     /**
@@ -35,44 +35,23 @@ class WebhookController extends Controller
     public function payment(string $provider, Request $request): JsonResponse
     {
         try {
-            // Get signature from headers
-            $signature = $request->header('X-Webhook-Signature', '');
-            if (empty($signature)) {
-                // Try alternative header names for different providers
-                $signature = $request->header('X-Hub-Signature-256', '');
-                if (empty($signature)) {
-                    $signature = $request->header('Authorization', '');
-                }
-            }
+            // Fail-closed аутентификация: пустой allowlist + нет секрета = 422,
+            // не-allowlisted IP = 403, неверная подпись = 403.
+            $this->authenticator->authenticate($request, $provider);
 
-            // Verify signature if provider requires it
-            $payload = $request->all();
-
-            // For YooKassa and other providers that use signature verification
-            if (!empty($signature) && $this->requiresSignature($provider)) {
-                try {
-                    $this->signatureVerifier->verify($provider, $payload, $signature, $request->headers->all());
-                } catch (DomainRuleViolation $e) {
-                    // Log the error but continue in development
-                    if (app()->environment('production')) {
-                        return response()->json([
-                            'error' => 'Signature verification failed',
-                            'message' => $e->getMessage(),
-                        ], 403);
-                    }
-                    // In development, log warning but proceed
-                    \Log::warning('Webhook signature verification skipped in development: ' . $e->getMessage());
-                }
-            }
-
-            // Process the webhook
-            $result = $this->paymentService->handleWebhook($provider, $request);
+            $result = $this->paymentService->processWebhook($provider, $request->json()->all());
 
             return response()->json([
-                'success' => true,
                 'data' => $result,
             ]);
-
+        } catch (DomainRuleViolation $e) {
+            return response()->json([
+                'error' => [
+                    'code' => $e->errorCode,
+                    'message' => $e->getMessage(),
+                    'details' => $e->context,
+                ],
+            ], $e->status);
         } catch (Throwable $e) {
             \Log::error('Webhook processing failed', [
                 'provider' => $provider,
@@ -118,13 +97,5 @@ class WebhookController extends Controller
                 'error' => 'Webhook handling failed',
             ], 500);
         }
-    }
-
-    /**
-     * Check if a provider requires signature verification
-     */
-    private function requiresSignature(string $provider): bool
-    {
-        return in_array(strtolower($provider), ['yookassa', 'stripe', 'kaspi']);
     }
 }

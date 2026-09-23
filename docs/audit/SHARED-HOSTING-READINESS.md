@@ -178,6 +178,7 @@ API для Android).
    Это тот самый разрыв «две схемы», о котором предупреждает
    `database/archive-superseded-migrations/README.md`. Требуется переписать
    `OrderService`/`Order`/`OrderRepository` под пакет `nabilet_core_spec/`.
+   → **ИСПРАВЛЕНО, см. §8.**
 2. **Почти все API-роуты публичны.** `auth:api` стоит только у Payments;
    Orders, Tickets, Inventory, Cart, Sessions — без аутентификации.
    Для тикетницы это означает публичный доступ к заказам и билетам.
@@ -193,3 +194,108 @@ API для Android).
   12 инструментами, автосохранением.
 
 Требуется решение: оставить один и перенести ценные возможности (амфитеатр, автосохранение) в него.
+
+## 8. Модуль Orders приведён к реальной схеме (проверено на живой БД)
+
+Блокер №1 из §6 закрыт. Проверка не по лейблу «готово», а по факту: заказ
+создаётся, а результат читается из `orders`/`order_items`/`inventory_items`.
+
+### Что было сломано
+
+| Место | Писало / читало | В схеме есть |
+|---|---|---|
+| `OrderService::createOrder()` | `session_id`, `customer_name`, `metadata`, `subtotal`, `tax_amount` | `order_number`, `customer_email` (NOT NULL), `subtotal_amount`, `discount_amount`, `fee_amount`, `payment_status` |
+| `OrderItem` | `total_price`, `metadata` | `total_amount`, `event_title_snapshot` (NOT NULL) |
+| `OrderService::cancelOrder()` | `$this->stateMachine->canTransition($order, 'cancelled')` | `OrderStateMachine::make()->transition()` |
+| `OrderService::completeOrder()` | статус `completed` | статуса нет в `ck_orders_status`, есть `paid` |
+| `InventoryItem` | `price`, `quantity` | `price_amount`, `capacity` |
+| `public_id` (Payment/Order/Ticket/User/Organization) | `Str::uuid()` = 36 символов | `CHAR(26)` под ULID |
+
+Две ошибки в цепочке были **гарантированными фатальными**, а не «редкими»:
+`OrderStateMachine` — это фабрика, у неё нет метода `canTransition()`; и
+`$payment->order->service()` — метода `service()` у модели `Order` не существует.
+
+### Что сделано
+
+1. **`OrderService` переписан** под схему:
+   - `createOrder()` пишет `order_number` (`NB-YYYYMMDD-XXXXXXXX` на ULID-хвосте,
+     `uq_orders_number` — UNIQUE), `customer_email`, `subtotal_amount`,
+     `discount_amount`, `fee_amount`, `total_amount`, `status = pending`,
+     `payment_status = pending`; позиции получают `total_amount` и снимок
+     `event_title_snapshot` / `session_title_snapshot` / `venue_title_snapshot`.
+   - **Цена берётся из `inventory_items.price_amount`, а не из запроса.**
+     Поле `items.*.price` из `StoreOrderRequest` больше не читается: доверие к
+     клиентской цене — это покупка места за 50 000 по цене 1. Есть тест.
+   - **Блокировка строки при резервировании** (`lockForUpdate`). Без неё две
+     одновременные кассы продают последнее место дважды.
+   - `cancelOrder()` выполняет переход через `transition()` (нелегальный переход
+     даёт `InvalidStateTransitionError` → 409) и возвращает места в продажу
+     **только если заказ реально их держал** (`OrderStateMachine::occupyingInventory()`).
+   - `completeOrder()` → **`markPaid()`**: статус `paid` + `payment_status = succeeded`
+     + `paid_at`. Статуса `completed` в `ck_orders_status` нет.
+   - Добавлен `markAwaitingPayment()`. Переход `pending → paid` **запрещён**
+     машиной состояний намеренно, поэтому оплата идёт
+     `pending → awaiting_payment → paid`; `applyPayment()` проходит эту цепочку
+     сам (провайдер может сообщить `succeeded` одним шагом) и идемпотентен —
+     повторный вебхук не падает и не дублирует переход.
+2. **`InventoryItem` приведён к схеме**: `price` → `price_amount`,
+   `quantity` → `capacity`, добавлены `metadata_json` и генерация `public_id`
+   (ULID base32, ровно 26 символов).
+3. **`StoreOrderRequest` приведён к схеме**: `customer_email` обязателен,
+   `customer_phone` добавлен, `promo_code_id` добавлен; `customer_name`,
+   `metadata`, `items.*.price` оставлены **nullable и игнорируются** (колонок
+   нет — иначе 422 на корректных запросах старых клиентов).
+4. **`public_id` — везде ULID, а не UUID** (Payment, Order, Ticket, User,
+   Organization). `CHAR(26)` и UUID из 36 символов: в strict mode INSERT падает,
+   в нестрогом значение обрезается.
+5. **`PaymentService`**: убраны два вызова несуществующего `canTransition()`,
+   `$payment->order->service()` заменён на инжектированный `OrderService`.
+6. **Убрано 17 неявно nullable параметров** (deprecation PHP 8.4) — тестовый
+   вывод больше не засорён предупреждениями.
+7. **`tools/verify-models-schema.php`**: из ratchet-списка `INVENTED_FIELDS`
+   удалены теперь уже исправленные записи `InventoryItem`, `Order`, `OrderItem`
+   (список «может только сокращаться»).
+
+### Проверка (по факту, а не по лейблу)
+
+Новый тест `tests/Feature/Orders/OrderWritePathTest.php` — 14 методов, реальная
+БД (`nabilet_testing`, PostgreSQL 5433), `RefreshDatabase`:
+
+- заказ создаётся и читается из `orders`: суммы, `customer_email`, `status`,
+  `payment_status`, `currency`, `public_id` длиной 26, `order_number` по маске;
+- позиция создаётся с `total_amount` и снимком названия события; у `order_items`
+  **нет** `updated_at` (проверяется через `information_schema`);
+- места реально списываются и **возвращаются** при отмене;
+- цена из запроса игнорируется;
+- запрос больше мест, чем есть, отвергается, и транзакция откатывается
+  (ни заказа, ни позиций, склад не тронут);
+- оплаченный заказ отменить нельзя, и места при этом не возвращаются;
+- `pending → paid` напрямую запрещён; `applyPayment` идемпотентен; половина
+  суммы заказа не переводит его в `paid`;
+- отчёт по выручке считает только `paid`;
+- `POST /api/v1/orders` без `customer_email` → 422 в конверте §66
+  (`error.code = VALIDATION_ERROR`, поле в `error.details.fields`).
+
+Итог: `php artisan test` — **19/19 (57 утверждений)**,
+`php tests/run.php` — **639 методов, 0 падений**,
+`tools/verify-purity.php` — **101 файл, 0 нарушений**.
+
+### Осталось в этом классе (не сделано)
+
+1. **Модуль Payments сломан так же, как был сломан Orders.** Пишет несуществующие
+   колонки: `payments.organization_id`, `method`, `webhook_url`, `metadata`
+   (в схеме `metadata_json`), `succeeded_at` (в схеме `paid_at`),
+   `failure_code`/`failure_message`/`failed_at`; `payment_transactions.metadata`
+   (в схеме `payload_json`). `POST /api/v1/orders` создать заказ может, но
+   провести оплату — нет. Поэтому `markAwaitingPayment()` сейчас **не вызывается**
+   из `PaymentService::createPayment()`: метод всё равно упал бы раньше на
+   колонках. Требуется отдельная правка модуля Payments.
+2. **`HallSchema` указывает на таблицу `hall_schemas`, которой нет** —
+   единственная оставшаяся ошибка `tools/verify-models-schema.php`. Реальная
+   модель — `HallSchemaVersion` (`hall_schema_versions`) с версионированием,
+   а `VenueController::storeSchema/updateSchema/deleteSchema` и
+   `TicketGeneratorService::importHallSchema()` пишут в несуществующую таблицу.
+   Нужна переработка с логикой инкремента версии, а не механическая замена имён.
+3. **`CartService` читает `inventory_items.unit_price`** (колонки нет; есть
+   `price_amount`) — итог корзины будет нулевым. `CartItemResource` читает
+   `->price`.

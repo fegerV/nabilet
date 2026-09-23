@@ -51,7 +51,38 @@ return [
     ],
     
     'payment' => [
-        'providers' => explode(',', env('PAYMENT_PROVIDERS', 'stripe,kaspi')),
+        'providers' => explode(',', env('PAYMENT_PROVIDERS', 'yookassa')),
         'webhook_secret' => env('PAYMENT_WEBHOOK_SECRET'),
+
+        // Провайдер по умолчанию для новых платежей. `PaymentService` берёт его
+        // отсюда: колонка `payments.provider` объявлена NOT NULL, поэтому «пусто»
+        // здесь означало бы отказ вставки, а не «без провайдера».
+        'default_provider' => env('PAYMENTS_DEFAULT_PROVIDER', 'yookassa'),
+
+        // YooKassa. Обе строки обязательны для конструктора `YooKassaProvider`:
+        // контейнер не может вывести их сам, поэтому провайдер создаётся вручную
+        // в `PaymentService::makeYooKassa()`, а не через `app()`.
+        'yookassa' => [
+            'shop_id' => env('YOOKASSA_SHOP_ID'),
+            'secret_key' => env('YOOKASSA_SECRET_KEY'),
+            'return_url' => env('YOOKASSA_RETURN_URL'),
+            // YooKassa не подписывает уведомления HMAC-ом: основной механизм —
+            // allowlist IP-адресов. Секрет здесь нужен только для установок,
+            // которые проксируют уведомления и теряют исходный IP.
+            'webhook_secret' => env('YOOKASSA_WEBHOOK_SECRET'),
+            'webhook_ip_allowlist' => array_values(array_filter(
+                explode(',', (string) env('YOOKASSA_WEBHOOK_IP_ALLOWLIST', ''))
+            )),
+            'base_url' => env('YOOKASSA_BASE_URL', 'https://api.yookassa.ru/v3'),
+        ],
+
+        // Эти два подписывают уведомления HMAC-SHA256, поэтому секрет обязателен:
+        // без него `WebhookSignatureVerifier` не примет ни одного уведомления.
+        'stripe' => [
+            'webhook_secret' => env('STRIPE_WEBHOOK_SECRET'),
+        ],
+        'kaspi' => [
+            'webhook_secret' => env('KASPI_WEBHOOK_SECRET'),
+        ],
     ],
 ];

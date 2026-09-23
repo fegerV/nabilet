@@ -44,6 +44,7 @@
     40 => 'RyanChandler\\BladeCaptureDirective\\BladeCaptureDirectiveServiceProvider',
     41 => 'App\\Providers\\Filament\\AdminPanelProvider',
     42 => 'Nabilet\\Modules\\Auth\\Providers\\AuthServiceProvider',
+    43 => 'Nabilet\\Modules\\Payments\\Providers\\PaymentServiceProvider',
   ),
   'eager' => 
   array (
@@ -75,6 +76,7 @@
     25 => 'RyanChandler\\BladeCaptureDirective\\BladeCaptureDirectiveServiceProvider',
     26 => 'App\\Providers\\Filament\\AdminPanelProvider',
     27 => 'Nabilet\\Modules\\Auth\\Providers\\AuthServiceProvider',
+    28 => 'Nabilet\\Modules\\Payments\\Providers\\PaymentServiceProvider',
   ),
   'deferred' => 
   array (
