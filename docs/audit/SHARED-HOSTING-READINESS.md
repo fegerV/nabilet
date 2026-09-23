@@ -94,7 +94,7 @@ API для Android).
 |---|---|---|
 | Документация API для Kotlin-разработчика | ✅ | `docs/openapi.yaml` (102 КБ), дубль в `nabilet_core_spec/openapi.yaml` |
 | Sanctum (Bearer-токены) | ❌ | `laravel/sanctum` отсутствует в `composer.json`/`composer.lock` |
-| Версионирование `prefix('v1')` | ❌ | Такого префикса в роутах нет |
+| Версионирование API | ✅ | `bootstrap/app.php:36` — `apiPrefix: 'api/v1'`; модули монтируются без повтора сегмента версии |
 | Защита от двойного прохода (`lockForUpdate`) | ❌ | `lockForUpdate` используется в `CartService` и `HoldSweeper`, но **не** в check-in → возможна гонка при одновременном сканировании |
 | Логика check-in | ✅ | `app/Modules/Tickets/Domain/CheckinEvaluator.php` — онлайн/офлайн-сценарии, повторный скан |
 | Android-приложение | ❌ | `android/` содержит только `README.md` и `CryptoUtils.kt` |
@@ -134,7 +134,58 @@ API для Android).
 - Проверены обе сборки: `npm run build` → `public_html/build`; `npm run build:preview` →
   `dist-preview/ui-preview.html` (500 КБ).
 
-## 5. Известное дублирование
+## 5. Исправлено при прогоне сервера и тестов
+
+Прогон `artisan` и тестов вскрыл, что влитый код **не запускался вообще**:
+
+1. **`seats:clear-expired` не существовала** (блокер №1) — добавлена команда
+   `app/Modules/Inventory/Console/ClearExpiredHoldsCommand.php` поверх готового
+   `HoldSweeper` и зарегистрирована в `bootstrap/app.php`
+   (провайдеры модулей не поднимаются, см. `bootstrap/providers.php`).
+   Проверено: `artisan schedule:list` → `* * * * * php artisan seats:clear-expired`;
+   запуск на реальной БД возвращает статистику.
+2. **Фатальные ошибки Filament роняли весь artisan** (значит, и `schedule:run`):
+   - `AnalyticsResource\Pages\Dashboard`, `BackupResource\Pages\ManageBackups`,
+     `SystemResource\Pages\SystemStatus` объявляли нестатический `$view`
+     (`BasePage::$view` — статический) → `Cannot redeclare static ... as non static`;
+   - те же три страницы наследовались от `Filament\Pages\Page` вместо
+     `Filament\Resources\Pages\Page` → `Method ...::route does not exist`;
+   - `getPages()` ссылались на несуществующие классы `Pages\Reports` и
+     `Pages\SystemLogs` (нет ни классов, ни шаблонов) → ссылки убраны.
+3. **Порядок миграций**: `2024_01_15_000001_create_event_content_tables.php`
+   создавал `event_speakers` с FK на `events` раньше, чем `events` появлялась
+   (миграция `2026_09_20_000200_002_content.php`). Перенесена в конец очереди —
+   `2026_09_22_001500_create_event_content_tables.php`.
+4. **`OrderService::paginate()` не существовал**, а `OrderController` вызывал
+   `create()`/`cancel()`, которых в сервисе нет (`createOrder`/`cancelOrder`).
+   Выборка реализована **fail-closed**: без `organization_id` возвращается пустая
+   страница, а не заказы всех арендаторов (у модели `Order` нет глобального
+   tenant-скоупа).
+5. **Устаревший тест**: `EventApiTest` обращался к `/api/ping`, тогда как API
+   смонтирован на `/api/v1` → исправлено.
+
+Результат: `php artisan test` — **5/5**, `php tests/run.php` — **639 методов,
+0 падений, 1324 утверждения**.
+
+## 6. Новые блокеры, найденные при запуске
+
+1. **Модуль Orders написан под архивную схему.** `OrderService::createOrder()`
+   пишет `session_id`, `customer_name`, `metadata`, `subtotal`, `tax_amount`,
+   а таблица `orders` (миграция `..._004_sales.php`) содержит
+   `subtotal_amount`, `fee_amount`, `payment_status`, `order_number`,
+   обязательный `customer_email` и **не содержит** `session_id`/`metadata`.
+   Путь записи заказов (`POST /api/v1/orders`) при вызове упадёт.
+   Это тот самый разрыв «две схемы», о котором предупреждает
+   `database/archive-superseded-migrations/README.md`. Требуется переписать
+   `OrderService`/`Order`/`OrderRepository` под пакет `nabilet_core_spec/`.
+2. **Почти все API-роуты публичны.** `auth:api` стоит только у Payments;
+   Orders, Tickets, Inventory, Cart, Sessions — без аутентификации.
+   Для тикетницы это означает публичный доступ к заказам и билетам.
+3. **`phpunit.xml` не содержит набора `Unit`** — `artisan test` прогоняет только
+   `tests/Feature` (5 тестов), а 639 Unit-методов живут в отдельном раннере
+   `php tests/run.php` и в CI-гейт не попадают.
+
+## 7. Известное дублирование
 
 Два редактора схем залов:
 - `resources/js/components/HallEditor.vue` (+ `resources/js/app/hall-editor.js`) — пришёл с сервера;
