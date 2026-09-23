@@ -59,10 +59,19 @@ interface SectorSpec {
 }
 
 const SECTOR_SPECS: SectorSpec[] = [
-  { name: 'Партер A', priceMinor: 850000, rows: 8, seatsPerRow: 18, soldRatio: 0.34, vipRows: 2 },
-  { name: 'Партер B', priceMinor: 650000, rows: 7, seatsPerRow: 20, soldRatio: 0.22, accessible: true },
-  { name: 'Балкон C', priceMinor: 420000, rows: 6, seatsPerRow: 22, soldRatio: 0.12 },
+  // Тестовый концертный зал: один сектор, 5 рядов по 12 мест.
+  {
+    name: 'Зал',
+    priceMinor: 500000,
+    rows: 5,
+    seatsPerRow: 12,
+    soldRatio: 0.0,
+    vipRows: 1,
+  },
 ]
+
+/** Цена места по номеру ряда, копейки. Соответствует hall_rows БД. */
+const PRICE_BY_ROW: number[] = [500000, 350000, 250000, 150000, 100000]
 
 export function buildHall(seed = 20260922): Sector[] {
   const rand = makeRandom(seed)
@@ -89,13 +98,13 @@ export function buildHall(seed = 20260922): Sector[] {
         else if (roll < spec.soldRatio + 0.055) state = 'unavailable'
 
         seats.push({
-          id: `s${seatId}`,
-          row: r + 1,
-          number: n + 1,
-          state,
-          priceMinor: spec.priceMinor + (isVip ? 350000 : 0),
-          kind: isVip ? 'vip' : isAccessible ? 'accessible' : 'standard',
-        })
+                  id: `s${seatId}`,
+                  row: r + 1,
+                  number: n + 1,
+                  state,
+                  priceMinor: PRICE_BY_ROW[r] ?? spec.priceMinor,
+                  kind: isVip ? 'vip' : isAccessible ? 'accessible' : 'standard',
+                })
       }
 
       rows.push({ index: r + 1, seats, offset: edge * (SEAT_SIZE + SEAT_GAP) * 0.5 })

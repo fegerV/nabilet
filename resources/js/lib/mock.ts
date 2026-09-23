@@ -18,6 +18,23 @@ function iso(daysFromNow: number, hour: number, minute = 0): string {
 
 export const EVENTS: EventCard[] = [
   {
+    id: 'ev-0',
+    title: 'Тестовый концерт: классика в большом зале',
+    subtitle: 'Симфонический оркестр, 96 мест, 5 категорий цен',
+    category: 'Классика',
+    venue: 'Тестовый концертный зал',
+    city: 'Москва',
+    posterFrom: '#7C3AED',
+    posterTo: '#FF5C22',
+    posterAccent: '#FFC53D',
+    priceFromMinor: 100000,
+    status: 'published',
+    sessionsCount: 1,
+    sessions: [
+      { id: 'ses-0', startsAt: iso(14, 19), hall: 'Большой концертный зал', availableSeats: 60 },
+    ],
+  },
+  {
     id: 'ev-1',
     title: 'Ночная симфония: Вивальди и Макс Рихтер',
     subtitle: 'Оркестр «Северная столица»',
