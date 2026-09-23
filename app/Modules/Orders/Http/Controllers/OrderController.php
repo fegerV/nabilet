@@ -45,8 +45,8 @@ class OrderController extends Controller
     public function store(StoreOrderRequest $request): JsonResponse
     {
         $data = $request->validated();
-        $order = $this->orderService->create($data);
-        
+        $order = $this->orderService->createOrder($data);
+
         return response()->json([
             'data' => $order->fresh(),
         ], 201);
@@ -54,8 +54,8 @@ class OrderController extends Controller
 
     public function cancel(Order $order): JsonResponse
     {
-        $order = $this->orderService->cancel($order);
-        
+        $order = $this->orderService->cancelOrder($order);
+
         return response()->json(['data' => $order]);
     }
 }

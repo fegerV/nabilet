@@ -9,6 +9,7 @@ use Nabilet\Modules\Orders\Repositories\OrderRepository;
 use Nabilet\Modules\Orders\StateMachines\OrderStateMachine;
 use Nabilet\Modules\Inventory\Models\InventoryItem;
 use Nabilet\Modules\Payments\Models\Payment;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -67,6 +68,27 @@ class OrderService
     public function findByPublicId(string $publicId, int $organizationId = null): ?Order
     {
         return $this->repository->findByPublicId($publicId, $organizationId);
+    }
+
+    /**
+     * Постраничный список заказов для API.
+     *
+     * Fail-closed: если организация не определена, возвращается пустая страница,
+     * а не заказы всех арендаторов. У модели Order нет глобального tenant-скоупа,
+     * поэтому это единственный барьер между клиентом и чужими заказами.
+     *
+     * @param  array{organization_id?: int|string|null, status?: string|null, user_id?: int|string|null}  $filters
+     * @return LengthAwarePaginator<int, Order>
+     */
+    public function paginate(array $filters, int $perPage = 20): LengthAwarePaginator
+    {
+        $organizationId = $filters['organization_id'] ?? null;
+
+        if ($organizationId === null || $organizationId === '' || (int) $organizationId <= 0) {
+            return new LengthAwarePaginator([], 0, $perPage);
+        }
+
+        return $this->repository->paginateByOrganization((int) $organizationId, $filters, $perPage);
     }
 
     public function cancelOrder(Order $order, string $reason = null): Order

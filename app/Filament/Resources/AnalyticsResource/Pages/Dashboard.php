@@ -3,7 +3,7 @@
 namespace App\Filament\Resources\AnalyticsResource\Pages;
 
 use App\Filament\Resources\AnalyticsResource;
-use Filament\Pages\Page;
+use Filament\Resources\Pages\Page;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 
@@ -11,7 +11,7 @@ class Dashboard extends Page
 {
     protected static ?string $navigationIcon = 'heroicon-o-home';
     
-    protected string $view = 'filament.pages.analytics-dashboard';
+    protected static string $view = 'filament.pages.analytics-dashboard';
     
     protected static ?string $title = 'Панель аналитики';
 

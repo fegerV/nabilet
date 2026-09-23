@@ -19,7 +19,8 @@ class SystemResource extends Resource
     {
         return [
             'index' => Pages\SystemStatus::route('/'),
-            'logs' => Pages\SystemLogs::route('/logs'),
+            // Страница Pages\SystemLogs отсутствует (нет ни класса, ни шаблона) —
+            // ссылка на неё приводила к падению artisan целиком.
         ];
     }
 
