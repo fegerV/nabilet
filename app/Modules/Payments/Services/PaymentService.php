@@ -6,7 +6,7 @@ namespace Nabilet\Modules\Payments\Services;
 
 use Nabilet\Modules\Payments\Models\Payment;
 use Nabilet\Modules\Payments\Repositories\PaymentRepository;
-use Nabilet\Modules\Payments\Domain\PaymentStateMachine;
+use Nabilet\Modules\Payments\StateMachines\PaymentStateMachine;
 use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Orders\Models\SeatHold;
 use Nabilet\Modules\Inventory\Services\HoldSweeper;

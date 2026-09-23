@@ -87,7 +87,6 @@ class AdminPanelProvider extends PanelProvider
                 ],
             ])
             ->globalSearchKeyBindings(['command+k', 'ctrl+k'])
-            ->databaseNotifications()
-            ->databaseNotificationsPolling('30s');
+            ;
     }
 }

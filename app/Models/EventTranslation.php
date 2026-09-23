@@ -35,4 +35,15 @@ class EventTranslation extends Model
     {
         return $this->belongsTo(Event::class);
     }
+
+        protected static function boot(): void
+        {
+            parent::boot();
+            static::creating(function (self $model) {
+                if (empty($model->public_id)) {
+                    $model->public_id = (string) \Illuminate\Support\Str::ulid()->toBase32();
+                }
+            });
+        }
+
 }

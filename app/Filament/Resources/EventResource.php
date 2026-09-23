@@ -198,8 +198,5 @@ class EventResource extends Resource
         ];
     }
     
-    public static function canViewAny($record): bool
-    {
-        return true;
-    }
+
 }
