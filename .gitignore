@@ -36,3 +36,5 @@ public/build/
 public/storage/
 public_html/build/
 public_html/storage/
+# Данные проекта (память ассистента, локальные заметки)
+.workbuddy-ai/
