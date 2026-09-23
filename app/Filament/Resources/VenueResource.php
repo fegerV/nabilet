@@ -181,9 +181,4 @@ class VenueResource extends Resource
             'edit' => VenueResource\Pages\EditVenue::route('/{record}/edit'),
         ];
     }
-    
-    public static function canViewAny($record): bool
-    {
-        return true;
-    }
 }

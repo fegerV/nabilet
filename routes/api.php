@@ -14,66 +14,35 @@ Route::get('/ping', fn() => response()->json(['status' => 'ok', 'timestamp' => n
 
 /*
 |--------------------------------------------------------------------------
-| Module Routes - Auto-loaded from each module's routes/api.php
+| Module Routes — Safe Route Loader
 |--------------------------------------------------------------------------
+|
+| All modules are now enabled. Missing classes have been created as
+| aliases/extensions to resolve the DI chain.
 */
 
-// Events Module
-if (file_exists(__DIR__ . '/../app/Modules/Events/routes/api.php')) {
-    require __DIR__ . '/../app/Modules/Events/routes/api.php';
+if (file_exists(__DIR__ . '/../app/Modules/Auth/routes/api.php')) {
+    require __DIR__ . '/../app/Modules/Auth/routes/api.php';
 }
 
-// Sessions Module
-if (file_exists(__DIR__ . '/../app/Modules/Sessions/routes/api.php')) {
-    require __DIR__ . '/../app/Modules/Sessions/routes/api.php';
-}
+$moduleRoutes = [
+    __DIR__ . '/../app/Modules/Events/routes/api.php',
+    __DIR__ . '/../app/Modules/Sessions/routes/api.php',
+    __DIR__ . '/../app/Modules/Venues/routes/api.php',
+    __DIR__ . '/../app/Modules/Inventory/routes/api.php',
+    __DIR__ . '/../app/Modules/Cart/routes/api.php',
+    __DIR__ . '/../app/Modules/Orders/routes/api.php',
+    __DIR__ . '/../app/Modules/Payments/routes/api.php',
+    __DIR__ . '/../app/Modules/Tickets/routes/api.php',
+    __DIR__ . '/../app/Modules/Webhooks/routes/api.php',
+    __DIR__ . '/../app/Modules/Core/Users/routes/api.php',
+    __DIR__ . '/../app/Modules/Core/Organizations/routes/api.php',
+    __DIR__ . '/../app/Modules/Venues/Halls/routes/api.php',
+    __DIR__ . '/../app/Modules/Seo/routes/api.php',
+];
 
-// Venues Module
-if (file_exists(__DIR__ . '/../app/Modules/Venues/routes/api.php')) {
-    require __DIR__ . '/../app/Modules/Venues/routes/api.php';
-}
-
-// Inventory Module
-if (file_exists(__DIR__ . '/../app/Modules/Inventory/routes/api.php')) {
-    require __DIR__ . '/../app/Modules/Inventory/routes/api.php';
-}
-
-// Carts Module
-if (file_exists(__DIR__ . '/../app/Modules/Carts/routes/api.php')) {
-    require __DIR__ . '/../app/Modules/Carts/routes/api.php';
-}
-
-// Orders Module
-if (file_exists(__DIR__ . '/../app/Modules/Orders/routes/api.php')) {
-    require __DIR__ . '/../app/Modules/Orders/routes/api.php';
-}
-
-// Payments Module
-if (file_exists(__DIR__ . '/../app/Modules/Payments/routes/api.php')) {
-    require __DIR__ . '/../app/Modules/Payments/routes/api.php';
-}
-
-// Tickets Module
-if (file_exists(__DIR__ . '/../app/Modules/Tickets/routes/api.php')) {
-    require __DIR__ . '/../app/Modules/Tickets/routes/api.php';
-}
-
-// Webhooks Module
-if (file_exists(__DIR__ . '/../app/Modules/Webhooks/routes/api.php')) {
-    require __DIR__ . '/../app/Modules/Webhooks/routes/api.php';
-}
-
-// Core Users Module
-if (file_exists(__DIR__ . '/../app/Modules/Core/Users/routes/api.php')) {
-    require __DIR__ . '/../app/Modules/Core/Users/routes/api.php';
-}
-
-// Core Organizations Module
-if (file_exists(__DIR__ . '/../app/Modules/Core/Organizations/routes/api.php')) {
-    require __DIR__ . '/../app/Modules/Core/Organizations/routes/api.php';
-}
-
-// Venues Halls Module
-if (file_exists(__DIR__ . '/../app/Modules/Venues/Halls/routes/api.php')) {
-    require __DIR__ . '/../app/Modules/Venues/Halls/routes/api.php';
+foreach ($moduleRoutes as $routeFile) {
+    if (file_exists($routeFile)) {
+        require $routeFile;
+    }
 }

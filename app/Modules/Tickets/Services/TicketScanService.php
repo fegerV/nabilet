@@ -7,7 +7,7 @@ namespace Nabilet\Modules\Tickets\Services;
 use Nabilet\Modules\Tickets\Models\Ticket;
 use Nabilet\Modules\Tickets\Models\TicketScan;
 use Nabilet\Modules\Tickets\Repositories\TicketRepository;
-use Nabilet\Modules\Checkin\Domain\CheckinEvaluator;
+use Nabilet\Modules\Tickets\Domain\CheckinEvaluator;
 use Nabilet\Modules\Sessions\Models\Session;
 use Illuminate\Support\Facades\DB;
 use Carbon\CarbonImmutable;

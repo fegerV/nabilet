@@ -158,9 +158,4 @@ class HallResource extends Resource
             'edit' => HallResource\Pages\EditHall::route('/{record}/edit'),
         ];
     }
-    
-    public static function canViewAny($record): bool
-    {
-        return true;
-    }
 }
