@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Facades\Route;
+use Illuminate\Console\Scheduling\Schedule;
 
 /*
 |--------------------------------------------------------------------------
@@ -20,6 +21,11 @@ Route::get('/ping', fn() => response()->json(['status' => 'ok', 'timestamp' => n
 | All modules are now enabled. Missing classes have been created as
 | aliases/extensions to resolve the DI chain.
 */
+
+// Installer Module (должен быть первым для доступа к установщику)
+if (file_exists(__DIR__ . '/../app/Modules/Installer/routes/web.php')) {
+    require __DIR__ . '/../app/Modules/Installer/routes/web.php';
+}
 
 if (file_exists(__DIR__ . '/../app/Modules/Auth/routes/api.php')) {
     require __DIR__ . '/../app/Modules/Auth/routes/api.php';

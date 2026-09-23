@@ -1,16 +1,22 @@
 {
   "name": "nabilet-ui",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "NABILET Core — дизайн-система и интерфейсы: витрина, админка, редактор схем залов",
+  "description": "NABILET Core — Vue-сборка: конструктор схем залов, конструктор билетов, дизайн-система интерфейсов",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "build:preview": "vite build --config vite.preview.config.ts && node tools/inline-preview.mjs",
     "preview": "vite preview",
-    "typecheck": "vue-tsc --noEmit"
+    "typecheck": "vue-tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
+    "@vue/test-utils": "^2.5.1",
+    "axios": "^1.6.8",
+    "jsdom": "^29.1.1",
     "konva": "^9.3.16",
     "pinia": "^2.2.6",
     "qrcode": "^1.5.4",
@@ -26,6 +32,7 @@
     "tailwindcss": "^3.4.17",
     "typescript": "^5.6.3",
     "vite": "^6.0.7",
+    "vitest": "^4.1.11",
     "vue-tsc": "^2.1.10"
   }
 }
