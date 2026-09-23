@@ -13,7 +13,9 @@ class EventApiTest extends TestCase
 
     public function test_ping_endpoint(): void
     {
-        $response = $this->getJson('/api/ping');
+        // API смонтирован с префиксом версии (`apiPrefix: 'api/v1'` в bootstrap/app.php),
+        // поэтому /api/ping — это 404. Версия в пути обязательна.
+        $response = $this->getJson('/api/v1/ping');
 
         $response->assertStatus(200)
             ->assertJsonStructure(['status', 'timestamp']);

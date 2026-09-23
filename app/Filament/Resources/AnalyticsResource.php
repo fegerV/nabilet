@@ -20,7 +20,8 @@ class AnalyticsResource extends Resource
     {
         return [
             'index' => Pages\Dashboard::route('/'),
-            'reports' => Pages\Reports::route('/reports'),
+            // Страница Pages\Reports отсутствует (нет ни класса, ни шаблона) —
+            // ссылка на неё приводила к падению artisan целиком.
         ];
     }
 

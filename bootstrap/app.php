@@ -37,6 +37,14 @@ return Application::configure(basePath: dirname(__DIR__))
         commands: __DIR__ . '/../routes/console.php',
         health: '/up',
     )
+    // Commands are registered explicitly because `withProviders([])` below means no
+    // module service provider ever boots (see bootstrap/providers.php for why booting
+    // the whole registry is not safe yet). `routes/console.php` schedules
+    // `seats:clear-expired`, and an artisan schedule that references an unregistered
+    // command fails as a whole — so this one is wired up here by hand.
+    ->withCommands([
+        \Nabilet\Modules\Inventory\Console\ClearExpiredHoldsCommand::class,
+    ])
     ->withMiddleware(function (Middleware $middleware): void {
         // ── Global stack, in order ───────────────────────────────────────────
         $middleware->append(\Nabilet\Core\Http\Middleware\AssignRequestId::class);

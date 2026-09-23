@@ -6,7 +6,7 @@ namespace Nabilet\Modules\Orders\Repositories;
 
 use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Orders\Models\OrderItem;
-use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Pagination\LengthAwarePaginator;
 
 class OrderRepository
 {
@@ -36,7 +36,31 @@ class OrderRepository
         return $query->with(['items.inventoryItem', 'customer', 'payments'])->first();
     }
 
-    public function findByOrganization(int $organizationId, array $filters = [], int $limit = 15): Collection
+    /**
+     * Постраничный список заказов организации.
+     *
+     * Скоуп по `organization_id` задаётся вызывающим кодом и обязателен: у модели
+     * Order нет глобального tenant-скоупа, поэтому забытый фильтр означал бы выдачу
+     * заказов всех арендаторов.
+     *
+     * @return LengthAwarePaginator<int, Order>
+     */
+    public function paginateByOrganization(int $organizationId, array $filters = [], int $perPage = 20): LengthAwarePaginator
+    {
+        $query = $this->model->newQuery()->where('organization_id', $organizationId);
+
+        if (!empty($filters['status'])) {
+            $query->where('status', $filters['status']);
+        }
+
+        if (!empty($filters['user_id'])) {
+            $query->where('user_id', $filters['user_id']);
+        }
+
+        return $query->orderByDesc('created_at')->paginate($perPage);
+    }
+
+    public function findByOrganization(int $organizationId, array $filters = [], int $limit = 15): LengthAwarePaginator
     {
         $query = $this->model->where('organization_id', $organizationId)
             ->with(['session.event', 'customer']);

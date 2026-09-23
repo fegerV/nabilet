@@ -3,7 +3,7 @@
 namespace App\Filament\Resources\SystemResource\Pages;
 
 use App\Filament\Resources\SystemResource;
-use Filament\Pages\Page;
+use Filament\Resources\Pages\Page;
 use Filament\Notifications\Notification;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -13,7 +13,7 @@ class SystemStatus extends Page
 {
     protected static ?string $navigationIcon = 'heroicon-o-cog-6-tooth';
     
-    protected string $view = 'filament.pages.system-status';
+    protected static string $view = 'filament.pages.system-status';
     
     protected static ?string $title = 'Состояние системы';
 

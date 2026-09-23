@@ -3,14 +3,14 @@
 namespace App\Filament\Resources\BackupResource\Pages;
 
 use App\Filament\Resources\BackupResource;
-use Filament\Pages\Page;
+use Filament\Resources\Pages\Page;
 use Filament\Notifications\Notification;
 
 class ManageBackups extends Page
 {
     protected static ?string $navigationIcon = 'heroicon-o-cloud-arrow-up';
     
-    protected string $view = 'filament.pages.manage-backups';
+    protected static string $view = 'filament.pages.manage-backups';
     
     protected static ?string $title = 'Управление бэкапами';
 
