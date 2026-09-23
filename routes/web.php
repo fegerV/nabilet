@@ -5,13 +5,86 @@ declare(strict_types=1);
 use Illuminate\Support\Facades\Route;
 
 /*
- * Web routes exist for the installer (/install) and the admin SPA shell.
+ * Web routes: магазин (storefront) — собранная Vue-витрина из dist/.
  *
- * Neither is built yet — they land in phases P3 (admin) and P4 (storefront) — so
- * this file is intentionally empty. It must exist because bootstrap/app.php
- * registers it, and an empty file is honest: no half-wired routes.
+ * Главная страница отдаёт собранный SPA (dist/index.html), а хеш-роутинг
+ * витрины работает без серверной части (createWebHashHistory).
  *
- * The health check is provided by Laravel at GET /up, not here.
- *
- * Sitemap routes are now handled by the SEO module via api.php.
+ * Ассеты витрины (dist/assets) отдаются из dist как статические файлы.
+ */
+
+Route::get('/', function () {
+    $indexFile = __DIR__ . '/../dist/index.html';
+
+    if (!file_exists($indexFile)) {
+        return response()->json([
+            'error' => [
+                'code' => 'STORE_FRONT_NOT_BUILT',
+                'message' => 'Витрина не собрана. Запустите `npm run build` (vite.config.ts → dist/).',
+            ],
+        ], 503);
+    }
+
+    return response(file_get_contents($indexFile))
+        ->header('Content-Type', 'text/html; charset=utf-8');
+});
+
+// Ассеты витрины: /assets/<file> → dist/assets/<file>
+Route::get('/assets/{path}', function (Request $request, string $path) {
+    $file = realpath(__DIR__ . '/../dist/assets/' . $path);
+
+    if (!$file || !str_starts_with($file, realpath(__DIR__ . '/../dist/'))) {
+        return response()->json(['error' => ['code' => 'NOT_FOUND']], 404);
+    }
+
+    if (!file_exists($file)) {
+        return response()->json(['error' => ['code' => 'NOT_FOUND']], 404);
+    }
+
+    return response(file_get_contents($file))
+        ->header('Content-Type', mime_type_for($file));
+});
+
+if (!function_exists('mime_type_for')) {
+    function mime_type_for(string $path): string
+    {
+        $dot = strrpos($path, '.');
+        $ext = $dot === null ? '' : strtolower(substr($path, $dot + 1));
+
+        switch ($ext) {
+            case 'js':
+                return 'application/javascript; charset=utf-8';
+            case 'css':
+                return 'text/css; charset=utf-8';
+            case 'json':
+                return 'application/json; charset=utf-8';
+            case 'svg':
+                return 'image/svg+xml';
+            case 'png':
+                return 'image/png';
+            case 'jpg':
+            case 'jpeg':
+                return 'image/jpeg';
+            case 'gif':
+                return 'image/gif';
+            case 'webp':
+                return 'image/webp';
+            case 'woff2':
+                return 'font/woff2';
+            case 'woff':
+                return 'font/woff';
+            case 'ttf':
+                return 'font/ttf';
+            case 'mp4':
+                return 'video/mp4';
+            case 'ico':
+                return 'image/x-icon';
+            default:
+                return 'application/octet-stream';
+        }
+    }
+}
+
+/*
+ * Sitemap routes are handled by the SEO module via api.php.
  */
