@@ -9,6 +9,7 @@ use Nabilet\Modules\Inventory\Repositories\InventoryItemRepository;
 use Nabilet\Modules\Sessions\Models\Session;
 use Nabilet\Modules\Venues\Halls\Models\HallSchemaVersion;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 class InventoryService
 {
@@ -17,55 +18,58 @@ class InventoryService
     ) {}
 
     public function generateFromSchema(HallSchemaVersion $schemaVersion, Session $session): int
-    {
-        return DB::transaction(function () use ($schemaVersion, $session) {
-            // Clear existing inventory for this session
-            InventoryItem::where('session_id', $session->id)->delete();
+        {
+            return DB::transaction(function () use ($schemaVersion, $session) {
+                // Clear existing inventory for this session
+                InventoryItem::where('session_id', $session->id)->delete();
 
-            $items = [];
-            $payload = $schemaVersion->payload;
+                $items = [];
+                $payload = $schemaVersion->schema_json ?? [];
 
-            // Generate seat inventory
-            foreach ($payload['sectors'] ?? [] as $sector) {
-                foreach ($sector['rows'] ?? [] as $row) {
-                    foreach ($row['seats'] ?? [] as $seatData) {
-                        $items[] = [
-                            'session_id' => $session->id,
-                            'type' => 'seat',
-                            'seat_id' => $seatData['id'],
-                            'sector_id' => $sector['id'] ?? null,
-                            'quantity' => 1,
-                            'available_quantity' => 1,
-                            'price' => $seatData['price'] ?? $session->default_price,
-                            'status' => 'available',
-                            'metadata' => json_encode([
-                                'sector_name' => $sector['name'] ?? null,
-                                'row_label' => $row['label'] ?? null,
-                                'seat_number' => $seatData['number'] ?? null,
-                            ]),
-                            'created_at' => now(),
-                            'updated_at' => now(),
-                        ];
+                // Generate seat inventory
+                foreach ($payload['sectors'] ?? [] as $sector) {
+                    foreach ($sector['rows'] ?? [] as $row) {
+                        foreach ($row['seats'] ?? [] as $seatData) {
+                            $items[] = [
+                                'public_id' => (string) Str::ulid()->toBase32(),
+                                'session_id' => $session->id,
+                                'type' => 'seat',
+                                'seat_id' => $seatData['id'],
+                                'price_amount' => $seatData['price_amount'] ?? $row['price_amount'] ?? $session->default_price ?? 0,
+                                'currency' => 'RUB',
+                                'capacity' => 1,
+                                'available_quantity' => 1,
+                                'status' => 'available',
+                                'metadata_json' => json_encode([
+                                    'sector_name' => $sector['name'] ?? null,
+                                    'row_label' => $row['label'] ?? null,
+                                    'seat_number' => $seatData['number'] ?? null,
+                                ]),
+                                'created_at' => now(),
+                                'updated_at' => now(),
+                            ];
+                        }
                     }
                 }
-            }
 
-            // Generate standing zone inventory
-            foreach ($payload['standing_zones'] ?? [] as $zone) {
-                $items[] = [
-                    'session_id' => $session->id,
-                    'type' => 'standing',
-                    'standing_zone_id' => $zone['id'],
-                    'quantity' => $zone['capacity'],
-                    'available_quantity' => $zone['capacity'],
-                    'price' => $zone['price'] ?? $session->default_price,
-                    'status' => 'available',
-                    'metadata' => json_encode([
-                        'zone_name' => $zone['name'] ?? null,
-                    ]),
-                    'created_at' => now(),
-                    'updated_at' => now(),
-                ];
+                // Generate standing zone inventory
+                foreach ($payload['standing_zones'] ?? [] as $zone) {
+                    $items[] = [
+                        'public_id' => (string) Str::ulid()->toBase32(),
+                        'session_id' => $session->id,
+                        'type' => 'standing',
+                        'standing_zone_id' => $zone['id'],
+                        'price_amount' => $zone['price_amount'] ?? $session->default_price ?? 0,
+                        'currency' => 'RUB',
+                        'capacity' => $zone['capacity'],
+                        'available_quantity' => $zone['capacity'],
+                        'status' => 'available',
+                        'metadata_json' => json_encode([
+                            'zone_name' => $zone['name'] ?? null,
+                        ]),
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ];
             }
 
             if (empty($items)) {
