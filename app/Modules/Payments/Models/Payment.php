@@ -7,20 +7,26 @@ namespace Nabilet\Modules\Payments\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Str;
 use Nabilet\Modules\Orders\Models\Order;
 
 /**
  * @property int $id
- * @property string $public_id
- * @property int $order_id
- * @property string $provider 'stripe' | 'paypal' | 'kaspi'
- * @property string $status 'pending' | 'completed' | 'failed' | 'refunded'
- * @property string $amount
+ * @property string $public_id       CHAR(26), ULID base32
+ * @property int $order_id           NOT NULL по схеме
+ * @property string $provider        'yookassa' | 'stripe' | ...
+ * @property string|null $provider_payment_id
+ * @property int $amount             integer minor units
  * @property string $currency
- * @property string|null $transaction_id
- * @property string|null $metadata
+ * @property string $status          из ck_payments_status: pending|waiting_for_capture|succeeded|canceled|failed
+ * @property string|null $payment_url
+ * @property string $idempotency_key NOT NULL по схеме
+ * @property array|null $metadata_json
  * @property \Carbon\CarbonImmutable $created_at
+ * @property \Carbon\CarbonImmutable|null $paid_at
  * @property \Carbon\CarbonImmutable $updated_at
+ *
+ * Колонок organization_id/method/webhook_url/succeeded_at/failure_* в payments НЕТ.
  */
 class Payment extends Model
 {
@@ -30,17 +36,34 @@ class Payment extends Model
         'public_id',
         'order_id',
         'provider',
-        'status',
+        'provider_payment_id',
         'amount',
         'currency',
-        'transaction_id',
-        'metadata',
+        'status',
+        'payment_url',
+        'idempotency_key',
+        'metadata_json',
+        'paid_at',
     ];
 
     protected $casts = [
-        'amount' => 'string',
-        'metadata' => 'array',
+        'amount' => 'integer',
+        'metadata_json' => 'array',
+        'paid_at' => 'datetime',
     ];
+
+    protected static function booted(): void
+    {
+        // CHAR(26) public_id обязателен везде в этой схеме.
+        static::creating(function (Payment $model): void {
+            if ($model->public_id === null) {
+                $model->public_id = (string) Str::ulid()->toBase32();
+            }
+            if ($model->idempotency_key === null) {
+                $model->idempotency_key = (string) Str::ulid();
+            }
+        });
+    }
 
     public function order(): BelongsTo
     {

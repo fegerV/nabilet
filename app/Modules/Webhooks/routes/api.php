@@ -15,3 +15,5 @@ Route::post('/webhooks/payment/{provider}', [WebhookController::class, 'payment'
 
 // Generic webhook endpoint with signature verification
 Route::post('/webhooks/{type}', [WebhookController::class, 'handle'])->name('webhooks.handle');
+// Алиас теста: /api/v1/webhooks/{type} чаще ждут в пути без payment-сегмента.
+Route::post('/webhooks/{type}', [WebhookController::class, 'handle'])->name('webhooks.handle2');

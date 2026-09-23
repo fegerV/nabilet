@@ -8,7 +8,10 @@ use Filament\Widgets;
 
 class AnalyticsResource extends Resource
 {
-    protected static ?string $model = \App\Models\Booking::class;
+    // Аналитика — это дашборд с запросами к реальной схеме, а не CRUD-ресурс.
+    // Модель указывает на реальную таблицу аналитических событий, чтобы
+    // getEloquentQuery() (и тесты) находили существующий класс.
+    protected static ?string $model = \Nabilet\Modules\Analytics\Models\AnalyticsEvent::class;
     
     protected static ?string $navigationIcon = 'heroicon-o-chart-bar';
     

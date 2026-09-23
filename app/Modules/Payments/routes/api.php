@@ -15,3 +15,6 @@ Route::prefix('payments')->middleware(['auth:api'])->group(function () {
 // Deliberately outside the auth:api group above. The path used to carry a
 // literal `v1/` as well as the global prefix, giving /api/v1/v1/payments/...
 Route::post('payments/webhooks/{provider}', [PaymentController::class, 'webhook']);
+// Тот же обработчик доступен по пути, который используют тесты и клиенты:
+// /api/v1/webhooks/payment/{provider} — исторический алиас.
+Route::post('webhooks/payment/{provider}', [PaymentController::class, 'webhook']);
