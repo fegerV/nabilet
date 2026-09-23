@@ -34,4 +34,5 @@ Thumbs.db
 # Build artifacts
 public/build/
 public/storage/
-```
+public_html/build/
+public_html/storage/
