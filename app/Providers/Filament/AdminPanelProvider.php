@@ -73,20 +73,12 @@ class AdminPanelProvider extends PanelProvider
             ->darkModeBrandLogo(fn () => view('filament.components.brand-logo-dark'))
             ->favicon(asset('favicon.ico'))
             ->navigationGroups([
-                'Venue Management' => [
-                    'icon' => 'heroicon-o-building-office',
-                ],
-                'Events & Tickets' => [
-                    'icon' => 'heroicon-o-calendar',
-                ],
-                'Sales & Payments' => [
-                    'icon' => 'heroicon-o-currency-dollar',
-                ],
-                'System' => [
-                    'icon' => 'heroicon-o-cog-6-tooth',
-                ],
-            ])
-            ->globalSearchKeyBindings(['command+k', 'ctrl+k'])
+                            'Venue Management',
+                                            'Events & Tickets',
+                                            'Sales & Payments',
+                                            'System',
+                                        ])
+                                        ->globalSearchKeyBindings(['command+k', 'ctrl+k'])
             ;
     }
 }
