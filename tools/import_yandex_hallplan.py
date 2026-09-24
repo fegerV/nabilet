@@ -53,6 +53,8 @@ def convert(data: dict, hall_name: str) -> dict:
     sectors = []
     seat_id = 1  # наши места в inventory получают id из БД; здесь — локальный
 
+    # --- Проход 1: собрать уровни со «сырыми» координатами из hallplan ---
+    levels_raw = []  # (cat_id, cat_name, seats:[{...}])
     for lv in hp['levels']:
         seats = lv['seats']
         # Если есть structured rows (зал с рядами вроде Ледового, 1770 мест) —
@@ -63,12 +65,9 @@ def convert(data: dict, hall_name: str) -> dict:
             for r in structured_rows:
                 count = r.get('seatCount', 0)
                 (rx, ry) = r.get('xCoord', 0), r.get('yCoord', 0)
-                # цена ряда: ищем в lv['categories'][i]['prices']? нет — цена места из lv['prices'] (по индексу)
                 price = 0
-                # Категория ряда: берём категорию уровня (это dict {id, name,...} — извлекаем id)
                 cat_obj = lv.get('categories', [None])[0]
                 cat_id = cat_obj.get('id') if isinstance(cat_obj, dict) else cat_obj
-                # Разложим места по линии X: центр ряда ± шаг (чтобы не лежали друг на друге)
                 step = 14
                 x0 = rx - step * (count - 1) / 2
                 for i in range(count):
@@ -78,7 +77,6 @@ def convert(data: dict, hall_name: str) -> dict:
                         'categoryId': cat_id,
                         'priceInfo': {'price': {'value': price}, 'total': {'value': price}},
                     })
-            # Возьмём цену из lv['prices'] (список {currencyCode, value})
             lv_prices = lv.get('prices') or []
             if lv_prices:
                 p0 = lv_prices[0]
@@ -89,36 +87,59 @@ def convert(data: dict, hall_name: str) -> dict:
             seats = expanded
         if not seats:
             continue
-        # Определяем категорию (первый seat — обычно источник, но лучше по преобладающей)
         from collections import Counter
         cat_counter = Counter(s['categoryId'] for s in seats)
         cat_id = cat_counter.most_common(1)[0][0]
         cat = cats.get(cat_id, {'name': lv['name'] or 'Сектор'})
         cat_name = cat['name']
+        levels_raw.append({'cat_id': cat_id, 'cat_name': cat_name, 'seats': seats})
 
-        # Есть ли ряды?
+    # --- Проход 2: вычислить ГЛОБАЛЬНЫЕ границы по всему залу ---
+    all_x = [s['seat']['xCoord'] for lev in levels_raw for s in lev['seats']]
+    all_y = [s['seat']['yCoord'] for lev in levels_raw for s in lev['seats']]
+    if not all_x:
+        return {'name': hall_name, 'width': 60, 'height': 40, 'sectors': sectors}
+    gx0, gx1 = min(all_x), max(all_x)
+    gy0, gy1 = min(all_y), max(all_y)
+    span_x = (gx1 - gx0) or 1
+    span_y = (gy1 - gy0) or 1
+    PAD = 1
+    # Глобальная нормализация: реальная позиция места в зале, не «по ряду».
+    def norm(s):
+        x = s['seat']['xCoord']
+        y = s['seat']['yCoord']
+        nx = round(PAD + (x - gx0) / span_x * (60 - 2 * PAD))
+        ny = round(PAD + (y - gy0) / span_y * (40 - 2 * PAD))
+        return nx, ny
+
+    # --- Проход 3: собрать секторы с нормализованными координатами ---
+    for lev in levels_raw:
+        seats = lev['seats']
+        cat_name = lev['cat_name']
+        # Есть ли ряды (у столов Вавилона ряда нет — только точки по периметру)?
         has_rows = any('row' in s['seat'] and s['seat']['row'] for s in seats)
         if has_rows:
-            # Группируем по рядам
             rows_map = {}
             for s in seats:
                 seat = s['seat']
                 row = seat['row']
                 rows_map.setdefault(row, []).append(s)
             rows = []
-            for row, rseats in sorted(rows_map.items(), key=lambda kv: int(kv[0]) if str(kv[0]).isdigit() else kv[0]):
-                # Цена ряда = цена места (все места ряда одной цены у Яндекса)
+            def row_key(kv):
+                k = kv[0]
+                return (0, int(k)) if str(k).isdigit() else (1, str(k))
+            for row, rseats in sorted(rows_map.items(), key=row_key):
                 price_amount = rseats[0].get('priceInfo', {}).get('price', {}).get('value', 0)
-                ns = norm_coords(rseats)
                 seats_out = []
                 for i, s in enumerate(rseats):
+                    x, y = norm(s)
                     seat = s['seat']
                     seats_out.append({
                         'number': seat.get('place', str(i + 1)),
                         'label': f"Ряд {row} Место {seat.get('place', i+1)}",
                         'type': 'regular',
-                        'x': ns[i]['x'],
-                        'y': ns[i]['y'],
+                        'x': min(59, max(0, x)),
+                        'y': min(39, max(0, y)),
                     })
                 rows.append({'number': row, 'label': f'Ряд {row}', 'price_amount': price_amount, 'seats': seats_out})
             sectors.append({
@@ -130,23 +151,22 @@ def convert(data: dict, hall_name: str) -> dict:
                 'rows': rows,
             })
         else:
-            # Точки (танцпол, стоячие): один «ряд» с координатами
-            ns = norm_coords(seats)
+            # Точки (танцпол, стоячие, столы без рядов): нормализуем по всему залу.
+            price_amount = seats[0].get('priceInfo', {}).get('price', {}).get('value', 0)
             seats_out = []
             for i, s in enumerate(seats):
+                x, y = norm(s)
                 seats_out.append({
                     'number': str(i + 1),
                     'label': f"{cat_name} {i+1}",
                     'type': 'regular',
-                    'x': ns[i]['x'],
-                    'y': ns[i]['y'],
+                    'x': min(59, max(0, x)),
+                    'y': min(39, max(0, y)),
                 })
-            # Цена стоячего «ряда»: из первого места (у танцпола цена едина)
-            price_amount = seats[0].get('priceInfo', {}).get('price', {}).get('value', 0)
             sectors.append({
                 'name': cat_name,
                 'code': f"{cat_name[:1]}{len(sectors)+1}",
-                'type': 'standing',  # танцпол — стоячие
+                'type': 'standing',
                 'x': 0, 'y': 0,
                 'width': 60, 'height': 40,
                 'rows': [{'number': '1', 'label': cat_name, 'price_amount': price_amount, 'seats': seats_out}],
