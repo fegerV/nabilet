@@ -664,10 +664,45 @@ function exportSchema(): void {
   a.download = `hall-schema-v${published.value ?? draftVersion.value}.json`
   a.click()
   URL.revokeObjectURL(url)
-  ui.notify('brand', 'Схема экспортирована', 'Файл hall-schema.json сохранён')
-}
+    ui.notify('brand', 'Схема экспортирована', 'Файл hall-schema.json сохранён')
+  }
 
-/* ── Фон-изображение (§51) ────────────────────────────────────────── */
+  /* ── Импорт Schema JSON (из файла Афиши или экспорта) ─────────────── */
+
+  const jsonInput = ref<HTMLInputElement | null>(null)
+  function importJsonClick(): void {
+    jsonInput.value?.click()
+  }
+
+  function onJsonChosen(event: Event): void {
+    const input = event.target as HTMLInputElement
+    const file = input.files?.[0]
+    // Сброс value, чтобы можно было выбрать тот же файл повторно
+    input.value = ''
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      try {
+        const data = JSON.parse(reader.result as string)
+        // autosave не срабатывает при замене sectors.value извне? сработает (watch deep).
+        applyServerSchema(data)
+        // Если загружали поверх published — снимем блокировку, чтобы можно было править
+        if (published.value !== null) {
+          newVersion()
+        }
+        const count = sectors.value.reduce((acc, s) => acc + s.seats.length, 0)
+        ui.notify('mint', 'Схема импортирована', `${sectors.value.length} секторов, ${count} мест`)
+      } catch (e) {
+        ui.notify('rose', 'Ошибка импорта', e instanceof Error ? e.message : String(e))
+      }
+    }
+    reader.onerror = () => {
+      ui.notify('rose', 'Ошибка чтения', 'Не удалось прочитать файл')
+    }
+    reader.readAsText(file)
+  }
+
+  /* ── Фон-изображение (§51) ────────────────────────────────────────── */
 
 const imageInput = ref<HTMLInputElement | null>(null)
 function triggerImageUpload(): void {
@@ -1048,10 +1083,11 @@ function setRowPrice(row: number, rub: number): void {
       </div>
 
       <div class="flex flex-wrap gap-2">
-        <NButton variant="ghost" size="sm" @click="exportSchema">Экспорт JSON</NButton>
-        <NButton v-if="isLocked" variant="secondary" @click="newVersion">Новая версия</NButton>
-        <NButton v-else variant="primary" @click="publish">Опубликовать</NButton>
-      </div>
+              <NButton variant="ghost" size="sm" @click="exportSchema">Экспорт JSON</NButton>
+              <NButton variant="ghost" size="sm" @click="importJsonClick">Импорт JSON</NButton>
+              <NButton v-if="isLocked" variant="secondary" @click="newVersion">Новая версия</NButton>
+              <NButton v-else variant="primary" @click="publish">Опубликовать</NButton>
+            </div>
     </div>
 
     <div class="mt-5 grid gap-4 lg:grid-cols-[220px_1fr_320px]">
@@ -1137,6 +1173,7 @@ function setRowPrice(row: number, rub: number): void {
           </div>
 
           <input ref="imageInput" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" class="hidden" @change="onImageChosen" />
+          <input ref="jsonInput" type="file" accept=".json,application/json" class="hidden" @change="onJsonChosen" />
 
           <div
             ref="canvasHost"
