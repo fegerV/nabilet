@@ -230,20 +230,53 @@ class CartService
                 }
             }
 
-            // Here we would typically create an order
-            // For now, return cart data for order creation
-            return [
-                'cart_id' => $cart->id,
-                'session_id' => $sessionId,
-                'items' => $cart->items->map(fn($item) => [
-                    'inventory_item_id' => $item->inventory_item_id,
-                    'quantity' => $item->quantity,
-                    'unit_price' => $item->unit_price,
-                    'total_price' => $item->total_price,
-                ])->toArray(),
-                'total_amount' => $cart->total_amount,
-                'currency' => $cart->currency,
-            ];
+            // Create the order: checkout succeeded, seats are sold, cart is
+                        // converted — persist the sale so it appears in the admin orders list.
+                        $session = $cart->session()->first();
+                        $event = $session?->event()->first();
+                        $organizationId = $event->organization_id ?? $session?->venue?->organization_id ?? 1;
+
+                        $order = \Nabilet\Modules\Orders\Models\Order::create([
+                            'organization_id' => $organizationId,
+                            'user_id' => null,
+                            'status' => 'pending',
+                            'payment_status' => 'pending',
+                            'subtotal_amount' => (int) ($cart->total_amount ?? 0),
+                            'discount_amount' => 0,
+                            'fee_amount' => 0,
+                            'total_amount' => (int) ($cart->total_amount ?? 0),
+                            'currency' => $cart->currency ?? 'RUB',
+                                                        'customer_email' => '',
+                                                        'customer_phone' => null,
+                        ]);
+
+                        foreach ($cart->items as $item) {
+                            $inventoryItem = $item->inventoryItem;
+                            \Nabilet\Modules\Orders\Models\OrderItem::create([
+                                'order_id' => $order->id,
+                                'inventory_item_id' => $inventoryItem?->id,
+                                'quantity' => $item->quantity,
+                                'unit_price' => $item->unit_price,
+                                'total_amount' => $item->total_price,
+                                'event_title_snapshot' => $event?->title,
+                                'session_title_snapshot' => $session?->title,
+                                'venue_title_snapshot' => $session?->venue?->name,
+                            ]);
+                        }
+
+                        return [
+                            'cart_id' => $cart->id,
+                            'order_id' => $order->public_id,
+                            'session_id' => $sessionId,
+                            'items' => $cart->items->map(fn($item) => [
+                                'inventory_item_id' => $item->inventory_item_id,
+                                'quantity' => $item->quantity,
+                                'unit_price' => $item->unit_price,
+                                'total_price' => $item->total_price,
+                            ])->toArray(),
+                            'total_amount' => $cart->total_amount,
+                            'currency' => $cart->currency,
+                        ];
         });
     }
 
