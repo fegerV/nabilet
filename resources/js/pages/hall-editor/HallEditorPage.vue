@@ -623,9 +623,11 @@ function applyServerSchema(raw: unknown): void {
         s.seats.every((p) => p.x === s.seats[0].x && p.y === s.seats[0].y)
       ))
       if (dance && dance.seats.length > 0) {
-        const cx = dance.seats[0].x + 8
-        const cy = dance.seats[0].y + 8
-        const R = 34 + Math.min(dance.seats.length, 10) * 3
+              // Зону танцпола рисуем по центру под сценой (у Яндекса координата y
+              // растёт вниз, и зона оказывается у нижнего края — визуально неверно).
+              const cx = canvasSize.value.width / 2
+              const cy = 190
+              const R = 60 + Math.min(dance.seats.length, 10) * 4
         const existing = statics.value.filter((o) => /танцпол|dance/i.test(o.text ?? ''))
         if (existing.length === 0) {
           statics.value = [
@@ -864,7 +866,7 @@ function draw(): void {
     }),
   )
   for (const s of statics.value) {
-    if (s.kind === 'entrance') {
+      if (s.kind === 'entrance') {
       const arrow = new Konva.Arrow({ points: [s.x, s.y, s.x + 24, s.y - 18], pointerLength: 8, pointerWidth: 8, fill: '#A5F5DE', stroke: '#00C48C', strokeWidth: 2 })
       staticLayer?.add(arrow)
     } else if (s.kind === 'label' && s.text) {
@@ -872,9 +874,9 @@ function draw(): void {
     } else if (s.kind === 'table') {
       staticLayer?.add(new Konva.Rect({ x: s.x, y: s.y, width: 44, height: 32, cornerRadius: 6, fill: '#3B3468', stroke: '#8E74FF', strokeWidth: 1 }))
     } else if (s.kind === 'standing' && s.width && s.height) {
-          staticLayer?.add(new Konva.Rect({ x: s.x, y: s.y, width: s.width, height: s.height, fill: '#2A2450', stroke: '#8E74FF', dash: [6, 4] }))
+          staticLayer?.add(new Konva.Rect({ x: s.x, y: s.y, width: s.width, height: s.height, fill: 'rgba(58,50,112,0.55)', stroke: '#C9A0FF', strokeWidth: 2, dash: [8, 5] }))
           if (s.text) {
-            staticLayer?.add(new Konva.Text({ x: s.x + s.width / 2 - 50, y: s.y + s.height / 2 - 8, width: 100, align: 'center', text: s.text, fontSize: 13, fill: '#E8E0FF' }))
+            staticLayer?.add(new Konva.Text({ x: s.x - 40, y: s.y - 22, width: s.width + 80, align: 'center', text: s.text, fontSize: 15, fontStyle: 'bold', fill: '#FFFFFF' }))
           }
         }
   }
