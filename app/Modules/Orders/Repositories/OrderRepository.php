@@ -61,32 +61,58 @@ class OrderRepository
     }
 
     public function findByOrganization(int $organizationId, array $filters = [], int $limit = 15): LengthAwarePaginator
-    {
-        $query = $this->model->where('organization_id', $organizationId)
-            ->with(['session.event', 'customer']);
+        {
+                $query = $this->model->where('organization_id', $organizationId)
+                    ->with(['items']);
 
-        if (isset($filters['status'])) {
-            $query->where('status', $filters['status']);
+            if (isset($filters['status'])) {
+                $query->where('status', $filters['status']);
+            }
+
+            if (isset($filters['session_id'])) {
+                $query->where('session_id', $filters['session_id']);
+            }
+
+            if (isset($filters['customer_email'])) {
+                $query->where('customer_email', $filters['customer_email']);
+            }
+
+            if (isset($filters['date_from'])) {
+                $query->where('created_at', '>=', $filters['date_from']);
+            }
+
+            if (isset($filters['date_to'])) {
+                $query->where('created_at', '<=', $filters['date_to']);
+            }
+
+            return $query->orderBy('created_at', 'desc')->paginate($limit);
         }
 
-        if (isset($filters['session_id'])) {
-            $query->where('session_id', $filters['session_id']);
-        }
+        /**
+                 * Все заказы всех организаций (админка, без фильтра по организации).
+                 */
+                public function paginateAll(array $filters = [], int $limit = 20): LengthAwarePaginator
+                {
+                    $query = $this->model->with(['items']);
 
-        if (isset($filters['customer_email'])) {
-            $query->where('customer_email', $filters['customer_email']);
-        }
+            if (isset($filters['status'])) {
+                $query->where('status', $filters['status']);
+            }
 
-        if (isset($filters['date_from'])) {
-            $query->where('created_at', '>=', $filters['date_from']);
-        }
+            if (isset($filters['customer_email'])) {
+                $query->where('customer_email', 'ilike', "%{$filters['customer_email']}%");
+            }
 
-        if (isset($filters['date_to'])) {
-            $query->where('created_at', '<=', $filters['date_to']);
-        }
+            if (isset($filters['date_from'])) {
+                $query->where('created_at', '>=', $filters['date_from']);
+            }
 
-        return $query->orderBy('created_at', 'desc')->paginate($limit);
-    }
+            if (isset($filters['date_to'])) {
+                $query->where('created_at', '<=', $filters['date_to']);
+            }
+
+            return $query->orderBy('created_at', 'desc')->paginate($limit);
+        }
 
     public function create(array $data): Order
     {

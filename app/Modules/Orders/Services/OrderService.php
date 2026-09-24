@@ -107,7 +107,9 @@ class OrderService
         $organizationId = $filters['organization_id'] ?? null;
 
         if ($organizationId === null || $organizationId === '' || (int) $organizationId <= 0) {
-            return new LengthAwarePaginator([], 0, $perPage);
+            // Админка смотрит все заказы всех организаций; организация —
+            // опциональный фильтр. Раньше пустота вела к пустому ответу.
+            return $this->repository->paginateAll($filters, $perPage);
         }
 
         return $this->repository->paginateByOrganization((int) $organizationId, $filters, $perPage);
