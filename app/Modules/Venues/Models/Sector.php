@@ -7,6 +7,7 @@ namespace Nabilet\Modules\Venues\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Str;
 
 /**
  * Sector Model
@@ -60,7 +61,17 @@ class Sector extends Model
     }
 
     public function standingZones(): HasMany
-    {
-        return $this->hasMany(StandingZone::class, 'sector_id');
+        {
+            return $this->hasMany(StandingZone::class, 'sector_id');
+        }
+
+        /** Конвенция проекта: char(26) public_id NOT NULL → генерим ULID при создании. */
+        protected static function booted(): void
+        {
+            static::creating(function (Sector $model): void {
+                if ($model->public_id === null) {
+                    $model->public_id = Str::ulid()->toBase32();
+                }
+            });
+        }
     }
-}
