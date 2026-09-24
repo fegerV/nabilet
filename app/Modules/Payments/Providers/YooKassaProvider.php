@@ -6,6 +6,7 @@ namespace Nabilet\Modules\Payments\Providers;
 
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 /**
  * YooKassa payment provider implementation.
@@ -25,8 +26,34 @@ class YooKassaProvider implements PaymentProviderInterface
     }
 
     public function createPayment(array $paymentData): array
-    {
-        $response = Http::withHeaders([
+        {
+            // Demo-режим: нет реальных ключей — не ходим в API, а возвращаем
+            // локальный confirmation_url на симулятор оплаты.
+            if ((bool) config('nabilet.payment.demo_mode', false)) {
+                $paymentId = 'demo_' . (string) Str::ulid()->toBase32();
+                $confirmUrl = (string) config('app.url', 'http://127.0.0.1:8000')
+                    .trimEnd('/') . '/checkout/demo-pay?payment_id=' . $paymentId;
+
+                Log::info('YooKassa demo payment created', [
+                    'payment_id' => $paymentId,
+                    'order_id' => $paymentData['order_id'] ?? null,
+                    'amount' => $paymentData['amount'] ?? null,
+                ]);
+
+                return [
+                    'payment_id' => $paymentId,
+                    'status' => 'pending',
+                    'confirmation_url' => $confirmUrl,
+                    'confirmation_token' => null,
+                    'provider_data' => [
+                        'id' => $paymentId,
+                        'status' => 'pending',
+                        'demo' => true,
+                    ],
+                ];
+            }
+
+            $response = Http::withHeaders([
             'Content-Type' => 'application/json',
             'Idempotence-Key' => $paymentData['idempotency_key'] ?? uniqid('yk_', true),
         ])

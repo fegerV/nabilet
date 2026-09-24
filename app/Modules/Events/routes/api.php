@@ -10,9 +10,10 @@ use Illuminate\Support\Facades\Route;
 // this file was unreachable at the path the spec declares (spec: /api/v1/events).
 Route::prefix('events')->group(function () {
     Route::get('/', [EventController::class, 'index']);
-    Route::post('/', [EventController::class, 'store']);
+    Route::get('/by-slug/{slug}', [EventController::class, 'showBySlug']);
+    Route::post('/', [EventController::class, 'store'])->middleware(['auth:sanctum', 'admin']);
     Route::get('/{event}', [EventController::class, 'show']);
-    Route::put('/{event}', [EventController::class, 'update']);
-    Route::patch('/{event}', [EventController::class, 'update']);
-    Route::delete('/{event}', [EventController::class, 'destroy']);
+    Route::put('/{event}', [EventController::class, 'update'])->middleware(['auth:sanctum', 'admin']);
+    Route::patch('/{event}', [EventController::class, 'update'])->middleware(['auth:sanctum', 'admin']);
+    Route::delete('/{event}', [EventController::class, 'destroy'])->middleware(['auth:sanctum', 'admin']);
 });

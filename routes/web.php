@@ -86,5 +86,13 @@ if (!function_exists('mime_type_for')) {
 }
 
 /*
+ * SEO-страницы мероприятий (модуль Events): /event/{slug}/{publicId}.
+ * Требуются отдельно — провайдеры модулей не бутятся (см. bootstrap/providers.php).
+ */
+if (file_exists(__DIR__ . '/../app/Modules/Events/routes/web.php')) {
+    require __DIR__ . '/../app/Modules/Events/routes/web.php';
+}
+
+/*
  * Sitemap routes are handled by the SEO module via api.php.
  */

@@ -33,11 +33,19 @@ class HallRepository
      * paginated envelope is what the caller expects.
      */
     public function findByVenue(int $venueId, int $limit = 15): LengthAwarePaginator
-    {
-        return $this->model->where('venue_id', $venueId)
-            ->with(['currentSchemaVersion'])
-            ->paginate($limit);
-    }
+        {
+            return $this->model->where('venue_id', $venueId)
+                ->with(['currentSchemaVersion'])
+                ->paginate($limit);
+        }
+
+        /**
+             * Пагинированный список всех залов.
+             */
+            public function paginate(int $limit = 100): LengthAwarePaginator
+            {
+                return $this->model->with(['venue'])->paginate($limit);
+            }
 
     public function create(array $data): Hall
     {

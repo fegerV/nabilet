@@ -22,6 +22,15 @@ use Nabilet\Modules\Core\Users\Models\User;
  */
 class Cart extends Model
 {
+    protected static function booted(): void
+    {
+        static::creating(function (Cart $cart): void {
+            if ($cart->public_id === null) {
+                $cart->public_id = \Illuminate\Support\Str::ulid()->toBase32();
+            }
+        });
+    }
+
     protected $table = 'carts';
 
     protected $fillable = [

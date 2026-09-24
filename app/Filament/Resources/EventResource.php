@@ -33,29 +33,39 @@ class EventResource extends Resource
                     ->columns(2)
                     ->schema([
                         Forms\Components\TextInput::make('title')
-                            ->required()
-                            ->maxLength(255)
-                            ->label('Event Title'),
-                        Forms\Components\TextInput::make('slug')
-                            ->required()
-                            ->maxLength(255)
-                            ->unique(ignoreRecord: true)
-                            ->label('Slug (URL-friendly name)'),
-                        Forms\Components\Select::make('category_id')
-                            ->relationship('category', 'name')
-                            ->searchable()
-                            ->preload()
-                            ->label('Category'),
-                        Forms\Components\TextInput::make('age_limit')
-                            ->numeric()
-                            ->minValue(0)
-                            ->suffix('+')
-                            ->label('Age Limit'),
-                        Forms\Components\TextInput::make('duration_minutes')
-                            ->numeric()
-                            ->minValue(1)
-                            ->suffix('min')
-                            ->label('Duration'),
+                                                    ->required()
+                                                    ->maxLength(255)
+                                                    ->label('Event Title')
+                                                    ->hint('Название показывается на афише и в билете. Пишите так, как это увидит покупатель: «Симфонический оркестр: Вивальди и Пьяццолла».')
+                                                    ->hintIcon('heroicon-o-information-circle'),
+                                                Forms\Components\TextInput::make('slug')
+                                                    ->required()
+                                                    ->maxLength(255)
+                                                    ->unique(ignoreRecord: true)
+                                                    ->label('Slug (URL-friendly name)')
+                                                    ->hint('Часть адреса страницы: только латиница, строчные, дефис вместо пробелов (например: simfonicheskiy-orkestr). Менять после публикации нельзя.')
+                                                    ->hintIcon('heroicon-o-link'),
+                                                Forms\Components\Select::make('category_id')
+                                                    ->relationship('category', 'name')
+                                                    ->searchable()
+                                                    ->preload()
+                                                    ->label('Category')
+                                                    ->hint('Раздел витрины: Классика, Стендап, Детям и т.д. Нужная категория создаётся заранее.')
+                                                    ->hintIcon('heroicon-o-tag'),
+                                                Forms\Components\TextInput::make('age_limit')
+                                                    ->numeric()
+                                                    ->minValue(0)
+                                                    ->suffix('+')
+                                                    ->label('Age Limit')
+                                                    ->hint('Возрастное ограничение: 0+, 6+, 12+, 16+, 18+. Влияет на допуск и заметку на карточке.')
+                                                    ->hintIcon('heroicon-o-shield-check'),
+                                                Forms\Components\TextInput::make('duration_minutes')
+                                                    ->numeric()
+                                                    ->minValue(1)
+                                                    ->suffix('min')
+                                                    ->label('Duration')
+                                                    ->hint('Продолжительность в минутах, включая антракт. Зависит от программы.')
+                                                    ->hintIcon('heroicon-o-clock'),
                     ]),
                 
                 Forms\Components\Section::make('Description')
@@ -119,9 +129,13 @@ class EventResource extends Resource
                             ])
                             ->default('draft')
                             ->required()
-                            ->label('Status'),
-                        Forms\Components\DateTimePicker::make('published_at')
-                            ->label('Published At'),
+                            ->label('Status')
+                                                        ->hint('Published — карточка на витрине и открытые продажи. Draft — скрыт, изменения безопасны.')
+                                                        ->hintIcon('heroicon-o-check-circle'),
+                                                    Forms\Components\DateTimePicker::make('published_at')
+                                                        ->label('Published At')
+                                                        ->hint('Момент выхода на витрину. Оставьте пустым — возьмётся момент нажатия «Published».')
+                                                        ->hintIcon('heroicon-o-calendar-days'),
                     ]),
             ]);
     }

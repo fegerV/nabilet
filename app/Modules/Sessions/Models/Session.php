@@ -31,6 +31,16 @@ class Session extends Model
         'status',
     ];
 
+    /** Конвенция проекта: char(26) public_id NOT NULL → генерим ULID при создании. */
+    protected static function booted(): void
+    {
+        static::creating(function (Session $session): void {
+            if ($session->public_id === null) {
+                $session->public_id = \Illuminate\Support\Str::ulid()->toBase32();
+            }
+        });
+    }
+
     protected function casts(): array
     {
         return [
@@ -46,6 +56,20 @@ class Session extends Model
     public function event(): BelongsTo
     {
         return $this->belongsTo(\Nabilet\Modules\Events\Models\Event::class);
+    }
+
+    /**
+     * Найти сессию по числовому id или public_id.
+     * Покупательский API отдаёт числовой id сессии; CartService хранит
+     * public_id в cart.session_id. Метод покрывает оба формата.
+     */
+    public static function findOrFailBySessionId(string|int $sessionId): self
+    {
+        $query = static::query()->where(function ($q) use ($sessionId) {
+            $q->where('id', $sessionId)->orWhere('public_id', $sessionId);
+        });
+
+        return $query->firstOrFail();
     }
 
     public function venue(): BelongsTo

@@ -11,8 +11,8 @@ import NBadge from './NBadge.vue'
 import type { EventStatus, OrderStatus, TicketStatus, Tone } from '@/lib/types'
 
 const props = defineProps<{
-  kind: 'order' | 'ticket' | 'event'
-  status: OrderStatus | TicketStatus | EventStatus
+  kind: 'order' | 'ticket' | 'event' | 'session'
+  status: OrderStatus | TicketStatus | EventStatus | string
   size?: 'sm' | 'md'
 }>()
 
@@ -43,13 +43,23 @@ const EVENT: Record<EventStatus, { label: string; tone: Tone; dot: boolean }> = 
   cancelled: { label: 'Отменён', tone: 'rose', dot: false },
 }
 
+const SESSION: Record<string, { label: string; tone: Tone; dot: boolean }> = {
+  scheduled: { label: 'Запланирован', tone: 'neutral', dot: true },
+  on_sale: { label: 'В продаже', tone: 'mint', dot: true },
+  held: { label: 'Открыт', tone: 'brand', dot: false },
+  completed: { label: 'Завершён', tone: 'neutral', dot: false },
+  cancelled: { label: 'Отменён', tone: 'rose', dot: false },
+}
+
 /** Разные сущности — разные наборы статусов, поэтому выбор идёт по типу. */
 const meta =
   props.kind === 'order'
     ? ORDER[props.status as OrderStatus]
     : props.kind === 'ticket'
       ? TICKET[props.status as TicketStatus]
-      : EVENT[props.status as EventStatus]
+      : props.kind === 'session'
+        ? SESSION[props.status as string]
+        : EVENT[props.status as EventStatus]
 </script>
 
 <template>

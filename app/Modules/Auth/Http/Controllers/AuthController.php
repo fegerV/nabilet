@@ -35,7 +35,7 @@ class AuthController extends Controller
 
         return response()->json([
             'data' => [
-                'user' => new AuthResource($user),
+                'user' => (new AuthResource($user->load('roles')))->resolve(),
                 'token' => $token,
                 'token_type' => 'Bearer',
             ]
@@ -58,6 +58,7 @@ class AuthController extends Controller
             ], 401);
         }
 
+        $user->load('roles');
         $token = $user->createToken('customer-token')->plainTextToken;
 
         return response()->json([

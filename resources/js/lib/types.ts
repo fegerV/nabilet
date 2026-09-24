@@ -33,19 +33,33 @@ export type Tone = 'neutral' | 'brand' | 'accent' | 'sun' | 'mint' | 'rose' | 's
 
 export interface EventCard {
   id: string
+  slug?: string
   title: string
-  subtitle: string
-  category: string
-  venue: string
-  city: string
-  posterFrom: string
-  posterTo: string
-  posterAccent: string
-  priceFromMinor: number
+  subtitle?: string
+  short_description?: string
+  category?: string | { name?: string }
+  venue?: string | { name?: string; city?: string } | null
+  city?: string
+  posterFrom?: string
+  posterTo?: string
+  posterAccent?: string
+  poster?: string
+  cover?: string
+  priceFromMinor?: number
+  price_from_minor?: number
   status: EventStatus
-  sessionsCount: number
+  sessionsCount?: number
+  sessions_count?: number
   /** Сеансы: то, что реально покупает пользователь. */
-  sessions: Array<{ id: string; startsAt: string; hall: string; availableSeats: number }>
+  sessions?: Array<{
+    id: string
+    startsAt?: string
+    starts_at?: string
+    hall?: string
+    hall_name?: string
+    availableSeats?: number
+    available_seats?: number
+  }>
 }
 
 export interface OrderRow {

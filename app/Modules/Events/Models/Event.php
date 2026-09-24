@@ -7,6 +7,7 @@ namespace Nabilet\Modules\Events\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Str;
 
 /**
  * Event Model
@@ -16,6 +17,16 @@ class Event extends Model
     protected $table = 'events';
 
     public $timestamps = true;
+
+    /** Конвенция проекта: public_id = ULID (base32) */
+    protected static function booted(): void
+    {
+        static::creating(function (Event $event) {
+            if ($event->public_id === null) {
+                $event->public_id = Str::ulid()->toBase32();
+            }
+        });
+    }
 
     protected $fillable = [
         'public_id',

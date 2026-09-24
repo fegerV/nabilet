@@ -10,9 +10,17 @@ use Illuminate\Foundation\Http\FormRequest;
 class StoreEventRequest extends FormRequest
 {
     public function authorize(): bool
-    {
-        return $this->user()?->can('create', Event::class) ?? false;
-    }
+        {
+            // Write-роуты уже под auth:sanctum + admin (middleware 'admin').
+            // Здесь дублируем роль-проверку, чтобы FormRequest не зависел от
+            // несуществующей EventPolicy (can('create') всегда false → 403).
+            $user = $this->user();
+            if (! $user) {
+                return false;
+            }
+
+            return $user->roles()->pluck('slug')->intersect(['admin', 'manager'])->isNotEmpty();
+        }
 
     public function rules(): array
     {
@@ -21,7 +29,7 @@ class StoreEventRequest extends FormRequest
             // reaches `exists` as `where id = 'nope'`, PostgreSQL rejects the cast with
             // SQLSTATE[22P02], and the caller gets a 500 where a 422 is correct.
             // See `CartController::addItem()` for the full explanation.
-            'organization_id' => ['bail', 'required', 'integer', 'exists:organizations,id'],
+            'organization_id' => ['bail', 'nullable', 'integer', 'exists:organizations,id'],
             'category_id' => ['bail', 'nullable', 'integer', 'exists:event_categories,id'],
             'public_id' => ['nullable', 'string', 'max:64', 'unique:events,public_id'],
             'slug' => ['required', 'string', 'max:255'],

@@ -32,6 +32,16 @@ class Venue extends Model
         'status',
     ];
 
+    /** Конвенция проекта: char(26) public_id NOT NULL → генерим ULID при создании. */
+    protected static function booted(): void
+    {
+        static::creating(function (Venue $venue): void {
+            if ($venue->public_id === null) {
+                $venue->public_id = \Illuminate\Support\Str::ulid()->toBase32();
+            }
+        });
+    }
+
     protected function casts(): array
     {
         return [

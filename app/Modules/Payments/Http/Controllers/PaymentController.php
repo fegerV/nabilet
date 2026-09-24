@@ -43,6 +43,46 @@ class PaymentController extends Controller
         return response()->json(['data' => $payment]);
     }
 
+    public function store(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'order_id' => ['bail', 'required', 'integer'],
+            'idempotency_key' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $result = $this->paymentService->initiatePayment(
+            (int) $validated['order_id'],
+            ['idempotency_key' => $validated['idempotency_key'] ?? null],
+        );
+
+        return response()->json(['data' => [
+            'payment' => $result['payment'],
+            'confirmation_url' => $result['confirmation_url'],
+        ]], 201);
+    }
+
+    public function demoPay(Request $request): JsonResponse
+    {
+        // Только в demo-режиме: симулятор успешной оплаты.
+        if (! (bool) config('nabilet.payment.demo_mode', false)) {
+            return response()->json([
+                'error' => ['code' => 'DEMO_DISABLED', 'message' => 'Demo mode is off'],
+            ], 403);
+        }
+
+        $paymentId = (string) $request->get('payment_id', '');
+
+        if ($paymentId === '') {
+            return response()->json([
+                'error' => ['code' => 'MISSING_PAYMENT_ID', 'message' => 'payment_id is required'],
+            ], 422);
+        }
+
+        $payment = $this->paymentService->confirmDemoPayment($paymentId);
+
+        return response()->json(['data' => $payment]);
+    }
+
     public function webhook(string $provider, Request $request): JsonResponse
         {
             try {

@@ -7,6 +7,8 @@ namespace App\Providers\Filament;
 use App\Filament\Widgets\RevenueWidget;
 use App\Filament\Widgets\SalesChartWidget;
 use App\Filament\Widgets\ScanFeedWidget;
+use App\Filament\Widgets\QuickHelpWidget;
+use App\Filament\Pages\HelpDocsPage;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
@@ -44,14 +46,16 @@ class AdminPanelProvider extends PanelProvider
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\\Filament\\Resources')
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\\Filament\\Pages')
             ->pages([
-                Pages\Dashboard::class,
-            ])
-            ->widgets([
-                RevenueWidget::class,
-                SalesChartWidget::class,
-                ScanFeedWidget::class,
-                Widgets\AccountWidget::class,
-            ])
+                            Pages\Dashboard::class,
+                            HelpDocsPage::class,
+                        ])
+                        ->widgets([
+                            RevenueWidget::class,
+                            SalesChartWidget::class,
+                            ScanFeedWidget::class,
+                            QuickHelpWidget::class,
+                            Widgets\AccountWidget::class,
+                        ])
             ->middleware([
                 EncryptCookies::class,
                 AddQueuedCookiesToResponse::class,

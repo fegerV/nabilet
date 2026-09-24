@@ -1,34 +1,47 @@
 <script setup lang="ts">
 /**
- * Заказы.
+ * Заказы (админка).
  *
- * Рабочая лошадь админки. Три вещи делают её удобной:
- *  - фильтр по статусу — сегментами, потому что «покажи проблемные» — самый
- *    частый запрос, а он должен стоять одного клика;
- *  - строка открывает заказ целиком, а не только по ссылке в ячейке;
- *  - массовые действия появляются только когда что-то выбрано: плавающая
- *    панель не должна заслонять таблицу без дела.
+ * Реальные данные: GET /api/v1/orders (пагинация). Фильтр по статусу,
+ * поиск по номеру/имени/e-mail, деталка заказа (модалка), отмена заказа
+ * (POST /{order}/cancel — админский эндпоинт).
  */
-import { computed, ref } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import NButton from '@/components/ui/NButton.vue'
 import NInput from '@/components/ui/NInput.vue'
-import NSelect from '@/components/ui/NSelect.vue'
 import NSegmented from '@/components/ui/NSegmented.vue'
 import NStatusBadge from '@/components/ui/NStatusBadge.vue'
 import NDataTable from '@/components/ui/NDataTable.vue'
 import NModal from '@/components/ui/NModal.vue'
 import NEmptyState from '@/components/ui/NEmptyState.vue'
-import { ORDERS } from '@/lib/mock'
-import { money, relative, ticketsLabel, dateFull, time } from '@/lib/format'
-import type { Column } from '@/components/ui/NDataTable.vue'
-import type { OrderRow, OrderStatus } from '@/lib/types'
 import { useUiStore } from '@/stores/ui'
+import { get, send } from '@/lib/api'
+import { money, dateTime } from '@/lib/format'
+import type { Column } from '@/components/ui/NDataTable.vue'
 
 const ui = useUiStore()
 
-const status = ref<'all' | OrderStatus>('all')
+interface ApiOrder {
+  id: string
+  order_number?: string | null
+  status: string
+  payment_status?: string | null
+  total_amount?: number | null
+  paid_amount?: number | null
+  currency?: string
+  items_count?: number
+  customer?: { email?: string | null; phone?: string | null; first_name?: string | null; last_name?: string | null }
+  items?: Array<{ id?: number; title?: string; quantity?: number; unit_price?: number }>
+  created_at?: string | null
+  expires_at?: string | null
+}
+
+const orders = ref<ApiOrder[]>([])
+const loading = ref(true)
+const loadError = ref<string | null>(null)
+
+const status = ref<'all' | string>('all')
 const search = ref('')
-const channel = ref('all')
 
 const STATUS_SEGMENTS = [
   { value: 'all', label: 'Все' },
@@ -38,62 +51,94 @@ const STATUS_SEGMENTS = [
   { value: 'refunded', label: 'Возвраты' },
 ]
 
-const CHANNEL_OPTIONS = [
-  { value: 'all', label: 'Все каналы' },
-  { value: 'site', label: 'Сайт' },
-  { value: 'telegram', label: 'Telegram' },
-  { value: 'embed', label: 'Embed' },
-  { value: 'admin', label: 'Вручную' },
-]
+const detail = ref<ApiOrder | null>(null)
+const detailOpen = ref(false)
+const cancelling = ref(false)
 
-const CHANNEL_LABEL: Record<OrderRow['channel'], string> = {
-  site: 'Сайт',
-  telegram: 'Telegram',
-  embed: 'Embed',
-  admin: 'Вручную',
+function customerName(o: ApiOrder): string {
+  const c = o.customer
+  if (!c) return '—'
+  return [c.first_name, c.last_name].filter(Boolean).join(' ') || c.email || c.phone || '—'
+}
+
+function customerContact(o: ApiOrder): string {
+  const c = o.customer
+  if (!c) return ''
+  return c.email || c.phone || ''
 }
 
 const rows = computed(() => {
   const q = search.value.trim().toLowerCase()
-  return ORDERS.filter((order) => {
-    const byStatus = status.value === 'all' || order.status === status.value
-    const byChannel = channel.value === 'all' || order.channel === channel.value
-    const byQuery =
-      !q ||
-      order.number.toLowerCase().includes(q) ||
-      order.customer.toLowerCase().includes(q) ||
-      order.email.toLowerCase().includes(q)
-    return byStatus && byChannel && byQuery
-  })
+  return orders.value
+    .filter((o) => {
+      const byStatus = status.value === 'all' || o.status === status.value
+      const byQuery =
+        !q ||
+        (o.order_number ?? '').toLowerCase().includes(q) ||
+        customerName(o).toLowerCase().includes(q) ||
+        customerContact(o).toLowerCase().includes(q)
+      return byStatus && byQuery
+    })
+    .map((o) => ({
+      id: o.id,
+      number: o.order_number ?? o.id.slice(0, 8),
+      customer: customerName(o),
+      contact: customerContact(o),
+      total: o.total_amount ?? 0,
+      status: o.status,
+      createdAt: o.created_at ?? '',
+      raw: o,
+    }))
 })
 
 const COLUMNS: Column[] = [
   { key: 'number', label: 'Заказ', sortable: true, width: '200px' },
   { key: 'customer', label: 'Покупатель', sortable: true },
-  { key: 'eventTitle', label: 'Событие', hideOnMobile: true },
-  { key: 'seats', label: 'Билеты', align: 'right', width: '90px' },
-  { key: 'totalMinor', label: 'Сумма', align: 'right', sortable: true, width: '120px' },
-  { key: 'channel', label: 'Канал', align: 'center', hideOnMobile: true, width: '110px' },
+  { key: 'total', label: 'Сумма', align: 'right', sortable: true, width: '120px' },
+  { key: 'createdAt', label: 'Создан', hideOnMobile: true },
   { key: 'status', label: 'Статус', align: 'right', width: '150px' },
 ]
 
-const detail = ref<OrderRow | null>(null)
-const detailOpen = ref(false)
-
-function openDetail(row: OrderRow): void {
-  detail.value = row
-  detailOpen.value = true
+async function load(): Promise<void> {
+  loading.value = true
+  loadError.value = null
+  try {
+    const res = await get<{ data: ApiOrder[] }>('/orders?per_page=100')
+    const inner = res.data as unknown as { data?: ApiOrder[] } | ApiOrder[]
+    orders.value = Array.isArray(inner) ? inner : (inner as { data: ApiOrder[] }).data ?? []
+  } catch (e) {
+    loadError.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    loading.value = false
+  }
 }
 
-function refund(): void {
-  detailOpen.value = false
-  ui.notify('sun', 'Возврат запущен', 'Средства вернутся на карту в течение 3–10 дней')
+onMounted(load)
+
+function openDetail(row: { raw: ApiOrder }): void {
+  detail.value = row.raw
+  detailOpen.value = true
 }
 
 function reset(): void {
   status.value = 'all'
-  channel.value = 'all'
   search.value = ''
+}
+
+async function cancelOrder(): Promise<void> {
+  if (!detail.value || cancelling.value) return
+  if (!window.confirm('Отменить заказ? Если он оплачен — будет инициирован возврат.')) return
+  cancelling.value = true
+  try {
+    await send<unknown>(`/orders/${detail.value.id}/cancel`, 'POST')
+    ui.notify('sun', 'Заказ отменён', detail.value.order_number ?? detail.value.id)
+    detailOpen.value = false
+    await load()
+  } catch (e) {
+    ui.notify('rose', 'Не удалось отменить', e instanceof Error ? e.message : String(e))
+  } finally {
+    cancelling.value = false
+  }
 }
 </script>
 
@@ -102,16 +147,21 @@ function reset(): void {
     <div class="flex flex-wrap items-end justify-between gap-3">
       <div>
         <h1 class="text-2xl font-bold tracking-tight text-content">Заказы</h1>
-        <p class="mt-1 text-sm text-muted">{{ rows.length }} из {{ ORDERS.length }}</p>
+        <p class="mt-1 text-sm text-muted">
+          <template v-if="loading">Загрузка…</template>
+          <template v-else>{{ rows.length }} из {{ orders.length }}</template>
+        </p>
       </div>
-      <NButton variant="secondary">Выгрузить CSV</NButton>
+    </div>
+
+    <div v-if="loadError" class="surface-card mt-5 border-rose-500/30 px-4 py-3 text-sm text-rose-400">
+      Не удалось загрузить заказы: {{ loadError }}
     </div>
 
     <!-- Фильтры -->
     <div class="surface-card mt-5 flex flex-wrap items-end gap-3 p-3">
       <NSegmented v-model="status" :segments="STATUS_SEGMENTS" size="sm" aria-label="Фильтр по статусу" />
       <NInput v-model="search" placeholder="Номер, имя или e-mail" icon="⌕" class="max-w-xs" aria-label="Поиск по заказам" />
-      <NSelect v-model="channel" :options="CHANNEL_OPTIONS" size="sm" class="max-w-[11rem]" aria-label="Канал продаж" />
       <NButton variant="ghost" size="sm" @click="reset">Сбросить</NButton>
     </div>
 
@@ -121,28 +171,20 @@ function reset(): void {
         :columns="COLUMNS"
         :rows="rows"
         sort="createdAt"
-        empty-title="Заказов не найдено"
-        empty-description="Измените фильтры или сбросьте их"
+        sort-dir="desc"
+        :loading="loading"
         @row="openDetail"
       >
         <template #cell-number="{ row }">
           <span class="block font-mono text-xs text-brand-400">{{ row.number }}</span>
-          <span class="block text-2xs text-subtle">{{ relative(row.createdAt) }}</span>
+          <span class="block text-2xs text-subtle">{{ dateTime(row.createdAt) }}</span>
         </template>
         <template #cell-customer="{ row }">
           <span class="block truncate text-content">{{ row.customer }}</span>
-          <span class="block truncate text-2xs text-subtle">{{ row.email }}</span>
+          <span class="block truncate text-2xs text-subtle">{{ row.contact }}</span>
         </template>
-        <template #cell-eventTitle="{ row }">
-          <span class="block truncate text-muted">{{ row.eventTitle }}</span>
-          <span class="block truncate text-2xs text-subtle">{{ dateFull(row.sessionAt) }}, {{ time(row.sessionAt) }}</span>
-        </template>
-        <template #cell-seats="{ row }">{{ ticketsLabel(row.seats) }}</template>
-        <template #cell-totalMinor="{ row }">
-          <span class="tabular-nums text-content">{{ money(row.totalMinor) }}</span>
-        </template>
-        <template #cell-channel="{ row }">
-          <span class="text-xs text-muted">{{ CHANNEL_LABEL[row.channel] }}</span>
+        <template #cell-total="{ row }">
+          <span class="tabular-nums text-content">{{ money(row.total) }}</span>
         </template>
         <template #cell-status="{ row }">
           <NStatusBadge kind="order" :status="row.status" />
@@ -153,65 +195,68 @@ function reset(): void {
         </template>
         <template #mobile-meta="{ row }">
           <span class="font-mono">{{ row.number }}</span>
-          <span>{{ ticketsLabel(row.seats) }}</span>
-          <span>{{ money(row.totalMinor) }}</span>
+          <span>{{ money(row.total) }}</span>
           <NStatusBadge kind="order" :status="row.status" />
         </template>
       </NDataTable>
 
       <NEmptyState
-        v-else
+        v-else-if="!loading"
         class="surface-card"
         icon="⌕"
-        title="Ничего не найдено"
-        description="Под текущие фильтры не подходит ни один заказ."
-        action-label="Сбросить фильтры"
-        @action="reset"
+        title="Заказов пока нет"
+        description="Как только покупатель оформит заказ на витрине, он появится здесь."
       />
     </div>
 
     <!-- Деталка заказа -->
     <NModal
-      v-model:open="detailOpen"
-      :title="detail ? `Заказ ${detail.number}` : 'Заказ'"
-      :description="detail ? `${detail.eventTitle} · ${dateFull(detail.sessionAt)}, ${time(detail.sessionAt)}` : ''"
+      :open="detailOpen"
+      :title="`Заказ ${detail?.order_number ?? detail?.id ?? ''}`"
+      :description="detail?.payment_status ? `Оплата: ${detail.payment_status}` : ''"
       size="lg"
+      @update:open="detailOpen = false"
     >
       <div v-if="detail" class="space-y-4">
         <div class="grid gap-3 sm:grid-cols-2">
           <div class="rounded-lg border border-line bg-surface-2 p-3">
             <p class="text-2xs uppercase tracking-wide text-subtle">Покупатель</p>
-            <p class="mt-0.5 text-sm text-content">{{ detail.customer }}</p>
-            <p class="mt-0.5 text-xs text-muted">{{ detail.email }}</p>
+            <p class="mt-0.5 text-sm text-content">{{ customerName(detail) }}</p>
+            <p class="mt-0.5 text-xs text-muted">{{ customerContact(detail) }}</p>
           </div>
           <div class="rounded-lg border border-line bg-surface-2 p-3">
-            <p class="text-2xs uppercase tracking-wide text-subtle">Канал</p>
-            <p class="mt-0.5 text-sm text-content">{{ CHANNEL_LABEL[detail.channel] }}</p>
-            <p class="mt-0.5 text-xs text-muted">{{ relative(detail.createdAt) }}</p>
+            <p class="text-2xs uppercase tracking-wide text-subtle">Статус</p>
+            <p class="mt-0.5"><NStatusBadge kind="order" :status="detail.status" size="md" /></p>
+            <p class="mt-0.5 text-xs text-muted">Создан: {{ dateTime(detail.created_at ?? '') }}</p>
+          </div>
+        </div>
+
+        <div v-if="detail.items?.length" class="rounded-lg border border-line bg-surface-2 p-3">
+          <p class="mb-1 text-2xs uppercase tracking-wide text-subtle">Состав заказа</p>
+          <div v-for="(item, i) in detail.items" :key="i" class="flex items-baseline justify-between gap-2 py-1 text-sm">
+            <span class="text-content">{{ item.title ?? `Позиция #${item.id ?? ''}` }}</span>
+            <span class="tabular-nums text-muted">{{ item.quantity ?? 1 }} × {{ money(item.unit_price ?? 0) }}</span>
           </div>
         </div>
 
         <dl class="space-y-2 text-sm">
-          <div class="flex justify-between border-b border-line pb-2">
-            <dt class="text-muted">{{ ticketsLabel(detail.seats) }}</dt>
-            <dd class="tabular-nums text-content">{{ money(detail.totalMinor) }}</dd>
-          </div>
           <div class="flex justify-between">
             <dt class="font-medium text-content">Итого</dt>
-            <dd class="text-lg font-semibold tabular-nums text-content">{{ money(detail.totalMinor) }}</dd>
+            <dd class="text-lg font-semibold tabular-nums text-content">{{ money(detail.total_amount ?? 0) }}</dd>
           </div>
         </dl>
-
-        <div class="flex items-center gap-2">
-          <span class="text-xs text-subtle">Статус:</span>
-          <NStatusBadge kind="order" :status="detail.status" size="md" />
-        </div>
       </div>
 
       <template #footer>
         <NButton variant="ghost" @click="detailOpen = false">Закрыть</NButton>
-        <NButton variant="secondary">Перевыпустить билеты</NButton>
-        <NButton variant="danger" @click="refund">Оформить возврат</NButton>
+        <NButton
+          v-if="detail && !['cancelled', 'refunded', 'expired'].includes(detail.status)"
+          variant="danger"
+          :loading="cancelling"
+          @click="cancelOrder"
+        >
+          Отменить заказ
+        </NButton>
       </template>
     </NModal>
   </div>

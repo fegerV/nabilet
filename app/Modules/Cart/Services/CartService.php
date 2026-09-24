@@ -48,8 +48,6 @@ class CartService
                 'session_id' => $sessionId,
                 'user_id' => $session->user_id ?? null,
                 'status' => 'active',
-                'currency' => 'RUB',
-                'total_amount' => '0',
                 'expires_at' => CarbonImmutable::now()->addMinutes(15),
             ]);
         }
@@ -109,7 +107,7 @@ class CartService
 
                 $existingItem->update([
                     'quantity' => $newQuantity,
-                    'total_price' => $this->calculateTotalPrice($inventoryItem->unit_price ?? '0', $newQuantity),
+                    'total_price' => $this->calculateTotalPrice($inventoryItem->price_amount ?? '0', $newQuantity),
                 ]);
 
                 $this->recalculateCartTotal($cart);
@@ -122,8 +120,8 @@ class CartService
                 'cart_id' => $cart->id,
                 'inventory_item_id' => $inventoryItemId,
                 'quantity' => $quantity,
-                'unit_price' => $inventoryItem->unit_price,
-                'total_price' => $this->calculateTotalPrice($inventoryItem->unit_price, $quantity),
+                'unit_price' => (string) $inventoryItem->price_amount,
+                'total_price' => $this->calculateTotalPrice((string) $inventoryItem->price_amount, $quantity),
             ]);
 
             $this->recalculateCartTotal($cart);
@@ -151,6 +149,18 @@ class CartService
                 ->firstOrFail();
 
             $cartItem->delete();
+
+            // Вернуть место в продажу: холд — обратимая операция.
+            $inventoryItem = \Nabilet\Modules\Inventory\Models\InventoryItem::query()
+                ->where('id', $cartItem->inventory_item_id)
+                ->first();
+
+            if ($inventoryItem) {
+                $inventoryItem->increment('available_quantity');
+                if ($inventoryItem->status === 'held') {
+                    $inventoryItem->update(['status' => 'available']);
+                }
+            }
 
             $this->recalculateCartTotal($cart);
 
@@ -188,11 +198,19 @@ class CartService
                 throw new DomainRuleViolation('Cart is empty.', 'CART_EMPTY');
             }
 
-            // Validate all items still have available inventory
+            // Validate all items still have available inventory.
+            // addItem() already reserved (decremented) available_quantity for
+            // these cart items — the seat belongs to THIS cart now. A concurrent
+            // buyer physically cannot take it (atomic decrement). So we only
+            // fail if the quantity somehow went negative or the item vanished.
             foreach ($cart->items as $item) {
                 $inventoryItem = $item->inventoryItem;
 
-                if ($inventoryItem->available_quantity < $item->quantity) {
+                if ($inventoryItem === null) {
+                    throw ConflictError::seatUnavailable((string) $item->inventory_item_id);
+                }
+
+                if ($inventoryItem->available_quantity < 0) {
                     throw ConflictError::seatUnavailable((string) $inventoryItem->id, [
                         'requested_quantity' => $item->quantity,
                         'available_quantity' => $inventoryItem->available_quantity,
@@ -202,6 +220,15 @@ class CartService
 
             // Mark cart as converted
             $cart->update(['status' => 'converted']);
+
+            // Finalize inventory: the seats this cart held are now sold.
+            // available_quantity stays 0 (already decremented by addItem); we
+            // flip status so they render as sold and cannot be re-held.
+            foreach ($cart->items as $item) {
+                if ($item->inventoryItem !== null) {
+                    $item->inventoryItem->update(['status' => 'sold']);
+                }
+            }
 
             // Here we would typically create an order
             // For now, return cart data for order creation

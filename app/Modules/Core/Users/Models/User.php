@@ -7,6 +7,7 @@ namespace Nabilet\Modules\Core\Users\Models;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
+use Laravel\Sanctum\HasApiTokens;
 use Nabilet\Modules\Core\Organizations\Models\Organization;
 use Nabilet\Modules\Core\Models\Role;
 use Nabilet\Modules\Core\Models\UserRole;
@@ -45,6 +46,8 @@ use Nabilet\Modules\Analytics\Models\AbAssignment;
  */
 class User extends Authenticatable
 {
+    use HasApiTokens;
+
     protected $table = 'users';
 
     /**
@@ -85,16 +88,14 @@ class User extends Authenticatable
     }
 
     public function organizations(): BelongsToMany
-    {
-        return $this->belongsToMany(Organization::class, 'user_organization')
-            ->withPivot('role_id')
-            ->withTimestamps();
-    }
+        {
+            return $this->belongsToMany(Organization::class, 'user_organization')
+                ->withPivot('role_id');
+        }
 
     public function roles(): BelongsToMany
     {
-        return $this->belongsToMany(Role::class, 'user_role')
-            ->withTimestamps();
+        return $this->belongsToMany(Role::class, 'user_roles');
     }
 
     public function userRoles(): HasMany

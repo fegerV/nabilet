@@ -54,10 +54,15 @@ return [
         'providers' => explode(',', env('PAYMENT_PROVIDERS', 'yookassa')),
         'webhook_secret' => env('PAYMENT_WEBHOOK_SECRET'),
 
-        // Провайдер по умолчанию для новых платежей. `PaymentService` берёт его
-        // отсюда: колонка `payments.provider` объявлена NOT NULL, поэтому «пусто»
-        // здесь означало бы отказ вставки, а не «без провайдера».
-        'default_provider' => env('PAYMENTS_DEFAULT_PROVIDER', 'yookassa'),
+        // Продакшен → ЮKassa. demo_mode=true → локальный симулятор оплаты:
+                // провайдер не ходит в API, а возвращает confirmation_url на наш
+                // demo-pay endpoint. Включается, когда нет реальных ключей.
+                'demo_mode' => env('PAYMENT_DEMO_MODE', 'false') === 'true',
+
+                // Провайдер по умолчанию для новых платежей. `PaymentService` берёт его
+                // отсюда: колонка `payments.provider` объявлена NOT NULL, поэтому «пусто»
+                // здесь означало бы отказ вставки, а не «без провайдера».
+                'default_provider' => env('PAYMENTS_DEFAULT_PROVIDER', 'yookassa'),
 
         // YooKassa. Обе строки обязательны для конструктора `YooKassaProvider`:
         // контейнер не может вывести их сам, поэтому провайдер создаётся вручную

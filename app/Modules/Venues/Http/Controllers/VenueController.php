@@ -47,6 +47,75 @@ class VenueController extends Controller
         return response()->json(['data' => $venue]);
     }
 
+    public function store(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'organization_id' => ['nullable', 'integer', 'exists:organizations,id'],
+            'name' => ['required', 'string', 'max:255'],
+            'slug' => ['nullable', 'string', 'max:255', 'unique:venues,slug'],
+            'description' => ['nullable', 'string'],
+            'country' => ['nullable', 'string', 'max:255'],
+            'region' => ['nullable', 'string', 'max:255'],
+            'city' => ['nullable', 'string', 'max:255'],
+            'address' => ['nullable', 'string', 'max:255'],
+            'latitude' => ['nullable', 'numeric', 'between:-90,90'],
+            'longitude' => ['nullable', 'numeric', 'between:-180,180'],
+            'status' => ['nullable', 'string', 'in:active,inactive'],
+        ]);
+
+        $data['status'] ??= 'active';
+
+                // организации пользователя или системный дефолт. БД требует NOT NULL.
+                if (empty($data['organization_id'])) {
+                    $orgId = $request->user()?->organizations()->first()?->id;
+                    $data['organization_id'] = $orgId ?? \Nabilet\Modules\Core\Organizations\Models\Organization::query()->value('id');
+                }
+
+                // БД требует slug NOT NULL — генерим из name, если не передан.
+        if (empty($data['slug'])) {
+            $base = \Illuminate\Support\Str::slug($data['name']);
+            $data['slug'] = $base;
+            $i = 2;
+            while (Venue::where('slug', $data['slug'])->exists()) {
+                $data['slug'] = $base . '-' . $i++;
+            }
+        }
+
+        $venue = Venue::create($data);
+        $venue->load('organization');
+
+        return response()->json(['success' => true, 'data' => $venue], 201);
+    }
+
+    public function update(Request $request, Venue $venue): JsonResponse
+    {
+        $data = $request->validate([
+            'organization_id' => ['nullable', 'integer', 'exists:organizations,id'],
+            'name' => ['sometimes', 'required', 'string', 'max:255'],
+            'slug' => ['sometimes', 'nullable', 'string', 'max:255', 'unique:venues,slug,' . $venue->id],
+            'description' => ['nullable', 'string'],
+            'country' => ['nullable', 'string', 'max:255'],
+            'region' => ['nullable', 'string', 'max:255'],
+            'city' => ['nullable', 'string', 'max:255'],
+            'address' => ['nullable', 'string', 'max:255'],
+            'latitude' => ['nullable', 'numeric', 'between:-90,90'],
+            'longitude' => ['nullable', 'numeric', 'between:-180,180'],
+            'status' => ['sometimes', 'string', 'in:active,inactive'],
+        ]);
+
+        $venue->update(array_filter($data, fn ($v) => $v !== null));
+        $venue->load('organization');
+
+        return response()->json(['success' => true, 'data' => $venue]);
+    }
+
+    public function destroy(Venue $venue): JsonResponse
+    {
+        $venue->delete();
+
+        return response()->json(['success' => true, 'message' => 'Venue deleted successfully']);
+    }
+
     /**
      * Create a new hall schema for a venue
      */
