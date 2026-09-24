@@ -5,8 +5,8 @@
   "type": "module",
   "description": "NABILET Core — Vue-сборка: конструктор схем залов, конструктор билетов, дизайн-система интерфейсов",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
+    "dev": "vite --config vite.config.ts",
+        "build": "vite build --config vite.config.ts",
     "build:preview": "vite build --config vite.preview.config.ts && node tools/inline-preview.mjs",
     "preview": "vite preview",
     "typecheck": "vue-tsc --noEmit",

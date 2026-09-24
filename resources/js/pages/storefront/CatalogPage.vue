@@ -11,23 +11,69 @@ import { useRoute } from 'vue-router'
 import EventCard from '@/components/storefront/EventCard.vue'
 import NEmptyState from '@/components/ui/NEmptyState.vue'
 import NSegmented from '@/components/ui/NSegmented.vue'
-import { EVENTS, CATEGORIES } from '@/lib/mock'
+import { get } from '@/lib/api'
 
 const route = useRoute()
 const category = ref('Все')
 const query = computed(() => String(route.query.q ?? '').toLowerCase())
 
-const segments = computed(() => CATEGORIES.map((c) => ({ value: c, label: c })))
+/* Реальные события из API: /api/v1/events?status=published */
+const events = ref<EventItem[]>([])
+const loading = ref(true)
+const loadError = ref<string | null>(null)
 
-const events = computed(() => {
+interface EventItem {
+  id: string
+  slug: string
+  title: string
+  short_description?: string
+  status: string
+  category?: { name?: string } | null
+  poster?: string
+  cover?: string
+  sessions_count?: number
+  sessions?: Array<{ id: string; starts_at?: string; startsAt?: string; hall?: string; available_seats?: number; availableSeats?: number }>
+  venue?: { name?: string; city?: string } | null
+  organization?: { name?: string } | null
+  price_from_minor?: number
+  priceFromMinor?: number
+}
+
+async function loadEvents(): Promise<void> {
+  loading.value = true
+  loadError.value = null
+  try {
+    const res = await get<{ data: EventItem[] }>('/events?status=published&per_page=100')
+    events.value = res.data ?? []
+  } catch (e) {
+    loadError.value = e instanceof Error ? e.message : String(e)
+    events.value = []
+  } finally {
+    loading.value = false
+  }
+}
+loadEvents()
+
+/* Категории строим из реальных данных + «Все» */
+const categories = computed(() => {
+  const set = new Set<string>()
+  for (const it of events.value) {
+    const name = it.category?.name
+    if (name) set.add(name)
+  }
+  return ['Все', ...set]
+})
+
+const segments = computed(() => categories.value.map((c) => ({ value: c, label: c })))
+
+const filteredEvents = computed(() => {
   const q = query.value
-  return EVENTS.filter((event) => {
-    const byCategory = category.value === 'Все' || event.category === category.value
-    const byQuery =
-      !q ||
-      event.title.toLowerCase().includes(q) ||
-      event.venue.toLowerCase().includes(q) ||
-      event.city.toLowerCase().includes(q)
+  return events.value.filter((event) => {
+    const byCategory = category.value === 'Все' || (event.category?.name ?? '') === category.value
+    const title = event.title ?? ''
+    const venue = event.venue?.name ?? ''
+    const city = event.venue?.city ?? ''
+    const byQuery = !q || title.toLowerCase().includes(q) || venue.toLowerCase().includes(q) || city.toLowerCase().includes(q)
     return byCategory && byQuery
   })
 })
@@ -67,13 +113,17 @@ function resetFilters(): void {
     <!-- Сетка -->
     <div class="mx-auto max-w-content px-4 py-6 sm:px-6">
       <p class="mb-4 text-sm text-subtle">
-        {{ events.length }} {{ events.length === 1 ? 'событие' : 'событий' }}
-        <template v-if="query"> по запросу «{{ query }}»</template>
-      </p>
+              {{ filteredEvents.length }} {{ filteredEvents.length === 1 ? 'событие' : 'событий' }}
+              <template v-if="query"> по запросу «{{ query }}»</template>
+            </p>
 
-      <div v-if="events.length" class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <EventCard v-for="event in events" :key="event.id" :event="event" />
-      </div>
+      <div v-if="loading" class="py-10 text-sm text-subtle">Загрузка афиши…</div>
+
+          <div v-else-if="loadError" class="surface-card py-6 text-sm text-danger-500">Не удалось загрузить события: {{ loadError }}</div>
+
+          <div v-else-if="filteredEvents.length" class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <EventCard v-for="event in filteredEvents" :key="event.id" :event="event" />
+            </div>
 
       <NEmptyState
         v-else

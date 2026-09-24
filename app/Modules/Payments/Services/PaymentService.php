@@ -34,6 +34,107 @@ class PaymentService
     }
 
     /**
+     * Создать платёж у провайдера для заказа и сохранить Payment.
+     * Возвращает payment + confirmation_url (редирект на ЮKassa или demo-pay).
+     *
+     * @param  int  $orderId
+     * @param  array{idempotency_key?: string|null}  $data
+     * @return array{payment: Payment, confirmation_url: string|null}
+     */
+    public function initiatePayment(int $orderId, array $data = []): array
+    {
+        $order = Order::findOrFail($orderId);
+
+        return DB::transaction(function () use ($orderId, $order, $data) {
+            // Идемпотентность: один активный платёж на заказ.
+            $existing = Payment::where('order_id', $orderId)
+                ->whereIn('status', [PaymentStateMachine::PENDING, PaymentStateMachine::WAITING_FOR_CAPTURE])
+                ->first();
+
+            if ($existing) {
+                return [
+                    'payment' => $existing,
+                    'confirmation_url' => $existing->payment_url,
+                ];
+            }
+
+            $provider = $this->makeYooKassaProvider();
+            $providerResult = $provider->createPayment([
+                'order_id' => (string) $orderId,
+                'amount' => (int) $order->total_amount,
+                'currency' => $order->currency ?? 'RUB',
+                'description' => "Order #{$orderId}",
+                'success_url' => (string) config('nabilet.payment.yookassa.return_url', config('app.url')),
+                'idempotency_key' => $data['idempotency_key'] ?? (string) Str::ulid(),
+            ]);
+
+            $payment = $this->createPayment($orderId, [
+                'provider' => 'yookassa',
+                'provider_payment_id' => $providerResult['payment_id'],
+                'amount' => (int) $order->total_amount,
+                'currency' => $order->currency ?? 'RUB',
+                'payment_url' => $providerResult['confirmation_url'],
+                'idempotency_key' => $data['idempotency_key'] ?? null,
+            ]);
+
+            return [
+                'payment' => $payment,
+                'confirmation_url' => $providerResult['confirmation_url'],
+            ];
+        });
+    }
+
+    /**
+     * Подтвердить демо-платёж (симулятор ЮKassa в demo_mode).
+     * Ищет payment по provider_payment_id = demo_* и переводит его в succeeded.
+     */
+    public function confirmDemoPayment(string $providerPaymentId): Payment
+    {
+        if (!str_starts_with($providerPaymentId, 'demo_')) {
+            throw new DomainRuleViolation(
+                'Not a demo payment',
+                'NOT_DEMO_PAYMENT',
+                ['payment_id' => $providerPaymentId],
+                422,
+            );
+        }
+
+        $payment = Payment::where('provider', 'yookassa')
+            ->where('provider_payment_id', $providerPaymentId)
+            ->first();
+
+        if (!$payment) {
+            throw new DomainRuleViolation(
+                'Demo payment not found',
+                'UNKNOWN_PAYMENT',
+                ['payment_id' => $providerPaymentId],
+                404,
+            );
+        }
+
+        return $this->processWebhook('yookassa', [
+            'event' => 'payment.succeeded',
+            'object' => [
+                'id' => $payment->provider_payment_id,
+                'created_at' => now()->toIso8601String(),
+            ],
+            'event_id' => $providerPaymentId . ':demo:confirm:' . Str::ulid(),
+        ]);
+    }
+
+    protected function makeYooKassaProvider(): YooKassaProvider
+    {
+        try {
+            return app(YooKassaProvider::class);
+        } catch (\Throwable $e) {
+            // Провайдер создаётся в контейнере (PaymentServiceProvider) с ключами из
+            // конфига; если там пусто и demo_mode выключен — конструктор бросит
+            // RuntimeException, пробрасываем с понятным сообщением.
+            throw new \RuntimeException('YooKassa provider is not available: ' . $e->getMessage());
+        }
+    }
+
+    /**
      * @param  array{provider?: string, provider_payment_id?: string|null, amount?: int|null,
      *               currency?: string|null, payment_url?: string|null, idempotency_key?: string|null}  $data
      */

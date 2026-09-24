@@ -11,10 +11,17 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUiStore } from '@/stores/ui'
+import { logout, clearCurrentUser } from '@/lib/auth'
 
 const ui = useUiStore()
 const router = useRouter()
 const collapsed = ref(false)
+
+async function doLogout(): Promise<void> {
+  await logout()
+  clearCurrentUser()
+  router.push('/admin/login')
+}
 
 const GROUPS = [
   {
@@ -147,12 +154,20 @@ const currentOrg = ref(ORGANIZATIONS[0])
         >{{ ui.isDark ? '☾' : '☀' }}</button>
 
         <button
-          type="button"
-          class="grid h-11 w-11 flex-none place-items-center rounded-full bg-surface-3 text-sm text-content"
-          aria-label="Профиль"
-          @click="router.push('/')"
-        >АК</button>
-      </header>
+                  type="button"
+                  class="grid h-11 w-11 flex-none place-items-center rounded-full bg-surface-3 text-sm text-content"
+                  aria-label="Профиль"
+                  @click="router.push('/')"
+                >АК</button>
+
+                <button
+                  type="button"
+                  class="grid h-11 w-11 flex-none place-items-center rounded-lg border border-line text-sm text-muted transition-colors hover:border-rose-400/40 hover:text-rose-400"
+                  aria-label="Выйти из админки"
+                  title="Выйти"
+                  @click="doLogout"
+                >⏻</button>
+              </header>
 
       <main class="min-w-0 flex-1 px-4 py-5 sm:px-6 sm:py-6">
         <router-view />

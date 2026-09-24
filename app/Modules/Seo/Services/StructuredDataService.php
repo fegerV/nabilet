@@ -193,15 +193,18 @@ class StructuredDataService
         }
 
         // Single default offer
-        return [
-            '@type' => 'Offer',
-            'name' => 'General Admission',
-            'url' => route('events.show', ['eventId' => $eventData['public_id'] ?? '']),
-            'price' => $eventData['ticket_price'] ?? 0,
-            'priceCurrency' => $eventData['currency'] ?? 'RUB',
-            'availability' => $this->getOfferAvailability($eventData['status'] ?? EventStateMachine::DRAFT),
-            'validFrom' => $this->formatDateTime($eventData['published_at'] ?? null),
-        ];
+                return [
+                    '@type' => 'Offer',
+                    'name' => 'General Admission',
+                    'url' => route('events.show', [
+                        'slug' => $eventData['slug'] ?? '',
+                        'publicId' => $eventData['public_id'] ?? '',
+                    ]),
+                    'price' => $eventData['ticket_price'] ?? 0,
+                    'priceCurrency' => $eventData['currency'] ?? 'RUB',
+                    'availability' => $this->getOfferAvailability($eventData['status'] ?? EventStateMachine::DRAFT),
+                    'validFrom' => $this->formatDateTime($eventData['published_at'] ?? null),
+                ];
     }
 
     /**

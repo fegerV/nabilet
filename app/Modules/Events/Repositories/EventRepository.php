@@ -20,7 +20,9 @@ class EventRepository
      */
     public function paginate(array $filters = [], int $perPage = 20): LengthAwarePaginator
     {
-        return $this->applyFilters($filters)->paginate($perPage);
+        return $this->applyFilters($filters)
+            ->with(['category', 'sessions.venue', 'sessions.hall', 'sessions.inventoryItems'])
+            ->paginate($perPage);
     }
 
     /**

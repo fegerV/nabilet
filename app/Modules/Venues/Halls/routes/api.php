@@ -22,10 +22,11 @@ use Nabilet\Modules\Venues\Halls\Http\Controllers\HallController;
 
 // Public hall routes
 Route::get('/venues/{venueId}/halls', [HallController::class, 'index'])->name('halls.index');
+Route::get('/halls', [HallController::class, 'indexAll'])->name('halls.all');
 Route::get('/halls/{publicId}', [HallController::class, 'show'])->name('halls.show');
 
 // Protected hall management routes
-Route::middleware(['auth:api', 'role:admin'])->group(function () {
+Route::middleware(['auth:sanctum', 'admin'])->group(function () {
     Route::post('/halls', [HallController::class, 'store'])->name('halls.store');
     Route::put('/halls/{publicId}', [HallController::class, 'update'])->name('halls.update');
     Route::delete('/halls/{publicId}', [HallController::class, 'destroy'])->name('halls.destroy');

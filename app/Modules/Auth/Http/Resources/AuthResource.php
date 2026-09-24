@@ -19,6 +19,9 @@ class AuthResource extends JsonResource
             'phone' => $this->phone,
             'email_verified_at' => $this->email_verified_at?->toIso8601String(),
             'created_at' => $this->created_at?->toIso8601String(),
+            'roles' => $this->relationLoaded('roles')
+                ? $this->roles->pluck('slug')->values()
+                : [],
         ];
     }
 }

@@ -32,6 +32,8 @@ export const useCartStore = defineStore('cart', () => {
   const promoCode = ref<string | null>(null)
   const promoDiscountMinor = ref(0)
   const loading = ref(false)
+  /** cart_item_id по id места — для снятия холда на сервере. */
+  const meta = ref<Record<string, string>>({})
 
   let ticker: number | null = null
 
@@ -66,6 +68,7 @@ export const useCartStore = defineStore('cart', () => {
   function clear(): void {
     selectedIds.value = new Set()
     seats.value = []
+    meta.value = {}
     promoCode.value = null
     promoDiscountMinor.value = 0
     stopHold()
@@ -115,6 +118,7 @@ export const useCartStore = defineStore('cart', () => {
   return {
     seats,
     selectedIds,
+    meta,
     holdSecondsLeft,
     promoCode,
     promoDiscountMinor,

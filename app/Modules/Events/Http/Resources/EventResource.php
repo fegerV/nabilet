@@ -17,6 +17,9 @@ class EventResource extends JsonResource
     public function toArray($request): array
     {
         /** @var Event $this */
+        $venue = $this->sessions
+            ?->first(fn ($s) => $s->venue !== null)?->venue;
+
         return [
             'id' => $this->id,
             'public_id' => $this->public_id,
@@ -34,6 +37,24 @@ class EventResource extends JsonResource
             'cover' => $this->cover,
             'seo_title' => $this->seo_title,
             'seo_description' => $this->seo_description,
+            'venue' => $venue ? [
+                'name' => $venue->name,
+                'city' => $venue->city ?? null,
+            ] : null,
+            'sessions' => $this->whenLoaded('sessions', fn() => $this->sessions
+                ->map(fn ($s) => [
+                    'id' => $s->id,
+                    'starts_at' => $s->starts_at?->toIso8601String(),
+                    'startsAt' => $s->starts_at?->toIso8601String(),
+                    'hall' => $s->hall?->name,
+                    'available_seats' => $s->inventoryItems
+                        ->filter(fn ($i) => $i->status === 'available' && ($i->available_quantity ?? 0) > 0)
+                        ->count(),
+                    'availableSeats' => $s->inventoryItems
+                        ->filter(fn ($i) => $i->status === 'available' && ($i->available_quantity ?? 0) > 0)
+                        ->count(),
+                ])
+                ->toArray()),
             'created_at' => $this->created_at?->toIso8601String(),
             'updated_at' => $this->updated_at?->toIso8601String(),
         ];

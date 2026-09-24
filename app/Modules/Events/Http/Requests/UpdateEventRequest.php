@@ -10,9 +10,17 @@ use Illuminate\Foundation\Http\FormRequest;
 class UpdateEventRequest extends FormRequest
 {
     public function authorize(): bool
-    {
-        return $this->user()?->can('update', $this->route('event')) ?? false;
-    }
+        {
+            // Write-роуты уже под auth:sanctum + admin (middleware 'admin').
+            // Здесь дублируем роль-проверку, чтобы FormRequest не зависел от
+            // несуществующей EventPolicy (can('update') всегда false → 403).
+            $user = $this->user();
+            if (! $user) {
+                return false;
+            }
+
+            return $user->roles()->pluck('slug')->intersect(['admin', 'manager'])->isNotEmpty();
+        }
 
     public function rules(): array
     {

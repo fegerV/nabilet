@@ -67,6 +67,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'organization' => \Nabilet\Core\Http\Middleware\ResolveOrganizationContext::class,
             'permission' => \Nabilet\Core\Http\Middleware\RequirePermission::class,
             'idempotent' => \Nabilet\Core\Http\Middleware\EnsureIdempotency::class,
+            'admin' => \Nabilet\Core\Http\Middleware\EnsureAdminRole::class,
         ]);
 
         // Trusted proxies so client IPs survive a load balancer / CDN. Without this

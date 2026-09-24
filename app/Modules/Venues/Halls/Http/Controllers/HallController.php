@@ -38,6 +38,14 @@ class HallController extends Controller
         return new HallCollection($halls);
     }
 
+    /**
+     * Все залы (для формы сеанса в админке).
+     */
+    public function indexAll(): HallCollection
+    {
+        return new HallCollection($this->service->findAll());
+    }
+
     public function show(string $publicId): HallResource
     {
         return new HallResource($this->findOrFail($publicId));
@@ -52,7 +60,14 @@ class HallController extends Controller
             'venue_id' => ['bail', 'required', 'integer', 'exists:venues,id'],
             'name' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string', 'max:1000'],
+            'capacity' => ['nullable', 'integer', 'min:0'],
+            'width' => ['nullable', 'integer', 'min:0'],
+            'height' => ['nullable', 'integer', 'min:0'],
+            'status' => ['nullable', 'string', 'in:active,inactive'],
         ]);
+
+        // БД требует status NOT NULL.
+        $validated['status'] ??= 'active';
 
         $hall = $this->service->createHall($validated);
 

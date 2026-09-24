@@ -8,8 +8,12 @@ use Illuminate\Support\Facades\Route;
 // Mounted at /api/v1 by bootstrap/app.php — do not repeat the version segment.
 Route::prefix('payments')->middleware(['auth:api'])->group(function () {
     Route::get('/', [PaymentController::class, 'index']);
+    Route::post('/', [PaymentController::class, 'store']);
     Route::get('/{payment}', [PaymentController::class, 'show']);
 });
+
+// Демо-подтверждение оплаты (симулятор ЮKassa, только в demo_mode).
+Route::post('payments/demo-pay', [PaymentController::class, 'demoPay']);
 
 // Webhook routes are public - payment providers don't authenticate.
 // Deliberately outside the auth:api group above. The path used to carry a

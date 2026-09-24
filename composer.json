@@ -18,6 +18,7 @@
         "ext-pdo": "*",
         "filament/filament": "^3.2",
         "laravel/framework": "^13.0",
+        "laravel/sanctum": "^4.3",
         "laravel/tinker": "^3.0",
         "predis/predis": "^2.2",
         "symfony/http-foundation": "^7.0",

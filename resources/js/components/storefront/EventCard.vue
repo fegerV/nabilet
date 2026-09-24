@@ -14,11 +14,18 @@ import type { EventCard as EventCardType } from '@/lib/types'
 
 const props = defineProps<{ event: EventCardType }>()
 
-const posterStyle = computed(() => ({
-  background: `linear-gradient(145deg, ${props.event.posterFrom} 0%, ${props.event.posterTo} 100%)`,
-}))
+/* Постер из API (если есть) или дефолтный градиент. */
+const posterStyle = computed(() => {
+  const poster = props.event.poster
+  if (poster) {
+    return { backgroundImage: `url(${poster})` }
+  }
+  return {
+    background: `linear-gradient(145deg, ${props.event.posterFrom ?? '#7C3AED'} 0%, ${props.event.posterTo ?? '#FF5C22'} 100%)`,
+  }
+})
 
-const nextSession = computed(() => props.event.sessions[0])
+const nextSession = computed(() => props.event.sessions?.[0])
 const soldOut = computed(() => props.event.status === 'sold_out')
 </script>
 
@@ -35,14 +42,14 @@ const soldOut = computed(() => props.event.status === 'sold_out')
       />
 
       <div class="absolute inset-x-0 top-0 flex items-start justify-between p-3">
-        <NBadge tone="brand" class="backdrop-blur">{{ event.category }}</NBadge>
-        <NStatusBadge kind="event" :status="event.status" />
-      </div>
+              <NBadge tone="brand" class="backdrop-blur">{{ typeof event.category === 'string' ? event.category : (event.category?.name ?? '') }}</NBadge>
+              <NStatusBadge kind="event" :status="event.status" />
+            </div>
 
       <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-overlay/85 to-transparent p-3 pt-10">
-        <h3 class="text-balance text-base font-semibold leading-snug text-white">{{ event.title }}</h3>
-        <p class="mt-0.5 truncate text-xs text-white/70">{{ event.subtitle }}</p>
-      </div>
+              <h3 class="text-balance text-base font-semibold leading-snug text-white">{{ event.title }}</h3>
+              <p class="mt-0.5 truncate text-xs text-white/70">{{ event.subtitle ?? event.short_description ?? '' }}</p>
+            </div>
     </div>
 
     <!-- Метаданные -->
@@ -54,15 +61,15 @@ const soldOut = computed(() => props.event.status === 'sold_out')
       </div>
 
       <div class="flex items-center gap-2 text-xs text-muted">
-        <span aria-hidden="true">⌖</span>
-        <span class="truncate">{{ event.venue }}, {{ event.city }}</span>
-      </div>
+              <span aria-hidden="true">⌖</span>
+              <span class="truncate">{{ event.venue?.name ?? event.venue ?? '' }}{{ event.venue?.city ? `, ${event.venue.city}` : '' }}</span>
+            </div>
 
-      <div class="mt-auto flex items-end justify-between gap-3 border-t border-line pt-3">
-        <div>
-          <p class="text-2xs uppercase tracking-wide text-subtle">от</p>
-          <p class="text-base font-semibold tabular-nums text-content">{{ money(event.priceFromMinor) }}</p>
-        </div>
+            <div class="mt-auto flex items-end justify-between gap-3 border-t border-line pt-3">
+              <div>
+                <p class="text-2xs uppercase tracking-wide text-subtle">от</p>
+                <p class="text-base font-semibold tabular-nums text-content">{{ money(event.price_from_minor ?? event.priceFromMinor ?? 0) }}</p>
+              </div>
 
         <span
           class="rounded-lg px-3 py-2 text-sm font-medium transition-colors"
@@ -79,9 +86,9 @@ const soldOut = computed(() => props.event.status === 'sold_out')
 
     <!-- Вся карточка — ссылка: кликабельная область не должна быть только текстом -->
     <RouterLink
-      :to="`/event/${event.id}`"
-      class="absolute inset-0 rounded-xl"
-      :aria-label="`Открыть событие ${event.title}`"
-    />
+          :to="`/event/${event.slug || event.id}`"
+          class="absolute inset-0 rounded-xl"
+          :aria-label="`Открыть событие ${event.title}`"
+        />
   </article>
 </template>

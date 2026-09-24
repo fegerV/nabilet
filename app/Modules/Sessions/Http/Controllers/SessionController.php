@@ -49,4 +49,89 @@ class SessionController extends Controller
         
         return response()->json(['data' => $session]);
     }
+
+    public function store(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'event_id' => ['required', 'integer', 'exists:events,id'],
+            'venue_id' => ['nullable', 'integer', 'exists:venues,id'],
+            'hall_id' => ['required', 'integer', 'exists:halls,id'],
+            'schema_version_id' => ['nullable', 'integer', 'exists:hall_schema_versions,id'],
+            'starts_at' => ['required', 'date'],
+            'ends_at' => ['nullable', 'date', 'after:starts_at'],
+            'sales_start_at' => ['nullable', 'date'],
+            'sales_end_at' => ['nullable', 'date', 'after:sales_start_at'],
+            'timezone' => ['nullable', 'string', 'max:64'],
+            'status' => ['nullable', 'string', 'in:scheduled,on_sale,held,completed,cancelled'],
+        ]);
+
+        $data['status'] ??= 'scheduled';
+                $data['timezone'] ??= config('app.timezone', 'UTC');
+
+                // БД требует venue_id NOT NULL; форма его не шлёт — берём площадку зала.
+                        if (empty($data['venue_id']) && !empty($data['hall_id'])) {
+                            $data['venue_id'] = \Nabilet\Modules\Venues\Models\Hall::query()
+                                ->where('id', $data['hall_id'])
+                                ->value('venue_id');
+                        }
+
+                        // БД требует schema_version_id NOT NULL — берём последнюю published схему зала.
+                        if (empty($data['schema_version_id']) && !empty($data['hall_id'])) {
+                            $data['schema_version_id'] = \Nabilet\Modules\Venues\Models\HallSchemaVersion::query()
+                                ->where('hall_id', $data['hall_id'])
+                                ->where('status', 'published')
+                                ->orderByDesc('id')
+                                ->value('id');
+                        }
+
+                        $session = Session::create($data);
+        $session->load(['event', 'hall', 'schemaVersion']);
+
+        return response()->json(['success' => true, 'data' => $session], 201);
+    }
+
+    public function update(Request $request, Session $session): JsonResponse
+    {
+        $data = $request->validate([
+            'event_id' => ['sometimes', 'integer', 'exists:events,id'],
+            'venue_id' => ['nullable', 'integer', 'exists:venues,id'],
+            'hall_id' => ['sometimes', 'integer', 'exists:halls,id'],
+            'schema_version_id' => ['nullable', 'integer', 'exists:hall_schema_versions,id'],
+            'starts_at' => ['sometimes', 'date'],
+            'ends_at' => ['nullable', 'date', 'after:starts_at'],
+            'sales_start_at' => ['nullable', 'date'],
+            'sales_end_at' => ['nullable', 'date', 'after:sales_start_at'],
+            'timezone' => ['nullable', 'string', 'max:64'],
+            'status' => ['sometimes', 'string', 'in:scheduled,on_sale,held,completed,cancelled'],
+        ]);
+
+        // БД требует venue_id NOT NULL; при смене зала обновляем площадку зала.
+                if (empty($data['venue_id']) && !empty($data['hall_id'])) {
+                    $data['venue_id'] = \Nabilet\Modules\Venues\Models\Hall::query()
+                        ->where('id', $data['hall_id'])
+                        ->value('venue_id');
+                }
+
+                // БД требует schema_version_id NOT NULL — берём последнюю published схему зала.
+                if (empty($data['schema_version_id']) && !empty($data['hall_id'])) {
+                    $data['schema_version_id'] = \Nabilet\Modules\Venues\Models\HallSchemaVersion::query()
+                        ->where('hall_id', $data['hall_id'])
+                        ->where('status', 'published')
+                        ->orderByDesc('id')
+                        ->value('id');
+                }
+
+                $session->update($data);
+        $session->load(['event', 'hall', 'schemaVersion']);
+
+        return response()->json(['success' => true, 'data' => $session]);
+    }
+
+    /** Удаление сеанса. Отменяем, если есть продажи — но в MVP удаляем каскадно. */
+    public function destroy(Session $session): JsonResponse
+    {
+        $session->delete();
+
+        return response()->json(['success' => true, 'message' => 'Session deleted successfully']);
+    }
 }

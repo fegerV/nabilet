@@ -44,9 +44,17 @@ class HallService
      * gives one place to add scoping later.
      */
     public function findByVenue(int $venueId, int $limit = 15): LengthAwarePaginator
-    {
-        return $this->repository->findByVenue($venueId, $limit);
-    }
+        {
+            return $this->repository->findByVenue($venueId, $limit);
+        }
+
+        /**
+         * Все залы (для селекта в форме сеанса).
+         */
+        public function findAll(): LengthAwarePaginator
+        {
+            return $this->repository->paginate(100);
+        }
 
     public function findByPublicId(string $publicId): ?Hall
     {
