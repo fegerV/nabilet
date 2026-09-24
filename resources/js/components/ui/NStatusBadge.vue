@@ -11,7 +11,7 @@ import NBadge from './NBadge.vue'
 import type { EventStatus, OrderStatus, TicketStatus, Tone } from '@/lib/types'
 
 const props = defineProps<{
-  kind: 'order' | 'ticket' | 'event' | 'session'
+  kind: 'order' | 'ticket' | 'event' | 'session' | 'hall'
   status: OrderStatus | TicketStatus | EventStatus | string
   size?: 'sm' | 'md'
 }>()
@@ -51,6 +51,11 @@ const SESSION: Record<string, { label: string; tone: Tone; dot: boolean }> = {
   cancelled: { label: 'Отменён', tone: 'rose', dot: false },
 }
 
+const HALL: Record<string, { label: string; tone: Tone; dot: boolean }> = {
+  active: { label: 'Активен', tone: 'mint', dot: true },
+  inactive: { label: 'Неактивен', tone: 'neutral', dot: false },
+}
+
 /** Разные сущности — разные наборы статусов, поэтому выбор идёт по типу. */
 const meta =
   props.kind === 'order'
@@ -59,7 +64,9 @@ const meta =
       ? TICKET[props.status as TicketStatus]
       : props.kind === 'session'
         ? SESSION[props.status as string]
-        : EVENT[props.status as EventStatus]
+        : props.kind === 'hall'
+          ? HALL[props.status as string]
+          : EVENT[props.status as EventStatus]
 </script>
 
 <template>

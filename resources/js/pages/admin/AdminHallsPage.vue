@@ -9,7 +9,6 @@ import { computed, ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import NDataTable from '@/components/ui/NDataTable.vue'
 import NStatusBadge from '@/components/ui/NStatusBadge.vue'
-import NButton from '@/components/ui/NButton.vue'
 import { get } from '@/lib/api'
 import type { Column } from '@/components/ui/NDataTable.vue'
 
@@ -98,7 +97,7 @@ function openEditor(row: { raw: ApiHall }): void {
           <span class="tabular-nums text-muted">{{ row.capacity }}</span>
         </template>
         <template #cell-status="{ row }">
-          <NStatusBadge kind="venue" :status="row.status" />
+          <NStatusBadge kind="hall" :status="row.status" />
         </template>
 
         <template #mobile-title="{ row }">
@@ -106,7 +105,7 @@ function openEditor(row: { raw: ApiHall }): void {
         </template>
         <template #mobile-meta="{ row }">
           <span>{{ row.venue }}</span>
-          <NStatusBadge kind="venue" :status="row.status" />
+          <NStatusBadge kind="hall" :status="row.status" />
         </template>
       </NDataTable>
     </div>

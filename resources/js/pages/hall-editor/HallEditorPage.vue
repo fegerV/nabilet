@@ -16,6 +16,7 @@
  *     удаление сектора через отмену, а не «ой, сейчас перерисую».
  */
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import Konva from 'konva'
 import NButton from '@/components/ui/NButton.vue'
 import NInput from '@/components/ui/NInput.vue'
@@ -24,6 +25,7 @@ import NBadge from '@/components/ui/NBadge.vue'
 import { useUiStore } from '@/stores/ui'
 import { money, plural } from '@/lib/format'
 import { cn } from '@/lib/cn'
+import { get, send } from '@/lib/api'
 
 /* ── Типы ──────────────────────────────────────────────────────────── */
 
@@ -133,6 +135,20 @@ const published = ref<number | null>(null)
 const draftVersion = ref(3)
 const autosave = ref<Autosave>('saved')
 const lastSavedAt = ref<number>(Date.now())
+
+/* ── API-подключение: зал по publicId из роута ────────────────────── */
+
+const route = useRoute()
+/** publicId зала берём из пути /admin/halls/:publicId/editor. */
+const hallPublicId = ref<string | null>(null)
+/** id черновика на сервере (null — ещё не создан). */
+const draftVersionId = ref<number | null>(null)
+/** Текущий published id (для отображения номера версии). */
+const loadedPublished = ref<number | null>(null)
+const hallLoadState = ref<'idle' | 'loading' | 'ok' | 'error'>('idle')
+
+/** Реальный id версии (для publish). */
+let currentVersionId: number | null = null
 
 const tool = ref<Tool>('select')
 
@@ -367,18 +383,68 @@ function scheduleAutosave(): void {
   autosave.value = 'saving'
   if (saveTimer) clearTimeout(saveTimer)
   saveTimer = setTimeout(() => {
-    if (!navigator.onLine) {
-      autosave.value = 'offline'
-      return
-    }
-    // Имитация записи на сервер. В проде — PATCH /api/v1/halls/:id/schema.
-    try {
-      autosave.value = 'saved'
-      lastSavedAt.value = Date.now()
-    } catch {
-      autosave.value = 'error'
-    }
+    void persistSchema()
   }, 500)
+}
+
+/** Собрать схему в формате редактора (как в exportSchema). */
+function buildSchemaPayload(): unknown {
+  return {
+    version: '1.0',
+    canvas: { width: canvasSize.value.width, height: canvasSize.value.height },
+    background: backgrounds.value[0] ?? null,
+    sectors: sectors.value.map((s) => ({
+      id: s.id,
+      name: s.name,
+      x: s.x,
+      y: s.y,
+      priceMinor: s.priceMinor,
+      rowPrices: s.rowPrices,
+      shape: s.shape,
+      arcSpread: s.arcSpread,
+      arcBaseR: s.arcBaseR,
+      arcRowGap: s.arcRowGap,
+      arcOffsetX: s.arcOffsetX,
+      arcOffsetY: s.arcOffsetY,
+      seats: s.seats.map((seat) => ({
+        id: seat.id,
+        row: seat.row,
+        number: seat.number,
+        kind: seat.kind,
+        x: seat.x,
+        y: seat.y,
+      })),
+    })),
+    staticObjects: statics.value,
+  }
+}
+
+/** Реальное сохранение черновика на сервер. */
+async function persistSchema(): Promise<void> {
+  if (!hallPublicId.value || published.value !== null) return
+  if (!navigator.onLine) {
+    autosave.value = 'offline'
+    return
+  }
+  try {
+    const res = await send<{ id: number; version: number }>(
+              `/halls/${hallPublicId.value}/schema-versions/draft`,
+              'POST',
+              { payload: buildSchemaPayload() },
+            )
+        const d = res.data
+        const versionId = typeof d === 'object' && d && typeof d.id === 'number' ? d.id : null
+    const versionNo = typeof d === 'object' && d && typeof d.version === 'number' ? d.version : draftVersion.value
+    if (versionId) {
+      currentVersionId = versionId
+      draftVersionId.value = versionId
+      if (versionNo > 0) draftVersion.value = versionNo
+    }
+    autosave.value = 'saved'
+    lastSavedAt.value = Date.now()
+  } catch {
+    autosave.value = 'error'
+  }
 }
 
 watch(
@@ -399,19 +465,165 @@ function publish(): void {
     ui.notify('rose', 'Нечего публиковать', 'Сначала создайте хотя бы один сектор')
     return
   }
-  published.value = draftVersion.value
-  draftVersion.value += 1
-  autosave.value = 'saved'
-  ui.notify(
-    'mint',
-    `Версия ${published.value} опубликована`,
-    'Схема стала неизменяемой: правки создадут новую версию',
-  )
+  // Сохраним перед публикацией, чтобы у нас был id версии.
+  async function doPublish(): Promise<void> {
+    try {
+      if (!currentVersionId) {
+        await persistSchema()
+      }
+      if (!currentVersionId || !hallPublicId.value) {
+        ui.notify('rose', 'Черновик не сохранён', 'Не удалось создать черновик на сервере')
+        return
+      }
+      const res = await send<{ id: number; version: number; status: string }>(
+                    `/schema-versions/${currentVersionId}/publish`,
+                    'POST',
+                    {},
+                  )
+            const d = res.data
+      const publishedNo = (typeof d === 'object' && d && typeof d.version === 'number') ? d.version : draftVersion.value
+      published.value = publishedNo
+      loadedPublished.value = publishedNo
+      draftVersion.value = publishedNo + 1
+      autosave.value = 'saved'
+      ui.notify(
+        'mint',
+        `Версия ${publishedNo} опубликована`,
+        'Схема стала неизменяемой: правки создадут новую версию',
+      )
+    } catch {
+      autosave.value = 'error'
+      ui.notify('rose', 'Ошибка публикации', 'Не удалось опубликовать схему')
+    }
+  }
+  void doPublish()
 }
 
 function newVersion(): void {
   published.value = null
   ui.notify('brand', 'Новый черновик', `Правки попадут в версию ${draftVersion.value}`)
+}
+
+/* ── Загрузка схемы с сервера (API) ───────────────────────────────── */
+
+interface ServerSector {
+  name: string
+  rows?: Array<{
+    number: string | number
+    label?: string
+    price_amount?: number
+    seats?: Array<{ number: string | number; label?: string; type?: string; x?: number; y?: number }>
+  }>
+  seats?: Array<{ id?: string; row?: number; number?: number; kind?: string; x?: number; y?: number }>
+  priceMinor?: number
+  shape?: string
+}
+
+/** Сконвертировать серверную схему (БД-формат или редакторский JSON) в состояние редактора. */
+function applyServerSchema(raw: unknown): void {
+  const obj = (typeof raw === 'object' && raw) ? raw as Record<string, unknown> : {}
+  const rawCanvas = (typeof obj.canvas === 'object' && obj.canvas)
+    ? obj.canvas as Record<string, unknown>
+    : null
+  if (rawCanvas) {
+    const w = Number(rawCanvas.width ?? canvasSize.value.width)
+    const h = Number(rawCanvas.height ?? canvasSize.value.height)
+    if (w > 0 && h > 0) canvasSize.value = { width: w, height: h }
+  }
+  const rawSectors = Array.isArray(obj.sectors) ? obj.sectors : []
+  const out: ESector[] = []
+  for (const rs of rawSectors) {
+    const s = (typeof rs === 'object' && rs) ? rs as ServerSector : null
+    if (!s || !s.name) continue
+    // Редакторский формат: seats[] уже есть.
+    let seats: ESector['seats'] = []
+    if (Array.isArray(s.seats)) {
+      seats = s.seats.map((seat) => ({
+        id: seat.id ?? `${s.name}-${seat.row}-${seat.number}`,
+        row: Number(seat.row ?? 0),
+        number: Number(seat.number ?? 0),
+        kind: (seat.kind === 'vip' || seat.kind === 'accessible') ? seat.kind : 'standard',
+        x: Number(seat.x ?? 0),
+        y: Number(seat.y ?? 0),
+      }))
+    } else if (Array.isArray(s.rows)) {
+          // БД-формат: rows[].seats[] → плоский список с координатами.
+          for (const r of s.rows) {
+            const rowNo = Number(r.number ?? 0)
+            for (const seat of r.seats ?? []) {
+              seats.push({
+                id: `${s.name}-${rowNo}-${seat.number}`,
+                row: rowNo,
+                number: Number(seat.number ?? 0),
+                kind: 'standard',
+                x: Number(seat.x ?? 0) * 15, // сетка 60×40 → пиксели редактора
+                y: Number(seat.y ?? 0) * 13,
+              })
+            }
+          }
+        }
+        if (seats.length === 0 && !s.rows) continue
+        out.push({
+          id: `s${out.length + 1}`,
+          name: s.name,
+          priceMinor: Number(s.priceMinor ?? 0),
+          x: 0,
+          y: 0,
+          seats,
+          rowPrices: {},
+          shape: (s.shape === 'arc') ? 'arc' : 'grid',
+          arcSpread: 120,
+          arcBaseR: 200,
+          arcRowGap: 24,
+          arcOffsetX: 0,
+          arcOffsetY: 0,
+        })
+  }
+  if (out.length > 0) {
+    sectors.value = out
+  }
+}
+
+/** Загрузить зал и его версии с сервера. */
+async function loadFromServer(): Promise<void> {
+  hallLoadState.value = 'loading'
+  const pid = route.params.publicId
+  if (typeof pid !== 'string' || !pid) {
+    hallLoadState.value = 'error'
+    ui.notify('rose', 'Нет зала', 'URL редактора должен содержать publicId (/#/admin/halls/:publicId/editor)')
+    return
+  }
+  hallPublicId.value = pid
+  try {
+    const res = await get<{ data: Array<Record<string, unknown>> }>(`/halls/${pid}/schema-versions`)
+    const inner = res.data
+    const versions = Array.isArray(inner) ? inner : (Array.isArray(inner.data) ? inner.data : [])
+    // Выбираем черновик, иначе последнюю опубликованную.
+    const draft = versions.find((v) => v.status === 'draft')
+    const publishedV = versions.find((v) => v.status === 'published')
+    const chosen = draft ?? publishedV
+    if (chosen) {
+      const versionNo = Number(chosen.version ?? 0)
+      currentVersionId = Number(chosen.id ?? 0)
+      if (chosen.status === 'published') {
+        published.value = versionNo
+        loadedPublished.value = versionNo
+        draftVersion.value = versionNo + 1
+      } else {
+        draftVersion.value = versionNo > 0 ? versionNo : draftVersion.value
+        draftVersionId.value = Number(chosen.id ?? null)
+      }
+      const schema = chosen.schema
+      if (schema) applyServerSchema(schema)
+      ui.notify('brand', chosen.status === 'published' ? 'Опубликована' : 'Черновик загружен', `Версия ${versionNo}`)
+    } else {
+      ui.notify('brand', 'Черновик', 'У зала ещё нет схем — создайте новую')
+    }
+    hallLoadState.value = 'ok'
+  } catch (e) {
+    hallLoadState.value = 'error'
+    ui.notify('rose', 'Ошибка загрузки', e instanceof Error ? e.message : String(e))
+  }
 }
 
 /* ── Экспорт Schema JSON (§54) ─────────────────────────────────────── */
@@ -696,6 +908,7 @@ function fit(): void {
 }
 
 onMounted(() => {
+  void loadFromServer()
   if (!canvasHost.value) return
   canvasSize.value = { width: canvasHost.value.clientWidth, height: canvasHost.value.clientHeight }
 
