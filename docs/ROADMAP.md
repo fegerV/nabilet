@@ -69,6 +69,7 @@ C:\Project\nabilet
   - [x] Публикация: `POST /api/v1/schema-versions/{id}/publish`
   - [x] Сервер: boot-хук public_id в HallSchemaVersion; убраны алиасы Halls\Models (Type-ошибки); триггер иммутабельности — schema_json::text
   - [x] Импорт схемы из JSON (кнопка «Импорт JSON»): загрузка файла Афиши/экспорта → конвертация в редактор → автосейв; поверх published создаётся новая версия (draft)
+  - [x] **Конвертер в инвентарь**: `HallSchemaVersion::toInventoryFormat()` (канвас → rows, нормализация 60×40, числовые id), `InventoryService::generateFromSchema` (sectors → hall_rows → seats + inventory_items), генерация при создании сессии (SessionController::store). e2e: сессия с канвас-схемой → 2 сектора/3 ряда/6 мест/цены из канваса
   - [ ] Список залов (AdminHallsPage) + переход в редактор по клику (сделано, проверить визуально)
 - [ ] **Перенести из Filament**: страница справки, чек-лист перед публикацией, подсказки в формах.
 
