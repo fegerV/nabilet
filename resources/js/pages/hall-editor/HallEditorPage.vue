@@ -98,7 +98,7 @@ interface EBackground {
 
 /* ── Константы ─────────────────────────────────────────────────────── */
 
-const SEAT = 22
+const SEAT = 16
 const GAP = 6
 const ROW_GAP = 12
 
@@ -151,6 +151,10 @@ const hallLoadState = ref<'idle' | 'loading' | 'ok' | 'error'>('idle')
 let currentVersionId: number | null = null
 
 const tool = ref<Tool>('select')
+
+/* Полоски панелей: по умолчанию скрыты на узких экранах — канвасу максимум места. */
+const showTools = ref(typeof window !== 'undefined' && window.innerWidth >= 1500)
+const showInspector = ref(typeof window !== 'undefined' && window.innerWidth >= 1500)
 
 /* Форма нового сектора (§49): сектор / форма / ряд / кол-во мест / шаг. */
 const form = ref({
@@ -531,15 +535,18 @@ function applyServerSchema(raw: unknown): void {
     if (w > 0 && h > 0) canvasSize.value = { width: w, height: h }
   }
   const rawSectors = Array.isArray(obj.sectors) ? obj.sectors : []
-  const out: ESector[] = []
+
+  // Сначала собираем ВСЕ секторы (канвас или БД-формат), чтобы нормализовать
+  // координаты ОБЩИМ диапазоном по всему залу — иначе каждый сектор
+  // масштабируется в свой угол и схема разъезжается.
+  const collected: { sector: ServerSector; seats: { row: number; number: number; x: number; y: number; kind: string }[] }[] = []
+  let allMinX = Infinity, allMaxX = -Infinity, allMinY = Infinity, allMaxY = -Infinity
   for (const rs of rawSectors) {
     const s = (typeof rs === 'object' && rs) ? rs as ServerSector : null
     if (!s || !s.name) continue
-    // Редакторский формат: seats[] уже есть.
-    let seats: ESector['seats'] = []
+    let seats: { row: number; number: number; x: number; y: number; kind: string }[] = []
     if (Array.isArray(s.seats)) {
       seats = s.seats.map((seat) => ({
-        id: seat.id ?? `${s.name}-${seat.row}-${seat.number}`,
         row: Number(seat.row ?? 0),
         number: Number(seat.number ?? 0),
         kind: (seat.kind === 'vip' || seat.kind === 'accessible') ? seat.kind : 'standard',
@@ -547,37 +554,64 @@ function applyServerSchema(raw: unknown): void {
         y: Number(seat.y ?? 0),
       }))
     } else if (Array.isArray(s.rows)) {
-          // БД-формат: rows[].seats[] → плоский список с координатами.
-          for (const r of s.rows) {
-            const rowNo = Number(r.number ?? 0)
-            for (const seat of r.seats ?? []) {
-              seats.push({
-                id: `${s.name}-${rowNo}-${seat.number}`,
-                row: rowNo,
-                number: Number(seat.number ?? 0),
-                kind: 'standard',
-                x: Number(seat.x ?? 0) * 15, // сетка 60×40 → пиксели редактора
-                y: Number(seat.y ?? 0) * 13,
-              })
-            }
-          }
+      for (const r of s.rows) {
+        const rowNo = Number(r.number ?? 0)
+        for (const seat of r.seats ?? []) {
+          seats.push({
+            row: rowNo,
+            number: Number(seat.number ?? 0),
+            kind: 'standard',
+            x: Number(seat.x ?? 0),
+            y: Number(seat.y ?? 0),
+          })
         }
-        if (seats.length === 0 && !s.rows) continue
-        out.push({
-          id: `s${out.length + 1}`,
-          name: s.name,
-          priceMinor: Number(s.priceMinor ?? 0),
-          x: 0,
-          y: 0,
-          seats,
-          rowPrices: {},
-          shape: (s.shape === 'arc') ? 'arc' : 'grid',
-          arcSpread: 120,
-          arcBaseR: 200,
-          arcRowGap: 24,
-          arcOffsetX: 0,
-          arcOffsetY: 0,
-        })
+      }
+    }
+    if (seats.length === 0) continue
+    collected.push({ sector: s, seats })
+    for (const p of seats) {
+      if (p.x < allMinX) allMinX = p.x
+      if (p.x > allMaxX) allMaxX = p.x
+      if (p.y < allMinY) allMinY = p.y
+      if (p.y > allMaxY) allMaxY = p.y
+    }
+  }
+
+  // Общий масштаб: вся схема влезает в канвас целиком.
+  const pad = 40
+  const spanX = (allMaxX - allMinX) || 1
+  const spanY = (allMaxY - allMinY) || 1
+  const scale = Math.min(
+    (canvasSize.value.width - pad * 2) / spanX,
+    (canvasSize.value.height - pad * 2) / spanY,
+    60,
+  )
+
+  const out: ESector[] = []
+    for (const { sector: s, seats: flatSeats } of collected) {
+      const seats: ESector['seats'] = flatSeats.map((p) => ({
+        id: `${s.name}-${p.row}-${p.number}`,
+        row: p.row,
+        number: p.number,
+        kind: (p.kind === 'vip' || p.kind === 'accessible') ? p.kind : 'standard',
+        x: Math.round(pad + (p.x - allMinX) * scale),
+        y: Math.round(pad + (p.y - allMinY) * scale),
+      }))
+    out.push({
+      id: `s${out.length + 1}`,
+      name: s.name,
+      priceMinor: Number(s.priceMinor ?? 0),
+      x: 0,
+      y: 0,
+      seats,
+      rowPrices: {},
+      shape: (s.shape === 'arc') ? 'arc' : 'grid',
+      arcSpread: 120,
+      arcBaseR: 200,
+      arcRowGap: 24,
+      arcOffsetX: 0,
+      arcOffsetY: 0,
+    })
   }
   if (out.length > 0) {
     sectors.value = out
@@ -614,8 +648,8 @@ async function loadFromServer(): Promise<void> {
         draftVersionId.value = Number(chosen.id ?? null)
       }
       const schema = chosen.schema
-      if (schema) applyServerSchema(schema)
-      ui.notify('brand', chosen.status === 'published' ? 'Опубликована' : 'Черновик загружен', `Версия ${versionNo}`)
+            if (schema) { applyServerSchema(schema); fit() }
+            ui.notify('brand', chosen.status === 'published' ? 'Опубликована' : 'Черновик загружен', `Версия ${versionNo}`)
     } else {
       ui.notify('brand', 'Черновик', 'У зала ещё нет схем — создайте новую')
     }
@@ -875,10 +909,25 @@ function draw(): void {
         pickSeat(seat.id, sector.id, e.evt.shiftKey)
       })
       rect.on('mouseenter', () => { if (stage) stage.container().style.cursor = 'pointer' })
-      rect.on('mouseleave', () => { if (stage) stage.container().style.cursor = 'default' })
+            rect.on('mouseleave', () => { if (stage) stage.container().style.cursor = 'default' })
 
-      group.add(rect)
-    }
+            group.add(rect)
+
+            // Подпись номера места (мелкая, под квадратом) — при маленьком SEAT
+            // номер сбоку от квадрата почти нечитаем, поэтому под ним.
+            group.add(
+                          new Konva.Text({
+                            x: seat.x - 6,
+                            y: seat.y + SEAT + 1,
+                            width: SEAT + 12,
+                            text: String(seat.number),
+                            fontSize: 8,
+                            fill: 'rgba(176,160,255,0.55)',
+                            align: 'center',
+                            listening: false,
+                          }),
+                        )
+          }
 
     group.on('click', (e) => {
       if (tool.value !== 'select') return
@@ -1090,9 +1139,17 @@ function setRowPrice(row: number, rub: number): void {
             </div>
     </div>
 
-    <div class="mt-5 grid gap-4 lg:grid-cols-[220px_1fr_320px]">
-      <!-- Инструменты -->
-      <aside class="space-y-3">
+    <div
+          class="mt-5 grid gap-4"
+          :class="
+            showTools && showInspector ? 'grid-cols-[220px_1fr_320px]'
+            : showTools ? 'grid-cols-[220px_1fr]'
+            : showInspector ? 'grid-cols-[1fr_320px]'
+            : 'grid-cols-1'
+          "
+        >
+          <!-- Инструменты -->
+                <aside v-if="showTools" class="space-y-3">
         <div class="surface-card overflow-hidden">
           <div class="border-b border-line px-3 py-2.5">
             <h2 class="text-xs font-semibold uppercase tracking-wide text-subtle">Инструменты · §47</h2>
@@ -1166,10 +1223,26 @@ function setRowPrice(row: number, rub: number): void {
               <span>{{ TOOLS.find((t) => t.value === tool)?.hint }}</span>
             </div>
             <div class="flex gap-1">
-              <button type="button" class="grid h-7 w-7 place-items-center rounded border border-line text-xs text-muted hover:text-content" aria-label="Приблизить" @click="zoomBy(1.15)">+</button>
-              <button type="button" class="grid h-7 w-7 place-items-center rounded border border-line text-xs text-muted hover:text-content" aria-label="Отдалить" @click="zoomBy(0.87)">−</button>
-              <button type="button" class="grid h-7 w-7 place-items-center rounded border border-line text-2xs text-muted hover:text-content" aria-label="Вписать" @click="fit">⤢</button>
-            </div>
+                          <button type="button" class="grid h-7 w-7 place-items-center rounded border border-line text-xs text-muted hover:text-content" aria-label="Приблизить" @click="zoomBy(1.15)">+</button>
+                          <button type="button" class="grid h-7 w-7 place-items-center rounded border border-line text-xs text-muted hover:text-content" aria-label="Отдалить" @click="zoomBy(0.87)">−</button>
+                          <button type="button" class="grid h-7 w-7 place-items-center rounded border border-line text-2xs text-muted hover:text-content" aria-label="Вписать" @click="fit">⤢</button>
+                        </div>
+                        <div class="flex gap-1">
+                          <button
+                            type="button"
+                            class="grid h-7 rounded border px-2 text-2xs transition-colors"
+                            :class="showTools ? 'border-brand-500/40 text-brand-300 bg-brand-500/10' : 'border-line text-muted hover:text-content'"
+                            :title="showTools ? 'Скрыть инструменты' : 'Показать инструменты'"
+                            @click="showTools = !showTools"
+                          >Инструменты</button>
+                          <button
+                            type="button"
+                            class="grid h-7 rounded border px-2 text-2xs transition-colors"
+                            :class="showInspector ? 'border-brand-500/40 text-brand-300 bg-brand-500/10' : 'border-line text-muted hover:text-content'"
+                            :title="showInspector ? 'Скрыть свойства' : 'Показать свойства'"
+                            @click="showInspector = !showInspector"
+                          >Свойства</button>
+                        </div>
           </div>
 
           <input ref="imageInput" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" class="hidden" @change="onImageChosen" />
@@ -1194,7 +1267,7 @@ function setRowPrice(row: number, rub: number): void {
       </section>
 
       <!-- Инспектор -->
-      <aside class="min-w-0 space-y-3">
+            <aside v-if="showInspector" class="min-w-0 space-y-3">
         <!-- Генератор сектора (§49) -->
         <div class="surface-card overflow-hidden">
           <div class="border-b border-line px-3 py-2.5">
