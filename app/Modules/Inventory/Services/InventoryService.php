@@ -71,23 +71,32 @@ class InventoryService
                 $capacity = 0;
                 foreach ($sectorData['rows'] ?? [] as $rowData) {
                     $row = HallRow::create([
-                        'sector_id' => $sector->id,
-                        'number' => $rowData['number'] ?? '',
-                        'name' => $rowData['label'] ?? 'Ряд',
-                        'price_amount' => $rowData['price_amount'] ?? 0,
-                        'currency' => 'RUB',
-                    ]);
+                                            'sector_id' => $sector->id,
+                                            'number' => $rowData['number'] ?? '',
+                                            'name' => $rowData['label'] ?? 'Ряд',
+                                            'price_amount' => $rowData['price_amount'] ?? 0,
+                                            'currency' => 'RUB',
+                                            'rotation' => 0,
+                                        ]);
 
                     foreach ($rowData['seats'] ?? [] as $seatData) {
-                        $seatCounter += 1;
-                        Seat::create([
-                            'row_id' => $row->id,
-                            'number' => (string) ($seatData['number'] ?? (string) $seatCounter),
-                            'label' => $seatData['label'] ?? ('Ряд ' . ($rowData['number'] ?? '') . ' Место ' . ($seatData['number'] ?? '')),
-                            'type' => $seatData['type'] ?? 'standard',
-                            'x' => $seatData['x'] ?? 0,
-                            'y' => $seatData['y'] ?? 0,
-                            'status' => 'active',
+                        $seatType = (string) ($seatData['type'] ?? 'standard');
+                                                // Нормализация типов: импорт из Афиши даёт 'regular',
+                                                // БД допускает standard/vip/wheelchair/companion/custom.
+                                                if ($seatType === 'regular') {
+                                                    $seatType = 'standard';
+                                                }
+
+                                                $seatCounter += 1;
+                                                Seat::create([
+                                                    'row_id' => $row->id,
+                                                    'number' => (string) ($seatData['number'] ?? (string) $seatCounter),
+                                                    'label' => $seatData['label'] ?? ('Ряд ' . ($rowData['number'] ?? '') . ' Место ' . ($seatData['number'] ?? '')),
+                                                    'type' => $seatType,
+                                                                                'x' => $seatData['x'] ?? 0,
+                                                                                'y' => $seatData['y'] ?? 0,
+                                                                                'rotation' => 0,
+                                                                                'status' => 'active',
                         ]);
                         $capacity += 1;
                     }
