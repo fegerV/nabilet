@@ -68,6 +68,7 @@ C:\Project\nabilet
   - [x] Автосохранение черновика: `POST /api/v1/halls/{publicId}/schema-versions/draft` (каждые 500 мс после изменения)
   - [x] Публикация: `POST /api/v1/schema-versions/{id}/publish`
   - [x] Сервер: boot-хук public_id в HallSchemaVersion; убраны алиасы Halls\Models (Type-ошибки); триггер иммутабельности — schema_json::text
+  - [x] Импорт схемы из JSON (кнопка «Импорт JSON»): загрузка файла Афиши/экспорта → конвертация в редактор → автосейв; поверх published создаётся новая версия (draft)
   - [ ] Список залов (AdminHallsPage) + переход в редактор по клику (сделано, проверить визуально)
 - [ ] **Перенести из Filament**: страница справки, чек-лист перед публикацией, подсказки в формах.
 
