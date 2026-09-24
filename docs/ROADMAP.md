@@ -58,7 +58,11 @@ C:\Project\nabilet
 - [x] **CRUD Залы/Площадки** (AdminVenuesPage): список из `/api/v1/venues`, модалка-форма (название, город, регион, страна, адрес, статус), создание/редактирование по клику на строку, удаление через API. Исправлен авто-org_id (User::organizations без withTimestamps — колонки updated_at нет)
 - [x] **CRUD Мероприятия** (AdminEventFormPage): страница-форма создания/редактирования (title, slug-авто, описание, статус, даты, валюта, постер, SEO). Создание → редирект на редактирование (isEdit computed/watch). Фиксы: FormRequest authorize (can('create') всегда false — нет EventPolicy → роль-проверка), boot-хук public_id в Event, даты не null (валидация date не принимает null)
 - [x] **CRUD Сеансы** (AdminSessionsPage): список из `/api/v1/sessions`, модалка-форма (мероприятие, зал, дата, время, статус), создание/редактирование по клику. Фиксы: venue_id/schema_version_id NOT NULL (берутся из зала: venue зала + последняя published схема), GET /halls (indexAll), openEdit (row.raw), kind="session" в NStatusBadge
-- [ ] **Заказы**: список (номер, клиент, сумма, статус), действия (подтвердить, отменить) → /api/v1/orders
+- [x] **Заказы** (AdminOrdersPage): список из `/api/v1/orders` (пагинация), фильтр по статусу, поиск, деталка (модалка) с составом, кнопка «Отменить заказ» → POST /{order}/cancel. Checkout теперь создаёт Order (был TODO); `/orders` без org_id — все заказы (был пустой ответ); Cart::session()
+- [x] **Импорт схем залов из Яндекс.Афиши** — `tools/import_yandex_hallplan.py` (будет расширяться на все площадки Сургута/ХМАО):
+  - [x] hallplan API сеанса → CDN JSON (уровни: места/структурированные ряды) → наш формат (сектор/ряд/место/цена)
+  - [x] Референсы: `docs/samples/hallplan-vavilon.json` (Вавилон: 2 сектора, 252 места, цены 2899–6999₽), `hallplan-ledovyi.json` (Ледовый дворец: 738 мест, 7200–15500₽)
+  - [ ] Каталог площадок Сургута/ХМАО → заполнить все схемы
 - [ ] **Конструктор схем зала** — HallEditor.vue подключить к API (сейчас на моках):
   - [ ] Загрузка схем: `GET /api/v1/venues/{venue}/schemas`
   - [ ] Сохранение: `PUT /api/v1/venues/schemas/{schema}`

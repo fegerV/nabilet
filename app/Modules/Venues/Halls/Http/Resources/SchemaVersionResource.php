@@ -14,7 +14,14 @@ class SchemaVersionResource extends JsonResource
             'id' => $this->id,
             'public_id' => $this->public_id,
             'hall_id' => $this->hall_id,
-            'state' => $this->state,
+            'version' => $this->version,
+            'status' => $this->status,
+            'width' => $this->width,
+            'height' => $this->height,
+            'background_url' => $this->background_url,
+            'schema' => $this->schema_json,
+            'published_at' => $this->published_at?->toIso8601String(),
+            'created_at' => $this->created_at?->toIso8601String(),
         ];
     }
 }
