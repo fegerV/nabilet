@@ -614,9 +614,37 @@ function applyServerSchema(raw: unknown): void {
     })
   }
   if (out.length > 0) {
-    sectors.value = out
+      sectors.value = out
+
+      // Автоматическая зона танцпола: для сектора, где все места в одной точке
+      // (или имя содержит «Танцпол»), рисуем пунктирную зону-оверлей в static-слое.
+      const dance = out.find((s) => /танцпол|dance/i.test(s.name ?? '') || (
+        s.seats.length > 1 &&
+        s.seats.every((p) => p.x === s.seats[0].x && p.y === s.seats[0].y)
+      ))
+      if (dance && dance.seats.length > 0) {
+        const cx = dance.seats[0].x + 8
+        const cy = dance.seats[0].y + 8
+        const R = 34 + Math.min(dance.seats.length, 10) * 3
+        const existing = statics.value.filter((o) => /танцпол|dance/i.test(o.text ?? ''))
+        if (existing.length === 0) {
+          statics.value = [
+            ...statics.value,
+            {
+              id: 'static-dancezone',
+              kind: 'standing',
+              x: cx - R,
+              y: cy - R * 0.6,
+              width: R * 2,
+              height: R * 1.2,
+              text: `Танцпол · ${dance.seats.length} мест`,
+              capacity: dance.seats.length,
+            },
+          ]
+        }
+      }
+    }
   }
-}
 
 /** Загрузить зал и его версии с сервера. */
 async function loadFromServer(): Promise<void> {
@@ -844,13 +872,17 @@ function draw(): void {
     } else if (s.kind === 'table') {
       staticLayer?.add(new Konva.Rect({ x: s.x, y: s.y, width: 44, height: 32, cornerRadius: 6, fill: '#3B3468', stroke: '#8E74FF', strokeWidth: 1 }))
     } else if (s.kind === 'standing' && s.width && s.height) {
-      staticLayer?.add(new Konva.Rect({ x: s.x, y: s.y, width: s.width, height: s.height, fill: '#2A2450', stroke: '#8E74FF', dash: [6, 4] }))
-    }
+          staticLayer?.add(new Konva.Rect({ x: s.x, y: s.y, width: s.width, height: s.height, fill: '#2A2450', stroke: '#8E74FF', dash: [6, 4] }))
+          if (s.text) {
+            staticLayer?.add(new Konva.Text({ x: s.x + s.width / 2 - 50, y: s.y + s.height / 2 - 8, width: 100, align: 'center', text: s.text, fontSize: 13, fill: '#E8E0FF' }))
+          }
+        }
   }
 
   // Слой 3: секторы + места (§46: sectors, rows, seats)
-  for (const sector of sectors.value) {
-    const group = new Konva.Group({
+    for (const sector of sectors.value) {
+      if (typeof console !== 'undefined') console.log('[hall-editor] сектор', sector.id, sector.name, 'мест:', sector.seats.length)
+      const group = new Konva.Group({
       id: sector.id,
       x: sector.x,
       y: sector.y,
@@ -889,8 +921,44 @@ function draw(): void {
       }
     }
 
-    for (const seat of sector.seats) {
-      const isSelected = selectedSeatIds.value.has(seat.id)
+    // Стоячая зона: сектор «Танцпол» (или все места в одной точке) →
+            // рисуем зону-овал, а не кучу перекрытых квадратиков.
+            const isDanceZone = /танцпол|dance/i.test(sector.name ?? '') ||
+              (sector.seats.length > 1 &&
+                sector.seats.every((p) => p.x === sector.seats[0].x && p.y === sector.seats[0].y))
+            if (isDanceZone && sector.seats.length > 0) {
+              if (typeof console !== 'undefined') console.log('[hall-editor] standing zone:', sector.name, sector.seats.length, sector.seats[0].x, sector.seats[0].y)
+              const cx = sector.seats[0].x + SEAT / 2
+              const cy = sector.seats[0].y + SEAT / 2
+              const R = 30 + Math.min(sector.seats.length, 10) * 3
+              group.add(
+                new Konva.Ellipse({
+                  x: cx,
+                  y: cy,
+                  radiusX: R,
+                  radiusY: R * 0.6,
+                  fill: 'rgba(42,36,80,0.65)',
+                  stroke: '#8E74FF',
+                  strokeWidth: 1,
+                  dash: [6, 4],
+                  listening: false,
+                }),
+              )
+              group.add(
+                new Konva.Text({
+                  x: cx + R + 6,
+                  y: cy - 6,
+                  text: `Танцпол · ${sector.seats.length} мест`,
+                  fontSize: 12,
+                  fill: '#E8E0FF',
+                  listening: false,
+                }),
+              )
+            }
+
+            for (const seat of sector.seats) {
+              if (isDanceZone) break
+              const isSelected = selectedSeatIds.value.has(seat.id)
       const rect = new Konva.Rect({
         id: seat.id,
         x: seat.x,
