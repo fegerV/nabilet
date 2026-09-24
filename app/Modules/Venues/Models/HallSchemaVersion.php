@@ -7,6 +7,7 @@ namespace Nabilet\Modules\Venues\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Str;
 
 /**
  * HallSchemaVersion Model
@@ -43,14 +44,24 @@ class HallSchemaVersion extends Model
     }
 
     public function hall(): BelongsTo
-    {
-        return $this->belongsTo(Hall::class);
-    }
+        {
+            return $this->belongsTo(Hall::class);
+        }
 
-    public function sectors(): HasMany
-    {
-        return $this->hasMany(Sector::class, 'schema_version_id');
-    }
+        /** Конвенция проекта: char(26) public_id NOT NULL → генерим ULID при создании. */
+        protected static function booted(): void
+        {
+            static::creating(function (HallSchemaVersion $version): void {
+                if ($version->public_id === null) {
+                    $version->public_id = Str::ulid()->toBase32();
+                }
+            });
+        }
+
+            public function sectors(): HasMany
+            {
+                return $this->hasMany(Sector::class, 'schema_version_id');
+            }
 
     public function sessions(): HasMany
     {

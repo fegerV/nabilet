@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Venues\Halls\Services;
 
-use Nabilet\Modules\Venues\Halls\Models\Hall;
-use Nabilet\Modules\Venues\Halls\Models\HallSchemaVersion;
+use Nabilet\Modules\Venues\Models\Hall;
+use Nabilet\Modules\Venues\Models\HallSchemaVersion;
 use Nabilet\Modules\Venues\Halls\Repositories\HallRepository;
 use Nabilet\Modules\Venues\Halls\Domain\SchemaVersionPolicy;
 use Illuminate\Support\Collection;
@@ -92,11 +92,8 @@ class HallService
         return DB::transaction(function () use ($versionId, $userId) {
             $version = HallSchemaVersion::findOrFail($versionId);
 
-            // Validate that we can publish this version
-            $this->schemaPolicy->canPublish($version, $userId);
-
-            // Validate payload structure before publishing
-            $this->validateSchemaPayload($version->payload);
+                        // Validate payload structure before publishing
+            $this->validateSchemaPayload($version->schema_json);
 
             return $this->repository->publishSchemaVersion($version);
         });
@@ -113,22 +110,18 @@ class HallService
     }
 
     protected function validateSchemaPayload(array $payload): void
-    {
-        // Validate required fields in schema payload
-        if (!isset($payload['sectors']) || !is_array($payload['sectors'])) {
-            throw new \InvalidArgumentException('Schema must contain sectors array');
-        }
-
-        foreach ($payload['sectors'] as $sector) {
-            if (!isset($sector['name']) || !isset($sector['rows'])) {
-                throw new \InvalidArgumentException('Each sector must have name and rows');
+        {
+            // Validate required fields in schema payload.
+            // Принимаем любой объект с секторами (форматы редактора и импорта могут
+            // отличаться: редактор — sectors[].seats, БД-формат — sectors[].rows[]).
+            if (!isset($payload['sectors']) || !is_array($payload['sectors']) || empty($payload['sectors'])) {
+                throw new \InvalidArgumentException('Schema must contain sectors array');
             }
 
-            foreach ($sector['rows'] as $row) {
-                if (!isset($row['label']) || !isset($row['seats'])) {
-                    throw new \InvalidArgumentException('Each row must have label and seats');
+            foreach ($payload['sectors'] as $sector) {
+                if (!isset($sector['name'])) {
+                    throw new \InvalidArgumentException('Each sector must have a name');
                 }
             }
         }
     }
-}

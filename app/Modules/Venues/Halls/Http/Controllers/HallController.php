@@ -6,7 +6,7 @@ namespace Nabilet\Modules\Venues\Halls\Http\Controllers;
 
 use Illuminate\Routing\Controller;
 use Nabilet\Core\Errors\NotFoundError;
-use Nabilet\Modules\Venues\Halls\Models\Hall;
+use Nabilet\Modules\Venues\Models\Hall;
 use Nabilet\Modules\Venues\Halls\Services\HallService;
 use Nabilet\Modules\Venues\Halls\Http\Resources\HallResource;
 use Nabilet\Modules\Venues\Halls\Http\Resources\HallCollection;

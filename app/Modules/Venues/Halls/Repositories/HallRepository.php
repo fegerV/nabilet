@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Venues\Halls\Repositories;
 
-use Nabilet\Modules\Venues\Halls\Models\Hall;
-use Nabilet\Modules\Venues\Halls\Models\HallSchemaVersion;
+use Nabilet\Modules\Venues\Models\Hall;
+use Nabilet\Modules\Venues\Models\HallSchemaVersion;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
 
