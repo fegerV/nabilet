@@ -5,12 +5,17 @@ declare(strict_types=1);
 namespace Nabilet\Modules\Sessions\Http\Controllers;
 
 use Nabilet\Modules\Sessions\Models\Session;
+use Nabilet\Modules\Inventory\Services\InventoryService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 
 class SessionController extends Controller
 {
+    public function __construct(
+        private readonly InventoryService $inventoryService
+    ) {}
+
     public function index(Request $request): JsonResponse
     {
         $filters = $request->only(['event_id', 'hall_id', 'status']);
@@ -85,7 +90,16 @@ class SessionController extends Controller
                         }
 
                         $session = Session::create($data);
-        $session->load(['event', 'hall', 'schemaVersion']);
+
+                                                // Создаём места (геометрия + инвентарь) из схемы зала.
+                                                // Канвасный формат редактора конвертируется в rows автоматически
+                                                // (HallSchemaVersion::toInventoryFormat).
+                                                if ($session->schema_version_id !== null) {
+                                                    $schemaVersion = \Nabilet\Modules\Venues\Models\HallSchemaVersion::findOrFail($session->schema_version_id);
+                                                    $this->inventoryService->generateFromSchema($schemaVersion, $session);
+                                                }
+
+                                $session->load(['event', 'hall', 'schemaVersion']);
 
         return response()->json(['success' => true, 'data' => $session], 201);
     }

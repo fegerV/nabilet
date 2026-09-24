@@ -7,6 +7,7 @@ namespace Nabilet\Modules\Venues\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Str;
 
 /**
  * Seat Model
@@ -57,7 +58,17 @@ class Seat extends Model
     }
 
     public function tickets(): HasMany
-    {
-        return $this->hasMany(\Nabilet\Modules\Tickets\Models\Ticket::class, 'seat_id');
+        {
+            return $this->hasMany(\Nabilet\Modules\Tickets\Models\Ticket::class, 'seat_id');
+        }
+
+        /** Конвенция проекта: char(26) public_id NOT NULL → генерим ULID при создании. */
+        protected static function booted(): void
+        {
+            static::creating(function (Seat $model): void {
+                if ($model->public_id === null) {
+                    $model->public_id = Str::ulid()->toBase32();
+                }
+            });
+        }
     }
-}
