@@ -69,29 +69,26 @@ class HallRepository
     }
 
     public function createSchemaVersion(Hall $hall, array $payload, string $status = 'draft'): HallSchemaVersion
-    {
-        $latestVersion = $hall->schemaVersions()->max('version') ?? 0;
-        
-        return $hall->schemaVersions()->create([
-            'version' => $latestVersion + 1,
-            'payload' => $payload,
-            'status' => $status,
-            'created_by' => auth()->id(),
-        ]);
-    }
+        {
+            $latestVersion = $hall->schemaVersions()->max('version') ?? 0;
+
+            return $hall->schemaVersions()->create([
+                'version' => $latestVersion + 1,
+                'schema_json' => $payload,
+                'status' => $status,
+            ]);
+        }
 
     public function publishSchemaVersion(HallSchemaVersion $version): HallSchemaVersion
-    {
-        // Unpublish any currently published version for this hall
-        HallSchemaVersion::where('hall_id', $version->hall_id)
-            ->where('status', 'published')
-            ->update(['status' => 'archived']);
+        {
+            // Unpublish any currently published version for this hall
+            HallSchemaVersion::where('hall_id', $version->hall_id)
+                ->where('status', 'published')
+                ->where('id', '!=', $version->id)
+                ->update(['status' => 'archived']);
 
-        $version->update(['status' => 'published']);
-        
-        // Update hall's current_schema_version_id
-        $version->hall->update(['current_schema_version_id' => $version->id]);
+            $version->update(['status' => 'published', 'published_at' => now()]);
 
-        return $version->fresh();
+            return $version->fresh();
     }
 }

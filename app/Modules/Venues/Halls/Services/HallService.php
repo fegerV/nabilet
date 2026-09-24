@@ -75,13 +75,12 @@ class HallService
                 ->first();
 
             if ($existingDraft) {
-                // Update existing draft
-                $existingDraft->update([
-                    'payload' => $payload,
-                    'updated_by' => $userId,
-                ]);
-                return $existingDraft->fresh();
-            }
+                            // Update existing draft
+                            $existingDraft->update([
+                                'schema_json' => $payload,
+                            ]);
+                            return $existingDraft->fresh();
+                        }
 
             // Create new draft version
             return $this->repository->createSchemaVersion($hall, $payload, 'draft');
