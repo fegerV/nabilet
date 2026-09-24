@@ -63,10 +63,12 @@ C:\Project\nabilet
   - [x] hallplan API сеанса → CDN JSON (уровни: места/структурированные ряды) → наш формат (сектор/ряд/место/цена)
   - [x] Референсы: `docs/samples/hallplan-vavilon.json` (Вавилон: 2 сектора, 252 места, цены 2899–6999₽), `hallplan-ledovyi.json` (Ледовый дворец: 738 мест, 7200–15500₽)
   - [ ] Каталог площадок Сургута/ХМАО → заполнить все схемы
-- [ ] **Конструктор схем зала** — HallEditor.vue подключить к API (сейчас на моках):
-  - [ ] Загрузка схем: `GET /api/v1/venues/{venue}/schemas`
-  - [ ] Сохранение: `PUT /api/v1/venues/schemas/{schema}`
-  - [ ] Публикация (статус published)
+- [x] **Конструктор схем зала** — HallEditor.vue подключён к API (не на моках):
+  - [x] Загрузка: `GET /api/v1/halls/{publicId}/schema-versions` (черновик или последняя published)
+  - [x] Автосохранение черновика: `POST /api/v1/halls/{publicId}/schema-versions/draft` (каждые 500 мс после изменения)
+  - [x] Публикация: `POST /api/v1/schema-versions/{id}/publish`
+  - [x] Сервер: boot-хук public_id в HallSchemaVersion; убраны алиасы Halls\Models (Type-ошибки); триггер иммутабельности — schema_json::text
+  - [ ] Список залов (AdminHallsPage) + переход в редактор по клику (сделано, проверить визуально)
 - [ ] **Перенести из Filament**: страница справки, чек-лист перед публикацией, подсказки в формах.
 
 ### Этап 3. Выпил Filament
