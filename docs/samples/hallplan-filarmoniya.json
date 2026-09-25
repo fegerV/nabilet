@@ -1,0 +1,1517 @@
+{
+  "name": "Филармония — большой зал",
+  "width": 60,
+  "height": 40,
+  "sectors": [
+    {
+      "name": "Партер",
+      "code": "П1",
+      "type": "seated",
+      "x": 0,
+      "y": 0,
+      "width": 60,
+      "height": 40,
+      "rows": [
+        {
+          "number": "1",
+          "label": "Ряд 1",
+          "price_amount": 700000,
+          "seats": [
+            {
+              "number": "1",
+              "label": "Ряд 1 Место 1",
+              "type": "regular",
+              "x": 1,
+              "y": 1
+            },
+            {
+              "number": "2",
+              "label": "Ряд 1 Место 2",
+              "type": "regular",
+              "x": 3,
+              "y": 1
+            },
+            {
+              "number": "3",
+              "label": "Ряд 1 Место 3",
+              "type": "regular",
+              "x": 5,
+              "y": 1
+            },
+            {
+              "number": "4",
+              "label": "Ряд 1 Место 4",
+              "type": "regular",
+              "x": 6,
+              "y": 1
+            },
+            {
+              "number": "5",
+              "label": "Ряд 1 Место 5",
+              "type": "regular",
+              "x": 8,
+              "y": 1
+            },
+            {
+              "number": "6",
+              "label": "Ряд 1 Место 6",
+              "type": "regular",
+              "x": 10,
+              "y": 1
+            },
+            {
+              "number": "21",
+              "label": "Ряд 1 Место 21",
+              "type": "regular",
+              "x": 43,
+              "y": 1
+            },
+            {
+              "number": "22",
+              "label": "Ряд 1 Место 22",
+              "type": "regular",
+              "x": 45,
+              "y": 1
+            },
+            {
+              "number": "23",
+              "label": "Ряд 1 Место 23",
+              "type": "regular",
+              "x": 47,
+              "y": 1
+            },
+            {
+              "number": "24",
+              "label": "Ряд 1 Место 24",
+              "type": "regular",
+              "x": 48,
+              "y": 1
+            },
+            {
+              "number": "25",
+              "label": "Ряд 1 Место 25",
+              "type": "regular",
+              "x": 50,
+              "y": 1
+            },
+            {
+              "number": "26",
+              "label": "Ряд 1 Место 26",
+              "type": "regular",
+              "x": 52,
+              "y": 1
+            },
+            {
+              "number": "27",
+              "label": "Ряд 1 Место 27",
+              "type": "regular",
+              "x": 54,
+              "y": 1
+            },
+            {
+              "number": "28",
+              "label": "Ряд 1 Место 28",
+              "type": "regular",
+              "x": 55,
+              "y": 1
+            },
+            {
+              "number": "29",
+              "label": "Ряд 1 Место 29",
+              "type": "regular",
+              "x": 57,
+              "y": 1
+            },
+            {
+              "number": "30",
+              "label": "Ряд 1 Место 30",
+              "type": "regular",
+              "x": 59,
+              "y": 1
+            }
+          ]
+        },
+        {
+          "number": "2",
+          "label": "Ряд 2",
+          "price_amount": 700000,
+          "seats": [
+            {
+              "number": "22",
+              "label": "Ряд 2 Место 22",
+              "type": "regular",
+              "x": 1,
+              "y": 1
+            },
+            {
+              "number": "23",
+              "label": "Ряд 2 Место 23",
+              "type": "regular",
+              "x": 7,
+              "y": 1
+            },
+            {
+              "number": "24",
+              "label": "Ряд 2 Место 24",
+              "type": "regular",
+              "x": 13,
+              "y": 1
+            },
+            {
+              "number": "25",
+              "label": "Ряд 2 Место 25",
+              "type": "regular",
+              "x": 18,
+              "y": 1
+            },
+            {
+              "number": "26",
+              "label": "Ряд 2 Место 26",
+              "type": "regular",
+              "x": 24,
+              "y": 1
+            },
+            {
+              "number": "27",
+              "label": "Ряд 2 Место 27",
+              "type": "regular",
+              "x": 30,
+              "y": 1
+            },
+            {
+              "number": "28",
+              "label": "Ряд 2 Место 28",
+              "type": "regular",
+              "x": 36,
+              "y": 1
+            },
+            {
+              "number": "29",
+              "label": "Ряд 2 Место 29",
+              "type": "regular",
+              "x": 42,
+              "y": 1
+            },
+            {
+              "number": "30",
+              "label": "Ряд 2 Место 30",
+              "type": "regular",
+              "x": 47,
+              "y": 1
+            },
+            {
+              "number": "31",
+              "label": "Ряд 2 Место 31",
+              "type": "regular",
+              "x": 53,
+              "y": 1
+            },
+            {
+              "number": "32",
+              "label": "Ряд 2 Место 32",
+              "type": "regular",
+              "x": 59,
+              "y": 1
+            }
+          ]
+        },
+        {
+          "number": "3",
+          "label": "Ряд 3",
+          "price_amount": 650000,
+          "seats": [
+            {
+              "number": "1",
+              "label": "Ряд 3 Место 1",
+              "type": "regular",
+              "x": 1,
+              "y": 1
+            },
+            {
+              "number": "2",
+              "label": "Ряд 3 Место 2",
+              "type": "regular",
+              "x": 7,
+              "y": 1
+            },
+            {
+              "number": "3",
+              "label": "Ряд 3 Место 3",
+              "type": "regular",
+              "x": 14,
+              "y": 1
+            },
+            {
+              "number": "4",
+              "label": "Ряд 3 Место 4",
+              "type": "regular",
+              "x": 20,
+              "y": 1
+            },
+            {
+              "number": "7",
+              "label": "Ряд 3 Место 7",
+              "type": "regular",
+              "x": 40,
+              "y": 1
+            },
+            {
+              "number": "8",
+              "label": "Ряд 3 Место 8",
+              "type": "regular",
+              "x": 46,
+              "y": 1
+            },
+            {
+              "number": "9",
+              "label": "Ряд 3 Место 9",
+              "type": "regular",
+              "x": 53,
+              "y": 1
+            },
+            {
+              "number": "10",
+              "label": "Ряд 3 Место 10",
+              "type": "regular",
+              "x": 59,
+              "y": 1
+            }
+          ]
+        },
+        {
+          "number": "4",
+          "label": "Ряд 4",
+          "price_amount": 650000,
+          "seats": [
+            {
+              "number": "1",
+              "label": "Ряд 4 Место 1",
+              "type": "regular",
+              "x": 1,
+              "y": 1
+            },
+            {
+              "number": "2",
+              "label": "Ряд 4 Место 2",
+              "type": "regular",
+              "x": 3,
+              "y": 1
+            },
+            {
+              "number": "3",
+              "label": "Ряд 4 Место 3",
+              "type": "regular",
+              "x": 4,
+              "y": 1
+            },
+            {
+              "number": "4",
+              "label": "Ряд 4 Место 4",
+              "type": "regular",
+              "x": 6,
+              "y": 1
+            },
+            {
+              "number": "5",
+              "label": "Ряд 4 Место 5",
+              "type": "regular",
+              "x": 8,
+              "y": 1
+            },
+            {
+              "number": "6",
+              "label": "Ряд 4 Место 6",
+              "type": "regular",
+              "x": 9,
+              "y": 1
+            },
+            {
+              "number": "7",
+              "label": "Ряд 4 Место 7",
+              "type": "regular",
+              "x": 11,
+              "y": 1
+            },
+            {
+              "number": "8",
+              "label": "Ряд 4 Место 8",
+              "type": "regular",
+              "x": 13,
+              "y": 1
+            },
+            {
+              "number": "9",
+              "label": "Ряд 4 Место 9",
+              "type": "regular",
+              "x": 14,
+              "y": 1
+            },
+            {
+              "number": "26",
+              "label": "Ряд 4 Место 26",
+              "type": "regular",
+              "x": 46,
+              "y": 1
+            },
+            {
+              "number": "27",
+              "label": "Ряд 4 Место 27",
+              "type": "regular",
+              "x": 47,
+              "y": 1
+            },
+            {
+              "number": "28",
+              "label": "Ряд 4 Место 28",
+              "type": "regular",
+              "x": 49,
+              "y": 1
+            },
+            {
+              "number": "29",
+              "label": "Ряд 4 Место 29",
+              "type": "regular",
+              "x": 51,
+              "y": 1
+            },
+            {
+              "number": "30",
+              "label": "Ряд 4 Место 30",
+              "type": "regular",
+              "x": 52,
+              "y": 1
+            },
+            {
+              "number": "31",
+              "label": "Ряд 4 Место 31",
+              "type": "regular",
+              "x": 54,
+              "y": 1
+            },
+            {
+              "number": "32",
+              "label": "Ряд 4 Место 32",
+              "type": "regular",
+              "x": 56,
+              "y": 1
+            },
+            {
+              "number": "33",
+              "label": "Ряд 4 Место 33",
+              "type": "regular",
+              "x": 57,
+              "y": 1
+            },
+            {
+              "number": "34",
+              "label": "Ряд 4 Место 34",
+              "type": "regular",
+              "x": 59,
+              "y": 1
+            }
+          ]
+        },
+        {
+          "number": "5",
+          "label": "Ряд 5",
+          "price_amount": 600000,
+          "seats": [
+            {
+              "number": "2",
+              "label": "Ряд 5 Место 2",
+              "type": "regular",
+              "x": 1,
+              "y": 1
+            },
+            {
+              "number": "3",
+              "label": "Ряд 5 Место 3",
+              "type": "regular",
+              "x": 3,
+              "y": 1
+            },
+            {
+              "number": "4",
+              "label": "Ряд 5 Место 4",
+              "type": "regular",
+              "x": 4,
+              "y": 1
+            },
+            {
+              "number": "5",
+              "label": "Ряд 5 Место 5",
+              "type": "regular",
+              "x": 6,
+              "y": 1
+            },
+            {
+              "number": "6",
+              "label": "Ряд 5 Место 6",
+              "type": "regular",
+              "x": 8,
+              "y": 1
+            },
+            {
+              "number": "26",
+              "label": "Ряд 5 Место 26",
+              "type": "regular",
+              "x": 45,
+              "y": 1
+            },
+            {
+              "number": "27",
+              "label": "Ряд 5 Место 27",
+              "type": "regular",
+              "x": 47,
+              "y": 1
+            },
+            {
+              "number": "28",
+              "label": "Ряд 5 Место 28",
+              "type": "regular",
+              "x": 49,
+              "y": 1
+            },
+            {
+              "number": "29",
+              "label": "Ряд 5 Место 29",
+              "type": "regular",
+              "x": 50,
+              "y": 1
+            },
+            {
+              "number": "30",
+              "label": "Ряд 5 Место 30",
+              "type": "regular",
+              "x": 52,
+              "y": 1
+            },
+            {
+              "number": "31",
+              "label": "Ряд 5 Место 31",
+              "type": "regular",
+              "x": 54,
+              "y": 1
+            },
+            {
+              "number": "32",
+              "label": "Ряд 5 Место 32",
+              "type": "regular",
+              "x": 56,
+              "y": 1
+            },
+            {
+              "number": "33",
+              "label": "Ряд 5 Место 33",
+              "type": "regular",
+              "x": 57,
+              "y": 1
+            },
+            {
+              "number": "34",
+              "label": "Ряд 5 Место 34",
+              "type": "regular",
+              "x": 59,
+              "y": 1
+            }
+          ]
+        },
+        {
+          "number": "6",
+          "label": "Ряд 6",
+          "price_amount": 600000,
+          "seats": [
+            {
+              "number": "27",
+              "label": "Ряд 6 Место 27",
+              "type": "regular",
+              "x": 1,
+              "y": 1
+            },
+            {
+              "number": "28",
+              "label": "Ряд 6 Место 28",
+              "type": "regular",
+              "x": 9,
+              "y": 1
+            },
+            {
+              "number": "29",
+              "label": "Ряд 6 Место 29",
+              "type": "regular",
+              "x": 18,
+              "y": 1
+            },
+            {
+              "number": "30",
+              "label": "Ряд 6 Место 30",
+              "type": "regular",
+              "x": 26,
+              "y": 1
+            },
+            {
+              "number": "31",
+              "label": "Ряд 6 Место 31",
+              "type": "regular",
+              "x": 34,
+              "y": 1
+            },
+            {
+              "number": "32",
+              "label": "Ряд 6 Место 32",
+              "type": "regular",
+              "x": 42,
+              "y": 1
+            },
+            {
+              "number": "33",
+              "label": "Ряд 6 Место 33",
+              "type": "regular",
+              "x": 51,
+              "y": 1
+            },
+            {
+              "number": "34",
+              "label": "Ряд 6 Место 34",
+              "type": "regular",
+              "x": 59,
+              "y": 1
+            }
+          ]
+        },
+        {
+          "number": "А",
+          "label": "Ряд А",
+          "price_amount": 500000,
+          "seats": [
+            {
+              "number": "1",
+              "label": "Ряд А Место 1",
+              "type": "regular",
+              "x": 1,
+              "y": 1
+            },
+            {
+              "number": "27",
+              "label": "Ряд А Место 27",
+              "type": "regular",
+              "x": 57,
+              "y": 1
+            },
+            {
+              "number": "28",
+              "label": "Ряд А Место 28",
+              "type": "regular",
+              "x": 59,
+              "y": 1
+            }
+          ]
+        },
+        {
+          "number": "Б",
+          "label": "Ряд Б",
+          "price_amount": 500000,
+          "seats": [
+            {
+              "number": "1",
+              "label": "Ряд Б Место 1",
+              "type": "regular",
+              "x": 1,
+              "y": 1
+            },
+            {
+              "number": "2",
+              "label": "Ряд Б Место 2",
+              "type": "regular",
+              "x": 3,
+              "y": 1
+            },
+            {
+              "number": "3",
+              "label": "Ряд Б Место 3",
+              "type": "regular",
+              "x": 5,
+              "y": 1
+            },
+            {
+              "number": "4",
+              "label": "Ряд Б Место 4",
+              "type": "regular",
+              "x": 7,
+              "y": 1
+            },
+            {
+              "number": "29",
+              "label": "Ряд Б Место 29",
+              "type": "regular",
+              "x": 57,
+              "y": 1
+            },
+            {
+              "number": "30",
+              "label": "Ряд Б Место 30",
+              "type": "regular",
+              "x": 59,
+              "y": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Амфитеатр",
+      "code": "А2",
+      "type": "seated",
+      "x": 0,
+      "y": 0,
+      "width": 60,
+      "height": 40,
+      "rows": [
+        {
+          "number": "8",
+          "label": "Ряд 8",
+          "price_amount": 550000,
+          "seats": [
+            {
+              "number": "1",
+              "label": "Ряд 8 Место 1",
+              "type": "regular",
+              "x": 1,
+              "y": 1
+            },
+            {
+              "number": "2",
+              "label": "Ряд 8 Место 2",
+              "type": "regular",
+              "x": 3,
+              "y": 1
+            },
+            {
+              "number": "3",
+              "label": "Ряд 8 Место 3",
+              "type": "regular",
+              "x": 4,
+              "y": 1
+            },
+            {
+              "number": "4",
+              "label": "Ряд 8 Место 4",
+              "type": "regular",
+              "x": 6,
+              "y": 1
+            },
+            {
+              "number": "5",
+              "label": "Ряд 8 Место 5",
+              "type": "regular",
+              "x": 8,
+              "y": 1
+            },
+            {
+              "number": "6",
+              "label": "Ряд 8 Место 6",
+              "type": "regular",
+              "x": 9,
+              "y": 1
+            },
+            {
+              "number": "7",
+              "label": "Ряд 8 Место 7",
+              "type": "regular",
+              "x": 11,
+              "y": 1
+            },
+            {
+              "number": "8",
+              "label": "Ряд 8 Место 8",
+              "type": "regular",
+              "x": 13,
+              "y": 1
+            },
+            {
+              "number": "9",
+              "label": "Ряд 8 Место 9",
+              "type": "regular",
+              "x": 14,
+              "y": 1
+            },
+            {
+              "number": "10",
+              "label": "Ряд 8 Место 10",
+              "type": "regular",
+              "x": 16,
+              "y": 1
+            },
+            {
+              "number": "29",
+              "label": "Ряд 8 Место 29",
+              "type": "regular",
+              "x": 47,
+              "y": 1
+            },
+            {
+              "number": "30",
+              "label": "Ряд 8 Место 30",
+              "type": "regular",
+              "x": 49,
+              "y": 1
+            },
+            {
+              "number": "31",
+              "label": "Ряд 8 Место 31",
+              "type": "regular",
+              "x": 51,
+              "y": 1
+            },
+            {
+              "number": "32",
+              "label": "Ряд 8 Место 32",
+              "type": "regular",
+              "x": 52,
+              "y": 1
+            },
+            {
+              "number": "33",
+              "label": "Ряд 8 Место 33",
+              "type": "regular",
+              "x": 54,
+              "y": 1
+            },
+            {
+              "number": "34",
+              "label": "Ряд 8 Место 34",
+              "type": "regular",
+              "x": 56,
+              "y": 1
+            },
+            {
+              "number": "35",
+              "label": "Ряд 8 Место 35",
+              "type": "regular",
+              "x": 57,
+              "y": 1
+            },
+            {
+              "number": "36",
+              "label": "Ряд 8 Место 36",
+              "type": "regular",
+              "x": 59,
+              "y": 1
+            }
+          ]
+        },
+        {
+          "number": "9",
+          "label": "Ряд 9",
+          "price_amount": 550000,
+          "seats": [
+            {
+              "number": "26",
+              "label": "Ряд 9 Место 26",
+              "type": "regular",
+              "x": 1,
+              "y": 1
+            },
+            {
+              "number": "27",
+              "label": "Ряд 9 Место 27",
+              "type": "regular",
+              "x": 7,
+              "y": 1
+            },
+            {
+              "number": "28",
+              "label": "Ряд 9 Место 28",
+              "type": "regular",
+              "x": 13,
+              "y": 1
+            },
+            {
+              "number": "29",
+              "label": "Ряд 9 Место 29",
+              "type": "regular",
+              "x": 18,
+              "y": 1
+            },
+            {
+              "number": "30",
+              "label": "Ряд 9 Место 30",
+              "type": "regular",
+              "x": 24,
+              "y": 1
+            },
+            {
+              "number": "31",
+              "label": "Ряд 9 Место 31",
+              "type": "regular",
+              "x": 30,
+              "y": 1
+            },
+            {
+              "number": "32",
+              "label": "Ряд 9 Место 32",
+              "type": "regular",
+              "x": 36,
+              "y": 1
+            },
+            {
+              "number": "33",
+              "label": "Ряд 9 Место 33",
+              "type": "regular",
+              "x": 42,
+              "y": 1
+            },
+            {
+              "number": "34",
+              "label": "Ряд 9 Место 34",
+              "type": "regular",
+              "x": 47,
+              "y": 1
+            },
+            {
+              "number": "35",
+              "label": "Ряд 9 Место 35",
+              "type": "regular",
+              "x": 53,
+              "y": 1
+            },
+            {
+              "number": "36",
+              "label": "Ряд 9 Место 36",
+              "type": "regular",
+              "x": 59,
+              "y": 1
+            }
+          ]
+        },
+        {
+          "number": "10",
+          "label": "Ряд 10",
+          "price_amount": 500000,
+          "seats": [
+            {
+              "number": "1",
+              "label": "Ряд 10 Место 1",
+              "type": "regular",
+              "x": 1,
+              "y": 1
+            },
+            {
+              "number": "2",
+              "label": "Ряд 10 Место 2",
+              "type": "regular",
+              "x": 3,
+              "y": 1
+            },
+            {
+              "number": "6",
+              "label": "Ряд 10 Место 6",
+              "type": "regular",
+              "x": 9,
+              "y": 1
+            },
+            {
+              "number": "25",
+              "label": "Ряд 10 Место 25",
+              "type": "regular",
+              "x": 41,
+              "y": 1
+            },
+            {
+              "number": "26",
+              "label": "Ряд 10 Место 26",
+              "type": "regular",
+              "x": 42,
+              "y": 1
+            },
+            {
+              "number": "27",
+              "label": "Ряд 10 Место 27",
+              "type": "regular",
+              "x": 44,
+              "y": 1
+            },
+            {
+              "number": "28",
+              "label": "Ряд 10 Место 28",
+              "type": "regular",
+              "x": 46,
+              "y": 1
+            },
+            {
+              "number": "29",
+              "label": "Ряд 10 Место 29",
+              "type": "regular",
+              "x": 47,
+              "y": 1
+            },
+            {
+              "number": "30",
+              "label": "Ряд 10 Место 30",
+              "type": "regular",
+              "x": 49,
+              "y": 1
+            },
+            {
+              "number": "31",
+              "label": "Ряд 10 Место 31",
+              "type": "regular",
+              "x": 51,
+              "y": 1
+            },
+            {
+              "number": "32",
+              "label": "Ряд 10 Место 32",
+              "type": "regular",
+              "x": 52,
+              "y": 1
+            },
+            {
+              "number": "33",
+              "label": "Ряд 10 Место 33",
+              "type": "regular",
+              "x": 54,
+              "y": 1
+            },
+            {
+              "number": "34",
+              "label": "Ряд 10 Место 34",
+              "type": "regular",
+              "x": 56,
+              "y": 1
+            },
+            {
+              "number": "35",
+              "label": "Ряд 10 Место 35",
+              "type": "regular",
+              "x": 57,
+              "y": 1
+            },
+            {
+              "number": "36",
+              "label": "Ряд 10 Место 36",
+              "type": "regular",
+              "x": 59,
+              "y": 1
+            }
+          ]
+        },
+        {
+          "number": "11",
+          "label": "Ряд 11",
+          "price_amount": 500000,
+          "seats": [
+            {
+              "number": "1",
+              "label": "Ряд 11 Место 1",
+              "type": "regular",
+              "x": 1,
+              "y": 1
+            },
+            {
+              "number": "2",
+              "label": "Ряд 11 Место 2",
+              "type": "regular",
+              "x": 3,
+              "y": 1
+            },
+            {
+              "number": "3",
+              "label": "Ряд 11 Место 3",
+              "type": "regular",
+              "x": 5,
+              "y": 1
+            },
+            {
+              "number": "4",
+              "label": "Ряд 11 Место 4",
+              "type": "regular",
+              "x": 7,
+              "y": 1
+            },
+            {
+              "number": "5",
+              "label": "Ряд 11 Место 5",
+              "type": "regular",
+              "x": 9,
+              "y": 1
+            },
+            {
+              "number": "6",
+              "label": "Ряд 11 Место 6",
+              "type": "regular",
+              "x": 11,
+              "y": 1
+            },
+            {
+              "number": "7",
+              "label": "Ряд 11 Место 7",
+              "type": "regular",
+              "x": 13,
+              "y": 1
+            },
+            {
+              "number": "8",
+              "label": "Ряд 11 Место 8",
+              "type": "regular",
+              "x": 15,
+              "y": 1
+            },
+            {
+              "number": "9",
+              "label": "Ряд 11 Место 9",
+              "type": "regular",
+              "x": 17,
+              "y": 1
+            },
+            {
+              "number": "10",
+              "label": "Ряд 11 Место 10",
+              "type": "regular",
+              "x": 19,
+              "y": 1
+            },
+            {
+              "number": "13",
+              "label": "Ряд 11 Место 13",
+              "type": "regular",
+              "x": 25,
+              "y": 1
+            },
+            {
+              "number": "28",
+              "label": "Ряд 11 Место 28",
+              "type": "regular",
+              "x": 55,
+              "y": 1
+            },
+            {
+              "number": "29",
+              "label": "Ряд 11 Место 29",
+              "type": "regular",
+              "x": 57,
+              "y": 1
+            },
+            {
+              "number": "30",
+              "label": "Ряд 11 Место 30",
+              "type": "regular",
+              "x": 59,
+              "y": 1
+            }
+          ]
+        },
+        {
+          "number": "12",
+          "label": "Ряд 12",
+          "price_amount": 450000,
+          "seats": [
+            {
+              "number": "28",
+              "label": "Ряд 12 Место 28",
+              "type": "regular",
+              "x": 1,
+              "y": 1
+            },
+            {
+              "number": "29",
+              "label": "Ряд 12 Место 29",
+              "type": "regular",
+              "x": 11,
+              "y": 1
+            },
+            {
+              "number": "30",
+              "label": "Ряд 12 Место 30",
+              "type": "regular",
+              "x": 20,
+              "y": 1
+            },
+            {
+              "number": "31",
+              "label": "Ряд 12 Место 31",
+              "type": "regular",
+              "x": 30,
+              "y": 1
+            },
+            {
+              "number": "32",
+              "label": "Ряд 12 Место 32",
+              "type": "regular",
+              "x": 40,
+              "y": 1
+            },
+            {
+              "number": "33",
+              "label": "Ряд 12 Место 33",
+              "type": "regular",
+              "x": 49,
+              "y": 1
+            },
+            {
+              "number": "34",
+              "label": "Ряд 12 Место 34",
+              "type": "regular",
+              "x": 59,
+              "y": 1
+            }
+          ]
+        },
+        {
+          "number": "13",
+          "label": "Ряд 13",
+          "price_amount": 450000,
+          "seats": [
+            {
+              "number": "1",
+              "label": "Ряд 13 Место 1",
+              "type": "regular",
+              "x": 1,
+              "y": 1
+            },
+            {
+              "number": "2",
+              "label": "Ряд 13 Место 2",
+              "type": "regular",
+              "x": 3,
+              "y": 1
+            },
+            {
+              "number": "3",
+              "label": "Ряд 13 Место 3",
+              "type": "regular",
+              "x": 5,
+              "y": 1
+            },
+            {
+              "number": "4",
+              "label": "Ряд 13 Место 4",
+              "type": "regular",
+              "x": 7,
+              "y": 1
+            },
+            {
+              "number": "5",
+              "label": "Ряд 13 Место 5",
+              "type": "regular",
+              "x": 8,
+              "y": 1
+            },
+            {
+              "number": "6",
+              "label": "Ряд 13 Место 6",
+              "type": "regular",
+              "x": 10,
+              "y": 1
+            },
+            {
+              "number": "7",
+              "label": "Ряд 13 Место 7",
+              "type": "regular",
+              "x": 12,
+              "y": 1
+            },
+            {
+              "number": "8",
+              "label": "Ряд 13 Место 8",
+              "type": "regular",
+              "x": 14,
+              "y": 1
+            },
+            {
+              "number": "9",
+              "label": "Ряд 13 Место 9",
+              "type": "regular",
+              "x": 16,
+              "y": 1
+            },
+            {
+              "number": "10",
+              "label": "Ряд 13 Место 10",
+              "type": "regular",
+              "x": 18,
+              "y": 1
+            },
+            {
+              "number": "13",
+              "label": "Ряд 13 Место 13",
+              "type": "regular",
+              "x": 23,
+              "y": 1
+            },
+            {
+              "number": "14",
+              "label": "Ряд 13 Место 14",
+              "type": "regular",
+              "x": 25,
+              "y": 1
+            },
+            {
+              "number": "32",
+              "label": "Ряд 13 Место 32",
+              "type": "regular",
+              "x": 59,
+              "y": 1
+            }
+          ]
+        },
+        {
+          "number": "14",
+          "label": "Ряд 14",
+          "price_amount": 400000,
+          "seats": [
+            {
+              "number": "28",
+              "label": "Ряд 14 Место 28",
+              "type": "regular",
+              "x": 1,
+              "y": 1
+            },
+            {
+              "number": "29",
+              "label": "Ряд 14 Место 29",
+              "type": "regular",
+              "x": 9,
+              "y": 1
+            },
+            {
+              "number": "30",
+              "label": "Ряд 14 Место 30",
+              "type": "regular",
+              "x": 18,
+              "y": 1
+            },
+            {
+              "number": "31",
+              "label": "Ряд 14 Место 31",
+              "type": "regular",
+              "x": 26,
+              "y": 1
+            },
+            {
+              "number": "32",
+              "label": "Ряд 14 Место 32",
+              "type": "regular",
+              "x": 34,
+              "y": 1
+            },
+            {
+              "number": "33",
+              "label": "Ряд 14 Место 33",
+              "type": "regular",
+              "x": 42,
+              "y": 1
+            },
+            {
+              "number": "34",
+              "label": "Ряд 14 Место 34",
+              "type": "regular",
+              "x": 51,
+              "y": 1
+            },
+            {
+              "number": "35",
+              "label": "Ряд 14 Место 35",
+              "type": "regular",
+              "x": 59,
+              "y": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Балкон",
+      "code": "Б3",
+      "type": "seated",
+      "x": 0,
+      "y": 0,
+      "width": 60,
+      "height": 40,
+      "rows": [
+        {
+          "number": "1",
+          "label": "Ряд 1",
+          "price_amount": 350000,
+          "seats": [
+            {
+              "number": "1",
+              "label": "Ряд 1 Место 1",
+              "type": "regular",
+              "x": 1,
+              "y": 1
+            },
+            {
+              "number": "2",
+              "label": "Ряд 1 Место 2",
+              "type": "regular",
+              "x": 7,
+              "y": 1
+            },
+            {
+              "number": "3",
+              "label": "Ряд 1 Место 3",
+              "type": "regular",
+              "x": 14,
+              "y": 1
+            },
+            {
+              "number": "4",
+              "label": "Ряд 1 Место 4",
+              "type": "regular",
+              "x": 20,
+              "y": 1
+            },
+            {
+              "number": "5",
+              "label": "Ряд 1 Место 5",
+              "type": "regular",
+              "x": 27,
+              "y": 1
+            },
+            {
+              "number": "6",
+              "label": "Ряд 1 Место 6",
+              "type": "regular",
+              "x": 33,
+              "y": 1
+            },
+            {
+              "number": "7",
+              "label": "Ряд 1 Место 7",
+              "type": "regular",
+              "x": 40,
+              "y": 1
+            },
+            {
+              "number": "8",
+              "label": "Ряд 1 Место 8",
+              "type": "regular",
+              "x": 46,
+              "y": 1
+            },
+            {
+              "number": "9",
+              "label": "Ряд 1 Место 9",
+              "type": "regular",
+              "x": 53,
+              "y": 1
+            },
+            {
+              "number": "10",
+              "label": "Ряд 1 Место 10",
+              "type": "regular",
+              "x": 59,
+              "y": 1
+            }
+          ]
+        },
+        {
+          "number": "3",
+          "label": "Ряд 3",
+          "price_amount": 300000,
+          "seats": [
+            {
+              "number": "1",
+              "label": "Ряд 3 Место 1",
+              "type": "regular",
+              "x": 1,
+              "y": 1
+            },
+            {
+              "number": "2",
+              "label": "Ряд 3 Место 2",
+              "type": "regular",
+              "x": 5,
+              "y": 1
+            },
+            {
+              "number": "3",
+              "label": "Ряд 3 Место 3",
+              "type": "regular",
+              "x": 8,
+              "y": 1
+            },
+            {
+              "number": "4",
+              "label": "Ряд 3 Место 4",
+              "type": "regular",
+              "x": 12,
+              "y": 1
+            },
+            {
+              "number": "5",
+              "label": "Ряд 3 Место 5",
+              "type": "regular",
+              "x": 15,
+              "y": 1
+            },
+            {
+              "number": "6",
+              "label": "Ряд 3 Место 6",
+              "type": "regular",
+              "x": 19,
+              "y": 1
+            },
+            {
+              "number": "7",
+              "label": "Ряд 3 Место 7",
+              "type": "regular",
+              "x": 23,
+              "y": 1
+            },
+            {
+              "number": "8",
+              "label": "Ряд 3 Место 8",
+              "type": "regular",
+              "x": 26,
+              "y": 1
+            },
+            {
+              "number": "14",
+              "label": "Ряд 3 Место 14",
+              "type": "regular",
+              "x": 48,
+              "y": 1
+            },
+            {
+              "number": "17",
+              "label": "Ряд 3 Место 17",
+              "type": "regular",
+              "x": 59,
+              "y": 1
+            }
+          ]
+        },
+        {
+          "number": "5",
+          "label": "Ряд 5",
+          "price_amount": 250000,
+          "seats": [
+            {
+              "number": "1",
+              "label": "Ряд 5 Место 1",
+              "type": "regular",
+              "x": 1,
+              "y": 1
+            },
+            {
+              "number": "2",
+              "label": "Ряд 5 Место 2",
+              "type": "regular",
+              "x": 30,
+              "y": 1
+            },
+            {
+              "number": "3",
+              "label": "Ряд 5 Место 3",
+              "type": "regular",
+              "x": 59,
+              "y": 1
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

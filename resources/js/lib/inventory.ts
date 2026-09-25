@@ -32,6 +32,8 @@ export interface InventoryItem {
     number?: number
     label?: string
     type?: string
+    x?: number | string
+    y?: number | string
   } | null
 }
 
@@ -51,11 +53,15 @@ export async function fetchInventory(sessionId: number | string): Promise<Invent
 }
 
 /** Захолдить место. Возвращает id элемента корзины (cart item). */
-export async function holdSeat(sessionId: number | string, inventoryItemId: number | string): Promise<{ data: { id?: number | string } }> {
+export async function holdSeat(
+  sessionId: number | string,
+  inventoryItemId: number | string,
+  quantity = 1,
+): Promise<{ data: { id?: number | string } }> {
   return send<{ id?: number | string }>('/cart/items', 'POST', {
     session_id: Number(sessionId),
     inventory_item_id: Number(inventoryItemId),
-    quantity: 1,
+    quantity,
   })
 }
 
