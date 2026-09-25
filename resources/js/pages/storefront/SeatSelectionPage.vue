@@ -15,6 +15,7 @@
 import { computed, ref, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import SeatMap from '@/components/seat/SeatMap.vue'
+import CoordSeatMap from '@/components/seat/CoordSeatMap.vue'
 import SeatLegend from '@/components/seat/SeatLegend.vue'
 import OrderSummary from '@/components/seat/OrderSummary.vue'
 import NBottomSheet from '@/components/ui/NBottomSheet.vue'
@@ -23,7 +24,6 @@ import { useCartStore, type CartSeat } from '@/stores/cart'
 import { useUiStore } from '@/stores/ui'
 import { fetchInventory, holdSeat, releaseSeat, checkoutSession, type InventoryItem } from '@/lib/inventory'
 import type { Seat, Sector, Row } from '@/lib/hall'
-import { SEAT_SIZE, SEAT_GAP } from '@/lib/hall'
 import { dateFull, time, money } from '@/lib/format'
 
 const route = useRoute()
@@ -169,6 +169,61 @@ function onLimit(): void {
   ui.notify('sun', 'Больше нельзя', 'За один раз можно взять не больше 10 билетов')
 }
 
+/** Используем координатную карту, если есть standing-зоны или места с координатами. */
+const useCoordMap = computed(() => {
+  const hasStanding = inventory.value.some((i) => i.type === 'standing')
+  const hasCoords = inventory.value.some((i) => i.type === 'seat' && i.seat && Number(i.seat.x ?? 0) > 0)
+  return hasStanding || hasCoords
+})
+
+/** Клик по месту/зоне на координатной карте: item — место или танцпол, qty — количество. */
+async function onToggleCoord(item: import('@/lib/inventory').InventoryItem, qty: number): Promise<void> {
+  const id = String(item.id)
+  try {
+    if (item.type === 'standing') {
+      // Танцпол: покупаем qty билетов на стоячую зону.
+      const res = await holdSeat(sessionId.value, item.id, qty)
+      cart.meta[id] = String(res.data?.id ?? item.id)
+      cart.toggle({
+        id,
+        sector: String((item.metadata_json as Record<string, unknown> | null)?.sector_name ?? 'Танцпол'),
+        row: 0,
+        number: 0,
+        priceMinor: Number(item.price_amount ?? 0),
+        kind: 'standard',
+      })
+      return
+    }
+    // Обычное место
+    if (cart.isSelected(id)) {
+      const cartItem = cart.meta[id]
+      if (cartItem) await releaseSeat(sessionId.value, cartItem)
+      cart.toggle({
+        id,
+        sector: 'Зал',
+        row: Number(item.seat?.row_id ?? 0),
+        number: Number(item.seat?.number ?? 0),
+        priceMinor: Number(item.price_amount ?? 0),
+        kind: 'standard',
+      })
+      if (cart.meta[id]) delete cart.meta[id]
+    } else {
+      const res = await holdSeat(sessionId.value, item.id)
+      cart.meta[id] = String(res.data?.id ?? item.id)
+      cart.toggle({
+        id,
+        sector: 'Зал',
+        row: Number(item.seat?.row_id ?? 0),
+        number: Number(item.seat?.number ?? 0),
+        priceMinor: Number(item.price_amount ?? 0),
+        kind: 'standard',
+      })
+    }
+  } catch (e) {
+    ui.notify('rose', 'Не получилось', e instanceof Error ? e.message : 'Попробуйте ещё раз')
+  }
+}
+
 function remove(id: string): void {
   const seat = cart.seats.find((s: CartSeat) => s.id === id)
   if (seat) {
@@ -233,14 +288,23 @@ const sessionLabel = computed(() => {
 
       <div v-else class="mt-4 grid gap-4 lg:grid-cols-[1fr_360px]">
       <!-- Карта зала -->
-      <div class="min-w-0">
-        <SeatMap
-          :selected="selectedIds"
-          :sectors="hall"
-          :max-selection="10"
-          @toggle="onToggle"
-          @limit="onLimit"
-        />
+            <div class="min-w-0">
+              <CoordSeatMap
+                v-if="useCoordMap"
+                :inventory="inventory"
+                :selected="selectedIds"
+                :max-quantity="10"
+                @toggle="onToggleCoord"
+                @limit="onLimit"
+              />
+              <SeatMap
+                v-else
+                :selected="selectedIds"
+                :sectors="hall"
+                :max-selection="10"
+                @toggle="onToggle"
+                @limit="onLimit"
+              />
 
         <div class="mt-3 flex flex-wrap items-center justify-between gap-3">
           <SeatLegend />

@@ -126,7 +126,9 @@ class EventPageController
         );
 
         // canonical + og + JSON-LD — вставляем перед </head>.
-        $seoBlock = sprintf(
+        // base href="/": многие страницы живут по пути вроде /event/:slug/seats —
+        // без неё относительные ./assets из dist/index.html резолвятся неверно.
+        $seoBlock = '<base href="/" />' . sprintf(
             '<link rel="canonical" href="%s" />'
             . '<meta property="og:type" content="website" />'
             . '<meta property="og:title" content="%s" />'
