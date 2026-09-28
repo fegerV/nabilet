@@ -15,7 +15,7 @@
  *  4. Каждое изменение автосохраняется через 500 ms (ТЗ §52) и обратимо:
  *     удаление сектора через отмену, а не «ой, сейчас перерисую».
  */
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import Konva from 'konva'
 import NButton from '@/components/ui/NButton.vue'
@@ -130,7 +130,13 @@ const backgrounds = ref<EBackground[]>([])
 
 const selectedSectorId = ref<string | null>(null)
 const selectedSeatIds = ref<Set<string>>(new Set())
-const selectedStaticId = ref<string | null>(null)
+/** Статика выделяется мультивыбором (группа + рамка), как места (§48). */
+const selectedStaticIds = ref<Set<string>>(new Set())
+/** Быстрый доступ: id последнего выделенного объекта (для панели свойств). */
+const selectedStaticId = computed<string | null>(() => {
+  const ids = [...selectedStaticIds.value]
+  return ids.length === 1 ? ids[0] : null
+})
 
 const published = ref<number | null>(null)
 const draftVersion = ref(1)
@@ -180,6 +186,10 @@ interface SchemaSnapshot {
   backgrounds: EBackground[]
 }
 
+/**
+ * Снапшот ДО изменения. Раньше snapshot() вызывался после мутации — undo
+ * возвращал уже изменённое состояние, а первое действие было не отменить.
+ */
 function snapshot(): void {
   history.value.push({
     sectors: JSON.parse(JSON.stringify(sectors.value)) as ESector[],
@@ -188,6 +198,20 @@ function snapshot(): void {
   })
   future.value = []
   if (history.value.length > 50) history.value.shift()
+}
+
+/**
+ * Перемещение группы (сектор/статика) Konva мутирует модель напрямую и не
+ * проходит через snapshot(). Отдельный флаг: снапшот «до» берётся один раз
+ * на начало drag, финализация — на dragend (см. beginMoveSnapshot).
+ */
+let moveSnapshotTaken = false
+let snapshotPendingMove = false
+function beginMoveSnapshot(): void {
+  if (!moveSnapshotTaken) {
+    snapshot()
+    moveSnapshotTaken = true
+  }
 }
 
 function undo(): void {
@@ -203,7 +227,7 @@ function undo(): void {
   backgrounds.value = prev.backgrounds
   selectedSectorId.value = null
   selectedSeatIds.value = new Set()
-  selectedStaticId.value = null
+  selectedStaticIds.value = new Set()
 }
 
 function redo(): void {
@@ -289,7 +313,12 @@ function generateSector(): void {
 }
 
 function addRowToSelected(): void {
-  if (tool.value !== 'row') return
+  // Инструмент «ряд» (§47): либо выбран сам инструмент, либо кнопка «+ Ряд» в
+  // инспекторе — иначе клик по кнопке молча игнорировался (дефект A4).
+  if (tool.value !== 'row' && tool.value !== 'select') {
+    ui.notify('sun', 'Не тот инструмент', 'Кнопка «+ Ряд» работает с инструментами «Ряд» или «Выделение»')
+    return
+  }
   const sector = sectors.value.find((s) => s.id === selectedSectorId.value)
   if (!sector) {
     ui.notify('rose', 'Сначала выберите сектор', 'Кликните по сектору на холсте')
@@ -331,23 +360,46 @@ function addRowToSelected(): void {
 
 /* ── Операции с местами (§48) ──────────────────────────────────────── */
 
-/** Инструменты правки — всё, кроме навигации (select/pan/zoom). */
+/**
+ * Инструменты правки — всё, кроме навигации (select/pan/zoom).
+ * Каждый инструмент из списка обязан ЧТО-ТО делать на холсте (§47):
+ *   seat/row/sector/table/standing/text/image/stage/entrance — см. обработчики
+ *   ниже (handleToolClick, onStageMouseDown/Move/Up, triggerImageUpload).
+ */
 const EDIT_TOOLS: Tool[] = ['seat', 'row', 'sector', 'table', 'standing', 'text', 'image', 'stage', 'entrance']
 
 function pickSeat(seatId: string, sectorId: string, additive: boolean): void {
-  if (tool.value !== 'select') return
+  if (isLocked.value) return
+  // Мультиселект работает и Shift-ом, и Ctrl/Cmd-ом (§48).
   if (additive) {
     const next = new Set(selectedSeatIds.value)
     if (next.has(seatId)) next.delete(seatId)
     else next.add(seatId)
     selectedSeatIds.value = next
+    if (next.size > 0) selectedSectorId.value = sectorId
   } else {
     selectedSectorId.value = sectorId
     selectedSeatIds.value = new Set([seatId])
+    selectedStaticIds.value = new Set()
   }
 }
 
-/* ── Инструменты создания (§47): seat / table / standing / text / stage / entrance ── */
+/** Выделение статического объекта (клик по группе на холсте, §48). */
+function pickStatic(staticId: string, additive: boolean): void {
+  if (isLocked.value) return
+  if (additive) {
+    const next = new Set(selectedStaticIds.value)
+    if (next.has(staticId)) next.delete(staticId)
+    else next.add(staticId)
+    selectedStaticIds.value = next
+  } else {
+    selectedStaticIds.value = new Set([staticId])
+    selectedSeatIds.value = new Set()
+    selectedSectorId.value = null
+  }
+}
+
+/* ── Инструменты создания (§47): seat / row / sector / table / standing / text / image / stage / entrance ── */
 
 /** Перевести экранные координаты клика в координаты холста (с учётом pan/zoom). */
 function toCanvasPoint(clientX: number, clientY: number): { x: number; y: number } | null {
@@ -358,6 +410,16 @@ function toCanvasPoint(clientX: number, clientY: number): { x: number; y: number
     x: Math.round((clientX - rect.left - stage.x()) / scale),
     y: Math.round((clientY - rect.top - stage.y()) / scale),
   }
+}
+
+/** Сектор, в прямоугольник которого попадает точка холста (или null). */
+function findSectorAt(x: number, y: number): ESector | null {
+  for (const sector of sectors.value) {
+    const bb = bbox(sector)
+    if (x >= sector.x + bb.x - 8 && x <= sector.x + bb.x + bb.width + 8
+      && y >= sector.y + bb.y - 24 && y <= sector.y + bb.y + bb.height + 8) return sector
+  }
+  return null
 }
 
 /** Ближайший сектор к точке (для инструмента «место»), или null. */
@@ -377,29 +439,66 @@ function nearestSector(x: number, y: number): ESector | null {
 
 /** Добавить одиночное место кликом (инструмент seat, §47). */
 function addSeatAt(x: number, y: number): void {
-  const target = selectedSector.value ?? nearestSector(x, y)
+  // Приоритет: сектор под курсором → выбранный сектор → ближайший.
+  const target = findSectorAt(x, y) ?? selectedSector.value ?? nearestSector(x, y)
   if (!target) {
     ui.notify('rose', 'Нет сектора', 'Место можно добавить только в существующий сектор — создайте сектор (▣)')
     return
   }
   snapshot()
-  const localX = x - target.x
-  const localY = y - target.y
-  // Ряд и номер — по соседним местам: новый ряд, если точка ниже последнего.
+  const localX = Math.round(x - target.x)
+  const localY = Math.round(y - target.y)
+  // Ряд — ближайший по вертикали; новый ряд, если точка ниже последнего.
   const rows = Array.from(new Set(target.seats.map((s) => s.row))).sort((a, b) => a - b)
   const lastRow = rows[rows.length - 1] ?? 1
-  const inLastRow = target.seats.filter((s) => s.row === lastRow)
   const rowStep = SEAT + ROW_GAP
-  const newRow = inLastRow.length > 0 && localY > inLastRow[0].y + rowStep * 0.6
-    ? lastRow + 1
-    : lastRow
+  let newRow = rows.reduce(
+    (best, r) => {
+      const rep = target.seats.find((s) => s.row === r)
+      if (!rep) return best
+      return Math.abs(localY - (rep.y + SEAT / 2)) < Math.abs(localY - (best.y + SEAT / 2)) ? rep : best
+    },
+    target.seats.find((s) => s.row === rows[0]) ?? { y: localY } as ESeat,
+  ).row
+  const inLastRow = target.seats.filter((s) => s.row === lastRow)
+  if (inLastRow.length > 0 && localY > inLastRow[0].y + rowStep * 0.6) newRow = lastRow + 1
   const rowSeats = target.seats.filter((s) => s.row === newRow)
   const maxNumber = rowSeats.reduce((m, s) => Math.max(m, s.number), 0)
-  // Ряды ниже первого VIP-ряда наследуют стандартный тип; крайние места — доступные.
   const kind: SeatKind = 'standard'
   target.seats.push({ id: nextId('seat'), row: newRow, number: maxNumber + 1, kind, x: localX, y: localY })
+  selectedSectorId.value = target.id
   selectedSeatIds.value = new Set([target.seats[target.seats.length - 1].id])
+  selectedStaticIds.value = new Set()
   ui.notify('mint', 'Место добавлено', `${target.name}, ряд ${newRow}, место ${maxNumber + 1}`)
+}
+
+/**
+ * Пересчитать номера мест внутри каждого затронутого ряда (по X слева
+ * направо). Нужен после группового перемещения: места могут пересесть в
+ * другой ряд или поменять порядок — нумерация обязана остаться читаемой (§48).
+ */
+function renumberRows(sector: ESector, rowsTouched: Set<number>): void {
+  if (rowsTouched.size === 0) return
+  for (const row of rowsTouched) {
+    const inRow = sector.seats
+      .filter((s) => s.row === row)
+      .sort((a, b) => a.x - b.x)
+    inRow.forEach((seat, i) => { seat.number = i + 1 })
+  }
+}
+
+/** Ряд сектора для глобальной Y-координаты места (ближайший по вертикали). */
+function rowForGlobalY(sector: ESector, gy: number): number {
+  const rows = Array.from(new Set(sector.seats.map((s) => s.row))).sort((a, b) => a - b)
+  let best = rows[0] ?? 1
+  let bestDist = Infinity
+  for (const r of rows) {
+    const rep = sector.seats.find((s) => s.row === r)
+    if (!rep) continue
+    const d = Math.abs(gy - (rep.y + SEAT / 2))
+    if (d < bestDist) { bestDist = d; best = r }
+  }
+  return best
 }
 
 /** Создать статический объект кликом (tools table/text/stage/entrance, §47). */
@@ -412,10 +511,17 @@ function createStaticAt(kind: StaticKind, x: number, y: number): void {
     statics.value.push({ ...base, text: 'Подпись' })
   } else if (kind === 'stage') {
     statics.value.push({ ...base, width: 260, height: 34, text: 'СЦЕНА' })
+  } else if (kind === 'entrance') {
+    statics.value.push({ ...base, text: 'Вход' })
   } else {
     statics.value.push(base)
   }
-  selectedStaticId.value = statics.value[statics.value.length - 1].id
+  const created = statics.value[statics.value.length - 1]
+  selectedStaticIds.value = new Set([created.id])
+  selectedSeatIds.value = new Set()
+  selectedSectorId.value = null
+  const labels: Record<string, string> = { table: 'Стол поставлен', label: 'Подпись добавлена', stage: 'Сцена размещена', entrance: 'Вход отмечен' }
+  ui.notify('mint', labels[kind] ?? 'Объект создан', 'Двигайте мышью, свойства — в панели справа')
 }
 
 /**
@@ -426,67 +532,145 @@ function createStaticAt(kind: StaticKind, x: number, y: number): void {
  */
 function handleToolClick(clientX: number, clientY: number): void {
   if (isLocked.value) return
+  // Клик «поверх» завершённого перетаскивания (Konva выдаёт click после
+  // mouseup с тем же button) — не должен порождать второй объект.
+  if (wasDragged) return
   const t = tool.value
-  if (!EDIT_TOOLS.includes(t) || t === 'image' || t === 'row' || t === 'sector') return
+  if (!EDIT_TOOLS.includes(t) || t === 'image' || t === 'standing') return
   const p = toCanvasPoint(clientX, clientY)
   if (!p) return
   if (t === 'seat') { addSeatAt(p.x, p.y); return }
   if (t === 'table') { createStaticAt('table', p.x - 22, p.y - 16); return }
   if (t === 'text') { createStaticAt('label', p.x, p.y); return }
   if (t === 'stage') { createStaticAt('stage', p.x - 130, p.y - 17); return }
-  if (t === 'entrance') { createStaticAt('entrance', p.x, p.y); return }
+  if (t === 'entrance') { createStaticAt('entrance', p.x - 12, p.y - 9); return }
+  if (t === 'sector') { createRectSector(p.x, p.y); return }
+  if (t === 'row') { addRowToSelected(); return }
 }
 
-/** Прямоугольник стоячей зоны, растянутый перетаскиванием (marquee, §47). */
-let standingDragStart: { x: number; y: number } | null = null
+/**
+ * Быстрое создание сектора кликом (инструмент sector, §47): сетка из формы
+ * генератора в точке клика. Полноценная раскладка — кнопкой «Создать сектор»
+ * в инспекторе (§49).
+ */
+function createRectSector(x: number, y: number): void {
+  const prev = form.value
+  form.value = { ...prev, name: prev.name || `Сектор ${sectors.value.length + 1}` }
+  generateSector()
+  const created = sectors.value[sectors.value.length - 1]
+  if (created) { created.x = x; created.y = y }
+}
+
+/** Жест перетаскиванием: standing-зона и sector-прямоугольник (§47). */
+type DragMode = 'standing' | 'sector' | 'marquee' | null
+let dragMode: DragMode = null
+let dragStart: { x: number; y: number } | null = null
+/** true, если между mousedown и mouseup курсор ушёл дальше порога — клик не считается. */
+let wasDragged = false
+const DRAG_THRESHOLD = 4
+/** Смещения выделенных статик относительно тянутого объекта (групповой drag). */
+const dragOffsets = new Map<string, { dx: number; dy: number }>()
+
 function onStageMouseDown(e: Konva.KonvaEventObject<MouseEvent>): void {
   if (isLocked.value) return
-  if (tool.value === 'standing') {
-    const p = toCanvasPoint(e.evt.clientX, e.evt.clientY)
-    if (p) standingDragStart = p
-  } else if (tool.value === 'select') {
+  if (e.evt.button !== 0) return
+  const p = toCanvasPoint(e.evt.clientX, e.evt.clientY)
+  if (!p) return
+  wasDragged = false
+  dragStart = p
+  const t = tool.value
+  if (t === 'standing') dragMode = 'standing'
+  else if (t === 'sector') dragMode = 'sector'
+  else if (t === 'select') {
     // Рамка группового выделения (§48): mousedown по пустому месту холста.
     const clickedShape = e.target
-    if (clickedShape === stage || clickedShape?.name() === 'canvas-bg') {
-      const p = toCanvasPoint(e.evt.clientX, e.evt.clientY)
-      if (p) marqueeStart = p
-    }
-  }
+    if (clickedShape === stage || clickedShape?.name() === 'canvas-bg') dragMode = 'marquee'
+    else dragMode = null
+  } else dragMode = null
 }
 
 function onStageMouseMove(e: Konva.KonvaEventObject<MouseEvent>): void {
-  if (marqueeStart) {
-    const p = toCanvasPoint(e.evt.clientX, e.evt.clientY)
-    if (!p) return
+  if (!dragStart || !dragMode) return
+  const p = toCanvasPoint(e.evt.clientX, e.evt.clientY)
+  if (!p) return
+  if (Math.hypot(p.x - dragStart.x, p.y - dragStart.y) > DRAG_THRESHOLD) wasDragged = true
+  if (!wasDragged) return
+  if (dragMode === 'marquee') {
+    marqueeStart = dragStart
     marqueeEnd = p
     drawMarquee()
+  } else if (dragMode === 'standing' || dragMode === 'sector') {
+    drawStretchPreview(dragStart, p, dragMode)
   }
 }
 
 function onStageMouseUp(e: Konva.KonvaEventObject<MouseEvent>): void {
-  if (standingDragStart) {
-    const p = toCanvasPoint(e.evt.clientX, e.evt.clientY)
-    const start = standingDragStart
-    standingDragStart = null
-    if (!p || isLocked.value) return
-    const w = Math.abs(p.x - start.x)
-    const h = Math.abs(p.y - start.y)
-    // Клик без растягивания → зона по умолчанию 120×60.
-    const x = Math.min(start.x, p.x || start.x + 120)
-    const y = Math.min(start.y, p.y || start.y + 60)
-    snapshot()
-    const capacity = Math.max(10, Math.floor((w || 120) * (h || 60) / 150))
-    statics.value.push({ id: nextId('static'), kind: 'standing', x, y, width: w || 120, height: h || 60, capacity, text: `Фан-зона · ${capacity}` })
-    selectedStaticId.value = statics.value[statics.value.length - 1].id
-    ui.notify('mint', 'Стоячая зона создана', `Вместимость: ${capacity}`)
+  const start = dragStart
+  const mode = dragMode
+  dragStart = null
+  dragMode = null
+  const p = start ? toCanvasPoint(e.evt.clientX, e.evt.clientY) : null
+  if (start && p && mode === 'standing' && wasDragged) {
+    createStandingZone(start, p)
   }
-  if (marqueeStart && marqueeEnd) {
+  if (start && p && mode === 'sector' && wasDragged) {
+    createSectorFromRect(start, p)
+  }
+  if (mode === 'marquee' && marqueeStart && marqueeEnd) {
     applyMarqueeSelection()
   }
   marqueeStart = null
   marqueeEnd = null
   guidesLayer?.destroyChildren()
   guidesLayer?.draw()
+}
+
+/** Стоячая зона, растянутая перетаскиванием (инструмент standing, §47). */
+function createStandingZone(a: { x: number; y: number }, b: { x: number; y: number }): void {
+  if (isLocked.value) return
+  const x = Math.min(a.x, b.x)
+  const y = Math.min(a.y, b.y)
+  const w = Math.abs(b.x - a.x)
+  const h = Math.abs(b.y - a.y)
+  snapshot()
+  // Вместимость: ~0,66 м² на человека, условно 150 px² в масштабе схемы.
+  const capacity = Math.max(10, Math.floor((w * h) / 150))
+  statics.value.push({ id: nextId('static'), kind: 'standing', x, y, width: w, height: h, capacity, text: `Фан-зона · ${capacity}` })
+  selectedStaticIds.value = new Set([statics.value[statics.value.length - 1].id])
+  selectedSeatIds.value = new Set()
+  selectedSectorId.value = null
+  ui.notify('mint', 'Стоячая зона создана', `Вместимость: ${capacity}`)
+}
+
+/** Сектор-прямоугольник, растянутый перетаскиванием (инструмент sector, §47). */
+function createSectorFromRect(a: { x: number; y: number }, b: { x: number; y: number }): void {
+  const w = Math.abs(b.x - a.x)
+  const h = Math.abs(b.y - a.y)
+  const seatsPerRow = Math.max(1, Math.round(w / (SEAT + GAP)))
+  const rows = Math.max(1, Math.round(h / (SEAT + ROW_GAP)))
+  const prev = form.value
+  form.value = { ...prev, shape: 'grid', rows, seatsPerRow, name: prev.name || `Сектор ${sectors.value.length + 1}` }
+  generateSector()
+  const created = sectors.value[sectors.value.length - 1]
+  if (created) { created.x = Math.min(a.x, b.x); created.y = Math.min(a.y, b.y) }
+}
+
+/** Пунктирный превью растягивания (standing/sector) во время жеста. */
+function drawStretchPreview(a: { x: number; y: number }, b: { x: number; y: number }, mode: 'standing' | 'sector'): void {
+  if (!guidesLayer) return
+  guidesLayer.destroyChildren()
+  guidesLayer.add(new Konva.Rect({
+    x: Math.min(a.x, b.x),
+    y: Math.min(a.y, b.y),
+    width: Math.abs(b.x - a.x),
+    height: Math.abs(b.y - a.y),
+    stroke: mode === 'standing' ? '#C9A0FF' : '#6D4AFF',
+    dash: [8, 5],
+    strokeWidth: 2,
+    fill: mode === 'standing' ? 'rgba(58,50,112,0.35)' : 'rgba(109,74,255,0.08)',
+    listening: false,
+  }))
+  guidesLayer.draw()
 }
 
 /* ── Рамка выделения (§48: drag — групповое выделение) ─────────────── */
@@ -540,16 +724,16 @@ function deleteSelection(): void {
     ui.notify('sun', 'Версия опубликована', 'Удаление недоступно — нажмите «Новая версия», чтобы править')
     return
   }
-  if (selectedSeatIds.value.size === 0 && !selectedStaticId.value && !selectedSectorId.value) return
+  if (selectedSeatIds.value.size === 0 && selectedStaticIds.value.size === 0 && !selectedSectorId.value) return
   snapshot()
   if (selectedSeatIds.value.size > 0) {
     for (const sector of sectors.value) {
       sector.seats = sector.seats.filter((s) => !selectedSeatIds.value.has(s.id))
     }
     selectedSeatIds.value = new Set()
-  } else if (selectedStaticId.value) {
-    statics.value = statics.value.filter((s) => s.id !== selectedStaticId.value)
-    selectedStaticId.value = null
+  } else if (selectedStaticIds.value.size > 0) {
+    statics.value = statics.value.filter((s) => !selectedStaticIds.value.has(s.id))
+    selectedStaticIds.value = new Set()
   } else if (selectedSectorId.value) {
     sectors.value = sectors.value.filter((s) => s.id !== selectedSectorId.value)
     selectedSectorId.value = null
@@ -1151,50 +1335,83 @@ function draw(): void {
     img.src = bg.src
   }
 
-  // Слой 2: статические объекты (§46: static_objects)
-  const stageRect = new Konva.Rect({
-    x: canvasSize.value.width / 2 - 130,
-    y: 24,
-    width: 260,
-    height: 34,
-    cornerRadius: [4, 4, 16, 16],
-    fillLinearGradientStartPoint: { x: 0, y: 0 },
-    fillLinearGradientEndPoint: { x: 260, y: 0 },
-    fillLinearGradientColorStops: [0, '#6D4AFF', 1, '#FF5C22'],
-  })
-  staticLayer?.add(stageRect)
-  staticLayer?.add(
-    new Konva.Text({
-      x: canvasSize.value.width / 2 - 130,
-      y: 34,
-      width: 260,
-      align: 'center',
-      text: 'СЦЕНА',
-      fontSize: 12,
-      fontStyle: 'bold',
-      letterSpacing: 3,
-      fill: '#FFFFFF',
-    }),
-  )
+  // Слой 2: статические объекты (§46: static_objects). Все фигуры — с id,
+  // чтобы по ним можно было кликать (выбор) и перетаскивать (правка §47).
+  const canEdit = published.value === null && !isLocked.value && tool.value !== 'pan'
   for (const s of statics.value) {
-      if (s.kind === 'entrance') {
-      const arrow = new Konva.Arrow({ points: [s.x, s.y, s.x + 24, s.y - 18], pointerLength: 8, pointerWidth: 8, fill: '#A5F5DE', stroke: '#00C48C', strokeWidth: 2 })
-      staticLayer?.add(arrow)
+    const nodes: Konva.Node[] = []
+    if (s.kind === 'entrance') {
+      nodes.push(new Konva.Arrow({ points: [0, 0, 24, -18], pointerLength: 8, pointerWidth: 8, fill: '#A5F5DE', stroke: '#00C48C', strokeWidth: 2 }))
+      if (s.text) nodes.push(new Konva.Text({ x: 28, y: -8, text: s.text, fontSize: 11, fill: '#A5F5DE', listening: false }))
     } else if (s.kind === 'label' && s.text) {
-      staticLayer?.add(new Konva.Text({ x: s.x, y: s.y, text: s.text, fontSize: 14, fill: '#B0A0FF' }))
+      nodes.push(new Konva.Text({ text: s.text, fontSize: 14, fill: '#B0A0FF' }))
     } else if (s.kind === 'table') {
-      staticLayer?.add(new Konva.Rect({ x: s.x, y: s.y, width: 44, height: 32, cornerRadius: 6, fill: '#3B3468', stroke: '#8E74FF', strokeWidth: 1 }))
+      nodes.push(new Konva.Rect({ width: s.width ?? 44, height: s.height ?? 32, cornerRadius: 6, fill: '#3B3468', stroke: '#8E74FF', strokeWidth: 1 }))
+      nodes.push(new Konva.Text({ y: (s.height ?? 32) / 2 - 6, width: s.width ?? 44, align: 'center', text: 'Стол', fontSize: 10, fill: '#C9B8FF', listening: false }))
+    } else if (s.kind === 'stage') {
+      nodes.push(new Konva.Rect({
+        width: s.width ?? 260,
+        height: s.height ?? 34,
+        cornerRadius: [4, 4, 16, 16],
+        fillLinearGradientStartPoint: { x: 0, y: 0 },
+        fillLinearGradientEndPoint: { x: s.width ?? 260, y: 0 },
+        fillLinearGradientColorStops: [0, '#6D4AFF', 1, '#FF5C22'],
+      }))
+      nodes.push(new Konva.Text({ y: 10, width: s.width ?? 260, align: 'center', text: s.text || 'СЦЕНА', fontSize: 12, fontStyle: 'bold', letterSpacing: 3, fill: '#FFFFFF', listening: false }))
     } else if (s.kind === 'standing' && s.width && s.height) {
-          staticLayer?.add(new Konva.Rect({ x: s.x, y: s.y, width: s.width, height: s.height, fill: 'rgba(58,50,112,0.55)', stroke: '#C9A0FF', strokeWidth: 2, dash: [8, 5] }))
-          if (s.text) {
-            staticLayer?.add(new Konva.Text({ x: s.x - 40, y: s.y - 22, width: s.width + 80, align: 'center', text: s.text, fontSize: 15, fontStyle: 'bold', fill: '#FFFFFF' }))
-          }
-        }
+      nodes.push(new Konva.Rect({ width: s.width, height: s.height, fill: 'rgba(58,50,112,0.55)', stroke: '#C9A0FF', strokeWidth: 2, dash: [8, 5] }))
+      if (s.text) nodes.push(new Konva.Text({ x: -40, y: -22, width: s.width + 80, align: 'center', text: s.text, fontSize: 15, fontStyle: 'bold', fill: '#FFFFFF', listening: false }))
+    }
+    if (nodes.length === 0) continue
+    const isSelected = selectedStaticIds.value.has(s.id)
+    const group = new Konva.Group({
+      id: s.id,
+      name: 'static-object',
+      x: s.x,
+      y: s.y,
+      draggable: canEdit,
+    })
+    for (const n of nodes) group.add(n as Konva.Shape)
+    group.on('click', (e) => {
+      if (tool.value !== 'select') return
+      e.cancelBubble = true
+      pickStatic(s.id, e.evt.shiftKey || e.evt.ctrlKey || e.evt.metaKey)
+    })
+    group.on('dragstart', () => {
+      beginMoveSnapshot()
+      // Конвейер: если объект не был в выделении — он становится единственным
+      // выделенным; если был — тянутся все выделенные статики (см. dragmove).
+      if (!selectedStaticIds.value.has(s.id)) selectedStaticIds.value = new Set([s.id])
+      dragOffsets.clear()
+      for (const o of statics.value) {
+        if (selectedStaticIds.value.has(o.id)) dragOffsets.set(o.id, { dx: o.x - s.x, dy: o.y - s.y })
+      }
+    })
+    group.on('dragmove', () => {
+      const nx = Math.round(group.x())
+      const ny = Math.round(group.y())
+      for (const o of statics.value) {
+        const off = dragOffsets.get(o.id)
+        if (!off) continue
+        o.x = o.id === s.id ? nx : nx + off.dx
+        o.y = o.id === s.id ? ny : ny + off.dy
+      }
+    })
+    group.on('dragend', () => {
+      snapshotPendingMove = true
+    })
+    staticLayer?.add(group)
+    if (isSelected) {
+      const bb = group.getClientRect({ relativeTo: group.getParent() as Konva.Layer ?? undefined })
+      selectionLayer?.add(new Konva.Rect({
+        x: s.x - 4, y: s.y - 4, width: Math.max(bb.width, 20) + 8, height: Math.max(bb.height, 16) + 8,
+        stroke: '#8E74FF', dash: [4, 4], strokeWidth: 1, listening: false,
+      }))
+    }
   }
 
   // Слой 3: секторы + места (§46: sectors, rows, seats)
     for (const sector of sectors.value) {
-      if (typeof console !== 'undefined') console.log('[hall-editor] сектор', sector.id, sector.name, 'мест:', sector.seats.length)
       const group = new Konva.Group({
       id: sector.id,
       x: sector.x,
@@ -1287,7 +1504,7 @@ function draw(): void {
       rect.on('click', (e) => {
         if (tool.value !== 'select') return
         e.cancelBubble = true
-        pickSeat(seat.id, sector.id, e.evt.shiftKey)
+        pickSeat(seat.id, sector.id, e.evt.shiftKey || e.evt.ctrlKey || e.evt.metaKey)
       })
       rect.on('mouseenter', () => { if (stage) stage.container().style.cursor = 'pointer' })
             rect.on('mouseleave', () => { if (stage) stage.container().style.cursor = 'default' })
@@ -1312,11 +1529,13 @@ function draw(): void {
 
     group.on('click', (e) => {
       if (tool.value !== 'select') return
-      if (e.target === group) selectedSectorId.value = sector.id
+      if (e.target === group || (e.target as Konva.Node).name() === 'sector-label') selectedSectorId.value = sector.id
     })
+    group.on('dragstart', () => { beginMoveSnapshot() })
     group.on('dragend', () => {
       sector.x = Math.round(group.x())
       sector.y = Math.round(group.y())
+      snapshotPendingMove = true
     })
     sectorLayer?.add(group)
   }
