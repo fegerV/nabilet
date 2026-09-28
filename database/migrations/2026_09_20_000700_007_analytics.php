@@ -95,7 +95,7 @@ return new class extends Migration
             $table->id();
             $table->char('anonymous_id', 36)->nullable();
             $table->unsignedBigInteger('user_id')->nullable();
-            $table->string('page_url', 2048);
+            $table->string('page_url', 768);
             $table->string('event_type', 32);
             $table->integer('x')->nullable();
             $table->integer('y')->nullable();
@@ -104,7 +104,7 @@ return new class extends Migration
             $table->decimal('scroll_percent', 5, 2)->nullable();
             $table->dateTime('occurred_at', 6);
             $table->json('metadata_json')->nullable();
-            $table->index(['page_url', 'occurred_at'], "idx_heatmap_page_time");
+            $table->index(["page_url", "occurred_at"], "idx_heatmap_page_time");
         });
 
         Schema::create("embed_domains", function (Blueprint $table): void {
