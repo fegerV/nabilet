@@ -7,9 +7,9 @@ return [
     /*
      * Two surfaces, two guards, one `users` table.
      *
-     *   web  cookie session — the installer, the admin SPA and Filament. Filament's
-     *        panel resolves users through `App\Models\User` (it implements
-     *        `FilamentUser::canAccessPanel()`), so that provider is left alone.
+     *   web  cookie session — the installer and the Vue admin SPA. The SPA
+     *        resolves users through `App\Models\User` (its access gate is
+     *        `canAccessAdmin()`), so that provider is left alone.
      *
      *   api  bearer token — the public REST API (OpenAPI `bearerAuth`). Tokens are
      *        NOT session cookies: they are rows in `user_sessions`, matched by
@@ -24,7 +24,7 @@ return [
      *
      * The two providers point at two different model classes for the same table.
      * That duplication is pre-existing and recorded as an open decision in
-     * docs/REVIEW-spec-bundle.md — `App\Models\User` is the Filament panel's
+     * docs/REVIEW-spec-bundle.md — `App\Models\User` is the web guard's
      * model, `Nabilet\Modules\Core\Users\Models\User` is the module's. Unifying
      * them is a decision about which one owns the domain, not a cleanup.
      */

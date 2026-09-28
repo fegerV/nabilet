@@ -87,7 +87,7 @@ return Application::configure(basePath: dirname(__DIR__))
         // defaults are not merely differently-shaped, they leak model namespaces and
         // — with APP_DEBUG on — stack traces and absolute paths.
         $exceptions->render(function (Throwable $e, Request $request) {
-            // HTML surfaces (the admin SPA, the installer, Filament) keep Laravel's own
+            // HTML surfaces (the admin SPA, the installer) keep Laravel's own
             // rendering; a JSON envelope in a browser would be a regression.
             if (! $request->is('api/*') && ! $request->expectsJson()) {
                 return null;

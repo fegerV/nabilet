@@ -22,8 +22,6 @@
  */
 
 return [
-    App\Providers\Filament\AdminPanelProvider::class,
-
     // Registers the `session_token` auth driver that the `api` guard names.
     // Its route file is loaded by routes/api.php, not by the provider.
     Nabilet\Modules\Auth\Providers\AuthServiceProvider::class,
