@@ -521,7 +521,7 @@ interface ServerSector {
   }>
   seats?: Array<{ id?: string; row?: number; number?: number; kind?: string; x?: number; y?: number }>
   priceMinor?: number
-  /** В схемах, сохранённых из админки Filament, цена лежит в `price`. */
+  /** В старых схемах, сохранённых из прошлой админки, цена лежит в `price`. */
   price?: number
   shape?: string
 }

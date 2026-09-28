@@ -48,12 +48,6 @@ $appDir = $root . '/app';
  * file is refactored and the reason stops being true, the entry must be removed.
  */
 const ACCEPTED = [
-    // The Filament admin panel is an HTML surface. `abort(403)` renders Laravel's HTML
-    // error page, which is the correct behaviour for a browser session — the §66
-    // envelope applies to `application/json` API responses only.
-    'Http/Middleware/CheckFilamentRole.php#E5' =>
-        'Filament admin HTML surface, not the JSON API — abort(403) renders the HTML error page.',
-
     // Blocked on the authentication rebuild: `AuthController` must be rewritten onto
     // `user_sessions` before its error body can be corrected, because the token it
     // issues is not a Sanctum token (see docs/REVIEW-spec-bundle.md §3.24.8). Fixing
