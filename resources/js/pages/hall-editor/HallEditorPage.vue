@@ -81,6 +81,8 @@ interface EStatic {
   width?: number
   height?: number
   rotation?: number
+  opacity?: number
+  locked?: boolean
   text?: string
   capacity?: number
 }
@@ -1127,6 +1129,8 @@ function applyServerSchema(raw: unknown): void {
         width: Number.isFinite(Number(o.width)) ? Number(o.width) : undefined,
         height: Number.isFinite(Number(o.height)) ? Number(o.height) : undefined,
         rotation: Number.isFinite(Number(o.rotation)) ? Number(o.rotation) : 0,
+        opacity: Number.isFinite(Number(o.opacity)) ? Math.min(1, Math.max(0, Number(o.opacity))) : 1,
+        locked: o.locked === true,
         text: typeof o.text === 'string' ? o.text : undefined,
         capacity: Number.isFinite(Number(o.capacity)) ? Math.max(0, Math.round(Number(o.capacity))) : undefined,
       }))
@@ -1569,12 +1573,107 @@ function draw(): void {
   guidesLayer?.destroyChildren()
   selectionLayer?.destroyChildren()
 
-  // Слой 1: фон-изображение
+  // Слой 1: фон-изображение (§51). Картинка — в группе с якорями: её можно
+  // тянуть (move), масштабировать за правый нижний угол и вращать за верхний
+  // правый. Значения пишутся обратно в модель (bg.x/y/width/height/rotation),
+  // поэтому автосохранение (§52) подхватывает правку фона. Закрытый (locked)
+  // фон не перетаскивается; при isLocked (published) — editing вообще выключен.
+  const canEditBg = published.value === null && !isLocked.value
   for (const bg of backgrounds.value) {
     const img = new Image()
     img.onload = () => {
-      bgLayer?.add(new Konva.Image({ image: img, x: bg.x, y: bg.y, width: bg.width, height: bg.height, opacity: bg.opacity, rotation: bg.rotation }))
-      bgLayer?.draw()
+      if (!bgLayer) return
+      const bgDraggable = canEditBg && !bg.locked
+      const group = new Konva.Group({
+        id: bg.id,
+        name: 'background-image',
+        x: bg.x + bg.width / 2,
+        y: bg.y + bg.height / 2,
+        rotation: bg.rotation,
+        draggable: bgDraggable,
+      })
+      group.add(new Konva.Image({
+        image: img,
+        x: -bg.width / 2,
+        y: -bg.height / 2,
+        width: bg.width,
+        height: bg.height,
+        opacity: bg.opacity,
+        name: 'bg-picture',
+      }))
+      if (selectedBgIds.value.has(bg.id)) {
+        group.add(new Konva.Rect({
+          x: -bg.width / 2, y: -bg.height / 2, width: bg.width, height: bg.height,
+          stroke: '#8E74FF', dash: [6, 4], strokeWidth: 1, listening: false,
+        }))
+        if (bgDraggable) {
+          // Якорь масштаба (правый нижний угол).
+          group.add(new Konva.Circle({
+            x: bg.width / 2, y: bg.height / 2, radius: 6, fill: '#8E74FF',
+            stroke: '#FFFFFF', strokeWidth: 1, name: 'bg-resize', draggable: true,
+          }))
+          // Якорь поворота (над правым верхним углом).
+          group.add(new Konva.Line({
+            points: [bg.width / 2, -bg.height / 2, bg.width / 2, -bg.height / 2 - 28],
+            stroke: '#8E74FF', strokeWidth: 1, listening: false,
+          }))
+          group.add(new Konva.Circle({
+            x: bg.width / 2, y: -bg.height / 2 - 28, radius: 6, fill: '#F5B417',
+            stroke: '#FFFFFF', strokeWidth: 1, name: 'bg-rotate', draggable: true,
+          }))
+        }
+      }
+      group.on('click', (e) => {
+        if (tool.value !== 'select') return
+        e.cancelBubble = true
+        pickBackground(bg.id)
+      })
+      group.on('dragstart', () => { beginMoveSnapshot() })
+      group.on('dragmove', () => {
+        bg.x = Math.round(group.x() - bg.width / 2)
+        bg.y = Math.round(group.y() - bg.height / 2)
+      })
+      group.on('dragend', () => {
+        snapshotPendingMove = true
+        moveSnapshotTaken = false
+      })
+      // Якоря живут внутри группы: их drag не должен двигать саму группу.
+      group.on('dragstart', (e) => {
+        const n = (e.target as Konva.Node).name()
+        if (n === 'bg-resize' || n === 'bg-rotate') {
+          e.cancelBubble = true
+          beginMoveSnapshot()
+        }
+      })
+      group.on('dragmove', (e) => {
+        const node = e.target as Konva.Shape
+        const n = node.name()
+        if (n === 'bg-resize') {
+          const pos = node.getAbsolutePosition(stage ?? undefined)
+          const inv = group.getAbsoluteTransform().copy().invert()
+          const local = inv.point(pos)
+          const w = Math.max(10, Math.min(20000, Math.round((local.x + bg.width / 2) * 2)))
+          const h = Math.max(10, Math.min(20000, Math.round((local.y + bg.height / 2) * 2)))
+          bg.width = w
+          bg.height = h
+          draw()
+        } else if (n === 'bg-rotate') {
+          const pos = node.getAbsolutePosition(stage ?? undefined)
+          const center = group.getAbsolutePosition(stage ?? undefined)
+          const deg = (Math.atan2(pos.y - center.y, pos.x - center.x) * 180) / Math.PI + 90
+          bg.rotation = Math.round(((deg % 360) + 360) % 360)
+          draw()
+        }
+      })
+      group.on('dragend', (e) => {
+        const n = (e.target as Konva.Node).name()
+        if (n === 'bg-resize' || n === 'bg-rotate') {
+          snapshotPendingMove = true
+          moveSnapshotTaken = false
+        }
+      })
+      bgLayer.add(group)
+      bgLayer.draw()
     }
     img.src = bg.src
   }
@@ -1584,14 +1683,15 @@ function draw(): void {
   const canEdit = published.value === null && !isLocked.value && tool.value !== 'pan'
   for (const s of statics.value) {
     const nodes: Konva.Node[] = []
+    const stOpacity = Number.isFinite(s.opacity) ? Math.min(1, Math.max(0, s.opacity as number)) : 1
     if (s.kind === 'entrance') {
-      nodes.push(new Konva.Arrow({ points: [0, 0, 24, -18], pointerLength: 8, pointerWidth: 8, fill: '#A5F5DE', stroke: '#00C48C', strokeWidth: 2 }))
-      if (s.text) nodes.push(new Konva.Text({ x: 28, y: -8, text: s.text, fontSize: 11, fill: '#A5F5DE', listening: false }))
+      nodes.push(new Konva.Arrow({ points: [0, 0, 24, -18], pointerLength: 8, pointerWidth: 8, fill: '#A5F5DE', stroke: '#00C48C', strokeWidth: 2, opacity: stOpacity }))
+      if (s.text) nodes.push(new Konva.Text({ x: 28, y: -8, text: s.text, fontSize: 11, fill: '#A5F5DE', listening: false, opacity: stOpacity }))
     } else if (s.kind === 'label' && s.text) {
-      nodes.push(new Konva.Text({ text: s.text, fontSize: 14, fill: '#B0A0FF' }))
+      nodes.push(new Konva.Text({ text: s.text, fontSize: 14, fill: '#B0A0FF', opacity: stOpacity }))
     } else if (s.kind === 'table') {
-      nodes.push(new Konva.Rect({ width: s.width ?? 44, height: s.height ?? 32, cornerRadius: 6, fill: '#3B3468', stroke: '#8E74FF', strokeWidth: 1 }))
-      nodes.push(new Konva.Text({ y: (s.height ?? 32) / 2 - 6, width: s.width ?? 44, align: 'center', text: 'Стол', fontSize: 10, fill: '#C9B8FF', listening: false }))
+      nodes.push(new Konva.Rect({ width: s.width ?? 44, height: s.height ?? 32, cornerRadius: 6, fill: '#3B3468', stroke: '#8E74FF', strokeWidth: 1, opacity: stOpacity }))
+      nodes.push(new Konva.Text({ y: (s.height ?? 32) / 2 - 6, width: s.width ?? 44, align: 'center', text: 'Стол', fontSize: 10, fill: '#C9B8FF', listening: false, opacity: stOpacity }))
     } else if (s.kind === 'stage') {
       nodes.push(new Konva.Rect({
         width: s.width ?? 260,
@@ -1600,11 +1700,12 @@ function draw(): void {
         fillLinearGradientStartPoint: { x: 0, y: 0 },
         fillLinearGradientEndPoint: { x: s.width ?? 260, y: 0 },
         fillLinearGradientColorStops: [0, '#6D4AFF', 1, '#FF5C22'],
+        opacity: stOpacity,
       }))
-      nodes.push(new Konva.Text({ y: 10, width: s.width ?? 260, align: 'center', text: s.text || 'СЦЕНА', fontSize: 12, fontStyle: 'bold', letterSpacing: 3, fill: '#FFFFFF', listening: false }))
+      nodes.push(new Konva.Text({ y: 10, width: s.width ?? 260, align: 'center', text: s.text || 'СЦЕНА', fontSize: 12, fontStyle: 'bold', letterSpacing: 3, fill: '#FFFFFF', listening: false, opacity: stOpacity }))
     } else if (s.kind === 'standing' && s.width && s.height) {
-      nodes.push(new Konva.Rect({ width: s.width, height: s.height, fill: 'rgba(58,50,112,0.55)', stroke: '#C9A0FF', strokeWidth: 2, dash: [8, 5] }))
-      if (s.text) nodes.push(new Konva.Text({ x: -40, y: -22, width: s.width + 80, align: 'center', text: s.text, fontSize: 15, fontStyle: 'bold', fill: '#FFFFFF', listening: false }))
+      nodes.push(new Konva.Rect({ width: s.width, height: s.height, fill: 'rgba(58,50,112,0.55)', stroke: '#C9A0FF', strokeWidth: 2, dash: [8, 5], opacity: stOpacity }))
+      if (s.text) nodes.push(new Konva.Text({ x: -40, y: -22, width: s.width + 80, align: 'center', text: s.text, fontSize: 15, fontStyle: 'bold', fill: '#FFFFFF', listening: false, opacity: stOpacity }))
     }
     if (nodes.length === 0) continue
     const isSelected = selectedStaticIds.value.has(s.id)
@@ -1613,7 +1714,9 @@ function draw(): void {
       name: 'static-object',
       x: s.x,
       y: s.y,
-      draggable: canEdit,
+      rotation: s.rotation ?? 0,
+      // locked-объект нельзя тянуть (§48), но выделить и редактировать свойства — можно.
+      draggable: canEdit && !s.locked,
     })
     for (const n of nodes) group.add(n as Konva.Shape)
     group.on('click', (e) => {
@@ -2080,7 +2183,43 @@ function setSectorPriceRub(v: unknown): void {
   if (!sector) return
   const n = Number(v)
   if (!Number.isFinite(n) || n <= 0) return
+  snapshot()
   sector.priceMinor = Math.max(1, Math.round(n * 100))
+}
+
+/** Живая ошибка для поля «Цена сектора» в инспекторе (§50). */
+const sectorPriceError = computed<string | undefined>(() => {
+  const s = selectedSector.value
+  if (!s) return undefined
+  return rowPriceError(s.priceMinor / 100)
+})
+
+/**
+ * Введённая цена ряда (₽) с точки зрения валидации; undefined — ошибки нет.
+ * Пустой ввод легален: он снимает переопределение (ряд берёт цену сектора).
+ */
+function rowPriceInputError(row: number): string | undefined {
+  const s = selectedSector.value
+  if (!s) return undefined
+  const v = s.rowPrices[row]
+  if (v === undefined) return undefined
+  return rowPriceError(v / 100)
+}
+
+/**
+ * Цена ряда из <input type=number> (§50): '' снимает переопределение;
+ * нечисло/ноль/отрицательное — отклоняется (в модель и payload не попадает).
+ */
+function onRowPriceInput(row: number, raw: string): void {
+  const sector = selectedSector.value
+  if (!sector) return
+  if (raw.trim() === '') { setRowPrice(row, null); return }
+  const rub = Number(raw)
+  if (!Number.isFinite(rub) || rub <= 0) {
+    ui.notify('rose', 'Некорректная цена ряда', 'Цена должна быть числом больше нуля')
+    return
+  }
+  setRowPrice(row, rub)
 }
 
 /** Индивидуальная цена ряда в рублях; пустая строка снимает переопределение (§50). */
@@ -2384,7 +2523,9 @@ function setSeatKind(value: string): void {
               label="Цена по умолчанию, ₽"
               type="number"
               :disabled="isLocked"
-              @update:model-value="(v) => (selectedSector!.priceMinor = Number(v) * 100)"
+              :error="sectorPriceError"
+              hint="Целое число рублей; в payload сохраняется в копейках (§50)"
+              @update:model-value="setSectorPriceRub"
             />
             <dl class="flex justify-between rounded-lg bg-surface-2 px-3 py-2 text-sm">
               <dt class="text-muted">Мест</dt>
@@ -2400,11 +2541,18 @@ function setSeatKind(value: string): void {
                 >
                   <span class="text-subtle">Ряд {{ row }}</span>
                   <input
-                    :value="Math.round((selectedSector.rowPrices[row] ?? selectedSector.priceMinor) / 100)"
+                    :value="selectedSector.rowPrices[row] != null ? Math.round(selectedSector.rowPrices[row] / 100) : ''"
                     type="number"
+                    min="1"
+                    step="1"
+                    placeholder="—"
                     :disabled="isLocked"
-                    class="h-8 w-20 rounded-md border border-line bg-surface px-2 text-right text-sm text-content tabular-nums focus:border-brand-400 focus:outline-none disabled:opacity-50"
-                    @input="setRowPrice(row, Number(($event.target as HTMLInputElement).value))"
+                    :title="rowPriceInputError(row)"
+                    :class="cn(
+                      'h-8 w-20 rounded-md border bg-surface px-2 text-right text-sm text-content tabular-nums focus:outline-none disabled:opacity-50',
+                      rowPriceInputError(row) ? 'border-rose-500' : 'border-line focus:border-brand-400',
+                    )"
+                    @change="onRowPriceInput(row, ($event.target as HTMLInputElement).value)"
                   />
                 </div>
               </div>
