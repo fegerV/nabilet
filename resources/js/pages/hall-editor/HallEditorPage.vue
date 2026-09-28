@@ -132,11 +132,8 @@ const selectedSectorId = ref<string | null>(null)
 const selectedSeatIds = ref<Set<string>>(new Set())
 /** Статика выделяется мультивыбором (группа + рамка), как места (§48). */
 const selectedStaticIds = ref<Set<string>>(new Set())
-/** Быстрый доступ: id последнего выделенного объекта (для панели свойств). */
-const selectedStaticId = computed<string | null>(() => {
-  const ids = [...selectedStaticIds.value]
-  return ids.length === 1 ? ids[0] : null
-})
+/** Выделение фоновых изображений: клик по фону → панель свойств (§51). */
+const selectedBgIds = ref<Set<string>>(new Set())
 
 const published = ref<number | null>(null)
 const draftVersion = ref(1)
@@ -228,6 +225,7 @@ function undo(): void {
   selectedSectorId.value = null
   selectedSeatIds.value = new Set()
   selectedStaticIds.value = new Set()
+  selectedBgIds.value = new Set()
 }
 
 function redo(): void {
@@ -397,6 +395,15 @@ function pickStatic(staticId: string, additive: boolean): void {
     selectedSeatIds.value = new Set()
     selectedSectorId.value = null
   }
+}
+
+/** Выделить/снять фон (клик по изображению, §51). Панель свойств — одна запись. */
+function pickBackground(bgId: string): void {
+  if (isLocked.value) return
+  selectedBgIds.value = new Set([bgId])
+  selectedSeatIds.value = new Set()
+  selectedStaticIds.value = new Set()
+  selectedSectorId.value = null
 }
 
 /* ── Инструменты создания (§47): seat / row / sector / table / standing / text / image / stage / entrance ── */
@@ -2028,7 +2035,123 @@ const singleSelectedSeat = computed(() => {
   const [id] = selectedSeatIds.value
   return sectors.value.flatMap((s) => s.seats).find((s) => s.id === id) ?? null
 })
+/** Единственный выделенный статический объект — панель свойств статики. */
+const selectedStatic = computed<EStatic | null>(() => {
+  if (selectedStaticIds.value.size !== 1) return null
+  const [id] = selectedStaticIds.value
+  return statics.value.find((s) => s.id === id) ?? null
+})
+/** Единственный выделенный фон (панель «Фон» в инспекторе, §51). */
+const selectedBackground = computed<EBackground | null>(() => {
+  if (selectedBgIds.value.size !== 1) return null
+  const [id] = selectedBgIds.value
+  return backgrounds.value.find((b) => b.id === id) ?? null
+})
 const totalSeats = computed(() => sectors.value.reduce((sum, s) => sum + s.seats.length, 0))
+
+/* ── Валидация числовых полей (§50: цены в копейках) ──────────────────
+ * Нечисло / NaN / отрицательное значение / ноль для цены — ошибка: поле
+ * подсвечивается, значение НЕ попадает в модель и, соответственно, в
+ * payload автосохранения. Границы — как на сервере (HallService::
+ * validateSchemaPayload): цена ≥ 1 копейки, ряд/место ≥ 1.
+ */
+
+/** Цена ряда: undefined/null = сброс индивидуальной цены (ряд берёт цену сектора). */
+function rowPriceError(v: unknown): string | undefined {
+  if (v === '' || v === null || v === undefined) return undefined
+  const n = Number(v)
+  if (!Number.isFinite(n)) return 'Введите число'
+  if (n < 0) return 'Цена не может быть отрицательной'
+  if (Math.round(n * 100) < 1) return 'Цена должна быть больше нуля'
+  return undefined
+}
+
+/** Обязательная неотрицательная целая величина (копейки, размеры, вместимость). */
+function requiredNonNegativeError(v: unknown, unitLabel = 'Значение'): string | undefined {
+  const n = Number(v)
+  if (v === '' || v === null || v === undefined || !Number.isFinite(n)) return `${unitLabel}: введите число`
+  if (n < 0) return `${unitLabel} не может быть отрицательным`
+  return undefined
+}
+
+/** Цена сектора в рублях (инспектор): пустое/битое значение → ошибка, модель не трогается. */
+function setSectorPriceRub(v: unknown): void {
+  const sector = selectedSector.value
+  if (!sector) return
+  const n = Number(v)
+  if (!Number.isFinite(n) || n <= 0) return
+  sector.priceMinor = Math.max(1, Math.round(n * 100))
+}
+
+/** Индивидуальная цена ряда в рублях; пустая строка снимает переопределение (§50). */
+function setRowPrice(row: number, rub: number | '' | null): void {
+  const sector = selectedSector.value
+  if (!sector) return
+  if (rub === '' || rub === null || Number.isNaN(Number(rub))) {
+    delete sector.rowPrices[row]
+    return
+  }
+  const n = Number(rub)
+  if (!Number.isFinite(n) || n <= 0) return
+  snapshot()
+  sector.rowPrices[row] = Math.max(1, Math.round(n * 100))
+}
+
+/** Цена сектора генератора (форма «Новый сектор», коп.): только валидные значения. */
+function setFormPriceMinor(v: unknown): void {
+  const n = Number(v)
+  if (!Number.isFinite(n) || n < 0) return
+  form.value.priceMinor = Math.max(0, Math.round(n))
+}
+
+/** Целочисленное поле формы-генератора с нижней границей (ряды, места, VIP). */
+function clampIntField(target: { value: number }, v: unknown, min: number, max: number): void {
+  const n = Number(v)
+  target.value = Number.isFinite(n) ? Math.min(max, Math.max(min, Math.round(n))) : target.value
+}
+
+/** Размер/поворот/вместимость статики: валидируем до записи в модель. */
+function setStaticNum(s: EStatic, key: 'x' | 'y' | 'width' | 'height' | 'rotation' | 'capacity', v: unknown, min: number, max: number): void {
+  const n = Number(v)
+  if (!Number.isFinite(n)) return
+  ;(s[key] as number) = Math.min(max, Math.max(min, Math.round(n)))
+}
+
+/** Свойства фона (масштаб/поворот/прозрачность/позиция), §51. */
+function setBackgroundNum(bg: EBackground, key: 'x' | 'y' | 'width' | 'height' | 'rotation' | 'opacity', v: unknown): void {
+  const n = Number(v)
+  if (!Number.isFinite(n)) return
+  if (key === 'opacity') {
+    bg.opacity = Math.min(1, Math.max(0, n))
+    return
+  }
+  if (key === 'width' || key === 'height') {
+    bg[key] = Math.min(20000, Math.max(1, Math.round(n)))
+    return
+  }
+  if (key === 'rotation') {
+    bg.rotation = ((n % 360) + 360) % 360
+    return
+  }
+  bg[key] = Math.round(n)
+}
+
+function toggleBackgroundLocked(): void {
+  const bg = selectedBackground.value
+  if (!bg) return
+  snapshot()
+  bg.locked = !bg.locked
+}
+
+function removeBackground(): void {
+  if (isLocked.value) return
+  const bg = selectedBackground.value
+  if (!bg) return
+  snapshot()
+  backgrounds.value = backgrounds.value.filter((b) => b.id !== bg.id)
+  selectedBgIds.value = new Set()
+  ui.notify('brand', 'Фон удалён', 'Схема сохранится без подложки')
+}
 
 const KIND_OPTIONS = [
   { value: 'standard', label: 'Обычное' },
@@ -2041,12 +2164,6 @@ function setSeatKind(value: string): void {
   if (!seat) return
   snapshot()
   seat.kind = value as SeatKind
-}
-
-function setRowPrice(row: number, rub: number): void {
-  if (!selectedSector.value) return
-  snapshot()
-  selectedSector.value.rowPrices[row] = Math.round(rub * 100)
 }
 </script>
 
