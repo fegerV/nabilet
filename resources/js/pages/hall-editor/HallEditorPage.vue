@@ -22,6 +22,7 @@ import NButton from '@/components/ui/NButton.vue'
 import NInput from '@/components/ui/NInput.vue'
 import NSelect from '@/components/ui/NSelect.vue'
 import NBadge from '@/components/ui/NBadge.vue'
+import NSegmented from '@/components/ui/NSegmented.vue'
 import { useUiStore } from '@/stores/ui'
 import { money, plural } from '@/lib/format'
 import { cn } from '@/lib/cn'
@@ -520,6 +521,8 @@ interface ServerSector {
   }>
   seats?: Array<{ id?: string; row?: number; number?: number; kind?: string; x?: number; y?: number }>
   priceMinor?: number
+  /** В схемах, сохранённых из админки Filament, цена лежит в `price`. */
+  price?: number
   shape?: string
 }
 
@@ -536,15 +539,17 @@ function applyServerSchema(raw: unknown): void {
   }
   const rawSectors = Array.isArray(obj.sectors) ? obj.sectors : []
 
-  // Сначала собираем ВСЕ секторы (канвас или БД-формат), чтобы нормализовать
-  // координаты ОБЩИМ диапазоном по всему залу — иначе каждый сектор
-  // масштабируется в свой угол и схема разъезжается.
-  const collected: { sector: ServerSector; seats: { row: number; number: number; x: number; y: number; kind: string }[] }[] = []
+  // Сначала собираем ВСЕ секторы (канвас или БД-формат). Координаты мест в
+  // экспорте — локальные для сектора, поэтому общий масштаб считаем по всем
+  // секторам сразу: иначе каждый сектор масштабируется в свой угол и схема
+  // разъезжается.
+  interface FlatSeat { row: number; number: number; x: number; y: number; kind: string }
+  const collected: { sector: ServerSector; seats: FlatSeat[] }[] = []
   let allMinX = Infinity, allMaxX = -Infinity, allMinY = Infinity, allMaxY = -Infinity
   for (const rs of rawSectors) {
     const s = (typeof rs === 'object' && rs) ? rs as ServerSector : null
     if (!s || !s.name) continue
-    let seats: { row: number; number: number; x: number; y: number; kind: string }[] = []
+    let seats: FlatSeat[] = []
     if (Array.isArray(s.seats)) {
       seats = s.seats.map((seat) => ({
         row: Number(seat.row ?? 0),
@@ -577,30 +582,44 @@ function applyServerSchema(raw: unknown): void {
     }
   }
 
-  // Общий масштаб: вся схема влезает в канвас целиком.
+  // Общий масштаб: весь зал целиком влезает в типовую область холста.
+  // Верхняя граница фиксирована (не зависит от размера окна), чтобы импорт
+  // выглядел одинаково при любом viewport.
   const pad = 40
+  const viewW = Math.max(canvasSize.value.width, 900)
+  const viewH = 620
   const spanX = (allMaxX - allMinX) || 1
   const spanY = (allMaxY - allMinY) || 1
   const scale = Math.min(
-    (canvasSize.value.width - pad * 2) / spanX,
-    (canvasSize.value.height - pad * 2) / spanY,
+    (viewW - pad * 2) / spanX,
+    (viewH - pad * 2) / spanY,
     60,
   )
 
   const out: ESector[] = []
     for (const { sector: s, seats: flatSeats } of collected) {
+      // Нормализуем координаты каждого сектора к началу отсчёта: экспорт
+      // пишет места в локальных координатах сектора + смещение (x, y),
+      // а импорт раскладывает сектора по сетке — без нормализации схема
+      // разъезжается за холст.
+      let secMinX = Infinity, secMinY = Infinity
+      for (const p of flatSeats) {
+        if (p.x < secMinX) secMinX = p.x
+        if (p.y < secMinY) secMinY = p.y
+      }
       const seats: ESector['seats'] = flatSeats.map((p) => ({
         id: `${s.name}-${p.row}-${p.number}`,
         row: p.row,
         number: p.number,
         kind: (p.kind === 'vip' || p.kind === 'accessible') ? p.kind : 'standard',
-        x: Math.round(pad + (p.x - allMinX) * scale),
-        y: Math.round(pad + (p.y - allMinY) * scale),
+        x: Math.round((p.x - secMinX) * scale),
+        y: Math.round((p.y - secMinY) * scale),
       }))
+    const priceRaw = Number(s.priceMinor ?? s.price ?? 0)
     out.push({
       id: `s${out.length + 1}`,
       name: s.name,
-      priceMinor: Number(s.priceMinor ?? 0),
+      priceMinor: priceRaw,
       x: 0,
       y: 0,
       seats,
@@ -802,6 +821,8 @@ function onImageChosen(event: Event): void {
 
 const canvasHost = ref<HTMLDivElement | null>(null)
 const canvasSize = ref({ width: 900, height: 520 })
+/** Konva требует window — в безоконном окружении (SSR/тест-стенд) холст просто отсутствует. */
+const konvaAvailable = typeof window !== 'undefined' && typeof document !== 'undefined'
 let stage: Konva.Stage | null = null
 let bgLayer: Konva.Layer | null = null
 let staticLayer: Konva.Layer | null = null
