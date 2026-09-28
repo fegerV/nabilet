@@ -437,6 +437,23 @@ function nearestSector(x: number, y: number): ESector | null {
   return best
 }
 
+/**
+ * Сектор и ближайшая к точке существующая позиция места (в координатах
+ * сектора). Используется для «щелчка по занятому месту»: новое место
+ * приставляется к соседней свободной позиции, а не ставится в точку клика
+ * поверх существующего квадрата.
+ */
+function nearestSeatAnchor(sector: ESector, lx: number, ly: number): { row: number; x: number; y: number } {
+  let best: ESeat | null = null
+  let bestDist = Infinity
+  for (const seat of sector.seats) {
+    const d = Math.hypot(lx - (seat.x + SEAT / 2), ly - (seat.y + SEAT / 2))
+    if (d < bestDist) { bestDist = d; best = seat }
+  }
+  if (!best) return { row: 1, x: lx, y: ly }
+  return { row: best.row, x: best.x, y: best.y }
+}
+
 /** Добавить одиночное место кликом (инструмент seat, §47). */
 function addSeatAt(x: number, y: number): void {
   // Приоритет: сектор под курсором → выбранный сектор → ближайший.
@@ -446,9 +463,8 @@ function addSeatAt(x: number, y: number): void {
     return
   }
   snapshot()
-  const localX = Math.round(x - target.x)
-  const localY = Math.round(y - target.y)
-  // Ряд — ближайший по вертикали; новый ряд, если точка ниже последнего.
+  let localX = Math.round(x - target.x)
+  let localY = Math.round(y - target.y)
   const rows = Array.from(new Set(target.seats.map((s) => s.row))).sort((a, b) => a - b)
   const lastRow = rows[rows.length - 1] ?? 1
   const rowStep = SEAT + ROW_GAP
@@ -462,14 +478,31 @@ function addSeatAt(x: number, y: number): void {
   ).row
   const inLastRow = target.seats.filter((s) => s.row === lastRow)
   if (inLastRow.length > 0 && localY > inLastRow[0].y + rowStep * 0.6) newRow = lastRow + 1
+
+  // Клик рядом с уже существующим местом (в пределах одного шага сетки) —
+  // это «приставить место», а не «поставить в точку клика»: иначе два места
+  // легли бы друг на друга, а перенумерация по X дала бы коллизию позиций.
+  const occupiedNear = target.seats.some(
+    (s) => s.row === newRow && Math.abs(s.x - localX) < SEAT && Math.abs(s.y - localY) < SEAT,
+  )
+  if (occupiedNear) {
+    const anchor = nearestSeatAnchor(target, localX, localY)
+    newRow = anchor.row
+    localX = anchor.x + (SEAT + GAP)
+    localY = anchor.y
+  }
+
   const rowSeats = target.seats.filter((s) => s.row === newRow)
   const maxNumber = rowSeats.reduce((m, s) => Math.max(m, s.number), 0)
   const kind: SeatKind = 'standard'
   target.seats.push({ id: nextId('seat'), row: newRow, number: maxNumber + 1, kind, x: localX, y: localY })
+  // Порядок нумерации в ряду — слева направо по X (§48).
+  renumberRows(target, new Set([newRow]))
   selectedSectorId.value = target.id
-  selectedSeatIds.value = new Set([target.seats[target.seats.length - 1].id])
+  const created = target.seats[target.seats.length - 1]
+  selectedSeatIds.value = new Set([created.id])
   selectedStaticIds.value = new Set()
-  ui.notify('mint', 'Место добавлено', `${target.name}, ряд ${newRow}, место ${maxNumber + 1}`)
+  ui.notify('mint', 'Место добавлено', `${target.name}, ряд ${newRow}, место ${created.number}`)
 }
 
 /**
@@ -499,6 +532,88 @@ function rowForGlobalY(sector: ESector, gy: number): number {
     if (d < bestDist) { bestDist = d; best = r }
   }
   return best
+}
+
+/* ── Перенумерация рядов при перемещении мест (§48) ────────────────── */
+
+/** id мест, которые можно тянуть мышью (выделены и не заняты drag'ом секции). */
+let seatDragIds: Set<string> = new Set()
+/** Позиции мест до начала drag: id → {sectorId, row, x, y}. */
+const seatDragBefore = new Map<string, { sectorId: string; row: number; x: number; y: number }>()
+
+/**
+ * Найти место под курсором среди ВЫДЕЛЕННЫХ. Konva выдаёт события rect'а
+ * внутри draggable-группы сектора, поэтому координаты клика переводим в
+ * локальные (с учётом pan/zoom и позиции группы) и сравниваем с квадратом
+ * места. Возвращает null, если под курсором нет выделенного места.
+ */
+function findSelectedSeatUnder(e: Konva.KonvaEventObject<MouseEvent>): ESeat | null {
+  if (selectedSeatIds.value.size === 0 || !stage) return null
+  const target = e.target
+  if (!target || target.name() !== 'seat') return null
+  const id = target.id()
+  if (!selectedSeatIds.value.has(id)) return null
+  const group = target.getParent()
+  if (!group || group.name() !== 'sector-group') return null
+  const pos = group.getAbsolutePosition()
+  const scale = stage.scaleX() || 1
+  const rect = stage.container().getBoundingClientRect()
+  const gx = (e.evt.clientX - rect.left - stage.x()) / scale
+  const gy = (e.evt.clientY - rect.top - stage.y()) / scale
+  const lx = gx - pos.x
+  const ly = gy - pos.y
+  for (const sector of sectors.value) {
+    if (`${sector.x}` !== `${pos.x - 0}` && !(sector.x === pos.x && sector.y === pos.y)) continue
+    const seat = sector.seats.find((s) => s.id === id)
+    if (seat && lx >= seat.x - 2 && lx <= seat.x + SEAT + 2 && ly >= seat.y - 2 && ly <= seat.y + SEAT + 2) {
+      return seat
+    }
+  }
+  // Координатная проверка — только против «увода» с места; если место
+  // найдено по id в группе сектора — считаем попадание подтверждённым.
+  for (const sector of sectors.value) {
+    const seat = sector.seats.find((s) => s.id === id)
+    if (seat) return seat
+  }
+  return null
+}
+
+/**
+ * Пересортировать места между рядами после группового перемещения:
+ *  - затронутые ряды (до и после drag'а) перенумеровываются слева направо;
+ *  - если в ряду остались дыры по нумерации — они закрываются;
+ *  - коллизии позиций (два места в одной клетке) раздвигаются по X.
+ */
+function finalizeSeatMove(): void {
+  const touched = new Map<string, Set<number>>()
+  for (const [, before] of seatDragBefore) {
+    if (!touched.has(before.sectorId)) touched.set(before.sectorId, new Set())
+    touched.get(before.sectorId)!.add(before.row)
+  }
+  for (const sector of sectors.value) {
+    const movedHere = [...seatDragBefore.values()].some((b) => b.sectorId === sector.id)
+    if (!movedHere) continue
+    // Ряды, куда попали перетащенные места — тоже затронуты.
+    for (const [id] of seatDragIds) {
+      const seat = sector.seats.find((s) => s.id === id)
+      if (seat) {
+        if (!touched.has(sector.id)) touched.set(sector.id, new Set())
+        touched.get(sector.id)!.add(seat.row)
+      }
+    }
+  }
+  for (const [sectorId, rows] of touched) {
+    const sector = sectors.value.find((s) => s.id === sectorId)
+    if (!sector) continue
+    // Раздвигаем точные коллизии позиций внутри ряда.
+    for (const row of rows) {
+      const inRow = sector.seats.filter((s) => s.row === row).sort((a, b) => a.x - b.x)
+      for (let i = 1; i < inRow.length; i += 1) {
+        if (inRow[i].x - inRow[i - 1].x < SEAT) inRow[i].x = inRow[i - 1].x + SEAT + GAP
+      }
+    }
+    renumberRows(sector, rows)
+  }
 }
 
 /** Создать статический объект кликом (tools table/text/stage/entrance, §47). */
@@ -562,7 +677,7 @@ function createRectSector(x: number, y: number): void {
 }
 
 /** Жест перетаскиванием: standing-зона и sector-прямоугольник (§47). */
-type DragMode = 'standing' | 'sector' | 'marquee' | null
+type DragMode = 'standing' | 'sector' | 'marquee' | 'seat-move' | null
 let dragMode: DragMode = null
 let dragStart: { x: number; y: number } | null = null
 /** true, если между mousedown и mouseup курсор ушёл дальше порога — клик не считается. */
@@ -582,6 +697,22 @@ function onStageMouseDown(e: Konva.KonvaEventObject<MouseEvent>): void {
   if (t === 'standing') dragMode = 'standing'
   else if (t === 'sector') dragMode = 'sector'
   else if (t === 'select') {
+    // Перетаскивание ВЫДЕЛЕННЫХ мест (§48): mousedown по месту из мультиселекта.
+    const under = findSelectedSeatUnder(e)
+    if (under && selectedSeatIds.value.size > 1) {
+      beginMoveSnapshot()
+      seatDragIds = new Set(selectedSeatIds.value)
+      seatDragBefore.clear()
+      for (const sector of sectors.value) {
+        for (const seat of sector.seats) {
+          if (seatDragIds.has(seat.id)) {
+            seatDragBefore.set(seat.id, { sectorId: sector.id, row: seat.row, x: seat.x, y: seat.y })
+          }
+        }
+      }
+      dragMode = 'seat-move'
+      return
+    }
     // Рамка группового выделения (§48): mousedown по пустому месту холста.
     const clickedShape = e.target
     if (clickedShape === stage || clickedShape?.name() === 'canvas-bg') dragMode = 'marquee'
@@ -601,6 +732,18 @@ function onStageMouseMove(e: Konva.KonvaEventObject<MouseEvent>): void {
     drawMarquee()
   } else if (dragMode === 'standing' || dragMode === 'sector') {
     drawStretchPreview(dragStart, p, dragMode)
+  } else if (dragMode === 'seat-move') {
+    // Временное смещение выделенных мест (до отпускания — без записи в модель
+    // ряда: финализация и перенумерация произойдут на mouseup).
+    const dx = p.x - dragStart.x
+    const dy = p.y - dragStart.y
+    for (const [id, before] of seatDragBefore) {
+      const sector = sectors.value.find((s) => s.id === before.sectorId)
+      const seat = sector?.seats.find((s) => s.id === id)
+      if (!seat) continue
+      seat.x = before.x + dx
+      seat.y = before.y + dy
+    }
   }
 }
 
@@ -618,6 +761,20 @@ function onStageMouseUp(e: Konva.KonvaEventObject<MouseEvent>): void {
   }
   if (mode === 'marquee' && marqueeStart && marqueeEnd) {
     applyMarqueeSelection()
+  }
+  if (mode === 'seat-move' && wasDragged) {
+    // Пересортировать ряды: места могли пересесть в другой ряд или поменять
+    // порядок — нумерация обязана остаться читаемой (§48).
+    finalizeSeatMove()
+    moveSnapshotTaken = false
+    snapshotPendingMove = true
+    seatDragIds = new Set()
+    seatDragBefore.clear()
+  } else if (mode === 'seat-move') {
+    // Клик без движения — откат временных координат не нужен (их не меняли),
+    // состояние выбирается штатным обработчиком click.
+    seatDragIds = new Set()
+    seatDragBefore.clear()
   }
   marqueeStart = null
   marqueeEnd = null
@@ -1399,6 +1556,10 @@ function draw(): void {
     })
     group.on('dragend', () => {
       snapshotPendingMove = true
+      // Разрешаем следующий снапшот «до» для нового перемещения — иначе
+      // moveSnapshotTaken остался бы true навсегда и история перестала бы
+      // фиксировать любые последующие drag'и (дефект A8).
+      moveSnapshotTaken = false
     })
     staticLayer?.add(group)
     if (isSelected) {
@@ -1412,16 +1573,23 @@ function draw(): void {
 
   // Слой 3: секторы + места (§46: sectors, rows, seats)
     for (const sector of sectors.value) {
+      // Сектор тянется целиком только когда НЕ выбраны отдельные места —
+      // иначе mousedown по выделенному местуKonva отдал бы drag группе
+      // сектора и перемещение мест стало бы невозможным (§48).
+      const seatsSelectedHere = selectedSeatIds.value.size > 0
+        && sector.seats.some((s) => selectedSeatIds.value.has(s.id))
       const group = new Konva.Group({
       id: sector.id,
+      name: 'sector-group',
       x: sector.x,
       y: sector.y,
-      draggable: published.value === null && tool.value !== 'pan',
+      draggable: published.value === null && tool.value !== 'pan' && !seatsSelectedHere,
     })
 
     group.add(
       new Konva.Text({
         y: -20,
+        name: 'sector-label',
         text: `${sector.name} · от ${money(sector.priceMinor)}`,
         fontSize: 12,
         fontStyle: 'bold',
@@ -1491,6 +1659,7 @@ function draw(): void {
               const isSelected = selectedSeatIds.value.has(seat.id)
       const rect = new Konva.Rect({
         id: seat.id,
+        name: 'seat',
         x: seat.x,
         y: seat.y,
         width: SEAT,
@@ -1499,12 +1668,51 @@ function draw(): void {
         fill: isSelected ? COLORS.selected : seatFill(seat),
         stroke: isSelected ? '#B0A0FF' : undefined,
         strokeWidth: isSelected ? 1 : 0,
+        // Групповое перемещение мест (§48): тянуть можно только выделенные;
+        // drag отключается на уровне места, пока группа сектора неактивна.
+        draggable: published.value === null && tool.value === 'select' && isSelected,
       })
 
       rect.on('click', (e) => {
         if (tool.value !== 'select') return
         e.cancelBubble = true
         pickSeat(seat.id, sector.id, e.evt.shiftKey || e.evt.ctrlKey || e.evt.metaKey)
+      })
+      rect.on('dragstart', () => {
+        beginMoveSnapshot()
+        // Место уже в выделении (draggable только для выделенных) — фиксируем
+        // стартовые позиции всех выделенных мест этого сектора.
+        seatDragIds = new Set(selectedSeatIds.value)
+        seatDragBefore.clear()
+        for (const s of sector.seats) {
+          if (seatDragIds.has(s.id)) {
+            seatDragBefore.set(s.id, { sectorId: sector.id, row: s.row, x: s.x, y: s.y })
+          }
+        }
+      })
+      rect.on('dragmove', () => {
+        const nx = Math.round(rect.x())
+        const ny = Math.round(rect.y())
+        const before = seatDragBefore.get(seat.id)
+        if (!before) return
+        const dx = nx - before.x
+        const dy = ny - before.y
+        for (const [id] of seatDragIds) {
+          const b = seatDragBefore.get(id)
+          const target = sector.seats.find((s) => s.id === id)
+          if (!b || !target) continue
+          target.x = b.x + dx
+          target.y = b.y + dy
+        }
+      })
+      rect.on('dragend', () => {
+        // Места живут в координатах сектора: если место уехало за пределы
+        // ряда/сектора — это «пересадка», её учтёт finalizeSeatMove.
+        finalizeSeatMove()
+        moveSnapshotTaken = false
+        snapshotPendingMove = true
+        seatDragIds = new Set()
+        seatDragBefore.clear()
       })
       rect.on('mouseenter', () => { if (stage) stage.container().style.cursor = 'pointer' })
             rect.on('mouseleave', () => { if (stage) stage.container().style.cursor = 'default' })
@@ -1536,6 +1744,7 @@ function draw(): void {
       sector.x = Math.round(group.x())
       sector.y = Math.round(group.y())
       snapshotPendingMove = true
+      moveSnapshotTaken = false
     })
     sectorLayer?.add(group)
   }
