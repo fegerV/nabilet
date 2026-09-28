@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Analytics;
 
-use App\Filament\Resources\AnalyticsResource;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -19,7 +18,7 @@ use Tests\TestCase;
  * которых в `nabilet_core_spec/migrations.sql` нет, — и три несуществующие колонки:
  * `analytics_events.event_type` (реально `event_name`), `users.name` (реально
  * `first_name`/`last_name`) и `events.name` (реально `title`). Класс
- * `\App\Models\Booking`, на который ссылался ресурс Filament, не существовал вовсе.
+ * `\App\Models\Booking`, на который ссылалась прошлая админка, не существовал вовсе.
  *
  * Тесты ниже выполняют запросы к настоящей базе: если бы имена таблиц или колонок
  * остались выдуманными, они упали бы на `SQLSTATE[42P01]`, а не прошли молча.
@@ -38,16 +37,6 @@ class AnalyticsReportTest extends TestCase
         parent::setUp();
 
         $this->report = $this->app->make(AnalyticsReportService::class);
-    }
-
-    public function test_resource_model_is_a_class_that_exists(): void
-    {
-        // `\App\Models\Booking` проходил статическую проверку и падал на первом
-        // запросе к getEloquentQuery().
-        $this->assertTrue(
-            class_exists(AnalyticsResource::getModel()),
-            'Модель ресурса аналитики должна существовать: ' . AnalyticsResource::getModel()
-        );
     }
 
     public function test_metrics_count_revenue_from_paid_orders_only(): void
