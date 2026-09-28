@@ -133,7 +133,7 @@ const selectedSeatIds = ref<Set<string>>(new Set())
 const selectedStaticId = ref<string | null>(null)
 
 const published = ref<number | null>(null)
-const draftVersion = ref(3)
+const draftVersion = ref(1)
 const autosave = ref<Autosave>('saved')
 const lastSavedAt = ref<number>(Date.now())
 
@@ -331,6 +331,9 @@ function addRowToSelected(): void {
 
 /* ── Операции с местами (§48) ──────────────────────────────────────── */
 
+/** Инструменты правки — всё, кроме навигации (select/pan/zoom). */
+const EDIT_TOOLS: Tool[] = ['seat', 'row', 'sector', 'table', 'standing', 'text', 'image', 'stage', 'entrance']
+
 function pickSeat(seatId: string, sectorId: string, additive: boolean): void {
   if (tool.value !== 'select') return
   if (additive) {
@@ -344,7 +347,199 @@ function pickSeat(seatId: string, sectorId: string, additive: boolean): void {
   }
 }
 
+/* ── Инструменты создания (§47): seat / table / standing / text / stage / entrance ── */
+
+/** Перевести экранные координаты клика в координаты холста (с учётом pan/zoom). */
+function toCanvasPoint(clientX: number, clientY: number): { x: number; y: number } | null {
+  if (!stage) return null
+  const rect = stage.container().getBoundingClientRect()
+  const scale = stage.scaleX() || 1
+  return {
+    x: Math.round((clientX - rect.left - stage.x()) / scale),
+    y: Math.round((clientY - rect.top - stage.y()) / scale),
+  }
+}
+
+/** Ближайший сектор к точке (для инструмента «место»), или null. */
+function nearestSector(x: number, y: number): ESector | null {
+  let best: ESector | null = null
+  let bestDist = Infinity
+  for (const sector of sectors.value) {
+    if (sector.seats.length === 0) continue
+    const bb = bbox(sector)
+    const cx = sector.x + bb.x + bb.width / 2
+    const cy = sector.y + bb.y + bb.height / 2
+    const dist = Math.hypot(x - cx, y - cy)
+    if (dist < bestDist) { bestDist = dist; best = sector }
+  }
+  return best
+}
+
+/** Добавить одиночное место кликом (инструмент seat, §47). */
+function addSeatAt(x: number, y: number): void {
+  const target = selectedSector.value ?? nearestSector(x, y)
+  if (!target) {
+    ui.notify('rose', 'Нет сектора', 'Место можно добавить только в существующий сектор — создайте сектор (▣)')
+    return
+  }
+  snapshot()
+  const localX = x - target.x
+  const localY = y - target.y
+  // Ряд и номер — по соседним местам: новый ряд, если точка ниже последнего.
+  const rows = Array.from(new Set(target.seats.map((s) => s.row))).sort((a, b) => a - b)
+  const lastRow = rows[rows.length - 1] ?? 1
+  const inLastRow = target.seats.filter((s) => s.row === lastRow)
+  const rowStep = SEAT + ROW_GAP
+  const newRow = inLastRow.length > 0 && localY > inLastRow[0].y + rowStep * 0.6
+    ? lastRow + 1
+    : lastRow
+  const rowSeats = target.seats.filter((s) => s.row === newRow)
+  const maxNumber = rowSeats.reduce((m, s) => Math.max(m, s.number), 0)
+  // Ряды ниже первого VIP-ряда наследуют стандартный тип; крайние места — доступные.
+  const kind: SeatKind = 'standard'
+  target.seats.push({ id: nextId('seat'), row: newRow, number: maxNumber + 1, kind, x: localX, y: localY })
+  selectedSeatIds.value = new Set([target.seats[target.seats.length - 1].id])
+  ui.notify('mint', 'Место добавлено', `${target.name}, ряд ${newRow}, место ${maxNumber + 1}`)
+}
+
+/** Создать статический объект кликом (tools table/text/stage/entrance, §47). */
+function createStaticAt(kind: StaticKind, x: number, y: number): void {
+  snapshot()
+  const base = { id: nextId('static'), kind, x, y }
+  if (kind === 'table') {
+    statics.value.push({ ...base, width: 44, height: 32 })
+  } else if (kind === 'label') {
+    statics.value.push({ ...base, text: 'Подпись' })
+  } else if (kind === 'stage') {
+    statics.value.push({ ...base, width: 260, height: 34, text: 'СЦЕНА' })
+  } else {
+    statics.value.push(base)
+  }
+  selectedStaticId.value = statics.value[statics.value.length - 1].id
+}
+
+/**
+ * Обработка клика холстом в режиме редактирования (§47). Вызывается из
+ * stage.on('click'): здесь физически живут инструменты seat/table/standing/
+ * text/stage/entrance, которых раньше не было — кнопки выбирали инструмент,
+ * но ничего не происходило.
+ */
+function handleToolClick(clientX: number, clientY: number): void {
+  if (isLocked.value) return
+  const t = tool.value
+  if (!EDIT_TOOLS.includes(t) || t === 'image' || t === 'row' || t === 'sector') return
+  const p = toCanvasPoint(clientX, clientY)
+  if (!p) return
+  if (t === 'seat') { addSeatAt(p.x, p.y); return }
+  if (t === 'table') { createStaticAt('table', p.x - 22, p.y - 16); return }
+  if (t === 'text') { createStaticAt('label', p.x, p.y); return }
+  if (t === 'stage') { createStaticAt('stage', p.x - 130, p.y - 17); return }
+  if (t === 'entrance') { createStaticAt('entrance', p.x, p.y); return }
+}
+
+/** Прямоугольник стоячей зоны, растянутый перетаскиванием (marquee, §47). */
+let standingDragStart: { x: number; y: number } | null = null
+function onStageMouseDown(e: Konva.KonvaEventObject<MouseEvent>): void {
+  if (isLocked.value) return
+  if (tool.value === 'standing') {
+    const p = toCanvasPoint(e.evt.clientX, e.evt.clientY)
+    if (p) standingDragStart = p
+  } else if (tool.value === 'select') {
+    // Рамка группового выделения (§48): mousedown по пустому месту холста.
+    const clickedShape = e.target
+    if (clickedShape === stage || clickedShape?.name() === 'canvas-bg') {
+      const p = toCanvasPoint(e.evt.clientX, e.evt.clientY)
+      if (p) marqueeStart = p
+    }
+  }
+}
+
+function onStageMouseMove(e: Konva.KonvaEventObject<MouseEvent>): void {
+  if (marqueeStart) {
+    const p = toCanvasPoint(e.evt.clientX, e.evt.clientY)
+    if (!p) return
+    marqueeEnd = p
+    drawMarquee()
+  }
+}
+
+function onStageMouseUp(e: Konva.KonvaEventObject<MouseEvent>): void {
+  if (standingDragStart) {
+    const p = toCanvasPoint(e.evt.clientX, e.evt.clientY)
+    const start = standingDragStart
+    standingDragStart = null
+    if (!p || isLocked.value) return
+    const w = Math.abs(p.x - start.x)
+    const h = Math.abs(p.y - start.y)
+    // Клик без растягивания → зона по умолчанию 120×60.
+    const x = Math.min(start.x, p.x || start.x + 120)
+    const y = Math.min(start.y, p.y || start.y + 60)
+    snapshot()
+    const capacity = Math.max(10, Math.floor((w || 120) * (h || 60) / 150))
+    statics.value.push({ id: nextId('static'), kind: 'standing', x, y, width: w || 120, height: h || 60, capacity, text: `Фан-зона · ${capacity}` })
+    selectedStaticId.value = statics.value[statics.value.length - 1].id
+    ui.notify('mint', 'Стоячая зона создана', `Вместимость: ${capacity}`)
+  }
+  if (marqueeStart && marqueeEnd) {
+    applyMarqueeSelection()
+  }
+  marqueeStart = null
+  marqueeEnd = null
+  guidesLayer?.destroyChildren()
+  guidesLayer?.draw()
+}
+
+/* ── Рамка выделения (§48: drag — групповое выделение) ─────────────── */
+
+let marqueeStart: { x: number; y: number } | null = null
+let marqueeEnd: { x: number; y: number } | null = null
+
+function drawMarquee(): void {
+  if (!guidesLayer || !marqueeStart || !marqueeEnd) return
+  guidesLayer.destroyChildren()
+  guidesLayer.add(new Konva.Rect({
+    x: Math.min(marqueeStart.x, marqueeEnd.x),
+    y: Math.min(marqueeStart.y, marqueeEnd.y),
+    width: Math.abs(marqueeEnd.x - marqueeStart.x),
+    height: Math.abs(marqueeEnd.y - marqueeStart.y),
+    stroke: '#6D4AFF',
+    dash: [4, 3],
+    fill: 'rgba(109,74,255,0.08)',
+    listening: false,
+  }))
+  guidesLayer.draw()
+}
+
+function applyMarqueeSelection(): void {
+  if (!marqueeStart || !marqueeEnd) return
+  const x1 = Math.min(marqueeStart.x, marqueeEnd.x)
+  const x2 = Math.max(marqueeStart.x, marqueeEnd.x)
+  const y1 = Math.min(marqueeStart.y, marqueeEnd.y)
+  const y2 = Math.max(marqueeStart.y, marqueeEnd.y)
+  if (x2 - x1 < 4 && y2 - y1 < 4) return
+  const picked = new Set<string>()
+  for (const sector of sectors.value) {
+    for (const seat of sector.seats) {
+      const gx = sector.x + seat.x
+      const gy = sector.y + seat.y
+      if (gx >= x1 && gx + SEAT <= x2 && gy >= y1 && gy + SEAT <= y2) picked.add(seat.id)
+    }
+  }
+  if (picked.size > 0) {
+    selectedSeatIds.value = picked
+    selectedSectorId.value = null
+  }
+}
+
 function deleteSelection(): void {
+  // Серверная защита есть (триггер неизменяемости), но клиент не обязан
+  // дёргать удаление в заблокированной версии — иначе изменение состояния
+  // после Delete породит автосохранение, которое невозможно (и это выглядит
+  // как потерянная работа).
+  if (isLocked.value) {
+    ui.notify('sun', 'Версия опубликована', 'Удаление недоступно — нажмите «Новая версия», чтобы править')
+    return
+  }
   if (selectedSeatIds.value.size === 0 && !selectedStaticId.value && !selectedSectorId.value) return
   snapshot()
   if (selectedSeatIds.value.size > 0) {
@@ -513,6 +708,9 @@ function newVersion(): void {
 
 interface ServerSector {
   name: string
+  id?: string
+  x?: number
+  y?: number
   rows?: Array<{
     number: string | number
     label?: string
@@ -523,10 +721,29 @@ interface ServerSector {
   priceMinor?: number
   /** В старых схемах, сохранённых из прошлой админки, цена лежит в `price`. */
   price?: number
+  rowPrices?: Record<string, number>
   shape?: string
+  arcSpread?: number
+  arcBaseR?: number
+  arcRowGap?: number
+  arcOffsetX?: number
+  arcOffsetY?: number
 }
 
-/** Сконвертировать серверную схему (БД-формат или редакторский JSON) в состояние редактора. */
+/**
+ * Сконвертировать серверную схему (БД-формат или редакторский JSON) в состояние
+ * редактора.
+ *
+ * Два режима, и это принципиально:
+ *  - редакторский JSON (sectors[].seats[] с абсолютными координатами и полной
+ *    геометрией дуги) загружается БЕЗ масштабирования — иначе F5 меняет схему
+ *    (пересчёт масштаба при каждой загрузке терял точность и переставлял
+ *    сектора);
+ *  - «БД-формат» (sectors[].rows[].seats[], сидер/импортёр Афиши) нормализуется
+ *    к сетке редактора: координаты могут быть битыми (все нули) — ряды
+ *    раскладываются по константам SEAT/GAP/ROW_GAP, цены берутся из
+ *    row.price_amount (или легаси sector.price).
+ */
 function applyServerSchema(raw: unknown): void {
   const obj = (typeof raw === 'object' && raw) ? raw as Record<string, unknown> : {}
   const rawCanvas = (typeof obj.canvas === 'object' && obj.canvas)
@@ -539,10 +756,21 @@ function applyServerSchema(raw: unknown): void {
   }
   const rawSectors = Array.isArray(obj.sectors) ? obj.sectors : []
 
-  // Сначала собираем ВСЕ секторы (канвас или БД-формат). Координаты мест в
-  // экспорте — локальные для сектора, поэтому общий масштаб считаем по всем
-  // секторам сразу: иначе каждый сектор масштабируется в свой угол и схема
-  // разъезжается.
+  // ── Статика и фон: раньше молча выбрасывались → после перезагрузки зал
+  //    терял сцену, входы, подписи и подложку (B7). Восстанавливаем как есть. ──
+  if (Array.isArray(obj.staticObjects)) {
+    const restored = (obj.staticObjects as EStatic[]).filter(
+      (o) => o && typeof o.id === 'string' && typeof o.kind === 'string',
+    )
+    statics.value = restored
+  }
+  const rawBg = obj.background
+  if (typeof rawBg === 'object' && rawBg && typeof (rawBg as EBackground).src === 'string') {
+    backgrounds.value = [rawBg as EBackground]
+  } else {
+    backgrounds.value = []
+  }
+
   interface FlatSeat { row: number; number: number; x: number; y: number; kind: string }
   const collected: { sector: ServerSector; seats: FlatSeat[] }[] = []
   let allMinX = Infinity, allMaxX = -Infinity, allMinY = Infinity, allMaxY = -Infinity
@@ -554,7 +782,7 @@ function applyServerSchema(raw: unknown): void {
       seats = s.seats.map((seat) => ({
         row: Number(seat.row ?? 0),
         number: Number(seat.number ?? 0),
-        kind: (seat.kind === 'vip' || seat.kind === 'accessible') ? seat.kind : 'standard',
+        kind: (seat.kind === 'vip' || seat.kind === 'accessible' || seat.kind === 'wheelchair') ? (seat.kind === 'wheelchair' ? 'accessible' : seat.kind) : 'standard',
         x: Number(seat.x ?? 0),
         y: Number(seat.y ?? 0),
       }))
@@ -565,7 +793,7 @@ function applyServerSchema(raw: unknown): void {
           seats.push({
             row: rowNo,
             number: Number(seat.number ?? 0),
-            kind: 'standard',
+            kind: seat.type === 'vip' ? 'vip' : (seat.type === 'wheelchair' || seat.type === 'accessible') ? 'accessible' : 'standard',
             x: Number(seat.x ?? 0),
             y: Number(seat.y ?? 0),
           })
@@ -582,90 +810,152 @@ function applyServerSchema(raw: unknown): void {
     }
   }
 
-  // Общий масштаб: весь зал целиком влезает в типовую область холста.
-  // Верхняя граница фиксирована (не зависит от размера окна), чтобы импорт
-  // выглядел одинаково при любом viewport.
-  const pad = 40
-  const viewW = Math.max(canvasSize.value.width, 900)
-  const viewH = 620
-  const spanX = (allMaxX - allMinX) || 1
-  const spanY = (allMaxY - allMinY) || 1
-  const scale = Math.min(
-    (viewW - pad * 2) / spanX,
-    (viewH - pad * 2) / spanY,
-    60,
-  )
+  // Формат определяется по первому сектору с местами: наличие seats[] c
+  // ненулевыми координатами + отсутствие rows[] ⇒ редакторский JSON.
+  const firstWithSeats = collected[0]
+  const isEditorFormat = !!firstWithSeats
+    && Array.isArray(firstWithSeats.sector.seats)
+    && !(firstWithSeats.sector.rows && firstWithSeats.sector.rows.length > 0)
 
   const out: ESector[] = []
+  if (isEditorFormat) {
+    // Редакторский формат: полная геометрия сохраняется 1:1.
     for (const { sector: s, seats: flatSeats } of collected) {
-      // Нормализуем координаты каждого сектора к началу отсчёта: экспорт
-      // пишет места в локальных координатах сектора + смещение (x, y),
-      // а импорт раскладывает сектора по сетке — без нормализации схема
-      // разъезжается за холст.
+      const srcId = typeof s.id === 'string' ? s.id : `s${out.length + 1}`
+      const rowPrices: Record<number, number> = {}
+      for (const [k, v] of Object.entries(s.rowPrices ?? {})) {
+        const rn = Number(k)
+        if (rn > 0 && typeof v === 'number' && Number.isFinite(v)) rowPrices[rn] = Math.max(0, Math.round(v))
+      }
+      out.push({
+        id: srcId,
+        name: s.name,
+        priceMinor: Math.max(0, Math.round(Number(s.priceMinor ?? s.price ?? 0))),
+        x: Math.round(Number(s.x ?? 0)),
+        y: Math.round(Number(s.y ?? 0)),
+        seats: flatSeats.map((p, i) => ({
+          id: (s.seats?.[i]?.id as string) ?? `${srcId}-${p.row}-${p.number}`,
+          row: p.row,
+          number: p.number,
+          kind: (p.kind === 'vip' || p.kind === 'accessible') ? p.kind : 'standard',
+          x: Math.round(p.x),
+          y: Math.round(p.y),
+        })),
+        rowPrices,
+        shape: s.shape === 'arc' ? 'arc' : 'grid',
+        arcSpread: Number(s.arcSpread ?? 120),
+        arcBaseR: Number(s.arcBaseR ?? 200),
+        arcRowGap: Number(s.arcRowGap ?? 24),
+        arcOffsetX: Number(s.arcOffsetX ?? 0),
+        arcOffsetY: Number(s.arcOffsetY ?? 0),
+      })
+    }
+  } else {
+    // БД-формат: общий масштаб по всей схеме (координаты сидера могут быть
+    // нормализованы в 0..59/0..39 или лежать в пикселях чужого холста).
+    const pad = 40
+    const viewW = Math.max(canvasSize.value.width, 900)
+    const viewH = 620
+    const spanX = (allMaxX - allMinX) || 1
+    const spanY = (allMaxY - allMinY) || 1
+    const hasGeometry = Number.isFinite(allMinX) && allMaxX > allMinX && allMaxY > allMinY
+    const scale = hasGeometry
+      ? Math.min((viewW - pad * 2) / spanX, (viewH - pad * 2) / spanY, 60)
+      : 1
+    for (const { sector: s, seats: flatSeats } of collected) {
+      const rowPrices: Record<number, number> = {}
+      // Цены по рядам из rows[].price_amount (§50) — раньше игнорировались.
+      for (const r of s.rows ?? []) {
+        const rn = Number(r.number ?? 0)
+        const pa = Number(r.price_amount ?? NaN)
+        if (rn > 0 && Number.isFinite(pa)) rowPrices[rn] = Math.max(0, Math.round(pa))
+      }
       let secMinX = Infinity, secMinY = Infinity
       for (const p of flatSeats) {
         if (p.x < secMinX) secMinX = p.x
         if (p.y < secMinY) secMinY = p.y
       }
-      const seats: ESector['seats'] = flatSeats.map((p) => ({
-        id: `${s.name}-${p.row}-${p.number}`,
+      // Если вся геометрия вырождена (нулевые координаты) — раскладываем
+      // места по стандартной сетке редактора, чтобы схема не слиплась в точку.
+      const degenerate = !hasGeometry
+      const rowsSorted = Array.from(new Set(flatSeats.map((p) => p.row))).sort((a, b) => a - b)
+      const rowIndexOf = new Map(rowsSorted.map((r, i) => [r, i]))
+      // Позиция места внутри ряда — по индексу в исходном массиве ряда.
+      const seatPosCache = new Map<number, number>()
+      let seatsSeenInRow = 0
+      let lastRowSeen = Number.NaN
+      flatSeats.forEach((p, i) => {
+        if (p.row !== lastRowSeen) { seatsSeenInRow = 0; lastRowSeen = p.row }
+        seatPosCache.set(i, seatsSeenInRow)
+        seatsSeenInRow += 1
+      })
+      const seats: ESector['seats'] = flatSeats.map((p, i) => ({
+        id: `${s.name}-${p.row}-${p.number}-${i}`,
         row: p.row,
         number: p.number,
         kind: (p.kind === 'vip' || p.kind === 'accessible') ? p.kind : 'standard',
-        x: Math.round((p.x - secMinX) * scale),
-        y: Math.round((p.y - secMinY) * scale),
+        x: degenerate
+          ? (seatPosCache.get(i) ?? 0) * (SEAT + GAP)
+          : Math.round((p.x - secMinX) * scale),
+        y: degenerate
+          ? (rowIndexOf.get(p.row) ?? 0) * (SEAT + ROW_GAP)
+          : Math.round((p.y - secMinY) * scale),
       }))
-    const priceRaw = Number(s.priceMinor ?? s.price ?? 0)
-    out.push({
-      id: `s${out.length + 1}`,
-      name: s.name,
-      priceMinor: priceRaw,
-      x: 0,
-      y: 0,
-      seats,
-      rowPrices: {},
-      shape: (s.shape === 'arc') ? 'arc' : 'grid',
-      arcSpread: 120,
-      arcBaseR: 200,
-      arcRowGap: 24,
-      arcOffsetX: 0,
-      arcOffsetY: 0,
-    })
+      out.push({
+        id: `s${out.length + 1}`,
+        name: s.name,
+        priceMinor: Math.max(0, Math.round(Number(s.priceMinor ?? s.price ?? 0))),
+        x: 0,
+        y: 0,
+        seats,
+        rowPrices,
+        shape: s.shape === 'arc' ? 'arc' : 'grid',
+        arcSpread: Number(s.arcSpread ?? 120),
+        arcBaseR: Number(s.arcBaseR ?? 200),
+        arcRowGap: Number(s.arcRowGap ?? 24),
+        arcOffsetX: 0,
+        arcOffsetY: 0,
+      })
+    }
+    // Раскладка секторов БД-формата по вертикали, чтобы они не наложились.
+    let cursorY = 140
+    for (const sec of out) {
+      sec.y = cursorY
+      cursorY += bbox(sec).height + 80
+    }
   }
   if (out.length > 0) {
-      sectors.value = out
+    sectors.value = out
 
-      // Автоматическая зона танцпола: для сектора, где все места в одной точке
-      // (или имя содержит «Танцпол»), рисуем пунктирную зону-оверлей в static-слое.
-      const dance = out.find((s) => /танцпол|dance/i.test(s.name ?? '') || (
-        s.seats.length > 1 &&
-        s.seats.every((p) => p.x === s.seats[0].x && p.y === s.seats[0].y)
-      ))
-      if (dance && dance.seats.length > 0) {
-              // Зону танцпола рисуем по центру под сценой (у Яндекса координата y
-              // растёт вниз, и зона оказывается у нижнего края — визуально неверно).
-              const cx = canvasSize.value.width / 2
-              const cy = 190
-              const R = 60 + Math.min(dance.seats.length, 10) * 4
-        const existing = statics.value.filter((o) => /танцпол|dance/i.test(o.text ?? ''))
-        if (existing.length === 0) {
-          statics.value = [
-            ...statics.value,
-            {
-              id: 'static-dancezone',
-              kind: 'standing',
-              x: cx - R,
-              y: cy - R * 0.6,
-              width: R * 2,
-              height: R * 1.2,
-              text: `Танцпол · ${dance.seats.length} мест`,
-              capacity: dance.seats.length,
-            },
-          ]
-        }
+    // Автоматическая зона танцпола: для сектора, где все места в одной точке
+    // (или имя содержит «Танцпол»), рисуем пунктирную зону-оверлей в static-слое.
+    const dance = out.find((s) => /танцпол|dance/i.test(s.name ?? '') || (
+      s.seats.length > 1 &&
+      s.seats.every((p) => p.x === s.seats[0].x && p.y === s.seats[0].y)
+    ))
+    if (dance && dance.seats.length > 0) {
+      const cx = canvasSize.value.width / 2
+      const cy = 190
+      const R = 60 + Math.min(dance.seats.length, 10) * 4
+      const existing = statics.value.filter((o) => /танцпол|dance/i.test(o.text ?? ''))
+      if (existing.length === 0) {
+        statics.value = [
+          ...statics.value,
+          {
+            id: 'static-dancezone',
+            kind: 'standing',
+            x: cx - R,
+            y: cy - R * 0.6,
+            width: R * 2,
+            height: R * 1.2,
+            text: `Танцпол · ${dance.seats.length} мест`,
+            capacity: dance.seats.length,
+          },
+        ]
       }
     }
   }
+}
 
 /** Загрузить зал и его версии с сервера. */
 async function loadFromServer(): Promise<void> {
@@ -1082,13 +1372,62 @@ function fit(): void {
   stage.batchDraw()
 }
 
+/**
+ * Вписать схему в видимую область холста (масштаб + смещение stage).
+ * Используется после загрузки/импорта: координаты схемы могут выходить за
+ * пределы типового окна (холст БД-формата нормализуется к области 900×620,
+ * реальный холст при этом шире/выше или наоборот).
+ */
+function fitToContent(): void {
+  if (!stage) return
+  const pts: Array<{ x: number; y: number }> = []
+  for (const sector of sectors.value) {
+    const bb = bbox(sector)
+    pts.push({ x: sector.x + bb.x, y: sector.y + bb.y })
+    pts.push({ x: sector.x + bb.x + bb.width, y: sector.y + bb.y + bb.height })
+  }
+  if (pts.length === 0) { fit(); return }
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+  for (const p of pts) {
+    if (p.x < minX) minX = p.x
+    if (p.y < minY) minY = p.y
+    if (p.x > maxX) maxX = p.x
+    if (p.y > maxY) maxY = p.y
+  }
+  const pad = 48
+  const w = Math.max(1, maxX - minX)
+  const h = Math.max(1, maxY - minY)
+  const viewW = Math.max(canvasSize.value.width, 300)
+  const viewH = Math.max(canvasSize.value.height, 300)
+  const scale = Math.min(2, Math.max(0.3, Math.min((viewW - pad * 2) / w, (viewH - pad * 2) / h)))
+  stage.scale({ x: scale, y: scale })
+  stage.position({
+    x: (viewW - w * scale) / 2 - minX * scale,
+    y: (viewH - h * scale) / 2 - minY * scale,
+  })
+  stage.batchDraw()
+}
+
 onMounted(() => {
-  void loadFromServer()
-  if (!canvasHost.value) return
-  canvasSize.value = { width: canvasHost.value.clientWidth, height: canvasHost.value.clientHeight }
+  // ВАЖНО: порядок инициализации критичен. `void loadFromServer()` асинхронно
+  // перезапишет sectors/statics/backgrounds из черновика на сервере; демо-данные
+  // должны быть созданы ДО загрузки, иначе они перетирают серверную схему
+  // (и автосейв, сработавший на deep-watch, сохранит демо поверх реальных правок).
+  if (!canvasHost.value) {
+    // Холст ещё не примонтирован (SSR/безоконный стенд) — дождёмся nextTick.
+    void nextTick(() => initCanvasAndLoad())
+    return
+  }
+  initCanvasAndLoad()
+})
+
+function initCanvasAndLoad(): void {
+  const host = canvasHost.value
+  if (!host) return
+  canvasSize.value = { width: host.clientWidth || 900, height: host.clientHeight || 520 }
 
   stage = new Konva.Stage({
-    container: canvasHost.value,
+    container: host,
     width: canvasSize.value.width,
     height: canvasSize.value.height,
     draggable: tool.value === 'pan',
@@ -1100,10 +1439,32 @@ onMounted(() => {
   selectionLayer = new Konva.Layer()
   stage.add(bgLayer, staticLayer, sectorLayer, guidesLayer, selectionLayer)
 
+  // Фон-подложка холста: нужен «клик по пустому месту» для рамки выделения
+  // (§48) и инструментов создания (§47). Без него stage.on('click') по
+  // пустой области не генерируется Konva вообще (нет цели под курсором).
+  const canvasBg = new Konva.Rect({
+    name: 'canvas-bg',
+    x: -100000,
+    y: -100000,
+    width: 200000,
+    height: 200000,
+    fill: 'rgba(0,0,0,0)',
+    listening: true,
+  })
+  bgLayer.add(canvasBg)
+
   stage.on('wheel', (e) => {
     e.evt.preventDefault()
     zoomBy(e.evt.deltaY < 0 ? 1.12 : 0.9)
   })
+
+  // Инструменты §47: клик по холсту создаёт объект выбранного инструмента.
+  stage.on('click', (e) => {
+    handleToolClick(e.evt.clientX, e.evt.clientY)
+  })
+  stage.on('mousedown', onStageMouseDown)
+  stage.on('mousemove', onStageMouseMove)
+  stage.on('mouseup', onStageMouseUp)
 
   observer = new ResizeObserver((entries) => {
     const rect = entries[0]?.contentRect
@@ -1112,22 +1473,37 @@ onMounted(() => {
     stage.size(canvasSize.value)
     draw()
   })
-  observer.observe(canvasHost.value)
+  observer.observe(host)
 
-  // Демо-данные: амфитеатр + прямоугольный партер, чтобы холст не был пустым.
+  // Демо-данные — только когда сервер вернул пустоту (см. loadFromServer):
+  // раньше они создавались безусловно и перетерали загруженную схему.
+
+  void loadFromServer().then(() => {
+    if (hallLoadState.value !== 'ok' || sectors.value.length === 0) {
+      seedDemoSectors()
+    }
+    draw()
+    fitToContent()
+  })
+}
+
+/** Демо-секторы: амфитеатр + прямоугольный партер, чтобы холст не был пустым. */
+function seedDemoSectors(): void {
+  if (sectors.value.length > 0) return
   form.value = { name: 'Балкон', shape: 'arc', rows: 6, seatsPerRow: 16, priceMinor: 1200000, vipRows: 1, arcSpread: 140 }
   generateSector()
   const balcony = sectors.value[0]
+  if (!balcony) return
   balcony.x = 80
   balcony.y = 110
 
   form.value = { name: 'Партер A', shape: 'grid', rows: 7, seatsPerRow: 18, priceMinor: 850000, vipRows: 2, arcSpread: 160 }
   generateSector()
   const parterre = sectors.value[1]
+  if (!parterre) return
   parterre.x = 80
   parterre.y = balcony.y + bbox(balcony).height + 70
-  draw()
-})
+}
 
 onUnmounted(() => {
   if (saveTimer) clearTimeout(saveTimer)
