@@ -83,7 +83,7 @@ final class ErrorEnvelopeWiringTest extends TestCase
         );
 
         // HTML surfaces must keep Laravel's own rendering: a JSON envelope in the
-        // Filament admin panel or the installer would be a regression.
+        // admin SPA or the installer would be a regression.
         $this->assertTrue(
             str_contains($this->bootstrap, "is('api/*')"),
             'the renderer must be limited to API/JSON requests so HTML surfaces keep their error pages'

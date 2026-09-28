@@ -34,8 +34,8 @@ use Nabilet\Modules\Analytics\Models\AbAssignment;
  *   `Illuminate\Contracts\Auth\Authenticatable` is what `Auth::user()`,
  *   `$request->user()` and every policy expect, and `EloquentUserProvider` refuses
  *   anything else. The auth provider in `config/auth.php` pointed at
- *   `App\Models\User` instead — the Filament panel's model — while every module in
- *   the tree uses *this* one. A guard that returned the Filament model would hand
+ *   `App\Models\User` instead — the web guard's model — while every module in
+ *   the tree uses *this* one. A guard that returned the other model would hand
  *   controllers a different class for the same row, so `instanceof` checks and
  *   `userSessions()` would be missing exactly where they are needed.
  *

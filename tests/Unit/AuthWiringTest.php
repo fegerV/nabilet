@@ -49,7 +49,7 @@ final class AuthWiringTest extends TestCase
 
     public function testTheApiProviderPointsAtTheModuleUser(): void
     {
-        // `App\Models\User` is the Filament panel's model. The modules use the one
+        // `App\Models\User` is the web guard's model. The modules use the one
         // below, and a guard that returned the other would hand controllers a
         // different class for the same row.
         $this->assertStringContainsString(
