@@ -1367,6 +1367,14 @@ async function loadFromServer(): Promise<void> {
     const res = await get<{ data: Array<Record<string, unknown>> }>(`/halls/${pid}/schema-versions`)
     const inner = res.data
     const versions = Array.isArray(inner) ? inner : (Array.isArray(inner.data) ? inner.data : [])
+    // Стартовый номер черновика НЕ фиксирован: он вычисляется из всех версий
+    // зала (max(version)+1 для нового черновика), чтобы не «перезапускаться»
+    // на v1 после публикации и не конфликтовать с серверной нумерацией.
+    let maxVersionNo = 0
+    for (const v of versions) {
+      const n = Number(v.version ?? 0)
+      if (Number.isFinite(n) && n > maxVersionNo) maxVersionNo = n
+    }
     // Выбираем черновик, иначе последнюю опубликованную.
     const draft = versions.find((v) => v.status === 'draft')
     const publishedV = versions.find((v) => v.status === 'published')
@@ -1377,9 +1385,10 @@ async function loadFromServer(): Promise<void> {
       if (chosen.status === 'published') {
         published.value = versionNo
         loadedPublished.value = versionNo
-        draftVersion.value = versionNo + 1
+        // Черновик после публикации — следующий за максимальной версией зала.
+        draftVersion.value = Math.max(versionNo, maxVersionNo) + 1
       } else {
-        draftVersion.value = versionNo > 0 ? versionNo : draftVersion.value
+        draftVersion.value = versionNo > 0 ? versionNo : maxVersionNo + 1
         draftVersionId.value = Number(chosen.id ?? null)
       }
       const schema = chosen.schema
@@ -1977,31 +1986,16 @@ function initCanvasAndLoad(): void {
   // Демо-данные — только когда сервер вернул пустоту (см. loadFromServer):
   // раньше они создавались безусловно и перетерали загруженную схему.
 
+  // Пустой холст (A1): демо-секторы больше не генерируются — новый зал
+  // стартует с чистой схемой; сектора создаёт пользователь (§47/§49).
   void loadFromServer().then(() => {
-    if (hallLoadState.value !== 'ok' || sectors.value.length === 0) {
-      seedDemoSectors()
-    }
     draw()
-    fitToContent()
+    if (sectors.value.length > 0) {
+      fitToContent()
+    } else {
+      fit()
+    }
   })
-}
-
-/** Демо-секторы: амфитеатр + прямоугольный партер, чтобы холст не был пустым. */
-function seedDemoSectors(): void {
-  if (sectors.value.length > 0) return
-  form.value = { name: 'Балкон', shape: 'arc', rows: 6, seatsPerRow: 16, priceMinor: 1200000, vipRows: 1, arcSpread: 140 }
-  generateSector()
-  const balcony = sectors.value[0]
-  if (!balcony) return
-  balcony.x = 80
-  balcony.y = 110
-
-  form.value = { name: 'Партер A', shape: 'grid', rows: 7, seatsPerRow: 18, priceMinor: 850000, vipRows: 2, arcSpread: 160 }
-  generateSector()
-  const parterre = sectors.value[1]
-  if (!parterre) return
-  parterre.x = 80
-  parterre.y = balcony.y + bbox(balcony).height + 70
 }
 
 onUnmounted(() => {
