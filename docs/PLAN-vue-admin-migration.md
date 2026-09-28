@@ -1,8 +1,13 @@
 # NABILET — переезд админки на Vue, выпил Filament, SEO по slug
 
+> **Статус (2026-09-29): миграция выполнена, Filament удалён из проекта**
+> (нет пакетов `filament/*` в composer.json, нет `app/Filament/`, `app/Providers/Filament/`,
+> blade-шаблонов панели; `/admin` отдаёт Vue-админку). Актуальные статусы — в `docs/ROADMAP.md`.
+> Ниже — исторический план и текущее состояние.
+
 ## Решение (пользователь, 2026-09-24)
 - Пишем админку на Vue (полностью).
-- Filament убираем.
+- Filament убран (✅ выполнено).
 - Моки убираем — всё на реальный Laravel API.
 - SEO: страницы мероприятий — каждая со своим slug (не id).
 
@@ -12,11 +17,10 @@
   Checkout — всё через `lib/api.ts`. Моки в витрине убраны.
 - **Холд/снятие/checkout работают**: атомарный decrement inventory, финализация sold, возврат при снятии.
 - **SEO-страницы по slug работают**: `GET /event/{slug}` (301 на canonical с publicId) + JSON-LD.
-- Vue-фронт админки (Dashboard/Events/Orders) читает `lib/mock.ts` — предстоит переключить на API.
-- `lib/mock.ts` ещё импортируется админкой и HallEditor — удалить на этапе 4.
-- Filament: провайдер, ресурсы, страницы, справка, чек-лист — всё удалить после переезда (этап 5).
-- Пробел в API: Sessions и Venues — только GET (нет write-эндпоинтов) — добавить на этапе 1 ROADMAP.md.
-- Авторизация админки: AuthController есть (login/logout/register) — нужен middleware ролей + токен (этап 1).
+- **Текущее состояние админки**: Vue-страницы (`pages/admin/`) читают API; остатки `lib/mock.ts` — только в `AdminDashboardPage.vue` и `TicketsPage.vue` (удалить на этапе 4 ROADMAP «Чистка»).
+- Filament: ✅ удалён полностью — провайдер, ресурсы, страницы, справка, чек-лист (этап выполнен).
+- Пробел в API закрыт (этап 1 ✅): Sessions и Venues получили write-эндпоинты (`POST/PATCH/DELETE` под `auth:sanctum, admin`).
+- Авторизация админки ✅ (этап 1): Sanctum-токены + middleware ролей `EnsureAdminRole` (admin/manager).
 
 ## Документы
 - `docs/ROADMAP.md` — статусы этапов, сверяться перед работой (источник истины).
@@ -37,10 +41,10 @@
      Мероприятия, Сеансы, Площадки, Заказы, Платежи/Возвраты, Билеты, Пользователи.
    - Авторизация: /api/v1/auth (есть AuthController).
    - Права: роли (admin/manager) — на бэкенде.
-5. **Выпил Filament**:
-   - vendor/filament (composer), app/Providers/Filament, app/Filament/
-   - роуты /admin (заменить на Vue-админку), мидлвары, конфиг.
-   - Перенести в Vue: справка, чек-лист перед публикацией, подсказки.
+5. **Выпил Filament** — ✅ выполнено:
+   - vendor/filament (composer), app/Providers/Filament, app/Filament/ — удалены
+   - роуты /admin заменены на Vue-админку; Filament-мидлвары/конфиг удалены
+   - Справка/чек-лист Filament удалены вместе с панелью; подсказки — в Vue-формах
 6. **Сборка/деплой на шаред** — npm run build → dist/, один ZIP с vendor/, установщик (уже есть Installer).
 
 ## Принципы

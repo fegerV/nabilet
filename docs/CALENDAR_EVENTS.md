@@ -53,29 +53,32 @@ New relationships and methods:
 - `getNextDateAttribute()` - Accessor for earliest upcoming date
 - `hasAvailableDates()` - Check if event has available dates
 
-## Admin Panel (Filament)
+## Admin Panel (Vue)
 
-### EventDateResource
+> Панель Filament из проекта удалена. Админка — SPA на Vue 3 + TypeScript
+> (`resources/js/pages/admin/`), работает только через REST API `/api/v1/*`.
 
-Location: `app/Filament/Resources/EventDateResource.php`
+### Управление датами мероприятий (сеансами)
+
+Location: `resources/js/pages/admin/AdminSessionsPage.vue` (роут `#/admin/sessions`)
 
 Features:
-- Full CRUD operations for event dates
-- Filter by status, event, and sold-out status
-- Form fields for all date properties
-- Color-coded status badges
+- CRUD операций с датами/сеансами мероприятия через `GET/POST/PATCH/DELETE /api/v1/sessions`
+- Фильтр по статусу и мероприятию
+- Форма: мероприятие, зал, дата, время, статус; цветные бейджи статусов (`NStatusBadge`)
 
-### EventCalendarWidget
+### Календарь ближайших дат (дашборд)
 
-Location: `app/Filament/Widgets/EventCalendarWidget.php`
+Location: `resources/js/pages/admin/AdminDashboardPage.vue` (роут `#/admin`)
 
 Displays:
-- Upcoming event dates (next 10)
-- Current month's events grouped by date
-- Availability status (Sold Out / Available)
-- Status indicators with color coding
+- Ближайшие даты мероприятий (next 10)
+- События текущего месяца, сгруппированные по датам
+- Статус доступности (Sold Out / Available)
+- Индикаторы статусов с цветовой кодировкой
 
-View template: `resources/views/filament/widgets/event-calendar-widget.blade.php`
+Данные — из тех же API-эндпоинтов (`/api/v1/events`, `/api/v1/sessions`); отдельных
+blade-шаблонов виджетов больше нет.
 
 ## Usage Examples
 

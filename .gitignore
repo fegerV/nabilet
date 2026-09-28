@@ -1,9 +1,1 @@
-# Compiled/Binary/Build Artifacts
-dist-preview/
-public/css/filament/
-public/js/filament/
-bootstrap/cache/packages.php
-bootstrap/cache/services.php
-
-# Dependencies
-vendor/
+(empty)
