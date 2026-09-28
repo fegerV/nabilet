@@ -9,11 +9,11 @@
 C:\Project\nabilet
 ├─ app/Modules/            ← 11 модулей Laravel, API почти готов
 ├─ resources/js/           ← Vue 3 + Vite + Pinia
-│  ├─ lib/                 ← api.ts (клиент), inventory.ts, hall.ts, mock.ts (УДАЛИТЬ)
+│  ├─ lib/                 ← api.ts (клиент), inventory.ts, hall.ts, mock.ts (остаточные импорты — убрать)
 │  ├─ components/ui/       ← свой UI-кит: NButton, NInput, NDataTable, NModal...
 │  ├─ components/seat/     ← SeatMap, SeatLegend, OrderSummary
 │  ├─ pages/storefront/    ← витрина (Catalog, Event, SeatSelection, Checkout...)
-│  ├─ pages/admin/         ← Vue-админка (Dashboard, Events, Orders — на моках)
+│  ├─ pages/admin/         ← Vue-админка (Dashboard, Events, Sessions, Venues, Halls, Orders)
 │  └─ router/              ← hash-режим
 ├─ dist/                   ← npm run build → сюда (Vite, outDir=dist)
 └─ docs/
@@ -27,7 +27,7 @@ C:\Project\nabilet
 - Витрина переведена на API: Catalog, EventPage, SeatSelection, Checkout. ✅
 - SEO-страницы по slug: `GET /event/{slug}` + `GET /event/{slug}/{publicId}` + JSON-LD. ✅
 - Холд/снятие/checkout работают через API (атомарный decrement, финализация в sold). ✅
-- Моки в витрине убраны; `mock.ts` ещё используется админкой и HallEditor. ⚠️
+- Моки в витрине в основном убраны; `mock.ts` остался в двух импортах (`AdminDashboardPage.vue`, `TicketsPage.vue`) — убрать на этапе 4. ⚠️
 - API-клиент `lib/api.ts` (baseUrl, ошибки, токен) — готов. ✅
 
 ## Roadmap (этапы)
@@ -72,15 +72,15 @@ C:\Project\nabilet
   - [x] **Конвертер в инвентарь**: `HallSchemaVersion::toInventoryFormat()` (канвас → rows, нормализация 60×40, числовые id), `InventoryService::generateFromSchema` (sectors → hall_rows → seats + inventory_items), генерация при создании сессии (SessionController::store). e2e: сессия с канвас-схемой → 2 сектора/3 ряда/6 мест/цены из канваса
   - [x] **Реальные площадки Сургута**: залиты через API и опубликованы — Клуб «Вавилон» (252 места, цены 2899–6999₽ совпадают со скриншотом Афиши), Ледовый дворец (738 мест: Сектор A=342, Стандартный 187+203, Танцпол=6), Филармония, Fusion. Сессии на залах → инвентарь генерится из схем (проверено: 252 и 738 мест)
   - [ ] Список залов (AdminHallsPage) + переход в редактор по клику (сделано, проверить визуально)
-- [ ] **Перенести из Filament**: страница справки, чек-лист перед публикацией, подсказки в формах.
+- [x] **Перенос из Filament завершён вместе с выпилом панели**: Filament-страницы (справка, чек-лист перед публикацией, подсказки в формах) удалены вместе с панелью; подсказки живут прямо в Vue-формах (`AdminEventFormPage.vue` и др.). При необходимости раздел справки заведётся как Vue-страница.
 
-### Этап 3. Выпил Filament
-- [ ] Убрать `vendor/filament` из composer + `composer remove filament/*`
-- [ ] Удалить `app/Providers/Filament/`, `app/Filament/`
-- [ ] Заменить роут `/admin` на Vue-админку; удалить Filament-профили/мидлвары
-- [ ] Удалить blade-шаблоны Filament: help-docs, widgets, event-edit
-- [ ] Проверить, что `/admin` открывает Vue-приложение
-- [ ] `php artisan test` — все тесты зелёные
+### Этап 3. Выпил Filament — ✅ выполнено
+- [x] `vendor/filament` убран из composer (в `composer.json` нет пакетов `filament/*`)
+- [x] `app/Providers/Filament/`, `app/Filament/` удалены (каталогов нет в дереве)
+- [x] Роут `/admin` отдаёт Vue-админку (SPA-роуты `#/admin/*`, см. `resources/js/router`); Filament-профилей/мидлваров нет
+- [x] Blade-шаблоны Filament (help-docs, widgets, event-edit) удалены (`resources/views/filament/` отсутствует)
+- [x] `/admin` открывает Vue-приложение (`AdminShell.vue` + страницы `pages/admin/`)
+- [ ] `php artisan test` — все тесты зелёные (проверять после изменений кода)
 
 ### Этап 4. Чистка и релиз
 - [ ] Удалить `lib/mock.ts` полностью (никто не импортирует)
@@ -99,9 +99,9 @@ C:\Project\nabilet
 | Orders | GET /orders, GET /orders/{order}, POST /orders, POST /orders/{order}/cancel | ✅ |
 | Payments | GET /payments, GET /payments/{p}, POST /payments, POST /payments/demo-pay, + webhooks | ✅ |
 | Seo | GET /sitemap.xml, /sitemap-events.xml, /sitemap-static.xml, /sitemap-venues.xml | - |
-| Sessions | GET /sessions, GET /sessions/{session} | ⚠️ нет write |
+| Sessions | GET /sessions, GET /sessions/{session}, POST /sessions, PATCH /sessions/{session}, DELETE /sessions/{session} (write — под `auth:sanctum, admin`) | ✅ |
 | Tickets | GET /tickets, GET /tickets/{t}, /history, /qr, POST /checkin/scan, /verify | + |
-| Venues | GET /venues, GET /venues/{venue}, POST /venues/{venue}/schemas, PUT/DELETE /venues/schemas/{schema} | ⚠️ нет write venues |
+| Venues | GET /venues, GET /venues/{venue}, POST /venues (write — `auth:sanctum, admin`), PATCH/DELETE /venues/{venue}, POST /venues/{venue}/schemas, PUT/DELETE /venues/schemas/{schema} | ✅ |
 | Webhooks | POST /webhooks/{type}, /webhooks/payment/{provider} | + |
 
 ## Принципы (не нарушать)
@@ -114,4 +114,4 @@ C:\Project\nabilet
 
 ---
 
-_Обновлено: 2026-09-24. Статус: Этап 1 в работе (CRUD Sessions/Venues)._
+_Обновлено: 2026-09-29. Статус: Этапы 1–3 закрыты (CRUD Sessions/Venues на API, Vue-админка работает, Filament выпит). Остались этапы 2 (мелкие хвосты) и 4 (чистка mock.ts, релиз)._

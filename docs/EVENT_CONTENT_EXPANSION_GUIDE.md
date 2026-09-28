@@ -783,328 +783,86 @@ class EventScheduleItem extends Model
 
 ---
 
-## Интеграция с Filament Admin Panel
+## Интеграция с Vue-админкой
 
-### EventResource с расширенными формами
+> Filament удалён из проекта (см. `docs/ROADMAP.md`, этап 3 «Выпил Filament»).
+> Админка — SPA на Vue 3 + TypeScript (`resources/js/pages/admin/`), данные — только через REST API `/api/v1/*`.
 
-```php
-<?php
+### Роуты админки (Vue Router, hash-режим)
 
-namespace Nabilet\Modules\Events\Filament\Resources;
+| Путь | Компонент | Назначение |
+|------|-----------|------------|
+| `#/admin/login` | `AdminLoginPage.vue` | Вход по Sanctum-токену |
+| `#/admin` | `AdminDashboardPage.vue` | Дашборд |
+| `#/admin/events` | `AdminEventsPage.vue` | Список мероприятий |
+| `#/admin/events/new` | `AdminEventFormPage.vue` | Создание мероприятия |
+| `#/admin/events/:id` | `AdminEventFormPage.vue` | Редактирование мероприятия |
+| `#/admin/sessions` | `AdminSessionsPage.vue` | Сеансы |
+| `#/admin/venues` | `AdminVenuesPage.vue` | Площадки |
+| `#/admin/halls` | `AdminHallsPage.vue` | Залы |
+| `#/admin/orders` | `AdminOrdersPage.vue` | Заказы |
 
-use Nabilet\Modules\Events\Models\Event;
-use Nabilet\Modules\Events\Models\EventSpeaker;
-use Nabilet\Modules\Events\Models\EventSponsor;
-use Nabilet\Modules\Events\Models\EventFaq;
-use Nabilet\Modules\Events\Models\EventArtist;
-use Nabilet\Modules\Events\Models\EventScheduleItem;
-use Filament\Forms;
-use Filament\Forms\Form;
-use Filament\Resources\Resource;
-use Filament\Tables;
-use Filament\Tables\Table;
+### Управление контентом мероприятий через API
 
-class EventResource extends Resource
+Расширенный контент (спикеры, спонсоры, FAQ, артисты, расписание) редактируется
+в форме мероприятия (`AdminEventFormPage.vue`) и сохраняется эндпоинтами Events-модуля:
+
+```
+GET    /api/v1/events                 — список (фильтр по статусу, поиск)
+GET    /api/v1/events/by-slug/{slug}  — мероприятие по slug (SEO)
+GET    /api/v1/events/{event}         — деталка
+POST   /api/v1/events                 — создание          [auth:sanctum + admin]
+PATCH  /api/v1/events/{event}         — частичное обновление [auth:sanctum + admin]
+PUT    /api/v1/events/{event}         — обновление           [auth:sanctum + admin]
+DELETE /api/v1/events/{event}         — удаление             [auth:sanctum + admin]
+```
+
+Права: роли `admin` / `manager` (middleware `EnsureAdminRole`), саппорт и аноним — 401/403.
+
+### Структура payload формы (пример)
+
+```json
 {
-    protected static ?string $model = Event::class;
-    protected static ?string $navigationIcon = 'heroicon-o-calendar-days';
-
-    public static function form(Form $form): Form
-    {
-        return $form
-            ->schema([
-                Forms\Components\Section::make('Основная информация')
-                    ->schema([
-                        Forms\Components\TextInput::make('title')
-                            ->required()
-                            ->maxLength(500),
-                        Forms\Components\TextInput::make('slug')
-                            ->required()
-                            ->maxLength(255)
-                            ->unique(ignoreRecord: true),
-                        Forms\Components\Select::make('category_id')
-                            ->relationship('category', 'name'),
-                        Forms\Components\Textarea::make('short_description')
-                            ->rows(3),
-                        Forms\Components\RichEditor::make('description')
-                            ->columnSpanFull(),
-                    ])->columns(2),
-
-                Forms\Components\Section::make('Медиа')
-                    ->schema([
-                        Forms\Components\FileUpload::make('poster')
-                            ->image()
-                            ->directory('events/posters'),
-                        Forms\Components\FileUpload::make('cover')
-                            ->image()
-                            ->directory('events/covers'),
-                    ])->columns(2),
-
-                Forms\Components\Section::make('Детали')
-                    ->schema([
-                        Forms\Components\Select::make('status')
-                            ->options([
-                                'draft' => 'Черновик',
-                                'pending_review' => 'На проверке',
-                                'published' => 'Опубликовано',
-                                'archived' => 'Архив',
-                            ])
-                            ->required(),
-                        Forms\Components\DateTimePicker::make('published_at'),
-                        Forms\Components\TextInput::make('age_limit')
-                            ->maxLength(32),
-                        Forms\Components\TextInput::make('duration_minutes')
-                            ->numeric(),
-                    ])->columns(3),
-
-                // === Расширенный контент ===
-                
-                Forms\Components\Section::make('Спикеры')
-                    ->schema([
-                        Forms\Components\Repeater::make('speakers')
-                            ->relationship()
-                            ->schema([
-                                Forms\Components\TextInput::make('name')
-                                    ->required()
-                                    ->maxLength(255),
-                                Forms\Components\Textarea::make('bio')
-                                    ->rows(3),
-                                Forms\Components\FileUpload::make('avatar')
-                                    ->image(),
-                                Forms\Components\TextInput::make('position')
-                                    ->maxLength(255),
-                                Forms\Components\TextInput::make('company')
-                                    ->maxLength(255),
-                                Forms\Components\KeyValue::make('social_links')
-                                    ->keyLabel('Платформа')
-                                    ->valueLabel('Ссылка/Ник'),
-                                Forms\Components\Toggle::make('is_featured')
-                                    ->label('Главный спикер'),
-                                Forms\Components\TextInput::make('sort_order')
-                                    ->numeric()
-                                    ->default(0),
-                            ])->orderColumn('sort_order'),
-                    ])->collapsible(),
-
-                Forms\Components\Section::make('Спонсоры')
-                    ->schema([
-                        Forms\Components\Repeater::make('sponsors')
-                            ->relationship()
-                            ->schema([
-                                Forms\Components\TextInput::make('name')
-                                    ->required()
-                                    ->maxLength(255),
-                                Forms\Components\FileUpload::make('logo')
-                                    ->image(),
-                                Forms\Components\Select::make('tier')
-                                    ->options([
-                                        'gold' => 'Золотой',
-                                        'silver' => 'Серебряный',
-                                        'bronze' => 'Бронзовый',
-                                        'standard' => 'Стандартный',
-                                    ])
-                                    ->default('standard'),
-                                Forms\Components\TextInput::make('website')
-                                    ->url(),
-                                Forms\Components\Textarea::make('description'),
-                                Forms\Components\Toggle::make('is_featured'),
-                                Forms\Components\TextInput::make('sort_order')
-                                    ->numeric()
-                                    ->default(0),
-                            ])->orderColumn('sort_order'),
-                    ])->collapsible(),
-
-                Forms\Components\Section::make('FAQ')
-                    ->schema([
-                        Forms\Components\Repeater::make('faqs')
-                            ->relationship()
-                            ->schema([
-                                Forms\Components\TextInput::make('question')
-                                    ->required()
-                                    ->maxLength(500),
-                                Forms\Components\Textarea::make('answer')
-                                    ->required()
-                                    ->rows(3),
-                                Forms\Components\Select::make('category')
-                                    ->options([
-                                        'tickets' => 'Билеты',
-                                        'venue' => 'Площадка',
-                                        'schedule' => 'Расписание',
-                                        'other' => 'Другое',
-                                    ]),
-                                Forms\Components\Toggle::make('is_active')
-                                    ->default(true),
-                                Forms\Components\TextInput::make('sort_order')
-                                    ->numeric()
-                                    ->default(0),
-                            ])->orderColumn('sort_order'),
-                    ])->collapsible(),
-
-                Forms\Components\Section::make('Артисты')
-                    ->schema([
-                        Forms\Components\Repeater::make('artists')
-                            ->relationship()
-                            ->schema([
-                                Forms\Components\TextInput::make('name')
-                                    ->required()
-                                    ->maxLength(255),
-                                Forms\Components\Textarea::make('bio'),
-                                Forms\Components\FileUpload::make('photo')
-                                    ->image(),
-                                Forms\Components\TextInput::make('genre')
-                                    ->maxLength(100),
-                                Forms\Components\KeyValue::make('social_links'),
-                                Forms\Components\DateTimePicker::make('performance_time'),
-                                Forms\Components\Toggle::make('is_headliner')
-                                    ->label('Хедлайнер'),
-                                Forms\Components\TextInput::make('sort_order')
-                                    ->numeric()
-                                    ->default(0),
-                            ])->orderColumn('sort_order'),
-                    ])->collapsible(),
-
-                Forms\Components\Section::make('Расписание')
-                    ->schema([
-                        Forms\Components\Repeater::make('scheduleItems')
-                            ->relationship()
-                            ->schema([
-                                Forms\Components\TextInput::make('title')
-                                    ->required()
-                                    ->maxLength(500),
-                                Forms\Components\Textarea::make('description'),
-                                Forms\Components\DateTimePicker::make('start_time')
-                                    ->required(),
-                                Forms\Components\TextInput::make('duration_minutes')
-                                    ->required()
-                                    ->numeric(),
-                                Forms\Components\TextInput::make('location')
-                                    ->maxLength(255),
-                                Forms\Components\Select::make('session_type')
-                                    ->options([
-                                        'keynote' => 'Keynote',
-                                        'workshop' => 'Воркшоп',
-                                        'panel' => 'Панельная дискуссия',
-                                        'break' => 'Перерыв',
-                                        'registration' => 'Регистрация',
-                                    ]),
-                                Forms\Components\TextInput::make('sort_order')
-                                    ->numeric()
-                                    ->default(0),
-                            ])->orderColumn('sort_order'),
-                    ])->collapsible(),
-            ]);
-    }
-
-    public static function table(Table $table): Table
-    {
-        return $table
-            ->columns([
-                Tables\Columns\TextColumn::make('title')
-                    ->searchable()
-                    ->sortable(),
-                Tables\Columns\TextColumn::make('status')
-                    ->badge()
-                    ->color(fn(string $state): string => match($state) {
-                        'published' => 'success',
-                        'draft' => 'gray',
-                        'pending_review' => 'warning',
-                        'archived' => 'danger',
-                    }),
-                Tables\Columns\TextColumn::make('published_at')
-                    ->dateTime()
-                    ->sortable(),
-                Tables\Columns\TextColumn::make('speakers_count')
-                    ->counts('speakers')
-                    ->label('Спикеры'),
-                Tables\Columns\TextColumn::make('sponsors_count')
-                    ->counts('sponsors')
-                    ->label('Спонсоры'),
-            ])
-            ->filters([
-                Tables\Filters\SelectFilter::make('status')
-                    ->options([
-                        'draft' => 'Черновик',
-                        'published' => 'Опубликовано',
-                    ]),
-            ])
-            ->actions([
-                Tables\Actions\EditAction::make(),
-                Tables\Actions\DeleteAction::make(),
-            ]);
-    }
+  "title": "Summer Music Festival",
+  "slug": "summer-music-festival-2026",
+  "short_description": "Двухдневный фестиваль под открытым небом",
+  "description": "<p>Полное описание мероприятия…</p>",
+  "status": "published",
+  "age_limit": "16+",
+  "duration_minutes": 240,
+  "poster_url": "https://cdn.example.com/posters/summer.jpg",
+  "seo_title": "Summer Music Festival — билеты",
+  "seo_description": "Фестиваль 15–16 июля, Клуб «Вавилон».",
+  "speakers": [
+    { "name": "Иван Петров", "position": "Sound engineer", "company": "ABC",
+      "bio": "Краткая биография", "avatar_url": "https://cdn…/ivan.jpg",
+      "social_links": {"telegram": "@ivan"}, "is_featured": true, "sort_order": 0 }
+  ],
+  "sponsors": [
+    { "name": "Brand Co", "tier": "gold", "logo_url": "https://cdn…/brand.png",
+      "website_url": "https://brand.example", "sort_order": 10 }
+  ],
+  "faqs": [
+    { "question": "Как вернуть билет?", "answer": "За 24 часа до сеанса.",
+      "category": "ticket", "sort_order": 0 }
+  ],
+  "artists": [
+    { "name": "Группа «Волна»", "genre": "rock", "headline": true, "sort_order": 0 }
+  ],
+  "schedule_items": [
+    { "name": "Сет «Волна»", "start_time": "2026-07-15 20:00:00",
+      "duration_minutes": 90, "stage": "Main" }
+  ]
 }
 ```
 
-### Отдельные ресурсы для спикеров и спонсоров
+### UI-паттерны вместо Filament-форм
 
-```php
-<?php
-
-namespace Nabilet\Modules\Events\Filament\Resources;
-
-use Nabilet\Modules\Events\Models\EventSpeaker;
-use Filament\Forms;
-use Filament\Forms\Form;
-use Filament\Resources\Resource;
-use Filament\Tables;
-use Filament\Tables\Table;
-
-class EventSpeakerResource extends Resource
-{
-    protected static ?string $model = EventSpeaker::class;
-    protected static ?string $navigationIcon = 'heroicon-o-user-group';
-    protected static ?string $navigationGroup = 'Events';
-
-    public static function form(Form $form): Form
-    {
-        return $form
-            ->schema([
-                Forms\Components\Select::make('event_id')
-                    ->relationship('event', 'title')
-                    ->required()
-                    ->searchable(),
-                Forms\Components\TextInput::make('name')
-                    ->required()
-                    ->maxLength(255),
-                Forms\Components\Textarea::make('bio')
-                    ->rows(5),
-                Forms\Components\FileUpload::make('avatar')
-                    ->image()
-                    ->directory('speakers'),
-                Forms\Components\TextInput::make('position')
-                    ->maxLength(255),
-                Forms\Components\TextInput::make('company')
-                    ->maxLength(255),
-                Forms\Components\KeyValue::make('social_links'),
-                Forms\Components\Toggle::make('is_featured'),
-                Forms\Components\TextInput::make('sort_order')
-                    ->numeric()
-                    ->default(0),
-            ]);
-    }
-
-    public static function table(Table $table): Table
-    {
-        return $table
-            ->columns([
-                Tables\Columns\ImageColumn::make('avatar')
-                    ->circular(),
-                Tables\Columns\TextColumn::make('name')
-                    ->searchable()
-                    ->sortable(),
-                Tables\Columns\TextColumn::make('event.title')
-                    ->sortable(),
-                Tables\Columns\IconColumn::make('is_featured')
-                    ->boolean(),
-            ])
-            ->filters([])
-            ->actions([
-                Tables\Actions\EditAction::make(),
-                Tables\Actions\DeleteAction::make(),
-            ]);
-    }
-}
-```
+- Вложенные сущности (спикеры/спонсоры/FAQ) — секции-списки с кнопками
+  «Добавить / Удалить / перетаскивание порядка» (`sort_order`).
+- Загрузка изображений — свой компонент с превью; лимиты и каталоги задаёт API.
+- Справочники (площадки, залы, категории) — селекты, подтягиваемые с
+  `GET /api/v1/venues`, `GET /api/v1/halls` и т.д.
 
 ---
 
