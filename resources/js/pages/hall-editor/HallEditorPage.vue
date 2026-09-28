@@ -1086,7 +1086,14 @@ interface ServerSector {
  *    row.price_amount (или легаси sector.price).
  */
 function applyServerSchema(raw: unknown): void {
-  const obj = (typeof raw === 'object' && raw) ? raw as Record<string, unknown> : {}
+  // Сервер может вернуть schema_json как JSON-строку (Postgres jsonb через
+  // некоторые драйверы/сиды) — без этого шага весь payload читался бы как {}
+  // и статика/фон/цены «терялись» при перезагрузке (B7).
+  let input = raw
+  if (typeof input === 'string') {
+    try { input = JSON.parse(input) } catch { input = null }
+  }
+  const obj = (typeof input === 'object' && input) ? input as Record<string, unknown> : {}
   const rawCanvas = (typeof obj.canvas === 'object' && obj.canvas)
     ? obj.canvas as Record<string, unknown>
     : null
@@ -1099,15 +1106,41 @@ function applyServerSchema(raw: unknown): void {
 
   // ── Статика и фон: раньше молча выбрасывались → после перезагрузки зал
   //    терял сцену, входы, подписи и подложку (B7). Восстанавливаем как есть. ──
+  // ВАЖНО: сервер может вернуть schema_json как JSON-строку (не распарсенный
+  // объект) — тогда `obj.staticObjects`/`obj.background` равны undefined и
+  // статика с фоном «терялись» при F5. Нормализуем payload перед чтением.
   if (Array.isArray(obj.staticObjects)) {
-    const restored = (obj.staticObjects as EStatic[]).filter(
-      (o) => o && typeof o.id === 'string' && typeof o.kind === 'string',
-    )
+    const restored = (obj.staticObjects as Array<Record<string, unknown>>)
+      .filter((o) => o && typeof o.id === 'string' && typeof o.kind === 'string')
+      .map((o) => ({
+        id: o.id as string,
+        kind: o.kind as StaticKind,
+        x: Math.round(Number(o.x ?? 0)),
+        y: Math.round(Number(o.y ?? 0)),
+        width: Number.isFinite(Number(o.width)) ? Number(o.width) : undefined,
+        height: Number.isFinite(Number(o.height)) ? Number(o.height) : undefined,
+        rotation: Number.isFinite(Number(o.rotation)) ? Number(o.rotation) : 0,
+        text: typeof o.text === 'string' ? o.text : undefined,
+        capacity: Number.isFinite(Number(o.capacity)) ? Math.max(0, Math.round(Number(o.capacity))) : undefined,
+      }))
     statics.value = restored
+  } else {
+    statics.value = []
   }
   const rawBg = obj.background
   if (typeof rawBg === 'object' && rawBg && typeof (rawBg as EBackground).src === 'string') {
-    backgrounds.value = [rawBg as EBackground]
+    const bg = rawBg as Record<string, unknown>
+    backgrounds.value = [{
+      id: typeof bg.id === 'string' ? bg.id : 'bg-restored',
+      src: bg.src as string,
+      x: Math.round(Number(bg.x ?? 0)),
+      y: Math.round(Number(bg.y ?? 0)),
+      width: Number(bg.width) > 0 ? Number(bg.width) : canvasSize.value.width,
+      height: Number(bg.height) > 0 ? Number(bg.height) : canvasSize.value.height,
+      rotation: Number.isFinite(Number(bg.rotation)) ? Number(bg.rotation) : 0,
+      locked: bg.locked === true,
+      opacity: Number.isFinite(Number(bg.opacity)) ? Math.min(1, Math.max(0, Number(bg.opacity))) : 1,
+    }]
   } else {
     backgrounds.value = []
   }
@@ -1205,11 +1238,33 @@ function applyServerSchema(raw: unknown): void {
       : 1
     for (const { sector: s, seats: flatSeats } of collected) {
       const rowPrices: Record<number, number> = {}
-      // Цены по рядам из rows[].price_amount (§50) — раньше игнорировались.
+      // Цены по рядам из rows[].price_amount (§50). price_amount хранится в
+      // минорных единицах (копейках) — как и editor's priceMinor
+      // (см. HallSchemaVersion::toInventoryFormat и InventoryService),
+      // конвертация валюты здесь не нужна.
+      const putRowPrice = (rn: number, val: number): void => {
+        if (rn > 0 && Number.isFinite(val) && val >= 0) {
+          rowPrices[rn] = Math.round(val)
+        }
+      }
       for (const r of s.rows ?? []) {
-        const rn = Number(r.number ?? 0)
-        const pa = Number(r.price_amount ?? NaN)
-        if (rn > 0 && Number.isFinite(pa)) rowPrices[rn] = Math.max(0, Math.round(pa))
+        putRowPrice(Number(r.number ?? 0), Number(r.price_amount ?? NaN))
+      }
+      // Легаси: цена могла лежать на уровне места (seat.price_amount / seat.price).
+      for (const rs of (s.rows ?? [])) {
+        const rn = Number(rs.number ?? 0)
+        for (const seat of rs.seats ?? []) {
+          const rec = seat as Record<string, unknown>
+          const sp = Number(rec.price_amount ?? rec.price ?? NaN)
+          if (Number.isFinite(sp) && !rowPrices[rn]) putRowPrice(rn, sp)
+        }
+      }
+      // Если у сектора цена не задана вовсе, но ряды имеют цены — берём
+      // минимальную цену ряда как базовую, иначе инспектор покажет 0 (B7).
+      let secPrice = Number(s.priceMinor ?? s.price ?? NaN)
+      if (!Number.isFinite(secPrice) || secPrice <= 0) {
+        const vals = Object.values(rowPrices)
+        secPrice = vals.length > 0 ? Math.min(...vals) : 0
       }
       let secMinX = Infinity, secMinY = Infinity
       for (const p of flatSeats) {
@@ -1245,7 +1300,7 @@ function applyServerSchema(raw: unknown): void {
       out.push({
         id: `s${out.length + 1}`,
         name: s.name,
-        priceMinor: Math.max(0, Math.round(Number(s.priceMinor ?? s.price ?? 0))),
+        priceMinor: Math.max(0, Math.round(secPrice)),
         x: 0,
         y: 0,
         seats,
@@ -1329,6 +1384,22 @@ async function loadFromServer(): Promise<void> {
       }
       const schema = chosen.schema
             if (schema) { applyServerSchema(schema); fit() }
+            // Фон мог быть сохранён не в payload, а в отдельную колонку
+            // background_url (+ width/height версии) — если в схеме фона нет,
+            // восстанавливаем его из колонок, иначе F5 «теряет» подложку (B7).
+            if (backgrounds.value.length === 0 && typeof chosen.background_url === 'string' && chosen.background_url) {
+              backgrounds.value = [{
+                id: 'bg-column',
+                src: chosen.background_url,
+                x: 0,
+                y: 0,
+                width: Number(chosen.width) > 0 ? Number(chosen.width) : canvasSize.value.width,
+                height: Number(chosen.height) > 0 ? Number(chosen.height) : canvasSize.value.height,
+                rotation: 0,
+                locked: false,
+                opacity: 1,
+              }]
+            }
             ui.notify('brand', chosen.status === 'published' ? 'Опубликована' : 'Черновик загружен', `Версия ${versionNo}`)
     } else {
       ui.notify('brand', 'Черновик', 'У зала ещё нет схем — создайте новую')
