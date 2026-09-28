@@ -1,5 +1,2 @@
-# Environment
-.env
-
-# Logs
+#Logs and temp files
 *.log
