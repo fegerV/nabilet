@@ -25,6 +25,7 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (!Schema::hasTable("analytics_events")) {
         Schema::create("analytics_events", function (Blueprint $table): void {
             $table->id();
             $table->unsignedBigInteger('user_id')->nullable();
@@ -47,7 +48,9 @@ return new class extends Migration
             $table->index(['event_name', 'occurred_at'], "idx_analytics_name_time");
             $table->index(['user_id', 'occurred_at'], "idx_analytics_user_time");
         });
+        }
 
+        if (!Schema::hasTable("ab_experiments")) {
         Schema::create("ab_experiments", function (Blueprint $table): void {
             $table->id();
             $table->char('public_id', 26);
@@ -60,7 +63,9 @@ return new class extends Migration
             $table->dateTime('updated_at', 6);
             $table->unique(['public_id'], "uq_ab_experiments_public_id");
         });
+        }
 
+        if (!Schema::hasTable("ab_variants")) {
         Schema::create("ab_variants", function (Blueprint $table): void {
             $table->id();
             $table->unsignedBigInteger('experiment_id');
@@ -69,7 +74,9 @@ return new class extends Migration
             $table->json('payload_json')->nullable();
             $table->index(['experiment_id'], "idx_ab_variants_experiment");
         });
+        }
 
+        if (!Schema::hasTable("ab_assignments")) {
         Schema::create("ab_assignments", function (Blueprint $table): void {
             $table->id();
             $table->unsignedBigInteger('experiment_id');
@@ -80,7 +87,9 @@ return new class extends Migration
             $table->unique(['experiment_id', 'anonymous_id'], "uq_ab_assignment_anon");
             $table->unique(['experiment_id', 'user_id'], "uq_ab_assignment_user");
         });
+        }
 
+        if (!Schema::hasTable("ab_metrics")) {
         Schema::create("ab_metrics", function (Blueprint $table): void {
             $table->id();
             $table->unsignedBigInteger('experiment_id');
@@ -90,7 +99,9 @@ return new class extends Migration
             $table->dateTime('occurred_at', 6);
             $table->index(['variant_id', 'occurred_at'], "idx_ab_metrics_variant_time");
         });
+        }
 
+        if (!Schema::hasTable("heatmap_events")) {
         Schema::create("heatmap_events", function (Blueprint $table): void {
             $table->id();
             $table->char('anonymous_id', 36)->nullable();
@@ -106,7 +117,9 @@ return new class extends Migration
             $table->json('metadata_json')->nullable();
             $table->index(["page_url", "occurred_at"], "idx_heatmap_page_time");
         });
+        }
 
+        if (!Schema::hasTable("embed_domains")) {
         Schema::create("embed_domains", function (Blueprint $table): void {
             $table->id();
             $table->unsignedBigInteger('organization_id');
@@ -116,6 +129,7 @@ return new class extends Migration
             $table->dateTime('updated_at', 6);
             $table->unique(['organization_id', 'domain'], "uq_embed_domains_org_domain");
         });
+        }
     }
 
     public function down(): void
