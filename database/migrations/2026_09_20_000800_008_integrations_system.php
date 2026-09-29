@@ -27,6 +27,7 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (!Schema::hasTable("webhooks")) {
         Schema::create("webhooks", function (Blueprint $table): void {
             $table->id();
             $table->char('public_id', 26);
@@ -41,7 +42,9 @@ return new class extends Migration
             $table->index(['organization_id', 'active'], "idx_webhooks_org_active");
             $table->unique(['public_id'], "uq_webhooks_public_id");
         });
+        }
 
+        if (!Schema::hasTable("webhook_deliveries")) {
         Schema::create("webhook_deliveries", function (Blueprint $table): void {
             $table->id();
             $table->unsignedBigInteger('webhook_id');
@@ -58,7 +61,9 @@ return new class extends Migration
             $table->index(['next_retry_at'], "idx_webhook_delivery_retry");
             $table->unique(['webhook_id', 'delivery_id'], "uq_webhook_delivery");
         });
+        }
 
+        if (!Schema::hasTable("webhook_events")) {
         Schema::create("webhook_events", function (Blueprint $table): void {
             $table->id();
             $table->string('provider', 64);
@@ -71,7 +76,9 @@ return new class extends Migration
             // Unique constraint for idempotency: prevents duplicate processing of same webhook event
             $table->unique(['provider', 'provider_event_id'], "uq_webhook_events_provider_id");
         });
+        }
 
+        if (!Schema::hasTable("api_keys")) {
         Schema::create("api_keys", function (Blueprint $table): void {
             $table->id();
             $table->char('public_id', 26);
@@ -86,7 +93,9 @@ return new class extends Migration
             $table->unique(['key_hash'], "uq_api_keys_hash");
             $table->unique(['public_id'], "uq_api_keys_public_id");
         });
+        }
 
+        if (!Schema::hasTable("idempotency_keys")) {
         Schema::create("idempotency_keys", function (Blueprint $table): void {
             $table->id();
             $table->string('scope', 100);
@@ -100,7 +109,9 @@ return new class extends Migration
             $table->index(['expires_at'], "idx_idempotency_expire");
             $table->unique(['scope', 'key_hash'], "uq_idempotency_scope_hash");
         });
+        }
 
+        if (!Schema::hasTable("ip_rules")) {
         Schema::create("ip_rules", function (Blueprint $table): void {
             $table->id();
             $table->binary('ip_address', 16)->nullable();
@@ -114,7 +125,9 @@ return new class extends Migration
             $table->index(['expires_at'], "idx_ip_rules_expire");
             $table->index(['scope', 'active'], "idx_ip_rules_scope_active");
         });
+        }
 
+        if (!Schema::hasTable("modules")) {
         Schema::create("modules", function (Blueprint $table): void {
             $table->id();
             $table->string('name', 150);
@@ -125,7 +138,9 @@ return new class extends Migration
             $table->dateTime('updated_at', 6);
             $table->unique(['name'], "uq_modules_name");
         });
+        }
 
+        if (!Schema::hasTable("settings")) {
         Schema::create("settings", function (Blueprint $table): void {
             $table->id();
             $table->string('scope', 100);
@@ -135,7 +150,9 @@ return new class extends Migration
             $table->dateTime('updated_at', 6);
             $table->unique(['scope', 'setting_key'], "uq_settings_scope_key");
         });
+        }
 
+        if (!Schema::hasTable("audit_logs")) {
         Schema::create("audit_logs", function (Blueprint $table): void {
             $table->id();
             $table->unsignedBigInteger('user_id')->nullable();
@@ -152,6 +169,7 @@ return new class extends Migration
             $table->index(['organization_id', 'created_at'], "idx_audit_org_time");
             $table->index(['user_id', 'created_at'], "idx_audit_user_time");
         });
+        }
     }
 
     public function down(): void

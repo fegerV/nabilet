@@ -14,6 +14,7 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (!Schema::hasTable("event_dates")) {
         Schema::create('event_dates', function (Blueprint $table): void {
             $table->id();
             $table->char('public_id', 26);
@@ -41,6 +42,7 @@ return new class extends Migration
                 ->on('events')
                 ->onDelete('cascade');
         });
+        }
     }
 
     public function down(): void
