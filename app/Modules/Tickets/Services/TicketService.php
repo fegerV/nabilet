@@ -9,6 +9,8 @@ use Nabilet\Modules\Tickets\Repositories\TicketRepository;
 use Nabilet\Modules\Tickets\Domain\TicketIssuance;
 use Nabilet\Modules\Tickets\Domain\CheckinEvaluator;
 use Nabilet\Modules\Orders\Models\Order;
+use Nabilet\Modules\Inventory\Models\InventoryItem;
+use Nabilet\Core\Support\QrSigner;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -20,25 +22,62 @@ class TicketService
         protected CheckinEvaluator $checkinEvaluator
     ) {}
 
+    /**
+     * A6: выпуск билетов для оплаченного заказа.
+     *
+     * Идемпотентность: повторный вызов (например, ретрай вебхука) НЕ перевыпускает
+     * билеты — уже существующие возвращаются как есть. Выпуск разрешён только для
+     * статуса 'paid' — терминального успеха машины состояний Order ('completed' в
+     * машине отсутствует).
+     */
     public function issueTicketsForOrder(Order $order): array
     {
         return DB::transaction(function () use ($order) {
-            if ($order->status !== 'completed') {
-                throw new \RuntimeException('Can only issue tickets for completed orders');
+            if ($order->status !== 'paid') {
+                throw new \RuntimeException('Can only issue tickets for paid orders');
             }
 
+            // Идемпотентность: если билеты уже выпущены — ничего не создаём заново.
+            $existing = Ticket::where('order_id', $order->id)->orderBy('id')->get();
+            if ($existing->isNotEmpty()) {
+                return $existing->all();
+            }
+
+            $signer = $this->makeQrSigner();
             $tickets = [];
+            $seq = 0;
 
             foreach ($order->items as $item) {
-                for ($i = 0; $i < $item->quantity; $i++) {
-                    $ticket = $this->repository->create([
-                        'public_id' => Str::uuid()->toString(),
+                $inventory = InventoryItem::find($item->inventory_item_id);
+
+                for ($i = 0; $i < max(1, (int) $item->quantity); $i++) {
+                    $seq++;
+                    $publicId = (string) Str::ulid();
+
+                    // QrSigner (§30): в QR нет ни e-mail, ни цены — только
+                    // NB1.<ticketPublicId>.<token>.<signature>.
+                    $signed = $signer->issue($publicId);
+
+                    $snapshot = $item->seat_snapshot_json ?? [];
+
+                    $ticket = Ticket::create([
+                        'public_id' => $publicId,
+                        'ticket_number' => sprintf('TCK-%s-%03d', strtoupper(substr($order->public_id, 0, 8)), $seq),
+                        'ticket_index' => $i + 1,
                         'order_id' => $order->id,
+                        'order_item_id' => $item->id,
+                        'event_id' => $order->event_id ?? ($inventory?->event_id),
+                        'session_id' => $order->session_id ?? ($inventory?->session_id),
                         'inventory_item_id' => $item->inventory_item_id,
+                        'seat_id' => $snapshot['seat_id'] ?? $inventory?->seat_id,
+                        'holder_name' => $order->customer_name ?? $order->customer_email,
                         'status' => 'issued',
-                        'barcode_data' => $this->generateBarcodeData($order, $item),
-                        'qr_code' => $this->generateQrCode($order, $item),
+                        'qr_version' => 1,
+                        'qr_token_hash' => hash('sha256', $signed['token']),
+                        'qr_payload' => $signed['payload'],
                         'issued_at' => now(),
+                        'created_at' => now(),
+                        'updated_at' => now(),
                     ]);
 
                     $tickets[] = $ticket;
@@ -47,6 +86,24 @@ class TicketService
 
             return $tickets;
         });
+    }
+
+    /**
+     * Секрет подписи QR: TICKET_QR_SECRET / NABILET_QR_SECRET, либо APP_KEY.
+     * QrSigner сам отказывается работать с секретом короче 32 байт.
+     */
+    protected function makeQrSigner(): QrSigner
+    {
+        $secret = config('nabilet.ticket.qr_secret')
+            ?: env('NABILET_QR_SECRET')
+            ?: (string) config('app.key');
+
+        // APP_KEY может быть закодирован как base64:...
+        if (str_starts_with($secret, 'base64:')) {
+            $secret = (string) base64_decode(substr($secret, 7), true);
+        }
+
+        return new QrSigner($secret);
     }
 
     public function findTicket(int $ticketId, int $organizationId = null): ?Ticket

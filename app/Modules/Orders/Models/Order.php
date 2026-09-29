@@ -11,6 +11,8 @@ use Illuminate\Support\Str;
 use Nabilet\Modules\Core\Users\Models\User;
 use Nabilet\Modules\Core\Organizations\Models\Organization;
 use Nabilet\Modules\Payments\Models\Payment;
+use Nabilet\Modules\Sessions\Models\Session;
+use Nabilet\Modules\Events\Models\Event;
 
 /**
  * @property int $id
@@ -18,6 +20,8 @@ use Nabilet\Modules\Payments\Models\Payment;
  * @property string $order_number   NB-YYYYMMDD-XXXXXXXX
  * @property int $organization_id
  * @property int|null $user_id
+ * @property int|null $session_id   сеанс заказа (резолвится из корзины при checkout)
+ * @property int|null $event_id     событие заказа (резолвится из сеанса)
  * @property int $subtotal_amount   integer minor units
  * @property int $discount_amount
  * @property int $fee_amount
@@ -26,12 +30,14 @@ use Nabilet\Modules\Payments\Models\Payment;
  * @property string $status         'pending' | 'awaiting_payment' | 'paid' | 'cancelled' | ...
  * @property string $payment_status 'pending' | 'succeeded' ...
  * @property string $customer_email
+ * @property string|null $customer_name
  * @property string|null $customer_phone
  * @property \Carbon\CarbonImmutable $created_at
  * @property \Carbon\CarbonImmutable|null $paid_at
  * @property \Carbon\CarbonImmutable|null $cancelled_at
  * @property \Carbon\CarbonImmutable $updated_at
  * @property int|null $promo_code_id
+ * @property int|null $cart_id
  */
 class Order extends Model
 {
@@ -42,6 +48,8 @@ class Order extends Model
         'order_number',
         'organization_id',
         'user_id',
+        'session_id',
+        'event_id',
         'subtotal_amount',
         'discount_amount',
         'fee_amount',
@@ -50,10 +58,12 @@ class Order extends Model
         'status',
         'payment_status',
         'customer_email',
+        'customer_name',
         'customer_phone',
         'paid_at',
         'cancelled_at',
         'promo_code_id',
+        'cart_id',
     ];
 
     protected $casts = [
@@ -61,6 +71,9 @@ class Order extends Model
         'discount_amount' => 'integer',
         'fee_amount' => 'integer',
         'total_amount' => 'integer',
+        'session_id' => 'integer',
+        'event_id' => 'integer',
+        'cart_id' => 'integer',
         'paid_at' => 'datetime',
         'cancelled_at' => 'datetime',
     ];
@@ -96,5 +109,15 @@ class Order extends Model
     public function payments(): HasMany
     {
         return $this->hasMany(Payment::class);
+    }
+
+    public function session(): BelongsTo
+    {
+        return $this->belongsTo(Session::class);
+    }
+
+    public function event(): BelongsTo
+    {
+        return $this->belongsTo(Event::class);
     }
 }
