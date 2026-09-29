@@ -25,10 +25,39 @@ class Ticket extends Model
     protected $fillable = [
         'public_id',
         'ticket_number',
+        'ticket_index',
+        'order_id',
         'order_item_id',
+        'event_id',
+        'session_id',
+        'inventory_item_id',
+        'seat_id',
+        'standing_zone_id',
+        'holder_name',
         'status',
+        'qr_version',
+        'qr_token_hash',
+        'qr_payload',
         'qr_code',
         'pdf_url',
+        'issued_at',
+        'used_at',
+        'cancelled_at',
+        'refunded_at',
+        'expired_at',
+        'revoked_at',
+        'revoked_reason',
+    ];
+
+    protected $casts = [
+        'ticket_index' => 'integer',
+        'qr_version' => 'integer',
+        'issued_at' => 'datetime',
+        'used_at' => 'datetime',
+        'cancelled_at' => 'datetime',
+        'refunded_at' => 'datetime',
+        'expired_at' => 'datetime',
+        'revoked_at' => 'datetime',
     ];
 
     public function orderItem(): BelongsTo
