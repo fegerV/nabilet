@@ -71,6 +71,12 @@ interface ESector {
   arcOffsetX: number
   /** Сдвиг дуги по Y, чтобы верхний край был в положительных координатах. */
   arcOffsetY: number
+  /**
+   * Тип сектора из БД-формата (ck_sectors_type: seated|standing|mixed).
+   * Нужен для round-trip: без него серверная конвертация в инвентарь
+   * теряла standing-секторы (C1), а F5 — их тип (B7).
+   */
+  type?: 'seated' | 'standing' | 'mixed'
 }
 
 interface EStatic {
@@ -1108,6 +1114,8 @@ interface ServerSector {
   id?: string
   x?: number
   y?: number
+  /** Тип сектора из БД-формата (ck_sectors_type: seated|standing|mixed). */
+  type?: string
   rows?: Array<{
     number: string | number
     label?: string
@@ -1125,6 +1133,50 @@ interface ServerSector {
   arcRowGap?: number
   arcOffsetX?: number
   arcOffsetY?: number
+}
+
+/**
+ * Нормализация статического объекта из payload/импорта (B7/B8): приводим
+ * разнородный JSON к EStatic, отбрасывая мусор без id/kind.
+ */
+function normalizeStaticObject(o: unknown): EStatic | null {
+  if (!o || typeof o !== 'object') return null
+  const rec = o as Record<string, unknown>
+  if (typeof rec.id !== 'string' || typeof rec.kind !== 'string') return null
+  const kinds: StaticKind[] = ['table', 'standing', 'text', 'stage', 'entrance']
+  if (!kinds.includes(rec.kind as StaticKind)) return null
+  return {
+    id: rec.id,
+    kind: rec.kind as StaticKind,
+    x: Math.round(Number(rec.x ?? 0)),
+    y: Math.round(Number(rec.y ?? 0)),
+    width: Number.isFinite(Number(rec.width)) ? Number(rec.width) : undefined,
+    height: Number.isFinite(Number(rec.height)) ? Number(rec.height) : undefined,
+    rotation: Number.isFinite(Number(rec.rotation)) ? Number(rec.rotation) : 0,
+    opacity: Number.isFinite(Number(rec.opacity)) ? Math.min(1, Math.max(0, Number(rec.opacity))) : 1,
+    locked: rec.locked === true,
+    text: typeof rec.text === 'string' ? rec.text : undefined,
+    capacity: Number.isFinite(Number(rec.capacity)) ? Math.max(0, Math.round(Number(rec.capacity))) : undefined,
+  }
+}
+
+/**
+ * Нормализация фона из payload (B7): src обязателен, остальное — с дефолтами
+ * по размеру холста.
+ */
+function normalizeBackground(bg: Record<string, unknown>): EBackground | null {
+  if (typeof bg.src !== 'string' || !bg.src) return null
+  return {
+    id: typeof bg.id === 'string' ? bg.id : 'bg-restored',
+    src: bg.src,
+    x: Math.round(Number(bg.x ?? 0)),
+    y: Math.round(Number(bg.y ?? 0)),
+    width: Number(bg.width) > 0 ? Number(bg.width) : canvasSize.value.width,
+    height: Number(bg.height) > 0 ? Number(bg.height) : canvasSize.value.height,
+    rotation: Number.isFinite(Number(bg.rotation)) ? Number(bg.rotation) : 0,
+    locked: bg.locked === true,
+    opacity: Number.isFinite(Number(bg.opacity)) ? Math.min(1, Math.max(0, Number(bg.opacity))) : 1,
+  }
 }
 
 /**
@@ -1166,39 +1218,16 @@ function applyServerSchema(raw: unknown): void {
   // объект) — тогда `obj.staticObjects`/`obj.background` равны undefined и
   // статика с фоном «терялись» при F5. Нормализуем payload перед чтением.
   if (Array.isArray(obj.staticObjects)) {
-    const restored = (obj.staticObjects as Array<Record<string, unknown>>)
-      .filter((o) => o && typeof o.id === 'string' && typeof o.kind === 'string')
-      .map((o) => ({
-        id: o.id as string,
-        kind: o.kind as StaticKind,
-        x: Math.round(Number(o.x ?? 0)),
-        y: Math.round(Number(o.y ?? 0)),
-        width: Number.isFinite(Number(o.width)) ? Number(o.width) : undefined,
-        height: Number.isFinite(Number(o.height)) ? Number(o.height) : undefined,
-        rotation: Number.isFinite(Number(o.rotation)) ? Number(o.rotation) : 0,
-        opacity: Number.isFinite(Number(o.opacity)) ? Math.min(1, Math.max(0, Number(o.opacity))) : 1,
-        locked: o.locked === true,
-        text: typeof o.text === 'string' ? o.text : undefined,
-        capacity: Number.isFinite(Number(o.capacity)) ? Math.max(0, Math.round(Number(o.capacity))) : undefined,
-      }))
-    statics.value = restored
+    statics.value = (obj.staticObjects as unknown[])
+      .map(normalizeStaticObject)
+      .filter((o): o is EStatic => o !== null)
   } else {
     statics.value = []
   }
   const rawBg = obj.background
-  if (typeof rawBg === 'object' && rawBg && typeof (rawBg as EBackground).src === 'string') {
-    const bg = rawBg as Record<string, unknown>
-    backgrounds.value = [{
-      id: typeof bg.id === 'string' ? bg.id : 'bg-restored',
-      src: bg.src as string,
-      x: Math.round(Number(bg.x ?? 0)),
-      y: Math.round(Number(bg.y ?? 0)),
-      width: Number(bg.width) > 0 ? Number(bg.width) : canvasSize.value.width,
-      height: Number(bg.height) > 0 ? Number(bg.height) : canvasSize.value.height,
-      rotation: Number.isFinite(Number(bg.rotation)) ? Number(bg.rotation) : 0,
-      locked: bg.locked === true,
-      opacity: Number.isFinite(Number(bg.opacity)) ? Math.min(1, Math.max(0, Number(bg.opacity))) : 1,
-    }]
+  if (typeof rawBg === 'object' && rawBg) {
+    const bg = normalizeBackground(rawBg as Record<string, unknown>)
+    backgrounds.value = bg ? [bg] : []
   } else {
     backgrounds.value = []
   }
@@ -1280,6 +1309,7 @@ function applyServerSchema(raw: unknown): void {
         arcRowGap: Number(s.arcRowGap ?? 24),
         arcOffsetX: Number(s.arcOffsetX ?? 0),
         arcOffsetY: Number(s.arcOffsetY ?? 0),
+        type: (s.type === 'standing' || s.type === 'mixed') ? s.type : 'seated',
       })
     }
   } else {
@@ -1369,6 +1399,7 @@ function applyServerSchema(raw: unknown): void {
         arcRowGap: Number(s.arcRowGap ?? 24),
         arcOffsetX: 0,
         arcOffsetY: 0,
+        type: (s.type === 'standing' || s.type === 'mixed') ? s.type : 'seated',
       })
     }
     // Раскладка секторов БД-формата по вертикали, чтобы они не наложились.
@@ -1408,6 +1439,14 @@ function applyServerSchema(raw: unknown): void {
         ]
       }
     }
+  } else if (rawSectors.length === 0) {
+    // B8: импорт файла БЕЗ секторов обязан очищать схему, а не оставлять
+    // старое содержимое с ложным уведомлением «Схема импортирована».
+    // Пустой массив — тоже данные: это осознанный «пустой зал».
+    sectors.value = []
+    selectedSeatIds.value = new Set()
+    selectedSectorId.value = null
+    selectedStaticIds.value = new Set()
   }
 }
 
