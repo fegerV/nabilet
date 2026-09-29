@@ -106,15 +106,58 @@ class HallController extends Controller
         ]);
     }
 
+    /**
+     * Публичная версия схемы для витрины (B10).
+     *
+     * Роут `/halls/{publicId}` открыт, но его ресурс не отдаёт geometry-схему,
+     * а список версий скрыт под admin-middleware — витрине (`/#/event/:slug/seats`)
+     * нечем рисовать посадку. Отдаём ОДНУ опубликованную версию и только те
+     * поля, что нужны для рендера; черновики наружу не светятся.
+     */
+    public function publishedSchema(string $publicId): JsonResponse
+    {
+        $hall = $this->findOrFail($publicId);
+
+        $version = $this->service->getPublishedSchemaVersion($hall);
+
+        if ($version === null) {
+            throw new NotFoundError('PublishedHallSchema', $publicId);
+        }
+
+        return response()->json([
+            'data' => [
+                'id' => $version->id,
+                'public_id' => $version->public_id,
+                'hall_id' => $version->hall_id,
+                'version' => $version->version,
+                'status' => $version->status,
+                'width' => $version->width,
+                'height' => $version->height,
+                'background_url' => $version->background_url,
+                'schema' => $version->schema_json,
+                'published_at' => $version->published_at?->toIso8601String(),
+            ],
+        ]);
+    }
+
     public function createSchemaDraft(Request $request, string $publicId): SchemaVersionResource
     {
         $hall = $this->findOrFail($publicId);
 
         $validated = $request->validate([
             'payload' => ['required', 'array'],
+            // B6: клиент может прислать id версии, которую считает черновиком.
+            // Сервер проверяет принадлежность залу и статус draft; для
+            // published/чужой — 409/404 в конверте §66 (см. HallService).
+            'version_id' => ['nullable', 'integer'],
         ]);
 
-        $version = $this->service->createSchemaDraft($hall, $validated['payload'], $request->user()->id);
+        $version = $this->service->createSchemaDraft(
+            $hall,
+            $validated['payload'],
+            $request->user()->id,
+            isset($validated['version_id']) ? (int) $validated['version_id'] : null,
+        );
 
         return new SchemaVersionResource($version);
     }

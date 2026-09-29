@@ -6,6 +6,8 @@ namespace Nabilet\Modules\Venues\Halls\Services;
 
 use Nabilet\Modules\Venues\Models\Hall;
 use Nabilet\Modules\Venues\Models\HallSchemaVersion;
+use Nabilet\Core\Errors\ConflictError;
+use Nabilet\Core\Errors\NotFoundError;
 use Nabilet\Core\Errors\ValidationError;
 use Nabilet\Modules\Venues\Halls\Repositories\HallRepository;
 use Nabilet\Modules\Venues\Halls\Domain\SchemaVersionPolicy;
@@ -67,17 +69,52 @@ class HallService
         return $this->repository->getSchemaVersions($hall);
     }
 
-    public function createSchemaDraft(Hall $hall, array $payload, int $userId): HallSchemaVersion
+    /**
+     * Единственная опубликованная версия схемы зала (для публичной витрины, B10).
+     */
+    public function getPublishedSchemaVersion(Hall $hall): ?HallSchemaVersion
     {
-        return DB::transaction(function () use ($hall, $payload, $userId) {
+        return HallSchemaVersion::query()
+            ->where('hall_id', $hall->id)
+            ->where('status', 'published')
+            ->orderByDesc('version')
+            ->first();
+    }
+
+    public function createSchemaDraft(Hall $hall, array $payload, int $userId, ?int $versionId = null): HallSchemaVersion
+    {
+        return DB::transaction(function () use ($hall, $payload, $userId, $versionId) {
             // Server-side guard (A7): client-side validation is not a security
             // boundary — curl can post any payload. Reject invalid prices/canvas
             // before touching the draft row, with the §66 envelope (422).
             $this->validateSchemaPayload($payload);
 
+            // B6: явная ссылка на версию из URL/payload больше не позволяет
+            // притянуть чужую или уже опубликованную версию. Триггер БД
+            // (trg_schema_version_immutable) заблокирует правку schema_json у
+            // published/archived 500-й ошибкой SQLSTATE 45000, но клиенту мы
+            // обязаны ответить осмысленным 409/404 в конверте §66, а не дать
+            // «молчаливую мутацию» timestamp'а через no-op UPDATE.
+            if ($versionId !== null) {
+                $target = HallSchemaVersion::query()->find($versionId);
+                if ($target === null || (int) $target->hall_id !== (int) $hall->id) {
+                    throw new NotFoundError('HallSchemaVersion', (string) $versionId);
+                }
+                if ($target->status !== 'draft') {
+                    throw new ConflictError(
+                        "Schema version {$target->version} is '{$target->status}' and immutable; create a new draft instead.",
+                        'SCHEMA_VERSION_IMMUTABLE',
+                        ['version_id' => $target->id, 'status' => $target->status],
+                    );
+                }
+                $target->update(['schema_json' => $payload]);
+                return $target->fresh();
+            }
+
             // Check if there's already a draft version
             $existingDraft = $hall->schemaVersions()
                 ->where('status', 'draft')
+                ->orderByDesc('id')
                 ->first();
 
             if ($existingDraft) {
@@ -96,10 +133,35 @@ class HallService
     public function publishSchemaVersion(int $versionId, int $userId): HallSchemaVersion
     {
         return DB::transaction(function () use ($versionId, $userId) {
-            $version = HallSchemaVersion::findOrFail($versionId);
+            // B5: findOrFail() бросает Laravel-исключение, которое рендерилось
+            // как 500. Для несуществующей версии отвечаем 404 в конверте §66.
+            $version = HallSchemaVersion::query()->find($versionId);
 
-                        // Validate payload structure before publishing
-            $this->validateSchemaPayload($version->schema_json);
+            if ($version === null) {
+                throw new NotFoundError('HallSchemaVersion', (string) $versionId);
+            }
+
+            // B5/B6: повторная публикация уже опубликованной версии раньше
+            // возвращала 200 и молча обновляла published_at/timestamp (за счёт
+            // no-op UPDATE, который триггер неизменяемости пропускает). Теперь
+            // это явный конфликт 409 — мутации нет.
+            if ($version->status === 'published') {
+                throw new ConflictError(
+                    "Schema version {$version->version} is already published.",
+                    'SCHEMA_VERSION_ALREADY_PUBLISHED',
+                    ['version_id' => $version->id],
+                );
+            }
+            if ($version->status !== 'draft') {
+                throw new ConflictError(
+                    "Only draft schema versions can be published (current status: {$version->status}).",
+                    'SCHEMA_VERSION_NOT_DRAFT',
+                    ['version_id' => $version->id, 'status' => $version->status],
+                );
+            }
+
+            // Validate payload structure before publishing
+            $this->validateSchemaPayload($version->schema_json ?? []);
 
             return $this->repository->publishSchemaVersion($version);
         });

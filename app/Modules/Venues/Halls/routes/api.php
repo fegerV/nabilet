@@ -24,6 +24,8 @@ use Nabilet\Modules\Venues\Halls\Http\Controllers\HallController;
 Route::get('/venues/{venueId}/halls', [HallController::class, 'index'])->name('halls.index');
 Route::get('/halls', [HallController::class, 'indexAll'])->name('halls.all');
 Route::get('/halls/{publicId}', [HallController::class, 'show'])->name('halls.show');
+// Публичная схема для витрины мест (B10): только опубликованная версия.
+Route::get('/halls/{publicId}/schema', [HallController::class, 'publishedSchema'])->name('halls.schema.published');
 
 // Protected hall management routes
 Route::middleware(['auth:sanctum', 'admin'])->group(function () {
