@@ -48,11 +48,26 @@ class CartService
                 'session_id' => $sessionId,
                 'user_id' => $session->user_id ?? null,
                 'status' => 'active',
-                'expires_at' => CarbonImmutable::now()->addMinutes(15),
+                // C1: единый источник истины для срока холда — конфиг
+                // nabilet.checkout.hold_duration_minutes (дефолт 15). UI больше
+                // не считает таймер локально: expires_at отдаётся сервером в
+                // каждом ответе корзины.
+                'expires_at' => CarbonImmutable::now()->addMinutes($this->holdDurationMinutes()),
             ]);
         }
 
         return $cart;
+    }
+
+    /**
+     * C1: срок удержания в минутах из конфига; HoldWindow ограничивает TTL
+     * диапазоном 300–1800 секунд, поэтому выход за диапазон нормализуется.
+     */
+    public static function holdDurationMinutes(): int
+    {
+        $minutes = max(1, (int) config('nabilet.checkout.hold_duration_minutes', 15));
+
+        return min(30, $minutes);
     }
 
     /**
