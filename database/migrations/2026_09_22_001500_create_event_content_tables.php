@@ -19,6 +19,7 @@ return new class extends Migration
     public function up(): void
     {
         // Event Speakers Table
+        if (!Schema::hasTable("event_speakers")) {
         Schema::create('event_speakers', function (Blueprint $table) {
             $table->id();
             $table->foreignId('event_id')->constrained('events')->cascadeOnDelete();
@@ -34,8 +35,10 @@ return new class extends Migration
             $table->index(['event_id', 'sort_order']);
             $table->index('is_featured');
         });
+        }
 
         // Event Sponsors Table
+        if (!Schema::hasTable("event_sponsors")) {
         Schema::create('event_sponsors', function (Blueprint $table) {
             $table->id();
             $table->foreignId('event_id')->constrained('events')->cascadeOnDelete();
@@ -51,8 +54,10 @@ return new class extends Migration
             $table->index(['event_id', 'tier', 'sort_order']);
             $table->index('is_active');
         });
+        }
 
         // Event FAQs Table
+        if (!Schema::hasTable("event_faqs")) {
         Schema::create('event_faqs', function (Blueprint $table) {
             $table->id();
             $table->foreignId('event_id')->constrained('events')->cascadeOnDelete();
@@ -66,8 +71,10 @@ return new class extends Migration
             $table->index(['event_id', 'category', 'sort_order']);
             $table->index('is_active');
         });
+        }
 
         // Event Artists Table
+        if (!Schema::hasTable("event_artists")) {
         Schema::create('event_artists', function (Blueprint $table) {
             $table->id();
             $table->foreignId('event_id')->constrained('events')->cascadeOnDelete();
@@ -85,8 +92,10 @@ return new class extends Migration
             $table->index(['event_id', 'sort_order']);
             $table->index('is_headliner');
         });
+        }
 
         // Event Schedule Items Table
+        if (!Schema::hasTable("event_schedule_items")) {
         Schema::create('event_schedule_items', function (Blueprint $table) {
             $table->id();
             $table->foreignId('event_id')->constrained('events')->cascadeOnDelete();
@@ -105,6 +114,7 @@ return new class extends Migration
             $table->index(['event_id', 'event_date_id', 'start_time']);
             $table->index('type');
         });
+        }
     }
 
     public function down(): void
