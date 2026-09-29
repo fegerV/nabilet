@@ -16,6 +16,7 @@ use Nabilet\Modules\Payments\Repositories\PaymentRepository;
 use Nabilet\Modules\Payments\StateMachines\PaymentStateMachine;
 use Nabilet\Modules\Payments\StateMachines\RefundStateMachine;
 use Nabilet\Modules\Inventory\Services\HoldSweeper;
+use Nabilet\Modules\Tickets\Services\TicketService;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -29,8 +30,12 @@ class PaymentService
         protected PaymentRepository $repository,
         protected HoldSweeper $holdSweeper,
         protected OrderService $orders,
+        protected ?TicketService $ticketService = null,
     ) {
         $this->machine = PaymentStateMachine::make();
+        // Разрешение через контейнер сохраняет обратную совместимость сигнатуры
+        // (тесты конструируют сервис с тремя аргументами).
+        $this->ticketService ??= class_exists(TicketService::class) ? app(TicketService::class) : null;
     }
 
     /**
@@ -317,6 +322,14 @@ class PaymentService
 
             // Mark holds as converted after successful order completion
             $this->markHoldsAsConverted($payment->order);
+
+            // A6: выпуск билетов сразу после перехода заказа в paid — внутри той же
+            // транзакции вебхука (идемпотентно: повторный вызов возвращает уже
+            // выпущенные билеты). Это чинит разрыв цепочки «оплата → билет».
+            $freshOrder = $payment->order->fresh();
+            if ($freshOrder !== null && $freshOrder->status === 'paid' && $this->ticketService !== null) {
+                $this->ticketService->issueTicketsForOrder($freshOrder);
+            }
         }
     }
 
