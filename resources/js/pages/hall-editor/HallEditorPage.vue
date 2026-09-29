@@ -26,7 +26,7 @@ import NSegmented from '@/components/ui/NSegmented.vue'
 import { useUiStore } from '@/stores/ui'
 import { money, plural } from '@/lib/format'
 import { cn } from '@/lib/cn'
-import { get, send } from '@/lib/api'
+import { ApiError, get, send } from '@/lib/api'
 
 /* ── Типы ──────────────────────────────────────────────────────────── */
 
@@ -120,9 +120,18 @@ const TOOLS: { value: Tool; label: string; icon: string; hint: string }[] = [
   { value: 'standing', label: 'Standing', icon: '▦', hint: 'Тяните прямоугольник — стоячая зона' },
   { value: 'text', label: 'Текст', icon: 'T', hint: 'Клик — поставить подпись' },
   { value: 'image', label: 'Фон', icon: '🖼', hint: 'Загрузить PNG/JPG/WEBP/SVG под схемой' },
-  { value: 'stage', label: 'Сцена', icon: '▬', hint: 'Клик — переместить сцену' },
+  { value: 'stage', label: 'Сцена', icon: '▬', hint: 'Клик — поставить сцену' },
   { value: 'entrance', label: 'Вход', icon: '↗', hint: 'Клик — поставить вход' },
 ]
+
+/** Подписи видов статики для панели свойств (§47). */
+const STATIC_KIND_LABELS: Record<StaticKind, string> = {
+  stage: 'Сцена',
+  entrance: 'Вход',
+  label: 'Текст',
+  table: 'Стол',
+  standing: 'Стоячая зона',
+}
 
 /* ── Состояние схемы ───────────────────────────────────────────────── */
 
@@ -140,6 +149,8 @@ const selectedBgIds = ref<Set<string>>(new Set())
 const published = ref<number | null>(null)
 const draftVersion = ref(1)
 const autosave = ref<Autosave>('saved')
+/** Детали отклонения черновика сервером (422): сообщения валидации по полям (§66). */
+const autosaveErrors = ref<string[]>([])
 const lastSavedAt = ref<number>(Date.now())
 
 /* ── API-подключение: зал по publicId из роута ────────────────────── */
@@ -162,6 +173,11 @@ let currentVersionId: number | null = null
  * «молча» терялась на стороне клиента (B9: данные в UI не теряются).
  */
 const lastSaveError = ref<string | null>(null)
+
+/** Все текстовые сообщения последней ошибки автосохранения (для показа в шапке). */
+watch(autosaveErrors, (list) => {
+  lastSaveError.value = list.length > 0 ? list.join('; ') : null
+}, { immediate: true })
 
 const tool = ref<Tool>('select')
 
@@ -998,10 +1014,34 @@ async function persistSchema(): Promise<void> {
       if (versionNo > 0) draftVersion.value = versionNo
     }
     autosave.value = 'saved'
+    autosaveErrors.value = []
     lastSavedAt.value = Date.now()
-  } catch {
-    autosave.value = 'error'
+  } catch (e) {
+    // 422 — сервер отклонил схему валидацией (§66): показываем детали по полям
+    // под индикатором автосохранения, а не общий «Ошибка сохранения».
+    if (e instanceof ApiError && e.status === 422) {
+      autosave.value = 'error'
+      autosaveErrors.value = describeValidationErrors(e)
+      return
+    }
+    autosave.value = navigator.onLine ? 'error' : 'offline'
+    autosaveErrors.value = []
   }
+}
+
+/** Сообщение об ошибке + список деталей валидации из конверта ответа (§66). */
+function describeValidationErrors(e: ApiError): string[] {
+  const out: string[] = []
+  if (e.message) out.push(e.message)
+  if (e.details) {
+    for (const [field, msgs] of Object.entries(e.details)) {
+      for (const m of Array.isArray(msgs) ? msgs : [String(msgs)]) {
+        const line = `${field}: ${m}`
+        if (!out.includes(line)) out.push(line)
+      }
+    }
+  }
+  return out.slice(0, 5)
 }
 
 watch(
@@ -1731,6 +1771,11 @@ function draw(): void {
       e.cancelBubble = true
       pickStatic(s.id, e.evt.shiftKey || e.evt.ctrlKey || e.evt.metaKey)
     })
+    // Двойной клик — снять выделение (быстрый выход из панели свойств).
+    group.on('dblclick', (e) => {
+      e.cancelBubble = true
+      selectedStaticIds.value = new Set()
+    })
     group.on('dragstart', () => {
       beginMoveSnapshot()
       // Конвейер: если объект не был в выделении — он становится единственным
@@ -2289,6 +2334,21 @@ function toggleBackgroundLocked(): void {
   bg.locked = !bg.locked
 }
 
+/** Блокировка выбранной статики (защита от случайного перетаскивания). */
+function toggleStaticLocked(): void {
+  const s = selectedStatic.value
+  if (!s) return
+  snapshot()
+  s.locked = !s.locked
+}
+
+/** Удалить выбранный статический объект из панели свойств. */
+function removeSelectedStatic(): void {
+  if (isLocked.value) return
+  if (selectedStaticIds.value.size === 0) return
+  deleteSelection()
+}
+
 function removeBackground(): void {
   if (isLocked.value) return
   const bg = selectedBackground.value
@@ -2344,11 +2404,15 @@ function setSeatKind(value: string): void {
             {{
               autosave === 'saving' ? 'Сохраняется…'
               : autosave === 'saved' ? 'Сохранено'
-              : autosave === 'error' ? 'Ошибка сохранения'
+              : autosave === 'error' ? (autosaveErrors.length ? 'Схема отклонена сервером' : 'Ошибка сохранения')
               : 'Нет соединения'
             }}
           </span>
         </p>
+        <!-- Детали отклонения черновика сервером (422, конверт §66) — под индикатором. -->
+        <ul v-if="autosave === 'error' && autosaveErrors.length > 0" class="mt-1.5 max-w-xl rounded-md border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-2xs text-rose-300">
+          <li v-for="(line, i) in autosaveErrors" :key="i">{{ line }}</li>
+        </ul>
       </div>
 
       <div class="flex flex-wrap gap-2">
@@ -2598,8 +2662,129 @@ function setSeatKind(value: string): void {
           </div>
         </div>
 
-        <p v-if="!selectedSector && selectedSeatIds.size === 0" class="px-1 text-xs text-subtle">
-          Выберите сектор или место на холсте — здесь появятся их свойства
+        <!-- Свойства выбранного статического объекта (§47: stage/entrance/table/text/standing) -->
+        <div v-if="selectedStatic" class="surface-card overflow-hidden">
+          <div class="border-b border-line px-3 py-2.5">
+            <h2 class="text-sm font-semibold text-content">{{ STATIC_KIND_LABELS[selectedStatic.kind] ?? 'Объект' }}</h2>
+          </div>
+          <div class="space-y-3 p-3">
+            <NInput
+              :model-value="selectedStatic.text ?? ''"
+              label="Подпись"
+              :disabled="isLocked"
+              @update:model-value="(v: string) => { if (!isLocked) selectedStatic!.text = v }"
+            />
+            <div class="grid grid-cols-2 gap-2">
+              <NInput
+                :model-value="String(Math.round(selectedStatic.x))" label="X, пикс." type="number" :min="0" :max="20000" :disabled="isLocked"
+                @update:model-value="(v: string | number) => setBackgroundNum(selectedStatic as never, 'x', v)"
+              />
+              <NInput
+                :model-value="String(Math.round(selectedStatic.y))" label="Y, пикс." type="number" :min="0" :max="20000" :disabled="isLocked"
+                @update:model-value="(v: string | number) => setBackgroundNum(selectedStatic as never, 'y', v)"
+              />
+              <NInput
+                :model-value="String(Math.round(selectedStatic.width ?? 0))" label="Ширина, пикс." type="number" :min="1" :max="20000" :disabled="isLocked"
+                @update:model-value="(v: string | number) => setStaticNum(selectedStatic!, 'width', v, 1, 20000)"
+              />
+              <NInput
+                :model-value="String(Math.round(selectedStatic.height ?? 0))" label="Высота, пикс." type="number" :min="1" :max="20000" :disabled="isLocked"
+                @update:model-value="(v: string | number) => setStaticNum(selectedStatic!, 'height', v, 1, 20000)"
+              />
+              <NInput
+                :model-value="String(Math.round(selectedStatic.rotation ?? 0))" label="Поворот, °" type="number" :min="-360" :max="360" :disabled="isLocked"
+                @update:model-value="(v: string | number) => setStaticNum(selectedStatic!, 'rotation', v, -360, 360)"
+              />
+              <NInput
+                v-if="selectedStatic.kind === 'standing'"
+                :model-value="String(selectedStatic.capacity ?? 0)" label="Вместимость" type="number" :min="1" :max="100000" :disabled="isLocked"
+                :error="requiredNonNegativeError(selectedStatic.capacity ?? 0, 'Вместимость')"
+                @update:model-value="(v: string | number) => setStaticNum(selectedStatic!, 'capacity', v, 1, 100000)"
+              />
+            </div>
+            <label class="block">
+              <span class="mb-1 flex justify-between text-sm font-medium text-content">
+                Прозрачность <span class="tabular-nums text-subtle">{{ Math.round((selectedStatic.opacity ?? 1) * 100) }}%</span>
+              </span>
+              <input
+                type="range" min="0" max="1" step="0.05"
+                :value="selectedStatic.opacity ?? 1"
+                :disabled="isLocked"
+                class="w-full accent-brand-500"
+                @input="(e) => { const n = Number((e.target as HTMLInputElement).value); if (Number.isFinite(n)) selectedStatic!.opacity = Math.min(1, Math.max(0, n)) }"
+              />
+            </label>
+            <div class="flex gap-2">
+              <NButton variant="secondary" size="sm" block :disabled="isLocked" @click="toggleStaticLocked">
+                {{ selectedStatic.locked ? '🔓 Разблокировать' : '🔒 Заблокировать' }}
+              </NButton>
+              <NButton variant="danger" size="sm" block :disabled="isLocked" @click="removeSelectedStatic">Удалить</NButton>
+            </div>
+          </div>
+        </div>
+
+        <!-- Групповое выделение статики без единственного объекта -->
+        <div v-else-if="selectedStaticIds.size > 1" class="surface-card overflow-hidden">
+          <div class="border-b border-line px-3 py-2.5">
+            <h2 class="text-sm font-semibold text-content">Выбрано объектов: {{ selectedStaticIds.size }}</h2>
+          </div>
+          <div class="space-y-2 p-3">
+            <p class="text-xs text-subtle">Объекты можно перемещать группой. Свойства доступны при одиночном выделении.</p>
+            <NButton variant="danger" size="sm" block :disabled="isLocked" @click="deleteSelection">Удалить выбранные</NButton>
+          </div>
+        </div>
+
+        <!-- Свойства фона (§51): позиция, масштаб, поворот, прозрачность, блокировка -->
+        <div v-if="selectedBackground" class="surface-card overflow-hidden">
+          <div class="border-b border-line px-3 py-2.5">
+            <h2 class="text-sm font-semibold text-content">Фон · изображение</h2>
+          </div>
+          <div class="space-y-3 p-3">
+            <div class="grid grid-cols-2 gap-2">
+              <NInput
+                :model-value="String(Math.round(selectedBackground.x))" label="X, пикс." type="number" :disabled="isLocked || selectedBackground.locked"
+                @update:model-value="(v: string | number) => setBackgroundNum(selectedBackground!, 'x', v)"
+              />
+              <NInput
+                :model-value="String(Math.round(selectedBackground.y))" label="Y, пикс." type="number" :disabled="isLocked || selectedBackground.locked"
+                @update:model-value="(v: string | number) => setBackgroundNum(selectedBackground!, 'y', v)"
+              />
+              <NInput
+                :model-value="String(Math.round(selectedBackground.width))" label="Ширина, пикс." type="number" :min="1" :max="20000" :disabled="isLocked || selectedBackground.locked"
+                @update:model-value="(v: string | number) => setBackgroundNum(selectedBackground!, 'width', v)"
+              />
+              <NInput
+                :model-value="String(Math.round(selectedBackground.height))" label="Высота, пикс." type="number" :min="1" :max="20000" :disabled="isLocked || selectedBackground.locked"
+                @update:model-value="(v: string | number) => setBackgroundNum(selectedBackground!, 'height', v)"
+              />
+              <NInput
+                :model-value="String(Math.round(selectedBackground.rotation))" label="Поворот, °" type="number" :min="-360" :max="360" :disabled="isLocked || selectedBackground.locked"
+                @update:model-value="(v: string | number) => setBackgroundNum(selectedBackground!, 'rotation', v)"
+              />
+            </div>
+            <label class="block">
+              <span class="mb-1 flex justify-between text-sm font-medium text-content">
+                Прозрачность <span class="tabular-nums text-subtle">{{ Math.round(selectedBackground.opacity * 100) }}%</span>
+              </span>
+              <input
+                type="range" min="0" max="1" step="0.05"
+                :value="selectedBackground.opacity"
+                :disabled="isLocked || selectedBackground.locked"
+                class="w-full accent-brand-500"
+                @input="(e) => setBackgroundNum(selectedBackground!, 'opacity', (e.target as HTMLInputElement).value)"
+              />
+            </label>
+            <div class="flex gap-2">
+              <NButton variant="secondary" size="sm" block :disabled="isLocked" @click="toggleBackgroundLocked">
+                {{ selectedBackground.locked ? '🔓 Разблокировать' : '🔒 Заблокировать' }}
+              </NButton>
+              <NButton variant="danger" size="sm" block :disabled="isLocked" @click="removeBackground">Удалить фон</NButton>
+            </div>
+          </div>
+        </div>
+
+        <p v-if="!selectedSector && selectedSeatIds.size === 0 && selectedStaticIds.size === 0 && !selectedBackground" class="px-1 text-xs text-subtle">
+          Выберите сектор, место, объект или фон на холсте — здесь появятся их свойства
         </p>
       </aside>
     </div>
