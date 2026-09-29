@@ -12,6 +12,7 @@ use Nabilet\Modules\Core\Users\Models\User;
 /**
  * @property int $id
  * @property int|null $user_id
+ * @property string|null $cart_token гостевой токен покупателя (X-Cart-Token) — фикс D5
  * @property string $session_id
  * @property string $status 'active' | 'abandoned' | 'converted'
  * @property string $currency
@@ -35,6 +36,7 @@ class Cart extends Model
 
     protected $fillable = [
         'user_id',
+        'cart_token',
         'session_id',
         'status',
         'currency',
