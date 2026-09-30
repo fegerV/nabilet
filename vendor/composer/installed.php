@@ -3,7 +3,7 @@
         'name' => 'nabilet/core',
         'pretty_version' => 'dev-main',
         'version' => 'dev-main',
-        'reference' => '408cafe7477ce5148e23daa9e30eb2ec5e0dfa0c',
+        'reference' => 'a47c74666a238dc57448bd5d09446e3c7bd5a5d8',
         'type' => 'project',
         'install_path' => __DIR__ . '/../../',
         'aliases' => array(),
@@ -718,7 +718,7 @@
         'nabilet/core' => array(
             'pretty_version' => 'dev-main',
             'version' => 'dev-main',
-            'reference' => '408cafe7477ce5148e23daa9e30eb2ec5e0dfa0c',
+            'reference' => 'a47c74666a238dc57448bd5d09446e3c7bd5a5d8',
             'type' => 'project',
             'install_path' => __DIR__ . '/../../',
             'aliases' => array(),
