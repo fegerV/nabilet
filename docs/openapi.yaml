@@ -27,6 +27,7 @@ tags:
   - name: Admin Tickets
   - name: Admin Checkin
   - name: Admin Analytics
+  - name: Analytics
   - name: Webhooks
   - name: Embed
   - name: Telegram
@@ -1130,6 +1131,25 @@ paths:
             schema: { $ref: '#/components/schemas/AnalyticsEventRequest' }
       responses:
         '202': { description: Accepted }
+
+  /api/v1/analytics/metrika/config:
+    get:
+      tags: [Analytics]
+      summary: Public Yandex Metrika counter configuration for the SPA
+      description: |
+        Returns the non-secret part of the Yandex Metrika settings used for
+        Yandex Direct conversion attribution. The SPA loads the counter tag
+        lazily and sends `ym(id, 'reachGoal', goal)` for funnel events listed
+        in `goals`. Server-side source: `config/metrika.php` (env) merged with
+        DB overrides from table `metrika_settings` (module Analytics,
+        service `MetrikaSettings`). No secrets are exposed here.
+      operationId: metrikaConfig
+      responses:
+        '200':
+          description: Counter configuration
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MetrikaConfigResponse' }
 
   /api/v1/webhooks/yookassa:
     post:
@@ -2772,6 +2792,34 @@ components:
         referrer: { type: string }
         properties: { type: object, additionalProperties: true }
         occurred_at: { type: string, format: date-time }
+
+    MetrikaConfigResponse:
+      type: object
+      description: >
+        Non-secret Yandex Metrika settings for the SPA. Goals must exist in the
+        counter with exactly these names; purchase goal carries revenue/currency
+        for Yandex Direct auto-bidding strategies.
+      required: [enabled, counter_id, goals]
+      properties:
+        enabled: { type: boolean, description: 'false when counter_id is 0 — integration off' }
+        counter_id: { type: integer, description: 'Yandex Metrika counter ID' }
+        counter_auth: { type: string, nullable: true, description: 'Auth token (&ct=) for cross-domain placement' }
+        counter_type: { type: string, enum: [web, hit], default: web }
+        safe_mode: { type: boolean, description: 'Reduced-data mode (clickBeacon false, WebVisor off)' }
+        ecommerce: { type: boolean, description: 'Send product params with cart/purchase goals' }
+        currency: { type: string, example: RUB }
+        goals:
+          type: object
+          description: 'Funnel event name -> Metrika goal name (reachGoal). payment_success maps to purchase.'
+          additionalProperties: { type: string }
+          example:
+            event_view: event_view
+            seatmap_open: seatmap_open
+            seat_selected: seat_selected
+            checkout_started: checkout_started
+            payment_attempt: payment_attempt
+            payment_success: purchase
+            payment_fail: payment_fail
 
     AsyncJobResponse:
       type: object
