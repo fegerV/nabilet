@@ -1,7 +1,7 @@
-# NABILET — Roadmap: Vue-админка, выпил Filament, SEO по slug
+# NABILET — Roadmap: Vue-админка, выпил Filament, SEO по slug, Метрика для Директа
 
 > Источник истины для продвижения. Сверяться с этим файлом перед каждым этапом.
-> Пометки: `[x]` — сделано и проверено, `[ ]` — предстоит. Дата обновления — внизу.
+> Пометки: `[x]` — сделано и проверено, `[~]` — сделано частично, `[ ]` — предстоит. Дата обновления — внизу.
 
 ## Дерево проекта
 
@@ -9,7 +9,7 @@
 C:\Project\nabilet
 ├─ app/Modules/            ← 11 модулей Laravel, API почти готов
 ├─ resources/js/           ← Vue 3 + Vite + Pinia
-│  ├─ lib/                 ← api.ts (клиент), inventory.ts, hall.ts, mock.ts (остаточные импорты — убрать)
+│  ├─ lib/                 ← api.ts (клиент), inventory.ts, hall.ts, metrika.ts (Метрика→Директ), mock.ts (остаточные импорты — убрать)
 │  ├─ components/ui/       ← свой UI-кит: NButton, NInput, NDataTable, NModal...
 │  ├─ components/seat/     ← SeatMap, SeatLegend, OrderSummary
 │  ├─ pages/storefront/    ← витрина (Catalog, Event, SeatSelection, Checkout...)
@@ -88,11 +88,49 @@ C:\Project\nabilet
 - [ ] Деплой-пакет: `npm run build` → dist/, ZIP с vendor/, установщик
 - [ ] На шаред-хостинге: проверить API, SPA, SEO-страницы, sitemap
 
+### Этап 5. Яндекс Метрика → Яндекс Директ — 🟡 в работе (сервер готов, фронт частично)
+
+Зачем: атрибуция расходов Директа по реальным продажам билетов. Конверсии
+строится на целях Метрики (`reachGoal`), главная цель — `purchase` с revenue;
+Директ использует её в автостратегиях («оплата», «доля ADS»).
+
+**Готово (коммит `0d8b417e`, 2026-09-30):**
+- [x] Конфиг `config/metrika.php`: ID счётчика, ключ аутентификации (`&ct=`), безопасный режим, e-commerce, валюта, карта событий воронки → целей (`event_view`, `seatmap_open`, `seat_selected`, `checkout_started`, `payment_attempt`, `payment_success→purchase`, `payment_fail`)
+- [x] Сервис `MetrikaSettings` (модуль Analytics): слияние env-config с переопределениями из таблицы `metrika_settings` — админ меняет счётчик/цели без деплоя
+- [x] Миграция `2026_09_30_000200_create_metrika_settings_table.php` (key/value, значения JSON-кодированы)
+- [x] Публичный эндпоинт `GET /api/v1/analytics/metrika/config` (`MetrikaController`) — SPA тянет конфиг до авторизации
+  - [x] `publicConfig()` отдаёт только ID счётчика, цели и валюту — секреты в JS не попадают
+- [x] Клиентская библиотека `resources/js/lib/metrika.ts`: ленивая загрузка тега `mc.yandex.ru` (не блокирует первый рендер, не грузится при `counter_id=0`), сохранение UTM-меток в localStorage + `setParams` (привязка заказа к кампании Директа), `trackEvent()` → `ym(id,'reachGoal',цель)` с `revenue/currency` для покупки
+- [x] Инициализация в `main.ts`: `initMetrika()` + `trackPageView` в `router.afterEach` (SPA-hits)
+- [x] Регистрация сервиса в `AnalyticsServiceProvider`
+
+**Осталось:**
+- [~] `.env` / `.env.example`: переменные `YANDEX_METRIKA_*` ещё не добавлены (см. ниже чек-лист запуска)
+- [ ] Вызовы `trackEvent()` в страницах витрины: `SeatSelectionPage` (`seatmap_open`, `seat_selected`), `CheckoutPage` (`checkout_started`), `payment_attempt` / `payment_success` (+revenue) / `payment_fail` на оплате. Ядро `trackEvent` готово — точки врезки не проставлены
+- [ ] UI админки: страница редактирования `metrika_settings` (сейчас правится только SQL/env)
+- [ ] В Метровке: создать цели с именами один-в-один из `config/metrika.php` → goals; включить «Таргетирование → Обмен данными с Директом»
+- [ ] В Директе: пересоздать цели через чек-лист «Метрика + Директ»; для автостратегии ставить цель `purchase`
+- [ ] Проверка consent/cookie-banner: счётчик не должен грузиться до согласия (если баннер будет включён)
+- [ ] Пересобрать фронт: `npm run build` (изменились `main.ts`, добавлен `lib/metrika.ts`)
+
+Переменные окружения (добавить в `.env`, шаблон — в `.env.example`):
+
+```
+YANDEX_METRIKA_COUNTER_ID=            # 0/пусто — интеграция выключена
+YANDEX_METRIKA_COUNTER_AUTH=          # ключ &ct= при размещении на другом домене
+YANDEX_METRIKA_COUNTER_TYPE=web       # web | hit
+YANDEX_METRIKA_SAFE_MODE=false        # clickBeacon:false, WebVisor off
+YANDEX_METRIKA_ACCURATE_TRACK=false
+YANDEX_METRIKA_ECOMMERCE=true         # params.product/revenue для корзины и покупки
+YANDEX_METRIKA_CURRENCY=RUB
+```
+
 ## Текущие эндпоинты API (по модулям)
 
 | Модуль | Роуты (относительно /api/v1) | CRUD? |
 |---|---|---|
 | Auth | POST /login /logout /register /forgot-password /reset-password /verify-email | + |
+| Analytics (Метрика) | GET /analytics/metrika/config — публичный конфиг счётчика для SPA | read-only |
 | Cart | GET /, POST /items, DELETE /items/{id}, POST /checkout | + |
 | Events | GET /events, GET /events/{event}, GET /events/by-slug/{slug}, POST /events, PATCH /events/{event}, PUT /events/{event}, DELETE /events/{event} | ✅ |
 | Inventory | GET /inventory, GET /inventory/{item}, GET /sessions/{sessionId}/availability | частично |
@@ -111,7 +149,8 @@ C:\Project\nabilet
 4. SEO: каждая страница события — свой slug, серверная обёртка + JSON-LD.
 5. Свой UI-кит (components/ui) — не подключать Vuestic/Geeker/Element Plus.
 6. Ошибки API — `{error:{code,message,errors?}}`; 409 = конфликт (место занято).
+7. Настройки интеграций (Метрика и т.п.) — на сервере (env + таблица `metrika_settings`), SPA получает их через API; секреты в публичный конфиг не попадают.
 
 ---
 
-_Обновлено: 2026-09-29. Статус: Этапы 1–3 закрыты (CRUD Sessions/Venues на API, Vue-админка работает, Filament выпит). Остались этапы 2 (мелкие хвосты) и 4 (чистка mock.ts, релиз)._
+_Обновлено: 2026-09-30. Статус: Этапы 1–3 закрыты (CRUD Sessions/Venues на API, Vue-админка работает, Filament выпит). Этап 5 (Яндекс Метрика → Директ): серверная часть и клиентское ядро готовы (коммит `0d8b417e`), остались точки `trackEvent` в витрине, env-переменные, UI настроек и настройка целей в самих сервисах Яндекса. Этап 4 (чистка mock.ts, релиз) — в процессе._
