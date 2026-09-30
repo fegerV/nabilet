@@ -1,18 +1,1 @@
-# Build output
-dist/
-
-# Dependencies
 vendor/
-
-# Logs
-*.log
-qa-scripts/*.log
-
-# Laravel storage/framework generated files
-storage/framework/views/*.php
-storage/logs/*.log
-
-# Environment files
-.env
-.env.*
-!.env.example

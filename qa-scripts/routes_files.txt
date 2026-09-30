@@ -1,0 +1,15 @@
+app/Modules/Analytics/routes/api.php
+app/Modules/Auth/routes/api.php
+app/Modules/Cart/routes/api.php
+app/Modules/Core/Organizations/routes/api.php
+app/Modules/Core/Users/routes/api.php
+app/Modules/Events/routes/api.php
+app/Modules/Inventory/routes/api.php
+app/Modules/Orders/routes/api.php
+app/Modules/Payments/routes/api.php
+app/Modules/Seo/routes/api.php
+app/Modules/Sessions/routes/api.php
+app/Modules/Tickets/routes/api.php
+app/Modules/Venues/Halls/routes/api.php
+app/Modules/Venues/routes/api.php
+app/Modules/Webhooks/routes/api.php
