@@ -25,6 +25,10 @@ const props = withDefaults(
     required?: boolean
     autocomplete?: string
     inputmode?: 'text' | 'email' | 'tel' | 'numeric' | 'search'
+    /** HTML-атрибуты min/max/step для type="number" (валидация цен и размеров). */
+    min?: number | string
+    max?: number | string
+    step?: number | string
   }>(),
   { type: 'text' },
 )
@@ -63,6 +67,9 @@ const describedBy = computed(() => (hasError.value ? `${id}-error` : props.hint 
         :required="required"
         :autocomplete="autocomplete"
         :inputmode="inputmode"
+        :min="min"
+        :max="max"
+        :step="step"
         :aria-invalid="hasError || undefined"
         :aria-describedby="describedBy"
         :class="

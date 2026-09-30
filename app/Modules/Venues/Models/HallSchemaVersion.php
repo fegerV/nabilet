@@ -84,10 +84,46 @@ class HallSchemaVersion extends Model
 
             $sectors = [];
                         $seatCounter = 0;
-                        foreach ($payload['sectors'] ?? [] as $sector) {
+                        foreach ($payload['sectors'] ?? [] as $sectorRaw) {
+                // B7/C1: «сироты» без мест (сектор только под подпись/рамку)
+                // раньше молча выбрасывались из инвентаря. Если у такого
+                // сектора есть стоячая зона или стол из staticObjects —
+                // превращаем его в standing-сектор, иначе он не попадёт в
+                // inventory_items и витрина его не увидит.
+                $sector = is_array($sectorRaw) ? $sectorRaw : [];
                 $name = (string) ($sector['name'] ?? 'сектор');
                 $code = (string) ($sector['code'] ?? '');
                 $type = (string) ($sector['type'] ?? 'seated');
+
+                if (($type === 'seated' || $type === '') && empty($sector['rows']) && empty($sector['seats'])) {
+                    $statics = $payload['staticObjects'] ?? [];
+                    if (is_array($statics)) {
+                        foreach ($statics as $obj) {
+                            if (!is_array($obj) || ($obj['kind'] ?? '') !== 'standing') {
+                                continue;
+                            }
+                            $cap = max(0, (int) ($obj['capacity'] ?? 0));
+                            if ($cap === 0) {
+                                continue;
+                            }
+                            $type = 'standing';
+                            $sector['rows'] = [[
+                                'number' => '1',
+                                'label' => (string) ($obj['text'] ?? 'Танцпол'),
+                                'price_amount' => (int) ($sector['priceMinor'] ?? $sector['price'] ?? 0),
+                                'seats' => array_fill(0, $cap, [
+                                    'id' => null,
+                                    'number' => '',
+                                    'label' => '',
+                                    'type' => 'standing',
+                                    'x' => 0,
+                                    'y' => 0,
+                                ]),
+                            ]];
+                            break;
+                        }
+                    }
+                }
 
                 // Уже rows-формат (из импортёра Афиши) — оставляем как есть
                             if (isset($sector['rows']) && is_array($sector['rows'])) {
@@ -101,6 +137,16 @@ class HallSchemaVersion extends Model
                                 continue;
                             }
                             $seats = $sector['seats'];
+
+                // Канвасный редактор рисует места с kind 'vip' | 'accessible' |
+                // 'standard', а ck_seats_type в БД допускает только
+                // standard/vip/wheelchair/companion/custom. Без маппинга
+                // генерация инвентаря падала на доступных местах (C1).
+                $mapSeatType = static fn (string $kind): string => match ($kind) {
+                    'wheelchair', 'companion', 'custom', 'vip', 'standard' => $kind,
+                    'accessible' => 'wheelchair',
+                    default => 'standard',
+                };
 
                 $rows = [];
                                 $perRow = [];
@@ -126,7 +172,7 @@ class HallSchemaVersion extends Model
                                                     'id' => $seatCounter,
                                                     'number' => (string) ($seat['number'] ?? (string) count($gridSeats) + 1),
                             'label' => (string) ($seat['label'] ?? "Ряд {$rowNum} Место " . (count($gridSeats) + 1)),
-                            'type' => (string) ($seat['kind'] ?? 'standard'),
+                            'type' => $mapSeatType((string) ($seat['kind'] ?? 'standard')),
                             'x' => $gx,
                             'y' => $gy,
                         ];
@@ -151,12 +197,61 @@ class HallSchemaVersion extends Model
                 $sectors[] = [
                     'name' => $name,
                     'code' => $code,
-                    'type' => $type,
+                    'type' => $type === 'standing' ? 'standing' : (in_array($type, ['seated', 'mixed'], true) ? $type : 'seated'),
                     'width' => 60,
                     'height' => 40,
                     'x' => 0,
                     'y' => 0,
                     'rows' => $rows,
+                ];
+            }
+
+            // C1: стоячие зоны из статических объектов редактора. Сектор с
+            // type='standing' обрабатывается выше; одиночные standing-зоны без
+            // сектора (просто прямоугольник на холсте) раньше терялись —
+            // прокидываем их отдельными pseudo-секторами, чтобы InventoryService
+            // создал standing_zones + inventory_items с capacity.
+            foreach (($payload['staticObjects'] ?? []) as $objRaw) {
+                if (!is_array($objRaw)) {
+                    continue;
+                }
+                $kind = (string) ($objRaw['kind'] ?? '');
+                $cap = max(0, (int) ($objRaw['capacity'] ?? 0));
+                if ($kind !== 'standing' || $cap === 0) {
+                    continue;
+                }
+                // Не дублируем зону, уже «подхваченную» сектором-обёрткой выше.
+                $alreadyCovered = false;
+                foreach ($sectors as $sec) {
+                    if (($sec['type'] ?? '') === 'standing' && ($sec['name'] ?? '') === (string) ($objRaw['text'] ?? '')) {
+                        $alreadyCovered = true;
+                        break;
+                    }
+                }
+                if ($alreadyCovered) {
+                    continue;
+                }
+                $sectors[] = [
+                    'name' => (string) ($objRaw['text'] ?? 'Стоячая зона'),
+                    'code' => '',
+                    'type' => 'standing',
+                    'width' => 60,
+                    'height' => 40,
+                    'x' => 0,
+                    'y' => 0,
+                    'rows' => [[
+                        'number' => '1',
+                        'label' => (string) ($objRaw['text'] ?? 'Танцпол'),
+                        'price_amount' => (int) ($objRaw['priceMinor'] ?? $objRaw['price'] ?? 0),
+                        'seats' => array_fill(0, $cap, [
+                            'id' => null,
+                            'number' => '',
+                            'label' => '',
+                            'type' => 'standing',
+                            'x' => 0,
+                            'y' => 0,
+                        ]),
+                    ]],
                 ];
             }
 
