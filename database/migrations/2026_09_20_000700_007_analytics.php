@@ -115,7 +115,11 @@ return new class extends Migration
             $table->decimal('scroll_percent', 5, 2)->nullable();
             $table->dateTime('occurred_at', 6);
             $table->json('metadata_json')->nullable();
-            $table->index(["page_url", "occurred_at"], "idx_heatmap_page_time");
+            // Spec (nabilet_core_spec/migrations.sql:863): KEY idx_heatmap_page_time
+            // (page_url(255), occurred_at). A full-width index on VARCHAR(768) exceeds
+            // InnoDB's 3072-byte key limit under utf8mb4 (error 1071), so the prefix
+            // length from the spec is mandatory here.
+            $table->index(["page_url", "occurred_at"], "idx_heatmap_page_time", ['lengths' => [255, null]]);
         });
         }
 
