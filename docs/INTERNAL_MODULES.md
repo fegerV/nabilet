@@ -18,7 +18,6 @@ They are designed for internal use only.
 
 | Module | Provider | Purpose |
 |--------|----------|---------|
-| `Analytics` | `AnalyticsServiceProvider` | Data collection, metrics aggregation |
 | `AbTesting` | `AbTestingServiceProvider` | A/B test configuration, variant selection |
 | `Ai` | `AiServiceProvider` | AI integration, prompt handling |
 | `Backups` | `BackupsServiceProvider` | Backup scheduling, storage management |
@@ -35,7 +34,15 @@ They are designed for internal use only.
 | `Telegram` | `TelegramServiceProvider` | Telegram bot integration |
 | `Users` | `UsersServiceProvider` | User management (internal) |
 
-### Special Cases
+## Modules With Public Routes
+
+The `Analytics` module (`AnalyticsServiceProvider`) exposes one public endpoint:
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/api/v1/analytics/metrika/config` | none | Yandex Metrika counter ID and goal names for the SPA (Yandex Direct attribution). Serves only non-secret fields (`MetrikaSettings::publicConfig()`); settings come from `config/metrika.php` (env) merged with DB overrides in table `metrika_settings`. See `docs/ROADMAP.md`, stage 5. |
+
+## Special Cases
 
 | Module | Provider | Notes |
 |--------|----------|-------|
