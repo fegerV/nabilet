@@ -1,5 +1,8 @@
 # NABILET Core — server health check
 
+> ⚠️ **Исторический срез (2026-09-22)** — снимок запущенного инстанса на тот момент, не актуальный статус.
+> Актуальные статусы реализации — в [`ROADMAP.md`](ROADMAP.md).
+
 **Date:** 2026-09-22 · **Scope:** the running instance on this machine, not a code review.
 **Method:** live HTTP probes, `artisan`, and direct queries against the connected database.
 Every number below was measured, not inferred.
