@@ -1,15 +1,11 @@
 # docs/archive
 
-Здесь лежат документы, вытесненные пакетом спецификации
-(`nabilet_core_spec/`), но сохранённые, потому что в репозитории пока нет ни одного
-коммита и удаление было бы необратимым.
+Архив устаревшей документации. **На 2026-09-30 каталог пуст** — всё старое удалено.
 
-| Файл | Чем заменён | Почему |
-|---|---|---|
-| `openapi-rfc7807-superseded.yaml` | `docs/openapi.yaml` | Описывал ошибки как RFC 7807 `application/problem+json`. §66 ТЗ и пакет задают вложенный конверт `{"error":{"code","message","details"}}` — два формата одновременно жить не могут. Также 24 пути против 68 в пакете. |
+Удалено без замены (история доступна в git):
+- `docs/archive/openapi-rfc7807-superseded.yaml` — вытеснен `docs/openapi.yaml` (конверт ошибок `{"error":{…}}` по §66 ТЗ вместо RFC 7807).
+- `docs/FORENSIC_AUDIT_SUMMARY.md` и весь `docs/audit/` (10 отчётов: IMPLEMENTATION_STATUS, MODULE_STATUS_REPORT, CRITICAL_FIXES_*, SERVICEPROVIDER_COMPLETION_REPORT, SECURITY_SEO_CODE_AUDIT, TICKETING_TRANSACTION_AUDIT, SHARED-HOSTING-READINESS, PRODUCTION_READINESS, FORENSIC_AUDIT_SUMMARY, IMPLEMENTATION_PLAN) — разовые срезы аудита сентября 2026 с противоречащими друг другу статусами; актуальное состояние реализации — только в `docs/ROADMAP.md`.
 
-**Источник истины — `docs/openapi.yaml`** (копия пакетной версии).
-`nabilet_core_spec/` остаётся самодостаточной поставляемой копией пакета.
-
-Эти файлы не читаются приложением и не участвуют в проверках. Их можно удалить,
-когда появится первый коммит и история будет восстановима.
+**Актуальные документы:** [`../ROADMAP.md`](../ROADMAP.md) (статусы этапов — источник истины),
+[`../PLAN.md`](../PLAN.md), [`../ARCHITECTURE.md`](../ARCHITECTURE.md), [`../INTERNAL_MODULES.md`](../INTERNAL_MODULES.md),
+[`../openapi.yaml`](../openapi.yaml) (контракт API; `nabilet_core_spec/` — поставляемая копия пакета).
