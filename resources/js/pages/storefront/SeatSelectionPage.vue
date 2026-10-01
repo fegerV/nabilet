@@ -370,7 +370,10 @@ async function goCheckout(): Promise<void> {
   if (cart.count === 0) return
   cart.setLoading(true)
   try {
-    await checkoutSession(sessionId.value)
+    // Контактов на этом шаге ещё нет — заказ создаётся с пустым e-mail,
+    // CheckoutPage подтвердит его через PUT /orders/{id} перед оплатой.
+    const res = await checkoutSession(sessionId.value, { customer_email: '' })
+    cart.setOrder(res.data.order_id ?? null, Number(res.data.total_amount ?? cart.totalMinor))
     router.push('/checkout')
   } catch (e) {
     if (e instanceof ApiError && e.code === 'CART_EXPIRED') {
