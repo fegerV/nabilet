@@ -82,6 +82,56 @@ class Session extends Model
         return $this->belongsTo(\Nabilet\Modules\Venues\Models\Hall::class);
     }
 
+    /**
+     * Sales gate: the operational switch (`status = on_sale`) AND the time window
+     * (`sales_start_at` / `sales_end_at`) must both permit selling right now.
+     *
+     * The two gates are independent by design (ТЗ §13): the window is scheduled,
+     * `on_sale` is the organizer's emergency stop. A session in any other status
+     * (draft, scheduled, sold_out, closed, completed, cancelled) never sells —
+     * see SessionStateMachine::sellable().
+     */
+    public function isSellableAt(?\DateTimeInterface $now = null): bool
+    {
+        $now ??= new \DateTimeImmutable('now');
+
+        if (!in_array($this->status, \Nabilet\Modules\Sessions\StateMachines\SessionStateMachine::sellable(), true)) {
+            return false;
+        }
+
+        if ($this->sales_start_at !== null && $now < $this->sales_start_at) {
+            return false;
+        }
+
+        if ($this->sales_end_at !== null && $now > $this->sales_end_at) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Human-readable reason why the session is not sellable, for error messages.
+     */
+    public function salesBlockReason(?\DateTimeInterface $now = null): string
+    {
+        $now ??= new \DateTimeImmutable('now');
+
+        if (!in_array($this->status, \Nabilet\Modules\Sessions\StateMachines\SessionStateMachine::sellable(), true)) {
+            return sprintf('session status is "%s"; tickets are sold only while the session is "on_sale".', $this->status);
+        }
+
+        if ($this->sales_start_at !== null && $now < $this->sales_start_at) {
+            return sprintf('sales open at %s.', $this->sales_start_at->format(\DateTimeInterface::ATOM));
+        }
+
+        if ($this->sales_end_at !== null && $now > $this->sales_end_at) {
+            return sprintf('sales closed at %s.', $this->sales_end_at->format(\DateTimeInterface::ATOM));
+        }
+
+        return 'sales are open.';
+    }
+
     public function schemaVersion(): BelongsTo
     {
         return $this->belongsTo(\Nabilet\Modules\Venues\Models\HallSchemaVersion::class, 'schema_version_id');
