@@ -4,22 +4,25 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Tickets\Services;
 
+use Nabilet\Modules\Tickets\Domain\CheckinEvaluator;
+use Nabilet\Modules\Tickets\Domain\ScanMode;
+use Nabilet\Modules\Tickets\Domain\ScanOutcome;
+use Nabilet\Modules\Tickets\Domain\ScanRequest;
+use Nabilet\Modules\Tickets\Domain\TicketSnapshot;
 use Nabilet\Modules\Tickets\Models\Ticket;
 use Nabilet\Modules\Tickets\Models\TicketScan;
 use Nabilet\Modules\Tickets\Repositories\TicketRepository;
-use Nabilet\Modules\Tickets\Domain\CheckinEvaluator;
-use Nabilet\Modules\Sessions\Models\Session;
+use Nabilet\Modules\Tickets\StateMachines\TicketStateMachine;
 use Illuminate\Support\Facades\DB;
-use Carbon\CarbonImmutable;
+use Illuminate\Support\Str;
 
 /**
  * Service for handling ticket scanning and check-in operations.
- * 
- * Provides atomic, idempotent ticket scanning with support for:
- * - Online verification against server database
- * - Offline bundle validation (pre-signed ticket lists)
- * - Concurrent scan detection (two checkers scanning same ticket)
- * - Replay attack prevention (same ticket scanned twice on same device)
+ *
+ * The decision itself belongs to the pure domain CheckinEvaluator, whose real
+ * contract is evaluate(ScanRequest, ?TicketSnapshot): this service is the
+ * adapter that builds those value objects from Eloquent models, persists the
+ * scan row, and applies `resultingStatus` — the evaluator never writes.
  */
 class TicketScanService
 {
@@ -30,11 +33,8 @@ class TicketScanService
 
     /**
      * Scan a ticket and record the check-in.
-     * 
-     * @param int $ticketId The ticket ID to scan
-     * @param int $sessionId The session/event ID
-     * @param int|null $deviceId The checking device ID (null for online verification)
-     * @return array{success: bool, message: string, ticket?: Ticket, scan?: TicketScan, reason?: string}
+     *
+     * @return array{success: bool, message: string, result?: string, ticket?: Ticket, scan?: TicketScan, reason?: string}
      */
     public function scan(int $ticketId, int $sessionId, ?int $deviceId = null): array
     {
@@ -53,8 +53,10 @@ class TicketScanService
                 ];
             }
 
-            // Verify ticket belongs to the session being checked
-            if ($ticket->inventoryItem->session_id !== $sessionId) {
+            // tickets.session_id is a first-class column (spec schema); there is
+            // no inventoryItem relation on Ticket and going through it produced
+            // "Call to undefined relationship" errors at runtime.
+            if ((int) $ticket->session_id !== $sessionId) {
                 return [
                     'success' => false,
                     'message' => 'Ticket does not belong to this session',
@@ -62,53 +64,48 @@ class TicketScanService
                 ];
             }
 
-            // Evaluate if check-in is allowed based on business rules
-            $evaluation = $this->checkinEvaluator->evaluate($ticket, $deviceId);
+            $outcome = $this->checkinEvaluator->evaluate(
+                new ScanRequest(
+                    ticketPublicId: $ticket->public_id,
+                    sessionId: $sessionId,
+                    mode: ScanMode::ONLINE,
+                    deviceId: $deviceId,
+                ),
+                $this->snapshot($ticket),
+            );
 
-            if (!$evaluation->allowed) {
+            $scan = $this->repository->recordScan(
+                $ticket,
+                $deviceId,
+                result: $outcome->result,
+                mode: ScanMode::ONLINE,
+            );
+
+            if (!$outcome->admits) {
                 return [
                     'success' => false,
-                    'message' => $evaluation->reason ?? 'Check-in not allowed',
-                    'reason' => $evaluation->verdict ?? 'CHECKIN_DENIED',
+                    'message' => $outcome->reason ?? 'Check-in not allowed',
+                    'result' => $outcome->result,
+                    'reason' => strtoupper($outcome->result),
                     'ticket' => $ticket,
+                    'scan' => $scan,
+                    'used_at' => $outcome->usedAt?->format(\DATE_ATOM),
                 ];
             }
 
-            // Check for duplicate scan on same device (replay attack prevention)
-            if ($deviceId !== null) {
-                $existingScan = TicketScan::query()
-                    ->where('ticket_id', $ticketId)
-                    ->where('device_id', $deviceId)
-                    ->first();
-
-                if ($existingScan) {
-                    return [
-                        'success' => false,
-                        'message' => 'Ticket already scanned on this device',
-                        'reason' => 'ALREADY_SCANNED_THIS_DEVICE',
-                        'ticket' => $ticket,
-                        'scan' => $existingScan,
-                    ];
-                }
-            }
-
-            // Record the scan
-            $scan = TicketScan::create([
-                'ticket_id' => $ticketId,
-                'device_id' => $deviceId,
-                'scanned_at' => now(),
-                'location' => null, // Can be extended with GPS data
-                'metadata' => [],
-            ]);
-
-            // Update ticket status on first successful check-in
-            if ($ticket->status === 'issued') {
-                $ticket->update(['status' => 'checked_in']);
+            // Admitted: issued -> used, exactly once (no used -> issued path in
+            // the state machine; §32 re-scans return already_used above).
+            if ($outcome->resultingStatus !== null && $ticket->status !== $outcome->resultingStatus) {
+                $ticket->update([
+                    'status' => $outcome->resultingStatus,
+                    'used_at' => now(),
+                ]);
             }
 
             return [
                 'success' => true,
                 'message' => 'Check-in successful',
+                'result' => $outcome->result,
                 'ticket' => $ticket->fresh(),
                 'scan' => $scan,
             ];
@@ -117,106 +114,160 @@ class TicketScanService
 
     /**
      * Verify if a ticket can be checked in without recording the scan.
-     * Used for pre-scan validation or offline bundle verification.
-     * 
-     * @param Ticket $ticket
-     * @param int $sessionId
-     * @param int|null $deviceId
-     * @return array{valid: bool, reason?: string}
+     *
+     * @return array{valid: bool, reason?: string, result?: string}
      */
     public function canCheckin(Ticket $ticket, int $sessionId, ?int $deviceId = null): array
     {
-        // Verify ticket belongs to the session
-        if ($ticket->inventoryItem->session_id !== $sessionId) {
+        if ((int) $ticket->session_id !== $sessionId) {
             return ['valid' => false, 'reason' => 'WRONG_SESSION'];
         }
 
-        // Evaluate check-in eligibility
-        $evaluation = $this->checkinEvaluator->evaluate($ticket, $deviceId);
+        $outcome = $this->checkinEvaluator->evaluate(
+            new ScanRequest(
+                ticketPublicId: $ticket->public_id,
+                sessionId: $sessionId,
+                mode: ScanMode::ONLINE,
+                deviceId: $deviceId,
+            ),
+            $this->snapshot($ticket),
+        );
 
-        if (!$evaluation->allowed) {
-            return ['valid' => false, 'reason' => $evaluation->verdict ?? 'CHECKIN_DENIED'];
+        if (!$outcome->admits) {
+            return [
+                'valid' => false,
+                'result' => $outcome->result,
+                'reason' => strtoupper($outcome->result),
+            ];
         }
 
-        return ['valid' => true];
+        return ['valid' => true, 'result' => $outcome->result];
     }
 
     /**
-     * Process an offline bundle scan.
-     * Validates ticket against pre-downloaded bundle hash.
-     * 
-     * @param string $ticketPublicId The ticket's public UUID
-     * @param string $bundleHash The bundle hash the device has
-     * @param int $deviceId The checking device ID
-     * @return array{success: bool, message: string, reason?: string}
+     * Process an offline bundle scan (§44 reconciliation).
+     *
+     * The device already made its decision at the door; the server records what
+     * happened and resolves conflicts by revocation — it cannot un-admit anyone.
      */
-    public function scanFromBundle(string $ticketPublicId, string $bundleHash, int $deviceId): array
-    {
-        // Find ticket by public ID
-        $ticket = Ticket::query()
-            ->where('public_id', $ticketPublicId)
-            ->first();
+    public function scanFromBundle(
+        string $ticketPublicId,
+        string $bundleHash,
+        int $deviceId,
+        ?string $clientScanId = null,
+        bool $deviceAdmitted = true,
+        ?\DateTimeImmutable $scannedAt = null,
+    ): array {
+        return DB::transaction(function () use ($ticketPublicId, $bundleHash, $deviceId, $clientScanId, $deviceAdmitted, $scannedAt) {
+            $ticket = Ticket::query()
+                ->where('public_id', $ticketPublicId)
+                ->lockForUpdate()
+                ->first();
 
-        if (!$ticket) {
+            if (!$ticket) {
+                return [
+                    'success' => false,
+                    'message' => 'Ticket not found',
+                    'reason' => 'TICKET_NOT_FOUND',
+                ];
+            }
+
+            if (!$this->verifyBundleForDevice($bundleHash, $deviceId, (int) $ticket->session_id)) {
+                return [
+                    'success' => false,
+                    'message' => 'Invalid bundle for this device/session',
+                    'reason' => 'INVALID_BUNDLE',
+                ];
+            }
+
+            // De-duplicate retried uploads via uq_ticket_scans_client
+            // (device_id, client_scan_id): the same upload applied twice must
+            // not become two admissions.
+            if ($clientScanId !== null) {
+                $existing = TicketScan::query()
+                    ->where('device_id', $deviceId)
+                    ->where('client_scan_id', $clientScanId)
+                    ->first();
+
+                if ($existing) {
+                    return [
+                        'success' => true,
+                        'message' => 'Scan already recorded (idempotent replay)',
+                        'result' => $existing->result,
+                        'ticket' => $ticket,
+                        'scan' => $existing,
+                    ];
+                }
+            }
+
+            $outcome = $this->checkinEvaluator->evaluate(
+                new ScanRequest(
+                    ticketPublicId: $ticket->public_id,
+                    sessionId: (int) $ticket->session_id,
+                    mode: ScanMode::OFFLINE_SYNC,
+                    deviceId: $deviceId,
+                    clientScanId: $clientScanId ?? (string) Str::uuid(),
+                    scannedAt: $scannedAt,
+                    deviceAdmitted: $deviceAdmitted,
+                ),
+                $this->snapshot($ticket),
+            );
+
+            $scan = $this->repository->recordScan(
+                $ticket,
+                $deviceId,
+                result: $outcome->result,
+                mode: ScanMode::OFFLINE_SYNC,
+                clientScanId: $clientScanId,
+                metadata: ['bundle_hash' => $bundleHash],
+            );
+
+            if ($outcome->result === ScanOutcome::CONFLICT_REVOKED) {
+                // §44: person is inside, ticket was refunded/revoked/expired —
+                // record the conflict honestly by revoking, never mark `used`.
+                $ticket = $this->repository->revoke($ticket, (string) $outcome->reason);
+            } elseif ($outcome->resultingStatus !== null && $ticket->status !== $outcome->resultingStatus) {
+                $ticket->update([
+                    'status' => $outcome->resultingStatus,
+                    'used_at' => $scannedAt ? \Carbon\Carbon::instance($scannedAt) : now(),
+                ]);
+            }
+
             return [
-                'success' => false,
-                'message' => 'Ticket not found',
-                'reason' => 'TICKET_NOT_FOUND',
+                'success' => $outcome->admits || $outcome->result === ScanOutcome::CONFLICT_REVOKED,
+                'message' => $outcome->reason ?? ('offline sync recorded: ' . $outcome->result),
+                'result' => $outcome->result,
+                'ticket' => $ticket instanceof Ticket ? $ticket->fresh() : $ticket,
+                'scan' => $scan,
             ];
-        }
-
-        // Verify the bundle is valid for this device and session
-        $bundleValid = $this->verifyBundleForDevice($bundleHash, $deviceId, $ticket->inventoryItem->session_id);
-
-        if (!$bundleValid) {
-            return [
-                'success' => false,
-                'message' => 'Invalid bundle for this device/session',
-                'reason' => 'INVALID_BUNDLE',
-            ];
-        }
-
-        // Proceed with normal scan
-        return $this->scan($ticket->id, $ticket->inventoryItem->session_id, $deviceId);
+        });
     }
 
     /**
      * Verify that a bundle hash is valid for a specific device and session.
-     * 
-     * @param string $bundleHash
-     * @param int $deviceId
-     * @param int $sessionId
-     * @return bool
      */
     private function verifyBundleForDevice(string $bundleHash, int $deviceId, int $sessionId): bool
     {
-        // Check if bundle exists and is valid for this device
+        // offline_bundles keys the device column as `checkin_device_id`, and
+        // `expires_at` is DATETIME(6) — comparing against a raw integer or
+        // inventing a `device_id` column failed silently/with SQL errors.
         $bundle = DB::table('offline_bundles')
             ->where('bundle_hash', $bundleHash)
-            ->where('device_id', $deviceId)
+            ->where('checkin_device_id', $deviceId)
+            ->where('session_id', $sessionId)
             ->where('expires_at', '>', now())
             ->first();
 
-        if (!$bundle) {
-            return false;
-        }
-
-        // Verify bundle covers this session
-        return (int) $bundle->session_id === $sessionId;
+        return $bundle !== null;
     }
 
     /**
      * Get scan history for a ticket.
-     * Useful for debugging disputed entries.
-     * 
-     * @param int $ticketId
-     * @return array
      */
     public function getScanHistory(int $ticketId): array
     {
         return TicketScan::query()
             ->where('ticket_id', $ticketId)
-            ->with('device')
             ->orderBy('scanned_at', 'desc')
             ->get()
             ->toArray();
@@ -224,20 +275,13 @@ class TicketScanService
 
     /**
      * Handle concurrent scan scenario where two devices scan same ticket.
-     * Returns which scan was first and rejects the second.
-     * 
-     * This is called when a scan fails due to unique constraint violation.
-     * 
-     * @param int $ticketId
-     * @param int $deviceId
-     * @return array
      */
     public function handleConcurrentScan(int $ticketId, int $deviceId): array
     {
-        // Find the existing scan
         $existingScan = TicketScan::query()
             ->where('ticket_id', $ticketId)
             ->where('device_id', $deviceId)
+            ->orderBy('scanned_at')
             ->first();
 
         if ($existingScan) {
@@ -250,11 +294,35 @@ class TicketScanService
             ];
         }
 
-        // If no scan found, it might be a race condition - retry
         return [
             'success' => false,
             'message' => 'Concurrent scan detected, please retry',
             'reason' => 'CONCURRENT_SCAN',
         ];
+    }
+
+    /**
+     * Build the immutable domain snapshot the evaluator decides on. Only the
+     * fields the decision needs — deliberately no holder data (ТЗ §43/§44).
+     */
+    private function snapshot(Ticket $ticket): TicketSnapshot
+    {
+        $toImmutable = static fn ($dt): ?\DateTimeImmutable => $dt === null
+            ? null
+            : \DateTimeImmutable::createFromInterface($dt);
+
+        return new TicketSnapshot(
+            publicId: $ticket->public_id,
+            status: $ticket->status ?? TicketStateMachine::ISSUED,
+            sessionId: (int) $ticket->session_id,
+            eventId: (int) $ticket->event_id,
+            ticketNumber: (string) $ticket->ticket_number,
+            usedAt: $toImmutable($ticket->used_at),
+            revokedAt: $toImmutable($ticket->revoked_at),
+            cancelledAt: $toImmutable($ticket->cancelled_at),
+            refundedAt: $toImmutable($ticket->refunded_at),
+            expiredAt: $toImmutable($ticket->expired_at),
+            revokedReason: $ticket->revoked_reason,
+        );
     }
 }
