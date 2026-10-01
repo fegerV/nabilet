@@ -254,7 +254,7 @@ Marketplace, multi-organization, White Label, Partner API, Affiliate, cashier, s
 
 ---
 
-## 7. Текущий статус (обновлено 2026-09-30)
+## 7. Текущий статус (обновлено 2026-10-02)
 
 > Детальные статусы по задачам и чек-лист запуска — в [`ROADMAP.md`](ROADMAP.md) (источник истины по продвижению).
 
@@ -268,7 +268,7 @@ Marketplace, multi-organization, White Label, Partner API, Affiliate, cashier, s
 | Этап 4 — Билеты, QR, check-in | ✅ API tickets/QR/checkin; Android Checker — отдельное приложение (`android/`) |
 | Этап 5 — Публичная часть и SEO | ✅ витрина полностью на API; SEO-страницы по slug + JSON-LD; sitemap (events/venues/static) |
 | Этап 6 — Админка | ✅ Vue-админка (Sanctum + роли, CRUD events/sessions/venues/halls/orders); Filament выпит полностью (этап 3 ROADMAP) |
-| Этап 7 — Интеграции | 🟡 в работе: Яндекс Метрика → Директ — сервер и клиентское ядро готовы (коммит `0d8b417e`); остались точки `trackEvent` в витрине, env-переменные, UI настроек (ROADMAP, этап 5) |
+| Этап 7 — Интеграции | 🟡 в работе: Яндекс Метрика → Директ — сервер и клиентское ядро готовы (коммит `0d8b417e`); контракт `GET /api/v1/analytics/metrika/config` описан в `docs/openapi.yaml`; первые точки `trackEvent` проставлены на карте зала (`SeatSelectionPage`: `seatmap_open`, `seat_selected`, `page_view`); остались env-переменные `YANDEX_METRIKA_*`, полные точки воронки (корзина/checkout/purchase), UI настроек (ROADMAP, этап 5) |
 | Этап 8 — Расширение | 🟡 начат: импорт схем из Афиши (`tools/import_yandex_hallplan.py`); каталог площадок ХМАО — предстоит |
 | Этап 9 — Платформа | ⚪ не начат |
 

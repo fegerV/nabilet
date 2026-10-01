@@ -26,7 +26,7 @@ NABILET CORE
 │   ├── Support/         Money, QrSigner, helpers (do_action / apply_filters)
 │   └── Http/Middleware/ request-id, tenancy, CSP, permission, idempotency
 │
-├── app/Modules/       ← 30 модулей (27 включены по умолчанию; отключены abtesting, ai, heatmaps)
+├── app/Modules/       ← 30 модулей с манифестом (27 включены по умолчанию; отключены abtesting, ai, heatmaps)
 │   ├── Organizations/  Auth/  Users/  Localization/
 │   ├── Venues/  HallSchemas/  Events/  Sessions/
 │   ├── Inventory/  Pricing/  Cart/  Orders/
@@ -371,7 +371,7 @@ Payload: `NB1.<ticketId>.<randomToken>.<HMAC-SHA256>`
 | Эквивалентность DDL | консолидированный файл vs сплит 001–010 | **678 колонок и 273 ограничения совпадают** |
 | Матрица конкурентности ТЗ §26 | параллельные клиенты против MySQL | **6 из 6 сценариев PASS** |
 | Усиление инвариантов | 37 проб на нарушение | **все пробелы закрыты, легитимные сценарии не сломаны** |
-| Контракт OpenAPI | `php tools/verify-openapi.php` | **11 из 11 проверок PASS (77 операций, 71 схема)** |
+| Контракт OpenAPI | `php tools/verify-openapi.php` | **все проверки PASS (копия пакета: 98 операций, 100 схем; рабочая копия `docs/openapi.yaml`: 99 операций, 101 схема — добавлена `metrikaConfig`)** |
 | Контракт ≡ схема | `php tools/verify-contract-schema.php` | **28 сущностных схем, 0 нового дрейфа, 4 известных с причиной** |
 | Модели ≡ схема | `php tools/verify-models-schema.php` | **63 модели, 384 поля, 88 известных выдуманных колонок (храповик), 0 новых** |
 
@@ -408,11 +408,11 @@ Payload: `NB1.<ticketId>.<randomToken>.<HMAC-SHA256>`
 
 ## 14. Что дальше
 
-Порядок работ — в [`PLAN.md`](PLAN.md). Ближайшие шаги:
+Порядок работ — в [`PLAN.md`](PLAN.md). Ближайшие шаги (актуализировано 2026-10-02:
+шаги 1–6 выполнены — миграции, модели и guard'ы, hold, платежи с дедупликацией,
+инсталлятор и Vue-редактор схем залов реализованы; детали статусов — в `ROADMAP.md`):
 
-1. `composer install` и запуск миграций на MySQL (закрывает пробел в верификации).
-2. Eloquent-модели и guard'ы неизменяемости `HallSchemaVersion`.
-3. `HoldService` + `PublishSessionInventory` с конкурентным тестом на два одновременных запроса к одному месту.
-4. `PaymentProvider` + `YooKassaProvider` + обработчик вебхука с дедупликацией.
-5. Инсталлятор `/install` и `storage/install.lock`.
-6. Vue 3 + Konva: редактор схем залов.
+1. Синхронизация `docs/openapi.yaml` (рабочая копия опережает пакет на операцию `metrikaConfig`) с `nabilet_core_spec/openapi.yaml` при следующем релизе спеки.
+2. Доработка интеграции Яндекс Метрика → Директ: env-переменные `YANDEX_METRIKA_*`, полные точки воронки, UI настроек (`ROADMAP.md`, этап 5).
+3. Удаление остатков `lib/mock.ts` и релизный деплой-пакет (`ROADMAP.md`, этап 4).
+4. Решения по изоляции арендаторов (§6) и по промокодам/переводам/медиатеке (`REVIEW-spec-bundle.md` §3.10).

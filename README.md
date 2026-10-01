@@ -41,10 +41,14 @@ nabilet_core_spec/
 |---|---|
 | [`docs/PLAN.md`](docs/PLAN.md) | План реализации: 9 этапов, критический путь, риски, DoD |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Архитектура: модули, хуки, слои, мультитенантность, безопасность |
-| [`docs/DATABASE.md`](docs/DATABASE.md) | Модель данных пакета: 56 таблиц, инварианты, политика ON DELETE |
+| [`docs/DATABASE.md`](docs/DATABASE.md) | Модель данных пакета: 64 таблицы, инварианты, политика ON DELETE |
 | [`docs/STATE-MACHINES.md`](docs/STATE-MACHINES.md) | Машины состояний Order / Payment / Ticket / Hold / Event / Session |
-| [`docs/openapi.yaml`](docs/openapi.yaml) | OpenAPI 3.1: 68 путей, 77 операций, 71 схема |
+| [`docs/openapi.yaml`](docs/openapi.yaml) | OpenAPI 3.1 — рабочая копия контракта (82 пути, 99 операций, 101 схема; включает операционные надстройки проекта, например `metrikaConfig`) |
 | [`docs/REVIEW-spec-bundle.md`](docs/REVIEW-spec-bundle.md) | Проверка пакета на реальном MySQL: пробелы, расхождения, пробелы ТЗ |
+| [`docs/ROADMAP.md`](docs/ROADMAP.md) | Статусы этапов реализации — источник истины по продвижению |
+| [`docs/LAUNCH-READINESS.md`](docs/LAUNCH-READINESS.md) | Готовность к запуску: что проверено, чего не хватает |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) · [`docs/INTERNAL_MODULES.md`](docs/INTERNAL_MODULES.md) | Архитектура и внутренние модули |
+| [`docs/TESTING_GUIDE.md`](docs/TESTING_GUIDE.md) · [`docs/UI-DESIGN.md`](docs/UI-DESIGN.md) · [`docs/MOBILE_OPTIMIZATION.md`](docs/MOBILE_OPTIMIZATION.md) | Практические руководства |
 
 ---
 
@@ -53,13 +57,12 @@ nabilet_core_spec/
 ```
 nabilet/
 ├── app/Core/            ядро: модули, хуки, ошибки, state machines, tenancy, Money, QrSigner
-├── app/Modules/         30 модулей (27 включены), каждый с module.json
+├── app/Modules/         34 каталога модулей (30 с module.json, 27 включены; отключены abtesting, ai, heatmaps)
 ├── bootstrap/           сборка приложения, порядок middleware
 ├── config/              конфигурация ядра
 ├── database/migrations/ миграции сессии 1 — УСТАРЕЛИ, см. README внутри
 ├── nabilet_core_spec/   пакет: источник истины по DDL и контрактам
 ├── docs/                проектная документация
-├── plugins/             сторонние расширения
 ├── tests/               тесты ядра (без зависимостей)
 ├── tools/               проверки: lint, модули, схема, OpenAPI
 └── composer.json
@@ -220,7 +223,7 @@ CHECK-ограничения (`available_quantity BETWEEN 0 AND capacity`). Пр
 сумма частей равна целому.
 
 **Мультитенантность fail-closed — но схема пакета её ослабляет.** Запрос без контекста
-организации бросает исключение. Однако `organization_id` есть лишь у 12 из 56 таблиц,
+организации бросает исключение. Однако `organization_id` есть лишь у 16 из 64 таблиц,
 поэтому скоуп для билетов и платежей требует JOIN и не подставляется автоматически.
 Это главный открытый риск — см. [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §6.
 
@@ -249,7 +252,7 @@ add_filter('ticket.price', fn (int $price) => $price + 300, priority: 20);
 
 ---
 
-## Статус (обновлено 2026-09-30)
+## Статус (обновлено 2026-10-02)
 
 > Источник истины по этапам и чек-листу запуска — [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
@@ -259,13 +262,15 @@ add_filter('ticket.price', fn (int $price) => $price + 300, priority: 20);
 | Схема пакета (64 таблицы, 35 CHECK, 1 триггер) | ✅ проверена на MySQL 8.4.11 |
 | Матрица конкурентности ТЗ §26 | ✅ 6 из 6 сценариев |
 | API-контракт пакета (81 путь, 98 операций) | ✅ описан и проверен; реализация ~30 модулей в `app/Modules/` |
+| API-контракт проекта (`docs/openapi.yaml`, +`metrikaConfig`) | ✅ опережает пакет на одну операцию; синхронизация в пакет — при следующем релизе спеки |
 | Laravel-миграции | 🟡 пишутся по ходу фич (не полная схема пакета ещё) |
 | Инсталлятор, сервисы, Eloquent-модели | ✅ реализованы |
 | Редактор схем залов (HallEditor на Vue, импорт из Яндекс.Афиши, генерация инвентаря) | ✅ готово; площадки Сургута залиты |
 | Commerce: корзина → заказ → оплата → билеты/QR/check-in | ✅ через API |
 | Публичная часть (витрина на API, SEO по slug, JSON-LD, sitemap) | ✅ готово |
 | Админка | ✅ Vue-админка (Sanctum + роли); Filament удалён полностью |
-| Интеграции: Яндекс Метрика → Директ | 🟡 сервер + клиентское ядро готовы; точки `trackEvent`, env, UI настроек — в работе (ROADMAP, этап 5) |
+| Остаточные моки фронта (`mock.ts`: `AdminDashboardPage.vue`, `TicketsPage.vue`) | 🟡 убрать на этапе 4 (ROADMAP) |
+| Интеграции: Яндекс Метрика → Директ | 🟡 сервер + клиентское ядро готовы (контракт `metrikaConfig` в `docs/openapi.yaml`); точки `trackEvent`, env, UI настроек — в работе (ROADMAP, этап 5) |
 | Чистка моков, релизный деплой-пакет | ⚪ предстоят (ROADMAP, этап 4) |
 | Решение по промокодам, переводам, медиатеке | ⚪ требуется — см. REVIEW §3.10 |
 | Решение по изоляции арендаторов | ⚪ требуется — см. ARCHITECTURE §6 |
