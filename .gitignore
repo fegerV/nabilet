@@ -1,1 +1,6 @@
-(empty)
+# Logs
+storage/logs/*.log
+
+# Laravel storage generated files
+/storage/framework/sessions/*
+!/storage/framework/sessions/.gitkeep
