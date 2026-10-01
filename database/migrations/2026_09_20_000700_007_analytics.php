@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 /**
@@ -119,8 +120,11 @@ return new class extends Migration
             // (page_url(255), occurred_at). A full-width index on VARCHAR(768) exceeds
             // InnoDB's 3072-byte key limit under utf8mb4 (error 1071), so the prefix
             // length from the spec is mandatory here.
-            $table->index(["page_url", "occurred_at"], "idx_heatmap_page_time", ['lengths' => [255, null]]);
+            // QA-ENV WORKAROUND: MariaDB 10.11 + Laravel 13 grammar does not support the
+            // 'lengths' index option (Array to string conversion in MySqlGrammar::compileKey).
+            // Equivalent raw DDL with prefix length per spec migrations.sql:863.
         });
+        DB::statement('CREATE INDEX IF NOT EXISTS idx_heatmap_page_time ON heatmap_events (page_url(255), occurred_at)');
         }
 
         if (!Schema::hasTable("embed_domains")) {
