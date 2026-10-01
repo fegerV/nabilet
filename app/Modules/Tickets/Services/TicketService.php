@@ -7,7 +7,7 @@ namespace Nabilet\Modules\Tickets\Services;
 use Nabilet\Modules\Tickets\Models\Ticket;
 use Nabilet\Modules\Tickets\Repositories\TicketRepository;
 use Nabilet\Modules\Tickets\Domain\TicketIssuance;
-use Nabilet\Modules\Tickets\Domain\CheckinEvaluator;
+use Nabilet\Modules\Tickets\StateMachines\TicketStateMachine;
 use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Inventory\Models\InventoryItem;
 use Nabilet\Core\Support\QrSigner;
@@ -16,10 +16,17 @@ use Illuminate\Support\Str;
 
 class TicketService
 {
+    // NB: the old constructor injected `CheckinEvaluator` — a PURE domain class
+    // whose real contract is evaluate(ScanRequest, ?TicketSnapshot). Nothing in
+    // this service ever called it correctly (it passed a Ticket model and got a
+    // TypeError), and because Laravel's container cannot build that dependency
+    // graph cleanly through this service, `app(TicketService::class)` from
+    // PaymentService crashed and NO tickets were issued after payment. Check-in
+    // decisions live in TicketScanService, which is the only place allowed to
+    // talk to the evaluator.
     public function __construct(
         protected TicketRepository $repository,
-        protected TicketIssuance $issuance,
-        protected CheckinEvaluator $checkinEvaluator
+        protected TicketIssuance $issuance
     ) {}
 
     /**
@@ -106,53 +113,57 @@ class TicketService
         return new QrSigner($secret);
     }
 
-    public function findTicket(int $ticketId, int $organizationId = null): ?Ticket
+    public function findTicket(int $ticketId, ?int $organizationId = null): ?Ticket
     {
         return $this->repository->find($ticketId, $organizationId);
     }
 
-    public function findByPublicId(string $publicId, int $organizationId = null): ?Ticket
+    public function findByPublicId(string $publicId, ?int $organizationId = null): ?Ticket
     {
         return $this->repository->findByPublicId($publicId, $organizationId);
     }
 
-    public function checkInTicket(Ticket $ticket, int $checkinDeviceId, string $location = null): array
+    /**
+     * Check-in through the service's own entry point. The decision belongs to
+     * the pure CheckinEvaluator (evaluate(ScanRequest, ?TicketSnapshot)) and is
+     * owned by TicketScanService; this method delegates so that callers of
+     * TicketService keep working without re-implementing the door rules here.
+     */
+    public function checkInTicket(Ticket $ticket, int $checkinDeviceId, ?string $location = null): array
     {
-        return DB::transaction(function () use ($ticket, $checkinDeviceId, $location) {
-            // Evaluate if check-in is allowed
-            $evaluation = $this->checkinEvaluator->evaluate($ticket, $checkinDeviceId, $location);
-
-            if (!$evaluation->allowed) {
-                return [
-                    'success' => false,
-                    'reason' => $evaluation->reason,
-                    'ticket' => $ticket,
-                ];
-            }
-
-            // Record scan
-            $scan = $this->repository->recordScan($ticket, $checkinDeviceId, $location);
-
-            // Update ticket status on first successful check-in
-            if ($ticket->status === 'issued') {
-                $ticket->update(['status' => 'checked_in']);
-            }
-
-            return [
-                'success' => true,
-                'scan' => $scan,
-                'ticket' => $ticket->fresh(),
-            ];
-        });
+        return app(\Nabilet\Modules\Tickets\Services\TicketScanService::class)
+            ->scan((int) $ticket->id, (int) $ticket->session_id, $checkinDeviceId);
     }
 
-    public function invalidateTicket(Ticket $ticket, string $reason): Ticket
+    /**
+     * Revoke a ticket (§44). Spec statuses: issued|used|cancelled|refunded|
+     * expired|revoked — 'invalidated' does not exist in ck_tickets_status, and
+     * the old code wrote non-existent columns invalidated_at/
+     * invalidation_reason (SQLSTATE 42S22 on every call).
+     */
+    public function revokeTicket(Ticket $ticket, string $reason): Ticket
     {
-        if ($ticket->status === 'invalidated') {
-            throw new \RuntimeException('Ticket is already invalidated');
+        if ($ticket->status === TicketStateMachine::REVOKED) {
+            throw new \RuntimeException('Ticket is already revoked');
         }
 
-        return $this->repository->invalidate($ticket, $reason);
+        // issued -> revoked and used -> revoked are the only legal paths into
+        // `revoked` per TicketStateMachine; terminal states stay terminal.
+        $allowed = TicketStateMachine::make()->can($ticket->status, TicketStateMachine::REVOKED);
+        if ($allowed === false) {
+            throw new \RuntimeException(sprintf(
+                'Cannot revoke a ticket in status "%s"',
+                (string) $ticket->status
+            ));
+        }
+
+        return $this->repository->revoke($ticket, $reason);
+    }
+
+    /** Back-compatible alias; prefer revokeTicket(). */
+    public function invalidateTicket(Ticket $ticket, string $reason): Ticket
+    {
+        return $this->revokeTicket($ticket, $reason);
     }
 
     public function getTicketsByOrder(int $orderId): array
