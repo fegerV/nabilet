@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Inventory\Services;
 
+use Nabilet\Core\Errors\NotFoundError;
+use Nabilet\Modules\Cart\Models\Cart;
+use Nabilet\Modules\Cart\Models\CartItem;
 use Nabilet\Modules\Inventory\Models\InventoryItem;
 use Nabilet\Modules\Inventory\Repositories\InventoryItemRepository;
 use Nabilet\Modules\Sessions\Models\Session;
@@ -196,6 +199,203 @@ class InventoryService
 
                         return $total;
         });
+    }
+
+    /**
+     * Admin-обновление цен по рядам БЕЗ регенерации геометрии.
+     *
+     * Проблема, которую это решает: цены живут в inventory_items.price_amount и
+     * проставляются только в generateFromSchema(), а роуты Inventory — только GET.
+     * Единственный способ менять цену был — пересоздать инвентарь, что убивает
+     * холды (seat_holds) и проданные билеты (status='sold').
+     *
+     * Правила:
+     *   - обновляем price_amount только у СВОБОДНЫХ мест: available_quantity = capacity
+     *     (для seat capacity=1, для standing capacity=N — «не трогать занятые места»);
+     *   - холды и sold-позиции остаются со старой ценой — контракт покупки не меняется
+     *     задним числом;
+     *   - hall_rows / standing_zones обновляем всегда: следующий generateFromSchema()
+     *     возьмёт новую цену как источник истины ряда;
+     *   - cart_items открытых (active) корзин синхронизируются на новую цену и
+     *     пересчитываются total_price / carts.total_amount, чтобы покупатель платил
+     *     ровно то, что видит витрина.
+     *
+     * Всё в одном DB::transaction — либо весь прайс-лист применён, либо ничего.
+     *
+     * @param  int   $sessionId  числовой id или public_id сессии (как в CartService)
+     * @param  array<int, array{row_id?: int|string, standing_zone_id?: int|string, price_amount: int|string}>  $rows
+     * @return array{session_id:int, rows_updated:int, items_updated:int, cart_items_updated:int, carts_recalculated:int}
+     */
+    public function updateRowPrices(int|string $sessionId, array $rows): array
+    {
+        $session = Session::findOrFailBySessionId($sessionId);
+
+        return DB::transaction(function () use ($session, $rows): array {
+            $now = now();
+            $rowsUpdated = 0;
+            $itemsUpdated = 0;
+            $cartItemsUpdated = 0;
+            $affectedItemIds = [];
+
+            foreach ($rows as $rowData) {
+                $price = (int) $rowData['price_amount'];
+
+                if (! empty($rowData['standing_zone_id'])) {
+                    $zoneId = (int) $rowData['standing_zone_id'];
+
+                    // Зона должна принадлежать этой сессии (через её инвентарь) —
+                    // иначе админ одного города правил бы цены чужого зала.
+                    $owns = InventoryItem::query()
+                        ->where('session_id', $session->id)
+                        ->where('standing_zone_id', $zoneId)
+                        ->exists();
+                    if (! $owns) {
+                        throw new NotFoundError('Standing zone', $zoneId, [
+                            'reason' => 'зона не относится к сессии ' . $session->id,
+                        ]);
+                    }
+
+                    StandingZone::query()
+                        ->whereKey($zoneId)
+                        ->update(['price_amount' => $price, 'updated_at' => $now]);
+                    $rowsUpdated++;
+
+                    $touched = InventoryItem::query()
+                        ->where('session_id', $session->id)
+                        ->where('standing_zone_id', $zoneId)
+                        ->whereColumn('available_quantity', 'capacity')
+                        ->pluck('id');
+                    $affectedItemIds = array_merge($affectedItemIds, $touched->all());
+
+                    $itemsUpdated += InventoryItem::query()
+                        ->where('session_id', $session->id)
+                        ->where('standing_zone_id', $zoneId)
+                        ->whereColumn('available_quantity', 'capacity')
+                        ->update(['price_amount' => $price, 'updated_at' => $now]);
+
+                    continue;
+                }
+
+                $rowId = (int) $rowData['row_id'];
+
+                $row = HallRow::find($rowId);
+                if ($row === null) {
+                    throw new NotFoundError('Hall row', $rowId);
+                }
+                // Ряд должен быть из схемы, по которой генерирован инвентарь сессии.
+                $inSession = Seat::query()
+                    ->where('row_id', $rowId)
+                    ->whereIn('id', function ($q) use ($session): void {
+                        $q->select('seat_id')
+                            ->from('inventory_items')
+                            ->where('session_id', $session->id)
+                            ->whereNotNull('seat_id');
+                    })
+                    ->exists();
+                if (! $inSession) {
+                    throw new NotFoundError('Hall row', $rowId, [
+                        'reason' => 'ряд не относится к сессии ' . $session->id,
+                    ]);
+                }
+
+                HallRow::query()
+                    ->whereKey($rowId)
+                    ->update(['price_amount' => $price, 'currency' => 'RUB', 'updated_at' => $now]);
+                $rowsUpdated++;
+
+                $touched = InventoryItem::query()
+                    ->where('session_id', $session->id)
+                    ->whereIn('seat_id', function ($q) use ($rowId): void {
+                        $q->select('id')->from('seats')->where('row_id', $rowId);
+                    })
+                    ->whereColumn('available_quantity', 'capacity')
+                    ->pluck('id');
+                $affectedItemIds = array_merge($affectedItemIds, $touched->all());
+
+                $itemsUpdated += InventoryItem::query()
+                    ->where('session_id', $session->id)
+                    ->whereIn('seat_id', function ($q) use ($rowId): void {
+                        $q->select('id')->from('seats')->where('row_id', $rowId);
+                    })
+                    ->whereColumn('available_quantity', 'capacity')
+                    ->update(['price_amount' => $price, 'updated_at' => $now]);
+            }
+
+            // Синхронизация ОТКРЫТЫХ корзин (status='active'): unit_price и
+            // total_price = новая цена × количество. Конвертированные/закрытые
+            // корзины не трогаем — заказ уже зафиксировал цену.
+            $cartItemsUpdated = $this->syncOpenCartItems($affectedItemIds, $now);
+            $cartsRecalculated = $this->recalculateAffectedCarts();
+
+            return [
+                'session_id' => (int) $session->id,
+                'rows_updated' => $rowsUpdated,
+                'items_updated' => $itemsUpdated,
+                'cart_items_updated' => $cartItemsUpdated,
+                'carts_recalculated' => $cartsRecalculated,
+            ];
+        });
+    }
+
+    /**
+     * Обновляет unit_price/total_price cart_items, ссылающихся на переоцененные
+     * позиции, но только внутри активных корзин.
+     *
+     * @param  list<int>  $inventoryItemIds
+     */
+    protected function syncOpenCartItems(array $inventoryItemIds, $now): int
+    {
+        if ($inventoryItemIds === []) {
+            return 0;
+        }
+
+        $updated = 0;
+        $items = CartItem::query()
+            ->whereIn('inventory_item_id', $inventoryItemIds)
+            ->whereHas('cart', fn ($q) => $q->where('status', 'active'))
+            ->with('inventoryItem:id,price_amount')
+            ->get();
+
+        foreach ($items as $item) {
+            $newUnit = (int) ($item->inventoryItem?->price_amount ?? $item->unit_price);
+            $newTotal = $newUnit * (int) $item->quantity;
+
+            if ((int) $item->unit_price === $newUnit && (int) $item->total_price === $newTotal) {
+                continue;
+            }
+
+            $item->forceFill([
+                'unit_price' => $newUnit,
+                'total_price' => $newTotal,
+                'updated_at' => $now,
+            ])->save();
+            $updated++;
+        }
+
+        return $updated;
+    }
+
+    /**
+     * Пересчёт carts.total_amount по всем активным корзинам (та же формула, что
+     * в CartService::recalculateCartTotal — сумма total_price позиций).
+     */
+    protected function recalculateAffectedCarts(): int
+    {
+        $carts = Cart::query()->where('status', 'active')->get();
+        $recalculated = 0;
+
+        foreach ($carts as $cart) {
+            $total = (int) CartItem::query()
+                ->where('cart_id', $cart->id)
+                ->sum('total_price');
+
+            if ((int) ($cart->total_amount ?? 0) !== $total) {
+                $cart->forceFill(['total_amount' => (string) $total])->save();
+                $recalculated++;
+            }
+        }
+
+        return $recalculated;
     }
 
     public function getAvailableCount(Session $session): int

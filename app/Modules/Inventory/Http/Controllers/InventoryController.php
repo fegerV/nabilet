@@ -4,13 +4,18 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Inventory\Http\Controllers;
 
+use Nabilet\Modules\Inventory\Http\Requests\UpdateRowPricesRequest;
 use Nabilet\Modules\Inventory\Models\InventoryItem;
+use Nabilet\Modules\Inventory\Services\InventoryService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 
 class InventoryController extends Controller
 {
+    public function __construct(
+        private readonly InventoryService $inventoryService
+    ) {}
     public function index(Request $request): JsonResponse
     {
         $filters = $request->only(['session_id', 'status', 'type']);
@@ -75,6 +80,26 @@ class InventoryController extends Controller
                 'sold' => $sold,
                 'total' => $available + $held + $sold,
             ],
+        ]);
+    }
+
+    /**
+     * PATCH /inventory/sessions/{sessionId}/prices — admin-only.
+     *
+     * Обновляет цены рядов без регенерации геометрии: inventory_items.price_amount
+     * меняется только у свободных позиций (available_quantity = capacity), холды и
+     * проданные билеты остаются нетронутыми; открытые корзины синхронизируются.
+     * Полная семантика — InventoryService::updateRowPrices().
+     */
+    public function updatePrices(UpdateRowPricesRequest $request, string $sessionId): JsonResponse
+    {
+        $result = $this->inventoryService->updateRowPrices(
+            is_numeric($sessionId) ? (int) $sessionId : $sessionId,
+            $request->validated()['rows']
+        );
+
+        return response()->json([
+            'data' => $result,
         ]);
     }
 }
