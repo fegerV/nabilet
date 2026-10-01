@@ -155,6 +155,26 @@ class CartService
                 'total_price' => $this->calculateTotalPrice((string) $inventoryItem->price_amount, $quantity),
             ]);
 
+            // A13: холд материализуется в seat_holds. Раньше записи создавал
+            // только legacy-путь, и PaymentService::validateHoldsForOrder() не
+            // находил ни одного холда — «защита» от оплаты после истечения была
+            // мертва. Теперь у каждого холда есть запись с TTL корзины.
+            \Nabilet\Modules\Orders\Models\SeatHold::create([
+                'public_id' => (string) \Illuminate\Support\Str::ulid()->toBase32(),
+                'inventory_item_id' => $inventoryItemId,
+                'session_id' => (int) $inventoryItem->session_id,
+                'cart_id' => $cart->id,
+                'quantity' => $quantity,
+                'expires_at' => $cart->expires_at,
+            ]);
+
+            // Статус места: пока есть свободные — held, всё выкуплено в корзинах — sold_out.
+            if ((int) $inventoryItem->available_quantity === 0) {
+                $inventoryItem->update(['status' => 'sold_out']);
+            } elseif ($inventoryItem->status === 'available') {
+                $inventoryItem->update(['status' => 'held']);
+            }
+
             $this->recalculateCartTotal($cart);
 
             return $cartItem;
@@ -196,10 +216,21 @@ class CartService
 
             if ($inventoryItem) {
                 $inventoryItem->increment('available_quantity');
-                if ($inventoryItem->status === 'held') {
+                if ($inventoryItem->status === 'sold_out') {
+                    // Есть свободные — место снова можно держать в корзинах.
+                    $inventoryItem->update(['status' => 'available']);
+                } elseif ($inventoryItem->status === 'held' && (int) $inventoryItem->available_quantity > 0) {
                     $inventoryItem->update(['status' => 'available']);
                 }
             }
+
+            // Снять соответствующий seat_hold (иначе sweeper вернёт quantity повторно).
+            \Nabilet\Modules\Orders\Models\SeatHold::query()
+                ->where('cart_id', $cart->id)
+                ->where('inventory_item_id', $cartItem->inventory_item_id)
+                ->whereNull('converted_at')
+                ->whereNull('released_at')
+                ->update(['released_at' => CarbonImmutable::now()]);
 
             $this->recalculateCartTotal($cart);
 
@@ -236,6 +267,10 @@ class CartService
             // Check cart expiration
             if ($cart->expires_at < CarbonImmutable::now()) {
                 $cart->update(['status' => 'abandoned']);
+
+                // A13: истёкшая корзина освобождает инвентарь немедленно —
+                // иначе места зависают в held/sold до работы sweeper'а.
+                $this->releaseCartInventory($cart);
 
                 throw self::cartExpired();
             }
@@ -278,14 +313,21 @@ class CartService
             // Mark cart as converted
             $cart->update(['status' => 'converted']);
 
-            // Finalize inventory: the seats this cart held are now sold.
-            // available_quantity stays 0 (already decremented by addItem); we
-            // flip status so they render as sold and cannot be re-held.
+            // A6 (план b): до оплаты места НЕ помечаются 'sold'. sold — это
+            // подтверждённая продажа (InventoryItemStateMachine: held → sold на
+            // подтверждении платежа). Промежуточное состояние — available_quantity
+            // уже удержан холдами; статус остаётся held/sold_out. Это снимает
+            // дефект «места сгорают при неоплате»: неоплаченные места никогда не
+            // зависают в sold, а освобождаются sweeper'ом / checkout-expiry.
             foreach ($cart->items as $item) {
-                if ($item->inventoryItem !== null) {
-                    $item->inventoryItem->update(['status' => 'sold']);
+                if ($item->inventoryItem !== null && $item->inventoryItem->status === 'available') {
+                    $item->inventoryItem->update(['status' => 'held']);
                 }
             }
+
+            // Холды корзины переживают checkout: converted_at ставится только на
+            // payment.succeeded (markHoldsAsConverted). Если платёж так и не
+            // прошёл, заказ заберёт orders:expire-sweeper и вернёт места.
 
             // Create the order: checkout succeeded, seats are sold, cart is
             // converted — persist the sale so it appears in the admin orders list.
@@ -391,6 +433,45 @@ class CartService
             'The cart has expired. Please select your seats again.',
             'CART_EXPIRED'
         );
+    }
+
+    /**
+     * Освободить инвентарь корзины: вернуть available_quantity по каждому
+     * unsold-предмету и снять активные seat_hold'ы. Идемпотентно: холды, уже
+     * конвертированные (converted_at) или снятые (released_at), не трогаются,
+     * поэтому повторный вызов не может «вернуть» место дважды.
+     *
+     * Используется checkout при CART_EXPIRED и OrderSweeper для истёкших заказов.
+     */
+    public function releaseCartInventory(Cart $cart): void
+    {
+        // Один источник истины — seat_holds: они создаются на addItem с точной
+        // quantity каждого места. Возврат делаем строго по ещё не снятым холдам,
+        // поэтому двойного возврата нет даже если корзина чистилась частично.
+        $holds = \Nabilet\Modules\Orders\Models\SeatHold::query()
+            ->where('cart_id', $cart->id)
+            ->whereNull('converted_at')
+            ->whereNull('released_at')
+            ->get();
+
+        foreach ($holds as $hold) {
+            $inventoryItem = \Nabilet\Modules\Inventory\Models\InventoryItem::query()
+                ->where('id', $hold->inventory_item_id)
+                ->first();
+
+            // Место уже оплачено (sold) — возвращать нельзя.
+            if ($inventoryItem !== null && $inventoryItem->status !== 'sold') {
+                $inventoryItem->increment('available_quantity', (int) $hold->quantity);
+
+                if ((int) $inventoryItem->available_quantity >= (int) $inventoryItem->capacity) {
+                    $inventoryItem->update(['status' => 'available']);
+                } elseif ($inventoryItem->status === 'sold_out') {
+                    $inventoryItem->update(['status' => 'held']);
+                }
+            }
+
+            $hold->update(['released_at' => CarbonImmutable::now()]);
+        }
     }
 
     /**

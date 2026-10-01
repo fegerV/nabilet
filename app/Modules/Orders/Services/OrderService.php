@@ -174,10 +174,32 @@ class OrderService
                 );
             }
 
-            // Release inventory
+            // Release inventory: available_quantity += quantity (CHECK
+            // ck_inventory_available_qty допускает возврат ровно на удержанное),
+            // статус места сбрасывается с sold/sold_out/held на available, если
+            // после возврата есть свободные (план b: до оплаты status может быть
+            // held/sold_out — после отмены место обязано вернуться в продажу).
             foreach ($order->items as $item) {
-                $item->inventoryItem->increment('available_quantity', $item->quantity);
+                $inventoryItem = $item->inventoryItem;
+
+                if ($inventoryItem === null) {
+                    continue;
+                }
+
+                $inventoryItem->increment('available_quantity', $item->quantity);
+
+                if ((int) $inventoryItem->available_quantity > 0
+                    && in_array($inventoryItem->status, ['sold', 'sold_out', 'held'], true)) {
+                    $inventoryItem->update(['status' => 'available']);
+                }
             }
+
+            // Снять активные холды корзины — иначе sweeper вернёт quantity повторно.
+            \Nabilet\Modules\Orders\Models\SeatHold::query()
+                ->where('cart_id', $order->cart_id ?? 0)
+                ->whereNull('converted_at')
+                ->whereNull('released_at')
+                ->update(['released_at' => now()]);
 
             $order = $this->repository->cancel($order);
 
