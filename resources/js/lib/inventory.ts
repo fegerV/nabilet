@@ -143,7 +143,24 @@ export async function fetchCart(sessionId: number | string): Promise<ServerCart 
   return (res?.data ?? null) as ServerCart | null
 }
 
-/** Оформить заказ (завершает холд → оплата). */
-export async function checkoutSession(sessionId: number | string): Promise<{ data: unknown }> {
-  return send<unknown>('/cart/checkout', 'POST', { session_id: Number(sessionId) })
+/** Оформить заказ (завершает холд → оплата). POST /cart/checkout → { data: CheckoutResult }. */
+export interface CheckoutResult {
+  cart_id: number | string
+  order_id: string
+  session_id: number | string
+  total_amount: number
+  currency: string
+  items: Array<{ inventory_item_id: number; quantity: number; unit_price: number; total_price: number }>
+}
+
+/**
+ * Оформить заказ: сервер создаёт Order из удержанных мест корзины.
+ * Контактные данные (ТЗ §66) обязательны для e-mail с билетом — сервер их
+ * валидирует (customer_email required), поэтому шлём то, что ввёл покупатель.
+ */
+export async function checkoutSession(
+  sessionId: number | string,
+  customer: { customer_name?: string; customer_email: string; customer_phone?: string },
+): Promise<{ data: CheckoutResult }> {
+  return send<CheckoutResult>('/cart/checkout', 'POST', { session_id: Number(sessionId), ...customer })
 }

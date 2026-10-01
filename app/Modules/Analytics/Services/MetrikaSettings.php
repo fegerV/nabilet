@@ -71,6 +71,28 @@ class MetrikaSettings
         ];
     }
 
+    /**
+     * Сохранить переопределение в таблице `metrika_settings` (без деплоя).
+     *
+     * Значения JSON-кодируются (контракт миграции 2026_09_30_000200). null —
+     * удалить переопределение и вернуться к значению из config/env.
+     *
+     * @param mixed $value
+     */
+    public function set(string $key, mixed $value): void
+    {
+        if ($value === null) {
+            \DB::table(self::TABLE)->where('key', $key)->delete();
+
+            return;
+        }
+
+        \DB::table(self::TABLE)->updateOrInsert(
+            ['key' => $key],
+            ['value' => json_encode($value, JSON_UNESCAPED_UNICODE), 'updated_at' => now()],
+        );
+    }
+
     /** @return array<string, mixed> пустой массив, если таблица ещё не создана */
     private function fromTable(): array
     {
