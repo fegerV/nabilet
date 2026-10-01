@@ -44,10 +44,55 @@ class StoreEventRequest extends FormRequest
             'min_price' => ['nullable', 'integer', 'min:0'],
             'max_price' => ['nullable', 'integer', 'min:0'],
             'currency' => ['required', 'size:3'],
+            // FIX (posters not saved): the UI and API send `image_url`, but the
+            // events table column is `poster`. Accept both here and normalize to
+            // `poster` in passedValidation() so the value actually persists.
             'image_url' => ['nullable', 'url', 'max:2048'],
+            'poster' => ['nullable', 'url', 'max:2048'],
             'seo_title' => ['nullable', 'string', 'max:255'],
             'seo_description' => ['nullable', 'string', 'max:500'],
             'metadata' => ['nullable', 'array'],
         ];
+    }
+
+    /**
+     * Normalize the poster field: the form sends `image_url`, the DB column is
+     * `poster`. Without this mapping the concert poster was silently dropped.
+     *
+     * Validator::validated() re-reads data from the LIVE validation data source,
+     * so mutating the input here (before the controller calls validated()) is
+     * what actually changes the payload that reaches EventService.
+     */
+    public function passedValidation(): void
+    {
+        $this->normalizePosterMapping();
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function validated($key = null, $default = null)
+    {
+        // Belt and braces: if a subclass/pipe skipped passedValidation(),
+        // still map image_url → poster at read time.
+        $this->normalizePosterMapping();
+
+        return parent::validated($key, $default);
+    }
+
+    protected function normalizePosterMapping(): void
+    {
+        $url = $this->input('image_url', '__missing__');
+
+        if ($url === '__missing__') {
+            return;
+        }
+
+        $this->request->remove('image_url');
+        $this->getInputSource()->remove('image_url');
+
+        if ($url !== null && $this->input('poster') === null) {
+            $this->merge(['poster' => $url]);
+        }
     }
 }
