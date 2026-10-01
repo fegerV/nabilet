@@ -1,10 +1,1 @@
-# Environment files
-.env
-
-# Laravel storage and cache artifacts
-storage/framework/views/
-bootstrap/cache/packages.php
-bootstrap/cache/services.php
-
-# Logs
-storage/logs/*.log
+(empty)

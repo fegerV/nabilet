@@ -6,8 +6,10 @@ namespace Nabilet\Modules\Cart\Services;
 
 use Nabilet\Core\Errors\ConflictError;
 use Nabilet\Core\Errors\DomainRuleViolation;
+use Nabilet\Core\Errors\ValidationError;
 use Nabilet\Modules\Cart\Models\Cart;
 use Nabilet\Modules\Cart\Models\CartItem;
+use Nabilet\Modules\Cart\Support\CartToken;
 use Nabilet\Modules\Inventory\Models\InventoryItem;
 use Nabilet\Modules\Sessions\Models\Session;
 use Illuminate\Support\Facades\DB;
@@ -32,13 +34,17 @@ use Carbon\CarbonImmutable;
 class CartService
 {
     /**
-     * Get or create a cart for the given session.
+     * Get or create a cart for the given session, owned by the buyer token (D5).
+     *
+     * `$token` is mandatory: a cart without an owner would be reachable by every
+     * browser sharing the session — exactly the bug D5 was introduced to fix.
      */
-    public function getOrCreateCart(string $sessionId): Cart
+    public function getOrCreateCart(string $sessionId, string $token): Cart
     {
         $cart = Cart::query()
             ->where('session_id', $sessionId)
             ->where('status', 'active')
+            ->where('cart_token', $token)
             ->first();
 
         if (!$cart) {
@@ -46,6 +52,7 @@ class CartService
 
             $cart = Cart::create([
                 'session_id' => $sessionId,
+                'cart_token' => $token,
                 'user_id' => $session->user_id ?? null,
                 'status' => 'active',
                 // C1: единый источник истины для срока холда — конфиг
@@ -79,11 +86,20 @@ class CartService
      * @throws ConflictError          cart expired, or inventory exhausted
      * @throws \Illuminate\Database\Eloquent\ModelNotFoundException session or item missing
      */
-    public function addItem(string $sessionId, int $inventoryItemId, int $quantity = 1): CartItem
+    public function addItem(string $sessionId, int $inventoryItemId, int $quantity = 1, ?string $token = null): CartItem
     {
-        return DB::transaction(function () use ($sessionId, $inventoryItemId, $quantity) {
-            // Get or create cart
-            $cart = $this->getOrCreateCart($sessionId);
+        // D5: корзина принадлежит покупателю (токену), а не сеансу.
+        // Контроллер гарантирует токен; прямой вызов службы без него —
+        // ошибка вызывающего кода, а не данные клиента: ответ 422 по полю cart_token.
+        $token = trim((string) $token);
+
+        if ($token === '') {
+            throw new ValidationError(['cart_token' => ['The cart token is required.']], 'Cart token is required.');
+        }
+
+        return DB::transaction(function () use ($sessionId, $inventoryItemId, $quantity, $token) {
+            // Get or create cart for THIS buyer (D5)
+            $cart = $this->getOrCreateCart($sessionId, $token);
 
             // Check cart expiration
             if ($cart->expires_at < CarbonImmutable::now()) {
@@ -150,12 +166,20 @@ class CartService
      *
      * @throws \Illuminate\Database\Eloquent\ModelNotFoundException cart or item missing
      */
-    public function removeItem(string $sessionId, int $itemId): bool
+    public function removeItem(string $sessionId, int $itemId, ?string $token = null): bool
     {
-        return DB::transaction(function () use ($sessionId, $itemId) {
+        // D5: удалить предмет можно только из корзины того же покупателя.
+        $token = trim((string) $token);
+
+        if ($token === '') {
+            throw new ValidationError(['cart_token' => ['The cart token is required.']], 'Cart token is required.');
+        }
+
+        return DB::transaction(function () use ($sessionId, $itemId, $token) {
             $cart = Cart::query()
                 ->where('session_id', $sessionId)
                 ->where('status', 'active')
+                ->where('cart_token', $token)
                 ->firstOrFail();
 
             $cartItem = CartItem::query()
@@ -191,12 +215,20 @@ class CartService
      * @throws DomainRuleViolation    cart is empty
      * @throws \Illuminate\Database\Eloquent\ModelNotFoundException cart missing
      */
-    public function checkout(string $sessionId): array
+    public function checkout(string $sessionId, array $customer = [], ?string $token = null): array
     {
-        return DB::transaction(function () use ($sessionId) {
+        // D5: оформить можно только корзину того же покупателя.
+        $token = trim((string) $token);
+
+        if ($token === '') {
+            throw new ValidationError(['cart_token' => ['The cart token is required.']], 'Cart token is required.');
+        }
+
+        return DB::transaction(function () use ($sessionId, $customer, $token) {
             $cart = Cart::query()
                 ->where('session_id', $sessionId)
                 ->where('status', 'active')
+                ->where('cart_token', $token)
                 ->with(['items.inventoryItem'])
                 ->lockForUpdate()
                 ->firstOrFail();
@@ -233,6 +265,16 @@ class CartService
                 }
             }
 
+            // Промокод пока не применяется: молча игнорировать
+            // пользательский ввод хуже честного отказа — клиент увидит
+            // стабильный 422 PROMO_CODE_NOT_SUPPORTED, а не счёт без скидки.
+            if (!empty($customer['promo_code'])) {
+                throw new DomainRuleViolation(
+                    'Promo codes are not supported yet.',
+                    'PROMO_CODE_NOT_SUPPORTED',
+                );
+            }
+
             // Mark cart as converted
             $cart->update(['status' => 'converted']);
 
@@ -246,64 +288,82 @@ class CartService
             }
 
             // Create the order: checkout succeeded, seats are sold, cart is
-                        // converted — persist the sale so it appears in the admin orders list.
-                        $session = $cart->session()->first();
-                        $event = $session?->event()->first();
-                        $organizationId = $event->organization_id ?? $session?->venue?->organization_id ?? 1;
+            // converted — persist the sale so it appears in the admin orders list.
+            $session = $cart->session()->first();
+            $event = $session?->event()->first();
+            $organizationId = $event->organization_id ?? $session?->venue?->organization_id ?? 1;
 
-                        $order = \Nabilet\Modules\Orders\Models\Order::create([
-                            'organization_id' => $organizationId,
-                            'user_id' => null,
-                            'status' => 'pending',
-                            'payment_status' => 'pending',
-                            'subtotal_amount' => (int) ($cart->total_amount ?? 0),
-                            'discount_amount' => 0,
-                            'fee_amount' => 0,
-                            'total_amount' => (int) ($cart->total_amount ?? 0),
-                            'currency' => $cart->currency ?? 'RUB',
-                                                        'customer_email' => '',
-                                                        'customer_phone' => null,
-                        ]);
+            $order = \Nabilet\Modules\Orders\Models\Order::create([
+                'organization_id' => $organizationId,
+                'user_id' => null,
+                'status' => 'pending',
+                'payment_status' => 'pending',
+                'subtotal_amount' => (int) ($cart->total_amount ?? 0),
+                'discount_amount' => 0,
+                'fee_amount' => 0,
+                'total_amount' => (int) ($cart->total_amount ?? 0),
+                'currency' => $cart->currency ?? 'RUB',
+                // A6-цепочка «заказ → оплата → билет»: заказ помнит корзину,
+                // сеанс и событие, из которых вырос. PaymentService использует
+                // orders.cart_id для валидации холдов, а TicketService берёт
+                // session_id/event_id (NOT NULL в таблице tickets) именно отсюда.
+                // Без этих полей билеты не выпускались никогда — проверено по коду.
+                'cart_id' => $cart->id,
+                'session_id' => $session?->id,
+                'event_id' => $event?->id,
+                'customer_email' => (string) ($customer['customer_email'] ?? ''),
+                'customer_name' => $customer['customer_name'] ?? null,
+                'customer_phone' => $customer['customer_phone'] ?? null,
+            ]);
 
-                        foreach ($cart->items as $item) {
-                            $inventoryItem = $item->inventoryItem;
-                            \Nabilet\Modules\Orders\Models\OrderItem::create([
-                                'order_id' => $order->id,
-                                'inventory_item_id' => $inventoryItem?->id,
-                                'quantity' => $item->quantity,
-                                'unit_price' => $item->unit_price,
-                                'total_amount' => $item->total_price,
-                                'event_title_snapshot' => $event?->title,
-                                'session_title_snapshot' => $session?->title,
-                                'venue_title_snapshot' => $session?->venue?->name,
-                            ]);
-                        }
+            foreach ($cart->items as $item) {
+                $inventoryItem = $item->inventoryItem;
+                \Nabilet\Modules\Orders\Models\OrderItem::create([
+                    'order_id' => $order->id,
+                    'inventory_item_id' => $inventoryItem?->id,
+                    'quantity' => $item->quantity,
+                    'unit_price' => $item->unit_price,
+                    'total_amount' => $item->total_price,
+                    'event_title_snapshot' => $event?->title,
+                    'session_title_snapshot' => $session?->title,
+                    'venue_title_snapshot' => $session?->venue?->name,
+                ]);
+            }
 
-                        return [
-                            'cart_id' => $cart->id,
-                            'order_id' => $order->public_id,
-                            'session_id' => $sessionId,
-                            'items' => $cart->items->map(fn($item) => [
-                                'inventory_item_id' => $item->inventory_item_id,
-                                'quantity' => $item->quantity,
-                                'unit_price' => $item->unit_price,
-                                'total_price' => $item->total_price,
-                            ])->toArray(),
-                            'total_amount' => $cart->total_amount,
-                            'currency' => $cart->currency,
-                        ];
+            return [
+                'cart_id' => $cart->id,
+                'order_id' => $order->public_id,
+                'session_id' => $sessionId,
+                'items' => $cart->items->map(fn($item) => [
+                    'inventory_item_id' => $item->inventory_item_id,
+                    'quantity' => $item->quantity,
+                    'unit_price' => $item->unit_price,
+                    'total_price' => $item->total_price,
+                ])->toArray(),
+                'total_amount' => $cart->total_amount,
+                'currency' => $cart->currency,
+            ];
         });
     }
 
     /**
      * Clear all items from the cart.
      */
-    public function clearCart(string $sessionId): bool
+    public function clearCart(string $sessionId, ?string $token = null): bool
     {
-        return DB::transaction(function () use ($sessionId) {
+        // D5: чистим только корзину конкретного покупателя; без токена — no-op,
+        // чтобы случайный вызов не снёс активные корзины всех покупателей сеанса.
+        $token = CartToken::normalize($token);
+
+        if ($token === null) {
+            return false;
+        }
+
+        return DB::transaction(function () use ($sessionId, $token) {
             $cart = Cart::query()
                 ->where('session_id', $sessionId)
                 ->where('status', 'active')
+                ->where('cart_token', $token)
                 ->first();
 
             if (!$cart) {
