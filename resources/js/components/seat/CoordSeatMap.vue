@@ -8,6 +8,24 @@
 import { computed, ref } from 'vue'
 import { money } from '@/lib/format'
 import type { InventoryItem } from '@/lib/inventory'
+import { seatStateFromStatus, isSeatPickable } from '@/lib/seatStatus'
+
+/** Палитра состояний — согласована с CSS-классами seat--* и основной легендой. */
+const STATE_FILL: Record<string, string> = {
+  free: '#8E74FF',
+  selected: '#C9A0FF',
+  held: '#F0B429', // «держит другой» — янтарный, как seat--held в SeatMap
+  sold: '#5a3f66',
+  unavailable: '#3a3050',
+}
+
+const LEGEND_ITEMS: Array<{ state: string; label: string }> = [
+  { state: 'free', label: 'свободно' },
+  { state: 'selected', label: 'ваш выбор' },
+  { state: 'held', label: 'держит другой' },
+  { state: 'sold', label: 'продано' },
+  { state: 'unavailable', label: 'недоступно' },
+]
 
 const props = defineProps<{
   /** Инвентарь сессии (места + стоячие зоны). */
@@ -84,15 +102,29 @@ function pickDance(qty: number): void {
 }
 
 function toggleSeat(item: InventoryItem): void {
-  if (selectedIds.value.has(String(item.id))) return
+  // Проданное/занятое/заблокированное место не кликается — сервер всё равно
+  // откажет (409), а пользователю показываем это сразу цветом и курсором.
+  if (!isSeatPickable(item.status, item.available_quantity) && !selectedIds.value.has(String(item.id))) return
   emit('toggle', item, 1)
 }
 
-function seatState(item: InventoryItem): 'free' | 'sold' | 'held' | 'unavailable' {
-  if (item.status === 'sold') return 'sold'
-  if (item.status === 'held') return 'held'
-  if ((item.available_quantity ?? 1) < 1) return 'unavailable'
-  return 'free'
+/** Единый маппинг статусов — та же функция, что использует SeatMap. */
+function seatState(item: InventoryItem): string {
+  return seatStateFromStatus(item.status, selectedIds.value.has(String(item.id)), item.available_quantity)
+}
+
+function seatTitle(item: InventoryItem): string {
+  const row = item.seat?.row_id ?? '?'
+  const n = item.seat?.number ?? 0
+  const price = money(Number(item.price_amount ?? 0))
+  const labels: Record<string, string> = {
+    free: `свободно, ${price}`,
+    selected: 'выбрано',
+    held: 'держит другой покупатель',
+    sold: 'продано',
+    unavailable: 'недоступно',
+  }
+  return `Ряд ${row}, место ${n} — ${labels[seatState(item)] ?? 'недоступно'}`
 }
 </script>
 
@@ -100,9 +132,10 @@ function seatState(item: InventoryItem): 'free' | 'sold' | 'held' | 'unavailable
   <div class="overflow-hidden rounded-xl border border-line bg-surface-2">
     <div class="flex items-center justify-between gap-3 px-3 py-2 text-2xs text-subtle">
       <span>{{ seats.length }} мест · танцпол {{ dance?.available_quantity ?? 0 }} билетов</span>
-      <span class="text-layer flex gap-2">
-        <span class="flex items-center gap-1"><i class="inline-block size-2.5 rounded-[2px] bg-brand-400" /> свободно</span>
-        <span class="flex items-center gap-1"><i class="inline-block size-2.5 rounded-[2px] bg-amber-400" /> занято</span>
+      <span class="text-layer flex flex-wrap gap-2">
+        <span v-for="l in LEGEND_ITEMS" :key="l.state" class="flex items-center gap-1">
+          <i class="inline-block size-2.5 rounded-[2px]" :style="{ background: STATE_FILL[l.state] }" /> {{ l.label }}
+        </span>
       </span>
     </div>
 
@@ -138,11 +171,13 @@ function seatState(item: InventoryItem): 'free' | 'sold' | 'held' | 'unavailable
       <g v-for="s in seats" :key="String(s.id)">
         <circle
           :cx="px(s).x" :cy="px(s).y" :r="5"
-          :fill="seatState(s) === 'sold' ? '#5a3f66' : seatState(s) === 'held' ? '#6a4a7a' : selectedIds.has(String(s.id)) ? '#C9A0FF' : '#8E74FF'"
-          class="cursor-pointer transition hover:scale-125"
+          :fill="STATE_FILL[seatState(s)] ?? STATE_FILL.unavailable"
+          :class="isSeatPickable(s.status, s.available_quantity) || selectedIds.has(String(s.id)) ? 'cursor-pointer transition hover:scale-125' : 'cursor-not-allowed'"
+          role="button"
+          :aria-label="seatTitle(s)"
           @click="toggleSeat(s)"
         >
-          <title>Место {{ px(s).n }}</title>
+          <title>{{ seatTitle(s) }}</title>
         </circle>
       </g>
 
