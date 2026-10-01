@@ -6,6 +6,8 @@ namespace Nabilet\Modules\Tickets\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Orders\Models\OrderItem;
 
 /**
@@ -13,10 +15,12 @@ use Nabilet\Modules\Orders\Models\OrderItem;
  * @property string $public_id
  * @property string $ticket_number
  * @property int $order_item_id
- * @property string $status 'issued' | 'checked_in' | 'cancelled' | 'refunded'
- * @property string|null $qr_code
- * @property string|null $pdf_url
- * @property \Carbon\CarbonImmutable $created_at
+ * @property string $status issued|used|cancelled|refunded|expired|revoked
+ *                          (ck_tickets_status — see nabilet_core_spec and
+ *                          TicketStateMachine; 'checked_in'/'invalidated' are
+ *                          NOT valid values)
+ * @property string|null $qr_payload signed NB1.<id>.<token>.<sig> payload
+ * @property \Carbon\Carbon $created_at
  */
 class Ticket extends Model
 {
@@ -38,8 +42,6 @@ class Ticket extends Model
         'qr_version',
         'qr_token_hash',
         'qr_payload',
-        'qr_code',
-        'pdf_url',
         'issued_at',
         'used_at',
         'cancelled_at',
@@ -59,6 +61,11 @@ class Ticket extends Model
         'expired_at' => 'datetime',
         'revoked_at' => 'datetime',
     ];
+
+    public function order(): BelongsTo
+    {
+        return $this->belongsTo(Order::class);
+    }
 
     public function orderItem(): BelongsTo
     {
