@@ -30,10 +30,16 @@ class HoldSweeper
     /**
      * Execute the sweep operation.
      * 
-     * @return array{released: int, errors: array}
+     * @return array{released: int, orders_expired: int, errors: array}
      */
     public function sweep(): array
     {
+        // A6/A13 (план a): сначала забираем «вечные» неоплаченные заказы. Без
+        // этого шага места, удержанные checkout'ом, возвращались в продажу только
+        // через 5-минутный grace холда — и зависали навсегда, если заказ так и не
+        // был оплачен (дефект «места сгорают при неоплате»).
+        $ordersExpired = $this->expireStaleOrders();
+
         $now = CarbonImmutable::now();
         $releasedCount = 0;
         $errors = [];
@@ -119,6 +125,7 @@ class HoldSweeper
 
             return [
                 'released' => $releasedCount,
+                'orders_expired' => $ordersExpired,
                 'errors' => $errors,
             ];
         } catch (\Throwable $e) {
@@ -129,9 +136,107 @@ class HoldSweeper
             
             return [
                 'released' => $releasedCount,
+                'orders_expired' => $ordersExpired,
                 'errors' => [['error' => 'Critical failure: ' . $e->getMessage()]],
             ];
         }
+    }
+
+    /**
+     * A6/A13 (план a): заказы в pending/awaiting_payment/payment_failed, чья
+     * корзина-холд истекла (carts.expires_at + 5-минутный grace на «оплату в
+     * последнюю секунду»), переводятся в expired, а их места возвращаются в
+     * продажу. Идемпотентно: повторный проход не находит уже expired-заказы;
+     * возврат инвентаря защищён released_at у seat_holds (двойного возврата нет).
+     *
+     * Заказы без корзины (созданные напрямую через admin API) не трогаем — у них
+     * нет холда, который можно просрочить.
+     *
+     * @return int количество переведённых в expired заказов
+     */
+    public function expireStaleOrders(): int
+    {
+        // Grace = TTL холда (expires_at корзины) + 5 минут, ровно как в
+        // isHoldConvertible(): платёж, пришедший в последнюю секунду grace,
+        // всё ещё конвертирует заказ в paid и этот sweep его не заберёт.
+        $deadline = CarbonImmutable::now()->subMinutes(5)->toDateTimeString();
+
+        $staleOrderIds = DB::table('orders')
+            ->join('carts', 'carts.id', '=', 'orders.cart_id')
+            ->whereIn('orders.status', ['pending', 'awaiting_payment', 'payment_failed'])
+            ->where('carts.expires_at', '<', $deadline)
+            ->whereNull('orders.paid_at')
+            ->limit(100)
+            ->pluck('orders.id');
+
+        $expired = 0;
+
+        foreach ($staleOrderIds as $orderId) {
+            try {
+                DB::transaction(function () use ($orderId, &$expired): void {
+                    $order = \Nabilet\Modules\Orders\Models\Order::query()
+                        ->lockForUpdate()
+                        ->find($orderId);
+
+                    if ($order === null) {
+                        return;
+                    }
+
+                    // Финальная проверка состояния внутри транзакции: параллельный
+                    // succeeded-вебхук уже мог увести заказ в paid.
+                    if (!in_array($order->status, ['pending', 'awaiting_payment', 'payment_failed'], true)
+                        || $order->paid_at !== null) {
+                        return;
+                    }
+
+                    $cart = \Nabilet\Modules\Cart\Models\Cart::find($order->cart_id);
+
+                    if ($cart !== null && $cart->status === 'active') {
+                        $cart->update(['status' => 'abandoned']);
+                    }
+
+                    $order->update(['status' => 'expired']);
+
+                    if ($cart !== null) {
+                        app(\Nabilet\Modules\Cart\Services\CartService::class)
+                            ->releaseCartInventory($cart);
+                    } else {
+                        // Корзина удалена (легаси-данные) — освобождаем холды и
+                        // инвентарь напрямую по строкам seat_holds.
+                        $orphanHolds = DB::table('seat_holds')
+                            ->where('cart_id', $order->cart_id)
+                            ->whereNull('converted_at')
+                            ->whereNull('released_at')
+                            ->get();
+
+                        foreach ($orphanHolds as $hold) {
+                            DB::table('inventory_items')
+                                ->where('id', $hold->inventory_item_id)
+                                ->where('status', '!=', 'sold')
+                                ->increment('available_quantity', (int) $hold->quantity);
+
+                            DB::table('seat_holds')
+                                ->where('id', $hold->id)
+                                ->update(['released_at' => CarbonImmutable::now()->toDateTimeString()]);
+                        }
+                    }
+
+                    $expired++;
+
+                    Log::info('HoldSweeper: Order expired, inventory released', [
+                        'order_id' => $order->id,
+                        'cart_id' => $order->cart_id,
+                    ]);
+                });
+            } catch (\Throwable $e) {
+                Log::error('HoldSweeper: order expiry failed', [
+                    'order_id' => $orderId,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        return $expired;
     }
 
     /**

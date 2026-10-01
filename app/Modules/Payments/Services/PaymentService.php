@@ -51,6 +51,25 @@ class PaymentService
         $order = Order::findOrFail($orderId);
 
         return DB::transaction(function () use ($orderId, $order, $data) {
+            // A7: ключ идемпотентности принадлежит связке (provider, key). Если
+            // такой ключ уже использован для ДРУГОГО заказа — это ошибка клиента
+            // (переиспользование ключа), а не «верни чужой платёж»: молчаливая
+            // выдача payment другого заказа отправляла покупателя платить не за
+            // тот заказ. 409 IDEMPOTENCY_CONFLICT.
+            if (!empty($data['idempotency_key'])) {
+                $byKey = Payment::where('provider', 'yookassa')
+                    ->where('idempotency_key', $data['idempotency_key'])
+                    ->first();
+
+                if ($byKey !== null && (int) $byKey->order_id !== $orderId) {
+                    throw new \Nabilet\Core\Errors\ConflictError(
+                        'Idempotency key was already used for another order.',
+                        'IDEMPOTENCY_CONFLICT',
+                        ['used_for_order_id' => (int) $byKey->order_id],
+                    );
+                }
+            }
+
             // Идемпотентность: один активный платёж на заказ.
             $existing = Payment::where('order_id', $orderId)
                 ->whereIn('status', [PaymentStateMachine::PENDING, PaymentStateMachine::WAITING_FOR_CAPTURE])
@@ -323,10 +342,18 @@ class PaymentService
             // Mark holds as converted after successful order completion
             $this->markHoldsAsConverted($payment->order);
 
+            // A6/A9: 'sold' ставится ТОЛЬКО здесь — на подтверждённой оплате
+            // (InventoryItemStateMachine: held → sold happens on payment
+            // confirmation). До этого момента места оставались held и при
+            // неоплате возвращались в продажу sweep-путём.
+            $freshOrder = $payment->order->fresh();
+            if ($freshOrder !== null && $freshOrder->status === 'paid') {
+                $this->markInventorySoldForOrder($freshOrder);
+            }
+
             // A6: выпуск билетов сразу после перехода заказа в paid — внутри той же
             // транзакции вебхука (идемпотентно: повторный вызов возвращает уже
             // выпущенные билеты). Это чинит разрыв цепочки «оплата → билет».
-            $freshOrder = $payment->order->fresh();
             if ($freshOrder !== null && $freshOrder->status === 'paid' && $this->ticketService !== null) {
                 $this->ticketService->issueTicketsForOrder($freshOrder);
             }
@@ -334,38 +361,40 @@ class PaymentService
     }
 
     /**
+     * Подтверждённая продажа: места из позиций заказа переходят в 'sold'.
+     */
+    private function markInventorySoldForOrder(Order $order): void
+    {
+        foreach ($order->items()->with('inventoryItem')->get() as $item) {
+            $inv = $item->inventoryItem;
+
+            if ($inv !== null && $inv->status !== 'sold') {
+                $inv->update(['status' => 'sold']);
+            }
+        }
+    }
+
+    /**
      * Validate that all holds for an order are still convertible.
      * Uses HoldSweeper's isHoldConvertible() method with proper locking.
+     *
+     * A13 (мертвая ветка): раньше брался $order->items()->first()?->cart_id —
+     * у order_items колонки cart_id нет, поэтому валидация молча скатывалась в
+     * fallback и не находила холдов (их вообще никто не создавал). Теперь:
+     *  - источник истины — orders.cart_id (миграция 2026_09_29);
+     *  - если по корзине есть активные seat_holds — проверяем каждый;
+     *  - если холдов нет вовсе (легаси-заказы) — фолбэк на carts.expires_at +
+     *    grace-окно HoldSweeper (5 минут), чтобы не отклонять платежи, созданные
+     *    до введения материализованных холдов.
      */
     protected function validateHoldsForOrder(Order $order): bool
     {
-        // Find all active holds for this order's cart
-        $cartId = $order->items()->first()?->cart_id;
+        $cartId = $order->cart_id;
 
         if (!$cartId) {
-            // No cart association, check if order has items with inventory
-            $inventoryItemIds = $order->items()->pluck('inventory_item_id')->toArray();
-
-            if (empty($inventoryItemIds)) {
-                return true; // No inventory items to validate
-            }
-
-            // Check for any active holds on these inventory items
-            $holds = SeatHold::whereIn('inventory_item_id', $inventoryItemIds)
-                ->whereNull('converted_at')
-                ->whereNull('released_at')
-                ->get();
-
-            foreach ($holds as $hold) {
-                if (!$this->holdSweeper->isHoldConvertible($hold->id)) {
-                    return false;
-                }
-            }
-
-            return true;
+            return true; // Заказ без корзины (admin API) — холдов не было.
         }
 
-        // Check holds by cart_id
         $holds = SeatHold::where('cart_id', $cartId)
             ->whereNull('converted_at')
             ->whereNull('released_at')
@@ -377,7 +406,20 @@ class PaymentService
             }
         }
 
-        return true;
+        if ($holds->isNotEmpty()) {
+            return true;
+        }
+
+        // Фолбэк для заказов, оформленных до появления seat_holds: TTL корзины.
+        $cartExpiresAt = DB::table('carts')->where('id', $cartId)->value('expires_at');
+
+        if ($cartExpiresAt === null) {
+            return true;
+        }
+
+        $now = \Carbon\CarbonImmutable::now();
+
+        return $now->lt(\Carbon\CarbonImmutable::parse($cartExpiresAt)->addMinutes(5));
     }
 
     /**
@@ -385,7 +427,7 @@ class PaymentService
      */
     protected function markHoldsAsConverted(Order $order): void
     {
-        $cartId = $order->items()->first()?->cart_id;
+        $cartId = $order->cart_id;
 
         if (!$cartId) {
             return;
@@ -424,6 +466,21 @@ class PaymentService
             'status' => 'failed',
             'payload_json' => $payload,
         ]);
+
+        // A12: отказ платежа обязан двигать заказ — иначе заказ вечно висит в
+        // awaiting_payment, а места остаются удержанными. Машина разрешает
+        // payment_failed → awaiting_payment (ретрай другой картой), поэтому
+        // повторная оплата не блокируется. Если заказ уже paid/cancelled/expired
+        // (поздний failed после succeeded) — переход запрещён и молча пропускаем.
+        $order = $payment->order;
+
+        if ($order !== null && $this->orders->canTransition($order, OrderStateMachine::PAYMENT_FAILED)) {
+            $this->orders->markPaymentFailed($order);
+
+            // Вернуть места тем же sweep-путём: холды заказа ещё не converted,
+            // sweeper освободит инвентарь в ближайший проход.
+            $this->holdSweeper->sweep();
+        }
     }
 
     public function refundPayment(Payment $payment, int $amount = null, string $reason = null): Payment
