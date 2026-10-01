@@ -34,6 +34,8 @@ export const useCartStore = defineStore('cart', () => {
   const loading = ref(false)
   /** cart_item_id по id места — для снятия холда на сервере. */
   const meta = ref<Record<string, string>>({})
+  /** Момент серверного expires_at (мс). Источник истины по таймеру — сервер. */
+  const holdExpiresAtMs = ref<number | null>(null)
 
   let ticker: number | null = null
 
@@ -61,7 +63,9 @@ export const useCartStore = defineStore('cart', () => {
 
     // Удержание стартует с первого выбранного места — как в ТЗ: hold
     // создаётся на момент выбора, а не на момент перехода в корзину.
-    if (next.size > 0 && holdSecondsLeft.value === 0) startHold()
+    // Если сервер уже сообщил expires_at (см. setHoldExpiry), локальный
+    // отсчёт НЕ переписывает серверное время.
+    if (next.size > 0 && holdSecondsLeft.value === 0 && holdExpiresAtMs.value === null) startHold()
     if (next.size === 0) stopHold()
   }
 
@@ -74,28 +78,85 @@ export const useCartStore = defineStore('cart', () => {
     stopHold()
   }
 
-  function startHold(seconds = HOLD_SECONDS): void {
-    holdSecondsLeft.value = seconds
-    stopTicker()
-    ticker = window.setInterval(() => {
-      holdSecondsLeft.value -= 1
-      if (holdSecondsLeft.value <= 0) release()
-    }, 1000)
+  /** Тик: остаток всегда пересчитывается от дедлайна, а не вычитанием секунды. */
+  function tick(): void {
+    if (holdExpiresAtMs.value !== null) {
+      const left = Math.max(0, Math.ceil((holdExpiresAtMs.value - Date.now()) / 1000))
+      holdSecondsLeft.value = left
+      if (left <= 0) onHoldExpired()
+      return
+    }
+    holdSecondsLeft.value -= 1
+    if (holdSecondsLeft.value <= 0) onHoldExpired()
   }
 
+  /**
+   * Серверный дедлайн холда (expires_at из ответа addItem / GET /cart).
+   * Инвариант: фронтенд не источник истины — и про время удержания тоже.
+   * Локальные 600 c из ТЗ расходились с серверными 15 минью из конфига;
+   * теперь UI живёт ровно до серверного expires_at.
+   */
+  function setHoldExpiry(expiresAt: string | number | Date | null | undefined): void {
+    if (!expiresAt) return
+    const ms = expiresAt instanceof Date ? expiresAt.getTime() : typeof expiresAt === 'number' ? expiresAt : Date.parse(expiresAt)
+    if (!Number.isFinite(ms)) return
+    holdExpiresAtMs.value = ms
+    stopTicker()
+    tick()
+    if (holdSecondsLeft.value > 0) ticker = window.setInterval(tick, 1000)
+  }
+
+  function startHold(seconds = HOLD_SECONDS): void {
+    // Без серверного дедлайна — локальная страховка (демо/ошибка ответа).
+    holdExpiresAtMs.value = null
+    holdSecondsLeft.value = seconds
+    stopTicker()
+    ticker = window.setInterval(tick, 1000)
+  }
+
+  /**
+   * «Продлить» честно говорит пользователю: серверный холд не продлевается
+   * (endpoint расширения не существует). Кнопка остаётся, но стор больше не
+   * рисует ложные «ещё 10 минут»: если есть серверный дедлайн — он и правит.
+   */
   function extendHold(): void {
+    if (holdExpiresAtMs.value !== null) {
+      tick()
+      return
+    }
     startHold(HOLD_SECONDS)
   }
+
+  /** Холд истёк: выбор снимается, но серверные item'ы могут ещё жить — помечаем. */
+  function onHoldExpired(): void {
+    stopHold()
+    expired.value = true
+    selectedIds.value = new Set()
+    seats.value = []
+    meta.value = {}
+  }
+
+  /** True, когда локальный таймер умер, а мы не уверены, что сервер отпустил места. */
+  const expired = ref(false)
+
+  /** Местом завладел другой покупатель (409): синхронизируем схему без перезагрузки. */
+  function markSeatHeld(inventoryItemId: string | number): void {
+    heldExternally.value = new Set([...heldExternally.value, String(inventoryItemId)])
+  }
+
+  const heldExternally = ref<Set<string>>(new Set())
 
   function release(): void {
     stopHold()
     // Места освобождены на сервере: намерение пользователя тоже снимается.
     selectedIds.value = new Set()
     seats.value = []
+    meta.value = {}
   }
 
   function stopHold(): void {
     holdSecondsLeft.value = 0
+    holdExpiresAtMs.value = null
     stopTicker()
   }
 
@@ -120,6 +181,9 @@ export const useCartStore = defineStore('cart', () => {
     selectedIds,
     meta,
     holdSecondsLeft,
+    holdExpiresAtMs,
+    expired,
+    heldExternally,
     promoCode,
     promoDiscountMinor,
     loading,
@@ -132,7 +196,9 @@ export const useCartStore = defineStore('cart', () => {
     toggle,
     clear,
     startHold,
+    setHoldExpiry,
     extendHold,
+    markSeatHeld,
     release,
     stopHold,
     applyPromo,
