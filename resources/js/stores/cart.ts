@@ -37,6 +37,15 @@ export const useCartStore = defineStore('cart', () => {
   /** Момент серверного expires_at (мс). Источник истины по таймеру — сервер. */
   const holdExpiresAtMs = ref<number | null>(null)
 
+  /**
+   * Заказ, созданный POST /cart/checkout (order_id в ответе сервера). Оплата
+   * ходит на сервер именно по нему; без него страница результата не может
+   * подтвердить статус и шлёт payment_fail вместо выдуманного успеха.
+   */
+  const orderId = ref<string | null>(null)
+  /** Итог в минимальных единицах из ответа checkout (серверная цена, инвариант 6). */
+  const orderTotalMinor = ref<number>(0)
+
   let ticker: number | null = null
 
   const count = computed(() => selectedIds.value.size)
@@ -75,7 +84,15 @@ export const useCartStore = defineStore('cart', () => {
     meta.value = {}
     promoCode.value = null
     promoDiscountMinor.value = 0
+    // orderId/orderTotalMinor НЕ сбрасываем: они нужны странице результата
+    // оплаты, которая идёт сразу после успешного checkout/clear холда.
     stopHold()
+  }
+
+  /** Результат POST /cart/checkout: серверный заказ и итог (истина — сервер). */
+  function setOrder(id: string | null, totalMinor: number): void {
+    orderId.value = id
+    orderTotalMinor.value = Number.isFinite(totalMinor) ? Math.max(0, Math.round(totalMinor)) : 0
   }
 
   /** Тик: остаток всегда пересчитывается от дедлайна, а не вычитанием секунды. */
@@ -184,6 +201,8 @@ export const useCartStore = defineStore('cart', () => {
     holdExpiresAtMs,
     expired,
     heldExternally,
+    orderId,
+    orderTotalMinor,
     promoCode,
     promoDiscountMinor,
     loading,
@@ -195,6 +214,7 @@ export const useCartStore = defineStore('cart', () => {
     isSelected,
     toggle,
     clear,
+    setOrder,
     startHold,
     setHoldExpiry,
     extendHold,

@@ -266,6 +266,7 @@ add_filter('ticket.price', fn (int $price) => $price + 300, priority: 20);
 | Laravel-миграции | 🟡 пишутся по ходу фич (не полная схема пакета ещё) |
 | Инсталлятор, сервисы, Eloquent-модели | ✅ реализованы |
 | Редактор схем залов (HallEditor на Vue, импорт из Яндекс.Афиши, генерация инвентаря) | ✅ готово; площадки Сургута залиты |
+| Фронтенд-тесты (vitest, `npm run test`) | 🔴 падают: 31 тест `tests/Unit/Components/HallEditor.test.js` — `document is not defined` (нет конфига vitest с `environment: 'jsdom'`; см. ROADMAP, TESTING_GUIDE) |
 | Commerce: корзина → заказ → оплата → билеты/QR/check-in | ✅ через API |
 | Публичная часть (витрина на API, SEO по slug, JSON-LD, sitemap) | ✅ готово |
 | Админка | ✅ Vue-админка (Sanctum + роли); Filament удалён полностью |
