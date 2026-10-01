@@ -1,14 +1,1 @@
-# Dependency directories
-node_modules/
-
-# Build artifacts and compiled files
-dist/
-dist-preview/
-public_html/build/
-bootstrap/cache/*.php
-
-# Laravel storage framework generated views
-storage/framework/views/*.php
-
-# Environment files
-.env
+(empty)
