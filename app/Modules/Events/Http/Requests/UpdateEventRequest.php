@@ -42,9 +42,46 @@ class UpdateEventRequest extends FormRequest
             'max_price' => ['nullable', 'integer', 'min:0'],
             'currency' => ['sometimes', 'size:3'],
             'image_url' => ['nullable', 'url', 'max:2048'],
+            'poster' => ['nullable', 'url', 'max:2048'],
             'seo_title' => ['nullable', 'string', 'max:255'],
             'seo_description' => ['nullable', 'string', 'max:500'],
             'metadata' => ['nullable', 'array'],
         ];
+    }
+
+    /**
+     * FIX (posters not saved): map `image_url` (form field) to `poster`
+     * (DB column). See StoreEventRequest::normalizePosterMapping() — same
+     * mechanism, shared via trait-like duplication to keep requests explicit.
+     */
+    public function passedValidation(): void
+    {
+        $this->normalizePosterMapping();
+    }
+
+    /**
+     * @return array<string, mixed>|mixed
+     */
+    public function validated($key = null, $default = null)
+    {
+        $this->normalizePosterMapping();
+
+        return parent::validated($key, $default);
+    }
+
+    protected function normalizePosterMapping(): void
+    {
+        $url = $this->input('image_url', '__missing__');
+
+        if ($url === '__missing__') {
+            return;
+        }
+
+        $this->request->remove('image_url');
+        $this->getInputSource()->remove('image_url');
+
+        if ($url !== null && $this->input('poster') === null) {
+            $this->merge(['poster' => $url]);
+        }
     }
 }
