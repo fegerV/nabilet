@@ -50,6 +50,18 @@ class CartService
         if (!$cart) {
             $session = Session::findOrFailBySessionId($sessionId);
 
+            // Sales gate: a cart may only be opened for a session that is actually
+            // selling right now — status `on_sale` AND inside the sales window.
+            // Without this, tickets could be added to the cart (and held seats
+            // taken out of circulation) before sales officially start or after
+            // they close, bypassing the organizer's control entirely.
+            if (! $session->isSellableAt()) {
+                throw DomainRuleViolation::salesClosed(
+                    (string) ($session->public_id ?? $session->id),
+                    ['reason' => $session->salesBlockReason()]
+                );
+            }
+
             $cart = Cart::create([
                 'session_id' => $sessionId,
                 'cart_token' => $token,
@@ -98,6 +110,19 @@ class CartService
         }
 
         return DB::transaction(function () use ($sessionId, $inventoryItemId, $quantity, $token) {
+            // Sales gate on EVERY add: the session must still be `on_sale` and inside
+            // its sales window. Checking only at cart creation is not enough — a cart
+            // opened while sales are live must stop accepting new seats the moment the
+            // organizer flips the switch off or `sales_end_at` passes.
+            $session = Session::findOrFailBySessionId($sessionId);
+
+            if (! $session->isSellableAt()) {
+                throw DomainRuleViolation::salesClosed(
+                    (string) ($session->public_id ?? $session->id),
+                    ['reason' => $session->salesBlockReason()]
+                );
+            }
+
             // Get or create cart for THIS buyer (D5)
             $cart = $this->getOrCreateCart($sessionId, $token);
 
@@ -278,6 +303,20 @@ class CartService
             // Check cart has items
             if ($cart->items->isEmpty()) {
                 throw new DomainRuleViolation('Cart is empty.', 'CART_EMPTY');
+            }
+
+            // Sales gate at checkout: seats may still sit in a cart that was filled
+            // while sales were live, but the order itself can only be placed while
+            // the session is `on_sale` and inside its sales window. Existing holds
+            // are kept (the sweeper releases them on TTL), so the buyer can retry
+            // if the organizer reopens sales before the hold expires.
+            $session = Session::findOrFailBySessionId($sessionId);
+
+            if (! $session->isSellableAt()) {
+                throw DomainRuleViolation::salesClosed(
+                    (string) ($session->public_id ?? $session->id),
+                    ['reason' => $session->salesBlockReason()]
+                );
             }
 
             // Validate all items still have available inventory.
