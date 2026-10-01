@@ -35,6 +35,62 @@ export function setToken(token: string | null): void {
   else localStorage.removeItem(AUTH_TOKEN_KEY)
 }
 
+/* ── Гостевой токен корзины (контракт D5: X-Cart-Token) ───────────────────
+ * Корзина на сервере ключуется парой (cart_token, session_id). Без заголовка
+ * сервер считает каждый запрос нового покупателя «чужой» корзиной и либо
+ * создаёт новую, либо отвечает 422. Поэтому токен генерируется один раз
+ * на браузере, сохраняется в localStorage и шлётся с КАЖДЫМ запросом;
+ * ответный заголовок X-Cart-Token обновляет его (например, после checkout,
+ * когда сервер выдаёт свежий токен под следующую корзину).
+ */
+export const CART_TOKEN_KEY = 'nabilet_cart_token'
+
+/** Сгенерировать UUID v4 (crypto.randomUUID с фолбэком на crypto.getRandomValues). */
+function uuid(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+  const bytes = new Uint8Array(16)
+  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+    crypto.getRandomValues(bytes)
+  } else {
+    for (let i = 0; i < 16; i++) bytes[i] = Math.floor(Math.random() * 256)
+  }
+  bytes[6] = (bytes[6]! & 0x0f) | 0x40
+  bytes[8] = (bytes[8]! & 0x3f) | 0x80
+  const hex = [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('')
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
+}
+
+export function getCartToken(): string | null {
+  try {
+    return localStorage.getItem(CART_TOKEN_KEY)
+  } catch {
+    return null // приватный режим — токен живёт до перезагрузки
+  }
+}
+
+export function ensureCartToken(): string {
+  const existing = getCartToken()
+  if (existing) return existing
+  const fresh = uuid()
+  try {
+    localStorage.setItem(CART_TOKEN_KEY, fresh)
+  } catch {
+    /* ignore */
+  }
+  return fresh
+}
+
+export function setCartToken(token: string | null): void {
+  try {
+    if (token) localStorage.setItem(CART_TOKEN_KEY, token)
+    else localStorage.removeItem(CART_TOKEN_KEY)
+  } catch {
+    /* ignore */
+  }
+}
+
 interface ApiOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
   body?: unknown
@@ -57,6 +113,8 @@ export async function request<T = unknown>(path: string, options: ApiOptions = {
     'Content-Type': 'application/json',
   }
   if (token) headers.Authorization = `Bearer ${token}`
+  // Контракт D5: все обращения к корзине — с гостевым токеном покупателя.
+  if (path.startsWith('/cart')) headers['X-Cart-Token'] = ensureCartToken()
 
   let res: Response
   try {
@@ -68,6 +126,10 @@ export async function request<T = unknown>(path: string, options: ApiOptions = {
   } catch {
     throw new ApiError(0, 'Нет соединения с сервером. Проверьте связь.')
   }
+
+  // Сервер мог выдать новый токен (первый запрос без валидного) — сохраняем.
+  const echoed = res.headers.get('X-Cart-Token')
+  if (echoed && echoed !== getCartToken()) setCartToken(echoed)
 
   if (res.status === 204) return undefined as T
 
@@ -100,8 +162,8 @@ export async function request<T = unknown>(path: string, options: ApiOptions = {
 }
 
 /** GET /path → { data, meta? } */
-export async function get<D>(path: string, silent = false): Promise<{ data: D; meta?: PageMeta }> {
-  return request<{ data: D; meta?: PageMeta }>(path, { silent })
+export async function get<D, M extends PageMeta = PageMeta>(path: string, silent = false): Promise<{ data: D; meta?: M }> {
+  return request<{ data: D; meta?: M }>(path, { silent })
 }
 
 /** POST/PUT/PATCH/DELETE → { data } */

@@ -22,7 +22,18 @@ import NBottomSheet from '@/components/ui/NBottomSheet.vue'
 import NButton from '@/components/ui/NButton.vue'
 import { useCartStore, type CartSeat } from '@/stores/cart'
 import { useUiStore } from '@/stores/ui'
-import { fetchInventory, holdSeat, releaseSeat, checkoutSession, type InventoryItem } from '@/lib/inventory'
+import {
+  fetchInventory,
+  holdSeat,
+  releaseSeat,
+  fetchCart,
+  checkoutSession,
+  type InventoryItem,
+  type HoldResponse,
+} from '@/lib/inventory'
+import { ApiError } from '@/lib/api'
+import { seatStateFromStatus } from '@/lib/seatStatus'
+import { trackEvent } from '@/lib/metrika'
 import type { Seat, Sector, Row } from '@/lib/hall'
 import { dateFull, time, money } from '@/lib/format'
 
@@ -42,6 +53,12 @@ const sessionHall = ref('')
 const inventory = ref<InventoryItem[]>([])
 const loading = ref(true)
 const loadError = ref<string | null>(null)
+/** Сервер сообщил больше мест, чем удалось загрузить (лимит страниц). */
+const truncated = ref(false)
+/** Всего мест на сервере (meta.total) — честный счётчик в шапке. */
+const totalSeats = ref(0)
+/** Инвентарь-айди мест, которые успел занять другой покупатель (409-путь). */
+const externallyHeld = computed(() => cart.heldExternally)
 
 async function loadSeats(): Promise<void> {
   const sid = sessionId.value
@@ -53,7 +70,15 @@ async function loadSeats(): Promise<void> {
   loading.value = true
   loadError.value = null
   try {
-    inventory.value = await fetchInventory(sid)
+    const result = await fetchInventory(sid)
+    inventory.value = result.items
+    totalSeats.value = result.total || result.items.length
+    truncated.value = result.truncated
+    // Цель воронки: схема зала открыта (config/metrika.php: seatmap_open).
+    void trackEvent('seatmap_open').catch(() => {})
+    // Восстановление после F5: локальный стор пуст, а серверные холды живы.
+    // Читаем GET /cart (X-Cart-Token подставляет api.ts) и возвращаем выбор.
+    await hydrateCart(sid)
     // Событие/зал: подтягиваем с события по slug (из URL).
     const slug = String(route.params.slug ?? '')
     if (slug) {
@@ -75,6 +100,57 @@ async function loadSeats(): Promise<void> {
   }
 }
 
+/** Применить серверную корзину к локальному стору (hydrate после перезагрузки). */
+function applyServerCart(cartData: Awaited<ReturnType<typeof fetchCart>>): void {
+  if (!cartData || !Array.isArray(cartData.items) || cartData.items.length === 0) return
+  let restored = 0
+  for (const item of cartData.items) {
+    // CartItemResource отдаёт public_id (ULID) — он не годится для DELETE.
+    // БД-id инвентарь-элемента восстанавливаем по месту в загруженном инвентаре.
+    const invPublicId = String(item.inventory_item?.id ?? '')
+    const inv = inventory.value.find(
+      (i) => String(i.public_id ?? '') === invPublicId || String(i.id) === invPublicId,
+    )
+    if (!inv) continue
+    const id = String(inv.id)
+    if (cart.isSelected(id)) continue
+    cart.meta[id] = id // маркер «холд есть»; точный cart_item_id сервер вернёт при снятии ошибкой → синхронизируем через reload
+    cart.toggle({
+      id,
+      sector: String(item.inventory_item?.seat?.sector ?? 'Зал'),
+      row: Number(item.inventory_item?.seat?.row ?? inv.seat?.row_id ?? 0),
+      number: Number(item.inventory_item?.seat?.number ?? inv.seat?.number ?? 0),
+      priceMinor: Number(item.unit_price ?? inv.price_amount ?? 0),
+      kind: 'standard',
+    })
+    restored += 1
+  }
+  // Таймер — от серверного expires_at, а не от локальных 600 секунд.
+  if (cartData.expires_at) cart.setHoldExpiry(cartData.expires_at)
+  if (restored > 0) {
+    ui.notify('sky', 'Выбор восстановлен', `Сервер ещё держит для вас мест: ${restored}.`)
+  }
+}
+
+async function hydrateCart(sid: string): Promise<void> {
+  if (cart.count > 0) {
+    // Локальная корзина жива (возврат из SPA-навигации) — сверим только таймер.
+    try {
+      const serverCart = await fetchCart(sid)
+      if (serverCart?.expires_at) cart.setHoldExpiry(serverCart.expires_at)
+    } catch {
+      /* не критично — продолжим с локальным отсчётом */
+    }
+    return
+  }
+  try {
+    const serverCart = await fetchCart(sid)
+    applyServerCart(serverCart)
+  } catch {
+    /* корзина недоступна — пользователь начнёт выбор заново */
+  }
+}
+
 watch(() => route.query.session, loadSeats, { immediate: true })
 
 /* Схема зала: из реальных мест. Группируем по row_id. */
@@ -93,14 +169,13 @@ const hall = computed<Sector[]>(() => {
       return {
         index: rowId,
         seats: sorted.map((item) => {
-          const state =
-            item.status === 'available'
-              ? 'free'
-              : item.status === 'sold'
-                ? 'sold'
-                : item.status === 'held'
-                  ? 'held'
-                  : 'unavailable'
+          // Единый маппинг статусов (seatStatus.ts): available→free,
+          // held/sold_out→held, sold→sold, blocked/disabled→unavailable.
+          const selected = cart.isSelected(String(item.id))
+          const heldByOther = externallyHeld.value.has(String(item.id)) && !selected
+          const state = heldByOther
+            ? ('held' as const)
+            : seatStateFromStatus(item.status, selected, item.available_quantity)
           return {
             id: String(item.id),
             row: rowId,
@@ -126,12 +201,40 @@ const hall = computed<Sector[]>(() => {
 
 const sheetOpen = ref(true)
 const SERVICE_FEE = 9900
+/** Защита от спама кликов: пока холд/снятие в полёте — место не трогается. */
+const pendingSeats = ref<Set<string>>(new Set())
 
 /** Идентификаторы выбранных мест — единственное, что передаётся в карту зала. */
 const selectedIds = computed(() => [...cart.selectedIds])
 
+/** Обработать ответ холда: сохранить cart_item_id и серверный expires_at. */
+function adoptHoldResponse(inventoryItemId: string, res: HoldResponse): void {
+  const cartItemId = res.data?.id ?? res.data?.cart_item_id
+  if (cartItemId !== undefined && cartItemId !== null) cart.meta[inventoryItemId] = String(cartItemId)
+  const expiresAt = res.cart?.expires_at ?? (res.data as { cart?: { expires_at?: string } } | undefined)?.cart?.expires_at
+  if (expiresAt) cart.setHoldExpiry(expires_at)
+}
+
+/** Сообщения об ошибках — по коду состояния, а не одна надпись на все случаи. */
+function notifyHoldError(e: unknown, seatId: string): void {
+  if (e instanceof ApiError && e.status === 409) {
+    // Место успел занять другой покупатель: переходим в held без перезагрузки.
+    cart.markSeatHeld(seatId)
+    ui.notify('sun', 'Место уже занято', 'Это место только что придержал другой покупатель. Выберите другое.')
+    return
+  }
+  if (e instanceof ApiError && (e.code === 'CART_EXPIRED' || e.status === 410)) {
+    ui.notify('rose', 'Время удержания истекло', 'Корзина на сервере протухла. Освежите схему и выберите места заново.')
+    void loadSeats()
+    return
+  }
+  ui.notify('rose', 'Не получилось', e instanceof Error ? e.message : 'Попробуйте ещё раз')
+}
+
 /** Холд на сервере при выборе места. */
 async function onToggle(seat: Seat, sectorName: string): Promise<void> {
+  if (pendingSeats.value.has(seat.id)) return
+  pendingSeats.value = new Set([...pendingSeats.value, seat.id])
   const isSelected = cart.isSelected(seat.id)
   try {
     if (isSelected) {
@@ -150,7 +253,7 @@ async function onToggle(seat: Seat, sectorName: string): Promise<void> {
     } else {
       // Холдим на сервере
       const res = await holdSeat(sessionId.value, seat.id)
-      cart.meta[seat.id] = String(res.data?.id ?? seat.id)
+      adoptHoldResponse(seat.id, res)
       cart.toggle({
         id: seat.id,
         sector: sectorName,
@@ -159,9 +262,15 @@ async function onToggle(seat: Seat, sectorName: string): Promise<void> {
         priceMinor: seat.priceMinor,
         kind: seat.kind,
       })
+      // Цель воронки: место выбрано (config/metrika.php: seat_selected).
+      void trackEvent('seat_selected').catch(() => {})
     }
   } catch (e) {
-    ui.notify('rose', 'Не получилось', e instanceof Error ? e.message : 'Попробуйте ещё раз')
+    notifyHoldError(e, seat.id)
+  } finally {
+    const next = new Set(pendingSeats.value)
+    next.delete(seat.id)
+    pendingSeats.value = next
   }
 }
 
@@ -177,13 +286,15 @@ const useCoordMap = computed(() => {
 })
 
 /** Клик по месту/зоне на координатной карте: item — место или танцпол, qty — количество. */
-async function onToggleCoord(item: import('@/lib/inventory').InventoryItem, qty: number): Promise<void> {
+async function onToggleCoord(item: InventoryItem, qty: number): Promise<void> {
   const id = String(item.id)
+  if (pendingSeats.value.has(id)) return
+  pendingSeats.value = new Set([...pendingSeats.value, id])
   try {
     if (item.type === 'standing') {
       // Танцпол: покупаем qty билетов на стоячую зону.
       const res = await holdSeat(sessionId.value, item.id, qty)
-      cart.meta[id] = String(res.data?.id ?? item.id)
+      adoptHoldResponse(id, res)
       cart.toggle({
         id,
         sector: String((item.metadata_json as Record<string, unknown> | null)?.sector_name ?? 'Танцпол'),
@@ -192,6 +303,7 @@ async function onToggleCoord(item: import('@/lib/inventory').InventoryItem, qty:
         priceMinor: Number(item.price_amount ?? 0),
         kind: 'standard',
       })
+      void trackEvent('seat_selected').catch(() => {})
       return
     }
     // Обычное место
@@ -209,7 +321,7 @@ async function onToggleCoord(item: import('@/lib/inventory').InventoryItem, qty:
       if (cart.meta[id]) delete cart.meta[id]
     } else {
       const res = await holdSeat(sessionId.value, item.id)
-      cart.meta[id] = String(res.data?.id ?? item.id)
+      adoptHoldResponse(id, res)
       cart.toggle({
         id,
         sector: 'Зал',
@@ -218,22 +330,40 @@ async function onToggleCoord(item: import('@/lib/inventory').InventoryItem, qty:
         priceMinor: Number(item.price_amount ?? 0),
         kind: 'standard',
       })
+      void trackEvent('seat_selected').catch(() => {})
     }
   } catch (e) {
-    ui.notify('rose', 'Не получилось', e instanceof Error ? e.message : 'Попробуйте ещё раз')
+    notifyHoldError(e, id)
+  } finally {
+    const next = new Set(pendingSeats.value)
+    next.delete(id)
+    pendingSeats.value = next
   }
 }
 
+/** Снятие места из сводки. Ошибка DELETE больше не глотается молча: если сервер
+ *  не отпустил холд, предупреждаем и перезагружаем схему — иначе место «висит»
+ *  занятым, а пользователь думает, что оно свободно. */
 function remove(id: string): void {
   const seat = cart.seats.find((s: CartSeat) => s.id === id)
-  if (seat) {
-    cart.toggle(seat)
-    const cartItem = cart.meta[id]
-    if (cartItem) {
-      releaseSeat(sessionId.value, cartItem).catch(() => {})
-      delete cart.meta[id]
-    }
+  if (!seat) return
+  const cartItem = cart.meta[id]
+  if (cartItem) {
+    releaseSeat(sessionId.value, cartItem)
+      .then(() => {
+        cart.toggle(seat)
+        delete cart.meta[id]
+      })
+      .catch(() => {
+        ui.notify(
+          'sun',
+          'Место могло остаться занятым',
+          'Сервер не подтвердил снятие холда. Обновите схему — возможно, место ещё держится за вами.',
+        )
+      })
+    return
   }
+  cart.toggle(seat)
 }
 
 async function goCheckout(): Promise<void> {
@@ -243,7 +373,13 @@ async function goCheckout(): Promise<void> {
     await checkoutSession(sessionId.value)
     router.push('/checkout')
   } catch (e) {
-    ui.notify('rose', 'Оформление не прошло', e instanceof Error ? e.message : 'Попробуйте ещё раз')
+    if (e instanceof ApiError && e.code === 'CART_EXPIRED') {
+      ui.notify('rose', 'Время удержания истекло', 'Корзина на сервере протухла. Выберите места заново.')
+      cart.clear()
+      void loadSeats()
+    } else {
+      ui.notify('rose', 'Оформление не прошло', e instanceof Error ? e.message : 'Попробуйте ещё раз')
+    }
   } finally {
     cart.setLoading(false)
   }
@@ -276,14 +412,24 @@ const sessionLabel = computed(() => {
         </div>
 
         <p class="flex-none text-xs text-subtle">
-          <span class="text-content">{{ inventory.length }}</span> мест в зале
+          <span class="text-content">{{ totalSeats || inventory.length }}</span> мест в зале
         </p>
+      </div>
+
+      <!-- Предупреждение: сервер отдал не все места (лимит пагинации) -->
+      <div
+        v-if="truncated && !loading && !loadError"
+        class="mt-3 rounded-lg border border-sun-500/40 bg-sun-500/10 px-3 py-2 text-xs text-sun-500"
+        role="alert"
+      >
+        Показаны не все места: загружено {{ inventory.length }} из {{ totalSeats }}. Обновите страницу или выберите другой сеанс.
       </div>
 
       <!-- Загрузка/ошибка -->
       <div v-if="loading" class="mt-8 py-10 text-center text-sm text-subtle">Загрузка схемы зала…</div>
-      <div v-else-if="loadError" class="mt-8 py-10 text-center text-sm text-danger-500">
-        Не удалось загрузить места: {{ loadError }}
+      <div v-else-if="loadError" class="mt-8 flex flex-col items-center gap-3 py-10 text-center">
+        <p class="text-sm text-danger-500">Не удалось загрузить места: {{ loadError }}</p>
+        <NButton variant="secondary" size="sm" @click="loadSeats">Повторить</NButton>
       </div>
 
       <div v-else class="mt-4 grid gap-4 lg:grid-cols-[1fr_360px]">
@@ -307,7 +453,8 @@ const sessionLabel = computed(() => {
               />
 
         <div class="mt-3 flex flex-wrap items-center justify-between gap-3">
-          <SeatLegend />
+          <!-- Легенда встроена в CoordSeatMap (SVG-палитра); дублировать CSS-легенду нельзя — цвета разойдутся -->
+          <SeatLegend v-if="!useCoordMap" />
           <p class="text-xs text-subtle">
             <kbd class="rounded border border-line px-1 font-mono text-2xs">← ↑ ↓ →</kbd>
             — перемещаться по рядам
