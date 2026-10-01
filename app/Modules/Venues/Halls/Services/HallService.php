@@ -7,20 +7,119 @@ namespace Nabilet\Modules\Venues\Halls\Services;
 use Nabilet\Modules\Venues\Models\Hall;
 use Nabilet\Modules\Venues\Models\HallSchemaVersion;
 use Nabilet\Core\Errors\ConflictError;
+use Nabilet\Core\Errors\DomainRuleViolation;
 use Nabilet\Core\Errors\NotFoundError;
 use Nabilet\Core\Errors\ValidationError;
+use Nabilet\Modules\HallSchemas\Domain\SchemaVersion as DomainSchemaVersion;
+use Nabilet\Modules\HallSchemas\Domain\SchemaVersionPolicy;
+use Nabilet\Modules\HallSchemas\Domain\VersionDecision;
 use Nabilet\Modules\Venues\Halls\Repositories\HallRepository;
-use Nabilet\Modules\Venues\Halls\Domain\SchemaVersionPolicy;
 use Illuminate\Support\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 
+/**
+ * P2 (архитектурный дуализм Policy): этот сервис использует ЕДИНСТВЕННУЮ
+ * живую политику версий — `Nabilet\Modules\HallSchemas\Domain\SchemaVersionPolicy`
+ * (словарь draft/published/archived, ТЗ §20/§46/§98). Старый статический
+ * класс `Nabilet\Modules\Venues\Halls\Domain\SchemaVersionPolicy` со словарём
+ * 'active' был мёртвой зависимостью (никем не вызывался) и удалён.
+ */
 class HallService
 {
     public function __construct(
         protected HallRepository $repository,
         protected SchemaVersionPolicy $schemaPolicy
     ) {}
+
+    /**
+     * Eloquent-строка → доменный `SchemaVersion` (HallSchemas).
+     *
+     * Статусы в БД и в домене совпадают (ck_schema_status), поэтому конверсия
+     * тривиальна; `hasPayload` — только «есть ли что публиковать», сам JSON
+     * через домен не гоняется.
+     */
+    private function toDomain(HallSchemaVersion $version): DomainSchemaVersion
+    {
+        $payload = $version->schema_json ?? [];
+
+        return new DomainSchemaVersion(
+            (int) $version->id,
+            (int) $version->hall_id,
+            (int) $version->version,
+            (string) $version->status,
+            self::payloadHasSeats($payload),
+            $version->published_at !== null
+                ? \DateTimeImmutable::createFromInterface($version->published_at)
+                : null,
+        );
+    }
+
+    /**
+     * Есть ли в схеме хоть одно продаваемое место/зона.
+     *
+     * Понимает оба формата payload (редакторский `sectors[].seats[]` и
+     * БД-формат `sectors[].rows[].seats[]`), иначе легаси-схема прошла бы
+     * проверку «пустоты» неверно.
+     *
+     * @param array<string, mixed>|null $payload
+     */
+    public static function payloadHasSeats(?array $payload): bool
+    {
+        if ($payload === null) {
+            return false;
+        }
+
+        foreach (($payload['sectors'] ?? []) as $sector) {
+            if (!is_array($sector)) {
+                continue;
+            }
+            if (is_array($sector['seats'] ?? null) && count($sector['seats']) > 0) {
+                return true;
+            }
+            foreach (($sector['rows'] ?? []) as $row) {
+                if (is_array($row) && is_array($row['seats'] ?? null) && count($row['seats']) > 0) {
+                    return true;
+                }
+            }
+        }
+
+        // Standing-зоны и столы продаются без рядов — схема с одной фан-зоной
+        // не считается пустой.
+        foreach (($payload['staticObjects'] ?? []) as $obj) {
+            if (is_array($obj) && in_array($obj['kind'] ?? null, ['standing', 'table'], true)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Доменное решение политики → HTTP-ошибка в конверте §66.
+     *
+     * Коды ошибки стабильны (фронт ветвится на `code`, не на текст):
+     * empty_payload → SCHEMA_EMPTY_PAYLOAD (422), остальные → 409.
+     */
+    private function refuse(VersionDecision $decision, string $fallbackCode): never
+    {
+        $reason = (string) $decision->reason();
+
+        [$code, $status] = match ($reason) {
+            SchemaVersionPolicy::REASON_EMPTY_PAYLOAD => ['SCHEMA_EMPTY_PAYLOAD', 422],
+            SchemaVersionPolicy::REASON_FROZEN => ['SCHEMA_VERSION_IMMUTABLE', 409],
+            SchemaVersionPolicy::REASON_ANOTHER_VERSION_PUBLISHED => ['SCHEMA_VERSION_ALREADY_PUBLISHED', 409],
+            default => [$fallbackCode, 409],
+        };
+
+        throw new ($status === 422 ? ValidationError::class : ConflictError::class)(
+            $status === 422
+                ? ['schema' => [$decision->message()]]
+                : $decision->message(),
+            $code,
+            ['reason' => $reason],
+        );
+    }
 
     public function createHall(array $data): Hall
     {
@@ -81,9 +180,17 @@ class HallService
             ->first();
     }
 
-    public function createSchemaDraft(Hall $hall, array $payload, int $userId, ?int $versionId = null): HallSchemaVersion
+    public function createSchemaDraft(Hall $hall, array $payload, int $userId, ?int $versionId = null, ?int $expectedVersion = null): HallSchemaVersion
     {
-        return DB::transaction(function () use ($hall, $payload, $userId, $versionId) {
+        return DB::transaction(function () use ($hall, $payload, $userId, $versionId, $expectedVersion) {
+            // P2 (данные фона без лимита): сервер — единственная граница,
+            // клиентский debounce её не заменяет. 2 MB JSON достаточно для
+            // зала в несколько тысяч мест; dataURL-подложка в payload не
+            // попадает (см. persistSchema на клиенте), а если кто-то пришлёт
+            // её curl-ом — получим 422 вместо раздувания строки БД в каждом
+            // автосейве.
+            $this->assertPayloadSize($payload);
+
             // Server-side guard (A7): client-side validation is not a security
             // boundary — curl can post any payload. Reject invalid prices/canvas
             // before touching the draft row, with the §66 envelope (422).
@@ -100,12 +207,28 @@ class HallService
                 if ($target === null || (int) $target->hall_id !== (int) $hall->id) {
                     throw new NotFoundError('HallSchemaVersion', (string) $versionId);
                 }
-                if ($target->status !== 'draft') {
-                    throw new ConflictError(
-                        "Schema version {$target->version} is '{$target->status}' and immutable; create a new draft instead.",
-                        'SCHEMA_VERSION_IMMUTABLE',
-                        ['version_id' => $target->id, 'status' => $target->status],
-                    );
+                // P1 (неизменяемость обходима): доменное решение — тот же
+                // canEditPayload, что покрывает REASON_FROZEN для
+                // published/archived; триггер остаётся второй линией защиты.
+                $editDecision = $this->schemaPolicy->canEditPayload($this->toDomain($target));
+                if (!$editDecision->isAllowed()) {
+                    $this->refuse($editDecision, 'SCHEMA_VERSION_NOT_DRAFT');
+                }
+                // P2 (silent last-write-wins): оптимистическая блокировка.
+                // Клиент шлёт `base_updated_at` — updated_at версии на момент
+                // последней его загрузки. Если строка тем временем изменила
+                // другой редактор (или черновик пересоздан параллельной
+                // вкладкой), молча затирать чужую работу нельзя — 409 с
+                // актуальной меткой, клиент предложит перезагрузить черновик.
+                if ($expectedVersion !== null) {
+                    $current = (int) \Illuminate\Support\Carbon::parse($target->updated_at)->getTimestamp();
+                    if ($current > $expectedVersion) {
+                        throw new ConflictError(
+                            'Черновик изменён другим редактором. Перезагрузите схему перед сохранением.',
+                            'SCHEMA_DRAFT_CONFLICT',
+                            ['version_id' => $target->id, 'current_updated_at' => $current],
+                        );
+                    }
                 }
                 $target->update(['schema_json' => $payload]);
                 return $target->fresh();
@@ -118,21 +241,41 @@ class HallService
                 ->first();
 
             if ($existingDraft) {
-                            // Update existing draft
-                            $existingDraft->update([
-                                'schema_json' => $payload,
-                            ]);
-                            return $existingDraft->fresh();
-                        }
+                if ($expectedVersion !== null) {
+                    $current = (int) \Illuminate\Support\Carbon::parse($existingDraft->updated_at)->getTimestamp();
+                    if ($current > $expectedVersion) {
+                        throw new ConflictError(
+                            'Черновик изменён другим редактором. Перезагрузите схему перед сохранением.',
+                            'SCHEMA_DRAFT_CONFLICT',
+                            ['version_id' => $existingDraft->id, 'current_updated_at' => $current],
+                        );
+                    }
+                }
+                // Update existing draft
+                $existingDraft->update([
+                    'schema_json' => $payload,
+                ]);
+                return $existingDraft->fresh();
+            }
 
             // Create new draft version
             return $this->repository->createSchemaVersion($hall, $payload, 'draft');
         });
     }
 
-    public function publishSchemaVersion(int $versionId, int $userId): HallSchemaVersion
+    /**
+     * Опубликовать черновик схемы зала.
+     *
+     * ПУБЛИЧНЫЙ API (B-scope): принимает internal-id версии и ОБЯЗАТЕЛЬНЫЙ
+     * public_id зала, к которому версия должна принадлежать. Без проверки
+     * принадлежности эндпоинт `/schema-versions/{id}/publish` позволял
+     * опубликовать версию чужого зала, просто перебрав id (в админке id
+     * автоинкрементные). Роут передаёт {publicId} из пути — то есть scope
+     * задаётся залом, который оператор явно открыл.
+     */
+    public function publishSchemaVersion(int $versionId, int $userId, string $hallPublicId): HallSchemaVersion
     {
-        return DB::transaction(function () use ($versionId, $userId) {
+        return DB::transaction(function () use ($versionId, $userId, $hallPublicId) {
             // B5: findOrFail() бросает Laravel-исключение, которое рендерилось
             // как 500. Для несуществующей версии отвечаем 404 в конверте §66.
             $version = HallSchemaVersion::query()->find($versionId);
@@ -141,23 +284,29 @@ class HallService
                 throw new NotFoundError('HallSchemaVersion', (string) $versionId);
             }
 
-            // B5/B6: повторная публикация уже опубликованной версии раньше
-            // возвращала 200 и молча обновляла published_at/timestamp (за счёт
-            // no-op UPDATE, который триггер неизменяемости пропускает). Теперь
-            // это явный конфликт 409 — мутации нет.
-            if ($version->status === 'published') {
-                throw new ConflictError(
-                    "Schema version {$version->version} is already published.",
-                    'SCHEMA_VERSION_ALREADY_PUBLISHED',
-                    ['version_id' => $version->id],
-                );
+            // P1 (publish чужой версии): версия обязана относиться к залу из
+            // пути. Чужая версия для вызывающего неотличима от несуществующей.
+            $hall = $this->repository->findByPublicId($hallPublicId);
+            if ($hall === null || (int) $hall->id !== (int) $version->hall_id) {
+                throw new NotFoundError('HallSchemaVersion', (string) $versionId);
             }
-            if ($version->status !== 'draft') {
-                throw new ConflictError(
-                    "Only draft schema versions can be published (current status: {$version->status}).",
-                    'SCHEMA_VERSION_NOT_DRAFT',
-                    ['version_id' => $version->id, 'status' => $version->status],
-                );
+
+            // ПРАВИЛА ЖИЗНЕННОГО ЦИКЛА — единый источник истины: доменная
+            // политика HallSchemas (P1 «мёртвый домен», P2 дуализм Policy).
+            // Она проверяет: только draft публикуется (not_draft / frozen),
+            // пустая схема не публикуется (REASON_EMPTY_PAYLOAD — раньше
+            // «Нечего публиковать» жил только в UI, сервер публиковал
+            // {sectors:[]}), и одна опубликованная версия на зал
+            // (another_version_published).
+            $siblings = HallSchemaVersion::query()
+                ->where('hall_id', $version->hall_id)
+                ->get()
+                ->map(fn (HallSchemaVersion $v): DomainSchemaVersion => $this->toDomain($v))
+                ->all();
+
+            $decision = $this->schemaPolicy->canPublish($this->toDomain($version), $siblings);
+            if (!$decision->isAllowed()) {
+                $this->refuse($decision, 'SCHEMA_VERSION_NOT_DRAFT');
             }
 
             // Validate payload structure before publishing
@@ -169,12 +318,34 @@ class HallService
 
     public function archiveSchemaVersion(HallSchemaVersion $version): HallSchemaVersion
     {
-        if ($version->status === 'published') {
-            throw new \RuntimeException('Cannot archive a published schema version');
+        $decision = $this->schemaPolicy->canArchive($this->toDomain($version));
+        if (!$decision->isAllowed()) {
+            $this->refuse($decision, 'SCHEMA_VERSION_NOT_PUBLISHED');
         }
 
         $version->update(['status' => 'archived']);
         return $version;
+    }
+
+    /**
+     * Ограничение размера схемы на сервере (P2). Считаем сериализованный
+     * JSON, а не «на глаз» по массиву: именно байты уходят в колонку.
+     */
+    protected function assertPayloadSize(array $payload): void
+    {
+        $maxBytes = (int) (config('nabilet.hall_schema.max_payload_bytes') ?? 2_000_000);
+        $json = json_encode($payload, JSON_UNESCAPED_UNICODE);
+        $size = $json === false ? PHP_INT_MAX : strlen($json);
+
+        if ($size > $maxBytes) {
+            throw new ValidationError([
+                'payload' => [sprintf(
+                    'Схема слишком большая: %.1f MB (максимум %.1f MB). Удалите лишние сектора или загрузите фон отдельным файлом.',
+                    $size / 1_048_576,
+                    $maxBytes / 1_048_576,
+                )],
+            ], 'Hall schema payload too large');
+        }
     }
 
     /**
