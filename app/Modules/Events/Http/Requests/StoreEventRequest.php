@@ -49,9 +49,23 @@ class StoreEventRequest extends FormRequest
             // `poster` in passedValidation() so the value actually persists.
             'image_url' => ['nullable', 'url', 'max:2048'],
             'poster' => ['nullable', 'url', 'max:2048'],
+            // FIX (poster upload): external URL was the only way to set a poster
+            // (image_url → poster mapping). Now multipart uploads are accepted too:
+            // `poster_file` is stored on the public disk and its URL written into
+            // `poster`. Mutually exclusive with the URL fields — see mergePosterFile().
+            'poster_file' => ['nullable', 'file', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
             'seo_title' => ['nullable', 'string', 'max:255'],
             'seo_description' => ['nullable', 'string', 'max:500'],
             'metadata' => ['nullable', 'array'],
+        ];
+    }
+
+    public function messages(): array
+    {
+        return [
+            'poster_file.image' => 'Файл афиши должен быть изображением.',
+            'poster_file.mimes' => 'Файл афиши должен быть в формате jpg, png или webp.',
+            'poster_file.max' => 'Файл афиши не должен превышать 5 МБ.',
         ];
     }
 
@@ -65,19 +79,64 @@ class StoreEventRequest extends FormRequest
      */
     public function passedValidation(): void
     {
+        $this->storeUploadedPoster();
         $this->normalizePosterMapping();
     }
 
     /**
-     * @return array<string, mixed>
+     * @return array<string, mixed>|mixed
      */
     public function validated($key = null, $default = null)
     {
         // Belt and braces: if a subclass/pipe skipped passedValidation(),
         // still map image_url → poster at read time.
+        $this->storeUploadedPoster();
         $this->normalizePosterMapping();
 
         return parent::validated($key, $default);
+    }
+
+    /**
+     * Сохранить загруженный файл афиши на public-диск и подставить URL в `poster`.
+     *
+     * Файл имеет приоритет над текстовыми полями: UI шлёт FormData, где
+     * poster_file и (иногда) пустой image_url сосуществуют. Ошибка записи на
+     * диск превращается в 422 (ValidationError), а не в 500 — это ожидаемый
+     * инфраструктурный отказ (права на storage, не смонтирован volume).
+     */
+    protected function storeUploadedPoster(): void
+    {
+        if (! $this->hasFile('poster_file')) {
+            return;
+        }
+
+        $file = $this->file('poster_file');
+
+        $this->request->remove('image_url');
+        $this->getInputSource()->remove('image_url');
+
+        try {
+            // hashName() даёт имя с расширением, выведенным из реального мим-типа
+            // (проверен валидатором `image`/`mimes`) — исходное расширение файла
+            // клиенту не верим. storeAs — детерминированный путь posters/<ULID>.<ext>.
+            $ext = pathinfo((string) $file->hashName(), PATHINFO_EXTENSION) ?: 'jpg';
+            $stored = $file->storeAs('posters', Str::ulid()->toBase32() . '.' . $ext, [
+                'disk' => 'public',
+                'visibility' => 'public',
+            ]);
+        } catch (\Throwable $e) {
+            throw new ValidationError(
+                ['poster_file' => ['Не удалось сохранить файл афиши: ' . $e->getMessage()]],
+                'Ошибка загрузки афиши.'
+            );
+        }
+
+        $url = rtrim((string) config('filesystems.disks.public.url'), '/') . '/' . ltrim((string) $stored, '/');
+
+        $this->merge(['poster' => $url]);
+        // Из входных данных файл убираем — в Event::create/update попадает только `poster`.
+        $this->request->remove('poster_file');
+        $this->getInputSource()->remove('poster_file');
     }
 
     protected function normalizePosterMapping(): void
