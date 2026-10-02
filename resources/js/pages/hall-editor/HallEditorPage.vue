@@ -15,7 +15,7 @@
  *  4. Каждое изменение автосохраняется через 500 ms (ТЗ §52) и обратимо:
  *     удаление сектора через отмену, а не «ой, сейчас перерисую».
  */
-import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import Konva from 'konva'
 import NButton from '@/components/ui/NButton.vue'
@@ -27,89 +27,29 @@ import { useUiStore } from '@/stores/ui'
 import { money, plural } from '@/lib/format'
 import { cn } from '@/lib/cn'
 import { ApiError, get, send } from '@/lib/api'
-
-/* ── Типы ──────────────────────────────────────────────────────────── */
-
-type SeatKind = 'standard' | 'vip' | 'accessible'
-type Tool =
-  | 'select' | 'pan' | 'zoom' | 'seat' | 'row'
-  | 'sector' | 'table' | 'standing' | 'text'
-  | 'image' | 'stage' | 'entrance'
-type Autosave = 'saving' | 'saved' | 'error' | 'offline'
-type StaticKind = 'stage' | 'entrance' | 'label' | 'table' | 'standing'
-
-interface ESeat {
-  id: string
-  row: number
-  number: number
-  kind: SeatKind
-  x: number
-  y: number
-}
-
-type SectorShape = 'grid' | 'arc'
-
-interface ESector {
-  id: string
-  name: string
-  /** Цена по умолчанию для рядов без индивидуальной цены (минорные единицы). */
-  priceMinor: number
-  x: number
-  y: number
-  seats: ESeat[]
-  /** Цена по конкретному ряду (§50): перекрывает priceMinor. */
-  rowPrices: Record<number, number>
-  /** Форма раскладки мест: прямоугольная сетка или амфитеатр (дуга). */
-  shape: SectorShape
-  /** Угол раствора дуги в градусах (только для shape === 'arc'). */
-  arcSpread: number
-  /** Базовый радиус первого ряда (px) — для продолжения дуги при добавлении рядов. */
-  arcBaseR: number
-  /** Прирост радиуса на каждый ряд (px). */
-  arcRowGap: number
-  /** Сдвиг дуги по X, чтобы сектор был центрирован и в положительных координатах. */
-  arcOffsetX: number
-  /** Сдвиг дуги по Y, чтобы верхний край был в положительных координатах. */
-  arcOffsetY: number
-  /**
-   * Тип сектора из БД-формата (ck_sectors_type: seated|standing|mixed).
-   * Нужен для round-trip: без него серверная конвертация в инвентарь
-   * теряла standing-секторы (C1), а F5 — их тип (B7).
-   */
-  type?: 'seated' | 'standing' | 'mixed'
-}
-
-interface EStatic {
-  id: string
-  kind: StaticKind
-  x: number
-  y: number
-  width?: number
-  height?: number
-  rotation?: number
-  opacity?: number
-  locked?: boolean
-  text?: string
-  capacity?: number
-}
-
-interface EBackground {
-  id: string
-  src: string
-  x: number
-  y: number
-  width: number
-  height: number
-  rotation: number
-  locked: boolean
-  opacity: number
-}
+import type {
+  Autosave,
+  EBackground,
+  ESeat,
+  ESector,
+  EStatic,
+  SeatKind,
+  SectorShape,
+  StaticKind,
+  Tool,
+} from './editorTypes'
+import {
+  GAP,
+  ROW_GAP,
+  SEAT,
+  appendRowToSector,
+  arcLayoutParams,
+  buildArcSeats,
+  buildGridSeats,
+} from './seatGeometry'
+import { useEditorHistory } from './useEditorHistory'
 
 /* ── Константы ─────────────────────────────────────────────────────── */
-
-const SEAT = 16
-const GAP = 6
-const ROW_GAP = 12
 
 const ui = useUiStore()
 
@@ -202,54 +142,30 @@ const form = ref({
   arcSpread: 160,
 })
 
-const history = ref<SchemaSnapshot[]>([])
-const future = ref<SchemaSnapshot[]>([])
-
 let idCounter = 0
 const nextId = (prefix: string): string => `${prefix}-${Date.now().toString(36)}-${(idCounter += 1)}`
 
-interface SchemaSnapshot {
-  sectors: ESector[]
-  statics: EStatic[]
-  backgrounds: EBackground[]
-}
+const editorHistory = useEditorHistory({ sectors, statics, backgrounds })
 
-/**
- * Снапшот ДО изменения. Раньше snapshot() вызывался после мутации — undo
- * возвращал уже изменённое состояние, а первое действие было не отменить.
- */
+const canUndo = computed(() => editorHistory.canUndo())
+const canRedo = computed(() => editorHistory.canRedo())
+
+/** Снапшот ДО изменения (см. useEditorHistory). */
 function snapshot(): void {
-  history.value.push({
-    sectors: JSON.parse(JSON.stringify(sectors.value)) as ESector[],
-    statics: JSON.parse(JSON.stringify(statics.value)) as EStatic[],
-    backgrounds: JSON.parse(JSON.stringify(backgrounds.value)) as EBackground[],
-  })
-  future.value = []
-  if (history.value.length > 50) history.value.shift()
+  editorHistory.snapshot()
 }
 
-/**
- * Перемещение группы (сектор/статика) Konva мутирует модель напрямую и не
- * проходит через snapshot(). Отдельный флаг: снапшот «до» берётся один раз
- * на начало drag, финализация — на dragend (см. beginMoveSnapshot).
- */
-let moveSnapshotTaken = false
-let snapshotPendingMove = false
 function beginMoveSnapshot(): void {
-  if (!moveSnapshotTaken) {
-    snapshot()
-    moveSnapshotTaken = true
-  }
+  editorHistory.beginMoveSnapshot()
+}
+
+function endMoveSnapshot(): void {
+  editorHistory.endMoveSnapshot()
 }
 
 function undo(): void {
-  const prev = history.value.pop()
+  const prev = editorHistory.undo()
   if (!prev) return
-  future.value.push({
-    sectors: JSON.parse(JSON.stringify(sectors.value)) as ESector[],
-    statics: JSON.parse(JSON.stringify(statics.value)) as EStatic[],
-    backgrounds: JSON.parse(JSON.stringify(backgrounds.value)) as EBackground[],
-  })
   sectors.value = prev.sectors
   statics.value = prev.statics
   backgrounds.value = prev.backgrounds
@@ -260,27 +176,14 @@ function undo(): void {
 }
 
 function redo(): void {
-  const next = future.value.pop()
+  const next = editorHistory.redo()
   if (!next) return
-  history.value.push({
-    sectors: JSON.parse(JSON.stringify(sectors.value)) as ESector[],
-    statics: JSON.parse(JSON.stringify(statics.value)) as EStatic[],
-    backgrounds: JSON.parse(JSON.stringify(backgrounds.value)) as EBackground[],
-  })
   sectors.value = next.sectors
   statics.value = next.statics
   backgrounds.value = next.backgrounds
 }
 
 /* ── Генератор рядов (§49) ─────────────────────────────────────────── */
-
-/** Координата места на дуге (амфитеатр). Центр кривизны — в (arcOffsetX, arcOffsetY). */
-function arcSeatXY(sector: ESector, r: number, n: number, seatsPerRow: number): { x: number; y: number } {
-  const theta = (sector.arcSpread * Math.PI) / 180
-  const R = sector.arcBaseR + r * sector.arcRowGap
-  const a = seatsPerRow > 1 ? -theta / 2 + (n * theta) / (seatsPerRow - 1) : 0
-  return { x: R * Math.sin(a) + sector.arcOffsetX, y: R * Math.cos(a) + sector.arcOffsetY }
-}
 
 function generateSector(): void {
   snapshot()
@@ -303,37 +206,11 @@ function generateSector(): void {
 
   if (shape === 'arc') {
     // Раскладываем места по концентрическим дугам: равный шаг вдоль дуги,
-    // радиус растёт на каждый ряд. Центр кривизны — внизу под залом,
-    // поэтому ряды «смотрят» выпуклостью к сцене (вверх).
-    const theta = (arcSpread * Math.PI) / 180
-    const rowGap = SEAT + ROW_GAP
-    const R0 = seatsPerRow > 1 ? ((seatsPerRow - 1) * (SEAT + GAP)) / theta : 60
-    const maxR = R0 + (rows - 1) * rowGap
-    sector.arcBaseR = R0
-    sector.arcRowGap = rowGap
-    sector.arcOffsetX = maxR * Math.sin(theta / 2)
-    sector.arcOffsetY = -R0 * Math.cos(theta / 2)
-    for (let r = 0; r < rows; r += 1) {
-      for (let n = 0; n < seatsPerRow; n += 1) {
-        const kind: SeatKind = r < vipRows ? 'vip' : n === 0 || n === seatsPerRow - 1 ? 'accessible' : 'standard'
-        const { x, y } = arcSeatXY(sector, r, n, seatsPerRow)
-        sector.seats.push({ id: nextId('seat'), row: r + 1, number: n + 1, kind, x, y })
-      }
-    }
+    // радиус растёт на каждый ряд (см. seatGeometry.arcLayoutParams).
+    Object.assign(sector, arcLayoutParams(rows, seatsPerRow, arcSpread))
+    sector.seats = buildArcSeats(sector, rows, seatsPerRow, vipRows, nextId)
   } else {
-    for (let r = 0; r < rows; r += 1) {
-      for (let n = 0; n < seatsPerRow; n += 1) {
-        const kind: SeatKind = r < vipRows ? 'vip' : n === 0 || n === seatsPerRow - 1 ? 'accessible' : 'standard'
-        sector.seats.push({
-          id: nextId('seat'),
-          row: r + 1,
-          number: n + 1,
-          kind,
-          x: n * (SEAT + GAP),
-          y: r * (SEAT + ROW_GAP),
-        })
-      }
-    }
+    sector.seats = buildGridSeats(rows, seatsPerRow, vipRows, nextId)
   }
 
   sectors.value.push(sector)
@@ -354,36 +231,12 @@ function addRowToSelected(): void {
     return
   }
   snapshot()
-  const nextRow = (sector.seats.reduce((m, s) => Math.max(m, s.row), 0) || 0) + 1
   const sample = sector.seats[0]
   const seatsPerRow = sample ? sector.seats.filter((s) => s.row === sample.row).length : form.value.seatsPerRow
 
-  if (sector.shape === 'arc') {
-    // Продолжаем дугу: пересчитываем центровку по X и сдвигаем старые места,
-    // чтобы новый (самый широкий) ряд остался симметричным.
-    const theta = (sector.arcSpread * Math.PI) / 180
-    const newMaxR = sector.arcBaseR + (nextRow - 1) * sector.arcRowGap
-    const newOffsetX = newMaxR * Math.sin(theta / 2)
-    const dx = newOffsetX - sector.arcOffsetX
-    if (dx) for (const seat of sector.seats) seat.x += dx
-    sector.arcOffsetX = newOffsetX
-    const r = nextRow - 1
-    for (let n = 0; n < seatsPerRow; n += 1) {
-      const { x, y } = arcSeatXY(sector, r, n, seatsPerRow)
-      sector.seats.push({ id: nextId('seat'), row: nextRow, number: n + 1, kind: 'standard', x, y })
-    }
-  } else {
-    for (let n = 0; n < seatsPerRow; n += 1) {
-      sector.seats.push({
-        id: nextId('seat'),
-        row: nextRow,
-        number: n + 1,
-        kind: 'standard',
-        x: n * (SEAT + GAP),
-        y: (nextRow - 1) * (SEAT + ROW_GAP),
-      })
-    }
-  }
+  // Для дуги appendRowToSector пересчитывает центровку по X и сдвигает
+  // старые места, чтобы новый (самый широкий) ряд остался симметричным.
+  const { row: nextRow } = appendRowToSector(sector, seatsPerRow, nextId)
   ui.notify('mint', `Ряд ${nextRow} добавлен`, `${seatsPerRow} мест${sector.shape === 'arc' ? ', по дуге' : ''}`)
 }
 
@@ -804,8 +657,7 @@ function onStageMouseUp(e: Konva.KonvaEventObject<MouseEvent>): void {
     // Пересортировать ряды: места могли пересесть в другой ряд или поменять
     // порядок — нумерация обязана остаться читаемой (§48).
     finalizeSeatMove()
-    moveSnapshotTaken = false
-    snapshotPendingMove = true
+    endMoveSnapshot()
     seatDragIds = new Set()
     seatDragBefore.clear()
   } else if (mode === 'seat-move') {
@@ -1720,8 +1572,7 @@ function draw(): void {
         bg.y = Math.round(group.y() - bg.height / 2)
       })
       group.on('dragend', () => {
-        snapshotPendingMove = true
-        moveSnapshotTaken = false
+        endMoveSnapshot()
       })
       // Якоря живут внутри группы: их drag не должен двигать саму группу.
       group.on('dragstart', (e) => {
@@ -1754,8 +1605,7 @@ function draw(): void {
       group.on('dragend', (e) => {
         const n = (e.target as Konva.Node).name()
         if (n === 'bg-resize' || n === 'bg-rotate') {
-          snapshotPendingMove = true
-          moveSnapshotTaken = false
+          endMoveSnapshot()
         }
       })
       bgLayer.add(group)
@@ -1836,11 +1686,10 @@ function draw(): void {
       }
     })
     group.on('dragend', () => {
-      snapshotPendingMove = true
       // Разрешаем следующий снапшот «до» для нового перемещения — иначе
-      // moveSnapshotTaken остался бы true навсегда и история перестала бы
-      // фиксировать любые последующие drag'и (дефект A8).
-      moveSnapshotTaken = false
+      // флаг остался бы true навсегда и история перестала бы фиксировать
+      // любые последующие drag'и (дефект A8).
+      endMoveSnapshot()
     })
     staticLayer?.add(group)
     if (isSelected) {
@@ -1990,8 +1839,7 @@ function draw(): void {
         // Места живут в координатах сектора: если место уехало за пределы
         // ряда/сектора — это «пересадка», её учтёт finalizeSeatMove.
         finalizeSeatMove()
-        moveSnapshotTaken = false
-        snapshotPendingMove = true
+        endMoveSnapshot()
         seatDragIds = new Set()
         seatDragBefore.clear()
       })
@@ -2024,8 +1872,7 @@ function draw(): void {
     group.on('dragend', () => {
       sector.x = Math.round(group.x())
       sector.y = Math.round(group.y())
-      snapshotPendingMove = true
-      moveSnapshotTaken = false
+      endMoveSnapshot()
     })
     sectorLayer?.add(group)
   }
@@ -2502,10 +2349,10 @@ function setSeatKind(value: string): void {
             <h2 class="text-xs font-semibold uppercase tracking-wide text-subtle">История · §52</h2>
           </div>
           <div class="flex gap-1 p-2">
-            <NButton variant="secondary" size="sm" block :disabled="isLocked || history.length === 0" @click="undo">
+            <NButton variant="secondary" size="sm" block :disabled="isLocked || !canUndo" @click="undo">
               ↶ Отменить
             </NButton>
-            <NButton variant="secondary" size="sm" block :disabled="isLocked || future.length === 0" @click="redo">
+            <NButton variant="secondary" size="sm" block :disabled="isLocked || !canRedo" @click="redo">
               ↷ Повторить
             </NButton>
           </div>
