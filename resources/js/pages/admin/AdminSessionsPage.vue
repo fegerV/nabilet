@@ -6,6 +6,7 @@
  * Сеанс = привязка события к залу с датой и временем.
  */
 import { computed, ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import NButton from '@/components/ui/NButton.vue'
 import NInput from '@/components/ui/NInput.vue'
 import NSelect from '@/components/ui/NSelect.vue'
@@ -18,6 +19,7 @@ import { dateFull, time } from '@/lib/format'
 import type { Column } from '@/components/ui/NDataTable.vue'
 
 const ui = useUiStore()
+const router = useRouter()
 
 interface ApiSession {
   id: number
@@ -228,7 +230,15 @@ const COLUMNS: Column[] = [
   { key: 'hall', label: 'Зал', hideOnMobile: true },
   { key: 'starts_at', label: 'Начало', sortable: true, hideOnMobile: true },
   { key: 'status', label: 'Статус', align: 'right', width: '130px' },
+  // Действие: переход к ценам рядов (PATCH /inventory/sessions/{id}/prices).
+  { key: 'actions', label: '', align: 'right', width: '90px' },
 ]
+
+function openPrices(evt: MouseEvent, rowId: string): void {
+  // Клик по ячейке не должен открывать модалку редактирования (row-обработчик таблицы).
+  evt.stopPropagation()
+  router.push(`/admin/sessions/${rowId}/prices`)
+}
 
 async function load(): Promise<void> {
   loading.value = true

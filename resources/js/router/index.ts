@@ -48,6 +48,7 @@ const routes: RouteRecordRaw[] = [
       { path: 'events/:id', name: 'admin-event-edit', component: () => import('@/pages/admin/AdminEventFormPage.vue') },
             { path: 'venues', name: 'admin-venues', component: () => import('@/pages/admin/AdminVenuesPage.vue') },
             { path: 'sessions', name: 'admin-sessions', component: () => import('@/pages/admin/AdminSessionsPage.vue') },
+      { path: 'sessions/:id/prices', name: 'admin-session-prices', component: () => import('@/pages/admin/AdminSessionPricesPage.vue') },
       {
               path: 'halls',
               name: 'admin-halls',

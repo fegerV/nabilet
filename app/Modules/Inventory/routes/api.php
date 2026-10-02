@@ -13,6 +13,10 @@ Route::prefix('inventory')->group(function () {
     // до /{inventoryItem}, иначе "sessions" проглотится wildcard-связыванием.
     Route::patch('/sessions/{sessionId}/prices', [InventoryController::class, 'updatePrices'])
         ->middleware(['auth:sanctum', 'admin']);
+    // POST-алиас: формы multipart (загрузка файлов) не умеют PATCH, а некоторые
+    // прокси/клиенты режут PATCH. Семантика идентична (идемпотентная операция).
+    Route::post('/sessions/{sessionId}/prices', [InventoryController::class, 'updatePrices'])
+        ->middleware(['auth:sanctum', 'admin']);
     Route::get('/sessions/{sessionId}/availability', [InventoryController::class, 'availability']);
     Route::get('/{inventoryItem}', [InventoryController::class, 'show']);
 });
