@@ -17,7 +17,7 @@ const props = withDefaults(
     hint?: string
     error?: string
     placeholder?: string
-    type?: 'text' | 'email' | 'tel' | 'password' | 'number' | 'search'
+    type?: 'text' | 'email' | 'tel' | 'password' | 'number' | 'search' | 'date' | 'time' | 'datetime-local'
     prefix?: string
     suffix?: string
     icon?: string

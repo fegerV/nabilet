@@ -159,7 +159,9 @@ async function load(): Promise<void> {
   loading.value = true
   error.value = null
   try {
-    const res = await get<{ data: Record<string, unknown> }>(`/events/${eventId.value}`)
+    // GET /events/{id} отдаёт { data: {...} }; get<D>() типизирован как
+    // Promise<{ data: D; meta? }>, поэтому D — сам объект события.
+    const res = await get<Record<string, unknown>>(`/events/${eventId.value}`)
     resetForm(res.data)
   } catch (err) {
     error.value = err instanceof Error ? err.message : String(err)
