@@ -17,6 +17,9 @@
         <env name="DB_DATABASE" value="nabilet_testing"/>
         <env name="DB_USERNAME" value="nabilet"/>
         <env name="DB_PASSWORD" value=""/>
+        <!-- pgsql connection must not inherit MySQL charset from .env (utf8mb4 is an invalid client_encoding for Postgres) -->
+        <env name="DB_CHARSET" value="utf8"/>
+        <env name="DB_COLLATION" value=""/>
         <env name="CACHE_DRIVER" value="array"/>
         <env name="SESSION_DRIVER" value="array"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
