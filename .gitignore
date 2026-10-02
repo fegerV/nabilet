@@ -1,1 +1,5 @@
+# Build artifacts
+public_html/build/
+
+# Dependencies
 node_modules/
