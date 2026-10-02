@@ -6,7 +6,7 @@
  * Сеанс = привязка события к залу с датой и временем.
  */
 import { computed, ref, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import NButton from '@/components/ui/NButton.vue'
 import NInput from '@/components/ui/NInput.vue'
 import NSelect from '@/components/ui/NSelect.vue'
@@ -20,6 +20,7 @@ import type { Column } from '@/components/ui/NDataTable.vue'
 
 const ui = useUiStore()
 const router = useRouter()
+const route = useRoute()
 
 interface ApiSession {
   id: number
@@ -256,6 +257,15 @@ async function load(): Promise<void> {
 
 onMounted(async () => {
   await Promise.all([load(), loadOptions()])
+  // Приход из формы события по кнопке «Создать и настроить сеанс →»
+  // (/admin/sessions?event={id}): сразу открываем модалку с предзаполненным событием.
+  const eventId = String(route.query.event ?? '')
+  if (eventId && events.value.some((e) => String(e.id) === eventId)) {
+    openCreate()
+    form.value.event_id = eventId
+    // Убираем query, чтобы модалка не открывалась повторно при навигации назад.
+    void router.replace({ path: route.path })
+  }
 })
 </script>
 
@@ -290,6 +300,11 @@ onMounted(async () => {
         </template>
         <template #cell-status="{ row }">
           <NStatusBadge kind="session" :status="row.status" />
+        </template>
+
+        <!-- Действие: переход к ценам рядов сеанса -->
+        <template #cell-actions="{ row }">
+          <NButton variant="ghost" size="sm" @click="openPrices($event, row.id)">Цены</NButton>
         </template>
 
         <template #mobile-title="{ row }">

@@ -61,9 +61,11 @@ async function load(): Promise<void> {
   savedSummary.value = null
   try {
     const [sesRes, inv] = await Promise.all([
-      get<{ data: ApiSession }>(`/sessions/${sessionId.value}`),
+      get<ApiSession>(`/sessions/${sessionId.value}`),
       fetchInventory(sessionId.value),
     ])
+    // GET /sessions/{id} отдаёт плоский объект внутри { data: {...} } —
+    // sesRes.data уже является сеансом.
     session.value = sesRes.data
 
     // Группировка мест по рядам / стоячим зонам.
@@ -132,9 +134,11 @@ async function apply(): Promise<void> {
         ...(r.kind === 'standing' ? { standing_zone_id: r.id } : { row_id: r.id }),
         price_amount: toMinor(r.priceRub) as number,
       }))
-    const res = await send<{
-      data: { rows_updated: number; items_updated: number; cart_items_updated: number }
-    }>(`/inventory/sessions/${sessionId.value}/prices`, 'PATCH', { rows: payloadRows })
+    // Контракт: PATCH /inventory/sessions/{id}/prices отдаёт { data: {...} };
+    // send<D>() уже типизирован как Promise<{ data: D }>, поэтому D — сама статистика.
+    const res = await send<{ rows_updated: number; items_updated: number; cart_items_updated: number }>(
+      `/inventory/sessions/${sessionId.value}/prices`, 'PATCH', { rows: payloadRows },
+    )
     const d = res.data
     savedSummary.value = `Обновлено рядов: ${d.rows_updated}, свободных мест: ${d.items_updated}, позиций в корзинах: ${d.cart_items_updated}.`
     ui.notify('mint', 'Цены применены', `Сеанс #${sessionId.value}: ${payloadRows.length} рядов`)
