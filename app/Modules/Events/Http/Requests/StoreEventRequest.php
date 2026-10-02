@@ -4,23 +4,36 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Events\Http\Requests;
 
+use Illuminate\Support\Str;
+use Nabilet\Core\Errors\ValidationError;
 use Nabilet\Modules\Events\Models\Event;
 use Illuminate\Foundation\Http\FormRequest;
 
 class StoreEventRequest extends FormRequest
 {
-    public function authorize(): bool
-        {
-            // Write-роуты уже под auth:sanctum + admin (middleware 'admin').
-            // Здесь дублируем роль-проверку, чтобы FormRequest не зависел от
-            // несуществующей EventPolicy (can('create') всегда false → 403).
-            $user = $this->user();
-            if (! $user) {
-                return false;
-            }
+    /**
+     * Поля, которые принимает API (для совместимости со старыми клиентами), но
+     * которых НЕТ в таблице `events` (миграция 000200_002_content). Они
+     * валидируются, но вырезаются из payload перед Event::create() — иначе
+     * Eloquent ушёл бы в 500 на несуществующую колонку. Даты живут в
+     * sessions/event_dates, цены — в inventory_row_prices.
+     *
+     * @var list<string>
+     */
+    private const NON_COLUMN_FIELDS = ['start_date', 'end_date', 'timezone', 'currency', 'is_featured', 'min_price', 'max_price', 'metadata'];
 
-            return $user->roles()->pluck('slug')->intersect(['admin', 'manager'])->isNotEmpty();
+    public function authorize(): bool
+    {
+        // Write-роуты уже под auth:sanctum + admin (middleware 'admin').
+        // Здесь дублируем роль-проверку, чтобы FormRequest не зависел от
+        // несуществующей EventPolicy (can('create') всегда false → 403).
+        $user = $this->user();
+        if (! $user) {
+            return false;
         }
+
+        return $user->roles()->pluck('slug')->intersect(['admin', 'manager'])->isNotEmpty();
+    }
 
     public function rules(): array
     {
@@ -36,14 +49,21 @@ class StoreEventRequest extends FormRequest
             'title' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
             'short_description' => ['nullable', 'string', 'max:500'],
-            'start_date' => ['required', 'date'],
-            'end_date' => ['nullable', 'date', 'after_or_equal:start_date'],
-            'timezone' => ['required', 'timezone'],
-            'status' => ['required', 'in:draft,published,archived,cancelled'],
+            // FIX (500 on create): these legacy fields have no column in `events`.
+            // They used to be `required` (start_date/timezone/currency) — the form
+            // could not save without sending data that was then dropped anyway.
+            // Now optional, validated leniently and stripped in stripNonColumnFields().
+            'start_date' => ['nullable', 'date'],
+            'end_date' => ['nullable', 'date'],
+            'timezone' => ['nullable', 'string', 'max:64'],
+            'status' => ['nullable', 'in:draft,published,archived,cancelled'],
             'is_featured' => ['boolean'],
             'min_price' => ['nullable', 'integer', 'min:0'],
             'max_price' => ['nullable', 'integer', 'min:0'],
-            'currency' => ['required', 'size:3'],
+            'currency' => ['nullable', 'string', 'size:3'],
+            'age_limit' => ['nullable', 'string', 'max:32'],
+            'duration_minutes' => ['nullable', 'integer', 'min:1', 'max:1440'],
+            'cover' => ['nullable', 'url', 'max:2048'],
             // FIX (posters not saved): the UI and API send `image_url`, but the
             // events table column is `poster`. Accept both here and normalize to
             // `poster` in passedValidation() so the value actually persists.
@@ -56,7 +76,7 @@ class StoreEventRequest extends FormRequest
             'poster_file' => ['nullable', 'file', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
             'seo_title' => ['nullable', 'string', 'max:255'],
             'seo_description' => ['nullable', 'string', 'max:500'],
-            'metadata' => ['nullable', 'array'],
+            'metadata' => ['nullable'],
         ];
     }
 
@@ -79,8 +99,7 @@ class StoreEventRequest extends FormRequest
      */
     public function passedValidation(): void
     {
-        $this->storeUploadedPoster();
-        $this->normalizePosterMapping();
+        $this->preparePayload();
     }
 
     /**
@@ -89,11 +108,17 @@ class StoreEventRequest extends FormRequest
     public function validated($key = null, $default = null)
     {
         // Belt and braces: if a subclass/pipe skipped passedValidation(),
-        // still map image_url → poster at read time.
-        $this->storeUploadedPoster();
-        $this->normalizePosterMapping();
+        // still prepare the payload at read time. preparePayload() is idempotent.
+        $this->preparePayload();
 
         return parent::validated($key, $default);
+    }
+
+    protected function preparePayload(): void
+    {
+        $this->storeUploadedPoster();
+        $this->normalizePosterMapping();
+        $this->stripNonColumnFields();
     }
 
     /**
@@ -107,6 +132,11 @@ class StoreEventRequest extends FormRequest
     protected function storeUploadedPoster(): void
     {
         if (! $this->hasFile('poster_file')) {
+            return;
+        }
+
+        // Идемпотентность: validated() может вызываться повторно.
+        if ($this->input('__poster_stored') === true) {
             return;
         }
 
@@ -133,7 +163,7 @@ class StoreEventRequest extends FormRequest
 
         $url = rtrim((string) config('filesystems.disks.public.url'), '/') . '/' . ltrim((string) $stored, '/');
 
-        $this->merge(['poster' => $url]);
+        $this->merge(['poster' => $url, '__poster_stored' => true]);
         // Из входных данных файл убираем — в Event::create/update попадает только `poster`.
         $this->request->remove('poster_file');
         $this->getInputSource()->remove('poster_file');
@@ -153,5 +183,22 @@ class StoreEventRequest extends FormRequest
         if ($url !== null && $this->input('poster') === null) {
             $this->merge(['poster' => $url]);
         }
+    }
+
+    /**
+     * Вырезать не-колоночные ключи из входных данных, чтобы validated()
+     * (он перечитывает живой источник данных) вернул только поля таблицы
+     * `events`. Повторные вызовы безопасны: удалённые ключи исчезают из
+     * all() и не обрабатываются снова.
+     */
+    protected function stripNonColumnFields(): void
+    {
+        foreach (self::NON_COLUMN_FIELDS as $field) {
+            $this->request->remove($field);
+            $this->getInputSource()->remove($field);
+        }
+
+        $this->request->remove('__poster_stored');
+        $this->getInputSource()->remove('__poster_stored');
     }
 }
