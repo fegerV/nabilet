@@ -124,7 +124,11 @@ return new class extends Migration
             // 'lengths' index option (Array to string conversion in MySqlGrammar::compileKey).
             // Equivalent raw DDL with prefix length per spec migrations.sql:863.
         });
-        DB::statement('CREATE INDEX IF NOT EXISTS idx_heatmap_page_time ON heatmap_events (page_url(255), occurred_at)');
+        // MySQL/MariaDB use prefix syntax `col(255)`; Postgres uses substr() in the index expression.
+        $heatmapIndex = Schema::getConnection()->getDriverName() === 'pgsql'
+            ? 'CREATE INDEX IF NOT EXISTS idx_heatmap_page_time ON heatmap_events ((substr(page_url, 1, 255)), occurred_at)'
+            : 'CREATE INDEX IF NOT EXISTS idx_heatmap_page_time ON heatmap_events (page_url(255), occurred_at)';
+        DB::statement($heatmapIndex);
         }
 
         if (!Schema::hasTable("embed_domains")) {

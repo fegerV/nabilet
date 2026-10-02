@@ -1,10 +1,8 @@
-# Dependencies
-/vendor/
+# Laravel specific
+/storage/framework/cache/*
+!/storage/framework/cache/.gitkeep
 
-# Laravel / PHP specific caches and logs
-/bootstrap/cache/
-/storage/logs/
-.phpunit.result.cache
+/storage/framework/sessions/*
+!/storage/framework/sessions/.gitkeep
 
-# Environment files
-.env
+/storage/logs/*.log
