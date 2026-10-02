@@ -40,10 +40,11 @@
     36 => 'Laravel\\Tinker\\TinkerServiceProvider',
     37 => 'Livewire\\LivewireServiceProvider',
     38 => 'Carbon\\Laravel\\ServiceProvider',
-    39 => 'Termwind\\Laravel\\TermwindServiceProvider',
-    40 => 'RyanChandler\\BladeCaptureDirective\\BladeCaptureDirectiveServiceProvider',
-    41 => 'Nabilet\\Modules\\Auth\\Providers\\AuthServiceProvider',
-    42 => 'Nabilet\\Modules\\Payments\\Providers\\PaymentServiceProvider',
+    39 => 'NunoMaduro\\Collision\\Adapters\\Laravel\\CollisionServiceProvider',
+    40 => 'Termwind\\Laravel\\TermwindServiceProvider',
+    41 => 'RyanChandler\\BladeCaptureDirective\\BladeCaptureDirectiveServiceProvider',
+    42 => 'Nabilet\\Modules\\Auth\\Providers\\AuthServiceProvider',
+    43 => 'Nabilet\\Modules\\Payments\\Providers\\PaymentServiceProvider',
   ),
   'eager' => 
   array (
@@ -71,10 +72,11 @@
     21 => 'Laravel\\Sanctum\\SanctumServiceProvider',
     22 => 'Livewire\\LivewireServiceProvider',
     23 => 'Carbon\\Laravel\\ServiceProvider',
-    24 => 'Termwind\\Laravel\\TermwindServiceProvider',
-    25 => 'RyanChandler\\BladeCaptureDirective\\BladeCaptureDirectiveServiceProvider',
-    26 => 'Nabilet\\Modules\\Auth\\Providers\\AuthServiceProvider',
-    27 => 'Nabilet\\Modules\\Payments\\Providers\\PaymentServiceProvider',
+    24 => 'NunoMaduro\\Collision\\Adapters\\Laravel\\CollisionServiceProvider',
+    25 => 'Termwind\\Laravel\\TermwindServiceProvider',
+    26 => 'RyanChandler\\BladeCaptureDirective\\BladeCaptureDirectiveServiceProvider',
+    27 => 'Nabilet\\Modules\\Auth\\Providers\\AuthServiceProvider',
+    28 => 'Nabilet\\Modules\\Payments\\Providers\\PaymentServiceProvider',
   ),
   'deferred' => 
   array (
