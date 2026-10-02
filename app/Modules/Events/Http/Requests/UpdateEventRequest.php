@@ -33,19 +33,24 @@ class UpdateEventRequest extends FormRequest
             'title' => ['sometimes', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
             'short_description' => ['nullable', 'string', 'max:500'],
-            'start_date' => ['sometimes', 'date'],
-            'end_date' => ['nullable', 'date', 'after_or_equal:start_date'],
-            'timezone' => ['sometimes', 'timezone'],
+            // FIX (500 on update): legacy fields without a column in `events` —
+            // validated leniently, then stripped before they reach the model.
+            'start_date' => ['nullable', 'date'],
+            'end_date' => ['nullable', 'date'],
+            'timezone' => ['nullable', 'string', 'max:64'],
             'status' => ['sometimes', 'in:draft,published,archived,cancelled'],
             'is_featured' => ['boolean'],
             'min_price' => ['nullable', 'integer', 'min:0'],
             'max_price' => ['nullable', 'integer', 'min:0'],
-            'currency' => ['sometimes', 'size:3'],
+            'currency' => ['nullable', 'string', 'size:3'],
+            'age_limit' => ['nullable', 'string', 'max:32'],
+            'duration_minutes' => ['nullable', 'integer', 'min:1', 'max:1440'],
+            'cover' => ['nullable', 'url', 'max:2048'],
             'image_url' => ['nullable', 'url', 'max:2048'],
             'poster' => ['nullable', 'url', 'max:2048'],
             'seo_title' => ['nullable', 'string', 'max:255'],
             'seo_description' => ['nullable', 'string', 'max:500'],
-            'metadata' => ['nullable', 'array'],
+            'metadata' => ['nullable'],
         ];
     }
 
@@ -57,6 +62,7 @@ class UpdateEventRequest extends FormRequest
     public function passedValidation(): void
     {
         $this->normalizePosterMapping();
+        $this->stripNonColumnFields();
     }
 
     /**
@@ -65,8 +71,25 @@ class UpdateEventRequest extends FormRequest
     public function validated($key = null, $default = null)
     {
         $this->normalizePosterMapping();
+        $this->stripNonColumnFields();
 
         return parent::validated($key, $default);
+    }
+
+    /**
+     * Поля без колонок в таблице `events` (см. StoreEventRequest) — вырезаем,
+     * чтобы Eloquent-update не падал на несуществующем столбце.
+     *
+     * @var list<string>
+     */
+    private const NON_COLUMN_FIELDS = ['start_date', 'end_date', 'timezone', 'currency', 'is_featured', 'min_price', 'max_price', 'metadata'];
+
+    protected function stripNonColumnFields(): void
+    {
+        foreach (self::NON_COLUMN_FIELDS as $field) {
+            $this->request->remove($field);
+            $this->getInputSource()->remove($field);
+        }
     }
 
     protected function normalizePosterMapping(): void

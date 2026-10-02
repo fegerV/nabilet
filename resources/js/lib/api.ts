@@ -171,7 +171,58 @@ export async function send<D>(path: string, method: 'POST' | 'PUT' | 'PATCH' | '
   return request<{ data: D }>(path, { method, body })
 }
 
+/**
+ * Отправка FormData (multipart) — например, загрузка файла афиши на
+ * POST /events с полем poster_file. Не сериализует тело как JSON и не ставит
+ * Content-Type (браузер сам добавит boundary). Ошибки парсятся так же, как в
+ * request(): ApiError с details.fields для привязки к конкретным инпутам.
+ */
+export async function upload<D>(path: string, formData: FormData, method: 'POST' | 'PATCH' = 'POST'): Promise<{ data: D }> {
+  const token = getToken()
+  const headers: Record<string, string> = { Accept: 'application/json' }
+  if (token) headers.Authorization = `Bearer ${token}`
+
+  let res: Response
+  try {
+    res = await fetch(`${BASE_URL}${path}`, { method, headers, body: formData })
+  } catch {
+    throw new ApiError(0, 'Нет соединения с сервером. Проверьте связь.')
+  }
+
+  let payload: unknown = null
+  try {
+    payload = await res.json()
+  } catch {
+    payload = null
+  }
+
+  if (!res.ok) {
+    const p = payload as Record<string, unknown> | null
+    const msg =
+      p && typeof p === 'object' && 'error' in p
+        ? String((p.error as { message?: unknown }).message ?? `HTTP ${res.status}`)
+        : p && typeof p === 'object' && 'message' in p
+          ? String(p.message)
+          : `HTTP ${res.status}`
+    const code =
+      p && typeof p === 'object' && 'error' in p
+        ? String((p.error as { code?: unknown }).code ?? null)
+        : null
+    const details =
+      p && typeof p === 'object' && 'error' in p
+        ? ((p.error as { errors?: Record<string, string[]>; details?: { fields?: Record<string, string[]> } }).errors
+            ?? (p.error as { details?: { fields?: Record<string, string[]> } }).details?.fields
+            ?? null)
+        : null
+    if (res.status === 401 && code !== 'bad_credentials') setToken(null)
+    throw new ApiError(res.status, msg, code, details)
+  }
+
+  return payload as { data: D }
+}
+
 export const api = {
   get,
   send,
+  upload,
 }
