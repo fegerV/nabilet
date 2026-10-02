@@ -5,59 +5,70 @@ declare(strict_types=1);
 namespace Nabilet\Modules\Payments\Services;
 
 use Nabilet\Core\Errors\DomainRuleViolation;
+use Nabilet\Core\StateMachine\StateMachine;
 use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Orders\Models\SeatHold;
 use Nabilet\Modules\Orders\Services\OrderService;
 use Nabilet\Modules\Orders\StateMachines\OrderStateMachine;
 use Nabilet\Modules\Payments\Models\Payment;
-use Nabilet\Modules\Payments\Models\Refund;
-use Nabilet\Modules\Payments\Providers\YooKassaProvider;
 use Nabilet\Modules\Payments\Repositories\PaymentRepository;
 use Nabilet\Modules\Payments\StateMachines\PaymentStateMachine;
-use Nabilet\Modules\Payments\StateMachines\RefundStateMachine;
 use Nabilet\Modules\Inventory\Services\HoldSweeper;
 use Nabilet\Modules\Tickets\Services\TicketService;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
+/**
+ * Оркестрация платежей: инициация у провайдера, обработка вебхуков,
+ * подтверждение/отказ платежа и связанные переходы заказа.
+ *
+ * Рефакторинг (P2):
+ *  - зависимости внедряются явно через конструктор — вместо service-locator
+ *    (`app(YooKassaProvider::class)`, `class_exists(...) ? app(TicketService)`),
+ *    который прятал граф зависимостей и ронял сервис на рантайме;
+ *  - выбор провайдера — через PaymentProviderRegistry (чинит битый match +
+ *    getProvider с неверными FQCN `Payments\Payments\Providers\...`);
+ *  - логика возвратов вынесена в RefundService — сервис больше не совмещает
+ *    платежи, вебхуки и refunds; публичный refundPayment() оставлен тонким
+ *    делегатом ради обратной совместимости контроллеров/тестов.
+ */
 class PaymentService
 {
-    private \Nabilet\Core\StateMachine\StateMachine $machine;
+    private StateMachine $machine;
 
     public function __construct(
         protected PaymentRepository $repository,
         protected HoldSweeper $holdSweeper,
         protected OrderService $orders,
+        protected PaymentProviderRegistry $providers,
+        protected RefundService $refunds,
         protected ?TicketService $ticketService = null,
     ) {
         $this->machine = PaymentStateMachine::make();
-        // Разрешение через контейнер сохраняет обратную совместимость сигнатуры
-        // (тесты конструируют сервис с тремя аргументами).
-        $this->ticketService ??= class_exists(TicketService::class) ? app(TicketService::class) : null;
     }
 
     /**
      * Создать платёж у провайдера для заказа и сохранить Payment.
-     * Возвращает payment + confirmation_url (редирект на ЮKassa или demo-pay).
+     * Возвращает payment + confirmation_url (редирект на шлюз или demo-pay).
      *
-     * @param  int  $orderId
      * @param  array{idempotency_key?: string|null}  $data
      * @return array{payment: Payment, confirmation_url: string|null}
      */
     public function initiatePayment(int $orderId, array $data = []): array
     {
         $order = Order::findOrFail($orderId);
+        $providerName = PaymentProviderRegistry::defaultProviderName();
 
-        return DB::transaction(function () use ($orderId, $order, $data) {
+        return DB::transaction(function () use ($orderId, $order, $data, $providerName) {
             // A7: ключ идемпотентности принадлежит связке (provider, key). Если
             // такой ключ уже использован для ДРУГОГО заказа — это ошибка клиента
             // (переиспользование ключа), а не «верни чужой платёж»: молчаливая
             // выдача payment другого заказа отправляла покупателя платить не за
             // тот заказ. 409 IDEMPOTENCY_CONFLICT.
             if (!empty($data['idempotency_key'])) {
-                $byKey = Payment::where('provider', 'yookassa')
+                $byKey = Payment::where('provider', $providerName)
                     ->where('idempotency_key', $data['idempotency_key'])
                     ->first();
 
@@ -82,7 +93,7 @@ class PaymentService
                 ];
             }
 
-            $provider = $this->makeYooKassaProvider();
+            $provider = $this->providers->make($providerName);
             $providerResult = $provider->createPayment([
                 'order_id' => (string) $orderId,
                 'amount' => (int) $order->total_amount,
@@ -93,7 +104,7 @@ class PaymentService
             ]);
 
             $payment = $this->createPayment($orderId, [
-                'provider' => 'yookassa',
+                'provider' => $providerName,
                 'provider_payment_id' => $providerResult['payment_id'],
                 'amount' => (int) $order->total_amount,
                 'currency' => $order->currency ?? 'RUB',
@@ -109,7 +120,7 @@ class PaymentService
     }
 
     /**
-     * Подтвердить демо-платёж (симулятор ЮKassa в demo_mode).
+     * Подтвердить демо-платёж (симулятор шлюза в demo_mode).
      * Ищет payment по provider_payment_id = demo_* и переводит его в succeeded.
      */
     public function confirmDemoPayment(string $providerPaymentId): Payment
@@ -123,9 +134,7 @@ class PaymentService
             );
         }
 
-        $payment = Payment::where('provider', 'yookassa')
-            ->where('provider_payment_id', $providerPaymentId)
-            ->first();
+        $payment = Payment::where('provider_payment_id', $providerPaymentId)->first();
 
         if (!$payment) {
             throw new DomainRuleViolation(
@@ -136,7 +145,7 @@ class PaymentService
             );
         }
 
-        return $this->processWebhook('yookassa', [
+        return $this->processWebhook((string) $payment->provider, [
             'event' => 'payment.succeeded',
             'object' => [
                 'id' => $payment->provider_payment_id,
@@ -144,18 +153,6 @@ class PaymentService
             ],
             'event_id' => $providerPaymentId . ':demo:confirm:' . Str::ulid(),
         ]);
-    }
-
-    protected function makeYooKassaProvider(): YooKassaProvider
-    {
-        try {
-            return app(YooKassaProvider::class);
-        } catch (\Throwable $e) {
-            // Провайдер создаётся в контейнере (PaymentServiceProvider) с ключами из
-            // конфига; если там пусто и demo_mode выключен — конструктор бросит
-            // RuntimeException, пробрасываем с понятным сообщением.
-            throw new \RuntimeException('YooKassa provider is not available: ' . $e->getMessage());
-        }
     }
 
     /**
@@ -181,7 +178,7 @@ class PaymentService
 
             $payment = $this->repository->create([
                 'order_id' => $orderId,
-                'provider' => $data['provider'] ?? 'yookassa',
+                'provider' => $data['provider'] ?? PaymentProviderRegistry::defaultProviderName(),
                 'provider_payment_id' => $data['provider_payment_id'] ?? null,
                 'amount' => $amount,
                 'currency' => $data['currency'] ?? $order->currency,
@@ -199,108 +196,107 @@ class PaymentService
             ]);
 
             // Создание платежа = попытка оплаты: pending -> awaiting_payment.
-                        if ($this->orders->canTransition($order, OrderStateMachine::AWAITING_PAYMENT)) {
-                            $this->orders->markAwaitingPayment($order);
-                        }
+            if ($this->orders->canTransition($order, OrderStateMachine::AWAITING_PAYMENT)) {
+                $this->orders->markAwaitingPayment($order);
+            }
 
             return $payment->load(['transactions']);
         });
     }
 
-    public function findPayment(int $paymentId, int $organizationId = null): ?Payment
+    public function findPayment(int $paymentId, ?int $organizationId = null): ?Payment
     {
         return $this->repository->find($paymentId, $organizationId);
     }
 
-    public function findByPublicId(string $publicId, int $organizationId = null): ?Payment
+    public function findByPublicId(string $publicId, ?int $organizationId = null): ?Payment
     {
         return $this->repository->findByPublicId($publicId, $organizationId);
     }
 
     public function processWebhook(string $provider, array $payload): Payment
-        {
-            return DB::transaction(function () use ($provider, $payload) {
-                $paymentId = (string) ($payload['object']['id']
-                    ?? $payload['payment_id']
-                    ?? $payload['id']
-                    ?? '');
+    {
+        return DB::transaction(function () use ($provider, $payload) {
+            $paymentId = (string) ($payload['object']['id']
+                ?? $payload['payment_id']
+                ?? $payload['id']
+                ?? '');
 
-                if ($paymentId === '') {
-                    throw new DomainRuleViolation(
-                        'Webhook payload carries no payment id.',
-                        'INVALID_WEBHOOK_PAYLOAD',
-                        ['provider' => $provider],
-                        422,
-                    );
-                }
+            if ($paymentId === '') {
+                throw new DomainRuleViolation(
+                    'Webhook payload carries no payment id.',
+                    'INVALID_WEBHOOK_PAYLOAD',
+                    ['provider' => $provider],
+                    422,
+                );
+            }
 
-                // Find payment by provider payment ID (YooKassa шлёт его в object.id)
-                $payment = Payment::where('provider', $provider)
-                    ->where('provider_payment_id', $paymentId)
-                    ->first();
+            // Find payment by provider payment ID (шлюз шлёт его в object.id)
+            $payment = Payment::where('provider', $provider)
+                ->where('provider_payment_id', $paymentId)
+                ->first();
 
-                if (!$payment) {
-                    throw new DomainRuleViolation(
-                        'Unknown payment for webhook',
-                        'UNKNOWN_PAYMENT',
-                        ['provider' => $provider, 'payment_id' => $paymentId],
-                        404,
-                    );
-                }
+            if (!$payment) {
+                throw new DomainRuleViolation(
+                    'Unknown payment for webhook',
+                    'UNKNOWN_PAYMENT',
+                    ['provider' => $provider, 'payment_id' => $paymentId],
+                    404,
+                );
+            }
 
-                $eventType = (string) ($payload['event'] ?? $payload['event_type'] ?? '');
-                $eventId = (string) ($payload['event_id'] ?? ($paymentId . ':' . $eventType));
+            $eventType = (string) ($payload['event'] ?? $payload['event_type'] ?? '');
+            $eventId = (string) ($payload['event_id'] ?? ($paymentId . ':' . $eventType));
 
-                if ($eventId === '') {
-                    throw new \RuntimeException('Webhook payload carries no event_id, so it cannot be deduplicated');
-                }
+            if ($eventId === '') {
+                throw new \RuntimeException('Webhook payload carries no event_id, so it cannot be deduplicated');
+            }
 
-                // Idempotency belongs to the database, not to this method. The schema
-                // already provides it: `webhook_events` carries
-                // UNIQUE (provider, provider_event_id). Claiming the event with an
-                // insert is atomic, so a replayed delivery loses the race and stops
-                // here. The previous implementation appended the event id to a JSON
-                // column on `payments` -- a read-modify-write that two concurrent
-                // replays can both win, which is the opposite of what it was for.
-                $claimed = DB::table('webhook_events')->insertOrIgnore([
-                    'provider' => $provider,
-                    'provider_event_id' => $eventId,
-                    'event_name' => $eventType,
-                    'payload_json' => json_encode($payload, JSON_THROW_ON_ERROR),
-                    'processed_at' => null,
-                    'created_at' => now(),
-                ]);
+            // Idempotency belongs to the database, not to this method. The schema
+            // already provides it: `webhook_events` carries
+            // UNIQUE (provider, provider_event_id). Claiming the event with an
+            // insert is atomic, so a replayed delivery loses the race and stops
+            // here. The previous implementation appended the event id to a JSON
+            // column on `payments` -- a read-modify-write that two concurrent
+            // replays can both win, which is the opposite of what it was for.
+            $claimed = DB::table('webhook_events')->insertOrIgnore([
+                'provider' => $provider,
+                'provider_event_id' => $eventId,
+                'event_name' => $eventType,
+                'payload_json' => json_encode($payload, JSON_THROW_ON_ERROR),
+                'processed_at' => null,
+                'created_at' => now(),
+            ]);
 
-                if ($claimed === 0) {
-                    return $payment; // Already processed this event.
-                }
+            if ($claimed === 0) {
+                return $payment; // Already processed this event.
+            }
 
-                // Process based on event type
-                switch ($eventType) {
-                    case 'payment.succeeded':
-                        $this->handlePaymentSucceeded($payment, $payload);
-                        break;
+            switch ($eventType) {
+                case 'payment.succeeded':
+                    $this->handlePaymentSucceeded($payment, $payload);
+                    break;
 
-                    case 'payment.failed':
-                    case 'payment.canceled':
-                        $this->handlePaymentFailed($payment, $payload);
-                        break;
+                case 'payment.failed':
+                case 'payment.canceled':
+                    $this->handlePaymentFailed($payment, $payload);
+                    break;
 
-                    default:
-                        // Throwing rolls the claim back with the rest of the
-                        // transaction, so an event we cannot handle is not recorded
-                        // as processed and can be retried once the handler exists.
-                        throw new \RuntimeException('Unknown webhook event type');
-                }
+                default:
+                    // Throwing rolls the claim back with the rest of the
+                    // transaction, so an event we cannot handle is not recorded
+                    // as processed and can be retried once the handler exists.
+                    throw new \RuntimeException('Unknown webhook event type');
+            }
 
-                DB::table('webhook_events')
-                    ->where('provider', $provider)
-                    ->where('provider_event_id', $eventId)
-                    ->update(['processed_at' => now()]);
+            DB::table('webhook_events')
+                ->where('provider', $provider)
+                ->where('provider_event_id', $eventId)
+                ->update(['processed_at' => now()]);
 
-                return $payment->fresh();
-            });
-        }
+            return $payment->fresh();
+        });
+    }
 
     protected function handlePaymentSucceeded(Payment $payment, array $payload): void
     {
@@ -349,13 +345,15 @@ class PaymentService
             $freshOrder = $payment->order->fresh();
             if ($freshOrder !== null && $freshOrder->status === 'paid') {
                 $this->markInventorySoldForOrder($freshOrder);
-            }
 
-            // A6: выпуск билетов сразу после перехода заказа в paid — внутри той же
-            // транзакции вебхука (идемпотентно: повторный вызов возвращает уже
-            // выпущенные билеты). Это чинит разрыв цепочки «оплата → билет».
-            if ($freshOrder !== null && $freshOrder->status === 'paid' && $this->ticketService !== null) {
-                $this->ticketService->issueTicketsForOrder($freshOrder);
+                // A6: выпуск билетов сразу после перехода заказа в paid — внутри той же
+                // транзакции вебхука (идемпотентно: повторный вызов возвращает уже
+                // выпущенные билеты). Это чинит разрыв цепочки «оплата → билет».
+                // TicketService внедрён явно (через контейнер), поэтому разрыв
+                // «билеты не выпускались, т.к. app(TicketService) падал» исключён.
+                if ($this->ticketService !== null) {
+                    $this->ticketService->issueTicketsForOrder($freshOrder);
+                }
             }
         }
     }
@@ -455,8 +453,8 @@ class PaymentService
 
         $this->repository->markAsFailed(
             $payment,
-            (string) ($cancellation['reason'] ?? ($payload['failure_code'] ?? null)),
-            (string) ($cancellation['party'] ?? ($payload['failure_message'] ?? null)),
+            (string) ($cancellation['reason'] ?? ($payload['failure_code'] ?? '')),
+            (string) ($cancellation['party'] ?? ($payload['failure_message'] ?? '')),
         );
 
         // Add failed transaction
@@ -483,135 +481,35 @@ class PaymentService
         }
     }
 
-    public function refundPayment(Payment $payment, int $amount = null, string $reason = null): Payment
+    /**
+     * Возврат средств — делегат в RefundService.
+     *
+     * Публичная сигнатура сохранена ради существующих вызывающих мест; вся
+     * доменная логика (валидация остатка, машина состояний возврата, запрос к
+     * провайдеру через реестр) живёт в RefundService::refund().
+     */
+    public function refundPayment(Payment $payment, ?int $amount = null, ?string $reason = null): Payment
     {
-        return DB::transaction(function () use ($payment, $amount, $reason) {
-            if ($payment->status !== PaymentStateMachine::SUCCEEDED) {
-                throw new DomainRuleViolation(
-                    'Can only refund succeeded payments',
-                    'PAYMENT_NOT_SUCCEEDED',
-                    ['payment_id' => $payment->id, 'status' => $payment->status],
-                    422,
-                );
-            }
-
-            // Prevent duplicate refunds
-            $totalRefunded = (int) $payment->refunds()->where('status', '!=', 'failed')->sum('amount');
-            if ($totalRefunded >= $payment->amount) {
-                throw new DomainRuleViolation(
-                    'Payment already fully refunded',
-                    'PAYMENT_ALREADY_REFUNDED',
-                    ['payment_id' => $payment->id],
-                    422,
-                );
-            }
-
-            $refundAmount = $amount ?? ($payment->amount - $totalRefunded);
-
-            // Validate refund amount
-            if ($totalRefunded + $refundAmount > $payment->amount) {
-                throw new DomainRuleViolation(
-                    'Refund amount exceeds remaining payment balance',
-                    'REFUND_EXCEEDS_BALANCE',
-                    ['payment_id' => $payment->id, 'amount' => $refundAmount],
-                    422,
-                );
-            }
-
-            // Create refund record — order_id NOT NULL в схеме.
-            $refund = $payment->refunds()->create([
-                'order_id' => $payment->order_id,
-                'amount' => $refundAmount,
-                'currency' => $payment->currency,
-                'reason' => $reason,
-                'status' => RefundStateMachine::PROCESSING,
-                'provider_refund_id' => null,
-            ]);
-
-            // Process refund through provider based on payment provider type
-            try {
-                $providerName = $payment->provider ?? 'yookassa';
-
-                // Get appropriate provider instance
-                $provider = match (strtolower($providerName)) {
-                    'yookassa' => app(YooKassaProvider::class),
-                    default => $this->getProvider($providerName),
-                };
-
-                if ($provider === null) {
-                    throw new \RuntimeException("Payment provider '{$providerName}' not found");
-                }
-
-                // Call provider-specific refund method
-                $providerResponse = $provider->refund([
-                    'payment_id' => $payment->provider_payment_id,
-                    'amount' => $refundAmount,
-                    'currency' => $payment->currency,
-                    'reason' => $reason,
-                ]);
-
-                // Update refund with provider response
-                $refund->update([
-                    'provider_refund_id' => $providerResponse['refund_id'] ?? null,
-                    'status' => RefundStateMachine::PROCESSING,
-                ]);
-
-                // Add refund transaction record
-                $this->repository->addTransaction($payment, [
-                    'type' => 'refund',
-                    'amount' => -$refundAmount,
-                    'status' => 'pending',
-                    'payload_json' => ['refund_id' => $refund->id, 'reason' => $reason],
-                ]);
-
-            } catch (\Exception $e) {
-                // Mark refund as failed
-                $refund->update([
-                    'status' => RefundStateMachine::FAILED,
-                ]);
-
-                throw new \RuntimeException('Refund processing failed: ' . $e->getMessage());
-            }
-
-            return $payment->fresh();
-        });
+        return $this->refunds->refund($payment, $amount, $reason);
     }
 
     /**
-     * Get payment provider instance
+     * @return array<int, array<string, mixed>>
      */
-    protected function getProvider(string $name): ?object
-    {
-        // Try to resolve from container first
-        try {
-            $className = match(strtolower($name)) {
-                'yookassa' => '\\Nabilet\\Modules\\Payments\\Payments\\Providers\\YooKassaProvider',
-                'stripe' => '\\Nabilet\\Modules\\Payments\\Payments\\Providers\\StripeProvider',
-                'kaspi' => '\\Nabilet\\Modules\\Payments\\Payments\\Providers\\KaspiProvider',
-                default => null,
-            };
-
-            if ($className && class_exists($className)) {
-                return app($className);
-            }
-        } catch (\Throwable $e) {
-            return null;
-        }
-
-        return null;
-    }
-
     public function getPaymentsByOrder(int $orderId): array
     {
         return $this->repository->findByOrder($orderId)->toArray();
     }
 
-    public function paginate(array $filters, int $perPage = 20): \Illuminate\Pagination\LengthAwarePaginator
+    /**
+     * @param  array<string, mixed>  $filters
+     */
+    public function paginate(array $filters, int $perPage = 20): LengthAwarePaginator
     {
         $organizationId = $filters['organization_id'] ?? null;
 
         if ($organizationId === null || $organizationId === '' || (int) $organizationId <= 0) {
-            return new \Illuminate\Pagination\LengthAwarePaginator([], 0, $perPage);
+            return new LengthAwarePaginator([], 0, $perPage);
         }
 
         return $this->repository->model

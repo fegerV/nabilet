@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace Nabilet\Modules\Payments\Providers;
 
 use Nabilet\Modules\Payments\Repositories\PaymentRepository;
+use Nabilet\Modules\Payments\Services\PaymentProviderRegistry;
 use Nabilet\Modules\Payments\Services\PaymentService;
+use Nabilet\Modules\Payments\Services\RefundService;
 use Illuminate\Support\ServiceProvider;
 
 class PaymentServiceProvider extends ServiceProvider
@@ -14,6 +16,7 @@ class PaymentServiceProvider extends ServiceProvider
     {
         $this->app->singleton(PaymentRepository::class);
         $this->app->singleton(PaymentService::class);
+        $this->app->singleton(RefundService::class);
 
         // Провайдеру нужны ключи/секреты из конфига — контейнер не может их
         // вывести (конструктор YooKassaProvider требует строки), поэтому создаём
@@ -25,6 +28,16 @@ class PaymentServiceProvider extends ServiceProvider
                 (string) config('nabilet.payment.yookassa.secret_key', ''),
                 (string) config('nabilet.payment.yookassa.base_url', 'https://api.yookassa.ru/v3'),
             );
+        });
+
+        // Реестр провайдеров: единая точка выбора шлюза вместо разбросанных
+        // match/app() внутри PaymentService. Новые провайдеры добавляются
+        // здесь же (имя => FQCN или фабрика).
+        $this->app->singleton(PaymentProviderRegistry::class, function ($app) {
+            $registry = new PaymentProviderRegistry($app);
+            $registry->register('yookassa', YooKassaProvider::class);
+
+            return $registry;
         });
     }
 

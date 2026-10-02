@@ -1,5 +1,10 @@
-# Build artifacts
-public_html/build/
-
 # Dependencies
-node_modules/
+/vendor/
+
+# Laravel / PHP specific caches and logs
+/bootstrap/cache/
+/storage/logs/
+.phpunit.result.cache
+
+# Environment files
+.env
