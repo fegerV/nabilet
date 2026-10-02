@@ -31,3 +31,19 @@
 #28 /workspace/artisan(16): Illuminate\\Foundation\\Console\\Kernel->handle()
 #29 {main}
 "} 
+[2026-10-02 16:49:13] local.ERROR: Command "test" is not defined.
+
+Did you mean one of these?
+    make:test
+    schedule:test {"exception":"[object] (Symfony\\Component\\Console\\Exception\\CommandNotFoundException(code: 0): Command \"test\" is not defined.
+
+Did you mean one of these?
+    make:test
+    schedule:test at /workspace/vendor/symfony/console/Application.php:759)
+[stacktrace]
+#0 /workspace/vendor/symfony/console/Application.php(298): Symfony\\Component\\Console\\Application->find()
+#1 /workspace/vendor/symfony/console/Application.php(195): Symfony\\Component\\Console\\Application->doRun()
+#2 /workspace/vendor/laravel/framework/src/Illuminate/Foundation/Console/Kernel.php(198): Symfony\\Component\\Console\\Application->run()
+#3 /workspace/artisan(16): Illuminate\\Foundation\\Console\\Kernel->handle()
+#4 {main}
+"} 
