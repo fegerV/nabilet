@@ -1,6 +1,17 @@
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue';
+import { ref, onMounted } from 'vue';
 import axios from 'axios';
+import {
+    CANVAS_PRESETS,
+    DEFAULT_TICKET_VARIABLES,
+    buildTemplatePayload,
+    cloneElement,
+    normalizeNewElement,
+    syncDerivedCoordinates,
+    duplicateAsElement,
+    renderTextContent as renderVars,
+    getQrCodeUrl as qrUrl,
+} from '@/lib/ticketBuilder';
 
 const props = defineProps({
     templateId: {
@@ -122,24 +133,8 @@ const templates = ref([
     }
 ]);
 
-// Переменные для подстановки данных
-const ticketVariables = {
-    event: {
-        name: 'Название события',
-        date: '01.01.2024',
-        time: '19:00',
-        venue: 'Концертный зал'
-    },
-    ticket: {
-        number: 'A001234',
-        holder: 'Иван Иванов'
-    },
-    seat: {
-        row: '5',
-        number: '12',
-        info: 'Ряд 5, Место 12'
-    }
-};
+// Переменные для подстановки данных (дефолты — @/lib/ticketBuilder)
+const ticketVariables = DEFAULT_TICKET_VARIABLES;
 
 // Панели элементов
 const elementCategories = [
@@ -179,34 +174,7 @@ const elementCategories = [
 
 // Добавление элемента на холст
 function addElement(item) {
-    const newElement = {
-        id: Date.now(),
-        type: item.type,
-        x: 50,
-        y: 50,
-        ...item.defaultData,
-        rotation: 0,
-        opacity: 1
-    };
-    
-    // Установка размеров по умолчанию для разных типов
-    if (item.type === 'text' && !newElement.width) {
-        newElement.width = 200;
-        newElement.height = 30;
-    } else if (item.type === 'rectangle' && !newElement.x2) {
-        newElement.x2 = newElement.x + newElement.width;
-        newElement.y2 = newElement.y + newElement.height;
-    } else if (item.type === 'circle') {
-        newElement.cx = newElement.x + (item.defaultData?.r || 50);
-        newElement.cy = newElement.y + (item.defaultData?.r || 50);
-    } else if (item.type === 'line') {
-        newElement.x2 = newElement.x + (item.defaultData?.x2 || 200);
-        newElement.y2 = newElement.y;
-    } else if (item.type === 'qr' || item.type === 'barcode') {
-        newElement.width = item.defaultData?.size || 100;
-        newElement.height = item.type === 'qr' ? item.defaultData?.size || 100 : item.defaultData?.height || 50;
-    }
-    
+    const newElement = normalizeNewElement(item);
     elements.value.push(newElement);
     selectElement(newElement);
 }
@@ -242,16 +210,7 @@ function handleDrag(event) {
     selectedElement.value.x = Math.max(0, Math.min(canvasWidth.value - 50, newX));
     selectedElement.value.y = Math.max(0, Math.min(canvasHeight.value - 50, newY));
     
-    // Обновление связанных координат
-    if (selectedElement.value.type === 'circle') {
-        selectedElement.value.cx = selectedElement.value.x + (selectedElement.value.r || 50);
-        selectedElement.value.cy = selectedElement.value.y + (selectedElement.value.r || 50);
-    } else if (selectedElement.value.type === 'line') {
-        selectedElement.value.x2 = selectedElement.value.x + 200;
-    } else if (selectedElement.value.type === 'rectangle' || selectedElement.value.type === 'image') {
-        selectedElement.value.x2 = selectedElement.value.x + (selectedElement.value.width || 100);
-        selectedElement.value.y2 = selectedElement.value.y + (selectedElement.value.height || 100);
-    }
+    syncDerivedCoordinates(selectedElement.value);
 }
 
 // Завершение перетаскивания
@@ -269,15 +228,10 @@ function deleteSelected() {
     }
 }
 
-// Дублирование элемента
+// Дублирование элемента (клонирование — в @/lib/ticketBuilder)
 function duplicateElement() {
-    if (!selectedElement.value) return;
-    const duplicate = {
-        ...JSON.parse(JSON.stringify(selectedElement.value)),
-        id: Date.now(),
-        x: selectedElement.value.x + 20,
-        y: selectedElement.value.y + 20
-    };
+    const duplicate = duplicateAsElement(selectedElement.value);
+    if (!duplicate) return;
     elements.value.push(duplicate);
     selectElement(duplicate);
 }
@@ -287,7 +241,7 @@ function applyTemplate(template) {
     selectedTemplate.value = template;
     canvasWidth.value = 600;
     canvasHeight.value = 400;
-    elements.value = JSON.parse(JSON.stringify(template.config.elements));
+    elements.value = cloneElement(template.config.elements);
     selectedElement.value = null;
 }
 
@@ -305,18 +259,14 @@ async function saveTemplate() {
     }
     
     try {
-        const payload = {
+        const payload = buildTemplatePayload({
             name: templateName.value,
-            organization_id: props.organizationId,
-            format: 'mobile',
-            width: canvasWidth.value,
-            height: canvasHeight.value,
-            template_json: JSON.stringify({
-                backgroundColor: '#ffffff',
-                elements: elements.value
-            })
-        };
-        
+            organizationId: props.organizationId,
+            canvasWidth: canvasWidth.value,
+            canvasHeight: canvasHeight.value,
+            config: { backgroundColor: '#ffffff', elements: elements.value },
+        });
+
         const response = await axios.post('/api/ticket-templates', payload);
         
         if (response.data.success || response.data.id) {
@@ -341,7 +291,10 @@ async function loadTemplate() {
         const template = response.data;
         
         if (template.template_json) {
-            const config = JSON.parse(template.template_json);
+            // Модель кастит template_json в массив; строка — легаси двойного кодирования.
+            const config = typeof template.template_json === 'string'
+                ? JSON.parse(template.template_json)
+                : template.template_json;
             canvasWidth.value = template.width || 600;
             canvasHeight.value = template.height || 400;
             elements.value = config.elements || [];
@@ -351,30 +304,14 @@ async function loadTemplate() {
     }
 }
 
-// Отрисовка переменной текста
+// Отрисовка переменной текста (подстановка {{var}} — в @/lib/ticketBuilder)
 function renderTextContent(content) {
-    if (!content) return '';
-    
-    let rendered = content;
-    
-    // Замена переменных
-    rendered = rendered.replace(/\{\{event\.name\}\}/g, ticketVariables.event.name);
-    rendered = rendered.replace(/\{\{event\.date\}\}/g, ticketVariables.event.date);
-    rendered = rendered.replace(/\{\{event\.time\}\}/g, ticketVariables.event.time);
-    rendered = rendered.replace(/\{\{event\.venue\}\}/g, ticketVariables.event.venue);
-    rendered = rendered.replace(/\{\{ticket\.number\}\}/g, ticketVariables.ticket.number);
-    rendered = rendered.replace(/\{\{ticket\.holder\}\}/g, ticketVariables.ticket.holder);
-    rendered = rendered.replace(/\{\{seat\.row\}\}/g, ticketVariables.seat.row);
-    rendered = rendered.replace(/\{\{seat\.number\}\}/g, ticketVariables.seat.number);
-    rendered = rendered.replace(/\{\{seat\.info\}\}/g, ticketVariables.seat.info);
-    
-    return rendered;
+    return renderVars(content, ticketVariables);
 }
 
 // Генерация URL для QR кода
 function getQrCodeUrl(data) {
-    const qrData = encodeURIComponent(data || 'https://nabilet.com');
-    return `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${qrData}`;
+    return qrUrl(data);
 }
 
 // Экспорт в PDF
@@ -404,17 +341,12 @@ async function exportToPDF() {
     }
 }
 
-// Изменение размера холста
+// Изменение размера холста (пресеты — CANVAS_PRESETS из @/lib/ticketBuilder)
 function resizeCanvas(preset) {
-    const sizes = {
-        mobile: { width: 400, height: 600 },
-        desktop: { width: 600, height: 400 },
-        square: { width: 500, height: 500 },
-        wide: { width: 800, height: 400 }
-    };
-    
-    canvasWidth.value = sizes[preset].width;
-    canvasHeight.value = sizes[preset].height;
+    const size = CANVAS_PRESETS[preset];
+    if (!size) return;
+    canvasWidth.value = size.width;
+    canvasHeight.value = size.height;
 }
 
 onMounted(() => {
