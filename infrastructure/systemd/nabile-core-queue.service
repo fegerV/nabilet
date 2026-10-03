@@ -1,0 +1,79 @@
+# NABILET Core Queue Worker Service
+# 
+# Production systemd service configuration for Laravel queue workers
+# with automatic restart, health checks, and monitoring integration.
+#
+# Installation:
+#   sudo cp nabile-core-queue.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable nabile-core-queue
+#   sudo systemctl start nabile-core-queue
+#
+# Monitoring:
+#   sudo systemctl status nabile-core-queue
+#   journalctl -u nabile-core-queue -f
+#   sudo systemctl restart nabile-core-queue
+
+[Unit]
+Description=NABILET Core Queue Worker
+Documentation=https://github.com/nabilet/core/docs
+After=network.target postgresql.service redis.service
+Wants=postgresql.service redis.service
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/nabilet-core
+
+# Environment configuration
+EnvironmentFile=/etc/nabilet-core/.env
+Environment="APP_ENV=production"
+Environment="QUEUE_CONNECTION=redis"
+
+# Queue worker command
+# --tries=3: Retry failed jobs up to 3 times
+# --timeout=300: Maximum seconds a job can run
+# --sleep=3: Seconds to sleep when no jobs available
+# --max-jobs=1000: Restart worker after processing 1000 jobs (prevents memory leaks)
+ExecStart=/usr/bin/php /var/www/nabilet-core/artisan queue:work redis \
+    --queue=high,default,low \
+    --tries=3 \
+    --timeout=300 \
+    --sleep=3 \
+    --max-jobs=1000 \
+    --memory=512 \
+    --verbose
+
+# Automatic restart configuration
+Restart=always
+RestartSec=5s
+
+# Hardening and security
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/var/www/nabilet-core/storage
+ReadWritePaths=/var/www/nabilet-core/bootstrap/cache
+
+# Resource limits
+LimitNOFILE=65535
+Nice=-5
+IOSchedulingClass=idle
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=nabile-core-queue
+
+# Health check endpoint (called by watchdog)
+ExecReload=/bin/kill -s USR1 $MAINPID
+
+# Graceful shutdown
+TimeoutStopSec=30
+KillMode=mixed
+KillSignal=SIGTERM
+
+[Install]
+WantedBy=multi-user.target

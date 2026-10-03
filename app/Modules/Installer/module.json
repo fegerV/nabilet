@@ -1,0 +1,11 @@
+{
+  "name": "installer",
+  "title": "Установщик",
+  "version": "1.0.0",
+  "enabled": true,
+  "priority": 1,
+  "requires": [],
+  "permissions": [],
+  "provides": ["install.completed"],
+  "description": "Пошаговая установка системы (/install): проверка требований, БД, администратор, настройки, миграции. Блокируется через storage/install.lock после успешного завершения."
+}

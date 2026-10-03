@@ -1,0 +1,11 @@
+{
+  "name": "orders",
+  "title": "Заказы",
+  "version": "1.0.0",
+  "enabled": true,
+  "priority": 90,
+  "requires": ["cart"],
+  "permissions": ["orders.view", "orders.refund"],
+  "provides": ["order.created", "order.paid", "order.canceled", "order.expired", "order.refunded"],
+  "description": "Заказ, его позиции и жизненный цикл pending → awaiting_payment → paid → (partially_refunded) → refunded. Событие order.paid — главная точка расширения: на него подписываются выдача билетов, уведомления, webhooks и n8n (ТЗ §26, §46)."
+}

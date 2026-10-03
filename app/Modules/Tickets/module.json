@@ -1,0 +1,11 @@
+{
+  "name": "tickets",
+  "title": "Билеты и QR",
+  "version": "1.0.0",
+  "enabled": true,
+  "priority": 110,
+  "requires": ["orders", "payments"],
+  "permissions": ["tickets.view", "tickets.checkin"],
+  "provides": ["ticket.issued", "ticket.refunded", "ticket.checked_in", "ticket.revoked"],
+  "description": "Выдача билетов после оплаты, QR на основе подписанного токена без персональных данных (ТЗ §30), шаблоны и PDF-билеты, конструктор билета. Выдача идемпотентна по (order_id, inventory_item_id)."
+}

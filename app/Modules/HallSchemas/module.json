@@ -1,0 +1,11 @@
+{
+  "name": "hallschemas",
+  "title": "Схемы залов",
+  "version": "1.0.0",
+  "enabled": true,
+  "priority": 40,
+  "requires": ["venues"],
+  "permissions": ["hall_schemas.edit"],
+  "provides": ["hall_schema.version_published", "hall_schema.imported"],
+  "description": "Геометрия зала: сектора, ряды, места, столы, standing-зоны. Версионирование обязательно: опубликованная версия неизменяема, сеанс навсегда ссылается на конкретную версию (ТЗ §14). Редактор на Konva/Canvas."
+}

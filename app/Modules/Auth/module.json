@@ -1,0 +1,11 @@
+{
+  "name": "auth",
+  "title": "Аутентификация",
+  "version": "1.0.0",
+  "enabled": true,
+  "priority": 10,
+  "requires": ["organizations"],
+  "permissions": [],
+  "provides": ["user.authenticated", "user.logged_out", "user.login_failed"],
+  "description": "Email/пароль, OAuth (Яндекс, VK, Telegram), 2FA (TOTP + recovery codes), управление сессиями и история входов (ТЗ §8)."
+}

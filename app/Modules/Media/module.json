@@ -1,0 +1,11 @@
+{
+  "name": "media",
+  "title": "Медиа",
+  "version": "1.0.0",
+  "enabled": true,
+  "priority": 145,
+  "requires": ["organizations"],
+  "permissions": [],
+  "provides": ["media.uploaded", "media.deleted"],
+  "description": "Загрузка и обработка файлов: афиши, планы залов, логотипы. Локальное хранилище с опциональным S3-совместимым бэкендом, presigned URL для больших файлов, варианты изображений (ТЗ §3, §17)."
+}

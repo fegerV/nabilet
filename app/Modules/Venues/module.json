@@ -1,0 +1,11 @@
+{
+  "name": "venues",
+  "title": "Площадки и залы",
+  "version": "1.0.0",
+  "enabled": true,
+  "priority": 30,
+  "requires": ["organizations"],
+  "permissions": ["venues.edit"],
+  "provides": ["venue.created", "hall.created"],
+  "description": "Площадки (Venue), залы (Hall) и их адреса. Зал — это физическое помещение; продаваемые схемы живут в модуле hallschemas как неизменяемые версии (ТЗ §11)."
+}

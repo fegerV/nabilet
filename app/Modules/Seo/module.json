@@ -1,0 +1,11 @@
+{
+  "name": "seo",
+  "title": "SEO и каталог",
+  "version": "1.0.0",
+  "enabled": true,
+  "priority": 150,
+  "requires": ["events", "venues"],
+  "permissions": ["settings.manage"],
+  "provides": ["seo.meta_resolved"],
+  "description": "Мета-теги, canonical, OG, Schema.org (Event, Offer, Place, Organization, BreadcrumbList), мультиязычные URL, sitemap по разделам и менеджер 301/302/307/308-редиректов с импортом CSV (ТЗ §35–38)."
+}

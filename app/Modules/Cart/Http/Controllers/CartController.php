@@ -1,0 +1,176 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Nabilet\Modules\Cart\Http\Controllers;
+
+use Nabilet\Modules\Cart\Http\Resources\CartResource;
+use Nabilet\Modules\Cart\Models\Cart;
+use Nabilet\Modules\Cart\Services\CartService;
+use Nabilet\Modules\Cart\Support\CartToken;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Routing\Controller;
+
+/**
+ * Cart endpoints.
+ *
+ * There is deliberately no `try`/`catch` and no `response()->json(['error' => …])`
+ * anywhere in this controller. Every failure — a missing `session_id`, an exhausted
+ * inventory item, an expired cart — is raised as an `AppError` (by the validator or by
+ * `CartService`) and rendered by `ApiExceptionRenderer` into the §66 envelope. Catching
+ * and re-shaping here is what produced bodies like `{"error":"session_id required"}`:
+ * a flat string with no `code` to branch on and no `request_id` to correlate a support
+ * ticket with a log line.
+ *
+ * D5: корзина принадлежит покупателю, а не сеансу. Идентификатор покупателя —
+ * заголовок `X-Cart-Token` (гостевой UUID браузера). Если клиент его ещё не имеет,
+ * сервер генерирует токен и возвращает в теле (`cart_token`) и в заголовке ответа —
+ * клиент сохраняет его (localStorage) и шлёт дальше. Так два параллельных покупателя
+ * одного сеанса работают в РАЗНЫХ корзинах.
+ */
+class CartController extends Controller
+{
+    public function __construct(
+        protected CartService $cartService
+    ) {}
+
+    /**
+     * Разобрать/выдать токен покупателя. Возвращает [token, isNew].
+     */
+    private function resolveToken(Request $request): array
+    {
+        $token = CartToken::fromRequest($request);
+
+        if ($token !== null) {
+            return [$token, false];
+        }
+
+        // Пользователь авторизован — корзиной владеет он; стабильный токен привязан к аккаунту.
+        if (($user = $request->user()) !== null) {
+            return ['u' . $user->id, false];
+        }
+
+        return [CartToken::generate(), true];
+    }
+
+    private function withTokenHeader(JsonResponse $response, string $token, bool $isNew): JsonResponse
+    {
+        $response->headers->set(CartToken::HEADER, $token);
+
+        if ($isNew) {
+            $payload = $response->getData(true);
+            $payload['cart_token'] = $token;
+            $response->setData($payload);
+        }
+
+        return $response;
+    }
+
+    public function show(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'session_id' => ['bail', 'required', 'integer'],
+        ]);
+
+        [$token, $isNew] = $this->resolveToken($request);
+
+        $cart = Cart::query()
+            ->where('session_id', $validated['session_id'])
+            ->where('status', 'active')
+            ->where('cart_token', $token)
+            ->with(['items.inventoryItem', 'items.inventoryItem.seat'])
+            ->orderBy('id')
+            ->first();
+
+        return $this->withTokenHeader(response()->json([
+            'data' => $cart ? new CartResource($cart) : null,
+        ], 200), $token, $isNew);
+    }
+
+    public function addItem(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            // `bail` + `integer` are load-bearing here, not decoration. `sessions.id`
+            // and `inventory_items.id` are BIGINT, so `exists:sessions,id` issues
+            // `where id = 'nope'` and PostgreSQL rejects the cast with
+            // SQLSTATE[22P02] "invalid syntax for type bigint" — a QueryException,
+            // which means a client could turn a validation error into a 500 simply by
+            // sending a string. Verified live before this change.
+            //
+            // `bail` is the part that actually prevents it: Laravel only stops
+            // evaluating an attribute's remaining rules when `bail` is present, so
+            // `integer` failing is not enough on its own — `exists` would still run.
+            'session_id' => ['bail', 'required', 'integer', 'exists:sessions,id'],
+            'inventory_item_id' => ['bail', 'required', 'integer', 'exists:inventory_items,id'],
+            'quantity' => ['required', 'integer', 'min:1', 'max:10'],
+        ]);
+
+        [$token, $isNew] = $this->resolveToken($request);
+
+        // `CartService::addItem()` declares `string $sessionId`, and this file is under
+        // `strict_types=1`, so an integer `session_id` in the JSON body would be a
+        // TypeError rather than a cast. The spec types `session_id` as a string, but a
+        // client that sends a number must not get a 500.
+        $cartItem = $this->cartService->addItem(
+            (string) $validated['session_id'],
+            (int) $validated['inventory_item_id'],
+            (int) $validated['quantity'],
+            $token,
+        );
+
+        $cart = $cartItem->cart()->with('items')->first();
+
+        return $this->withTokenHeader(response()->json([
+            'message' => 'Item added to cart successfully',
+            'data' => $cartItem,
+            'cart' => $cart ? [
+                'cart_id' => $cart->id,
+                'total_amount' => $cart->total_amount,
+                'currency' => $cart->currency,
+                'expires_at' => $cart->expires_at?->toIso8601String(),
+            ] : null,
+        ], 201), $token, $isNew);
+    }
+
+    public function removeItem(Request $request, int $itemId): JsonResponse
+    {
+        $validated = $request->validate([
+            'session_id' => ['bail', 'required', 'integer'],
+        ]);
+
+        [$token, $isNew] = $this->resolveToken($request);
+
+        $this->cartService->removeItem((string) $validated['session_id'], $itemId, $token);
+
+        return $this->withTokenHeader(response()->json([
+            'message' => 'Item removed from cart successfully',
+        ]), $token, $isNew);
+    }
+
+    public function checkout(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            // `bail`/`integer` guard the BIGINT cast — see `addItem()`.
+            'session_id' => ['bail', 'required', 'integer', 'exists:sessions,id'],
+            'customer_name' => ['nullable', 'string', 'max:255'],
+            'customer_email' => ['required', 'email:rfc', 'max:255'],
+            'customer_phone' => ['nullable', 'string', 'max:32'],
+            'promo_code' => ['nullable', 'string', 'max:64'],
+        ]);
+
+        [$token, $isNew] = $this->resolveToken($request);
+
+        $checkoutResult = $this->cartService->checkout((string) $validated['session_id'], [
+            'customer_name' => $validated['customer_name'] ?? null,
+            'customer_email' => $validated['customer_email'],
+            'customer_phone' => $validated['customer_phone'] ?? null,
+            'promo_code' => $validated['promo_code'] ?? null,
+        ], $token);
+
+        return $this->withTokenHeader(response()->json([
+            'message' => 'Checkout successful',
+            'data' => $checkoutResult,
+        ]), $token, $isNew);
+    }
+}

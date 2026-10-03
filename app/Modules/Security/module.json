@@ -1,0 +1,11 @@
+{
+  "name": "security",
+  "title": "Безопасность",
+  "version": "1.0.0",
+  "enabled": true,
+  "priority": 35,
+  "requires": ["organizations"],
+  "permissions": ["settings.manage"],
+  "provides": ["security.ip_blocked", "security.rate_limited"],
+  "description": "IP-фильтры (blacklist/whitelist, CIDR, GeoIP), раздельные лимиты для login/register/checkout/payment/API/QR/webhooks, аудит доступа. Загружается до бизнес-модулей, чтобы middleware применялся к их маршрутам (ТЗ §57, §58, §79)."
+}

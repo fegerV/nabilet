@@ -1,0 +1,11 @@
+{
+  "name": "sessions",
+  "title": "Сеансы",
+  "version": "1.0.0",
+  "enabled": true,
+  "priority": 60,
+  "requires": ["events", "hallschemas"],
+  "permissions": ["events.edit"],
+  "provides": ["session.created", "session.published", "session.canceled", "session.inventory_materialized"],
+  "description": "Конкретный показ мероприятия: дата, время, площадка, зал и — критически — ссылка на неизменяемую версию схемы зала. Публикация сеанса материализует Ticket Inventory (ТЗ §13, §90)."
+}

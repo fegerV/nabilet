@@ -1,0 +1,11 @@
+{
+  "name": "webhooks",
+  "title": "Webhooks и n8n",
+  "version": "1.0.0",
+  "enabled": true,
+  "priority": 140,
+  "requires": ["orders"],
+  "permissions": ["settings.manage"],
+  "provides": ["webhook.delivered", "webhook.failed"],
+  "description": "Исходящие webhooks с HMAC-подписью, таймаутом, повторами и журналом доставки. Реализуется через outbox: событие сначала фиксируется в БД, затем доставляется воркером, поэтому падение процесса не теряет уведомление (ТЗ §46, §47)."
+}

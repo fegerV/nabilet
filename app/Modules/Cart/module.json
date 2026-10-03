@@ -1,0 +1,11 @@
+{
+  "name": "cart",
+  "title": "Корзина",
+  "version": "1.0.0",
+  "enabled": true,
+  "priority": 80,
+  "requires": ["events", "inventory"],
+  "permissions": ["cart.manage"],
+  "provides": ["cart.created", "cart.updated", "cart.abandoned", "cart.converted"],
+  "description": "Временная корзина с резервированием мест на короткое время (ТЗ §24). Поддерживает анонимные и авторизованные сессии, синхронизацию при логине и очистку по таймауту."
+}

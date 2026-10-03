@@ -1,0 +1,11 @@
+{
+  "name": "backups",
+  "title": "Резервное копирование",
+  "version": "1.0.0",
+  "enabled": true,
+  "priority": 190,
+  "requires": ["organizations"],
+  "permissions": ["settings.manage"],
+  "provides": ["backup.created", "backup.failed"],
+  "description": "Ручное и автоматическое резервное копирование БД, настроек и схем залов (медиа — опционально) с расписанием daily/weekly/monthly и политикой хранения 7/4/3 (ТЗ §72)."
+}

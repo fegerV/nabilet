@@ -1,0 +1,11 @@
+{
+  "name": "payments",
+  "title": "Платежи и возвраты",
+  "version": "1.0.0",
+  "enabled": true,
+  "priority": 100,
+  "requires": ["orders"],
+  "permissions": ["orders.refund"],
+  "provides": ["payment.created", "payment.succeeded", "payment.failed", "refund.created", "refund.succeeded"],
+  "description": "Абстракция PaymentProvider (createPayment / getPayment / refundPayment / handleWebhook) с первой реализацией YooKassa. Идемпотентность обязательна: повторная доставка payment.succeeded не должна создавать второй оплаченный заказ или вторую выдачу билетов (ТЗ §27, §28)."
+}

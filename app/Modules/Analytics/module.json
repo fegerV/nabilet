@@ -1,0 +1,11 @@
+{
+  "name": "analytics",
+  "title": "Аналитика",
+  "version": "1.0.0",
+  "enabled": true,
+  "priority": 160,
+  "requires": ["orders"],
+  "permissions": ["analytics.view"],
+  "provides": ["analytics.event_tracked"],
+  "description": "Собственный event tracker (page_view, seatmap_open, seat_selected, checkout_started, payment_success…) и воронка продаж, отчёты по мероприятиям, сеансам, секторам, рядам и каналам (ТЗ §52, §53, §89)."
+}

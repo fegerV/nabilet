@@ -1,0 +1,11 @@
+{
+  "name": "checkin",
+  "title": "Check-in и контроль входа",
+  "version": "1.0.0",
+  "enabled": true,
+  "priority": 120,
+  "requires": ["tickets"],
+  "permissions": ["tickets.checkin"],
+  "provides": ["ticket.scanned", "checkin.device_registered"],
+  "description": "API валидации и использования билета для Android NABILET Checker (ТЗ §31, §77), устройства контроля, история сканирований включая отклонённые, а также офлайн-бандл и последующая сверка (reconciliation) после синхронизации (ТЗ §33)."
+}

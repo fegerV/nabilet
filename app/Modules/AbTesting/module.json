@@ -1,0 +1,11 @@
+{
+  "name": "abtesting",
+  "title": "A/B тестирование",
+  "version": "1.0.0",
+  "enabled": false,
+  "priority": 185,
+  "requires": ["analytics", "privacy"],
+  "permissions": [],
+  "provides": ["experiment.assigned", "experiment.converted"],
+  "description": "Эксперименты с вариантами, автоматическое распределение пользователей, закрепление assignment за посетителем и метрики views/clicks/checkout/payments/conversion/revenue (ТЗ §54). Требует модуля privacy, так как участвует в трекинге."
+}

@@ -1,0 +1,11 @@
+{
+  "name": "privacy",
+  "title": "Приватность и GDPR",
+  "version": "1.0.0",
+  "enabled": true,
+  "priority": 37,
+  "requires": ["organizations"],
+  "permissions": ["settings.manage"],
+  "provides": ["consent.recorded", "data.exported", "data.erased"],
+  "description": "Cookie banner и управление согласиями с разделением обязательных, аналитических и маркетинговых cookies, экспорт и удаление персональных данных, журнал согласий, сроки хранения (ТЗ §56). Аналитика и heatmaps обязаны спрашивать согласие здесь."
+}
