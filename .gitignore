@@ -1,8 +1,44 @@
-# Laravel specific
-/storage/framework/cache/*
-!/storage/framework/cache/.gitkeep
+# Compiled/Binary files
+*.class
+*.o
+*.exe
+*.dll
+*.so
+*.a
+*.obj
+*.out
 
-/storage/framework/sessions/*
-!/storage/framework/sessions/.gitkeep
+# Dependency directories
+vendor/
+node_modules/
+venv/
+.venv/
+__pycache__/
+dist/
+build/
+.mypy_cache/
+.pytest_cache/
+target/
+.gradle/
 
-/storage/logs/*.log
+# Editor/IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# System/Environment files
+.DS_Store
+Thumbs.db
+.env
+.env.local
+*.env.*
+
+# Logs and temp files
+*.log
+*.tmp
+
+# Other common ignores
+coverage/
+htmlcov/
+.coverage
