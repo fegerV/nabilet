@@ -22,7 +22,7 @@ return new class extends Migration
     public function up(): void
     {
         // Drop the old unique constraint on bundle_hash alone
-        if (str_contains((string) DB::serverVersion(), 'MariaDB')) { DB::statement('ALTER TABLE offline_bundles DROP INDEX IF EXISTS uq_offline_bundles_hash;'); } else { DB::statement('ALTER TABLE offline_bundles DROP CONSTRAINT IF EXISTS uq_offline_bundles_hash;'); }
+        if (DB::connection()->getDriverName() === 'pgsql') { DB::statement('ALTER TABLE offline_bundles DROP CONSTRAINT IF EXISTS uq_offline_bundles_hash;'); } elseif (str_contains((string) DB::selectOne('select version()')->version ?? '', 'MariaDB')) { DB::statement('ALTER TABLE offline_bundles DROP INDEX IF EXISTS uq_offline_bundles_hash;'); } else { DB::statement('ALTER TABLE offline_bundles DROP CONSTRAINT IF EXISTS uq_offline_bundles_hash;'); }
         
         // Add new composite unique constraint: (bundle_hash, checkin_device_id)
         // This ensures:
@@ -47,7 +47,7 @@ return new class extends Migration
         });
         
         // Drop the composite unique constraint
-        if (str_contains((string) DB::serverVersion(), 'MariaDB')) { DB::statement('ALTER TABLE offline_bundles DROP INDEX IF EXISTS uq_offline_bundles_hash_device;'); } else { DB::statement('ALTER TABLE offline_bundles DROP CONSTRAINT IF EXISTS uq_offline_bundles_hash_device;'); }
+        if (DB::connection()->getDriverName() === 'pgsql') { DB::statement('ALTER TABLE offline_bundles DROP CONSTRAINT IF EXISTS uq_offline_bundles_hash_device;'); } elseif (str_contains((string) DB::selectOne('select version()')->version ?? '', 'MariaDB')) { DB::statement('ALTER TABLE offline_bundles DROP INDEX IF EXISTS uq_offline_bundles_hash_device;'); } else { DB::statement('ALTER TABLE offline_bundles DROP CONSTRAINT IF EXISTS uq_offline_bundles_hash_device;'); }
         
         // Restore the original unique constraint on bundle_hash alone
         Schema::table('offline_bundles', function (Blueprint $table) {
