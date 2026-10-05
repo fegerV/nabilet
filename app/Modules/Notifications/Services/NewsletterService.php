@@ -3,11 +3,20 @@
 namespace App\Modules\Notifications\Services;
 
 use App\Models\User;
+use App\Modules\Notifications\Mail\TicketPurchasedMail;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Nabilet\Modules\Tickets\Models\Ticket;
+use Nabilet\Modules\Tickets\Services\TicketGeneratorService;
+use Throwable;
 
 class NewsletterService
 {
+    public function __construct(
+        private readonly TicketGeneratorService $ticketGenerator,
+    ) {}
+
     /**
      * Отправка новостной рассылки пользователям
      */
@@ -44,20 +53,26 @@ class NewsletterService
     }
 
     /**
-     * Отправка уведомления о покупке билета
+     * Отправить письмо по одному уже выпущенному билету.
+     * Возвращает false при проблеме транспорта/рендера; оплата и выпуск билета
+     * не должны откатываться из-за недоступности почты.
      */
-    public function sendTicketNotification($booking)
+    public function sendTicketNotification(Ticket $ticket): bool
     {
-        $ticketGenerator = new \App\Modules\Tickets\Services\TicketGeneratorService();
-        $ticketData = $ticketGenerator->generateTicketData($booking);
-
         try {
-            Mail::to($booking->user->email)->send(
-                new \App\Modules\Notifications\Mail\TicketPurchasedMail($booking, $ticketData)
+            $ticketData = $this->ticketGenerator->generateTicketData($ticket);
+            Mail::to($ticketData['customer_email'])->send(
+                new TicketPurchasedMail($ticket, $ticketData)
             );
+
             return true;
-        } catch (\Exception $e) {
-            \Log::error("Failed to send ticket email to {$booking->user->email}: " . $e->getMessage());
+        } catch (Throwable $e) {
+            Log::error('Не удалось отправить письмо с билетом.', [
+                'ticket_id' => $ticket->id,
+                'exception' => $e::class,
+                'message' => $e->getMessage(),
+            ]);
+
             return false;
         }
     }

@@ -9,6 +9,7 @@ use Nabilet\Modules\Tickets\Domain\ScanOutcome;
 use Nabilet\Modules\Tickets\Models\Ticket;
 use Nabilet\Modules\Tickets\Models\TicketScan;
 use Nabilet\Modules\Tickets\StateMachines\TicketStateMachine;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Str;
 
@@ -54,7 +55,7 @@ class TicketRepository
             ->get();
     }
 
-    public function findBySession(int $sessionId, int $limit = 50): Collection
+    public function findBySession(int $sessionId, int $limit = 50): LengthAwarePaginator
     {
         // tickets.session_id is a first-class column; filtering through
         // whereHas('order') was wrong for orders without a denormalized session_id.

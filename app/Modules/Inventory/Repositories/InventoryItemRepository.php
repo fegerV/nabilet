@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace Nabilet\Modules\Inventory\Repositories;
 
 use Nabilet\Modules\Inventory\Models\InventoryItem;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Facades\DB;
 
 class InventoryItemRepository
 {
@@ -18,14 +20,14 @@ class InventoryItemRepository
         return $this->model->with(['session', 'seat', 'standingZone'])->find($id);
     }
 
-    public function findBySession(int $sessionId, int $limit = 50): Collection
+    public function findBySession(int $sessionId, int $limit = 50): LengthAwarePaginator
     {
         return $this->model->where('session_id', $sessionId)
             ->with(['seat', 'standingZone'])
             ->paginate($limit);
     }
 
-    public function findBySessionAndStatus(int $sessionId, string $status, int $limit = 50): Collection
+    public function findBySessionAndStatus(int $sessionId, string $status, int $limit = 50): LengthAwarePaginator
     {
         return $this->model->where('session_id', $sessionId)
             ->where('status', $status)
@@ -81,16 +83,30 @@ class InventoryItemRepository
 
     public function getSoldCount(int $sessionId): int
     {
-        return $this->model->where('session_id', $sessionId)
-            ->sum('quantity') - $this->model->where('session_id', $sessionId)->sum('available_quantity');
+        $inventory = $this->model->newQuery()->where('session_id', $sessionId);
+        $capacity = (int) (clone $inventory)->sum('capacity');
+        $available = (int) (clone $inventory)->sum('available_quantity');
+
+        // Holds also decrement available_quantity. Subtract open holds so this
+        // reports sold units rather than sold + temporarily reserved units.
+        $held = (int) DB::table('seat_holds')
+            ->where('session_id', $sessionId)
+            ->whereNull('released_at')
+            ->whereNull('converted_at')
+            ->sum('quantity');
+
+        return max(0, $capacity - $available - $held);
     }
 
     public function getHeldCount(int $sessionId): int
     {
-        // Count items with active holds
-        return $this->model->where('session_id', $sessionId)
-            ->whereHas('holds', function ($query) {
-                $query->where('expires_at', '>', now());
+        // Count inventory positions with a still-unexpired, unsettled hold.
+        return $this->model->newQuery()
+            ->where('session_id', $sessionId)
+            ->whereHas('holds', function ($query): void {
+                $query->where('expires_at', '>', now())
+                    ->whereNull('released_at')
+                    ->whereNull('converted_at');
             })
             ->count();
     }

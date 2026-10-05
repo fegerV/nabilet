@@ -6,39 +6,47 @@ namespace Nabilet\Modules\Tickets\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\HasMany;
-use Nabilet\Modules\Events\Models\Session;
+use Illuminate\Support\Str;
+use Nabilet\Modules\Organizations\Models\Organization;
 
 /**
- * @property int $id
- * @property string $name
- * @property int $session_id
- * @property string|null $qr_prefix
- * @property bool $is_active
- * @property \Carbon\CarbonImmutable $created_at
+ * Eloquent mapping for `ticket_templates` (005_payments_tickets).
+ * Schema columns are organization_id, name, format, width, height,
+ * template_json, active and public_id — not session_id/qr_prefix/is_active.
  */
 class TicketTemplate extends Model
 {
     protected $table = 'ticket_templates';
 
     protected $fillable = [
+        'public_id',
+        'organization_id',
         'name',
-        'session_id',
-        'qr_prefix',
-        'is_active',
+        'format',
+        'width',
+        'height',
+        'template_json',
+        'active',
     ];
 
     protected $casts = [
-        'is_active' => 'boolean',
+        'width' => 'integer',
+        'height' => 'integer',
+        'template_json' => 'array',
+        'active' => 'boolean',
     ];
 
-    public function session(): BelongsTo
+    protected static function booted(): void
     {
-        return $this->belongsTo(Session::class);
+        static::creating(function (self $model): void {
+            if ($model->public_id === null) {
+                $model->public_id = (string) Str::ulid()->toBase32();
+            }
+        });
     }
 
-    public function tickets(): HasMany
+    public function organization(): BelongsTo
     {
-        return $this->hasMany(Ticket::class);
+        return $this->belongsTo(Organization::class);
     }
 }

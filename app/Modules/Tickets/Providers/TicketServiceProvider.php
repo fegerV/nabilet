@@ -10,6 +10,8 @@ class TicketServiceProvider extends ServiceProvider
 {
     public function boot(): void
     {
-        $this->loadRoutesFrom(__DIR__ . '/../routes/api.php');
+        // API routes are included by routes/api.php under the /api/v1 prefix.
+        // Loading them here as well would register duplicate unprefixed routes.
+        $this->loadViewsFrom(__DIR__ . '/../Resources/views', 'tickets');
     }
 }

@@ -9,6 +9,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Orders\Models\OrderItem;
+use Nabilet\Modules\Events\Models\Event;
+use Nabilet\Modules\Sessions\Models\Session;
+use Nabilet\Modules\Venues\Models\Seat;
+use Nabilet\Modules\Venues\Models\StandingZone;
 
 /**
  * @property int $id
@@ -75,5 +79,25 @@ class Ticket extends Model
     public function scans(): HasMany
     {
         return $this->hasMany(TicketScan::class);
+    }
+
+    public function event(): BelongsTo
+    {
+        return $this->belongsTo(Event::class);
+    }
+
+    public function session(): BelongsTo
+    {
+        return $this->belongsTo(Session::class);
+    }
+
+    public function seat(): BelongsTo
+    {
+        return $this->belongsTo(Seat::class);
+    }
+
+    public function standingZone(): BelongsTo
+    {
+        return $this->belongsTo(StandingZone::class);
     }
 }
