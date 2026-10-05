@@ -12,41 +12,32 @@ import EventCard from '@/components/storefront/EventCard.vue'
 import NEmptyState from '@/components/ui/NEmptyState.vue'
 import NSegmented from '@/components/ui/NSegmented.vue'
 import { get } from '@/lib/api'
+import type { EventCard as EventCardType } from '@/lib/types'
 
 const route = useRoute()
 const category = ref('Все')
 const query = computed(() => String(route.query.q ?? '').toLowerCase())
 
 /* Реальные события из API: /api/v1/events?status=published */
-const events = ref<EventItem[]>([])
+const events = ref<CatalogEvent[]>([])
 const loading = ref(true)
 const loadError = ref<string | null>(null)
 
-interface EventItem {
-  id: string
-  slug: string
-  title: string
-  short_description?: string
-  status: string
+/* Проп EventCard — единственный источник правды для карточек афиши. */
+type CatalogEvent = EventCardType & {
   category?: { name?: string } | null
-  poster?: string
-  cover?: string
-  sessions_count?: number
-  sessions?: Array<{ id: string; starts_at?: string; startsAt?: string; hall?: string; available_seats?: number; availableSeats?: number }>
   venue?: { name?: string; city?: string } | null
   organization?: { name?: string } | null
-  price_from_minor?: number
-  priceFromMinor?: number
 }
 
 async function loadEvents(): Promise<void> {
   loading.value = true
   loadError.value = null
   try {
-    const res = await get<{ data: EventItem[] }>('/events?status=published&per_page=100')
+    const res = await get<{ data: CatalogEvent[] }>('/events?status=published&per_page=100')
     // API может вернуть как { data: [...] }, так и голый массив (вложенный envelope).
-    const inner = res.data as unknown as { data?: EventItem[] } | EventItem[]
-    events.value = Array.isArray(inner) ? inner : (inner as { data: EventItem[] }).data ?? []
+    const inner = res.data as unknown as { data?: CatalogEvent[] } | CatalogEvent[]
+    events.value = Array.isArray(inner) ? inner : (inner as { data: CatalogEvent[] }).data ?? []
   } catch (e) {
     loadError.value = e instanceof Error ? e.message : String(e)
     events.value = []
