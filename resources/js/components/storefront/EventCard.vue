@@ -27,6 +27,21 @@ const posterStyle = computed(() => {
 
 const nextSession = computed(() => props.event.sessions?.[0])
 const soldOut = computed(() => props.event.status === 'sold_out')
+
+/** Нормализация для шаблона: API отдаёт category/venue то строкой, то объектом. */
+const categoryName = computed(() =>
+  typeof props.event.category === 'string' ? props.event.category : (props.event.category?.name ?? '')
+)
+const venueName = computed(() =>
+  typeof props.event.venue === 'string' ? props.event.venue : (props.event.venue?.name ?? props.event.city ?? '')
+)
+const venueCity = computed(() =>
+  typeof props.event.venue === 'string' ? '' : (props.event.venue?.city ?? '')
+)
+/** Даты сеанса: API может прислать camelCase или snake_case — берём что есть. */
+const sessionStartsAt = computed(
+  () => nextSession.value?.startsAt ?? nextSession.value?.starts_at ?? ''
+)
 </script>
 
 <template>
@@ -42,7 +57,7 @@ const soldOut = computed(() => props.event.status === 'sold_out')
       />
 
       <div class="absolute inset-x-0 top-0 flex items-start justify-between p-3">
-              <NBadge tone="brand" class="backdrop-blur">{{ typeof event.category === 'string' ? event.category : (event.category?.name ?? '') }}</NBadge>
+              <NBadge tone="brand" class="backdrop-blur">{{ categoryName }}</NBadge>
               <NStatusBadge kind="event" :status="event.status" />
             </div>
 
@@ -56,13 +71,13 @@ const soldOut = computed(() => props.event.status === 'sold_out')
     <div class="flex flex-1 flex-col gap-2.5 p-3.5">
       <div class="flex items-center gap-2 text-xs text-muted">
         <span aria-hidden="true">◷</span>
-        <span v-if="nextSession">{{ dateFull(nextSession.startsAt) }} · {{ time(nextSession.startsAt) }}</span>
+        <span v-if="nextSession">{{ dateFull(sessionStartsAt) }} · {{ time(sessionStartsAt) }}</span>
         <span v-else>Расписание уточняется</span>
       </div>
 
       <div class="flex items-center gap-2 text-xs text-muted">
               <span aria-hidden="true">⌖</span>
-              <span class="truncate">{{ event.venue?.name ?? event.venue ?? '' }}{{ event.venue?.city ? `, ${event.venue.city}` : '' }}</span>
+              <span class="truncate">{{ venueName }}{{ venueCity ? `, ${venueCity}` : '' }}</span>
             </div>
 
             <div class="mt-auto flex items-end justify-between gap-3 border-t border-line pt-3">
