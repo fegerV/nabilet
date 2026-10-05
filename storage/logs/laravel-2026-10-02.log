@@ -1,0 +1,49 @@
+[2026-10-02 01:03:18] local.ERROR: Method Illuminate\Database\MySqlConnection::serverVersion does not exist. {"exception":"[object] (BadMethodCallException(code: 0): Method Illuminate\\Database\\MySqlConnection::serverVersion does not exist. at /workspace/vendor/laravel/framework/src/Illuminate/Macroable/Traits/Macroable.php:117)
+[stacktrace]
+#0 /workspace/vendor/laravel/framework/src/Illuminate/Database/DatabaseManager.php(502): Illuminate\\Database\\Connection->__call()
+#1 /workspace/vendor/laravel/framework/src/Illuminate/Support/Facades/Facade.php(364): Illuminate\\Database\\DatabaseManager->__call()
+#2 /workspace/database/migrations/2026_09_20_001200_fix_offline_bundles_unique_constraint.php(25): Illuminate\\Support\\Facades\\Facade::__callStatic()
+#3 /workspace/vendor/laravel/framework/src/Illuminate/Database/Migrations/Migrator.php(517): Illuminate\\Database\\Migrations\\Migration@anonymous->up()
+#4 /workspace/vendor/laravel/framework/src/Illuminate/Database/Migrations/Migrator.php(442): Illuminate\\Database\\Migrations\\Migrator->runMethod()
+#5 /workspace/vendor/laravel/framework/src/Illuminate/Database/Migrations/Migrator.php(451): Illuminate\\Database\\Migrations\\Migrator->{closure:Illuminate\\Database\\Migrations\\Migrator::runMigration():438}()
+#6 /workspace/vendor/laravel/framework/src/Illuminate/Database/Migrations/Migrator.php(253): Illuminate\\Database\\Migrations\\Migrator->runMigration()
+#7 /workspace/vendor/laravel/framework/src/Illuminate/Console/View/Components/Task.php(43): Illuminate\\Database\\Migrations\\Migrator->{closure:Illuminate\\Database\\Migrations\\Migrator::runUp():253}()
+#8 /workspace/vendor/laravel/framework/src/Illuminate/Database/Migrations/Migrator.php(853): Illuminate\\Console\\View\\Components\\Task->render()
+#9 /workspace/vendor/laravel/framework/src/Illuminate/Database/Migrations/Migrator.php(253): Illuminate\\Database\\Migrations\\Migrator->write()
+#10 /workspace/vendor/laravel/framework/src/Illuminate/Database/Migrations/Migrator.php(211): Illuminate\\Database\\Migrations\\Migrator->runUp()
+#11 /workspace/vendor/laravel/framework/src/Illuminate/Database/Migrations/Migrator.php(138): Illuminate\\Database\\Migrations\\Migrator->runPending()
+#12 /workspace/vendor/laravel/framework/src/Illuminate/Database/Console/Migrations/MigrateCommand.php(118): Illuminate\\Database\\Migrations\\Migrator->run()
+#13 /workspace/vendor/laravel/framework/src/Illuminate/Database/Migrations/Migrator.php(672): Illuminate\\Database\\Console\\Migrations\\MigrateCommand->{closure:Illuminate\\Database\\Console\\Migrations\\MigrateCommand::runMigrations():111}()
+#14 /workspace/vendor/laravel/framework/src/Illuminate/Database/Console/Migrations/MigrateCommand.php(111): Illuminate\\Database\\Migrations\\Migrator->usingConnection()
+#15 /workspace/vendor/laravel/framework/src/Illuminate/Database/Console/Migrations/MigrateCommand.php(90): Illuminate\\Database\\Console\\Migrations\\MigrateCommand->runMigrations()
+#16 /workspace/vendor/laravel/framework/src/Illuminate/Container/BoundMethod.php(36): Illuminate\\Database\\Console\\Migrations\\MigrateCommand->handle()
+#17 /workspace/vendor/laravel/framework/src/Illuminate/Container/Util.php(43): Illuminate\\Container\\BoundMethod::{closure:Illuminate\\Container\\BoundMethod::call():35}()
+#18 /workspace/vendor/laravel/framework/src/Illuminate/Container/BoundMethod.php(96): Illuminate\\Container\\Util::unwrapIfClosure()
+#19 /workspace/vendor/laravel/framework/src/Illuminate/Container/BoundMethod.php(35): Illuminate\\Container\\BoundMethod::callBoundMethod()
+#20 /workspace/vendor/laravel/framework/src/Illuminate/Container/Container.php(803): Illuminate\\Container\\BoundMethod::call()
+#21 /workspace/vendor/laravel/framework/src/Illuminate/Console/Command.php(292): Illuminate\\Container\\Container->call()
+#22 /workspace/vendor/symfony/console/Command/Command.php(341): Illuminate\\Console\\Command->execute()
+#23 /workspace/vendor/laravel/framework/src/Illuminate/Console/Command.php(261): Symfony\\Component\\Console\\Command\\Command->run()
+#24 /workspace/vendor/symfony/console/Application.php(1117): Illuminate\\Console\\Command->run()
+#25 /workspace/vendor/symfony/console/Application.php(356): Symfony\\Component\\Console\\Application->doRunCommand()
+#26 /workspace/vendor/symfony/console/Application.php(195): Symfony\\Component\\Console\\Application->doRun()
+#27 /workspace/vendor/laravel/framework/src/Illuminate/Foundation/Console/Kernel.php(198): Symfony\\Component\\Console\\Application->run()
+#28 /workspace/artisan(16): Illuminate\\Foundation\\Console\\Kernel->handle()
+#29 {main}
+"} 
+[2026-10-02 16:49:13] local.ERROR: Command "test" is not defined.
+
+Did you mean one of these?
+    make:test
+    schedule:test {"exception":"[object] (Symfony\\Component\\Console\\Exception\\CommandNotFoundException(code: 0): Command \"test\" is not defined.
+
+Did you mean one of these?
+    make:test
+    schedule:test at /workspace/vendor/symfony/console/Application.php:759)
+[stacktrace]
+#0 /workspace/vendor/symfony/console/Application.php(298): Symfony\\Component\\Console\\Application->find()
+#1 /workspace/vendor/symfony/console/Application.php(195): Symfony\\Component\\Console\\Application->doRun()
+#2 /workspace/vendor/laravel/framework/src/Illuminate/Foundation/Console/Kernel.php(198): Symfony\\Component\\Console\\Application->run()
+#3 /workspace/artisan(16): Illuminate\\Foundation\\Console\\Kernel->handle()
+#4 {main}
+"} 

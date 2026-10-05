@@ -2,7 +2,14 @@
 
 declare(strict_types=1);
 
-namespace Nabilet\Modules\Installer;
+// NOTE: this file is `require`d from routes/api.php (see lines there), i.e. it is
+// an included route definition, NOT a PSR-4 autoloadable unit. A namespace
+// declaration in an included file would make the fully-qualified controller name
+// resolve to Nabilet\Modules\Installer\Http\Controllers\... only by accident of
+// the declared namespace matching PSR-4; the canonical convention for module
+// route files in this project is the global namespace with fully-qualified
+// imports. Declaring a namespace here also breaks any tool that treats the file
+// as class-less code under PSR-4 rules.
 
 use Illuminate\Support\Facades\Route;
 use Nabilet\Modules\Installer\Http\Controllers\InstallerController;

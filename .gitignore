@@ -1,54 +1,14 @@
-# Environment / secrets
+# Environment
 .env
-.env.*
-!.env.example
+.env.local
+.env.*.local
 
-# Dependencies
-/node_modules
-/vendor
-
-# Laravel runtime
-/storage/*.key
-/storage/app/*
-!/storage/app/.gitkeep
-/storage/logs/*
-!/storage/logs/.gitkeep
-/storage/framework/cache/*
-!/storage/framework/cache/.gitkeep
-/storage/framework/sessions/*
-!/storage/framework/sessions/.gitkeep
-/storage/framework/views/*
-!/storage/framework/views/.gitkeep
-/storage/db-dumps
-
-# Build output
-/public/build
-/public/hot
-/public/js
-/public/css
-/public/mix-manifest.json
-/dist
-/.vite
-
-# Test / tool caches
-/.phpunit.result.cache
-/phpunit.xml.bak
-/coverage
-/.nyc_output
-/node_modules/.cache
-
-# Editors / OS
-.idea
-.vscode/*
-!.vscode/extensions.json
+# Editors/IDEs
+.idea/
+.vscode/
 *.swp
+*.swo
+
+# System files
 .DS_Store
 Thumbs.db
-
-# Misc
-Homestead.yaml
-Homestead.json
-npm-debug.log*
-yarn-error.log*
-auth.json
-*.bak
