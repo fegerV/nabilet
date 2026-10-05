@@ -406,6 +406,11 @@ namespace Illuminate\Database\Schema {
             return $this->add(new ColumnDefinition('datetime', $column));
         }
 
+        public function time(string $column): ColumnDefinition
+        {
+            return $this->add(new ColumnDefinition('time', $column));
+        }
+
         public function date(string $column): ColumnDefinition
         {
             return $this->add(new ColumnDefinition('datetime', $column));
@@ -487,6 +492,28 @@ namespace Illuminate\Database\Schema {
         public function dropColumn(string|array $columns): void
         {
             $this->drops[] = is_array($columns) ? $columns[0] : $columns;
+        }
+
+        public function dropIndex(string|array $index): void
+        {
+            $this->drops[] = is_array($index) ? $index[0] : $index;
+        }
+
+        public function dropUnique(string|array $index): void
+        {
+            $this->drops[] = is_array($index) ? $index[0] : $index;
+        }
+
+        /** Laravel's morphs(): an unsigned big integer + a string type column. */
+        public function morphs(string $name): void
+        {
+            $this->unsignedBigInteger("{$name}_id");
+            $this->string("{$name}_type");
+        }
+
+        public function nullableMorphs(string $name): void
+        {
+            $this->morphs($name);
         }
 
         private function add(ColumnDefinition $column): ColumnDefinition
@@ -659,6 +686,16 @@ namespace Illuminate\Support\Facades {
         public static function connection(?string $name = null): \Illuminate\Database\Schema\Connection
         {
             return new \Illuminate\Database\Schema\Connection();
+        }
+
+        /**
+         * Stand-in for DB::selectOne(). Migrations use it for probes like
+         * `select version()`; the stub returns a generic stdClass so property
+         * access (->version, ->c) works without a live database.
+         */
+        public static function selectOne($query, $bindings = []): object|false
+        {
+            return new \stdClass();
         }
     }
 }
