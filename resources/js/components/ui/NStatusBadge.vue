@@ -11,7 +11,7 @@ import NBadge from './NBadge.vue'
 import type { EventStatus, OrderStatus, TicketStatus, Tone } from '@/lib/types'
 
 const props = defineProps<{
-  kind: 'order' | 'ticket' | 'event' | 'session' | 'hall'
+  kind: 'order' | 'ticket' | 'event' | 'session' | 'hall' | 'venue'
   status: OrderStatus | TicketStatus | EventStatus | string
   size?: 'sm' | 'md'
 }>()
@@ -56,6 +56,9 @@ const HALL: Record<string, { label: string; tone: Tone; dot: boolean }> = {
   inactive: { label: 'Неактивен', tone: 'neutral', dot: false },
 }
 
+/** Площадка использует ту же машину состояний, что и зал (active/inactive). */
+const VENUE = HALL
+
 /** Разные сущности — разные наборы статусов, поэтому выбор идёт по типу. */
 const meta =
   props.kind === 'order'
@@ -66,7 +69,9 @@ const meta =
         ? SESSION[props.status as string]
         : props.kind === 'hall'
           ? HALL[props.status as string]
-          : EVENT[props.status as EventStatus]
+          : props.kind === 'venue'
+            ? VENUE[props.status as string]
+            : EVENT[props.status as EventStatus]
 </script>
 
 <template>
