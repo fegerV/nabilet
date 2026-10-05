@@ -6,7 +6,9 @@ namespace Nabilet\Modules\Inventory\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Nabilet\Modules\Events\Models\Session;
+use Nabilet\Modules\Orders\Models\SeatHold;
 use Nabilet\Modules\Venues\Models\Seat;
 use Nabilet\Modules\Venues\Models\StandingZone;
 use Illuminate\Support\Str;
@@ -77,5 +79,10 @@ class InventoryItem extends Model
     public function standingZone(): BelongsTo
     {
         return $this->belongsTo(StandingZone::class);
+    }
+
+    public function holds(): HasMany
+    {
+        return $this->hasMany(SeatHold::class, 'inventory_item_id');
     }
 }

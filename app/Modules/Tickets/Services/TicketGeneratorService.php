@@ -1,109 +1,80 @@
 <?php
 
-namespace App\Modules\Tickets\Services;
+declare(strict_types=1);
 
-use Illuminate\Support\Facades\Storage;
-use SimpleSoftwareIO\QrCode\Facades\QrCode;
+namespace Nabilet\Modules\Tickets\Services;
 
+use Nabilet\Modules\Tickets\Models\Ticket;
+
+/**
+ * Builds the data contract for the customer-facing ticket email.
+ *
+ * Ticket issuance and QR signing are owned by TicketService. This class only
+ * reads an issued ticket; it never invents a booking model, unsigned QR, or
+ * legacy hall schema. QR raster/PDF rendering is intentionally not attempted:
+ * no QR or PDF package is installed, and a signed payload must not be sent to a
+ * third-party image service.
+ */
 class TicketGeneratorService
 {
     /**
-     * Генерация электронного билета
+     * @return array{
+     *   order_id:int,
+     *   ticket_number:string,
+     *   event_name:string,
+     *   event_date:string,
+     *   venue_name:string,
+     *   seats:string,
+     *   price:float,
+     *   currency:string,
+     *   customer_name:string,
+     *   customer_email:string,
+     *   qr_payload:string,
+     *   unique_hash:string
+     * }
      */
-    public function generateTicket($booking, $outputPath = null)
+    public function generateTicketData(Ticket $ticket): array
     {
-        $event = $booking->event;
-        $seats = $booking->seats;
-        
-        // Данные для билета
-        $ticketData = [
-            'order_id' => $booking->id,
-            'event_name' => $event->name,
-            'event_date' => $event->start_at->format('d.m.Y H:i'),
-            'venue_name' => $event->venue->name ?? '',
-            'seats' => $seats->map(fn($seat) => "Ряд {$seat->row}, Место {$seat->number}")->join(', '),
-            'price' => $booking->total_price,
-            'customer_name' => $booking->user->name,
-            'customer_email' => $booking->user->email,
-            'qr_code' => $this->generateQrCode($booking),
-            'barcode' => $this->generateBarcode($booking),
-            'unique_hash' => $booking->hash,
-        ];
-
-        // Генерация PDF (используем view + dompdf)
-        $pdf = \PDF::loadView('tickets::email.ticket', compact('ticketData'));
-        
-        if ($outputPath) {
-            $pdf->save($outputPath);
-            return $outputPath;
-        }
-
-        return $pdf->stream("ticket_{$booking->id}.pdf");
-    }
-
-    /**
-     * Генерация QR кода
-     */
-    private function generateQrCode($booking)
-    {
-        $data = json_encode([
-            'order_id' => $booking->id,
-            'hash' => $booking->hash,
-            'event_id' => $booking->event_id,
+        $ticket->loadMissing([
+            'order.user',
+            'orderItem',
+            'event',
+            'session.venue',
+            'seat.row',
+            'standingZone',
         ]);
 
-        $qrCode = QrCode::format('png')
-            ->size(300)
-            ->errorCorrection('H')
-            ->generate($data);
-
-        // Сохраняем во временное хранилище или возвращаем base64
-        return 'data:image/png;base64,' . base64_encode($qrCode);
-    }
-
-    /**
-     * Генерация штрих-кода (опционально)
-     */
-    private function generateBarcode($booking)
-    {
-        // Можно использовать библиотеку picqer/php-barcode-generator
-        return strtoupper(str_replace('-', '', $booking->hash));
-    }
-
-    /**
-     * Экспорт схемы зала в JSON
-     */
-    public function exportHallSchema($hallSchema)
-    {
-        return response()->json([
-            'schema' => $hallSchema->layout_data,
-            'metadata' => [
-                'name' => $hallSchema->name,
-                'venue_id' => $hallSchema->venue_id,
-                'created_at' => $hallSchema->created_at,
-                'total_seats' => $hallSchema->total_seats,
-            ]
-        ], 200, ['Content-Type' => 'application/json']);
-    }
-
-    /**
-     * Импорт схемы зала из JSON
-     */
-    public function importHallSchema($jsonData, $venueId)
-    {
-        $data = is_string($jsonData) ? json_decode($jsonData, true) : $jsonData;
-
-        if (!isset($data['layout']) || !is_array($data['layout'])) {
-            throw new \InvalidArgumentException('Неверный формат схемы зала');
+        $order = $ticket->order;
+        if ($order === null) {
+            throw new \LogicException('Cannot prepare a ticket email without its order.');
+        }
+        if (! is_string($ticket->qr_payload) || $ticket->qr_payload === '') {
+            throw new \LogicException('Cannot email a ticket without its signed QR payload.');
         }
 
-        $hallSchema = new \App\Modules\Venues\Models\HallSchema();
-        $hallSchema->venue_id = $venueId;
-        $hallSchema->name = $data['name'] ?? 'Импортированная схема';
-        $hallSchema->layout_data = $data['layout'];
-        $hallSchema->total_seats = $data['total_seats'] ?? count($data['layout']['seats'] ?? []);
-        $hallSchema->save();
+        $event = $ticket->event;
+        $session = $ticket->session;
+        $seat = $ticket->seat;
+        $standingZone = $ticket->standingZone;
+        $seatLabel = $seat !== null
+            ? trim(($seat->row?->name ? $seat->row->name . ' / ' : '') . ($seat->label ?: 'Место ' . $seat->number))
+            : ($standingZone?->name ?? 'Свободная рассадка');
 
-        return $hallSchema;
+        $minorAmount = (int) ($ticket->orderItem?->unit_price ?? 0);
+
+        return [
+            'order_id' => (int) $order->id,
+            'ticket_number' => (string) $ticket->ticket_number,
+            'event_name' => (string) ($event?->title ?? 'Мероприятие'),
+            'event_date' => $session?->starts_at?->format('d.m.Y H:i') ?? '',
+            'venue_name' => (string) ($session?->venue?->name ?? ''),
+            'seats' => $seatLabel,
+            'price' => $minorAmount / 100,
+            'currency' => (string) ($order->currency ?? 'RUB'),
+            'customer_name' => (string) ($order->customer_name ?? $order->user?->name ?? 'Покупатель'),
+            'customer_email' => (string) $order->customer_email,
+            'qr_payload' => (string) $ticket->qr_payload,
+            'unique_hash' => (string) $ticket->public_id,
+        ];
     }
 }

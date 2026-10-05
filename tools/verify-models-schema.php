@@ -9,17 +9,15 @@ declare(strict_types=1);
  *     php tools/verify-models-schema.php [--list] [--report]
  *
  * WHY THIS EXISTS
- *   The Eloquent layer under `app/Modules/ * /Models/` was generated, not written
- *   against the database, and it cannot be executed here — there is no `vendor/`
- *   and no reachable MySQL, so `php artisan migrate` has never run and not one of
- *   these models has ever loaded a row. Every column name in them is therefore a
- *   claim that nothing has tested.
+ *   This dependency-free check compares the Eloquent layer under
+ *   `app/Modules/{module}/Models/` with the canonical SQL DDL without booting Laravel or
+ *   opening a database connection. It catches invalid table/fillable/cast names,
+ *   but it does not prove that a runtime query, relation or migration works; those
+ *   still need PHP/MySQL integration tests.
  *
- *   This project has already paid for that once: the idempotency middleware read
- *   `key`, `response_code` and `updated_at`, and none of those columns exist. The
- *   failure mode is always the same — a name that looks right, in code that cannot
- *   run, discovered in production. So the names are checked against the DDL here,
- *   where the check is cheap.
+ *   This project has already paid for schema-name drift once: middleware read
+ *   `key`, `response_code` and `updated_at`, none of which existed. Checking model
+ *   fields against the DDL makes that class of error visible before runtime.
  *
  * WHAT IT CHECKS
  *   * every model's `$table` exists in the schema;
@@ -100,11 +98,6 @@ const INVENTED_FIELDS = [
         'currency' => 'names currency/total_amount; carts stores total_price and has no currency column',
         'total_amount' => 'names currency/total_amount; carts stores total_price and has no currency column',
     ],
-    'CheckinDevice' => [
-        'device_token' => 'names device_token/is_active/last_synced_session_id; checkin_devices stores token_hash/active and no session pointer',
-        'is_active' => 'names device_token/is_active/last_synced_session_id; checkin_devices stores token_hash/active and no session pointer',
-        'last_synced_session_id' => 'names device_token/is_active/last_synced_session_id; checkin_devices stores token_hash/active and no session pointer',
-    ],
     'Consent' => [
         'channel' => 'names channel/is_subscribed; consents stores consent_type/status',
         'is_subscribed' => 'names channel/is_subscribed; consents stores consent_type/status',
@@ -143,11 +136,6 @@ const INVENTED_FIELDS = [
         'subject_template' => 'names name/subject_template/body_template/variables/is_active; notification_templates stores code/subject/body_text/body_html/active',
         'variables' => 'names name/subject_template/body_template/variables/is_active; notification_templates stores code/subject/body_text/body_html/active',
     ],
-    'OfflineBundle' => [
-        'created_by' => 'names name/created_by/encrypted_payload; offline_bundles stores bundle_hash/payload_json and no creator column',
-        'encrypted_payload' => 'names name/created_by/encrypted_payload; offline_bundles stores bundle_hash/payload_json and no creator column',
-        'name' => 'names name/created_by/encrypted_payload; offline_bundles stores bundle_hash/payload_json and no creator column',
-    ],
     'Page' => [
         'is_published' => 'names is_published; pages stores status and published_at',
     ],
@@ -185,11 +173,6 @@ const INVENTED_FIELDS = [
     ],
     'TicketScan' => [
         'message' => 'names message; ticket_scans stores result/reason',
-    ],
-    'TicketTemplate' => [
-        'is_active' => 'names session_id/qr_prefix/is_active; ticket_templates stores event_id/active and no QR prefix',
-        'qr_prefix' => 'names session_id/qr_prefix/is_active; ticket_templates stores event_id/active and no QR prefix',
-        'session_id' => 'names session_id/qr_prefix/is_active; ticket_templates stores event_id/active and no QR prefix',
     ],
     'Webhook' => [
         'events' => 'names name/secret/events/is_active; webhooks stores url/secret_hash/event_types/active',

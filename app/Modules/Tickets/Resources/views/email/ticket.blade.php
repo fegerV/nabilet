@@ -1,4 +1,4 @@
-@layout('tickets::layouts.email')
+@extends('tickets::layouts.email')
 
 @section('content')
 <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
@@ -30,14 +30,14 @@
         <!-- Price -->
         <div style="margin-bottom: 25px; text-align: right;">
             <span style="font-size: 14px; color: #6c757d;">Общая стоимость: </span>
-            <span style="font-size: 24px; font-weight: bold; color: #28a745;">{{ number_format($ticketData['price'], 2) }} ₽</span>
+            <span style="font-size: 24px; font-weight: bold; color: #28a745;">{{ number_format($ticketData['price'], 2, ',', ' ') }} {{ $ticketData['currency'] }}</span>
         </div>
 
         <!-- QR Code Section -->
         <div style="text-align: center; margin: 30px 0; padding: 20px; background: #ffffff; border: 2px dashed #dee2e6; border-radius: 6px;">
-            <img src="{{ $ticketData['qr_code'] }}" alt="QR Code" style="max-width: 200px; height: auto;" />
-            <p style="margin: 10px 0 0; font-size: 12px; color: #6c757d;">Покажите этот код на входе</p>
-            <p style="margin: 5px 0 0; font-size: 10px; color: #adb5bd;">Заказ №{{ $ticketData['order_id'] }} | {{ Str::upper($ticketData['unique_hash']) }}</p>
+            <p style="margin: 10px 0 0; font-size: 12px; color: #6c757d;">Код билета для проверки на входе</p>
+            <code style="display: block; margin: 12px auto 0; max-width: 100%; overflow-wrap: anywhere; font-size: 12px; color: #212529;">{{ $ticketData['qr_payload'] }}</code>
+            <p style="margin: 8px 0 0; font-size: 10px; color: #adb5bd;">Билет {{ $ticketData['ticket_number'] }} | Заказ №{{ $ticketData['order_id'] }}</p>
         </div>
 
         <!-- Footer Note -->

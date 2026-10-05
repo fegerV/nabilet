@@ -6,35 +6,70 @@ namespace Nabilet\Modules\Tickets\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Nabilet\Modules\Core\Users\Models\User;
+use Illuminate\Support\Str;
+use Nabilet\Modules\Events\Models\Event;
+use Nabilet\Modules\Organizations\Models\Organization;
 use Nabilet\Modules\Sessions\Models\Session;
 
-/**
- * @property int $id
- * @property string $name
- * @property int $session_id
- * @property int $created_by
- * @property string $encrypted_payload
- * @property \Carbon\CarbonImmutable $created_at
- */
+/** Eloquent mapping for the signed, device-bound offline ticket bundle. */
 class OfflineBundle extends Model
 {
     protected $table = 'offline_bundles';
 
     protected $fillable = [
-        'name',
+        'public_id',
+        'organization_id',
+        'checkin_device_id',
+        'event_id',
         'session_id',
-        'created_by',
-        'encrypted_payload',
+        'bundle_hash',
+        'schema_version',
+        'public_key_fingerprint',
+        'ticket_count',
+        'revoked_count',
+        'payload_json',
+        'status',
+        'generated_at',
+        'downloaded_at',
+        'expires_at',
     ];
+
+    protected $casts = [
+        'schema_version' => 'integer',
+        'ticket_count' => 'integer',
+        'revoked_count' => 'integer',
+        'payload_json' => 'array',
+        'generated_at' => 'datetime',
+        'downloaded_at' => 'datetime',
+        'expires_at' => 'datetime',
+    ];
+
+    protected static function booted(): void
+    {
+        static::creating(function (self $model): void {
+            if ($model->public_id === null) {
+                $model->public_id = (string) Str::ulid()->toBase32();
+            }
+        });
+    }
+
+    public function organization(): BelongsTo
+    {
+        return $this->belongsTo(Organization::class);
+    }
+
+    public function checkinDevice(): BelongsTo
+    {
+        return $this->belongsTo(CheckinDevice::class, 'checkin_device_id');
+    }
+
+    public function event(): BelongsTo
+    {
+        return $this->belongsTo(Event::class);
+    }
 
     public function session(): BelongsTo
     {
         return $this->belongsTo(Session::class);
-    }
-
-    public function creator(): BelongsTo
-    {
-        return $this->belongsTo(User::class, 'created_by');
     }
 }

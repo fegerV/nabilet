@@ -12,6 +12,7 @@ use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Inventory\Models\InventoryItem;
 use Nabilet\Modules\Sessions\Models\Session;
 use Nabilet\Core\Support\QrSigner;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -205,7 +206,7 @@ class TicketService
         return $this->repository->findByOrder($orderId)->toArray();
     }
 
-    public function getTicketsBySession(int $sessionId, int $limit = 50)
+    public function getTicketsBySession(int $sessionId, int $limit = 50): LengthAwarePaginator
     {
         return $this->repository->findBySession($sessionId, $limit);
     }
