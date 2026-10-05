@@ -28,7 +28,7 @@ Route::get('/halls/{publicId}', [HallController::class, 'show'])->name('halls.sh
 Route::get('/halls/{publicId}/schema', [HallController::class, 'publishedSchema'])->name('halls.schema.published');
 
 // Protected hall management routes
-Route::middleware(['auth:sanctum', 'admin'])->group(function () {
+Route::middleware(['auth:api', 'admin'])->group(function () {
     Route::post('/halls', [HallController::class, 'store'])->name('halls.store');
     Route::put('/halls/{publicId}', [HallController::class, 'update'])->name('halls.update');
     Route::delete('/halls/{publicId}', [HallController::class, 'destroy'])->name('halls.destroy');

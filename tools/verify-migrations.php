@@ -116,6 +116,31 @@ $recorder = Schema::recorder();
 $tables = $recorder->tables;
 $rawStatements = Schema::rawStatements()->statements;
 
+// Indexes created with raw DDL are invisible to Blueprint, yet the spec declares
+// them — and several migrations legitimately reach for raw DDL where Blueprint
+// cannot express the syntax (an index prefix length, e.g. `source(512)`, or a
+// driver-specific form). Without this, the index diff below reports drift that
+// is not there: it flagged `heatmap_events.idx_heatmap_page_time` (a raw
+// CREATE INDEX) and, once `redirects.uq_redirect_source` moved to a raw
+// ALTER TABLE to keep its prefix length, that one too. Fold the raw index DDL
+// back into the recorded tables so the diff sees the schema that is actually
+// declared.
+foreach ($rawStatements as $rawSql) {
+    if (preg_match('/CREATE\s+(?:UNIQUE\s+)?INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?`?(\w+)`?\s+ON\s+`?(\w+)`?/i', $rawSql, $rm)) {
+        if (isset($tables[$rm[2]])) {
+            $tables[$rm[2]]->indexes[] = ['columns' => [], 'type' => 'index', 'name' => $rm[1]];
+        }
+
+        continue;
+    }
+
+    if (preg_match('/ALTER\s+TABLE\s+`?(\w+)`?\s+ADD\s+(?:UNIQUE\s+)?(?:KEY|INDEX)\s+`?(\w+)`?/i', $rawSql, $rm)) {
+        if (isset($tables[$rm[1]])) {
+            $tables[$rm[1]]->indexes[] = ['columns' => [], 'type' => 'index', 'name' => $rm[2]];
+        }
+    }
+}
+
 printf("\n  %d migrations, %d tables declared, %d raw SQL statements\n",
     count($files), count($tables), count($rawStatements));
 

@@ -125,10 +125,14 @@ return new class extends Migration
             // Equivalent raw DDL with prefix length per spec migrations.sql:863.
         });
         // MySQL/MariaDB use prefix syntax `col(255)`; Postgres uses substr() in the index expression.
-        $heatmapIndex = DB::connection()->getDriverName() === 'pgsql'
-            ? 'CREATE INDEX IF NOT EXISTS idx_heatmap_page_time ON heatmap_events ((substr(page_url, 1, 255)), occurred_at)'
-            : 'CREATE INDEX IF NOT EXISTS idx_heatmap_page_time ON heatmap_events (page_url(255), occurred_at)';
-        DB::statement($heatmapIndex);
+        // MySQL has no `CREATE INDEX IF NOT EXISTS` (Postgres/SQLite syntax — MySQL rejects it
+        // with error 1064). No existence guard is needed: this block runs only when
+        // `heatmap_events` has just been created, so the index cannot already exist.
+        if (DB::connection()->getDriverName() === 'pgsql') {
+            DB::statement('CREATE INDEX IF NOT EXISTS idx_heatmap_page_time ON heatmap_events ((substr(page_url, 1, 255)), occurred_at)');
+        } else {
+            DB::statement('CREATE INDEX idx_heatmap_page_time ON heatmap_events (page_url(255), occurred_at)');
+        }
         }
 
         if (!Schema::hasTable("embed_domains")) {

@@ -21,8 +21,17 @@ return new class extends Migration
 {
     public function up(): void
     {
-        // Drop the old unique constraint on bundle_hash alone
-        if (DB::connection()->getDriverName() === 'pgsql') { DB::statement('ALTER TABLE offline_bundles DROP CONSTRAINT IF EXISTS uq_offline_bundles_hash;'); } elseif (str_contains((string) DB::selectOne('select version()')->version ?? '', 'MariaDB')) { DB::statement('ALTER TABLE offline_bundles DROP INDEX IF EXISTS uq_offline_bundles_hash;'); } else { DB::statement('ALTER TABLE offline_bundles DROP CONSTRAINT IF EXISTS uq_offline_bundles_hash;'); }
+        // Drop the old unique constraint on bundle_hash alone.
+        // MySQL/MariaDB implement a UNIQUE constraint as an index (dropped with DROP
+        // INDEX), while Postgres uses DROP CONSTRAINT. MySQL also has no
+        // `DROP INDEX IF EXISTS` (MariaDB does), so existence is checked explicitly.
+        // Note: `select version()` returns a column literally named `version()` on
+        // MySQL, so a `->version` property access is undefined — do not reintroduce it.
+        if (DB::connection()->getDriverName() === 'pgsql') {
+            DB::statement('ALTER TABLE offline_bundles DROP CONSTRAINT IF EXISTS uq_offline_bundles_hash;');
+        } elseif ($this->indexExists('offline_bundles', 'uq_offline_bundles_hash')) {
+            DB::statement('ALTER TABLE offline_bundles DROP INDEX uq_offline_bundles_hash;');
+        }
         
         // Add new composite unique constraint: (bundle_hash, checkin_device_id)
         // This ensures:
@@ -39,6 +48,21 @@ return new class extends Migration
         });
     }
 
+    /**
+     * Whether a named index already exists.
+     *
+     * Uses a plain information_schema probe rather than Schema::hasIndex(), because
+     * the dependency-free verifier (tools/verify-migrations.php) runs migrations
+     * against a Laravel stub that implements only a subset of the Schema API.
+     */
+    private function indexExists(string $table, string $index): bool
+    {
+        return (bool) DB::selectOne(
+            'SELECT 1 FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = ? AND index_name = ? LIMIT 1',
+            [$table, $index],
+        );
+    }
+
     public function down(): void
     {
         // Remove the new composite index
@@ -46,8 +70,12 @@ return new class extends Migration
             $table->dropIndex('idx_offline_bundles_device_hash');
         });
         
-        // Drop the composite unique constraint
-        if (DB::connection()->getDriverName() === 'pgsql') { DB::statement('ALTER TABLE offline_bundles DROP CONSTRAINT IF EXISTS uq_offline_bundles_hash_device;'); } elseif (str_contains((string) DB::selectOne('select version()')->version ?? '', 'MariaDB')) { DB::statement('ALTER TABLE offline_bundles DROP INDEX IF EXISTS uq_offline_bundles_hash_device;'); } else { DB::statement('ALTER TABLE offline_bundles DROP CONSTRAINT IF EXISTS uq_offline_bundles_hash_device;'); }
+        // Drop the composite unique constraint (same driver rules as in up()).
+        if (DB::connection()->getDriverName() === 'pgsql') {
+            DB::statement('ALTER TABLE offline_bundles DROP CONSTRAINT IF EXISTS uq_offline_bundles_hash_device;');
+        } elseif ($this->indexExists('offline_bundles', 'uq_offline_bundles_hash_device')) {
+            DB::statement('ALTER TABLE offline_bundles DROP INDEX uq_offline_bundles_hash_device;');
+        }
         
         // Restore the original unique constraint on bundle_hash alone
         Schema::table('offline_bundles', function (Blueprint $table) {
