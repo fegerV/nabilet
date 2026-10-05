@@ -128,7 +128,7 @@ function applyServerCart(cartData: Awaited<ReturnType<typeof fetchCart>>): void 
   // Таймер — от серверного expires_at, а не от локальных 600 секунд.
   if (cartData.expires_at) cart.setHoldExpiry(cartData.expires_at)
   if (restored > 0) {
-    ui.notify('sky', 'Выбор восстановлен', `Сервер ещё держит для вас мест: ${restored}.`)
+    ui.notify('brand', 'Выбор восстановлен', `Сервер ещё держит для вас мест: ${restored}.`)
   }
 }
 
@@ -212,7 +212,7 @@ function adoptHoldResponse(inventoryItemId: string, res: HoldResponse): void {
   const cartItemId = res.data?.id ?? res.data?.cart_item_id
   if (cartItemId !== undefined && cartItemId !== null) cart.meta[inventoryItemId] = String(cartItemId)
   const expiresAt = res.cart?.expires_at ?? (res.data as { cart?: { expires_at?: string } } | undefined)?.cart?.expires_at
-  if (expiresAt) cart.setHoldExpiry(expires_at)
+  if (expiresAt) cart.setHoldExpiry(expiresAt)
 }
 
 /** Сообщения об ошибках — по коду состояния, а не одна надпись на все случаи. */

@@ -14,7 +14,7 @@ import NStatusBadge from '@/components/ui/NStatusBadge.vue'
 import { get } from '@/lib/api'
 import { money, dateFull, time, seatsLabel } from '@/lib/format'
 import { cn } from '@/lib/cn'
-import type { SeatState } from '@/lib/types'
+import type { EventStatus, SeatState } from '@/lib/types'
 import { SEAT_LEGEND } from '@/lib/hall'
 
 const route = useRoute()
@@ -38,7 +38,7 @@ interface EventDetail {
   title: string
   short_description?: string
   description?: string
-  status: string
+  status: EventStatus
   age_limit?: string | number | null
   duration_minutes?: number
   poster?: string
