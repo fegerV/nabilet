@@ -30,10 +30,13 @@ class HallController extends Controller
         protected HallService $service
     ) {}
 
-    public function index(int $venueId, Request $request): HallCollection
+    public function index(string $venuePublicId, Request $request): HallCollection
     {
         $limit = (int) $request->get('limit', 15);
-        $halls = $this->service->findByVenue($venueId, $limit);
+        // `$venuePublicId`, не int: путь приводился к числу до вызова метода,
+        // поэтому `/venues/1abc/halls` отдавал залы площадки 1. Площадка
+        // ищется по public_id, отсутствие — 404 из сервиса.
+        $halls = $this->service->findByVenue($venuePublicId, $limit);
 
         return new HallCollection($halls);
     }
@@ -162,9 +165,19 @@ class HallController extends Controller
         return new SchemaVersionResource($version);
     }
 
-    public function publishSchemaVersion(Request $request, int $versionId): SchemaVersionResource
+    /**
+     * Publish a draft schema version.
+     *
+     * The hall's public id is part of the path, not decoration: the service checks
+     * that the version belongs to that hall, so that publishing someone else's
+     * version is indistinguishable from publishing one that does not exist. The
+     * route used to carry only `{versionId}` while the service required three
+     * arguments — every call died with an ArgumentCountError before the check
+     * could run.
+     */
+    public function publishSchemaVersion(Request $request, string $publicId, int $versionId): SchemaVersionResource
     {
-        $version = $this->service->publishSchemaVersion($versionId, $request->user()->id);
+        $version = $this->service->publishSchemaVersion($versionId, $request->user()->id, $publicId);
 
         return new SchemaVersionResource($version);
     }

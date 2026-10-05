@@ -13,6 +13,7 @@ use Nabilet\Modules\Core\Organizations\Models\Organization;
 use Nabilet\Modules\Payments\Models\Payment;
 use Nabilet\Modules\Sessions\Models\Session;
 use Nabilet\Modules\Events\Models\Event;
+use Nabilet\Modules\Tickets\Models\Ticket;
 
 /**
  * @property int $id
@@ -109,6 +110,20 @@ class Order extends Model
     public function payments(): HasMany
     {
         return $this->hasMany(Payment::class);
+    }
+
+    /**
+     * Билеты заказа.
+     *
+     * Связь отсутствовала, хотя колонка `tickets.order_id` есть и
+     * `OrderController::show()` её запрашивал: `$order->load([... 'tickets' ...])`
+     * падал с «Call to undefined relationship [tickets] on model [Order]» → 500
+     * на карточке заказа в админке. `OrderItem::tickets()` тоже не подходит как
+     * замена: у `OrderItem` такой связи нет, а FK ведёт прямо на заказ.
+     */
+    public function tickets(): HasMany
+    {
+        return $this->hasMany(Ticket::class);
     }
 
     public function session(): BelongsTo

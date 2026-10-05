@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Venues\Http\Controllers;
 
+use Nabilet\Core\Errors\ValidationError;
 use Nabilet\Modules\Venues\Models\Venue;
-use Nabilet\Modules\Venues\Models\HallSchema;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -42,22 +42,33 @@ class VenueController extends Controller
 
     public function show(Venue $venue): JsonResponse
     {
-        $venue->load(['halls', 'organization', 'translations', 'hallSchemas']);
-        
+        // Only relations that exist on the model. `translations` and `hallSchemas`
+        // were loaded here and neither is defined on `Venue`, so every call threw
+        // RelationNotFoundException → 500. Translations live on
+        // `venueTranslations`; hall schemas hang off `halls`, not off the venue.
+        $venue->load(['halls', 'organization', 'venueTranslations']);
+
         return response()->json(['data' => $venue]);
     }
 
     public function store(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'organization_id' => ['nullable', 'integer', 'exists:organizations,id'],
+            // `bail` перед `exists`: колонка BIGINT, а MySQL не отвергает
+            // сравнение со строкой, а приводит её (`id = '1abc'` совпадает с 1).
+            // Без `bail` правило `exists` успевает отработать и пропускает мусор.
+            'organization_id' => ['bail', 'nullable', 'integer', 'exists:organizations,id'],
             'name' => ['required', 'string', 'max:255'],
             'slug' => ['nullable', 'string', 'max:255', 'unique:venues,slug'],
             'description' => ['nullable', 'string'],
-            'country' => ['nullable', 'string', 'max:255'],
-            'region' => ['nullable', 'string', 'max:255'],
-            'city' => ['nullable', 'string', 'max:255'],
-            'address' => ['nullable', 'string', 'max:255'],
+            // Max lengths follow the columns, not a round number: country is
+            // VARCHAR(100), region/city VARCHAR(150), address VARCHAR(500). A
+            // blanket `max:255` let a 200-char country through validation and then
+            // failed in MySQL strict mode as a 500 instead of a 422.
+            'country' => ['nullable', 'string', 'max:100'],
+            'region' => ['nullable', 'string', 'max:150'],
+            'city' => ['nullable', 'string', 'max:150'],
+            'address' => ['nullable', 'string', 'max:500'],
             'latitude' => ['nullable', 'numeric', 'between:-90,90'],
             'longitude' => ['nullable', 'numeric', 'between:-180,180'],
             'status' => ['nullable', 'string', 'in:active,inactive'],
@@ -65,11 +76,20 @@ class VenueController extends Controller
 
         $data['status'] ??= 'active';
 
-                // организации пользователя или системный дефолт. БД требует NOT NULL.
-                if (empty($data['organization_id'])) {
-                    $orgId = $request->user()?->organizations()->first()?->id;
-                    $data['organization_id'] = $orgId ?? \Nabilet\Modules\Core\Organizations\Models\Organization::query()->value('id');
-                }
+        // Fail closed when there is no organization to attach the venue to. The
+        // previous fallback was `Organization::query()->value('id')` — an
+        // arbitrary tenant, which would silently file one organization's venue
+        // under another's. `organization_id` is NOT NULL, so the alternative to
+        // guessing is refusing.
+        if (empty($data['organization_id'])) {
+            $data['organization_id'] = $request->user()?->organizations()->value('organizations.id');
+        }
+
+        if (empty($data['organization_id'])) {
+            throw new ValidationError([
+                'organization_id' => ['No organization to attach this venue to.'],
+            ]);
+        }
 
                 // БД требует slug NOT NULL — генерим из name, если не передан.
         if (empty($data['slug'])) {
@@ -90,14 +110,17 @@ class VenueController extends Controller
     public function update(Request $request, Venue $venue): JsonResponse
     {
         $data = $request->validate([
-            'organization_id' => ['nullable', 'integer', 'exists:organizations,id'],
+            // `bail` перед `exists`: колонка BIGINT, а MySQL не отвергает
+            // сравнение со строкой, а приводит её (`id = '1abc'` совпадает с 1).
+            // Без `bail` правило `exists` успевает отработать и пропускает мусор.
+            'organization_id' => ['bail', 'nullable', 'integer', 'exists:organizations,id'],
             'name' => ['sometimes', 'required', 'string', 'max:255'],
             'slug' => ['sometimes', 'nullable', 'string', 'max:255', 'unique:venues,slug,' . $venue->id],
             'description' => ['nullable', 'string'],
-            'country' => ['nullable', 'string', 'max:255'],
-            'region' => ['nullable', 'string', 'max:255'],
-            'city' => ['nullable', 'string', 'max:255'],
-            'address' => ['nullable', 'string', 'max:255'],
+            'country' => ['nullable', 'string', 'max:100'],
+            'region' => ['nullable', 'string', 'max:150'],
+            'city' => ['nullable', 'string', 'max:150'],
+            'address' => ['nullable', 'string', 'max:500'],
             'latitude' => ['nullable', 'numeric', 'between:-90,90'],
             'longitude' => ['nullable', 'numeric', 'between:-180,180'],
             'status' => ['sometimes', 'string', 'in:active,inactive'],
@@ -114,78 +137,5 @@ class VenueController extends Controller
         $venue->delete();
 
         return response()->json(['success' => true, 'message' => 'Venue deleted successfully']);
-    }
-
-    /**
-     * Create a new hall schema for a venue
-     */
-    public function storeSchema(Request $request, Venue $venue): JsonResponse
-    {
-        $request->validate([
-            'name' => 'required|string|max:255',
-            'schema' => 'required|array',
-            'schema.rows' => 'required|array',
-        ]);
-
-        $hallSchema = HallSchema::create([
-            'venue_id' => $venue->id,
-            'name' => $request->name,
-            'schema' => $request->schema,
-            'is_active' => true,
-        ]);
-
-        $hallSchema->load('venue');
-
-        return response()->json([
-            'success' => true,
-            'data' => $hallSchema,
-        ], 201);
-    }
-
-    /**
-     * Update an existing hall schema
-     */
-    public function updateSchema(Request $request, HallSchema $hallSchema): JsonResponse
-    {
-        $request->validate([
-            'name' => 'sometimes|required|string|max:255',
-            'schema' => 'sometimes|required|array',
-            'schema.rows' => 'sometimes|required|array',
-            'is_active' => 'sometimes|boolean',
-        ]);
-
-        if ($request->has('name')) {
-            $hallSchema->name = $request->name;
-        }
-
-        if ($request->has('schema')) {
-            $hallSchema->schema = $request->schema;
-        }
-
-        if ($request->has('is_active')) {
-            $hallSchema->is_active = $request->is_active;
-        }
-
-        $hallSchema->save();
-
-        $hallSchema->load('venue');
-
-        return response()->json([
-            'success' => true,
-            'data' => $hallSchema,
-        ]);
-    }
-
-    /**
-     * Delete a hall schema
-     */
-    public function deleteSchema(HallSchema $hallSchema): JsonResponse
-    {
-        $hallSchema->delete();
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Hall schema deleted successfully',
-        ]);
     }
 }

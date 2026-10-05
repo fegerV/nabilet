@@ -9,7 +9,9 @@ use Illuminate\Support\Facades\Route;
 Route::prefix('payments')->middleware(['auth:api'])->group(function () {
     Route::get('/', [PaymentController::class, 'index']);
     Route::post('/', [PaymentController::class, 'store']);
-    Route::get('/{payment}', [PaymentController::class, 'show']);
+    // `whereNumber`: неявная привязка приводит путь к int, поэтому
+    // `/payments/1abc` открывал платёж 1. С ограничением — 404 (fail-closed).
+    Route::get('/{payment}', [PaymentController::class, 'show'])->whereNumber('payment');
 });
 
 // Демо-подтверждение оплаты (симулятор ЮKassa, только в demo_mode).

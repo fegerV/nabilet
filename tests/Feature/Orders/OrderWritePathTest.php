@@ -347,6 +347,11 @@ class OrderWritePathTest extends TestCase
     {
         [$organizationId, , , $inventoryId] = $this->seedSellableSeat(available: 3);
 
+        // Роут закрыт `auth:api` — спека помечает POST /api/v1/orders схемой
+        // bearerAuth. Раньше он был открыт, и анонимный запрос мог создать
+        // заказ от чужого имени. Теперь запрос идёт от покупателя.
+        $this->actingAsBuyer();
+
         // Ответ приходит в конверте §66, а не в формате Laravel:
         //   {"error":{"code":"VALIDATION_ERROR","details":{"fields":{"customer_email":[…]}}}}
         // Поэтому `assertJsonValidationErrors()` здесь не подходит — он ищет ключ
@@ -363,6 +368,69 @@ class OrderWritePathTest extends TestCase
             $response->json('error.details.fields'),
             'the §66 envelope did not report the missing customer_email'
         );
+    }
+
+    /**
+     * Покупатель для запросов, требующих `auth:api`.
+     *
+     * `users` требует только `public_id`, `status`, `locale`, `timezone` —
+     * email и пароль в схеме nullable (вход возможен по телефону).
+     */
+    private function actingAsBuyer(): \Nabilet\Modules\Core\Users\Models\User
+    {
+        $id = (int) DB::table('users')->insertGetId([
+            'public_id' => (string) \Illuminate\Support\Str::ulid()->toBase32(),
+            'status' => 'active',
+            'locale' => 'ru',
+            'timezone' => 'UTC',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $user = \Nabilet\Modules\Core\Users\Models\User::query()->findOrFail($id);
+        $this->actingAs($user, 'api');
+
+        return $user;
+    }
+
+    /**
+     * Раньше весь модуль заказов был открыт: анонимный `GET /orders` выгружал
+     * все заказы, `GET /orders/{order}` отдавал заказ вместе с позициями,
+     * платежами, билетами и PII покупателя, `POST /orders` создавал заказ.
+     * Спека требует bearerAuth на POST /orders и GET /orders/{order}.
+     */
+    public function test_orders_api_requires_authentication(): void
+    {
+        $this->getJson('/api/v1/orders')->assertStatus(401);
+        $this->getJson('/api/v1/orders/1')->assertStatus(401);
+        $this->postJson('/api/v1/orders', [])->assertStatus(401);
+    }
+
+    /**
+     * Fail-closed: чужой заказ для покупателя неотличим от несуществующего
+     * (404, не 403 — 403 подтвердил бы существование записи).
+     */
+    public function test_a_customer_cannot_read_another_customers_order(): void
+    {
+        [$organizationId, , , $inventoryId] = $this->seedSellableSeat(available: 3);
+
+        $owner = $this->actingAsBuyer();
+        $order = $this->service->createOrder([
+            'organization_id' => $organizationId,
+            'user_id' => $owner->id,
+            'customer_email' => 'owner@example.com',
+            'items' => [['inventory_item_id' => $inventoryId, 'quantity' => 1]],
+        ]);
+
+        $this->actingAsBuyer();
+
+        $this->getJson("/api/v1/orders/{$order->id}")->assertStatus(404);
+
+        // И в списке чужой заказ не появляется: `user_id` форсируется из сессии,
+        // а не берётся из query.
+        $this->getJson("/api/v1/orders?user_id={$owner->id}")
+            ->assertOk()
+            ->assertJsonPath('data.total', 0);
     }
 
     /**

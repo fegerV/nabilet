@@ -88,9 +88,15 @@ class HallSchemaVersion extends Model
                         foreach ($payload['sectors'] ?? [] as $sectorRaw) {
                 // B7/C1: «сироты» без мест (сектор только под подпись/рамку)
                 // раньше молча выбрасывались из инвентаря. Если у такого
-                // сектора есть стоячая зона или стол из staticObjects —
-                // превращаем его в standing-сектор, иначе он не попадёт в
-                // inventory_items и витрина его не увидит.
+                // сектора есть стоячая зона из staticObjects — превращаем его
+                // в standing-сектор, иначе он не попадёт в inventory_items и
+                // витрина его не увидит.
+                //
+                // Столы (`kind: 'table'`) здесь не обрабатываются и не должны:
+                // это геометрия-декорация без вместимости и цены, а
+                // `ck_inventory_type` допускает только 'seat' и 'standing'.
+                // Проверка непустоты схемы (HallService::payloadHasSeats) с
+                // этим согласована.
                 $sector = is_array($sectorRaw) ? $sectorRaw : [];
                 $name = (string) ($sector['name'] ?? 'сектор');
                 $code = (string) ($sector['code'] ?? '');

@@ -36,30 +36,6 @@ class OrderRepository
         return $query->with(['items.inventoryItem', 'customer', 'payments'])->first();
     }
 
-    /**
-     * Постраничный список заказов организации.
-     *
-     * Скоуп по `organization_id` задаётся вызывающим кодом и обязателен: у модели
-     * Order нет глобального tenant-скоупа, поэтому забытый фильтр означал бы выдачу
-     * заказов всех арендаторов.
-     *
-     * @return LengthAwarePaginator<int, Order>
-     */
-    public function paginateByOrganization(int $organizationId, array $filters = [], int $perPage = 20): LengthAwarePaginator
-    {
-        $query = $this->model->newQuery()->where('organization_id', $organizationId);
-
-        if (!empty($filters['status'])) {
-            $query->where('status', $filters['status']);
-        }
-
-        if (!empty($filters['user_id'])) {
-            $query->where('user_id', $filters['user_id']);
-        }
-
-        return $query->orderByDesc('created_at')->paginate($perPage);
-    }
-
     public function findByOrganization(int $organizationId, array $filters = [], int $limit = 15): LengthAwarePaginator
         {
                 $query = $this->model->where('organization_id', $organizationId)
@@ -89,18 +65,38 @@ class OrderRepository
         }
 
         /**
-                 * Все заказы всех организаций (админка, без фильтра по организации).
-                 */
-                public function paginateAll(array $filters = [], int $limit = 20): LengthAwarePaginator
-                {
-                    $query = $this->model->with(['items']);
+     * Все заказы (админка / список «мои заказы» с принудительным user_id).
+     *
+     * Единственный метод постраничного списка. До этого рядом жил
+     * `paginateByOrganization` с ДРУГИМ набором фильтров (`user_id` работал,
+     * `customer_email` и даты — нет), и выбор между ними зависел от того,
+     * передан ли `organization_id`: `GET /orders?user_id=5` молча возвращал все
+     * заказы системы. Метод удалён, `organization_id` — обычный фильтр здесь.
+     *
+     * @return LengthAwarePaginator<int, Order>
+     */
+    public function paginateAll(array $filters = [], int $limit = 20): LengthAwarePaginator
+        {
+            $query = $this->model->with(['items']);
 
-            if (isset($filters['status'])) {
+            if (! empty($filters['status'])) {
                 $query->where('status', $filters['status']);
             }
 
-            if (isset($filters['customer_email'])) {
-                $query->where('customer_email', 'ilike', "%{$filters['customer_email']}%");
+            if (! empty($filters['user_id'])) {
+                $query->where('user_id', $filters['user_id']);
+            }
+
+            if (! empty($filters['organization_id'])) {
+                $query->where('organization_id', $filters['organization_id']);
+            }
+
+            if (! empty($filters['customer_email'])) {
+                // `ilike` — оператор PostgreSQL; MySQL его не знает и падает с
+                // SQLSTATE[42000] (500). Сравнение и так регистронезависимое:
+                // коллация utf8mb4_unicode_ci. `%`/`_` из ввода экранируем,
+                // иначе поиск по «a_b» совпал бы с «aXb».
+                $query->where('customer_email', 'like', '%' . addcslashes((string) $filters['customer_email'], '%_\\') . '%');
             }
 
             if (isset($filters['date_from'])) {

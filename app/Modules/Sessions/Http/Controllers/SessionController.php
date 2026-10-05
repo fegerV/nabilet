@@ -57,11 +57,16 @@ class SessionController extends Controller
 
     public function store(Request $request): JsonResponse
     {
+        // `bail` перед каждым `exists:` — не стилистика. Колонки BIGINT, а MySQL
+        // не отвергает сравнение со строкой, а приводит её: `WHERE id = '1abc'`
+        // совпадает с id = 1 (warning 1292). Без `bail` правило `exists` успевает
+        // отработать после `integer` и пропускает мусор (fail-open).
+        // Замеры — в `CartController::addItem()`.
         $data = $request->validate([
-            'event_id' => ['required', 'integer', 'exists:events,id'],
-            'venue_id' => ['nullable', 'integer', 'exists:venues,id'],
-            'hall_id' => ['required', 'integer', 'exists:halls,id'],
-            'schema_version_id' => ['nullable', 'integer', 'exists:hall_schema_versions,id'],
+            'event_id' => ['bail', 'required', 'integer', 'exists:events,id'],
+            'venue_id' => ['bail', 'nullable', 'integer', 'exists:venues,id'],
+            'hall_id' => ['bail', 'required', 'integer', 'exists:halls,id'],
+            'schema_version_id' => ['bail', 'nullable', 'integer', 'exists:hall_schema_versions,id'],
             'starts_at' => ['required', 'date'],
             'ends_at' => ['nullable', 'date', 'after:starts_at'],
             'sales_start_at' => ['nullable', 'date'],
@@ -107,10 +112,10 @@ class SessionController extends Controller
     public function update(Request $request, Session $session): JsonResponse
     {
         $data = $request->validate([
-            'event_id' => ['sometimes', 'integer', 'exists:events,id'],
-            'venue_id' => ['nullable', 'integer', 'exists:venues,id'],
-            'hall_id' => ['sometimes', 'integer', 'exists:halls,id'],
-            'schema_version_id' => ['nullable', 'integer', 'exists:hall_schema_versions,id'],
+            'event_id' => ['bail', 'sometimes', 'integer', 'exists:events,id'],
+            'venue_id' => ['bail', 'nullable', 'integer', 'exists:venues,id'],
+            'hall_id' => ['bail', 'sometimes', 'integer', 'exists:halls,id'],
+            'schema_version_id' => ['bail', 'nullable', 'integer', 'exists:hall_schema_versions,id'],
             'starts_at' => ['sometimes', 'date'],
             'ends_at' => ['nullable', 'date', 'after:starts_at'],
             'sales_start_at' => ['nullable', 'date'],

@@ -67,7 +67,11 @@ ENV;
         // Если уже установлено — блокируем доступ
         if ($this->isInstalled()) {
             return $request->expectsJson()
-                ? response()->json(['error' => 'Система уже установлена'], 403)
+                ? response()->json(['error' => [
+                    'code' => 'ALREADY_INSTALLED',
+                    'message' => 'Система уже установлена',
+                    'details' => [],
+                ]], 403)
                 : redirect('/')->with('error', 'Система уже установлена');
         }
 
@@ -95,7 +99,11 @@ ENV;
     {
         // Если уже установлено — блокируем
         if ($this->isInstalled()) {
-            return response()->json(['error' => 'Система уже установлена'], 403);
+            return response()->json(['error' => [
+                'code' => 'ALREADY_INSTALLED',
+                'message' => 'Система уже установлена',
+                'details' => [],
+            ]], 403);
         }
 
         try {
@@ -142,7 +150,7 @@ ENV;
             try {
                 Artisan::call('storage:link');
             } catch (\Throwable $e) {
-                Log::warning('Installer: Не удалось создать storage:link', ['error' => $e->getMessage()]);
+                Log::warning('Installer: Не удалось создать storage:link', ['exception' => $e->getMessage()]);
                 // Не блокируем установку, если symlink не работает
             }
 
@@ -150,7 +158,7 @@ ENV;
             try {
                 Artisan::call('db:seed', ['--force' => true]);
             } catch (\Throwable $e) {
-                Log::warning('Installer: Сидеры не выполнены', ['error' => $e->getMessage()]);
+                Log::warning('Installer: Сидеры не выполнены', ['exception' => $e->getMessage()]);
             }
 
             // Шаг 8: Генерация APP_KEY если не был указан
@@ -175,22 +183,25 @@ ENV;
             ]);
 
         } catch (ValidationException $e) {
-            return response()->json([
-                'success' => false,
-                'error' => 'Ошибка валидации',
-                'messages' => $e->errors(),
-            ], 422);
+            return response()->json(['error' => [
+                'code' => 'VALIDATION_ERROR',
+                'message' => 'Ошибка валидации',
+                'details' => ['fields' => $e->errors()],
+            ]], 422);
 
         } catch (\Throwable $e) {
             Log::error('Installer: Критическая ошибка установки', [
-                'error' => $e->getMessage(),
+                'exception' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
 
-            return response()->json([
-                'success' => false,
-                'error' => 'Ошибка установки: ' . $e->getMessage(),
-            ], 500);
+            // Внутреннее сообщение уходит только в лог: раньше оно
+            // публиковалось клиенту и раскрывало текст драйвера БД и пути.
+            return response()->json(['error' => [
+                'code' => 'INSTALL_FAILED',
+                'message' => 'Не удалось завершить установку. Подробности — в журнале.',
+                'details' => [],
+            ]], 500);
         }
     }
 
@@ -290,7 +301,7 @@ ENV;
             Log::error('Installer: Не удалось подключиться к БД', [
                 'host' => $host,
                 'database' => $database,
-                'error' => $e->getMessage(),
+                'exception' => $e->getMessage(),
             ]);
 
             throw new \RuntimeException(

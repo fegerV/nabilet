@@ -7,12 +7,56 @@ namespace Nabilet\Modules\Payments\Repositories;
 use Nabilet\Modules\Payments\Models\Payment;
 use Nabilet\Modules\Payments\Models\PaymentTransaction;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Pagination\LengthAwarePaginator;
 
 class PaymentRepository
 {
     public function __construct(
         protected Payment $model
     ) {}
+
+    /**
+     * Постраничный список платежей.
+     *
+     * Живёт здесь, а не в сервисе: `$model` объявлен `protected`, поэтому
+     * прежний `$this->repository->model->newQuery()` из `PaymentService` был
+     * фаталом «Cannot access protected property» — он просто никогда не
+     * выполнялся, потому что сервис уходил в ветку «нет organization_id →
+     * пустой результат» раньше. `organization_id` при этом до сервиса не
+     * доходил вовсе: контроллер резал фильтры через `only()`, где его не было.
+     *
+     * Фильтр `user_id` идёт через `order` — владелец платежа это владелец
+     * заказа; у `payments` своей колонки `user_id` нет.
+     *
+     * @param  array<string, mixed>  $filters
+     * @return LengthAwarePaginator<int, Payment>
+     */
+    public function paginate(array $filters = [], int $limit = 20): LengthAwarePaginator
+    {
+        $query = $this->model->newQuery()->with(['order', 'transactions']);
+
+        if (! empty($filters['organization_id'])) {
+            $query->whereHas('order', fn ($q) => $q->where('organization_id', $filters['organization_id']));
+        }
+
+        if (! empty($filters['user_id'])) {
+            $query->whereHas('order', fn ($q) => $q->where('user_id', $filters['user_id']));
+        }
+
+        if (! empty($filters['order_id'])) {
+            $query->where('order_id', $filters['order_id']);
+        }
+
+        if (! empty($filters['status'])) {
+            $query->where('status', $filters['status']);
+        }
+
+        if (! empty($filters['provider'])) {
+            $query->where('provider', $filters['provider']);
+        }
+
+        return $query->orderByDesc('created_at')->paginate($limit);
+    }
 
     public function find(int $id, ?int $organizationId = null): ?Payment
     {

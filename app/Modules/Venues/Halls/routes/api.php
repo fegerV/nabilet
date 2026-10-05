@@ -21,7 +21,9 @@ use Nabilet\Modules\Venues\Halls\Http\Controllers\HallController;
  */
 
 // Public hall routes
-Route::get('/venues/{venueId}/halls', [HallController::class, 'index'])->name('halls.index');
+// `{venuePublicId}` — публичный идентификатор площадки (ULID), не BIGINT:
+// числовой путь приводился к int и `/venues/1abc/halls` отдавал залы площадки 1.
+Route::get('/venues/{venuePublicId}/halls', [HallController::class, 'index'])->name('halls.index');
 Route::get('/halls', [HallController::class, 'indexAll'])->name('halls.all');
 Route::get('/halls/{publicId}', [HallController::class, 'show'])->name('halls.show');
 // Публичная схема для витрины мест (B10): только опубликованная версия.
@@ -36,5 +38,5 @@ Route::middleware(['auth:api', 'admin'])->group(function () {
     // Schema version management
     Route::get('/halls/{publicId}/schema-versions', [HallController::class, 'getSchemaVersions'])->name('halls.schema-versions.index');
     Route::post('/halls/{publicId}/schema-versions/draft', [HallController::class, 'createSchemaDraft'])->name('halls.schema-versions.draft');
-    Route::post('/schema-versions/{versionId}/publish', [HallController::class, 'publishSchemaVersion'])->name('halls.schema-versions.publish');
+    Route::post('/halls/{publicId}/schema-versions/{versionId}/publish', [HallController::class, 'publishSchemaVersion'])->name('halls.schema-versions.publish');
 });

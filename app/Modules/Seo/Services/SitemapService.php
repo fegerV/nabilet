@@ -6,10 +6,8 @@ namespace Nabilet\Modules\Seo\Services;
 
 use Nabilet\Modules\Events\Models\Event;
 use Nabilet\Modules\Events\Domain\EventStatus;
-use Nabilet\Modules\Venues\Models\Venue;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Cache;
 
 /**
  * Sitemap generation service (ТЗ §38).
@@ -17,6 +15,12 @@ use Illuminate\Support\Facades\Cache;
  * Generates XML sitemaps for search engines, split by content type to stay
  * under the 50,000 URL / 50 MB limits. Only published, visible content is
  * included — drafts and scheduled events are excluded.
+ *
+ * There is deliberately no venues sitemap. One existed and pointed every venue
+ * at `route('venues.show')`, a route that has never been defined — so the
+ * endpoint answered 500 and, had the route existed, would have advertised pages
+ * with no component behind them. A venue page has to exist before it can be
+ * indexed; the sitemap should be added back together with it, not before.
  */
 class SitemapService
 {
@@ -48,22 +52,13 @@ class SitemapService
     }
 
     /**
-     * @return Collection<int, Venue>
-     */
-    public function getVenues(): Collection
-    {
-        return Cache::remember(
-            'sitemap.venues',
-            self::CACHE_TTL,
-            fn () => Venue::query()
-                ->where('is_active', true)
-                ->orderBy('name')
-                ->get(['public_id', 'slug', 'updated_at'])
-        );
-    }
-
-    /**
      * Static pages that should be indexed.
+     *
+     * Only pages that actually exist. The storefront is a hash-routed SPA, so the
+     * catalog is the one addressable static page — `about`, `privacy` and `terms`
+     * have neither a server route nor a component, and calling `route()` on them
+     * threw `RouteNotFoundException`, which is what made this endpoint answer 500.
+     * Add them here together with the pages themselves, never before.
      *
      * @return array<int, array{url: string, lastmod: ?string, changefreq: string, priority: float}>
      */
@@ -71,28 +66,10 @@ class SitemapService
     {
         return [
             [
-                'url' => route('home'),
+                'url' => url('/'),
                 'lastmod' => now()->toIso8601String(),
                 'changefreq' => 'daily',
                 'priority' => 1.0,
-            ],
-            [
-                'url' => route('about'),
-                'lastmod' => now()->toIso8601String(),
-                'changefreq' => 'monthly',
-                'priority' => 0.8,
-            ],
-            [
-                'url' => route('privacy'),
-                'lastmod' => now()->toIso8601String(),
-                'changefreq' => 'yearly',
-                'priority' => 0.5,
-            ],
-            [
-                'url' => route('terms'),
-                'lastmod' => now()->toIso8601String(),
-                'changefreq' => 'yearly',
-                'priority' => 0.5,
             ],
         ];
     }
@@ -125,14 +102,6 @@ class SitemapService
             $sitemap->appendChild($lastmod);
             $sitemapIndex->appendChild($sitemap);
         }
-
-        // Venues sitemap
-        $venuesSitemap = $xml->createElement('sitemap');
-        $venuesLoc = $xml->createElement('loc', route('sitemap.venues'));
-        $venuesLastmod = $xml->createElement('lastmod', now()->toIso8601String());
-        $venuesSitemap->appendChild($venuesLoc);
-        $venuesSitemap->appendChild($venuesLastmod);
-        $sitemapIndex->appendChild($venuesSitemap);
 
         // Static pages sitemap
         $staticSitemap = $xml->createElement('sitemap');
@@ -207,47 +176,6 @@ class SitemapService
             'slug' => $event->slug,
             'publicId' => $event->public_id,
         ]);
-    }
-
-    /**
-     * Generate XML for venues sitemap.
-     *
-     * @param Collection<int, Venue> $venues
-     */
-    public function generateVenuesSitemap(Collection $venues): string
-    {
-        $xml = new \DOMDocument('1.0', 'UTF-8');
-        $xml->formatOutput = true;
-
-        $urlset = $xml->createElement('urlset');
-        $urlset->setAttribute('xmlns', 'http://www.sitemaps.org/schemas/sitemap/0.9');
-
-        foreach ($venues as $venue) {
-            $url = $xml->createElement('url');
-
-            $loc = $xml->createElement(
-                'loc',
-                route('venues.show', ['slug' => $venue->slug, 'publicId' => $venue->public_id])
-            );
-
-            $lastmod = $xml->createElement(
-                'lastmod',
-                $venue->updated_at?->toIso8601String() ?? now()->toIso8601String()
-            );
-
-            $changefreq = $xml->createElement('changefreq', 'monthly');
-            $priority = $xml->createElement('priority', '0.8');
-
-            $url->appendChild($loc);
-            $url->appendChild($lastmod);
-            $url->appendChild($changefreq);
-            $url->appendChild($priority);
-            $urlset->appendChild($url);
-        }
-
-        $xml->appendChild($urlset);
-
-        return $xml->saveXML();
     }
 
     /**

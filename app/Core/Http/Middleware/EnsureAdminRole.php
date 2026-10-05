@@ -6,11 +6,15 @@ namespace Nabilet\Core\Http\Middleware;
 
 use Closure;
 use Illuminate\Http\Request;
+use Nabilet\Core\Support\StaffRole;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
  * Доступ к админ-API: только пользователи с ролью admin или manager.
  * Применяется к write-роутам (CRUD), публичные read-роуты витрины — открыты.
+ *
+ * Проверка ролей вынесена в `StaffRole`: тот же вопрос задают контроллеры
+ * заказов/платежей/билетов, решая «отдавать все записи или только свои».
  */
 class EnsureAdminRole
 {
@@ -27,9 +31,7 @@ class EnsureAdminRole
             ], 401);
         }
 
-        $roles = $user->roles->pluck('slug');
-
-        if (!$roles->contains('admin') && !$roles->contains('manager')) {
+        if (!StaffRole::isStaff($user)) {
             return response()->json([
                 'error' => [
                     'code' => 'FORBIDDEN',

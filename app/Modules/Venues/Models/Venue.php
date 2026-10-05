@@ -33,6 +33,19 @@ class Venue extends Model
         'status',
     ];
 
+    /**
+     * Адресация в маршрутах — по `public_id`, как у залов, событий и заказов.
+     *
+     * По умолчанию Laravel берёт ключом `id`, а путь приводится к int: запрос
+     * `GET /venues/1abc` молча разрешался в площадку 1 (PHP приводит строку к
+     * числу при вызове не-строгого кода фреймворка). С `public_id` такого
+     * приведения нет в принципе — мусор в пути даёт 404, а не чужую запись.
+     */
+    public function getRouteKeyName(): string
+    {
+        return 'public_id';
+    }
+
     /** Конвенция проекта: char(26) public_id NOT NULL → генерим ULID при создании. */
     protected static function booted(): void
     {
