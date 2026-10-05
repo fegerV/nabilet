@@ -148,3 +148,88 @@ export function appendRowToSector(
 
   return { row: nextRow, seats: newSeats }
 }
+
+/* ── Банкетный стол (§47: «стол с местами») ────────────────────────── */
+
+export interface TableBuildResult {
+  seats: ESeat[]
+  /** Центр кольца мест в локальных координатах сектора. */
+  cx: number
+  cy: number
+  /** Радиус кольца (до центра места). */
+  ring: number
+}
+
+/**
+ * Места вокруг стола (банкет): раскладываем count мест по окружности так,
+ * чтобы они не перекрывались. Радиус кольца растёт с числом мест.
+ * Все места — в одном ряду (row 1), нумерация по часовой стрелке от «верха».
+ */
+export function buildTableSeats(
+  count: number,
+  nextId: (prefix: string) => string,
+  config: SeatGridConfig = DEFAULT_CONFIG,
+): TableBuildResult {
+  const eff = Math.max(1, Math.floor(count))
+  const r = Math.max(48, (eff * (config.seat + config.gap)) / (2 * Math.PI))
+  const cx = r + config.seat + 10
+  const cy = r + config.seat + 10
+  const seats: ESeat[] = []
+  for (let i = 0; i < eff; i += 1) {
+    const a = -Math.PI / 2 + (i * 2 * Math.PI) / eff
+    seats.push({
+      id: nextId('seat'),
+      row: 1,
+      number: i + 1,
+      kind: 'standard',
+      x: Math.round(cx + r * Math.cos(a) - config.seat / 2),
+      y: Math.round(cy + r * Math.sin(a) - config.seat / 2),
+    })
+  }
+  return { seats, cx, cy, ring: r }
+}
+
+/** Геометрия банкетного стола, вычисленная по уже расставленным местам. */
+export function tableLayout(sector: ESector): TableBuildResult {
+  if (sector.seats.length === 0) {
+    return { seats: [], cx: 0, cy: 0, ring: 0 }
+  }
+  let sx = 0
+  let sy = 0
+  for (const s of sector.seats) {
+    sx += s.x + SEAT / 2
+    sy += s.y + SEAT / 2
+  }
+  const cx = sx / sector.seats.length
+  const cy = sy / sector.seats.length
+  let ring = 0
+  for (const s of sector.seats) {
+    const d = Math.hypot(s.x + SEAT / 2 - cx, s.y + SEAT / 2 - cy)
+    if (d > ring) ring = d
+  }
+  return { seats: sector.seats, cx, cy, ring: ring + SEAT / 2 }
+}
+
+/**
+ * Пересобрать кольцо мест стола под новое число мест, сохраняя центр стола
+ * неподвижным на холсте (корректируем sector.x/y — координаты группы).
+ * Мутирует переданный сектор.
+ */
+export function rebuildTableSeats(
+  sector: ESector,
+  count: number,
+  nextId: (prefix: string) => string,
+  config: SeatGridConfig = DEFAULT_CONFIG,
+): void {
+  const before = tableLayout(sector)
+  const canvasCx = sector.x + before.cx
+  const canvasCy = sector.y + before.cy
+  const eff = Math.max(1, Math.min(60, Math.floor(count)))
+  const { seats, cx, cy, ring } = buildTableSeats(eff, nextId, config)
+  sector.seats = seats
+  sector.x = Math.round(canvasCx - cx)
+  sector.y = Math.round(canvasCy - cy)
+  sector.tableCx = cx
+  sector.tableCy = cy
+  sector.tableRing = ring
+}

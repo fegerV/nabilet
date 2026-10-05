@@ -26,7 +26,7 @@ export interface ESeat {
   y: number
 }
 
-export type SectorShape = 'grid' | 'arc'
+export type SectorShape = 'grid' | 'arc' | 'table'
 
 export interface ESector {
   id: string
@@ -56,6 +56,13 @@ export interface ESector {
    * теряла standing-секторы (C1), а F5 — их тип (B7).
    */
   type?: 'seated' | 'standing' | 'mixed'
+  /**
+   * Геометрия банкетного стола (shape === 'table'): центр кольца мест и его
+   * радиус. Вычисляется из мест (tableLayout), здесь — кэш для рендера/импорта.
+   */
+  tableCx?: number
+  tableCy?: number
+  tableRing?: number
 }
 
 export interface EStatic {
