@@ -46,6 +46,9 @@ import {
   arcLayoutParams,
   buildArcSeats,
   buildGridSeats,
+  buildTableSeats,
+  rebuildTableSeats,
+  tableLayout,
 } from './seatGeometry'
 import { useEditorHistory } from './useEditorHistory'
 
@@ -62,7 +65,7 @@ const TOOLS: { value: Tool; label: string; icon: string; hint: string }[] = [
   { value: 'seat', label: 'Место', icon: '▪', hint: 'Клик в секторе — добавить место' },
   { value: 'row', label: 'Ряд', icon: '▤', hint: 'Добавить ряд к выбранному сектору' },
   { value: 'sector', label: 'Сектор', icon: '▣', hint: 'Тяните прямоугольник — создать сектор' },
-  { value: 'table', label: 'Стол', icon: '◫', hint: 'Клик — поставить стол (VIP-зона)' },
+  { value: 'table', label: 'Стол', icon: '◫', hint: 'Клик — создать банкетный стол с местами' },
   { value: 'standing', label: 'Standing', icon: '▦', hint: 'Тяните прямоугольник — стоячая зона' },
   { value: 'text', label: 'Текст', icon: 'T', hint: 'Клик — поставить подпись' },
   { value: 'image', label: 'Фон', icon: '🖼', hint: 'Загрузить PNG/JPG/WEBP/SVG под схемой' },
@@ -231,6 +234,10 @@ function addRowToSelected(): void {
     ui.notify('rose', 'Сначала выберите сектор', 'Кликните по сектору на холсте')
     return
   }
+  if (sector.shape === 'table') {
+    ui.notify('sun', 'Стол — это одно кольцо', 'Число мест меняется в свойствах стола (справа), кнопка «+ Ряд» для стола не нужна')
+    return
+  }
   snapshot()
   const sample = sector.seats[0]
   const seatsPerRow = sample ? sector.seats.filter((s) => s.row === sample.row).length : form.value.seatsPerRow
@@ -239,6 +246,40 @@ function addRowToSelected(): void {
   // старые места, чтобы новый (самый широкий) ряд остался симметричным.
   const { row: nextRow } = appendRowToSector(sector, seatsPerRow, nextId)
   ui.notify('mint', `Ряд ${nextRow} добавлен`, `${seatsPerRow} мест${sector.shape === 'arc' ? ', по дуге' : ''}`)
+}
+
+/**
+ * Создать банкетный стол с местами (§47): сектор shape='table' с кольцом мест
+ * вокруг центра. Продаётся как обычный сектор (все места в ряду 1), поэтому
+ * цена стола задаётся одним числом — per-table pricing из коробки.
+ */
+function createTableAt(x: number, y: number): void {
+  snapshot()
+  const { seats, cx, cy, ring } = buildTableSeats(8, nextId)
+  const sector: ESector = {
+    id: nextId('sec'),
+    name: `Стол ${sectors.value.length + 1}`,
+    priceMinor: form.value.priceMinor,
+    x: Math.round(x - cx),
+    y: Math.round(y - cy),
+    seats,
+    rowPrices: {},
+    shape: 'table',
+    arcSpread: 0,
+    arcBaseR: 0,
+    arcRowGap: 0,
+    arcOffsetX: 0,
+    arcOffsetY: 0,
+    type: 'seated',
+    tableCx: cx,
+    tableCy: cy,
+    tableRing: ring,
+  }
+  sectors.value.push(sector)
+  selectedSectorId.value = sector.id
+  selectedSeatIds.value = new Set()
+  selectedStaticIds.value = new Set()
+  ui.notify('mint', 'Стол создан', `${sector.name}: 8 мест вокруг стола`)
 }
 
 /* ── Операции с местами (§48) ──────────────────────────────────────── */
@@ -533,7 +574,7 @@ function handleToolClick(clientX: number, clientY: number): void {
   const p = toCanvasPoint(clientX, clientY)
   if (!p) return
   if (t === 'seat') { addSeatAt(p.x, p.y); return }
-  if (t === 'table') { createStaticAt('table', p.x - 22, p.y - 16); return }
+  if (t === 'table') { createTableAt(p.x, p.y); return }
   if (t === 'text') { createStaticAt('label', p.x, p.y); return }
   if (t === 'stage') { createStaticAt('stage', p.x - 130, p.y - 17); return }
   if (t === 'entrance') { createStaticAt('entrance', p.x - 12, p.y - 9); return }
@@ -817,6 +858,7 @@ function buildSchemaPayload(): unknown {
       x: s.x,
       y: s.y,
       priceMinor: s.priceMinor,
+      type: s.type ?? 'seated',
       rowPrices: s.rowPrices,
       shape: s.shape,
       arcSpread: s.arcSpread,
@@ -1143,7 +1185,7 @@ function applyServerSchema(raw: unknown): void {
           y: Math.round(p.y),
         })),
         rowPrices,
-        shape: s.shape === 'arc' ? 'arc' : 'grid',
+        shape: s.shape === 'arc' ? 'arc' : (s.shape === 'table' ? 'table' : 'grid'),
         arcSpread: Number(s.arcSpread ?? 120),
         arcBaseR: Number(s.arcBaseR ?? 200),
         arcRowGap: Number(s.arcRowGap ?? 24),
@@ -1233,7 +1275,7 @@ function applyServerSchema(raw: unknown): void {
         y: 0,
         seats,
         rowPrices,
-        shape: s.shape === 'arc' ? 'arc' : 'grid',
+        shape: s.shape === 'arc' ? 'arc' : (s.shape === 'table' ? 'table' : 'grid'),
         arcSpread: Number(s.arcSpread ?? 120),
         arcBaseR: Number(s.arcBaseR ?? 200),
         arcRowGap: Number(s.arcRowGap ?? 24),
@@ -1247,6 +1289,16 @@ function applyServerSchema(raw: unknown): void {
     for (const sec of out) {
       sec.y = cursorY
       cursorY += bbox(sec).height + 80
+    }
+  }
+  // Геометрия банкетных столов: кэшируем центр/радиус кольца для рендера и
+  // импорта (вычисляется по местам, чтобы round-trip был детерминированным).
+  for (const sec of out) {
+    if (sec.shape === 'table') {
+      const t = tableLayout(sec)
+      sec.tableCx = t.cx
+      sec.tableCy = t.cy
+      sec.tableRing = t.ring
     }
   }
   if (out.length > 0) {
@@ -1370,6 +1422,7 @@ function exportSchema(): void {
       x: s.x,
       y: s.y,
       priceMinor: s.priceMinor,
+      type: s.type ?? 'seated',
       rowPrices: s.rowPrices,
       shape: s.shape,
       arcSpread: s.arcSpread,
@@ -1400,6 +1453,84 @@ function exportSchema(): void {
 
   /* ── Импорт Schema JSON (из файла Афиши или экспорта) ─────────────── */
 
+  /**
+   * Структурная валидация импортируемой схемы ДО применения (§54: «если что-то
+   * не так — конкретная ошибка»). Возвращает список понятных ошибок по полям
+   * или null, если схема пригодна к загрузке. Никаких мутаций состояния — плохой
+   * файл не затирает рабочую схему (старый onJsonChosen молча очищал зал).
+   */
+  function validateSchema(data: unknown): string[] | null {
+    const errors: string[] = []
+    if (data === null || typeof data !== 'object' || Array.isArray(data)) {
+      return ['Файл должен быть объектом схемы зала (JSON-объект), а не массивом или пустым значением']
+    }
+    const obj = data as Record<string, unknown>
+    // Обёртки вида { schema: {...} } тоже принимаем.
+    const root = (obj.schema && typeof obj.schema === 'object' && !Array.isArray(obj.schema))
+      ? obj.schema as Record<string, unknown>
+      : obj
+    if (!('sectors' in root) && !('staticObjects' in root) && !('background' in root)) {
+      return ['В файле нет ни `sectors`, ни `staticObjects`, ни `background` — это не похоже на схему зала']
+    }
+    const sectors = root.sectors
+    if (sectors !== undefined && !Array.isArray(sectors)) {
+      return ['Поле `sectors` должно быть массивом секторов']
+    }
+    const list = Array.isArray(sectors) ? sectors : []
+    if (list.length === 0 && !Array.isArray(root.staticObjects) && !root.background) {
+      return ['В схеме нет ни одного сектора и ни одного объекта — импортировать нечего']
+    }
+    list.forEach((raw, i) => {
+      if (typeof raw !== 'object' || raw === null) {
+        errors.push(`sectors[${i}]: сектор должен быть объектом`)
+        return
+      }
+      const s = raw as Record<string, unknown>
+      if (typeof s.name !== 'string' || s.name.trim() === '') {
+        errors.push(`sectors[${i}]: у сектора должно быть непустое имя (поле name)`)
+      }
+      const shape = s.shape
+      if (shape !== undefined && !['grid', 'arc', 'table'].includes(shape as string)) {
+        errors.push(`sectors[${i}].shape: недопустимая форма «${String(shape)}» (ожидается grid/arc/table)`)
+      }
+      const hasSeats = Array.isArray(s.seats) && (s.seats as unknown[]).length > 0
+      const hasRows = Array.isArray(s.rows) && (s.rows as unknown[]).length > 0
+      if (!hasSeats && !hasRows) {
+        const nm = typeof s.name === 'string' && s.name.trim() !== '' ? s.name : String(i)
+        errors.push(`sectors[${i}] (${nm}): нужны места (seats) или ряды (rows)`)
+      }
+      const checkSeat = (seat: unknown, path: string): void => {
+        if (typeof seat !== 'object' || seat === null) {
+          errors.push(`${path}: место должно быть объектом`)
+          return
+        }
+        const m = seat as Record<string, unknown>
+        if (m.row !== undefined && (!Number.isInteger(m.row) || (m.row as number) < 1)) {
+          errors.push(`${path}.row: ряд должен быть целым числом ≥ 1`)
+        }
+        if (m.number !== undefined && (!Number.isInteger(m.number) || (m.number as number) < 1)) {
+          errors.push(`${path}.number: номер места должен быть целым числом ≥ 1`)
+        }
+      }
+      if (Array.isArray(s.seats)) (s.seats as unknown[]).forEach((seat, j) => checkSeat(seat, `sectors[${i}].seats[${j}]`))
+      if (Array.isArray(s.rows)) {
+        (s.rows as unknown[]).forEach((row, r) => {
+          if (typeof row !== 'object' || row === null) {
+            errors.push(`sectors[${i}].rows[${r}]: ряд должен быть объектом`)
+            return
+          }
+          const rr = row as Record<string, unknown>
+          const no = rr.number
+          if (no !== undefined && (!Number.isInteger(no) || (no as number) < 1)) {
+            errors.push(`sectors[${i}].rows[${r}].number: номер ряда должен быть целым числом ≥ 1`)
+          }
+          if (Array.isArray(rr.seats)) (rr.seats as unknown[]).forEach((seat, j) => checkSeat(seat, `sectors[${i}].rows[${r}].seats[${j}]`))
+        })
+      }
+    })
+    return errors.length > 0 ? errors : null
+  }
+
   const jsonInput = ref<HTMLInputElement | null>(null)
   function importJsonClick(): void {
     jsonInput.value?.click()
@@ -1413,9 +1544,22 @@ function exportSchema(): void {
     if (!file) return
     const reader = new FileReader()
     reader.onload = () => {
+      let data: unknown
       try {
-        const data = JSON.parse(reader.result as string)
-        // autosave не срабатывает при замене sectors.value извне? сработает (watch deep).
+        data = JSON.parse(reader.result as string)
+      } catch {
+        ui.notify('rose', 'Ошибка импорта', 'Файл не является корректным JSON')
+        return
+      }
+      // Валидируем СНАЧАЛА — плохой файл не должен затирать рабочую схему
+      // и не должен сообщать об успехе (§54: конкретная ошибка по полям).
+      const errors = validateSchema(data)
+      if (errors) {
+        const shown = errors.slice(0, 4).join('; ')
+        ui.notify('rose', 'Импорт отклонён', errors.length > 4 ? `${shown} …(+${errors.length - 4})` : shown)
+        return
+      }
+      try {
         applyServerSchema(data)
         // Если загружали поверх published — снимем блокировку, чтобы можно было править
         if (published.value !== null) {
@@ -1770,6 +1914,23 @@ function draw(): void {
               )
             }
 
+            // Банкетный стол: рисуем «крышку» стола по центру кольца мест.
+            if (sector.shape === 'table') {
+              const t = tableLayout(sector)
+              group.add(
+                new Konva.Ellipse({
+                  x: t.cx,
+                  y: t.cy,
+                  radiusX: t.ring,
+                  radiusY: t.ring * 0.72,
+                  fill: 'rgba(38,32,70,0.92)',
+                  stroke: '#8E74FF',
+                  strokeWidth: 1.5,
+                  listening: false,
+                }),
+              )
+            }
+
             for (const seat of sector.seats) {
               if (isDanceZone) break
               const isSelected = selectedSeatIds.value.has(seat.id)
@@ -2117,6 +2278,15 @@ const sectorPriceError = computed<string | undefined>(() => {
   if (!s) return undefined
   return rowPriceError(s.priceMinor / 100)
 })
+
+/** Число мест за банкетным столом (инспектор): 1..60, центр стола сохраняется. */
+function setTableSeatCount(sector: ESector, raw: unknown): void {
+  if (isLocked.value || sector.shape !== 'table') return
+  const n = Math.max(1, Math.min(60, Math.floor(Number(raw) || 1)))
+  snapshot()
+  rebuildTableSeats(sector, n, nextId)
+  selectedSectorId.value = sector.id
+}
 
 /**
  * Введённая цена ряда (₽) с точки зрения валидации; undefined — ошибки нет.
@@ -2474,6 +2644,18 @@ function setSeatKind(value: string): void {
               <dt class="text-muted">Мест</dt>
               <dd class="tabular-nums text-content">{{ selectedSector.seats.length }}</dd>
             </dl>
+            <template v-if="selectedSector.shape === 'table'">
+              <NInput
+                :model-value="String(selectedSector.seats.length)"
+                label="Мест за столом"
+                type="number"
+                :min="1"
+                :max="60"
+                :disabled="isLocked"
+                @update:model-value="setTableSeatCount(selectedSector!, $event)"
+              />
+              <p class="text-2xs text-subtle">Банкетный стол: места по кольцу, одна цена на весь стол.</p>
+            </template>
             <details v-if="selectedSector.seats.length" class="text-xs">
               <summary class="cursor-pointer select-none text-muted hover:text-content">Цены по рядам · §50</summary>
               <div class="mt-2 max-h-40 space-y-1 overflow-y-auto rounded bg-surface-2 p-2">

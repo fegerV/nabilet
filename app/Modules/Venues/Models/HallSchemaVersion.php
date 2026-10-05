@@ -262,6 +262,45 @@ class HallSchemaVersion extends Model
                 ];
             }
 
-            return $sectors;
+        // Код сектора (ck_sectors): редактор не шлёт `code` (в его UI этого
+        // поля нет), а уникальный ключ (schema_version_id, code) NOT NULL
+        // запрещает пустые значения. Без до-присвоения генерация инвентаря
+        // падала 500 при ≥2 секторах (Duplicate entry '<id>-' for
+        // uq_sector_schema_code) — зал, собранный в конструкторе, нельзя было
+        // пустить в продажу. Заполняем пустые/дублирующиеся коды буквенными
+        // индексами A, B, …, AA и гарантируем уникальность в рамках схемы.
+        $usedCodes = [];
+        $autoIdx = 0;
+        foreach ($sectors as &$sec) {
+            $c = (string) ($sec['code'] ?? '');
+            if ($c === '' || isset($usedCodes[$c])) {
+                do {
+                    $c = $this->alphaCode($autoIdx);
+                    $autoIdx += 1;
+                } while (isset($usedCodes[$c]));
+            }
+            $sec['code'] = $c;
+            $usedCodes[$c] = true;
         }
+        unset($sec);
+
+        return $sectors;
+    }
+
+    /**
+     * Буквенная «колонка» по индексу: 0→A, 25→Z, 26→AA, 27→AB … (как в Excel).
+     * Используется для автогенерации кодов секторов, которых нет в схеме редактора.
+     */
+    private function alphaCode(int $n): string
+    {
+        $s = '';
+        $n += 1;
+        while ($n > 0) {
+            $n -= 1;
+            $s = chr(ord('A') + ($n % 26)) . $s;
+            $n = intdiv($n, 26);
+        }
+
+        return $s;
+    }
 }
