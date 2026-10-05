@@ -6,6 +6,7 @@ namespace Nabilet\Modules\Venues\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Nabilet\Modules\Sessions\Models\Session;
 
@@ -58,6 +59,28 @@ class Hall extends Model
     public function schemaVersions(): HasMany
     {
         return $this->hasMany(HallSchemaVersion::class);
+    }
+
+    /**
+     * Опубликованная версия схемы зала — та, по которой продаются места.
+     *
+     * Отношения не было, хотя `HallRepository` его жадно грузил:
+     * `with(['currentSchemaVersion'])` в `findByVenue()` и
+     * `with(['currentSchemaVersion.sectors.rows.seats'])` в `find()`. Laravel
+     * падает на первом же неизвестном отношении, поэтому
+     * `GET /venues/{publicId}/halls` отвечал 500 «Call to undefined relationship
+     * [currentSchemaVersion] on model [Hall]» — список залов площадки не
+     * открывался вообще, а вместе с ним и редактор зала из админки.
+     *
+     * Опубликованной версия может быть ровно одна: `HallRepository::publishSchemaVersion()`
+     * переводит предыдущую в `archived`. Отсюда `hasOne` + сортировка по
+     * `version` — на случай, если в базе остался исторический беспорядок.
+     */
+    public function currentSchemaVersion(): HasOne
+    {
+        return $this->hasOne(HallSchemaVersion::class)
+            ->where('status', 'published')
+            ->orderByDesc('version');
     }
 
     public function sessions(): HasMany

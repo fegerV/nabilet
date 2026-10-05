@@ -57,7 +57,15 @@ return [
         // Продакшен → ЮKassa. demo_mode=true → локальный симулятор оплаты:
                 // провайдер не ходит в API, а возвращает confirmation_url на наш
                 // demo-pay endpoint. Включается, когда нет реальных ключей.
-                'demo_mode' => env('PAYMENT_DEMO_MODE', 'false') === 'true',
+                //
+                // `filter_var(...)`, а не `=== 'true'`. phpdotenv приводит
+                // незакавыченные `true`/`false`/`null` к PHP-типам, поэтому
+                // `env('PAYMENT_DEMO_MODE')` возвращает **boolean**, и сравнение
+                // со строкой не совпадало НИКОГДА: `PAYMENT_DEMO_MODE=true` в
+                // `.env` давал `demo_mode => false`. Проверено:
+                // `artisan config:show nabilet.payment` показывал `false` при
+                // `true` в `.env`, из-за чего демо-оплата не включалась вообще.
+                'demo_mode' => filter_var(env('PAYMENT_DEMO_MODE', false), FILTER_VALIDATE_BOOL),
 
                 // Провайдер по умолчанию для новых платежей. `PaymentService` берёт его
                 // отсюда: колонка `payments.provider` объявлена NOT NULL, поэтому «пусто»

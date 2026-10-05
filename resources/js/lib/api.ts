@@ -114,7 +114,21 @@ export async function request<T = unknown>(path: string, options: ApiOptions = {
   }
   if (token) headers.Authorization = `Bearer ${token}`
   // Контракт D5: все обращения к корзине — с гостевым токеном покупателя.
-  if (path.startsWith('/cart')) headers['X-Cart-Token'] = ensureCartToken()
+  // Для `/cart` токен ещё и СОЗДАЁТСЯ при необходимости: первый запрос нового
+  // покупателя должен получить свою корзину, а не 422.
+  //
+  // Остальным маршрутам токен отдаём, только если он уже есть. Это нужно
+  // `POST /payments`: сервер доказывает право на гостевой заказ именно этим
+  // заголовком (`PaymentController::mayPay()` — у гостевого заказа
+  // `user_id = NULL`, проверить владельца больше нечем), и без него оплата
+  // отвечала 404 «чужой заказ». Плодить токены на запросах админки при этом
+  // не нужно — поэтому `getCartToken()`, а не `ensureCartToken()`.
+  if (path.startsWith('/cart')) {
+    headers['X-Cart-Token'] = ensureCartToken()
+  } else {
+    const guestToken = getCartToken()
+    if (guestToken) headers['X-Cart-Token'] = guestToken
+  }
 
   let res: Response
   try {

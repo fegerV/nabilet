@@ -6,18 +6,31 @@
  * «деньги не списаны, попробуйте снова», потому что первая мысль пользователя
  * именно про деньги, а не про статус. В ожидании говорим, что подтверждение
  * придёт от сервера: это снимает вопрос «а точно ли прошло?».
+ *
+ * Сумма берётся из `cart.orderTotalMinor` — это значение из ответа
+ * `POST /cart/checkout`, то есть серверная цена заказа (инвариант 6). Здесь
+ * считалось `cart.subtotalMinor + 9900 - cart.discountMinor`: во-первых,
+ * сервисного сбора сервер не берёт, во-вторых, `cart.clear()` на успехе
+ * обнуляет `subtotalMinor`, поэтому экран показывал «Сумма к оплате 0 ₽» сразу
+ * после отрисовки. `orderTotalMinor` стор намеренно не сбрасывает — и переживает
+ * редирект на платёжную страницу через sessionStorage.
  */
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import NButton from '@/components/ui/NButton.vue'
 import { useCartStore } from '@/stores/cart'
+import { useUiStore } from '@/stores/ui'
+import { ApiError } from '@/lib/api'
+import { anchorDemoUrl, initiatePayment } from '@/lib/payments'
 import { money } from '@/lib/format'
 
 const route = useRoute()
 const router = useRouter()
 const cart = useCartStore()
+const ui = useUiStore()
 
 const result = computed(() => String(route.params.result ?? 'success'))
+const retrying = ref(false)
 
 const VIEW = {
   success: {
@@ -47,10 +60,51 @@ const VIEW = {
 } as const
 
 const view = computed(() => VIEW[result.value as keyof typeof VIEW] ?? VIEW.success)
-const paidMinor = computed(() => cart.subtotalMinor + 9900 - cart.discountMinor)
+
+/** Сумма заказа. `0` только если заказ не создавался в этой вкладке. */
+const paidMinor = computed(() => cart.orderTotalMinor)
+
+/**
+ * Повторить оплату ТОГО ЖЕ заказа.
+ *
+ * Раньше кнопка вела на `/checkout` без `session`, и экран отвечал «корзина
+ * пуста»: после полной навигации на оплату сеанс уже неоткуда взять. Заказ на
+ * сервере существует, поэтому правильнее начать платёж по нему — сервер
+ * идемпотентно вернёт активный платёж и его ссылку.
+ */
+async function retryPayment(): Promise<void> {
+  const orderId = cart.orderId
+  if (!orderId) {
+    router.push('/')
+    return
+  }
+
+  retrying.value = true
+  try {
+    const { confirmation_url } = await initiatePayment(orderId)
+    if (!confirmation_url) {
+      ui.notify('sun', 'Нет ссылки на оплату', 'Попробуйте ещё раз через минуту.')
+      return
+    }
+    window.location.href = anchorDemoUrl(confirmation_url) ?? confirmation_url
+  } catch (error) {
+    ui.notify('rose', 'Оплата не началась', error instanceof ApiError ? error.message : 'Попробуйте ещё раз')
+  } finally {
+    retrying.value = false
+  }
+}
+
+function onPrimary(): void {
+  if (result.value === 'fail' && cart.orderId) {
+    void retryPayment()
+    return
+  }
+  router.push(view.value.to)
+}
 
 onMounted(() => {
   // Успешная оплата закрывает сценарий: удержание больше не нужно.
+  // `orderId`/`orderTotalMinor` при этом сохраняются — они нужны этому экрану.
   if (result.value === 'success') cart.clear()
 })
 </script>
@@ -66,13 +120,14 @@ onMounted(() => {
       <h1 class="mt-5 text-2xl font-bold tracking-tight text-content">{{ view.title }}</h1>
       <p class="mt-2 text-pretty text-base text-muted">{{ view.text }}</p>
 
-      <div v-if="result === 'success'" class="surface-card mt-6 p-4 text-left">
+      <div v-if="result === 'success' && paidMinor > 0" class="surface-card mt-6 p-4 text-left">
         <p class="text-xs uppercase tracking-wide text-subtle">Сумма к оплате</p>
         <p class="mt-0.5 text-2xl font-bold tabular-nums text-content">{{ money(paidMinor) }}</p>
+        <p v-if="cart.orderId" class="mt-1 text-2xs text-subtle">Заказ {{ cart.orderId }}</p>
       </div>
 
       <div class="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-center">
-        <NButton variant="accent" size="lg" @click="router.push(view.to)">{{ view.primary }}</NButton>
+        <NButton variant="accent" size="lg" :loading="retrying" @click="onPrimary">{{ view.primary }}</NButton>
         <NButton variant="secondary" size="lg" @click="router.push('/')">На афишу</NButton>
       </div>
 

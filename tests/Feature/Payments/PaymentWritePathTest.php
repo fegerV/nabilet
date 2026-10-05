@@ -147,6 +147,21 @@ class PaymentWritePathTest extends TestCase
         $this->assertNotNull(
             DB::table('webhook_events')->where('event_name', 'payment.succeeded')->value('processed_at')
         );
+
+        // Цепочка «оплата → билет» проверяется ЗДЕСЬ, а не только в Unit-тестах.
+        // Раньше выпуск билетов был отключён (в `PaymentService` зависимость
+        // объявлялась как `?TicketService $ticketService = null`, а контейнер
+        // подставлял именно `null`), и этот тест ничего не замечал: он смотрел
+        // только на `payment_transactions`. Теперь оплата обязана оставить билет
+        // с непустым QR — `event_id`/`session_id` в `tickets` объявлены NOT NULL,
+        // поэтому их отсутствие здесь и было той самой ошибкой 1048.
+        $ticket = DB::table('tickets')->where('order_id', $order->id)->first();
+
+        $this->assertNotNull($ticket, 'paid order must have issued tickets');
+        $this->assertSame('issued', $ticket->status);
+        $this->assertNotNull($ticket->event_id, 'tickets.event_id is NOT NULL');
+        $this->assertNotNull($ticket->session_id, 'tickets.session_id is NOT NULL');
+        $this->assertNotNull($ticket->qr_payload);
     }
 
     public function test_a_replayed_webhook_does_not_pay_twice(): void

@@ -7,6 +7,7 @@ namespace Nabilet\Modules\Payments\Providers;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Nabilet\Core\Errors\ExternalServiceError;
 
 /**
  * YooKassa payment provider implementation.
@@ -15,24 +16,91 @@ use Illuminate\Support\Str;
  */
 class YooKassaProvider implements PaymentProviderInterface
 {
+    /**
+     * Клиентский маршрут подтверждения демо-оплаты.
+     *
+     * Хранится здесь, а не строкой в двух местах: этот путь строит провайдер, а
+     * обслуживает его SPA (`resources/js/router/index.ts`). Разъехавшись, они
+     * дают 404 после «оплаты».
+     */
+    public const DEMO_CONFIRM_PATH = '/checkout/demo-pay';
+
     public function __construct(
         private readonly string $shopId,
         private readonly string $secretKey,
         private readonly string $baseUrl = 'https://api.yookassa.ru/v3'
     ) {
-        if (empty($this->shopId) || empty($this->secretKey)) {
-            throw new \RuntimeException('YooKassa credentials not configured');
+        // В demo-режиме ключи не нужны: `createPayment()` не ходит в API, а
+        // возвращает ссылку на локальный симулятор оплаты.
+        //
+        // Проверка стояла ДО ветки demo и делала её недостижимой: контейнер
+        // создаёт провайдер раньше, чем управление доходит до `createPayment()`,
+        // поэтому `.env` с `PAYMENT_DEMO_MODE=true` и пустым `YOOKASSA_SHOP_ID`
+        // давал 500 «YooKassa credentials not configured» на КАЖДОМ платеже —
+        // демо-режим не работал вообще. Проверено: `POST /api/v1/payments` для
+        // заказа без существующего платежа отвечал 500 INTERNAL_ERROR.
+        if ($this->isDemoMode()) {
+            return;
         }
+
+        if (empty($this->shopId) || empty($this->secretKey)) {
+            // `ExternalServiceError`, а не голый `RuntimeException`: клиент должен
+            // получить конверт §66 с кодом и внятным текстом, а не
+            // `INTERNAL_ERROR` 500 без причины. `retryable: false` — повтор не
+            // поможет, пока не заданы ключи.
+            throw new ExternalServiceError(
+                'yookassa',
+                'Платёжный провайдер не настроен: задайте YOOKASSA_SHOP_ID и '
+                . 'YOOKASSA_SECRET_KEY либо включите PAYMENT_DEMO_MODE=true.',
+                false,
+            );
+        }
+    }
+
+    /** Demo-режим: локальный симулятор вместо обращения к API ЮKassa. */
+    private function isDemoMode(): bool
+    {
+        return (bool) config('nabilet.payment.demo_mode', false);
+    }
+
+    /**
+     * Хост для демо-ссылки подтверждения.
+     *
+     * `config('app.url')` в этом проекте — плейсхолдер
+     * (`APP_URL=https://tickets.example.com`), поэтому собранная из него ссылка
+     * уводила покупателя на несуществующий домен: он нажимал «оплатить» и
+     * попадал в никуда. В веб-запросе правильный хост — origin текущего запроса
+     * (это ровно тот адрес, по которому открыт сайт), а не конфиг.
+     *
+     * В консоли (тесты, очереди, artisan) запроса нет — остаётся `app.url`,
+     * иначе `request()->root()` вернул бы `http://localhost` из CLI-окружения.
+     */
+    private function demoOrigin(): string
+    {
+        if (! app()->runningInConsole()) {
+            $root = request()->root();
+
+            if (is_string($root) && $root !== '') {
+                return $root;
+            }
+        }
+
+        return rtrim((string) config('app.url', 'http://127.0.0.1:8000'), '/');
     }
 
     public function createPayment(array $paymentData): array
         {
             // Demo-режим: нет реальных ключей — не ходим в API, а возвращаем
             // локальный confirmation_url на симулятор оплаты.
-            if ((bool) config('nabilet.payment.demo_mode', false)) {
+            if ($this->isDemoMode()) {
                 $paymentId = 'demo_' . (string) Str::ulid()->toBase32();
-                $confirmUrl = (string) config('app.url', 'http://127.0.0.1:8000')
-                    .trimEnd('/') . '/checkout/demo-pay?payment_id=' . $paymentId;
+                // Хеш-адрес, а не путь: витрина — SPA с `createWebHashHistory()`,
+                // её отдаёт только `GET /` (routes/web.php). Путь
+                // `/checkout/demo-pay` не обслуживается ничем: Laravel такого
+                // маршрута не имеет, клиентского — тоже, поэтому покупатель
+                // после «оплаты» получал 404 вместо страницы подтверждения.
+                $confirmUrl = $this->demoOrigin()
+                    . '/#' . self::DEMO_CONFIRM_PATH . '?payment_id=' . $paymentId;
 
                 Log::info('YooKassa demo payment created', [
                     'payment_id' => $paymentId,

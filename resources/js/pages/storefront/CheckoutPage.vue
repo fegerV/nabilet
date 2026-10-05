@@ -9,9 +9,27 @@
  *    «неверный формат»), и появляется у поля, а не в общей плашке.
  *  - Кнопка оплаты не блокируется до полного заполнения: она показывает, чего
  *    не хватает. Серая кнопка без объяснения — главная причина брошенных корзин.
+ *
+ * Здесь же происходит НАСТОЯЩАЯ покупка. Раньше на этом экране стояла имитация
+ * (`setTimeout` + `router.push('/payment/success')`), поэтому до сервера не
+ * доходил ни один заказ витрины: корзина оставалась `active`, места — `held`,
+ * билеты не выпускались, а покупатель видел «оплата прошла». Теперь:
+ *
+ *   1. `POST /cart/checkout` — заказ из удержанных мест (нужны контакты: на
+ *      e-mail уходит билет, поэтому валидация контактов идёт ДО создания заказа);
+ *   2. `POST /payments` — платёж и `confirmation_url`;
+ *   3. переход на страницу оплаты (в demo-режиме — на локальный симулятор,
+ *      который подтверждает платёж и возвращает покупателя на результат).
+ *
+ * Цена и итог берутся из ответа сервера (инвариант 6). Здесь стояли
+ * `SERVICE_FEE = 9900` и промокод `NABILET10`, считавший скидку на клиенте: ни
+ * сбора, ни промокодов сервер не знает (`CartService::checkout()`: subtotal =
+ * discount = fee = total = сумма позиций, а `promo_code` отвечает 422
+ * `PROMO_CODE_NOT_SUPPORTED`). Покупатель видел сумму, которую с него не
+ * списывали, — расхождение между экраном и чеком.
  */
-import { computed, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onMounted, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import NButton from '@/components/ui/NButton.vue'
 import NInput from '@/components/ui/NInput.vue'
 import NCheckbox from '@/components/ui/NCheckbox.vue'
@@ -19,14 +37,20 @@ import NCountdown from '@/components/ui/NCountdown.vue'
 import NEmptyState from '@/components/ui/NEmptyState.vue'
 import { useCartStore } from '@/stores/cart'
 import { useUiStore } from '@/stores/ui'
+import { checkoutSession, fetchCart } from '@/lib/inventory'
+import { ApiError } from '@/lib/api'
+import { anchorDemoUrl, initiatePayment } from '@/lib/payments'
 import { money, ticketsLabel } from '@/lib/format'
 import { cn } from '@/lib/cn'
 
+const route = useRoute()
 const router = useRouter()
 const cart = useCartStore()
 const ui = useUiStore()
 
-const SERVICE_FEE = 9900
+/** Сеанс, к которому относится корзина. Передаётся из выбора мест. */
+const sessionId = computed(() => String(route.query.session ?? ''))
+
 const STEPS = ['Места', 'Контакты', 'Оплата']
 const currentStep = 1
 
@@ -34,11 +58,14 @@ const name = ref('')
 const email = ref('')
 const phone = ref('')
 const agree = ref(false)
-const promoInput = ref('')
 const paying = ref(false)
 const submitted = ref(false)
+/** Ошибки полей из §66-конверта сервера: `error.errors` → по полю. */
+const serverErrors = ref<Record<string, string>>({})
+/** Идёт восстановление корзины из `GET /cart` (F5 или возврат с оплаты). */
+const restoring = ref(false)
 
-const errors = computed(() => {
+const localErrors = computed(() => {
   const out: Record<string, string> = {}
   if (name.value.trim().length < 2) out.name = 'Укажите имя, как в документе'
   if (!/^[^@\s]+@[^@\s]+\.[a-zа-я]{2,}$/i.test(email.value)) out.email = 'Нужен e-mail — на него придёт билет'
@@ -47,6 +74,9 @@ const errors = computed(() => {
   return out
 })
 
+/** Серверные ошибки важнее локальных: их вернул источник истины. */
+const errors = computed<Record<string, string>>(() => ({ ...localErrors.value, ...serverErrors.value }))
+
 const canPay = computed(() => Object.keys(errors.value).length === 0 && cart.count > 0)
 const missingHint = computed(() => {
   if (cart.count === 0) return 'Сначала выберите места'
@@ -54,31 +84,158 @@ const missingHint = computed(() => {
   return first ?? ''
 })
 
-const totalMinor = computed(() => Math.max(0, cart.subtotalMinor + SERVICE_FEE - cart.discountMinor))
+/** Итог — сумма позиций. Именно её выставляет сервер (`orders.total_amount`). */
+const totalMinor = computed(() => Math.max(0, cart.subtotalMinor))
 
-function applyPromo(): void {
-  const code = promoInput.value.trim().toUpperCase()
-  if (!code) return
-  if (code === 'NABILET10') {
-    cart.applyPromo(code, Math.round(cart.subtotalMinor * 0.1))
-    ui.notify('mint', 'Промокод применён', 'Скидка 10% от стоимости билетов')
-  } else {
-    ui.notify('rose', 'Промокод не действует', 'Проверьте написание или срок действия')
+/** Имена полей §66 → имена полей формы. */
+const SERVER_FIELD_MAP: Record<string, string> = {
+  customer_name: 'name',
+  customer_email: 'email',
+  customer_phone: 'phone',
+}
+
+/**
+ * Перечитать серверную корзину.
+ *
+ * Стор корзины живёт в памяти, поэтому F5 на этом шаге (и возврат с платёжной
+ * страницы) рисовал «корзина пуста» поверх реально удержанных мест. Читаем
+ * `GET /cart` — ровно так же, как это делает экран выбора мест.
+ */
+async function restoreCart(): Promise<void> {
+  const sid = sessionId.value
+  if (!sid || cart.count > 0) return
+  restoring.value = true
+  try {
+    const serverCart = await fetchCart(sid)
+    if (!serverCart) return
+
+    const items = (serverCart.items ?? []).flatMap((item) => {
+      const id = String(item.inventory_item?.id ?? '')
+      if (!id) return []
+      return [
+        {
+          id,
+          sector: String(item.inventory_item?.seat?.sector ?? 'Зал'),
+          row: Number(item.inventory_item?.seat?.row ?? 0),
+          number: Number(item.inventory_item?.seat?.number ?? 0),
+          priceMinor: Number(item.unit_price ?? 0),
+          kind: 'standard' as const,
+        },
+      ]
+    })
+
+    cart.hydrate(items)
+    if (serverCart.expires_at) cart.setHoldExpiry(serverCart.expires_at)
+  } catch {
+    /* корзина недоступна — экран честно покажет «корзина пуста» */
+  } finally {
+    restoring.value = false
   }
+}
+
+function applyServerErrors(error: ApiError): void {
+  const mapped: Record<string, string> = {}
+  for (const [field, messages] of Object.entries(error.details ?? {})) {
+    const key = SERVER_FIELD_MAP[field]
+    if (key && Array.isArray(messages) && messages.length > 0) mapped[key] = String(messages[0])
+  }
+  serverErrors.value = mapped
+}
+
+function handlePayError(error: unknown): void {
+  if (!(error instanceof ApiError)) {
+    ui.notify('rose', 'Оплата не началась', error instanceof Error ? error.message : 'Попробуйте ещё раз')
+    return
+  }
+
+  // Ошибки полей — у полей, а не общей плашкой.
+  if (error.status === 422 && error.details) {
+    applyServerErrors(error)
+    ui.notify('sun', 'Проверьте данные', 'Некоторые поля заполнены неверно.')
+    return
+  }
+
+  // Холд истёк: места уже освобождены, выбор нужно повторить.
+  if (error.code === 'CART_EXPIRED' || error.status === 410) {
+    ui.notify('rose', 'Время удержания истекло', 'Места освобождены — выберите их заново.')
+    cart.release()
+    void restoreCart()
+    return
+  }
+
+  if (error.code === 'CART_EMPTY') {
+    ui.notify('rose', 'Корзина пуста', 'Сервер не нашёл удержанных мест для этого сеанса.')
+    void restoreCart()
+    return
+  }
+
+  if (error.code === 'SALES_CLOSED') {
+    ui.notify('rose', 'Продажи закрыты', error.message)
+    return
+  }
+
+  if (error.code === 'PROMO_CODE_NOT_SUPPORTED') {
+    // Промокод мы больше не отправляем; ветка оставлена, чтобы серверный отказ
+    // был понятен, если поле когда-нибудь вернётся в форму.
+    ui.notify('sun', 'Промокоды не поддерживаются', error.message)
+    return
+  }
+
+  if (error.code === 'DEMO_DISABLED' || error.status === 403) {
+    ui.notify('rose', 'Оплата недоступна', 'Платёжный провайдер не настроен — обратитесь к организатору.')
+    return
+  }
+
+  ui.notify('rose', 'Оплата не началась', error.message)
 }
 
 async function pay(): Promise<void> {
   submitted.value = true
+  serverErrors.value = {}
+
   if (!canPay.value) {
     ui.notify('sun', 'Не хватает данных', missingHint.value)
     return
   }
+  if (!sessionId.value) {
+    ui.notify('rose', 'Сеанс не определён', 'Вернитесь к событию и выберите места заново.')
+    return
+  }
+
   paying.value = true
-  // Имитация запроса к /api/v1/payments. Реальный вызов уйдёт с Idempotency-Key.
-  await new Promise((resolve) => setTimeout(resolve, 1100))
-  paying.value = false
-  router.push('/payment/success')
+  try {
+    // 1. Заказ из удержанных мест. Контакты обязательны — на e-mail уходит билет.
+    const { data: order } = await checkoutSession(sessionId.value, {
+      customer_name: name.value.trim(),
+      customer_email: email.value.trim(),
+      customer_phone: phone.value.trim(),
+    })
+
+    // 2. Итог — из ответа сервера, он источник истины о цене.
+    cart.setOrder(order.order_id, Number(order.total_amount))
+
+    // 3. Платёж. Гостевой заказ авторизуется заголовком X-Cart-Token,
+    //    который подставляет api.ts (`PaymentController::mayPay()`).
+    const { confirmation_url } = await initiatePayment(order.order_id)
+
+    if (!confirmation_url) {
+      ui.notify('sun', 'Нет ссылки на оплату', 'Заказ создан. Попробуйте оплатить ещё раз.')
+      await router.push('/payment/pending')
+      return
+    }
+
+    // Уход на оплату — полная навигация, как в реальном сценарии с провайдером.
+    window.location.href = anchorDemoUrl(confirmation_url) ?? confirmation_url
+  } catch (error) {
+    handlePayError(error)
+  } finally {
+    paying.value = false
+  }
 }
+
+onMounted(() => {
+  void restoreCart()
+})
 </script>
 
 <template>
@@ -101,8 +258,11 @@ async function pay(): Promise<void> {
       </li>
     </ol>
 
+    <!-- Возврат с платёжной страницы / F5: подтягиваем удержанные места -->
+    <p v-if="restoring" class="mt-6 text-sm text-subtle">Восстанавливаем ваш выбор…</p>
+
     <NEmptyState
-      v-if="cart.count === 0"
+      v-else-if="cart.count === 0"
       class="surface-card mt-6"
       icon="◫"
       title="Корзина пуста"
@@ -219,25 +379,11 @@ async function pay(): Promise<void> {
                 <dt class="text-muted">{{ ticketsLabel(cart.count) }}</dt>
                 <dd class="tabular-nums text-content">{{ money(cart.subtotalMinor) }}</dd>
               </div>
-              <div class="flex justify-between">
-                <dt class="text-muted">Сервисный сбор</dt>
-                <dd class="tabular-nums text-content">{{ money(SERVICE_FEE) }}</dd>
-              </div>
-              <div v-if="cart.discountMinor > 0" class="flex justify-between">
-                <dt class="text-mint-400">Промокод {{ cart.promoCode }}</dt>
-                <dd class="tabular-nums text-mint-400">−{{ money(cart.discountMinor) }}</dd>
-              </div>
               <div class="flex items-baseline justify-between border-t border-line pt-2">
                 <dt class="font-medium text-content">Итого</dt>
                 <dd class="text-xl font-semibold tabular-nums text-content">{{ money(totalMinor) }}</dd>
               </div>
             </dl>
-
-            <!-- Промокод -->
-            <div class="mt-3 flex gap-2">
-              <NInput v-model="promoInput" placeholder="Промокод" class="flex-1" aria-label="Промокод" />
-              <NButton variant="secondary" class="flex-none" @click="applyPromo">Применить</NButton>
-            </div>
 
             <NButton
               variant="accent"

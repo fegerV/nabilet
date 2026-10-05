@@ -61,9 +61,12 @@ async function loadEvent(): Promise<void> {
   loading.value = true
   loadError.value = null
   try {
-    const res = await get<{ data: EventDetail }>(`/events/by-slug/${encodeURIComponent(slug)}`)
-    // API может вернуть как { data: {...} }, так и голый объект (вложенный envelope).
-    event.value = (res.data as unknown as { data?: EventDetail }).data ?? res.data
+    const res = await get<EventDetail | { data: EventDetail }>(`/events/by-slug/${encodeURIComponent(slug)}`)
+    // Контроллеры отдают конверт `{ data: {...} }`; разворот «голого» объекта
+    // оставлен страховкой. Двойной каст, стоявший здесь, давал union-тип, который
+    // не присваивался `EventDetail | null`, — `npm run typecheck` падал навсегда.
+    const payload = res.data
+    event.value = 'data' in payload ? payload.data : payload
   } catch (e) {
     loadError.value = e instanceof Error ? e.message : String(e)
     event.value = null

@@ -44,7 +44,27 @@ class PaymentService
         protected OrderService $orders,
         protected PaymentProviderRegistry $providers,
         protected RefundService $refunds,
-        protected ?TicketService $ticketService = null,
+        // Без `= null`. Параметр был объявлен как `?TicketService $ticketService = null`,
+        // и это НЕ «необязательная зависимость», а тихо выключенный выпуск билетов:
+        // `Container::resolveClass()` (vendor/laravel/framework/.../Container.php:1354)
+        // при наличии значения по умолчанию и отсутствии явного биндинга возвращает
+        // именно это значение, не пытаясь разрешить класс:
+        //
+        //   if ($parameter->isDefaultValueAvailable() && ! $this->bound($className) && …) {
+        //       return $parameter->getDefaultValue();
+        //   }
+        //
+        // То есть `$this->ticketService` был ВСЕГДА null, условие
+        // `if ($this->ticketService !== null)` в `settleSucceeded()` не выполнялось
+        // никогда, и после успешной оплаты не выпускалось ни одного билета.
+        // Проверено на живом стенде: оплата подтверждена (платёж `succeeded`,
+        // заказ `paid`), `SELECT COUNT(*) FROM tickets` → 0.
+        //
+        // `TicketService` контейнер собирает нормально (проверено: `make()` его
+        // создаёт), поэтому зависимость делается обязательной — тогда контейнер
+        // обязан её разрешить. Раньше её прятали за `= null` из-за
+        // `CheckinEvaluator` в конструкторе `TicketService`; тот уже удалён.
+        protected TicketService $ticketService,
     ) {
         $this->machine = PaymentStateMachine::make();
     }
@@ -349,11 +369,12 @@ class PaymentService
                 // A6: выпуск билетов сразу после перехода заказа в paid — внутри той же
                 // транзакции вебхука (идемпотентно: повторный вызов возвращает уже
                 // выпущенные билеты). Это чинит разрыв цепочки «оплата → билет».
-                // TicketService внедрён явно (через контейнер), поэтому разрыв
-                // «билеты не выпускались, т.к. app(TicketService) падал» исключён.
-                if ($this->ticketService !== null) {
-                    $this->ticketService->issueTicketsForOrder($freshOrder);
-                }
+                //
+                // Проверки на null здесь больше нет намеренно: `$ticketService`
+                // объявлен обязательной зависимостью, и контейнер её разрешает
+                // (см. докблок конструктора). Прежнее `if ($this->ticketService !== null)`
+                // было всегда ложно и маскировало то, что билеты не выпускаются.
+                $this->ticketService->issueTicketsForOrder($freshOrder);
             }
         }
     }
