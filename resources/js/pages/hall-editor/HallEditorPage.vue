@@ -75,6 +75,7 @@ const STATIC_KIND_LABELS: Record<StaticKind, string> = {
   stage: 'Сцена',
   entrance: 'Вход',
   label: 'Текст',
+  text: 'Текст',
   table: 'Стол',
   standing: 'Стоячая зона',
 }
@@ -409,20 +410,6 @@ function renumberRows(sector: ESector, rowsTouched: Set<number>): void {
       .sort((a, b) => a.x - b.x)
     inRow.forEach((seat, i) => { seat.number = i + 1 })
   }
-}
-
-/** Ряд сектора для глобальной Y-координаты места (ближайший по вертикали). */
-function rowForGlobalY(sector: ESector, gy: number): number {
-  const rows = Array.from(new Set(sector.seats.map((s) => s.row))).sort((a, b) => a - b)
-  let best = rows[0] ?? 1
-  let bestDist = Infinity
-  for (const r of rows) {
-    const rep = sector.seats.find((s) => s.row === r)
-    if (!rep) continue
-    const d = Math.abs(gy - (rep.y + SEAT / 2))
-    if (d < bestDist) { bestDist = d; best = r }
-  }
-  return best
 }
 
 /* ── Перенумерация рядов при перемещении мест (§48) ────────────────── */
@@ -995,11 +982,12 @@ function normalizeStaticObject(o: unknown): EStatic | null {
   if (!o || typeof o !== 'object') return null
   const rec = o as Record<string, unknown>
   if (typeof rec.id !== 'string' || typeof rec.kind !== 'string') return null
-  const kinds: StaticKind[] = ['table', 'standing', 'text', 'stage', 'entrance']
+  const kinds: StaticKind[] = ['table', 'standing', 'label', 'text', 'stage', 'entrance']
   if (!kinds.includes(rec.kind as StaticKind)) return null
   return {
     id: rec.id,
-    kind: rec.kind as StaticKind,
+    // Импорт/старые payload'ы могут прислать 'text' вместо канонического 'label'.
+    kind: (rec.kind === 'text' ? 'label' : rec.kind) as StaticKind,
     x: Math.round(Number(rec.x ?? 0)),
     y: Math.round(Number(rec.y ?? 0)),
     width: Number.isFinite(Number(rec.width)) ? Number(rec.width) : undefined,
@@ -1481,8 +1469,6 @@ function onImageChosen(event: Event): void {
 
 const canvasHost = ref<HTMLDivElement | null>(null)
 const canvasSize = ref({ width: 900, height: 520 })
-/** Konva требует window — в безоконном окружении (SSR/тест-стенд) холст просто отсутствует. */
-const konvaAvailable = typeof window !== 'undefined' && typeof document !== 'undefined'
 let stage: Konva.Stage | null = null
 let bgLayer: Konva.Layer | null = null
 let staticLayer: Konva.Layer | null = null
@@ -2182,9 +2168,9 @@ function setFormPriceMinor(v: unknown): void {
 }
 
 /** Целочисленное поле формы-генератора с нижней границей (ряды, места, VIP). */
-function clampIntField(target: { value: number }, v: unknown, min: number, max: number): void {
+function clampIntField<K extends 'rows' | 'seatsPerRow' | 'vipRows' | 'arcSpread'>(key: K, v: unknown, min: number, max: number): void {
   const n = Number(v)
-  target.value = Number.isFinite(n) ? Math.min(max, Math.max(min, Math.round(n))) : target.value
+  if (Number.isFinite(n)) form.value[key] = Math.min(max, Math.max(min, Math.round(n)))
 }
 
 /** Размер/поворот/вместимость статики: валидируем до записи в модель. */
@@ -2456,14 +2442,14 @@ function setSeatKind(value: string): void {
               Места раскладываются по дуге, как в амфитеатре. Угол раствора 180° даёт полукруг.
             </p>
             <div v-if="form.shape === 'arc'" class="grid grid-cols-2 gap-2">
-              <NInput v-model.number="form.arcSpread" label="Угол раствора, °" type="number" hint="180 — полукруг" />
+              <NInput :model-value="form.arcSpread" label="Угол раствора, °" type="number" hint="180 — полукруг" @update:model-value="clampIntField('arcSpread', $event, 10, 360)" />
             </div>
             <div class="grid grid-cols-2 gap-2">
-              <NInput v-model.number="form.rows" label="Рядов" type="number" />
-              <NInput v-model.number="form.seatsPerRow" label="Мест в ряду" type="number" />
+              <NInput :model-value="form.rows" label="Рядов" type="number" @update:model-value="clampIntField('rows', $event, 1, 100)" />
+              <NInput :model-value="form.seatsPerRow" label="Мест в ряду" type="number" @update:model-value="clampIntField('seatsPerRow', $event, 1, 100)" />
             </div>
-            <NInput v-model.number="form.priceMinor" label="Цена по умолчанию, коп." type="number" hint="Можно переопределить для каждого ряда ниже" />
-            <NInput v-model.number="form.vipRows" label="VIP-рядов сверху" type="number" />
+            <NInput :model-value="String(form.priceMinor)" label="Цена по умолчанию, коп." type="number" hint="Можно переопределить для каждого ряда ниже" @update:model-value="setFormPriceMinor($event)" />
+            <NInput :model-value="form.vipRows" label="VIP-рядов сверху" type="number" @update:model-value="clampIntField('vipRows', $event, 0, 50)" />
             <NButton block :disabled="isLocked" @click="generateSector">Создать сектор</NButton>
           </div>
         </div>

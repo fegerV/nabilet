@@ -37,7 +37,8 @@ export interface EventCard {
   title: string
   subtitle?: string
   short_description?: string
-  category?: string | { name?: string }
+  /** API отдаёт категорию то строкой, то объектом, то null — проп это терпит. */
+  category?: string | { name?: string } | null
   venue?: string | { name?: string; city?: string } | null
   city?: string
   posterFrom?: string
