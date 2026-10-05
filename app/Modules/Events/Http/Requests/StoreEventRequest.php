@@ -24,7 +24,7 @@ class StoreEventRequest extends FormRequest
 
     public function authorize(): bool
     {
-        // Write-роуты уже под auth:sanctum + admin (middleware 'admin').
+        // Write-роуты уже под auth:api + admin (middleware 'admin').
         // Здесь дублируем роль-проверку, чтобы FormRequest не зависел от
         // несуществующей EventPolicy (can('create') всегда false → 403).
         $user = $this->user();

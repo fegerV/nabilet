@@ -6,6 +6,7 @@ namespace Nabilet\Modules\Venues\Halls\Services;
 
 use Nabilet\Modules\Venues\Models\Hall;
 use Nabilet\Modules\Venues\Models\HallSchemaVersion;
+use Nabilet\Modules\Venues\Models\Venue;
 use Nabilet\Core\Errors\ConflictError;
 use Nabilet\Core\Errors\DomainRuleViolation;
 use Nabilet\Core\Errors\NotFoundError;
@@ -84,10 +85,23 @@ class HallService
             }
         }
 
-        // Standing-зоны и столы продаются без рядов — схема с одной фан-зоной
-        // не считается пустой.
+        // Стоячие зоны продаются без рядов — схема с одной фан-зоной не
+        // считается пустой.
+        //
+        // Столы (`kind: 'table'`) здесь СОЗНАТЕЛЬНО не считаются продаваемыми.
+        // Раньше считались — и это расходилось и с `toInventoryFormat()`, и с
+        // самой схемой БД: `ck_inventory_type CHECK (type IN ('seat','standing'))`
+        // (database/migrations/2026_09_20_001000_add_check_constraints.php:54)
+        // не допускает позицию инвентаря типа «стол», а `ck_inventory_target`
+        // требует у каждой позиции либо `seat_id`, либо `standing_zone_id`.
+        // В редакторе зала стол — тоже только прямоугольник-декорация: у него
+        // нет ни вместимости, ни цены (HallEditorPage.vue, `createStaticAt`).
+        // Из-за этой асимметрии зал «только со столами» проходил проверку
+        // непустоты, публиковался — и генератор инвентаря создавал 0 позиций:
+        // витрина показывала зал, в котором нечего купить. Теперь такой payload
+        // отвергается как пустой (SCHEMA_EMPTY_PAYLOAD), fail-closed.
         foreach (($payload['staticObjects'] ?? []) as $obj) {
-            if (is_array($obj) && in_array($obj['kind'] ?? null, ['standing', 'table'], true)) {
+            if (is_array($obj) && ($obj['kind'] ?? null) === 'standing') {
                 return true;
             }
         }
@@ -145,10 +159,24 @@ class HallService
      * any hall. Reading through the service keeps the repository private and
      * gives one place to add scoping later.
      */
-    public function findByVenue(int $venueId, int $limit = 15): LengthAwarePaginator
-        {
-            return $this->repository->findByVenue($venueId, $limit);
+    /**
+     * Залы площадки, адресуемой по `public_id`.
+     *
+     * Публичный идентификатор площадки, а не её BIGINT: путь приводится к int
+     * до вызова контроллера, поэтому `GET /venues/1abc/halls` отдавал залы
+     * площадки 1. Здесь площадка ищется строкой, мусор даёт 404.
+     * В репозиторий уходит уже числовой FK — `halls.venue_id` им и является.
+     */
+    public function findByVenue(string $venuePublicId, int $limit = 15): LengthAwarePaginator
+    {
+        $venueId = Venue::query()->where('public_id', $venuePublicId)->value('id');
+
+        if ($venueId === null) {
+            throw new NotFoundError('Venue', $venuePublicId);
         }
+
+        return $this->repository->findByVenue((int) $venueId, $limit);
+    }
 
         /**
          * Все залы (для селекта в форме сеанса).

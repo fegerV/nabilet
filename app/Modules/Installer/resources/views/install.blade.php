@@ -425,7 +425,11 @@
                 const result = await response.json();
 
                 if (!response.ok) {
-                    throw new Error(result.error || 'Ошибка установки');
+                    // Ответы об ошибках приходят в конверте §66:
+                    // {"error":{"code","message","details"}}. Раньше здесь было
+                    // плоское `result.error` — строка, и `new Error(object)`
+                    // напечатал бы «[object Object]».
+                    throw new Error(result.error?.message || 'Ошибка установки');
                 }
 
                 // Обновляем прогресс

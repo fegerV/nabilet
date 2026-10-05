@@ -19,8 +19,14 @@ use Nabilet\Modules\Auth\Services\SessionIssuer;
  *   `personal_access_tokens` appears nowhere in the ТЗ. The ТЗ defines
  *   `user_sessions` — `session_token_hash CHAR(64) NOT NULL` with
  *   `UNIQUE uq_user_sessions_token` — and `config/auth.php` documents a bearer
- *   guard backed by `user_sessions`/`api_keys` as the intent. `auth:sanctum` on
- *   these routes was a wiring mistake, not a missing dependency.
+ *   guard backed by `user_sessions`/`api_keys` as the intent.
+ *
+ *   This guard is the only one that works: `auth:sanctum` was a wiring mistake
+ *   and is no longer used anywhere. Sanctum registers its own `sanctum` guard
+ *   with `provider => null`, so it can only resolve a token out of
+ *   `personal_access_tokens` — a table nothing in this application ever writes.
+ *   Every route that carried `auth:sanctum` therefore answered 401 to a
+ *   perfectly valid `user_sessions` token. All of them now use `auth:api`.
  *
  * WHY NOT EXTEND `TokenGuard`
  *   `TokenGuard` asks the provider for `retrieveByCredentials(['api_token' => …])`,

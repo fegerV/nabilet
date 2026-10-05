@@ -104,15 +104,11 @@ class OrderService
      */
     public function paginate(array $filters, int $perPage = 20): LengthAwarePaginator
     {
-        $organizationId = $filters['organization_id'] ?? null;
-
-        if ($organizationId === null || $organizationId === '' || (int) $organizationId <= 0) {
-            // Админка смотрит все заказы всех организаций; организация —
-            // опциональный фильтр. Раньше пустота вела к пустому ответу.
-            return $this->repository->paginateAll($filters, $perPage);
-        }
-
-        return $this->repository->paginateByOrganization((int) $organizationId, $filters, $perPage);
+        // Ветка «фильтр по организации / все организации» убрана: `paginateAll`
+        // теперь сам понимает `organization_id` (и `user_id`, и диапазон дат),
+        // а прежнее разделение давало два разных набора фильтров — в одном
+        // `user_id` работал, в другом молча игнорировался.
+        return $this->repository->paginateAll($filters, $perPage);
     }
 
     /**

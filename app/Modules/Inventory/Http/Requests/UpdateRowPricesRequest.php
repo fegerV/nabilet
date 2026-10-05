@@ -29,7 +29,7 @@ class UpdateRowPricesRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        // Write-роут под auth:sanctum + admin; дублируем роль-проверку по
+        // Write-роут под auth:api + admin; дублируем роль-проверку по
         // образцу StoreEventRequest (без Policy — can() был бы всегда false).
         $user = $this->user();
         if (! $user) {
@@ -75,8 +75,12 @@ class UpdateRowPricesRequest extends FormRequest
         return [
             'rows' => ['required', 'array', 'min:1'],
             'rows.*.price_amount' => ['required', 'integer', 'min:0'],
-            'rows.*.row_id' => ['sometimes', 'integer', 'exists:hall_rows,id'],
-            'rows.*.standing_zone_id' => ['sometimes', 'integer', 'exists:standing_zones,id'],
+            // `bail` перед `exists:` — колонки BIGINT, а MySQL приводит строку к
+            // числу вместо отказа (`id = '1abc'` совпадает с 1, warning 1292).
+            // Без `bail` правило `exists` отрабатывает после `integer` и
+            // пропускает мусор — fail-open. Замеры в `CartController::addItem()`.
+            'rows.*.row_id' => ['bail', 'sometimes', 'integer', 'exists:hall_rows,id'],
+            'rows.*.standing_zone_id' => ['bail', 'sometimes', 'integer', 'exists:standing_zones,id'],
         ];
     }
 

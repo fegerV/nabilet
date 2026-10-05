@@ -2,8 +2,11 @@
 /**
  * Площадки (админка).
  *
- * CRUD через /api/v1/venues (write-роуты под auth:sanctum + admin).
+ * CRUD через /api/v1/venues (write-роуты под auth:api + admin).
  * Модалка-форма: название, город, адрес, регион, страна, статус.
+ *
+ * Адресация — по `public_id` (ULID), как у залов и событий. Числовой `id`
+ * в пути приводился к int, поэтому `/venues/1abc` попадал в площадку 1.
  */
 import { computed, ref, onMounted } from 'vue'
 import NButton from '@/components/ui/NButton.vue'
@@ -20,6 +23,7 @@ const ui = useUiStore()
 
 interface ApiVenue {
   id: number
+  public_id: string
   name: string
   city?: string | null
   region?: string | null
@@ -37,7 +41,7 @@ const loadError = ref<string | null>(null)
 const modalOpen = ref(false)
 const saving = ref(false)
 const formError = ref<string | null>(null)
-const editId = ref<number | null>(null)
+const editId = ref<string | null>(null)
 const form = ref({ name: '', city: '', region: '', country: '', address: '', status: 'active' })
 
 function openCreate(): void {
@@ -49,7 +53,7 @@ function openCreate(): void {
 
 function openEdit(row: { raw: ApiVenue }): void {
   const v = row.raw
-  editId.value = v.id
+  editId.value = v.public_id
   form.value = {
     name: v.name ?? '',
     city: v.city ?? '',
@@ -98,7 +102,7 @@ async function save(): Promise<void> {
 async function remove(v: ApiVenue): Promise<void> {
   if (!window.confirm(`Удалить площадку «${v.name}»? Связанные залы останутся.`)) return
   try {
-    await send<unknown>(`/venues/${v.id}`, 'DELETE')
+    await send<unknown>(`/venues/${v.public_id}`, 'DELETE')
     ui.notify('sun', 'Площадка удалена', v.name)
     await load()
   } catch (e) {
@@ -108,7 +112,7 @@ async function remove(v: ApiVenue): Promise<void> {
 
 const rows = computed(() =>
   venues.value.map((v) => ({
-    id: String(v.id),
+    id: String(v.public_id),
     name: v.name,
     city: v.city ? `${v.city}${v.region ? ', ' + v.region : ''}` : '—',
     address: v.address ?? '—',

@@ -502,23 +502,30 @@ class PaymentService
     }
 
     /**
+     * Постраничный список платежей.
+     *
+     * FAIL-CLOSED: без скоупа — по организации или по пользователю — метод
+     * возвращает пустой результат, а не все платежи. Это осознанная гарантия
+     * (её проверяет `PaymentWritePathTest::test_payment_index_is_fail_closed_without_a_tenant_context`):
+     * у `payments` нет колонки `organization_id`, скоуп идёт через заказ, и
+     * забытый фильтр означал бы выдачу платежей всех арендаторов.
+     * Скоуп задаёт контроллер: обычному пользователю — свой `user_id`,
+     * сотруднику — организация из `user_organization`.
+     *
+     * Раньше метод возвращал пустой результат ВСЕГДА, потому что контроллер не
+     * пропускал `organization_id` (его не было в `only()`), а ветка с реальным
+     * запросом обращалась к `$this->repository->model` — `protected`-свойству,
+     * то есть была фаталом «Cannot access protected property». Построение
+     * запроса перенесено в `PaymentRepository::paginate()`.
+     *
      * @param  array<string, mixed>  $filters
      */
     public function paginate(array $filters, int $perPage = 20): LengthAwarePaginator
     {
-        $organizationId = $filters['organization_id'] ?? null;
-
-        if ($organizationId === null || $organizationId === '' || (int) $organizationId <= 0) {
+        if (empty($filters['organization_id']) && empty($filters['user_id'])) {
             return new LengthAwarePaginator([], 0, $perPage);
         }
 
-        return $this->repository->model
-            ->newQuery()
-            ->whereHas('order', function ($q) use ($organizationId) {
-                $q->where('organization_id', $organizationId);
-            })
-            ->with(['order', 'transactions'])
-            ->orderByDesc('created_at')
-            ->paginate($perPage);
+        return $this->repository->paginate($filters, $perPage);
     }
 }

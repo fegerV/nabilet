@@ -1,12 +1,28 @@
 <?php
 
-namespace App\Modules\Analytics\Http\Controllers;
+namespace Nabilet\Modules\Analytics\Http\Controllers;
 
-use App\Http\Controllers\Controller;
+use Illuminate\Routing\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 
+/**
+ * Легаси-панель аналитики.
+ *
+ * ВНИМАНИЕ: контроллер не подключён ни к одному маршруту. И он не заработает,
+ * если его подключить: запросы идут к таблицам `bookings` и `booking_seats`,
+ * которых в схеме НЕТ (заказы — `orders`, билеты — `tickets`; существуют только
+ * `analytics_events` и `events`). Это код прежней версии продукта под чужую
+ * модель данных; рабочая аналитика — `AnalyticsReportService` и
+ * `MetrikaController`, они и подключены в `routes/api.php`.
+ *
+ * Пространство имён и родительский класс исправлены (`App\Modules\...` +
+ * несуществующий `App\Http\Controllers\Controller` → `Nabilet\Modules\...` +
+ * `Illuminate\Routing\Controller`): в прежнем виде файл падал фаталом при любой
+ * попытке инстанцирования. Переписывать запросы под реальную схему — отдельная
+ * задача; пока контроллер не подключён, это решение владельца продукта.
+ */
 class AnalyticsController extends Controller
 {
     /**
