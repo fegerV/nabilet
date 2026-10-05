@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 /**
@@ -144,8 +145,14 @@ return new class extends Migration
             $table->dateTime('created_at', 6);
             $table->dateTime('updated_at', 6);
             $table->index(['active'], "idx_redirect_active");
-            $table->unique(['source'], "uq_redirect_source");
         });
+
+        // `source` is VARCHAR(2048); a full-column UNIQUE would need 8192 bytes and
+        // exceeds InnoDB's 3072-byte index limit (MySQL error 1071). The canonical
+        // schema uses a prefix index — UNIQUE KEY uq_redirect_source (source(512)) —
+        // see migrations.sql. Blueprint::unique() cannot express an index prefix
+        // length, so it is added with a raw statement to keep migrations ≡ schema.
+        DB::statement('ALTER TABLE `redirects` ADD UNIQUE KEY `uq_redirect_source` (`source`(512))');
 
         Schema::create("media_assets", function (Blueprint $table): void {
             $table->id();

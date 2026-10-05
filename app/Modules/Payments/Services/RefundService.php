@@ -7,6 +7,7 @@ namespace Nabilet\Modules\Payments\Services;
 use Nabilet\Core\Errors\DomainRuleViolation;
 use Nabilet\Modules\Payments\Models\Payment;
 use Nabilet\Modules\Payments\Models\Refund;
+use Nabilet\Modules\Payments\Repositories\PaymentRepository;
 use Nabilet\Modules\Payments\StateMachines\PaymentStateMachine;
 use Nabilet\Modules\Payments\StateMachines\RefundStateMachine;
 use Illuminate\Support\Facades\DB;
