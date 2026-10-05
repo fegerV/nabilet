@@ -124,6 +124,7 @@ const COLUMNS: Column[] = [
   { key: 'address', label: 'Адрес', hideOnMobile: true },
   { key: 'hallsCount', label: 'Залы', align: 'center', width: '70px' },
   { key: 'status', label: 'Статус', align: 'right', width: '110px' },
+  { key: 'actions', label: '', align: 'right', width: '90px' },
 ]
 
 async function load(): Promise<void> {
@@ -173,9 +174,11 @@ onMounted(load)
         <template #cell-status="{ row }">
           <NStatusBadge kind="venue" :status="row.status" />
         </template>
+        <!-- Слот действий: клик по строке открывает редактирование, удаление — отдельной кнопкой -->
+        <template #cell-actions="{ row }">
+          <NButton variant="ghost" size="sm" @click.stop="remove(row.raw)">Удалить</NButton>
+        </template>
 
-        <!-- Действия в строке: редактировать / удалить — иконки не видны на мобильном, там есть мобильная карточка -->
-        <template v-if="false" />
         <template #mobile-title="{ row }">
           <span class="block text-sm font-medium text-content">{{ row.name }}</span>
           <span class="block text-2xs text-subtle">ID {{ row.id }}</span>
