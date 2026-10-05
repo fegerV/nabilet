@@ -17,8 +17,10 @@
 [Unit]
 Description=NABILET Core Queue Worker
 Documentation=https://github.com/nabilet/core/docs
-After=network.target postgresql.service redis.service
-Wants=postgresql.service redis.service
+# The database is reached over the network and is not a local unit on a shared
+# host, so only the cache/queue broker is ordered against.
+After=network-online.target redis.service
+Wants=network-online.target redis.service
 
 [Service]
 Type=simple

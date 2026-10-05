@@ -14,7 +14,7 @@ class OrderRepository
         protected Order $model
     ) {}
 
-    public function find(int $id, int $organizationId = null): ?Order
+    public function find(int $id, ?int $organizationId = null): ?Order
     {
         $query = $this->model->with(['items.inventoryItem', 'customer', 'payments']);
         
@@ -25,7 +25,7 @@ class OrderRepository
         return $query->find($id);
     }
 
-    public function findByPublicId(string $publicId, int $organizationId = null): ?Order
+    public function findByPublicId(string $publicId, ?int $organizationId = null): ?Order
     {
         $query = $this->model->where('public_id', $publicId);
         

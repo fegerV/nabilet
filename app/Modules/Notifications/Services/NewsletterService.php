@@ -11,7 +11,7 @@ class NewsletterService
     /**
      * Отправка новостной рассылки пользователям
      */
-    public function sendNewsletter($subject, $content, array $userIds = null)
+    public function sendNewsletter($subject, $content, ?array $userIds = null)
     {
         $query = User::where('subscribed_to_newsletter', true);
         

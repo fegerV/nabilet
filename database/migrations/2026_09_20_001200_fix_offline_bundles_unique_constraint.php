@@ -22,14 +22,12 @@ return new class extends Migration
     public function up(): void
     {
         // Drop the old unique constraint on bundle_hash alone.
-        // MySQL/MariaDB implement a UNIQUE constraint as an index (dropped with DROP
-        // INDEX), while Postgres uses DROP CONSTRAINT. MySQL also has no
-        // `DROP INDEX IF EXISTS` (MariaDB does), so existence is checked explicitly.
+        // MySQL/MariaDB implement a UNIQUE constraint as an index, so it is dropped
+        // with DROP INDEX. MySQL has no `DROP INDEX IF EXISTS` (MariaDB does), so
+        // existence is checked explicitly.
         // Note: `select version()` returns a column literally named `version()` on
         // MySQL, so a `->version` property access is undefined — do not reintroduce it.
-        if (DB::connection()->getDriverName() === 'pgsql') {
-            DB::statement('ALTER TABLE offline_bundles DROP CONSTRAINT IF EXISTS uq_offline_bundles_hash;');
-        } elseif ($this->indexExists('offline_bundles', 'uq_offline_bundles_hash')) {
+        if ($this->indexExists('offline_bundles', 'uq_offline_bundles_hash')) {
             DB::statement('ALTER TABLE offline_bundles DROP INDEX uq_offline_bundles_hash;');
         }
         
@@ -70,10 +68,8 @@ return new class extends Migration
             $table->dropIndex('idx_offline_bundles_device_hash');
         });
         
-        // Drop the composite unique constraint (same driver rules as in up()).
-        if (DB::connection()->getDriverName() === 'pgsql') {
-            DB::statement('ALTER TABLE offline_bundles DROP CONSTRAINT IF EXISTS uq_offline_bundles_hash_device;');
-        } elseif ($this->indexExists('offline_bundles', 'uq_offline_bundles_hash_device')) {
+        // Drop the composite unique constraint (same MySQL rule as in up()).
+        if ($this->indexExists('offline_bundles', 'uq_offline_bundles_hash_device')) {
             DB::statement('ALTER TABLE offline_bundles DROP INDEX uq_offline_bundles_hash_device;');
         }
         

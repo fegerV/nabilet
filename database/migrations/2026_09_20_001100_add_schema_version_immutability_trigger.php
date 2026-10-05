@@ -32,19 +32,33 @@ use Illuminate\Support\Facades\DB;
  *   A caller who needs a different geometry duplicates the version — that is the
  *   designed workflow, not a workaround.
  *
- * PORTABILITY
- *   Implemented for MySQL/MariaDB (SIGNAL) and PostgreSQL (RAISE ... ERRCODE
- *   '45000', with `IS DISTINCT FROM` as the null-safe counterpart of `<=>`).
- *   Both carry the same six-column comparison and the same message, so the
- *   guarantee does not depend on which database the instance runs on. Any other
- *   driver is skipped loudly rather than half-applied: an immutability guarantee
- *   that quietly does nothing is worse than one that is visibly absent.
+ * TARGET
+ *   MySQL/MariaDB, using `SIGNAL SQLSTATE '45000'` — the only mechanism here that can
+ *   both compare OLD against NEW and reject the write. MySQL 8.4 is the sole supported
+ *   target. Any other driver is skipped loudly rather than half-applied: an
+ *   immutability guarantee that quietly does nothing is worse than one that is
+ *   visibly absent.
+ *
+ * DEPLOYMENT PREREQUISITE — READ BEFORE DEPLOYING
+ *   Creating a trigger requires more than ALTER on the schema. With binary logging
+ *   enabled, MySQL refuses `CREATE TRIGGER` from a user without the SUPER privilege
+ *   unless `log_bin_trust_function_creators = 1`, and answers ERROR 1419. This was
+ *   reproduced on MySQL 8.4.11 against a user holding ALL PRIVILEGES on its own
+ *   database only — exactly what shared hosting grants:
+ *
+ *     ERROR 1419 (HY000): You do not have the SUPER privilege and binary logging is
+ *     enabled (you *might* want to use the less safe log_bin_trust_function_creators
+ *     variable)
+ *
+ *   So on shared hosting this migration either succeeds because the host already sets
+ *   `log_bin_trust_function_creators=1` (common), or it aborts `php artisan migrate`
+ *   at this file. Confirm it with the host before the first deploy, or run
+ *   `migrate --pretend` to see how far it gets. There is no application-side
+ *   workaround: `SET GLOBAL` needs SUPER as well.
  */
 return new class extends Migration
 {
     private const TRIGGER = 'trg_schema_version_immutable';
-
-    private const FUNCTION = 'trg_schema_version_immutable_fn';
 
     private const MESSAGE = 'Published hall schema versions are immutable (spec 20/98). Duplicate to a new version instead.';
 
@@ -62,44 +76,7 @@ return new class extends Migration
             return;
         }
 
-        if (DB::connection()->getDriverName() === 'pgsql') {
-            $this->createPostgresTrigger();
-
-            return;
-        }
-
         $this->createMySqlTrigger();
-    }
-
-    /**
-     * PostgreSQL. The comparison is identical to the MySQL version; only the
-     * dialect differs — `IS DISTINCT FROM` is null-safe where `=` yields NULL,
-     * and RAISE with ERRCODE '45000' mirrors SIGNAL SQLSTATE '45000'.
-     */
-    private function createPostgresTrigger(): void
-    {
-        DB::unprepared(
-            'CREATE OR REPLACE FUNCTION ' . self::FUNCTION . "() RETURNS trigger AS \$\$\n"
-            . "BEGIN\n"
-            . "  IF OLD.status IN ('published', 'archived') THEN\n"
-            . "    IF NEW.schema_json IS DISTINCT FROM OLD.schema_json\n"
-            . "       OR NEW.version IS DISTINCT FROM OLD.version\n"
-            . "       OR NEW.hall_id IS DISTINCT FROM OLD.hall_id\n"
-            . "       OR NEW.width IS DISTINCT FROM OLD.width\n"
-            . "       OR NEW.height IS DISTINCT FROM OLD.height\n"
-            . "       OR NEW.background_url IS DISTINCT FROM OLD.background_url\n"
-            . "    THEN\n"
-            . "      RAISE EXCEPTION '" . self::MESSAGE . "' USING ERRCODE = '45000';\n"
-            . "    END IF;\n"
-            . "  END IF;\n"
-            . "  RETURN NEW;\n"
-            . "END;\n"
-            . "\$\$ LANGUAGE plpgsql;\n"
-            . 'DROP TRIGGER IF EXISTS ' . self::TRIGGER . " ON hall_schema_versions;\n"
-            . 'CREATE TRIGGER ' . self::TRIGGER . "\n"
-            . "BEFORE UPDATE ON hall_schema_versions\n"
-            . "FOR EACH ROW EXECUTE FUNCTION " . self::FUNCTION . '()'
-        );
     }
 
     private function createMySqlTrigger(): void
@@ -131,7 +108,7 @@ return new class extends Migration
 
     private function supportsTriggers(): bool
     {
-        return in_array(DB::connection()->getDriverName(), ['mysql', 'mariadb', 'pgsql'], true);
+        return in_array(DB::connection()->getDriverName(), ['mysql', 'mariadb'], true);
     }
 
     public function down(): void

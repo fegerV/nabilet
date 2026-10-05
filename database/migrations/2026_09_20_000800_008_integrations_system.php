@@ -117,7 +117,7 @@ return new class extends Migration
             $table->binary('ip_address', 16)->nullable();
             $table->string('cidr', 64)->nullable();
             $table->string('rule_type', 16);
-            $table->string('scope', 32);
+            $table->string('scope', 32)->default('global');
             $table->boolean('active')->default(1);
             $table->string('reason', 500)->nullable();
             $table->dateTime('expires_at', 6)->nullable();

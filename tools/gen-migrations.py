@@ -132,7 +132,17 @@ def php_default(raw):
     m = re.fullmatch(r"'(.*)'", raw)
     if m:
         return "'" + m.group(1).replace("\\", "\\\\").replace("'", "\\'") + "'"
-    return None
+    # A bare token that is not a number and not one of the special forms above is a
+    # string literal. information_schema.COLUMN_DEFAULT returns the *value*, without
+    # the quotes the spec text carries: the .sql says DEFAULT 'active', the dump says
+    # `active`. Matching only the quoted form meant `return None` here, and every
+    # string default in the schema was dropped — 44 columns across 36 tables. The
+    # damage was invisible until an INSERT needed one: `users.status` is NOT NULL
+    # with no default, so registration died on MySQL 1364. Numeric defaults worked,
+    # which is why the schema looked mostly right and the drift went unnoticed.
+    # `tools/verify-migrations.php` now diffs defaults so it cannot happen silently
+    # again.
+    return "'" + raw.replace("\\", "\\\\").replace("'", "\\'") + "'"
 
 
 def php_str(value):

@@ -15,13 +15,12 @@ use Illuminate\Support\Facades\DB;
  * Raw SQL on purpose: Blueprint has no portable CHECK API, and these
  * constraints are the whole point of migrations/009 hardening.
  *
- * PORTABLE BY DESIGN — MySQL/MariaDB AND PostgreSQL.
- *   The spec targets MySQL, but the running instance is PostgreSQL. Every
- *   expression below is standard SQL, so there is no reason to withhold the
- *   contract on PostgreSQL: refusing to apply it there left the deployment
- *   enforcing none of these invariants while `migrate:status` still said "Ran".
- *   Only drivers that cannot add a CHECK to an existing table (SQLite needs a
- *   table rebuild) are skipped, and they are skipped loudly.
+ * MySQL/MariaDB ONLY — MySQL 8.4 is the sole supported target.
+ *   CHECK is enforced from MySQL 8.0.16 (and MariaDB 10.2.1). On anything older the
+ *   statement parses and is silently ignored, which would leave the deployment
+ *   enforcing none of these invariants while `migrate:status` still said "Ran". That
+ *   is why the guard below is a whitelist of drivers known to enforce, and why
+ *   skipping is loud.
  */
 return new class extends Migration
 {
@@ -90,15 +89,14 @@ return new class extends Migration
     /**
      * Drivers that can add a CHECK constraint to an existing table.
      *
-     * PostgreSQL is included deliberately: its CHECK syntax is identical for every
-     * expression in this file, and the alternative — silently enforcing nothing on
-     * the database the application actually runs against — is the worse failure.
-     * SQLite is excluded because ALTER TABLE cannot add a constraint without
-     * rebuilding the table.
+     * MySQL 8.0.16+ and MariaDB 10.2.1+ enforce CHECK; older MySQL parses and
+     * ignores it, which is the failure this guard exists to make audible. SQLite is
+     * excluded because ALTER TABLE cannot add a constraint without rebuilding the
+     * table.
      */
     private function supportsCheckConstraints(): bool
     {
-        return in_array(DB::connection()->getDriverName(), ['mysql', 'mariadb', 'pgsql'], true);
+        return in_array(DB::connection()->getDriverName(), ['mysql', 'mariadb'], true);
     }
 
     public function down(): void

@@ -14,7 +14,7 @@ class PaymentRepository
         protected Payment $model
     ) {}
 
-    public function find(int $id, int $organizationId = null): ?Payment
+    public function find(int $id, ?int $organizationId = null): ?Payment
     {
         $query = $this->model->with(['order', 'transactions']);
 
@@ -27,7 +27,7 @@ class PaymentRepository
         return $query->find($id);
     }
 
-    public function findByPublicId(string $publicId, int $organizationId = null): ?Payment
+    public function findByPublicId(string $publicId, ?int $organizationId = null): ?Payment
     {
         $query = $this->model->where('public_id', $publicId);
 
@@ -101,7 +101,7 @@ class PaymentRepository
      * Отметить платёж неудавшимся. Причина пишется в `metadata_json` под ключом
      * `failure` — отдельных колонок failure_code/failure_message/failed_at в схеме нет.
      */
-    public function markAsFailed(Payment $payment, string $failureCode = null, string $failureMessage = null): Payment
+    public function markAsFailed(Payment $payment, ?string $failureCode = null, ?string $failureMessage = null): Payment
     {
         $metadata = (array) ($payment->metadata_json ?? []);
         $metadata['failure'] = [

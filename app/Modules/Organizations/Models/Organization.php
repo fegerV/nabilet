@@ -7,6 +7,10 @@ namespace Nabilet\Modules\Organizations\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Nabilet\Modules\Events\Models\Event;
+use Nabilet\Modules\System\Models\ApiKey;
+use Nabilet\Modules\Tickets\Models\CheckinDevice;
+use Nabilet\Modules\Venues\Models\Venue;
 
 /**
  * @property int $id
@@ -59,7 +63,7 @@ class Organization extends Model
      */
     public function events(): HasMany
     {
-        return $this->hasMany(Events\Models\Event::class, 'organization_id');
+        return $this->hasMany(Event::class, 'organization_id');
     }
 
     /**
@@ -83,6 +87,6 @@ class Organization extends Model
      */
     public function checkinDevices(): HasMany
     {
-        return $this->hasMany(\Nabilet\Modules\Checkin\Models\CheckinDevice::class, 'organization_id');
+        return $this->hasMany(CheckinDevice::class, 'organization_id');
     }
 }

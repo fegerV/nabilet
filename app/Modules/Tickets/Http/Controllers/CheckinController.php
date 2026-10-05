@@ -19,10 +19,9 @@ class CheckinController extends Controller
     public function scan(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            // `bail`/`integer` guard the BIGINT cast: `tickets.id`, `sessions.id` and
-            // `checkin_devices.id` are BIGINT, so `exists` reached with a non-numeric
-            // value raises SQLSTATE[22P02] and answers 500 instead of 422. See
-            // `CartController::addItem()` for the full explanation.
+            // `bail`/`integer` guard the BIGINT lookups: MySQL coerces a string
+            // comparison instead of rejecting it, so `exists` can match `'1abc'` to
+            // row 1. See `CartController::addItem()` for the measurements.
             'ticket_id' => ['bail', 'required', 'integer', 'exists:tickets,id'],
             'device_id' => ['bail', 'nullable', 'integer', 'exists:checkin_devices,id'],
             'session_id' => ['bail', 'required', 'integer', 'exists:sessions,id'],

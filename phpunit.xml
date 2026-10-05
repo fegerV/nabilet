@@ -11,15 +11,25 @@
     </testsuites>
     <php>
         <env name="APP_ENV" value="testing"/>
-        <env name="DB_CONNECTION" value="pgsql"/>
+        <!--
+            MySQL 8.4 — the sole supported target, matching .env and the CI service
+            container (mysql:8.4, root/rootpass). These are the local Docker defaults
+            (3307 is the host mapping of the container's 3306); PHPUnit does not
+            overwrite an environment variable that is already set, so a developer or a
+            runner can point the suite elsewhere without editing this file.
+
+            A separate database from .env's `nabilet`: RefreshDatabase drops and
+            rebuilds the schema on every run, and doing that to the development
+            database would take the seeded data with it.
+        -->
+        <env name="DB_CONNECTION" value="mysql"/>
         <env name="DB_HOST" value="127.0.0.1"/>
-        <env name="DB_PORT" value="5432"/>
+        <env name="DB_PORT" value="3307"/>
         <env name="DB_DATABASE" value="nabilet_testing"/>
-        <env name="DB_USERNAME" value="nabilet"/>
-        <env name="DB_PASSWORD" value=""/>
-        <!-- pgsql connection must not inherit MySQL charset from .env (utf8mb4 is an invalid client_encoding for Postgres) -->
-        <env name="DB_CHARSET" value="utf8"/>
-        <env name="DB_COLLATION" value=""/>
+        <env name="DB_USERNAME" value="root"/>
+        <env name="DB_PASSWORD" value="rootpass"/>
+        <env name="DB_CHARSET" value="utf8mb4"/>
+        <env name="DB_COLLATION" value="utf8mb4_unicode_ci"/>
         <env name="CACHE_DRIVER" value="array"/>
         <env name="SESSION_DRIVER" value="array"/>
         <env name="QUEUE_CONNECTION" value="sync"/>

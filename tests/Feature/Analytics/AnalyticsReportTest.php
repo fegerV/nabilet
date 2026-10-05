@@ -107,7 +107,7 @@ class AnalyticsReportTest extends TestCase
         $days = $this->report->salesByDay(now()->subDay());
 
         $this->assertCount(1, $days);
-        $this->assertSame(now()->toDateString(), $days[0]['date'], 'CAST(created_at AS date) работает и на PostgreSQL');
+        $this->assertSame(now()->toDateString(), $days[0]['date'], 'CAST(created_at AS date) отдаёт дату без времени');
         $this->assertSame(2, $days[0]['orders']);
         $this->assertSame((float) self::PRICE, $days[0]['revenue']);
     }

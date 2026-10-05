@@ -7,6 +7,7 @@ namespace Nabilet\Modules\Tickets\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Nabilet\Modules\Core\Users\Models\User;
+use Nabilet\Modules\Sessions\Models\Session;
 
 /**
  * @property int $id

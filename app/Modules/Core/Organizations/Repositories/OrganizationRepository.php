@@ -23,7 +23,7 @@ class OrganizationRepository
         return $this->model->where('public_id', $publicId)->first();
     }
 
-    public function findBySlug(string $slug, int $organizationId = null): ?Organization
+    public function findBySlug(string $slug, ?int $organizationId = null): ?Organization
     {
         $query = $this->model->where('slug', $slug);
         

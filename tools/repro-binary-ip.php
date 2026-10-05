@@ -3,29 +3,37 @@
 declare(strict_types=1);
 
 /**
- * Repro: a packed IP address silently truncates when bound as a string.
+ * Repro: what a packed IP address actually lands as in a binary column.
  * =====================================================================
- * The ТЗ declares `ip_address VARBINARY(16)` on `user_sessions`, `login_logs` and
- * `audit_logs`. On PostgreSQL that is `bytea`, and binding the packed bytes as an
- * ordinary string — which is what PDO does by default, and what Laravel's query
- * builder does for every string — **stores only the bytes up to the first NUL**:
+ * The ТЗ declares `ip_address VARBINARY(16)` on `user_sessions`, `login_logs`
+ * and `audit_logs` — the packed `inet_pton()` form, so 4 bytes hold an IPv4
+ * address and 16 hold an IPv6 one.
  *
- *     inet_pton('127.0.0.1')  ->  stored as 7f          (1 byte, not 4)
- *     inet_pton('10.0.0.1')   ->  stored as 0a          (1 byte, not 4)
+ * That representation is unforgiving in a specific way: the bytes of a private
+ * IPv4 address are mostly NUL. `inet_pton('127.0.0.1')` is `7f 00 00 01`, and
+ * `inet_pton('10.0.0.1')` is `0a 00 00 01`. If anything in the write path
+ * treats those bytes as a C string, the value is cut at the first NUL and stored
+ * as a single byte — no error, no warning, and the audit trail looks populated
+ * while being wrong.
  *
- * No error, no warning. The audit trail looks populated and is wrong. An IPv6
- * address, which begins with a non-zero byte, survives — so the bug hits exactly
- * the private IPv4 ranges a production deployment sits behind.
+ * This tool does not assert which failure modes apply. It *measures* what this
+ * server does with each write form, so the choice in
+ * `Nabilet\Core\Support\PackedIp::toSqlLiteral()` rests on evidence rather than
+ * on folklore. Cases 2-4 are the alternatives; case 1 is the plain bind that PDO
+ * performs for an ordinary string parameter.
+ *
+ * Measured on MySQL 8.4.11 (2026-10, driver mysql, `ATTR_EMULATE_PREPARES` false
+ * as Laravel sets it): every case lands byte-exact, including the plain bind.
+ * The same holds with emulated prepares and with `NO_BACKSLASH_ESCAPES` set. So
+ * on this stack the literal form is a guard, not a workaround — it is kept
+ * because it removes the dependency on the connection's configuration, which is
+ * the part a shared host controls. Re-run this tool after changing either.
  *
  * Run it against a live database:
  *
  *     php tools/repro-binary-ip.php
  *
  * It writes and removes its own rows; the row count is asserted at the end.
- *
- * The fix is `Nabilet\Core\Support\PackedIp::toSqlLiteral()`, which emits a hex
- * literal the server decodes instead of a bound string. Cases 2-5 below are the
- * forms that work, so the tool also documents the alternatives.
  */
 
 $root = dirname(__DIR__);
@@ -38,17 +46,17 @@ $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
 use Illuminate\Support\Facades\DB;
 use Nabilet\Core\Support\PackedIp;
 
-echo "\nRepro — packed IP truncation on a binary column\n";
+echo "\nRepro — what a packed IP lands as in a binary column\n";
 echo "──────────────────────────────────────────────────────────────────────────\n\n";
 
 $driver = DB::connection()->getDriverName();
 
 echo "  driver: {$driver}\n";
 
-if ($driver !== 'pgsql') {
-    echo "\n  This repro targets PostgreSQL, where the column is `bytea` and the\n";
-    echo "  truncation happens. On MySQL the column is VARBINARY and the same bind\n";
-    echo "  is exact — which is precisely why the bug is easy to miss.\n\n";
+if (! in_array($driver, ['mysql', 'mariadb'], true)) {
+    echo "\n  This repro targets MySQL/MariaDB, where the column is VARBINARY and the\n";
+    echo "  read-back below uses LENGTH()/HEX(). The ТЗ supports no other engine\n";
+    echo "  (§3), so there is nothing else to reproduce here.\n\n";
 
     exit(0);
 }
@@ -76,7 +84,7 @@ $attempt = static function (string $label, mixed $ipValue) use ($userId): void {
         ]);
 
         $row = DB::table('user_sessions')->where('id', $id)
-            ->selectRaw("length(ip_address) as len, encode(ip_address, 'hex') as hex")
+            ->selectRaw('LENGTH(ip_address) as len, HEX(ip_address) as hex')
             ->first();
 
         printf("  %-34s len=%-3s hex=%s\n", $label, $row->len, $row->hex);
@@ -91,29 +99,26 @@ $packed = (string) inet_pton('127.0.0.1');
 
 echo "  expected for 127.0.0.1: len=4 hex=7f000001\n\n";
 
-echo "  [1] the bug — bind the packed bytes as an ordinary string\n";
+echo "  [1] plain string bind — what PDO does for every string parameter\n";
 $attempt('plain string bind', $packed);
 
-echo "\n  [2] decode() on the hex — what PackedIp emits for pgsql\n";
-$attempt("decode(hex, 'hex')", DB::raw("decode('" . bin2hex($packed) . "', 'hex')"));
+echo "\n  [2] UNHEX() on the hex — what PackedIp emits\n";
+$attempt("UNHEX('" . bin2hex($packed) . "')", DB::raw("UNHEX('" . bin2hex($packed) . "')"));
 
-echo "\n  [3] the PostgreSQL hex literal\n";
-$attempt('\\x…::bytea', DB::raw("'\\x" . bin2hex($packed) . "'::bytea"));
-
-echo "\n  [4] a 10.x address — mostly zero bytes\n";
+echo "\n  [3] a 10.x address — mostly zero bytes\n";
 $ten = (string) inet_pton('10.0.0.1');
 printf("      expected: len=4 hex=%s\n", bin2hex($ten));
-$attempt("decode() for 10.0.0.1", DB::raw("decode('" . bin2hex($ten) . "', 'hex')"));
+$attempt("UNHEX() for 10.0.0.1", DB::raw("UNHEX('" . bin2hex($ten) . "')"));
 
-echo "\n  [5] an IPv6 address — survives the bug, which is why it hides\n";
+echo "\n  [4] an IPv6 address — no leading NUL byte, so it hides the problem\n";
 $six = (string) inet_pton('2001:db8::1');
 printf("      expected: len=16 hex=%s\n", bin2hex($six));
-$attempt('decode() for 2001:db8::1', DB::raw("decode('" . bin2hex($six) . "', 'hex')"));
+$attempt("UNHEX() for 2001:db8::1", DB::raw("UNHEX('" . bin2hex($six) . "')"));
 
 echo "\n  what PackedIp produces:\n";
-printf("      toSqlLiteral('pgsql', '127.0.0.1')  = %s\n", (string) PackedIp::toSqlLiteral('pgsql', '127.0.0.1'));
-printf("      toSqlLiteral('mysql', '127.0.0.1')  = %s\n", (string) PackedIp::toSqlLiteral('mysql', '127.0.0.1'));
-printf("      toSqlLiteral('pgsql', 'not-an-ip')  = %s\n", var_export(PackedIp::toSqlLiteral('pgsql', 'not-an-ip'), true));
+printf("      toSqlLiteral('127.0.0.1')  = %s\n", (string) PackedIp::toSqlLiteral('127.0.0.1'));
+printf("      toSqlLiteral('2001:db8::1') = %s\n", (string) PackedIp::toSqlLiteral('2001:db8::1'));
+printf("      toSqlLiteral('not-an-ip')  = %s\n", var_export(PackedIp::toSqlLiteral('not-an-ip'), true));
 
 $final = (int) DB::table('user_sessions')->count();
 

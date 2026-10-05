@@ -66,7 +66,6 @@
 |---|---|
 | Версия Laravel | `composer.json` требует `laravel/framework: ^11.0`; `docs/PLAN.md` и комментарий в `bootstrap/app.php` говорят «Laravel 13» |
 | Мультитенантность | `organization_id` всего у **16 из 64** таблиц. Утолщать или оставить — решение не принято (`ARCHITECTURE.md` §6) |
-| PostgreSQL | `.env.example` обещает «поддержка запланирована (ТЗ §3)», но схема завязана на MySQL (триггер, `AUTO_INCREMENT`, `ENGINE=InnoDB`) |
 
 ---
 

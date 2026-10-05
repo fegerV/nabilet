@@ -26,8 +26,9 @@ declare(strict_types=1);
  *   E5  `abort(...)`                               — Laravel renders it in its own
  *                                                    shape, not ours
  *   E6  `exists:<table>,id` / `unique:<table>,id` without a `bail`+`integer` guard
- *       — the column is BIGINT, so a non-numeric value raises SQLSTATE[22P02] and a
- *       would-be 422 becomes a 500
+ *       — the column is BIGINT, and MySQL coerces a string comparison instead of
+ *       rejecting it, so `exists` can match `'1abc'` to row 1: the value is accepted
+ *       as a reference to a record the caller never named
  *
  * Comments and docblocks are stripped with PHP's own lexer (`token_get_all`) before
  * scanning, so this file and the classes that *document* these anti-patterns do not
@@ -380,7 +381,8 @@ function checkE6(string $code): array
             $out[] = [
                 lineAt($code, $offset),
                 'E6 `exists/unique:…,id` without ' . implode(' + ', $missing)
-                    . ' — the column is BIGINT, so a non-numeric value becomes SQLSTATE[22P02] and a 500',
+                    . ' — the column is BIGINT and MySQL coerces a string comparison,'
+                    . " so `exists` can match `1abc` to row 1",
             ];
         }
     }

@@ -1034,9 +1034,9 @@ function normalizeBackground(bg: Record<string, unknown>): EBackground | null {
  *    row.price_amount (или легаси sector.price).
  */
 function applyServerSchema(raw: unknown): void {
-  // Сервер может вернуть schema_json как JSON-строку (Postgres jsonb через
-  // некоторые драйверы/сиды) — без этого шага весь payload читался бы как {}
-  // и статика/фон/цены «терялись» при перезагрузке (B7).
+  // Сервер может вернуть schema_json как JSON-строку (колонка JSON отдаётся
+  // драйвером как строка, а не разобранным объектом) — без этого шага весь
+  // payload читался бы как {} и статика/фон/цены «терялись» при перезагрузке (B7).
   let input = raw
   if (typeof input === 'string') {
     try { input = JSON.parse(input) } catch { input = null }

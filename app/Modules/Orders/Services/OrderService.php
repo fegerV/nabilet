@@ -82,12 +82,12 @@ class OrderService
         });
     }
 
-    public function findOrder(int $orderId, int $organizationId = null): ?Order
+    public function findOrder(int $orderId, ?int $organizationId = null): ?Order
     {
         return $this->repository->find($orderId, $organizationId);
     }
 
-    public function findByPublicId(string $publicId, int $organizationId = null): ?Order
+    public function findByPublicId(string $publicId, ?int $organizationId = null): ?Order
     {
         return $this->repository->findByPublicId($publicId, $organizationId);
     }
@@ -161,7 +161,7 @@ class OrderService
         });
     }
 
-    public function cancelOrder(Order $order, string $reason = null): Order
+    public function cancelOrder(Order $order, ?string $reason = null): Order
     {
         return DB::transaction(function () use ($order, $reason) {
             // Check if we can cancel

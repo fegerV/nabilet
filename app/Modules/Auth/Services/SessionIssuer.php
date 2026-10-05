@@ -99,7 +99,7 @@ final class SessionIssuer
         $row->session_token_hash = $token->hash;
         $row->device_name = $client->deviceName;
         $row->user_agent = $client->userAgent;
-        $row->ip_address = $this->binaryIp($row, $client->ipAddress);
+        $row->ip_address = $this->binaryIp($client->ipAddress);
         $row->last_seen_at = null;
         $row->expires_at = self::stamp($expiresAt);
         // The model sets `$timestamps = false`, so `created_at` is ours to write.
@@ -232,7 +232,7 @@ final class SessionIssuer
         $log->user_id = $row->user_id;
         $log->identifier = $identifier;
         $log->success = true;
-        $log->ip_address = $this->binaryIp($log, $client->ipAddress);
+        $log->ip_address = $this->binaryIp($client->ipAddress);
         $log->user_agent = $client->userAgent ?? $row->user_agent;
         $log->failure_code = null;
         $log->created_at = self::stamp($now ?? new \DateTimeImmutable());
@@ -243,12 +243,13 @@ final class SessionIssuer
     /**
      * The packed bytes, as SQL the server decodes.
      *
-     * Binding them as a string truncates at the first NUL byte on PostgreSQL —
-     * `127.0.0.1` became `7f` — silently. See `Nabilet\Core\Support\PackedIp`.
+     * The value is inlined as a hex literal rather than bound as a string, so the
+     * write path does not depend on the connection's prepare mode or escaping
+     * rules. See `Nabilet\Core\Support\PackedIp`.
      */
-    private function binaryIp(UserSessionRow|LoginLog $model, ?string $ipAddress): ?Expression
+    private function binaryIp(?string $ipAddress): ?Expression
     {
-        $literal = PackedIp::toSqlLiteral($model->getConnection()->getDriverName(), $ipAddress);
+        $literal = PackedIp::toSqlLiteral($ipAddress);
 
         return $literal === null ? null : new Expression($literal);
     }

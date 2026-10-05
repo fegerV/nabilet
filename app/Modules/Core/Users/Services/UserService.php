@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Core\Users\Services;
 
+use Nabilet\Core\Errors\ValidationError;
 use Nabilet\Modules\Core\Users\Models\User;
 use Nabilet\Modules\Core\Users\Repositories\UserRepository;
 use Illuminate\Support\Facades\Hash;
@@ -14,11 +15,24 @@ class UserService
         protected UserRepository $repository
     ) {}
 
+    /**
+     * Create a user, refusing a duplicate email as a 422 rather than a 500.
+     *
+     * This threw a bare `\RuntimeException`, which `ApiExceptionRenderer` cannot
+     * map to anything but a 500 — so `POST /api/v1/users` answered "Something went
+     * wrong" for an outcome the caller caused. `ValidationError` is the §66 shape
+     * the `unique:users,email` rule already produces, so the two paths agree.
+     *
+     * The check is not redundant with that rule: two concurrent requests both pass
+     * validation, and only this one — the last thing before the INSERT — sees the
+     * winner's row.
+     */
     public function createUser(array $data): User
     {
-        // Check if email already exists
         if ($this->repository->findByEmail($data['email'])) {
-            throw new \RuntimeException('Email already registered');
+            throw new ValidationError([
+                'email' => ['This email address is already registered.'],
+            ]);
         }
 
         return $this->repository->create($data);
@@ -38,7 +52,9 @@ class UserService
     {
         if (isset($data['email']) && $data['email'] !== $user->email) {
             if ($this->repository->findByEmail($data['email'])) {
-                throw new \RuntimeException('Email already registered');
+                throw new ValidationError([
+                    'email' => ['This email address is already registered.'],
+                ]);
             }
         }
 

@@ -43,7 +43,6 @@ class OrganizationService
             $organization = $this->repository->create([
                 'name' => $data['name'],
                 'description' => $data['description'] ?? null,
-                'public_id' => Str::uuid()->toString(),
                 'slug' => $slug,
                 'owner_id' => $owner->id,
                 'status' => 'active',
@@ -91,7 +90,7 @@ class OrganizationService
         $organization->members()->updateExistingPivot($user->id, ['role' => $role]);
     }
 
-    protected function generateUniqueSlug(string $name, int $excludeId = null): string
+    protected function generateUniqueSlug(string $name, ?int $excludeId = null): string
     {
         $baseSlug = Str::slug($name);
         $slug = $baseSlug;

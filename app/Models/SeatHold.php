@@ -1,7 +1,11 @@
 <?php
 namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
-class SeatHold extends Model { protected $table = 'seat_holds'; protected $fillable = ['inventory_item_id', 'session_id', 'cart_id', 'quantity', 'expires_at', 'released_at', 'converted_at'];
+class SeatHold extends Model {
+    /** `seat_holds` has no `updated_at` — see Nabilet\Modules\Orders\Models\SeatHold. */
+    public const UPDATED_AT = null;
+
+    protected $table = 'seat_holds'; protected $fillable = ['inventory_item_id', 'session_id', 'cart_id', 'quantity', 'expires_at', 'released_at', 'converted_at'];
 
     protected static function boot(): void
     {

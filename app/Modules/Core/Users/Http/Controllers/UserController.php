@@ -51,9 +51,10 @@ class UserController
         $validated = $request->validate([
             'email' => 'required|email|unique:users,email',
             'password' => 'required|min:8',
-            'first_name' => 'nullable|string|max:255',
-            'last_name' => 'nullable|string|max:255',
-            'phone' => 'nullable|string|max:20',
+            // `users.first_name`/`last_name` are VARCHAR(100) — see RegisterRequest.
+            'first_name' => 'nullable|string|max:100',
+            'last_name' => 'nullable|string|max:100',
+            'phone' => 'nullable|string|max:50',
         ]);
 
         $user = $this->service->createUser($validated);
@@ -68,9 +69,9 @@ class UserController
         $validated = $request->validate([
             'email' => 'sometimes|email|unique:users,email,' . $user->id,
             'password' => 'sometimes|min:8',
-            'first_name' => 'nullable|string|max:255',
-            'last_name' => 'nullable|string|max:255',
-            'phone' => 'nullable|string|max:20',
+            'first_name' => 'nullable|string|max:100',
+            'last_name' => 'nullable|string|max:100',
+            'phone' => 'nullable|string|max:50',
             'status' => 'sometimes|in:active,inactive,banned',
         ]);
 
@@ -91,11 +92,12 @@ class UserController
         $user = $this->findOrFail($publicId);
 
         $validated = $request->validate([
-            // `bail` is required in addition to `integer`: `roles.id` is BIGINT, and
-            // Laravel only stops evaluating an attribute's remaining rules when `bail`
-            // is present — so without it `exists` still runs and PostgreSQL raises
-            // SQLSTATE[22P02], turning a 422 into a 500.
-            // See `CartController::addItem()` for the full explanation.
+            // `bail` is required in addition to `integer`: `roles.id` is BIGINT and
+            // MySQL coerces a string comparison rather than rejecting it (`WHERE id =
+            // '1abc'` matches row 1 with warning 1292), so without `bail` the `exists`
+            // rule still runs and can report a row for a value `integer` already
+            // rejected.
+            // See `CartController::addItem()` for the measurements.
             'role_id' => 'bail|required|integer|exists:roles,id',
         ]);
 

@@ -33,13 +33,22 @@ class UserRepository
         return $this->model->with(['roles'])->paginate($limit);
     }
 
+    /**
+     * `public_id` is NOT set here: the `User` model generates it in `booted()`.
+     *
+     * It used to be `Str::uuid()->toString()` — 36 characters into a `CHAR(26)`
+     * column, which MySQL refused with 1406 and turned every registration into a
+     * 422. The model owns the value now so that every creation path agrees.
+     *
+     * There is no `name` key either: `users` has no such column (the schema keeps
+     * `first_name`/`last_name`), and it was not in `$fillable`, so the line was
+     * silently discarded by mass assignment.
+     */
     public function create(array $data): User
     {
         return $this->model->create([
             'email' => $data['email'],
-            'name' => $data['name'] ?? ($data['first_name'] . ' ' . $data['last_name'] ?? ''),
             'password' => bcrypt($data['password']),
-            'public_id' => \Str::uuid()->toString(),
             'email_verified_at' => now(),
             'first_name' => $data['first_name'] ?? null,
             'last_name' => $data['last_name'] ?? null,

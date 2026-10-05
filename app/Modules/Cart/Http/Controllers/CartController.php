@@ -92,15 +92,21 @@ class CartController extends Controller
     {
         $validated = $request->validate([
             // `bail` + `integer` are load-bearing here, not decoration. `sessions.id`
-            // and `inventory_items.id` are BIGINT, so `exists:sessions,id` issues
-            // `where id = 'nope'` and PostgreSQL rejects the cast with
-            // SQLSTATE[22P02] "invalid syntax for type bigint" — a QueryException,
-            // which means a client could turn a validation error into a 500 simply by
-            // sending a string. Verified live before this change.
+            // and `inventory_items.id` are BIGINT, and MySQL does not reject a
+            // comparison against a string — it coerces it and warns. Measured on
+            // MySQL 8.4.11:
             //
-            // `bail` is the part that actually prevents it: Laravel only stops
-            // evaluating an attribute's remaining rules when `bail` is present, so
-            // `integer` failing is not enough on its own — `exists` would still run.
+            //   WHERE id = 'nope'  -> 0 rows, warning 1292 "Truncated incorrect
+            //                         DOUBLE value" (a warning, not an error)
+            //   WHERE id = '1abc'  -> 1 row matched: the string coerces to 1
+            //
+            // The second line is the one that matters. Without `bail`, `exists` still
+            // runs after `integer` has failed and reports a row for `'1abc'`, so the
+            // rejection is attributed to the wrong rule after a pointless query.
+            //
+            // `bail` is the part that prevents it: Laravel only stops evaluating an
+            // attribute's remaining rules when `bail` is present, so `integer` failing
+            // is not enough on its own — `exists` would still run.
             'session_id' => ['bail', 'required', 'integer', 'exists:sessions,id'],
             'inventory_item_id' => ['bail', 'required', 'integer', 'exists:inventory_items,id'],
             'quantity' => ['required', 'integer', 'min:1', 'max:10'],
