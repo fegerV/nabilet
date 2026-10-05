@@ -1,1 +1,14 @@
-(empty)
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Editors/IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# System files
+.DS_Store
+Thumbs.db
