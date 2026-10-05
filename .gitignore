@@ -1,14 +1,6 @@
-# Environment
-.env
-.env.local
-.env.*.local
+# Laravel storage cache
+storage/framework/cache/data/*
+!storage/framework/cache/data/.gitkeep
 
-# Editors/IDEs
-.idea/
-.vscode/
-*.swp
-*.swo
-
-# System files
-.DS_Store
-Thumbs.db
+# Compiled files
+*.php
