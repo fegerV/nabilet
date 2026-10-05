@@ -38,10 +38,11 @@ class StoreEventRequest extends FormRequest
     public function rules(): array
     {
         return [
-            // `bail`/`integer` guard the BIGINT cast. Without them a non-numeric id
-            // reaches `exists` as `where id = 'nope'`, PostgreSQL rejects the cast with
-            // SQLSTATE[22P02], and the caller gets a 500 where a 422 is correct.
-            // See `CartController::addItem()` for the full explanation.
+            // `bail`/`integer` guard the BIGINT comparison. MySQL coerces a string
+            // rather than rejecting it (`WHERE id = '1abc'` matches row 1, warning
+            // 1292), so without `bail` the `exists` rule would still run and could
+            // report a row for a value `integer` already rejected.
+            // See `CartController::addItem()` for the measurements.
             'organization_id' => ['bail', 'nullable', 'integer', 'exists:organizations,id'],
             'category_id' => ['bail', 'nullable', 'integer', 'exists:event_categories,id'],
             'public_id' => ['nullable', 'string', 'max:64', 'unique:events,public_id'],

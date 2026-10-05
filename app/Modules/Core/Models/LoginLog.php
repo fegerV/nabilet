@@ -6,6 +6,7 @@ namespace Nabilet\Modules\Core\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Nabilet\Modules\Core\Users\Models\User;
 
 /**
  * LoginLog Model

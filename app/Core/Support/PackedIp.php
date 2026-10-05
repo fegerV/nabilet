@@ -10,16 +10,20 @@ namespace Nabilet\Core\Support;
  * WHY THIS EXISTS
  *   The ТЗ declares `ip_address VARBINARY(16)` on `user_sessions`, `login_logs`
  *   and `audit_logs` — the packed `inet_pton()` form, so that 4 bytes hold an
- *   IPv4 address and 16 hold an IPv6 one. On PostgreSQL that column is `bytea`,
- *   and **binding the packed bytes as an ordinary string silently truncates them
- *   at the first NUL byte**: `inet_pton('127.0.0.1')` was stored as `7f` — one
- *   byte instead of four — with no error and no warning. A 10.x.x.x address,
- *   which is mostly zero bytes, is stored as a single byte. Reproduced in
- *   `tools/repro-binary-ip.php`, which also shows the two forms that do work.
+ *   IPv4 address and 16 hold an IPv6 one. Those bytes are NUL-heavy:
+ *   `inet_pton('127.0.0.1')` is `7f 00 00 01`, and a 10.x.x.x address is
+ *   `0a 00 00 01`.
  *
- *   A silent truncation is worse than a failure: the audit trail looks populated
- *   and is wrong. So the packed value is never bound as a string — it is emitted
- *   as a hex literal the server itself decodes, which is exact on both engines.
+ *   Any layer that treats the value as a C string stops at the first NUL. A
+ *   silent truncation is worse than a failure: the audit trail looks populated
+ *   and is wrong. So the packed value is never handed over as a string to be
+ *   escaped — it is emitted as a hex literal the server itself decodes, which is
+ *   exact whatever the connection's prepare mode or `sql_mode` happens to be.
+ *
+ *   `tools/repro-binary-ip.php` measures both forms against a live database. On
+ *   MySQL 8.4 with this driver they currently agree; the literal form is kept
+ *   because that agreement is a property of the connection, not of the schema,
+ *   and the connection is the part a shared host gets to configure.
  *
  * WHY IT RETURNS A STRING AND NOT A QUERY EXPRESSION
  *   `app/Core/Support` is framework-free (guarded by `tools/verify-purity.php`),
@@ -27,13 +31,6 @@ namespace Nabilet\Core\Support;
  *   SQL text and the caller wraps it. That also makes every rule here testable
  *   with nothing but a PHP binary, which is where the truncation bug would
  *   otherwise have hidden.
- *
- * READING IS THE CALLER'S PROBLEM, DELIBERATELY
- *   There is no `unpack()` that takes a column value, because what PDO hands back
- *   for a binary column differs per driver: PostgreSQL returns the hex text form
- *   (`\x7f000001`), MySQL returns the raw bytes. A single reader would be wrong
- *   for one of them. `unpack()` therefore takes raw bytes, and a caller that has
- *   a column value must decode it for its own driver first.
  */
 final class PackedIp
 {
@@ -78,6 +75,8 @@ final class PackedIp
      * SQL that stores $ip in a binary column, or null when there is nothing to
      * store.
      *
+     * `UNHEX()` is MySQL/MariaDB — the sole supported target, MySQL 8.4.
+     *
      * The result is meant to be used as a *raw* expression — an
      * `Illuminate\Database\Query\Expression`, or inlined into a statement — and
      * never as a bound parameter. Binding is the bug this method exists to avoid.
@@ -85,7 +84,7 @@ final class PackedIp
      * The interpolated text is `bin2hex()` output, so it is `[0-9a-f]` only and
      * cannot carry SQL.
      */
-    public static function toSqlLiteral(string $driver, ?string $ip): ?string
+    public static function toSqlLiteral(?string $ip): ?string
     {
         $packed = self::pack($ip);
 
@@ -93,36 +92,6 @@ final class PackedIp
             return null;
         }
 
-        $hex = bin2hex($packed);
-
-        // PostgreSQL has no UNHEX(); MySQL has no decode(). Anything that is
-        // neither (SQLite, SQL Server) has no binary type worth guessing at, so
-        // UNHEX() is emitted and the failure is loud rather than silent.
-        return $driver === 'pgsql'
-            ? sprintf("decode('%s', 'hex')", $hex)
-            : sprintf("UNHEX('%s')", $hex);
-    }
-
-    /**
-     * The packed bytes in the form PostgreSQL's `bytea` output uses, so that a
-     * value read back from a column can be recognised as binary.
-     *
-     * PostgreSQL returns `\x` followed by hex when `bytea_output = hex`, which has
-     * been the default since 9.0. Returning null for anything else keeps a raw
-     * MySQL value from being mistaken for that form.
-     */
-    public static function unpackPostgresHex(?string $columnValue): ?string
-    {
-        if ($columnValue === null || ! str_starts_with($columnValue, '\x')) {
-            return null;
-        }
-
-        $hex = substr($columnValue, 2);
-
-        if ($hex === '' || preg_match('/^[0-9a-f]+$/i', $hex) !== 1 || strlen($hex) % 2 !== 0) {
-            return null;
-        }
-
-        return self::unpack((string) hex2bin($hex));
+        return sprintf("UNHEX('%s')", bin2hex($packed));
     }
 }

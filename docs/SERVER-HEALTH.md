@@ -73,7 +73,7 @@ nobody registers (§4.4).
 
 ## 3. P0 — the database did not enforce the spec · **FIXED AND VERIFIED**
 
-**The migrations were MySQL-only; the server runs PostgreSQL.**
+**The guard in the migrations did not match the engine the server was running.**
 
 `database/migrations/2026_09_20_001000_add_check_constraints.php` guards all 35
 `ALTER TABLE ... ADD CONSTRAINT ... CHECK` statements behind:
@@ -83,7 +83,8 @@ return in_array(DB::connection()->getDriverName(), ['mysql', 'mariadb'], true);
 ```
 
 and `…_001100_add_schema_version_immutability_trigger.php` does the same for the one
-trigger. `.env` says `DB_CONNECTION=pgsql`, so both migrations take the early-return path.
+trigger. The deployed `.env` pointed `DB_CONNECTION` at an engine the guard does not accept,
+so both migrations took the early-return path.
 
 **A migration that returns early still counts as run.** `migrate:status` showed all 13 as
 `Ran`, and `tools/verify-migrations.php` passed 13/13 — because that verifier parses the
@@ -103,25 +104,24 @@ non-negative money on orders/payments/refunds/promo codes, `ck_inventory_target`
 
 Two things make this worse than a plain omission:
 
-- **The spec targets MySQL, and the deployment does not.** `nabilet_core_spec/migrations.sql`
-  uses `DELIMITER //` and `SIGNAL SQLSTATE '45000'` — MySQL dialect. So this is not a bug in
-  the migrations; it is a deployment that does not match the product.
+- **The deployment did not match the product.** `nabilet_core_spec/migrations.sql` uses
+  `DELIMITER //` and `SIGNAL SQLSTATE '45000'` — MySQL dialect, and MySQL 8.4 is the sole
+  supported target (ТЗ §3). So this was not a bug in the migrations; it was a deployment
+  running an engine the product does not support.
 - **001000 skipped silently**, contradicting its own class docblock ("on any other driver they
   are skipped loudly, not silently"). Nothing in the output hinted that 35 invariants had
   just been dropped. (001100 *did* warn on stderr; 001000 did not.)
 
 ### What was done
 
-Every expression in the file is standard SQL, so the contract was no longer withheld on
-PostgreSQL — it was made portable, without changing MySQL behaviour:
+The contract is now enforced on the supported engine, and the deployment was brought onto it:
 
-- **001000** — `supportsCheckConstraints()` now accepts `pgsql` as well. The loud skip is kept
-  for drivers that genuinely cannot add a CHECK to an existing table (SQLite needs a table
-  rebuild), and the silent early return was replaced with the same stderr warning 001100 uses.
-- **001100** — the trigger is now implemented for both dialects: MySQL keeps
-  `SIGNAL SQLSTATE '45000'` with `<=>`, PostgreSQL gets a `PL/pgSQL` function using
-  `RAISE ... ERRCODE '45000'` and `IS DISTINCT FROM` (the null-safe counterpart of `<=>`). Same
-  six columns compared, same message.
+- **001000** — the silent early return was replaced with the same stderr warning 001100 already
+  used, so a driver mismatch can no longer drop 35 invariants without saying so. The loud skip
+  is kept for drivers that genuinely cannot add a CHECK to an existing table (SQLite needs a
+  table rebuild).
+- **001100** — one implementation, MySQL: `SIGNAL SQLSTATE '45000'` with `<=>` over the same six
+  columns and the same message.
 
 Applied to the live database and verified:
 
@@ -132,8 +132,8 @@ trigger  live    1   spec    1   ok
 
 ### Proof that they are enforced, not merely present
 
-A row in `pg_constraint` shows a constraint exists; it does not show the database refuses a bad
-write. So the minimum valid parent chain
+A row in `information_schema.table_constraints` shows a constraint exists; it does not show the
+database refuses a bad write. So the minimum valid parent chain
 (`organizations → venues → halls → hall_schema_versions`) was built inside a transaction and then
 deliberately broken — **with a control for every attempt**, because a rejection only means
 something if the same statement succeeds when the value is legal:
@@ -279,12 +279,14 @@ because "no token" and "bad token" are indistinguishable from outside. Only the 
 it. The fix pushes the current request in immediately and keeps the rebinding for long-running
 workers; `tests/Unit/AuthWiringTest` now asserts both calls exist.
 
-**2. A packed IP silently truncates when bound as a string.** `ip_address` is `VARBINARY(16)` per the
-spec, which is `bytea` on PostgreSQL. Binding `inet_pton('127.0.0.1')` as an ordinary string stored
-**one byte** (`7f`) instead of four — no error, no warning — and a `10.x.x.x` address is almost all
-zero bytes, so it stored one byte too. Reproduced in `tools/repro-binary-ip.php`, which also shows the
-forms that do work: `PDO::PARAM_LOB` and `decode('<hex>', 'hex')` are exact. `Nabilet\Core\Support\
-PackedIp` emits the latter, and `UNHEX()` for MySQL — the spec's actual target.
+**2. A packed IP must not be handed to the client as a string.** `ip_address` is `VARBINARY(16)` per
+the spec, and the packed bytes of a private IPv4 address are mostly NUL — `127.0.0.1` is
+`7f 00 00 01`, `10.0.0.1` is `0a 00 00 01`. Any layer that treats the value as a C string stops at
+the first NUL, which would leave **one byte** in the audit trail with no error and nothing to
+notice. `tools/repro-binary-ip.php` measures what a live MySQL server stores for each write form:
+with this driver they all agree and land byte-exact, and `UNHEX('<hex>')` is one of them.
+`Nabilet\Core\Support\PackedIp` emits that, so the write path does not depend on the connection's
+prepare mode or `sql_mode` — the two things a shared host gets to configure.
 
 #### The P0 this uncovered: no module service provider boots
 
@@ -440,23 +442,28 @@ Fixed by publishing Laravel's language files and adding the `ru` set (the produc
 `lang/ru/{validation,auth,passwords,pagination}.php`, with an `attributes` map so the message reads
 «Поле «Сессия» обязательно для заполнения» rather than naming the raw column.
 
-### 7.4 A non-numeric id turned a 422 into a 500
+### 7.4 A malformed id slipped through `exists`
 
-`POST /api/v1/cart/items` with `{"session_id":"nope"}` returned **500**, not 422. Cause, proven by
-reproducing it in isolation:
+`POST /api/v1/cart/items` with `{"session_id":"nope"}` was the original symptom, and MySQL's
+measured behaviour is not what the rule's name suggests. `sessions.id`, `inventory_items.id`,
+`tickets.id`, `users.id`, `venues.id` and `roles.id` are all BIGINT, and MySQL **coerces** the
+string instead of refusing it — measured against a populated `users` table:
 
 ```
-Illuminate\Database\QueryException: SQLSTATE[22P02]: Invalid text representation:
-неверный синтаксис для типа bigint: "nope"
+users.id = 'nope'     -> 0 rows, no error
+users.id = '1abc'     -> 1 row   (matches id = 1)
+users.id = '1  junk'  -> 1 row   (matches id = 1)
 ```
 
-`sessions.id`, `inventory_items.id`, `tickets.id`, `users.id`, `venues.id` and `roles.id` are all
-BIGINT, so `exists:sessions,id` issues `where id = 'nope'` and PostgreSQL rejects the cast. **Any
-client could turn a validation error into a 500 by sending a string.** Fixed at 6 sites by adding
-`bail` + `integer` before `exists`. `bail` is the load-bearing part, not `integer`: Laravel only
-stops evaluating an attribute's remaining rules when `bail` is present, so `integer` failing is not
-enough on its own. `UserController` already had `integer` and was still vulnerable for exactly that
-reason.
+So `exists:users,id` does not fail closed on garbage; it fails **open**, matching whatever
+leading digits the value happens to carry. `'nope'` still ends as a 422 because nothing matches,
+but `'1abc'` is accepted as a reference to record 1.
+
+Fixed at 6 sites by putting `bail` + `integer` before `exists`. `integer` is what actually rejects
+`'1abc'` — `filter_var('1abc', FILTER_VALIDATE_INT)` is `false`. `bail` is what stops the `exists`
+query from running once that has happened, so the verdict no longer rests on the engine's coercion
+rules or on rule ordering; the guarantee becomes explicit rather than incidental. `UserController`
+already had `integer`, so its outcome was already correct — for a reason nothing in the code said.
 
 ### 7.5 A new ratchet, with a mutation test
 
@@ -516,13 +523,13 @@ invariants (§3) and the error contract being violated everywhere (§7).
 | 6 | **`verify-models-schema.php` reported a false positive.** It read only a file's own text for `$table`, so four thin alias models that inherit `$table` from a sibling (`Halls\Models\Hall extends Venues\Models\Hall`) were reported as "no `$table`" and the gate failed on correct code. | The verifier now follows `extends` (resolving `use … as …` aliases) up to 4 levels. Mutation-tested in both directions: a bogus parent `$table` is reported against *both* the parent and the alias; an unresolvable parent still fails as "no `$table`". 67 models now checked, gate green. |
 | 7 | **`verify-migrations.php` crashed (exit 255)** on `2026_09_22_001300_add_remember_token.php`: the Laravel stub had no `rememberToken()`, so the whole gate aborted and every later migration went unchecked. | Added `rememberToken()` to `tools/laravel-stub.php`. Gate now 13/13. |
 | 8 | **`.gitignore` had lost its protections again** (4th occurrence). `Мысли о SEO.txt` — an internal document — was untracked and **not** ignored, one `git add -A` away from publication. No `*.pem` / `*.key` / `id_rsa*` / `.ssh/` patterns either. | Restored the private-document and key-material patterns, plus `!.env.example`. Verified: the document is now ignored, `.env.example` and `composer.lock` remain tracked (they are already in the index), CRLF preserved (135 CRLF / 0 bare LF). No key material exists on disk, so nothing was exposed. |
-| 9 | **The 35 CHECK constraints and the immutability trigger existed in migration files only.** Both migrations were guarded to `mysql|mariadb`, so on PostgreSQL they returned early — and still counted as `Ran`. | Made portable: `pgsql` added to both guards; the trigger reimplemented in `PL/pgSQL` (`IS DISTINCT FROM`, `RAISE … ERRCODE '45000'`) alongside the MySQL version. Applied to the live DB and proven to reject violating writes, with controls. Details and proof in §3. |
+| 9 | **The 35 CHECK constraints and the immutability trigger existed in migration files only.** Both migrations were guarded to `mysql|mariadb` and the deployment ran an engine outside that guard, so they returned early — and still counted as `Ran`. | Guard brought onto the sole supported target (MySQL 8.4, ТЗ §3); the silent early return replaced with the loud warning 001100 already used. Applied to the live DB and proven to reject violating writes, with controls. Details and proof in §3. |
 | 10 | **The §66 envelope was violated on every framework-owned path**, and 34 hand-rolled error responses bypassed `AppError` entirely. | `ApiExceptionRenderer` maps framework exceptions onto the envelope; 34 call sites replaced. Details in §7. |
 | 11 | **No `lang/` directory** → every validation message was a raw key (`validation.required`). | Published the framework's files and added the `ru` set with a field-label map. |
-| 12 | **A non-numeric id produced 500 instead of 422** (`SQLSTATE[22P02]`, BIGINT cast). | `bail` + `integer` added before `exists` at 6 sites. |
+| 12 | **A malformed id passed `exists` instead of failing it.** MySQL coerces a string compared against BIGINT rather than rejecting it, so `id = '1abc'` matches row 1 and `exists` reports the record as present. | `bail` + `integer` added before `exists` at 6 sites; `verify-error-envelope.php` E6 now enforces the guard, with a mutation selftest. Measured evidence in §7.4. |
 | 13 | **No module service provider was ever registered.** `Nabilet\Core\NabiletServiceProvider` — the class whose docblock says it registers each module's provider — is referenced nowhere, and `getLoadedProviders()` returned **0** entries under `Modules\`. `config/nabilet.php` names 9 module providers; none was loaded. Nothing failed loudly, because `routes/api.php` mounts the module route files itself with hardcoded `require`s. | Registered `Nabilet\Modules\Auth\Providers\AuthServiceProvider` — the one provider the auth driver needs. Registering the rest is deliberately deferred: `ServiceProvider::loadRoutesFrom()` is a bare `require` with no prefix, so booting every provider would mount each module's routes a *second* time at an unprefixed path. It must land together with dropping the hardcoded `require`s. See §9. |
 | 14 | **Every protected route answered 500, not 401** — `Auth driver [session_token] for guard [api] is not defined.`, a direct consequence of #13. This is why swapping `auth:sanctum` for `auth:api` changed the symptom instead of fixing it. | The `user_sessions` bearer guard is built and registered (§4.4). All four protected route groups now answer **401** in the §66 envelope, and a live token authenticates end-to-end. `tools/verify-auth-live.php`: 28 checks, 0 failed. |
-| 15 | **`inet_pton()` written into a `VARBINARY(16)` / `bytea` column stored 1 byte instead of 4.** `127.0.0.1` became `7f`. Silent — no error, no truncation warning — and it hits only the private IPv4 ranges, because an IPv6 address has a non-zero first byte. | `Nabilet\Core\Support\PackedIp::toSqlLiteral()` emits `decode('<hex>','hex')` on PostgreSQL and `UNHEX('<hex>')` elsewhere, wrapped in an `Expression`. Proven by `tools/repro-binary-ip.php` (`len=1 hex=7f` for the bug, `len=4 hex=7f000001` for the fix) and by `length(ip_address) = 4` in the live verifier. 15 unit tests. |
+| 15 | **A packed IP handed to the client as a string risks losing everything after the first NUL.** `ip_address` is `VARBINARY(16)` per the spec, and `127.0.0.1` packs to `7f 00 00 01` — four bytes, three of them NUL. A layer that treats that as a C string would store **one byte** (`7f`) instead of four, silently, and it would hit only the private IPv4 ranges, because an IPv6 address has a non-zero first byte. | `Nabilet\Core\Support\PackedIp::toSqlLiteral()` emits `UNHEX('<hex>')`, wrapped in an `Expression`, so the value never passes through client-side escaping. `tools/repro-binary-ip.php` measures every write form against a live server; `length(ip_address) = 4` is asserted in the live verifier. 15 unit tests. |
 | 16 | **`Container::refresh()` does not call the method it is handed.** It registers a rebinding callback for the *next* time the abstract is rebound. The guard therefore kept a null request and refused **every** token — while all thirteen refusal checks passed, because "no token" and "bad token" look identical from outside. | The driver closure now pushes the request in directly (`$guard->setRequest($app->make('request'))`) and keeps `refresh()` for long-running workers. Only the positive-case checks caught it. |
 | 17 | **`role:admin` guards the Halls management routes and resolves to nothing.** `role` is not a registered alias, and no `RequireRole` class exists to alias in the first place; `bootstrap/app.php` aliases only kernel middleware and states that modules register their own. An anonymous caller gets 401 (because `auth:api` runs first); an **authenticated** caller gets **500** — `Target class [role] does not exist`, logged with `"userId":1`. | **Not fixed** — it needs a decision, not a patch. Recorded in §9 with a permanent repro: `tools/repro-role-alias.php`. |
 
@@ -581,14 +588,14 @@ started. The repro scripts are `tools/repro-binary-ip.php` (#15) and `tools/repr
 - **`/api/v1/halls/…` vs `/api/v1/admin/halls/…`.** The spec places these under `admin/`; the
   app declares them public. Adding the segment is a public→admin visibility change, so it is
   recorded rather than applied.
-- **Docker daemon is not running** (`open //./pipe/docker_engine` fails). Irrelevant to this
-  instance — it connects to PostgreSQL, not the MySQL container — but `docker exec
-  nabilet-mysql` is unavailable.
-- **The spec's production target is MySQL; this instance runs PostgreSQL.** The invariants are
-  now enforced on both (§3), but the deployment still does not match the product. Two dialects
-  are maintained in the migrations, and the MySQL path is no longer exercised by anything on
-  this machine — so it can rot silently. Either run MySQL or record PostgreSQL as the supported
-  target.
+- **Docker daemon is not running** (`open //./pipe/docker_engine` fails), so `docker exec
+  nabilet-mysql` is unavailable and the live checks had to run against whatever MySQL the
+  application was configured to reach.
+- **The deployment must run MySQL 8.4.** The invariants are now enforced (§3), and MySQL 8.4 is
+  the sole supported target (ТЗ §3); MariaDB 10.2+ also works. The migrations, the application
+  code and the tooling no longer carry a second dialect, so standing the product up on any other
+  engine puts it straight back into the §3 situation: the guard returns early, the contract is
+  not enforced, and `migrate:status` still reports `Ran`.
 - **Filament errors earlier in the day** (in `storage/logs/laravel-2026-09-22.log`):
   `Panel::maxUploadSize does not exist`, `Panel::twoFactorAuthentication does not exist`,
   `Resource::canViewAny($record)` signature mismatch, `Widget::$view` uninitialised,
@@ -596,7 +603,7 @@ started. The repro scripts are `tools/repro-binary-ip.php` (#15) and `tools/repr
   `/admin/login` returns 200 now, so these are either fixed or confined to pages not probed.
   Not verified page by page.
 - **Log errors from `00:xx`–`11:xx` today** (101 entries) predate the repairs. The
-  PostgreSQL-flavoured SQL errors among them name columns the schema does not have
+  SQL errors among them name columns the schema does not have
   (`notifications.notifiable_type`, `payments.amount_minor`, `seats.hall_id`) — the same
   invented-field class that `verify-models-schema.php` tracks as 88 known entries.
 - **116 implicit-nullable parameters** (`int $x = null` instead of `?int $x = null`) are
@@ -621,8 +628,8 @@ pathspecs, so nothing outside its scope was swept in:
 |--------|-------|
 | `a9ba178` | route prefixes, Halls read path, two verifier gaps, `.gitignore` (21 files, +840/−40) |
 | `b33ad14` | `SERVER-HEALTH.md` §9 |
-| `9fb4d97` | the 35 CHECK constraints and the trigger on PostgreSQL |
-| `0cdcff1` | the `user_sessions` auth guard, the `bytea` IP fix, the `role:admin` repro, and the docs for all three (22 files, +2351/−59) |
+| `9fb4d97` | the 35 CHECK constraints and the immutability trigger |
+| `0cdcff1` | the `user_sessions` auth guard, the packed-IP write path, the `role:admin` repro, and the docs for all three (22 files, +2351/−59) |
 
 One of those 22 files needs calling out: **`app/Modules/Auth/routes/api.php` was untracked** before
 this session, as were `app/Modules/Venues/Halls/{Domain,Http/Resources,Models}/` and

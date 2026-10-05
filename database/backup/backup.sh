@@ -3,7 +3,7 @@
 # NABILET Core - Database Backup Script
 # 
 # Production-ready backup script with:
-# - Incremental backups using WAL archiving (PostgreSQL) or binlog (MySQL)
+# - Consistent logical snapshots via mysqldump --single-transaction
 # - Compression with gzip/zstd
 # - Encryption support (optional)
 # - Retention policy management
@@ -22,19 +22,20 @@ set -euo pipefail
 
 # Configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+# SCRIPT_DIR is <repo>/database/backup, so the repo root is two levels up. Going
+# up one level pointed BACKUP_DIR at <repo>/database/database/backup.
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 BACKUP_DIR="${PROJECT_ROOT}/database/backup"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 DATE=$(date +%Y-%m-%d)
 
 # Database configuration (from environment or .env)
-DB_DRIVER="${DB_CONNECTION:-pgsql}"
+DB_DRIVER="${DB_CONNECTION:-mysql}"
 DB_HOST="${DB_HOST:-localhost}"
-DB_PORT="${DB_PORT:-5432}"
-DB_NAME="${DB_DATABASE:-nabilet_core}"
-DB_USER="${DB_USERNAME:-postgres}"
+DB_PORT="${DB_PORT:-3306}"
+DB_NAME="${DB_DATABASE:-nabilet}"
+DB_USER="${DB_USERNAME:-nabilet}"
 DB_PASSWORD="${DB_PASSWORD:-}"
-PGPASSWORD="${DB_PASSWORD}"  # For pg_dump
 
 # Backup configuration
 RETENTION_DAYS="${RETENTION_DAYS:-30}"
@@ -111,71 +112,47 @@ log "Backup directory: ${BACKUP_DIR}"
 # Create backup filename
 BACKUP_FILENAME="nabilet_${DB_NAME}_${TIMESTAMP}"
 
-# Perform backup based on database driver
-if [[ "$DB_DRIVER" == "pgsql" ]]; then
-    log "Using PostgreSQL backup method"
-    
-    # Check if pg_dump is available
-    if ! command -v pg_dump &> /dev/null; then
-        error "pg_dump not found. Please install PostgreSQL client tools."
-    fi
-    
-    BACKUP_FILE="${BACKUP_DIR}/${BACKUP_FILENAME}.sql"
-    
-    # Perform backup
-    if [[ "$DRY_RUN" == "true" ]]; then
-        log "[DRY-RUN] Would execute: pg_dump -h ${DB_HOST} -p ${DB_PORT} -U ${DB_USER} -d ${DB_NAME} -F c -f ${BACKUP_FILE}"
-    else
-        log "Executing pg_dump..."
-        pg_dump \
-            -h "$DB_HOST" \
-            -p "$DB_PORT" \
-            -U "$DB_USER" \
-            -d "$DB_NAME" \
-            -F c \
-            -f "$BACKUP_FILE" \
-            --verbose \
-            2>&1 | tee "${BACKUP_DIR}/backup_${TIMESTAMP}.log"
-        
-        if [[ ${PIPESTATUS[0]} -ne 0 ]]; then
-            error "pg_dump failed"
-        fi
-    fi
-    
-elif [[ "$DB_DRIVER" == "mysql" ]]; then
-    log "Using MySQL/MariaDB backup method"
-    
-    # Check if mysqldump is available
-    if ! command -v mysqldump &> /dev/null; then
-        error "mysqldump not found. Please install MySQL client tools."
-    fi
-    
-    BACKUP_FILE="${BACKUP_DIR}/${BACKUP_FILENAME}.sql"
-    
-    # Perform backup
-    if [[ "$DRY_RUN" == "true" ]]; then
-        log "[DRY-RUN] Would execute: mysqldump -h ${DB_HOST} -P ${DB_PORT} -u ${DB_USER} ${DB_NAME} > ${BACKUP_FILE}"
-    else
-        log "Executing mysqldump..."
-        mysqldump \
-            -h "$DB_HOST" \
-            -P "$DB_PORT" \
-            -u "$DB_USER" \
-            -p"${DB_PASSWORD}" \
-            --single-transaction \
-            --routines \
-            --triggers \
-            --events \
-            "$DB_NAME" \
-            > "$BACKUP_FILE" \
-            2>&1 | tee "${BACKUP_DIR}/backup_${TIMESTAMP}.log"
-        
-        if [[ ${PIPESTATUS[0]} -ne 0 ]]; then
-            error "mysqldump failed"
-        fi
-    fi
+# Perform backup. MySQL/MariaDB is the only supported engine (ТЗ §3), and the
+# guard fails loudly rather than silently: a backup script that quietly backs up
+# nothing is worse than one that refuses to run.
+if [[ "$DB_DRIVER" != "mysql" && "$DB_DRIVER" != "mariadb" ]]; then
+    error "Unsupported database driver: ${DB_DRIVER}. Only mysql/mariadb is supported (ТЗ §3)."
+fi
+
+log "Using MySQL/MariaDB backup method"
+
+# Check if mysqldump is available
+if ! command -v mysqldump &> /dev/null; then
+    error "mysqldump not found. Please install MySQL client tools."
+fi
+
+BACKUP_FILE="${BACKUP_DIR}/${BACKUP_FILENAME}.sql"
+
+# Perform backup
+if [[ "$DRY_RUN" == "true" ]]; then
+    log "[DRY-RUN] Would execute: mysqldump -h ${DB_HOST} -P ${DB_PORT} -u ${DB_USER} ${DB_NAME} > ${BACKUP_FILE}"
 else
-    error "Unsupported database driver: ${DB_DRIVER}. Supported: pgsql, mysql"
+    log "Executing mysqldump..."
+    # --triggers is explicit because the schema has one — the schema_version
+    # immutability guard — and a dump without it restores a database that no
+    # longer enforces the same contract. --routines and --events are deliberately
+    # absent: the schema defines neither, and requesting them needs privileges a
+    # shared-hosting user is usually not granted, which would fail the whole
+    # backup for no benefit.
+    mysqldump \
+        -h "$DB_HOST" \
+        -P "$DB_PORT" \
+        -u "$DB_USER" \
+        -p"${DB_PASSWORD}" \
+        --single-transaction \
+        --triggers \
+        "$DB_NAME" \
+        > "$BACKUP_FILE" \
+        2>&1 | tee "${BACKUP_DIR}/backup_${TIMESTAMP}.log"
+
+    if [[ ${PIPESTATUS[0]} -ne 0 ]]; then
+        error "mysqldump failed"
+    fi
 fi
 
 # Compress backup
@@ -234,8 +211,12 @@ else
     sha256sum "$BACKUP_FILE" > "${BACKUP_FILE}.sha256"
 fi
 
-# Get backup size
-BACKUP_SIZE=$(du -h "$BACKUP_FILE" | cut -f1)
+# Get backup size. Guarded because `--dry-run` never creates the file, and with
+# `set -o pipefail` a failing `du` would abort the script through `set -e`.
+BACKUP_SIZE="n/a"
+if [[ -f "$BACKUP_FILE" ]]; then
+    BACKUP_SIZE=$(du -h "$BACKUP_FILE" | cut -f1)
+fi
 log "Backup completed: ${BACKUP_FILE} (${BACKUP_SIZE})"
 
 # Upload to S3 (optional)
@@ -293,7 +274,14 @@ echo ""
 echo "Summary:"
 echo "  File: ${BACKUP_FILE}"
 echo "  Size: ${BACKUP_SIZE}"
-echo "  Checksum: $(cat "${BACKUP_FILE}.sha256" | cut -d' ' -f1)"
+# Same guard as BACKUP_SIZE: in `--dry-run` there is no checksum file, and an
+# unguarded `cat` inside a pipeline trips `set -o pipefail` after a run that
+# otherwise succeeded.
+if [[ -f "${BACKUP_FILE}.sha256" ]]; then
+    echo "  Checksum: $(cut -d' ' -f1 < "${BACKUP_FILE}.sha256")"
+else
+    echo "  Checksum: n/a"
+fi
 echo ""
 
 exit 0

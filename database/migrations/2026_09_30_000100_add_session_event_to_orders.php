@@ -25,25 +25,14 @@ return new class extends Migration
         });
 
         // Backfill: заказ помнит корзину → корзина помнит сеанс → сеанс событие.
-        if (DB::connection()->getDriverName() === 'pgsql') {
-            DB::statement(
-                'UPDATE orders o
-                   SET session_id = c.session_id,
-                       event_id   = s.event_id
-                  FROM carts c
-                  JOIN sessions s ON s.id = c.session_id
-                 WHERE c.id = o.cart_id
-                   AND o.session_id IS NULL'
-            );
-        } else {
-            DB::statement(
-                'UPDATE orders o
-                    JOIN carts c ON c.id = o.cart_id
-                    JOIN sessions s ON s.id = c.session_id
-                   SET o.session_id = c.session_id, o.event_id = s.event_id
-                 WHERE o.session_id IS NULL'
-            );
-        }
+        // MySQL multi-table UPDATE ... JOIN syntax (the sole supported target).
+        DB::statement(
+            'UPDATE orders o
+                JOIN carts c ON c.id = o.cart_id
+                JOIN sessions s ON s.id = c.session_id
+               SET o.session_id = c.session_id, o.event_id = s.event_id
+             WHERE o.session_id IS NULL'
+        );
     }
 
     public function down(): void

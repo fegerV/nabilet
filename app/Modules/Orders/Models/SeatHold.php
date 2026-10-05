@@ -25,6 +25,15 @@ use Nabilet\Modules\Cart\Models\Cart;
  */
 class SeatHold extends Model
 {
+    /**
+     * `seat_holds` has `created_at` but no `updated_at` (see
+     * nabilet_core_spec/migrations.sql). Without this, Eloquent adds
+     * `seat_holds.updated_at = …` to every UPDATE and MySQL rejects it with 1054 —
+     * which is how `OrderService::cancelOrder()` failed, releasing the holds of a
+     * cancelled order. Same remedy as `OrderItem`.
+     */
+    public const UPDATED_AT = null;
+
     protected $table = 'seat_holds';
 
     protected $fillable = [

@@ -57,7 +57,7 @@ return new class extends Migration
             $table->char('public_id', 26);
             $table->unsignedBigInteger('organization_id')->nullable();
             $table->string('name', 255);
-            $table->string('status', 32);
+            $table->string('status', 32)->default('draft');
             $table->dateTime('starts_at', 6)->nullable();
             $table->dateTime('ends_at', 6)->nullable();
             $table->dateTime('created_at', 6);
@@ -124,15 +124,13 @@ return new class extends Migration
             // 'lengths' index option (Array to string conversion in MySqlGrammar::compileKey).
             // Equivalent raw DDL with prefix length per spec migrations.sql:863.
         });
-        // MySQL/MariaDB use prefix syntax `col(255)`; Postgres uses substr() in the index expression.
-        // MySQL has no `CREATE INDEX IF NOT EXISTS` (Postgres/SQLite syntax — MySQL rejects it
-        // with error 1064). No existence guard is needed: this block runs only when
-        // `heatmap_events` has just been created, so the index cannot already exist.
-        if (DB::connection()->getDriverName() === 'pgsql') {
-            DB::statement('CREATE INDEX IF NOT EXISTS idx_heatmap_page_time ON heatmap_events ((substr(page_url, 1, 255)), occurred_at)');
-        } else {
-            DB::statement('CREATE INDEX idx_heatmap_page_time ON heatmap_events (page_url(255), occurred_at)');
-        }
+        // MySQL/MariaDB prefix syntax `col(255)`. Not expressed through Blueprint:
+        // `CREATE INDEX IF NOT EXISTS` is not MySQL syntax and is rejected with error
+        // 1064, and the `lengths` index option is broken in the Laravel 13 MySQL
+        // grammar (see above). No existence guard is needed either — this block runs
+        // only when `heatmap_events` has just been created, so the index cannot
+        // already exist.
+        DB::statement('CREATE INDEX idx_heatmap_page_time ON heatmap_events (page_url(255), occurred_at)');
         }
 
         if (!Schema::hasTable("embed_domains")) {

@@ -39,7 +39,7 @@ return new class extends Migration
             $table->string('address', 500)->nullable();
             $table->decimal('latitude', 10, 7)->nullable();
             $table->decimal('longitude', 10, 7)->nullable();
-            $table->string('status', 32);
+            $table->string('status', 32)->default('active');
             $table->dateTime('created_at', 6);
             $table->dateTime('updated_at', 6);
             $table->index(['organization_id', 'city'], "idx_venues_org_city");
@@ -56,7 +56,7 @@ return new class extends Migration
             $table->unsignedInteger('capacity')->nullable();
             $table->unsignedInteger('width')->nullable();
             $table->unsignedInteger('height')->nullable();
-            $table->string('status', 32);
+            $table->string('status', 32)->default('active');
             $table->dateTime('created_at', 6);
             $table->dateTime('updated_at', 6);
             $table->unique(['public_id'], "uq_halls_public_id");
@@ -68,7 +68,7 @@ return new class extends Migration
             $table->char('public_id', 26);
             $table->unsignedBigInteger('hall_id');
             $table->unsignedInteger('version');
-            $table->string('status', 32);
+            $table->string('status', 32)->default('draft');
             $table->unsignedInteger('width')->nullable();
             $table->unsignedInteger('height')->nullable();
             $table->string('background_url', 2048)->nullable();
@@ -87,7 +87,7 @@ return new class extends Migration
             $table->unsignedBigInteger('schema_version_id');
             $table->string('name', 255);
             $table->string('code', 100);
-            $table->string('type', 32);
+            $table->string('type', 32)->default('seated');
             $table->decimal('x', 12, 3)->default(0.000);
             $table->decimal('y', 12, 3)->default(0.000);
             $table->decimal('width', 12, 3)->nullable();
@@ -107,7 +107,7 @@ return new class extends Migration
             $table->string('number', 50);
             $table->string('name', 100)->nullable();
             $table->bigInteger('price_amount')->default(0);
-            $table->char('currency', 3);
+            $table->char('currency', 3)->default('RUB');
             $table->decimal('x', 12, 3)->nullable();
             $table->decimal('y', 12, 3)->nullable();
             $table->decimal('rotation', 8, 3)->default(0.000);
@@ -128,8 +128,8 @@ return new class extends Migration
             $table->decimal('width', 12, 3)->nullable();
             $table->decimal('height', 12, 3)->nullable();
             $table->decimal('rotation', 8, 3)->default(0.000);
-            $table->string('type', 32);
-            $table->string('status', 32);
+            $table->string('type', 32)->default('standard');
+            $table->string('status', 32)->default('active');
             $table->json('metadata_json')->nullable();
             $table->dateTime('created_at', 6);
             $table->dateTime('updated_at', 6);
@@ -161,7 +161,7 @@ return new class extends Migration
             $table->string('name', 255);
             $table->unsignedInteger('capacity');
             $table->bigInteger('price_amount')->default(0);
-            $table->char('currency', 3);
+            $table->char('currency', 3)->default('RUB');
             $table->dateTime('created_at', 6);
             $table->dateTime('updated_at', 6);
             $table->unique(['public_id'], "uq_standing_public_id");

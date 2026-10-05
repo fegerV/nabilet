@@ -23,15 +23,24 @@ declare(strict_types=1);
  *      chains — a missing Blueprint method or a Schema::table() on a table that
  *      does not exist yet is a hard failure here.
  *   2. Parse nabilet_core_spec/migrations.sql into the same shape (tables, columns,
- *      indexes, foreign keys, CHECK constraints, triggers).
+ *      column defaults, indexes, foreign keys, CHECK constraints, triggers).
  *   3. Diff. Any difference is a failure; the report names it.
+ *
+ * WHY COLUMN DEFAULTS ARE COMPARED
+ *   They were not, and that blind spot let a real defect through: gen-migrations.py
+ *   read information_schema.COLUMN_DEFAULT (which reports `active`, unquoted) but only
+ *   recognised the quoted `'active'` form, so it dropped every string default in the
+ *   schema — 44 columns across 36 tables. Column NAMES still matched, so this tool was
+ *   green while `users.status` (NOT NULL, default in the spec) had none, and every
+ *   registration failed with MySQL 1364. Names are not enough: a default is part of the
+ *   column's contract, and the schema is not equivalent without it.
  *
  * WHAT IT CANNOT PROVE
  *   - That the SQL executes on MySQL. This sandbox has no pdo_sqlite and cannot
  *     reach mysqld. The authoritative execution test is applying migrations.sql
  *     to MySQL 8.4 — already done, and the source of the input dumps.
- *   - Column TYPE equivalence (VARCHAR(255) vs string(255)). Only NAMES are
- *     compared; types were transcribed from information_schema and are checked
+ *   - Column TYPE equivalence (VARCHAR(255) vs string(255)). Only NAMES and DEFAULTS
+ *     are compared; types were transcribed from information_schema and are checked
  *     there, not re-checked here.
  */
 
@@ -87,6 +96,55 @@ function diffReport(array $missing, array $extra, string $what): string
     return $what . ' — ' . implode('; ', $parts);
 }
 
+/**
+ * One canonical spelling for a DEFAULT, from either side.
+ *
+ * The two sources say the same thing in different dialects:
+ *
+ *   spec SQL                    recorded from the migration
+ *   --------------------------  -------------------------------------
+ *   DEFAULT 'active'            'active'        (stub quotes strings)
+ *   DEFAULT 0.00                0               (PHP casts the literal to float)
+ *   DEFAULT CURRENT_TIMESTAMP   CURRENT_TIMESTAMP
+ *   DEFAULT NULL                hasDefault = false
+ *
+ * Comparing the raw text would report every one of those as drift, so both sides are
+ * folded into the value itself: `s:` for a string, `n:` for a number (compared as a
+ * float, so 0.00 ≡ 0), `ts:` for a current-timestamp, and null for "no default".
+ * A NULL default and an absent default are the same thing here, deliberately — the
+ * schema cannot tell them apart and neither should the diff.
+ */
+function normalizeDefault(?string $raw): ?string
+{
+    if ($raw === null) {
+        return null;
+    }
+
+    $raw = trim($raw);
+
+    if ($raw === '') {
+        return null;
+    }
+
+    if (preg_match("/^'(.*)'$/s", $raw, $m)) {
+        return 's:' . str_replace("''", "'", $m[1]);
+    }
+
+    if (strcasecmp($raw, 'NULL') === 0) {
+        return null;
+    }
+
+    if (preg_match('/^(?:CURRENT_TIMESTAMP(?:\(\d*\))?|NOW\(\))$/i', $raw)) {
+        return 'ts:CURRENT_TIMESTAMP';
+    }
+
+    if (is_numeric($raw)) {
+        return 'n:' . (string) (float) $raw;
+    }
+
+    return 'x:' . $raw;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 echo "\nNABILET Core — migration verification\n";
 echo str_repeat('─', 74), "\n";
@@ -138,7 +196,23 @@ foreach ($rawStatements as $rawSql) {
         if (isset($tables[$rm[1]])) {
             $tables[$rm[1]]->indexes[] = ['columns' => [], 'type' => 'index', 'name' => $rm[2]];
         }
+
+        continue;
     }
+
+    // NOTE — why raw `ALTER … SET DEFAULT` is deliberately NOT folded in here.
+    //
+    // 2026_10_05_000100_restore_spec_column_defaults.php exists to repair installs
+    // built before the generator fix, and it sets all 85 spec defaults through raw
+    // DDL. Folding it in — the way raw index DDL is folded above — would make the
+    // defaults diff below vacuous: delete `->default('active')` from the identity
+    // migration and the check would still pass, because the repair would cover it.
+    // Verified: it does exactly that. The two cases are not alike — an index created
+    // by raw DDL has no other declaration anywhere, whereas a column default is
+    // declared by the CREATE TABLE migration that owns the column. So the diff
+    // compares the spec against the *generated* migrations, which is where the bug
+    // was and where a regeneration could reintroduce it. The repair migration is a
+    // one-off static transcription; what it produces is confirmed by applying it.
 }
 
 printf("\n  %d migrations, %d tables declared, %d raw SQL statements\n",
@@ -170,6 +244,7 @@ foreach ($matches as $m) {
     $body = $m[2];
     $columns = [];
     $indexes = [];
+    $defaults = [];
 
     foreach (explode("\n", $body) as $line) {
         $line = trim($line);
@@ -212,10 +287,26 @@ foreach ($matches as $m) {
         // A plain column definition: first token is the column name.
         if (preg_match('/^`?(\w+)`?\s+/', $line, $cm)) {
             $columns[] = $cm[1];
+
+            // DEFAULT <literal>: a quoted string, a number, or a bare keyword such
+            // as CURRENT_TIMESTAMP. Captured as written — `normalizeDefault()`
+            // folds it against what the migration recorded. Bounded so that an
+            // `ON UPDATE` clause or a trailing comment is not swept in.
+            if (preg_match(
+                "/\bDEFAULT\s+('(?:[^']*)'|[\w()]+|-?\d+(?:\.\d+)?)/i",
+                $line,
+                $dm
+            )) {
+                $defaults[$cm[1]] = $dm[1];
+            }
         }
     }
 
-    $spec['tables'][$table] = ['columns' => $columns, 'indexes' => $indexes];
+    $spec['tables'][$table] = [
+        'columns' => $columns,
+        'indexes' => $indexes,
+        'defaults' => $defaults,
+    ];
 }
 
 // ALTER TABLE carries three things the CREATE blocks do not: columns added by the
@@ -237,6 +328,20 @@ foreach ($alters as $alter) {
                     $spec['tables'][$table]['indexes'][] = $name;
                 }
             }
+        }
+    }
+
+    // A DEFAULT on an ADD COLUMN is part of that column's contract too. None of the
+    // current bundle has one, but the CREATE TABLE path checks for it and a column
+    // added by ALTER would otherwise be the single place the diff looked away.
+    if (preg_match_all(
+        "/ADD\s+COLUMN\s+`?(\w+)`?\s+[^,;]*?\bDEFAULT\s+('(?:[^']*)'|[\w()]+|-?\d+(?:\.\d+)?)/i",
+        $body,
+        $dm,
+        PREG_SET_ORDER
+    )) {
+        foreach ($dm as $d) {
+            $spec['tables'][$table]['defaults'][$d[1]] = $d[2];
         }
     }
 
@@ -420,6 +525,66 @@ check('same columns on every table', function () use ($tables, $spec): void {
                 array_values(array_diff($have, $want)),
                 'columns'
             );
+        }
+    }
+
+    assertTrue($problems === [], implode("\n      ", $problems));
+});
+
+/**
+ * Column defaults are compared, not just column names.
+ *
+ * This is the check that was missing. Column names matched perfectly while 44 columns
+ * had silently lost their DEFAULT, because the generator dropped string defaults on
+ * the way from information_schema. A default is part of what a column *is*: `status
+ * VARCHAR(32) NOT NULL DEFAULT 'active'` and `status VARCHAR(32) NOT NULL` accept
+ * different INSERTs, and the second one rejects every registration.
+ *
+ * Both sides are folded through `normalizeDefault()` first, so `'active'`/`active`,
+ * `0.00`/`0` and a NULL default versus no default are not reported as drift.
+ */
+check('same column defaults on every table', function () use ($tables, $spec): void {
+    $problems = [];
+
+    foreach ($spec['tables'] as $name => $definition) {
+        if (! isset($tables[$name])) {
+            continue; // already reported above
+        }
+
+        $want = [];
+        foreach ($definition['defaults'] ?? [] as $column => $literal) {
+            $normalized = normalizeDefault($literal);
+            if ($normalized !== null) {
+                $want[$column] = $normalized;
+            }
+        }
+
+        $have = [];
+        foreach ($tables[$name]->columns as $column) {
+            if ($column->hasDefault && ($normalized = normalizeDefault($column->default)) !== null) {
+                $have[$column->name] = $normalized;
+            }
+        }
+
+        $missing = [];
+        $extra = [];
+
+        foreach ($want as $column => $value) {
+            if (! array_key_exists($column, $have)) {
+                $missing[] = $column . ' (spec: ' . $value . ')';
+            } elseif ($have[$column] !== $value) {
+                $missing[] = $column . ' (spec: ' . $value . ', migration: ' . $have[$column] . ')';
+            }
+        }
+
+        foreach ($have as $column => $value) {
+            if (! array_key_exists($column, $want)) {
+                $extra[] = $column . ' (migration: ' . $value . ')';
+            }
+        }
+
+        if ($missing !== [] || $extra !== []) {
+            $problems[] = $name . ': ' . diffReport($missing, $extra, 'defaults');
         }
     }
 

@@ -33,8 +33,8 @@ return new class extends Migration
             $table->string('provider', 64);
             $table->string('provider_payment_id', 255)->nullable();
             $table->bigInteger('amount');
-            $table->char('currency', 3);
-            $table->string('status', 32);
+            $table->char('currency', 3)->default('RUB');
+            $table->string('status', 32)->default('pending');
             $table->string('payment_url', 2048)->nullable();
             $table->string('idempotency_key', 255);
             $table->json('metadata_json')->nullable();
@@ -68,9 +68,9 @@ return new class extends Migration
             $table->unsignedBigInteger('order_id');
             $table->unsignedBigInteger('payment_id');
             $table->bigInteger('amount');
-            $table->char('currency', 3);
+            $table->char('currency', 3)->default('RUB');
             $table->string('reason', 500)->nullable();
-            $table->string('status', 32);
+            $table->string('status', 32)->default('requested');
             $table->string('provider_refund_id', 255)->nullable();
             $table->dateTime('created_at', 6);
             $table->dateTime('completed_at', 6)->nullable();
@@ -86,7 +86,7 @@ return new class extends Migration
             $table->char('public_id', 26);
             $table->unsignedBigInteger('organization_id')->nullable();
             $table->string('name', 255);
-            $table->string('format', 32);
+            $table->string('format', 32)->default('mobile');
             $table->unsignedInteger('width');
             $table->unsignedInteger('height');
             $table->json('template_json');
@@ -110,7 +110,7 @@ return new class extends Migration
             $table->unsignedBigInteger('seat_id')->nullable();
             $table->unsignedBigInteger('standing_zone_id')->nullable();
             $table->string('holder_name', 255)->nullable();
-            $table->string('status', 32);
+            $table->string('status', 32)->default('issued');
             $table->unsignedSmallInteger('qr_version')->default(1);
             $table->char('qr_token_hash', 64);
             $table->dateTime('issued_at', 6);
@@ -136,9 +136,9 @@ return new class extends Migration
             $table->unsignedBigInteger('organization_id');
             $table->string('name', 255);
             $table->char('device_token_hash', 64);
-            $table->string('platform', 32);
+            $table->string('platform', 32)->default('android');
             $table->string('app_version', 50)->nullable();
-            $table->string('status', 32);
+            $table->string('status', 32)->default('active');
             $table->dateTime('last_seen_at', 6)->nullable();
             $table->dateTime('created_at', 6);
             $table->dateTime('updated_at', 6);
@@ -179,7 +179,7 @@ return new class extends Migration
             $table->unsignedInteger('ticket_count')->default(0);
             $table->unsignedInteger('revoked_count')->default(0);
             $table->json('payload_json')->nullable();
-            $table->string('status', 32);
+            $table->string('status', 32)->default('generated');
             $table->dateTime('generated_at', 6);
             $table->dateTime('downloaded_at', 6)->nullable();
             $table->dateTime('expires_at', 6)->nullable();

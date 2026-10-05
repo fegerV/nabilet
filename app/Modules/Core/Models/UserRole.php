@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Nabilet\Modules\Core\Models;
 
 use Illuminate\Database\Eloquent\Relations\Pivot;
+use Nabilet\Modules\Core\Organizations\Models\Organization;
+use Nabilet\Modules\Core\Users\Models\User;
 
 /**
  * UserRole Model

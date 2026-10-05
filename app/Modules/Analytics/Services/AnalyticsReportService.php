@@ -57,7 +57,11 @@ class AnalyticsReportService
             ->where('event_name', 'page_view')
             ->where('occurred_at', '>=', $since)
             ->distinct()
-            ->count(DB::raw('COALESCE(user_id::text, anonymous_id)'));
+            // `user_id` is BIGINT and `anonymous_id` is CHAR(36); the two must be
+            // compared in one type or the distinct collapses to nothing. MySQL's
+            // cast spelling is `CAST(x AS CHAR)` — this read `user_id::text`, which
+            // is not MySQL syntax at all and made the query fail with error 1064.
+            ->count(DB::raw('COALESCE(CAST(user_id AS CHAR), anonymous_id)'));
 
         return [
             'totalSales' => $totalSales,

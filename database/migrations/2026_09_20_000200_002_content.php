@@ -34,7 +34,7 @@ return new class extends Migration
             $table->char('public_id', 26);
             $table->string('name', 150);
             $table->string('slug', 150);
-            $table->string('status', 32);
+            $table->string('status', 32)->default('active');
             $table->unique(['public_id'], "uq_event_categories_public_id");
             $table->unique(['slug'], "uq_event_categories_slug");
         });
@@ -52,7 +52,7 @@ return new class extends Migration
             $table->string('cover', 2048)->nullable();
             $table->string('age_limit', 32)->nullable();
             $table->unsignedInteger('duration_minutes')->nullable();
-            $table->string('status', 32);
+            $table->string('status', 32)->default('draft');
             $table->dateTime('published_at', 6)->nullable();
             $table->string('seo_title', 500)->nullable();
             $table->string('seo_description', 1000)->nullable();
@@ -112,7 +112,7 @@ return new class extends Migration
             $table->string('title', 500);
             $table->string('slug', 255);
             $table->longText('content')->nullable();
-            $table->string('status', 32);
+            $table->string('status', 32)->default('draft');
             $table->dateTime('published_at', 6)->nullable();
             $table->dateTime('created_at', 6);
             $table->dateTime('updated_at', 6);
@@ -124,7 +124,7 @@ return new class extends Migration
             $table->id();
             $table->string('entity_type', 100);
             $table->unsignedBigInteger('entity_id');
-            $table->string('locale', 10);
+            $table->string('locale', 10)->default('ru');
             $table->string('title', 500)->nullable();
             $table->string('description', 1000)->nullable();
             $table->string('canonical_url', 2048)->nullable();
@@ -152,13 +152,17 @@ return new class extends Migration
         // schema uses a prefix index — UNIQUE KEY uq_redirect_source (source(512)) —
         // see migrations.sql. Blueprint::unique() cannot express an index prefix
         // length, so it is added with a raw statement to keep migrations ≡ schema.
+        //
+        // MySQL/MariaDB only, and deliberately so: MySQL has no `CREATE INDEX IF NOT
+        // EXISTS`, and the prefix form `source(512)` is the one construct that makes
+        // the index fit. MySQL 8.4 is the sole supported target.
         DB::statement('ALTER TABLE `redirects` ADD UNIQUE KEY `uq_redirect_source` (`source`(512))');
 
         Schema::create("media_assets", function (Blueprint $table): void {
             $table->id();
             $table->char('public_id', 26);
             $table->unsignedBigInteger('organization_id')->nullable();
-            $table->string('disk', 64);
+            $table->string('disk', 64)->default('local');
             $table->string('path', 1024);
             $table->string('filename', 255);
             $table->string('mime_type', 150);
@@ -183,7 +187,7 @@ return new class extends Migration
             $table->unsignedBigInteger('media_asset_id');
             $table->string('entity_type', 100);
             $table->unsignedBigInteger('entity_id');
-            $table->string('role', 64);
+            $table->string('role', 64)->default('gallery');
             $table->unsignedInteger('position')->default(0);
             $table->dateTime('created_at', 6);
             $table->index(['media_asset_id'], "idx_media_links_asset");

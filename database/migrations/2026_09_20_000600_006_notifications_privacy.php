@@ -27,7 +27,7 @@ return new class extends Migration
             $table->char('public_id', 26);
             $table->string('code', 100);
             $table->string('channel', 32);
-            $table->string('locale', 10);
+            $table->string('locale', 10)->default('ru');
             $table->string('subject', 500)->nullable();
             $table->longText('body_text')->nullable();
             $table->longText('body_html')->nullable();
@@ -45,7 +45,7 @@ return new class extends Migration
             $table->string('channel', 32);
             $table->string('type', 100);
             $table->string('recipient', 500)->nullable();
-            $table->string('status', 32);
+            $table->string('status', 32)->default('queued');
             $table->string('provider_message_id', 255)->nullable();
             $table->json('payload_json')->nullable();
             $table->dateTime('sent_at', 6)->nullable();
@@ -76,7 +76,7 @@ return new class extends Migration
             $table->char('public_id', 26);
             $table->unsignedBigInteger('user_id')->nullable();
             $table->string('type', 32);
-            $table->string('status', 32);
+            $table->string('status', 32)->default('requested');
             $table->json('payload_json')->nullable();
             $table->dateTime('created_at', 6);
             $table->dateTime('completed_at', 6)->nullable();

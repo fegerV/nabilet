@@ -18,9 +18,10 @@ declare(strict_types=1);
  *   [2] Does the app serve the paths the spec declares?
  *
  * Both were green-on-paper and false-in-fact on 2026-09-22:
- *   - the migrations are guarded to mysql/mariadb, the server ran pgsql, so all
- *     35 CHECK constraints and the trigger were absent while `migrate:status`
- *     reported every migration as "Ran";
+ *   - every migration that adds a CHECK constraint or the trigger is guarded by
+ *     driver, and returned early on the engine the server was actually running,
+ *     so all 35 CHECK constraints and the trigger were absent while
+ *     `migrate:status` reported every migration as "Ran";
  *   - 53 API routes carried a second version prefix (/api/v1/v1/events), so only
  *     3 of the spec's 81 paths were reachable.
  *
@@ -122,34 +123,19 @@ if (count($specTables) !== $expectedTables || count($specCols) !== $expectedColu
 }
 echo $line(sprintf('  spec parsed: %d tables, %d columns (self-check ok)', count($specTables), count($specCols)));
 
-// Live counts. Postgres reports every NOT NULL column as a CHECK constraint in
-// information_schema, which inflates 35 into hundreds; pg_constraint is the
-// honest source.
-if ($driver === 'pgsql') {
-    $live = [
-        'fk' => (int) DB::selectOne("SELECT count(*) c FROM pg_constraint x
-            JOIN pg_namespace n ON n.oid=x.connamespace WHERE n.nspname='public' AND x.contype='f'")->c,
-        'unique' => (int) DB::selectOne("SELECT count(*) c FROM pg_constraint x
-            JOIN pg_namespace n ON n.oid=x.connamespace WHERE n.nspname='public' AND x.contype='u'")->c,
-        'check' => (int) DB::selectOne("SELECT count(*) c FROM pg_constraint x
-            JOIN pg_namespace n ON n.oid=x.connamespace WHERE n.nspname='public' AND x.contype='c'")->c,
-        'trigger' => (int) DB::selectOne("SELECT count(*) c FROM pg_trigger t
-            JOIN pg_class cl ON cl.oid=t.tgrelid
-            JOIN pg_namespace n ON n.oid=cl.relnamespace
-            WHERE n.nspname='public' AND NOT t.tgisinternal")->c,
-    ];
-} else {
-    $live = [
-        'fk' => (int) DB::selectOne("SELECT count(*) c FROM information_schema.table_constraints
-            WHERE constraint_schema=DATABASE() AND constraint_type='FOREIGN KEY'")->c,
-        'unique' => (int) DB::selectOne("SELECT count(*) c FROM information_schema.table_constraints
-            WHERE constraint_schema=DATABASE() AND constraint_type='UNIQUE'")->c,
-        'check' => (int) DB::selectOne("SELECT count(*) c FROM information_schema.table_constraints
-            WHERE constraint_schema=DATABASE() AND constraint_type='CHECK'")->c,
-        'trigger' => (int) DB::selectOne("SELECT count(*) c FROM information_schema.triggers
-            WHERE trigger_schema=DATABASE()")->c,
-    ];
-}
+// Live counts, from MySQL's own bookkeeping. `constraint_schema=DATABASE()` keeps
+// it to this database: a shared host puts other tenants' schemas in the same
+// server, and counting those would make the numbers meaningless.
+$live = [
+    'fk' => (int) DB::selectOne("SELECT count(*) c FROM information_schema.table_constraints
+        WHERE constraint_schema=DATABASE() AND constraint_type='FOREIGN KEY'")->c,
+    'unique' => (int) DB::selectOne("SELECT count(*) c FROM information_schema.table_constraints
+        WHERE constraint_schema=DATABASE() AND constraint_type='UNIQUE'")->c,
+    'check' => (int) DB::selectOne("SELECT count(*) c FROM information_schema.table_constraints
+        WHERE constraint_schema=DATABASE() AND constraint_type='CHECK'")->c,
+    'trigger' => (int) DB::selectOne("SELECT count(*) c FROM information_schema.triggers
+        WHERE trigger_schema=DATABASE()")->c,
+];
 
 $expect = ['fk' => 93, 'unique' => 81, 'check' => 35, 'trigger' => 1];
 foreach ($expect as $k => $want) {
@@ -164,14 +150,14 @@ foreach ($expect as $k => $want) {
 if ($live['check'] === 0 && $expect['check'] > 0) {
     echo $line();
     echo $line('  ! The database enforces none of the spec\'s CHECK constraints.');
-    echo $line('    The migrations that add them are guarded to mysql/mariadb and');
-    echo $line('    return early elsewhere, so `migrate:status` still says "Ran".');
-    echo $line('    Status green does not mean the invariant exists.');
+    echo $line('    The migrations that add them are guarded by driver and return');
+    echo $line('    early when the guard does not match, so `migrate:status` still');
+    echo $line('    says "Ran". Status green does not mean the invariant exists.');
 }
 
 // Column-level diff.
-$rows = DB::select("SELECT table_name, column_name FROM information_schema.columns
-                    WHERE table_schema=" . ($driver === 'pgsql' ? "'public'" : 'DATABASE()'));
+$rows = DB::select('SELECT table_name, column_name FROM information_schema.columns
+                    WHERE table_schema=DATABASE()');
 $liveCols = [];
 foreach ($rows as $r) {
     // Laravel's own bookkeeping table is not part of the domain schema.

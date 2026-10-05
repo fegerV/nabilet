@@ -19,17 +19,18 @@ set -euo pipefail
 
 # Configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+# SCRIPT_DIR is <repo>/database/backup, so the repo root is two levels up. Going
+# up one level pointed BACKUP_DIR at <repo>/database/database/backup.
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 BACKUP_DIR="${PROJECT_ROOT}/database/backup"
 
 # Database configuration (from environment or .env)
-DB_DRIVER="${DB_CONNECTION:-pgsql}"
+DB_DRIVER="${DB_CONNECTION:-mysql}"
 DB_HOST="${DB_HOST:-localhost}"
-DB_PORT="${DB_PORT:-5432}"
-DB_NAME="${DB_DATABASE:-nabilet_core}"
-DB_USER="${DB_USERNAME:-postgres}"
+DB_PORT="${DB_PORT:-3306}"
+DB_NAME="${DB_DATABASE:-nabilet}"
+DB_USER="${DB_USERNAME:-nabilet}"
 DB_PASSWORD="${DB_PASSWORD:-}"
-PGPASSWORD="${DB_PASSWORD}"  # For psql
 
 # Colors for output
 RED='\033[0;31m'
@@ -61,7 +62,7 @@ if [[ $# -lt 1 ]]; then
     echo "  --dry-run       Show what would be done"
     echo ""
     echo "Examples:"
-    echo "  $0 nabilet_nabilet_core_20260101_120000.sql.gz"
+    echo "  $0 nabilet_nabilet_20260101_120000.sql.gz"
     echo "  $0 latest  # Restores most recent backup"
     exit 1
 fi
@@ -204,94 +205,49 @@ PRE_RESTORE_BACKUP="${BACKUP_DIR}/pre_restore_$(date +%Y%m%d_%H%M%S).sql.gz"
 if [[ "$DRY_RUN" == "true" ]]; then
     log "[DRY-RUN] Would create pre-restore backup: ${PRE_RESTORE_BACKUP}"
 else
-    if [[ "$DB_DRIVER" == "pgsql" ]]; then
-        pg_dump -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -F c | gzip -9 > "$PRE_RESTORE_BACKUP"
-    elif [[ "$DB_DRIVER" == "mysql" ]]; then
-        mysqldump -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" -p"${DB_PASSWORD}" "$DB_NAME" | gzip -9 > "$PRE_RESTORE_BACKUP"
-    fi
+    # --triggers is explicit: the schema has one — the schema_version
+    # immutability guard — and a rollback that loses it restores a database with
+    # a weaker contract than the one it replaced.
+    mysqldump -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" -p"${DB_PASSWORD}" \
+        --single-transaction --triggers "$DB_NAME" | gzip -9 > "$PRE_RESTORE_BACKUP"
     
     log "Pre-restore backup created: ${PRE_RESTORE_BACKUP}"
 fi
 
-# Perform restore
-log "Starting database restore..."
+# Perform restore. MySQL/MariaDB is the only supported engine (ТЗ §3), and the
+# guard fails loudly rather than silently: a restore that quietly does nothing is
+# worse than one that refuses to run.
+if [[ "$DB_DRIVER" != "mysql" && "$DB_DRIVER" != "mariadb" ]]; then
+    error "Unsupported database driver: ${DB_DRIVER}. Only mysql/mariadb is supported (ТЗ §3)."
+fi
 
-if [[ "$DB_DRIVER" == "pgsql" ]]; then
-    log "Using PostgreSQL restore method"
-    
-    # Check if psql is available
-    if ! command -v psql &> /dev/null; then
-        error "psql not found. Please install PostgreSQL client tools."
-    fi
-    
-    if [[ "$DRY_RUN" == "true" ]]; then
-        log "[DRY-RUN] Would execute: pg_restore -h ${DB_HOST} -p ${DB_PORT} -U ${DB_USER} -d ${DB_NAME} ${BACKUP_FILE}"
-    else
-        # Check if backup is custom format (-F c) or SQL
-        if file "$BACKUP_FILE" | grep -q "PostgreSQL custom database dump"; then
-            log "Detected PostgreSQL custom format backup"
-            
-            # Drop and recreate database for clean restore
-            log "Dropping existing database..."
-            psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d postgres -c "DROP DATABASE IF EXISTS ${DB_NAME};"
-            
-            log "Creating fresh database..."
-            psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d postgres -c "CREATE DATABASE ${DB_NAME};"
-            
-            log "Restoring from backup..."
-            pg_restore \
-                -h "$DB_HOST" \
-                -p "$DB_PORT" \
-                -U "$DB_USER" \
-                -d "$DB_NAME" \
-                --verbose \
-                --clean \
-                --if-exists \
-                "$BACKUP_FILE" \
-                2>&1 | tee "${BACKUP_DIR}/restore_$(date +%Y%m%d_%H%M%S).log"
-            
-            if [[ ${PIPESTATUS[0]} -ne 0 ]]; then
-                error "pg_restore failed"
-            fi
-        else
-            # SQL format backup
-            log "Restoring SQL format backup..."
-            psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -f "$BACKUP_FILE" \
-                2>&1 | tee "${BACKUP_DIR}/restore_$(date +%Y%m%d_%H%M%S).log"
-            
-            if [[ ${PIPESTATUS[0]} -ne 0 ]]; then
-                error "psql restore failed"
-            fi
-        fi
-    fi
-    
-elif [[ "$DB_DRIVER" == "mysql" ]]; then
-    log "Using MySQL restore method"
-    
-    if ! command -v mysql &> /dev/null; then
-        error "mysql client not found. Please install MySQL client tools."
-    fi
-    
-    if [[ "$DRY_RUN" == "true" ]]; then
-        log "[DRY-RUN] Would execute: mysql -h ${DB_HOST} -P ${DB_PORT} -u ${DB_USER} ${DB_NAME} < ${BACKUP_FILE}"
-    else
-        # Drop and recreate database for clean restore
-        log "Dropping existing database..."
-        mysql -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" -p"${DB_PASSWORD}" -e "DROP DATABASE IF EXISTS ${DB_NAME};"
-        
-        log "Creating fresh database..."
-        mysql -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" -p"${DB_PASSWORD}" -e "CREATE DATABASE ${DB_NAME};"
-        
-        log "Restoring from backup..."
-        mysql -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" -p"${DB_PASSWORD}" "$DB_NAME" < "$BACKUP_FILE" \
-            2>&1 | tee "${BACKUP_DIR}/restore_$(date +%Y%m%d_%H%M%S).log"
-        
-        if [[ ${PIPESTATUS[0]} -ne 0 ]]; then
-            error "mysql restore failed"
-        fi
-    fi
+log "Starting database restore..."
+log "Using MySQL restore method"
+
+if ! command -v mysql &> /dev/null; then
+    error "mysql client not found. Please install MySQL client tools."
+fi
+
+if [[ "$DRY_RUN" == "true" ]]; then
+    log "[DRY-RUN] Would execute: mysql -h ${DB_HOST} -P ${DB_PORT} -u ${DB_USER} ${DB_NAME} < ${BACKUP_FILE}"
 else
-    error "Unsupported database driver: ${DB_DRIVER}. Supported: pgsql, mysql"
+    # The dump already carries `DROP TABLE IF EXISTS` for every table — mysqldump
+    # emits it by default — so the schema is replaced table by table and the
+    # database itself is left alone. That is what makes the restore usable on
+    # shared hosting, where the account normally cannot DROP or CREATE databases
+    # and only has the one it was given. Foreign keys are switched off around the
+    # load so that table order does not decide whether the restore succeeds.
+    log "Restoring from backup into ${DB_NAME}..."
+    {
+        echo 'SET FOREIGN_KEY_CHECKS=0;'
+        cat "$BACKUP_FILE"
+        echo 'SET FOREIGN_KEY_CHECKS=1;'
+    } | mysql -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" -p"${DB_PASSWORD}" "$DB_NAME" \
+        2>&1 | tee "${BACKUP_DIR}/restore_$(date +%Y%m%d_%H%M%S).log"
+
+    if [[ ${PIPESTATUS[1]} -ne 0 ]]; then
+        error "mysql restore failed"
+    fi
 fi
 
 # Cleanup temporary decompressed file
@@ -301,22 +257,19 @@ fi
 
 # Post-restore verification
 log "Running post-restore verification..."
+# TABLE_COUNT is echoed in the summary below, so it has to exist even when the
+# verification is skipped — under `set -u` an unset variable aborts the script
+# *after* a successful restore, which is the worst possible moment to fail.
+TABLE_COUNT=0
+
 if [[ "$DRY_RUN" == "true" ]]; then
     log "[DRY-RUN] Would verify restored database"
 else
-    # Check if tables exist
-    TABLE_COUNT=0
-    
-    if [[ "$DB_DRIVER" == "pgsql" ]]; then
-        TABLE_COUNT=$(psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -t -c \
-            "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public';")
-    elif [[ "$DB_DRIVER" == "mysql" ]]; then
-        TABLE_COUNT=$(mysql -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" -p"${DB_PASSWORD}" -N -e \
-            "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = '${DB_NAME}';")
-    fi
-    
+    TABLE_COUNT=$(mysql -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" -p"${DB_PASSWORD}" -N -e \
+        "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = '${DB_NAME}';")
+
     TABLE_COUNT=$(echo "$TABLE_COUNT" | tr -d '[:space:]')
-    
+
     if [[ "$TABLE_COUNT" -gt 0 ]]; then
         log "Post-restore verification passed ✓ (${TABLE_COUNT} tables found)"
     else

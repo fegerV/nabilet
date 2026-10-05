@@ -81,9 +81,9 @@ class OrganizationController extends Controller
     public function addMember(Request $request, string $publicId): JsonResponse
     {
         $validated = $request->validate([
-            // `bail`/`integer` guard the BIGINT cast: `users.id` is BIGINT, so a
-            // non-numeric `user_id` would raise SQLSTATE[22P02] and answer 500 instead
-            // of 422. See `CartController::addItem()` for the full explanation.
+            // `bail`/`integer` guard the BIGINT lookup: MySQL does not reject a
+            // comparison against a string, it coerces it, so `exists` can match
+            // `'1abc'` to row 1. See `CartController::addItem()` for the measurements.
             'user_id' => ['bail', 'required', 'integer', 'exists:users,id'],
             'role' => ['required', 'in:admin,member,cashier,manager'],
         ]);

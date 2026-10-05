@@ -54,9 +54,9 @@ class HallController extends Controller
     public function store(Request $request): HallResource
     {
         $validated = $request->validate([
-            // `bail`/`integer` guard the BIGINT cast: `venues.id` is BIGINT, so a
-            // non-numeric `venue_id` would raise SQLSTATE[22P02] and answer 500 instead
-            // of 422. See `CartController::addItem()` for the full explanation.
+            // `bail`/`integer` guard the BIGINT lookup: MySQL does not reject a
+            // comparison against a string, it coerces it, so `exists` can match
+            // `'1abc'` to row 1. See `CartController::addItem()` for the measurements.
             'venue_id' => ['bail', 'required', 'integer', 'exists:venues,id'],
             'name' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string', 'max:1000'],

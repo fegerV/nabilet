@@ -36,7 +36,7 @@ return new class extends Migration
             $table->string('logo', 2048)->nullable();
             $table->string('email', 255)->nullable();
             $table->string('phone', 50)->nullable();
-            $table->string('status', 32);
+            $table->string('status', 32)->default('active');
             $table->json('settings_json')->nullable();
             $table->dateTime('created_at', 6);
             $table->dateTime('updated_at', 6);
@@ -76,9 +76,9 @@ return new class extends Migration
             $table->string('last_name', 100)->nullable();
             $table->string('phone', 50)->nullable();
             $table->dateTime('phone_verified_at', 6)->nullable();
-            $table->string('status', 32);
-            $table->string('locale', 10);
-            $table->string('timezone', 64);
+            $table->string('status', 32)->default('active');
+            $table->string('locale', 10)->default('ru');
+            $table->string('timezone', 64)->default('UTC');
             $table->dateTime('last_login_at', 6)->nullable();
             $table->dateTime('created_at', 6);
             $table->dateTime('updated_at', 6);
