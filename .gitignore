@@ -1,38 +1,6 @@
-# Environment / secrets
-.env
-.env.*
-!.env.example
+# Laravel storage cache
+storage/framework/cache/data/*
+!storage/framework/cache/data/.gitkeep
 
-# Dependencies
-/node_modules
-/vendor
-/public/build
-/public/hot
-/public/storage
-/dist
-
-# Laravel specifics
-/storage/*.key
-/storage/logs/*
-/storage/framework/cache/data/*
-/storage/framework/sessions/*
-/storage/framework/views/*
-/storage/app/public/*
-/bootstrap/cache/*.php
-.phpunit.result.cache
-/phpunit.xml
-
-# Editors / IDEs
-.idea/
-.vscode/
-*.swp
-*.swo
-
-# OS files
-.DS_Store
-Thumbs.db
-
-# Logs & misc
-*.log
-npm-debug.log*
-yarn-error.log*
+# Compiled files
+*.php
