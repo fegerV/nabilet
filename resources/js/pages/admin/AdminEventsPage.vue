@@ -13,14 +13,12 @@ import NInput from '@/components/ui/NInput.vue'
 import NSegmented from '@/components/ui/NSegmented.vue'
 import NStatusBadge from '@/components/ui/NStatusBadge.vue'
 import NDataTable from '@/components/ui/NDataTable.vue'
-import { useUiStore } from '@/stores/ui'
 import { get } from '@/lib/api'
-import { money, dateFull, time } from '@/lib/format'
+import { dateFull, time } from '@/lib/format'
 import type { Column } from '@/components/ui/NDataTable.vue'
 import { cn } from '@/lib/cn'
 
 const router = useRouter()
-const ui = useUiStore()
 
 interface ApiEvent {
   id: number
@@ -82,6 +80,7 @@ const rows = computed(() => {
       status: event.status,
       occupancy: occupancy(event),
       firstSession: event.sessions?.[0],
+      firstSessionStartsAt: event.sessions?.[0]?.starts_at ?? '',
     }))
 })
 
@@ -149,7 +148,7 @@ function create(): void {
           <span class="block truncate font-medium text-content">{{ row.title }}</span>
           <span class="block truncate text-2xs text-subtle">
             {{ row.category }}
-            <template v-if="row.firstSession"> · {{ dateFull(row.firstSession.starts_at) }}, {{ time(row.firstSession.starts_at) }}</template>
+            <template v-if="row.firstSession"> · {{ dateFull(row.firstSessionStartsAt) }}, {{ time(row.firstSessionStartsAt) }}</template>
           </span>
         </template>
         <template #cell-venue="{ row }">

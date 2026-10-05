@@ -1,6 +1,1 @@
-# Laravel storage cache
-storage/framework/cache/data/*
-!storage/framework/cache/data/.gitkeep
-
-# Compiled files
-*.php
+(empty)
