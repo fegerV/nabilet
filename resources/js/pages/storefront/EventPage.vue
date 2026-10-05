@@ -62,7 +62,8 @@ async function loadEvent(): Promise<void> {
   loadError.value = null
   try {
     const res = await get<{ data: EventDetail }>(`/events/by-slug/${encodeURIComponent(slug)}`)
-    event.value = res.data
+    // API может вернуть как { data: {...} }, так и голый объект (вложенный envelope).
+    event.value = (res.data as unknown as { data?: EventDetail }).data ?? res.data
   } catch (e) {
     loadError.value = e instanceof Error ? e.message : String(e)
     event.value = null
