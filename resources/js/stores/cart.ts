@@ -25,6 +25,44 @@ export interface CartSeat {
 const HOLD_SECONDS = 10 * 60
 const WARN_SECONDS = 60
 
+/**
+ * Ключ sessionStorage, под которым заказ переживает уход на платёжную страницу.
+ *
+ * Редирект на оплату — это ПОЛНАЯ навигация (в реальном режиме — на домен
+ * провайдера), поэтому in-memory состояние стора умирает, а страница результата
+ * после возврата обязана показать сумму и номер заказа. `sessionStorage`, а не
+ * `localStorage`: срок жизни заказа — текущая вкладка, и чужой вкладке он не
+ * нужен.
+ */
+const ORDER_STORAGE_KEY = 'nabilet_last_order'
+
+interface StoredOrder {
+  id: string | null
+  totalMinor: number
+}
+
+function readStoredOrder(): StoredOrder {
+  try {
+    const raw = sessionStorage.getItem(ORDER_STORAGE_KEY)
+    if (!raw) return { id: null, totalMinor: 0 }
+    const parsed = JSON.parse(raw) as Partial<StoredOrder>
+    return {
+      id: typeof parsed.id === 'string' && parsed.id !== '' ? parsed.id : null,
+      totalMinor: Number(parsed.totalMinor) || 0,
+    }
+  } catch {
+    return { id: null, totalMinor: 0 } // приватный режим / битый JSON — не критично
+  }
+}
+
+function writeStoredOrder(order: StoredOrder): void {
+  try {
+    sessionStorage.setItem(ORDER_STORAGE_KEY, JSON.stringify(order))
+  } catch {
+    /* ignore — страница результата просто не покажет сумму */
+  }
+}
+
 export const useCartStore = defineStore('cart', () => {
   const seats = ref<CartSeat[]>([])
   const selectedIds = ref<Set<string>>(new Set())
@@ -41,10 +79,14 @@ export const useCartStore = defineStore('cart', () => {
    * Заказ, созданный POST /cart/checkout (order_id в ответе сервера). Оплата
    * ходит на сервер именно по нему; без него страница результата не может
    * подтвердить статус и шлёт payment_fail вместо выдуманного успеха.
+   *
+   * Значения читаются из sessionStorage: уход на оплату — полная навигация,
+   * и после возврата страница результата обязана помнить сумму и номер заказа.
    */
-  const orderId = ref<string | null>(null)
+  const storedOrder = readStoredOrder()
+  const orderId = ref<string | null>(storedOrder.id)
   /** Итог в минимальных единицах из ответа checkout (серверная цена, инвариант 6). */
-  const orderTotalMinor = ref<number>(0)
+  const orderTotalMinor = ref<number>(storedOrder.totalMinor)
 
   let ticker: number | null = null
 
@@ -89,10 +131,28 @@ export const useCartStore = defineStore('cart', () => {
     stopHold()
   }
 
+  /**
+   * Восстановить выбор из серверной корзины.
+   *
+   * Нужен при полной перезагрузке на шаге оформления: стор живёт в памяти, а
+   * холды на сервере — нет, поэтому без восстановления F5 на `/checkout` рисует
+   * «корзина пуста» поверх реально удержанных мест. Идентификаторы здесь —
+   * публичные id инвентаря (как их отдаёт `CartItemResource`); для оформления
+   * этого достаточно: заказ строит сервер по своей корзине, а не по нашему списку.
+   */
+  function hydrate(items: CartSeat[]): void {
+    if (items.length === 0) return
+    seats.value = [...items]
+    selectedIds.value = new Set(items.map((s) => s.id))
+    if (holdSecondsLeft.value === 0 && holdExpiresAtMs.value === null) startHold()
+  }
+
   /** Результат POST /cart/checkout: серверный заказ и итог (истина — сервер). */
   function setOrder(id: string | null, totalMinor: number): void {
     orderId.value = id
     orderTotalMinor.value = Number.isFinite(totalMinor) ? Math.max(0, Math.round(totalMinor)) : 0
+    // Переживаем редирект на платёжную страницу и обратно.
+    writeStoredOrder({ id: orderId.value, totalMinor: orderTotalMinor.value })
   }
 
   /** Тик: остаток всегда пересчитывается от дедлайна, а не вычитанием секунды. */
@@ -213,6 +273,7 @@ export const useCartStore = defineStore('cart', () => {
     holdWarning,
     isSelected,
     toggle,
+    hydrate,
     clear,
     setOrder,
     startHold,

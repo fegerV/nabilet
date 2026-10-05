@@ -10,8 +10,10 @@ use Nabilet\Modules\Tickets\Domain\TicketIssuance;
 use Nabilet\Modules\Tickets\StateMachines\TicketStateMachine;
 use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Inventory\Models\InventoryItem;
+use Nabilet\Modules\Sessions\Models\Session;
 use Nabilet\Core\Support\QrSigner;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 class TicketService
@@ -57,6 +59,38 @@ class TicketService
             foreach ($order->items as $item) {
                 $inventory = InventoryItem::find($item->inventory_item_id);
 
+                // `tickets.event_id` и `tickets.session_id` — NOT NULL, поэтому оба
+                // обязаны быть определены ДО вставки.
+                //
+                // Здесь стоял фолбэк `$inventory?->event_id`, и он был мёртвым
+                // кодом: колонки `event_id` у `inventory_items` не существует
+                // (есть `session_id`, `type`, `seat_id`, `standing_zone_id`,
+                // `price_amount`, `capacity`, ...). Поэтому для заказа без
+                // `orders.event_id` — например созданного через `POST /orders`
+                // или тестовой фикстурой — выпуск падал с
+                // `1048 Column 'event_id' cannot be null`, откатывая всю
+                // транзакцию вебхука ВМЕСТЕ с подтверждением оплаты: провайдер
+                // деньги списал, а заказ оставался неоплаченным.
+                //
+                // Событие выводим из сеанса — это единственный корректный путь,
+                // потому что сеанс всегда принадлежит событию.
+                $sessionId = $order->session_id ?? $inventory?->session_id;
+                $eventId = $order->event_id
+                    ?? ($sessionId !== null ? Session::query()->whereKey($sessionId)->value('event_id') : null);
+
+                if ($sessionId === null || $eventId === null) {
+                    // Заказ вне сеанса: билет не к чему привязать. Ронять
+                    // транзакцию нельзя — оплата уже подтверждена провайдером,
+                    // и 500 откатил бы её. Говорим громко и пропускаем позицию.
+                    Log::warning('TicketService: no session/event for order item — ticket skipped', [
+                        'order_id' => $order->id,
+                        'order_item_id' => $item->id,
+                        'inventory_item_id' => $item->inventory_item_id,
+                    ]);
+
+                    continue;
+                }
+
                 for ($i = 0; $i < max(1, (int) $item->quantity); $i++) {
                     $seq++;
                     $publicId = (string) Str::ulid();
@@ -73,8 +107,8 @@ class TicketService
                         'ticket_index' => $i + 1,
                         'order_id' => $order->id,
                         'order_item_id' => $item->id,
-                        'event_id' => $order->event_id ?? ($inventory?->event_id),
-                        'session_id' => $order->session_id ?? ($inventory?->session_id),
+                        'event_id' => $eventId,
+                        'session_id' => $sessionId,
                         'inventory_item_id' => $item->inventory_item_id,
                         'seat_id' => $snapshot['seat_id'] ?? $inventory?->seat_id,
                         'holder_name' => $order->customer_name ?? $order->customer_email,

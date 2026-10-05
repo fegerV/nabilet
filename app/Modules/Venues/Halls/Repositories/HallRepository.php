@@ -15,9 +15,22 @@ class HallRepository
         protected Hall $model
     ) {}
 
+    /**
+     * Зал с геометрией опубликованной схемы.
+     *
+     * Цепочка была `currentSchemaVersion.sectors.rows.seats`, и это не работало
+     * даже после появления `currentSchemaVersion`: у `Sector` отношение
+     * называется `hallRows()`, а не `rows()` (см. `Sector`), а у `HallRow` —
+     * `seats()`. Laravel падает на первом неизвестном отношении, поэтому вызов
+     * давал 500, а не пустой результат.
+     *
+     * Метод сейчас не вызывается ниоткуда; цепочка исправлена, чтобы он не
+     * оставался миной. Витрина берёт геометрию из `GET /halls/{publicId}/schema`
+     * (только опубликованная версия), а не отсюда.
+     */
     public function find(int $id): ?Hall
     {
-        return $this->model->with(['venue', 'currentSchemaVersion.sectors.rows.seats'])->find($id);
+        return $this->model->with(['venue', 'currentSchemaVersion.sectors.hallRows.seats'])->find($id);
     }
 
     public function findByPublicId(string $publicId): ?Hall
@@ -34,8 +47,15 @@ class HallRepository
      */
     public function findByVenue(int $venueId, int $limit = 15): LengthAwarePaginator
         {
+            // Без `with(['currentSchemaVersion'])`. Жадная загрузка здесь была
+            // причиной 500: отношения не существовало, и Laravel падал на нём
+            // («Call to undefined relationship [currentSchemaVersion] on model
+            // [Hall]»), поэтому список залов площадки не открывался. Отношение
+            // теперь определено (`Hall::currentSchemaVersion()`), но грузить его
+            // по-прежнему незачем: ответ формирует `HallResource`, а он отдаёт
+            // только id, public_id, name, venue_id — ни `current_schema_version`,
+            // ни геометрии в списке нет. Проверено по ключам ответа.
             return $this->model->where('venue_id', $venueId)
-                ->with(['currentSchemaVersion'])
                 ->paginate($limit);
         }
 

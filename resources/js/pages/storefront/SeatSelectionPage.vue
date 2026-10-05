@@ -27,7 +27,6 @@ import {
   holdSeat,
   releaseSeat,
   fetchCart,
-  checkoutSession,
   type InventoryItem,
   type HoldResponse,
 } from '@/lib/inventory'
@@ -200,7 +199,13 @@ const hall = computed<Sector[]>(() => {
 })
 
 const sheetOpen = ref(true)
-const SERVICE_FEE = 9900
+/**
+ * Сервисного сбора НЕТ: сервер выставляет `orders.total_amount` = сумме цен
+ * мест (`CartService::checkout()`: subtotal = discount = fee = total = сумма
+ * позиций). Здесь стояло `SERVICE_FEE = 9900`, и итог в сводке был на 99 ₽
+ * больше суммы, которую реально спишут — расхождение между экраном и чеком.
+ * Инвариант 6 (цена — только с сервера) нарушался прямо в UI.
+ */
 /** Защита от спама кликов: пока холд/снятие в полёте — место не трогается. */
 const pendingSeats = ref<Set<string>>(new Set())
 
@@ -366,23 +371,27 @@ function remove(id: string): void {
   cart.toggle(seat)
 }
 
+/**
+ * Переход к оформлению.
+ *
+ * Здесь СОЗНАТЕЛЬНО не создаётся заказ. Раньше вызывался
+ * `checkoutSession(sessionId, { customer_email: '' })`, и это не работало
+ * никогда: `POST /cart/checkout` требует `customer_email` правилом
+ * `['required', 'email:rfc']` (`CartController::checkout()`), поэтому пустая
+ * строка давала 422 VALIDATION_ERROR «Поле «customer email» обязательно для
+ * заполнения» — кнопка «оформить» не срабатывала ни разу. Проверено на живом
+ * стенде.
+ *
+ * Контакты собираются на шаге оформления, поэтому и заказ создаётся там же:
+ * `CheckoutPage` шлёт `POST /cart/checkout` с реальными именем, e-mail и
+ * телефоном, а затем `POST /payments`. Выбранные места к этому моменту уже
+ * удержаны на сервере (`POST /cart/items`), так что переход ничего не теряет.
+ */
 async function goCheckout(): Promise<void> {
   if (cart.count === 0) return
   cart.setLoading(true)
   try {
-    // Контактов на этом шаге ещё нет — заказ создаётся с пустым e-mail,
-    // CheckoutPage подтвердит его через PUT /orders/{id} перед оплатой.
-    const res = await checkoutSession(sessionId.value, { customer_email: '' })
-    cart.setOrder(res.data.order_id ?? null, Number(res.data.total_amount ?? cart.totalMinor))
-    router.push('/checkout')
-  } catch (e) {
-    if (e instanceof ApiError && e.code === 'CART_EXPIRED') {
-      ui.notify('rose', 'Время удержания истекло', 'Корзина на сервере протухла. Выберите места заново.')
-      cart.clear()
-      void loadSeats()
-    } else {
-      ui.notify('rose', 'Оформление не прошло', e instanceof Error ? e.message : 'Попробуйте ещё раз')
-    }
+    router.push({ path: '/checkout', query: { session: sessionId.value } })
   } finally {
     cart.setLoading(false)
   }
@@ -472,7 +481,6 @@ const sessionLabel = computed(() => {
           :subtotal-minor="cart.subtotalMinor"
           :discount-minor="cart.discountMinor"
           :hold-seconds-left="cart.holdSecondsLeft"
-          :fee-minor="SERVICE_FEE"
           cta-label="Оформить заказ"
           @remove="remove"
           @extend="cart.extendHold()"
@@ -490,7 +498,6 @@ const sessionLabel = computed(() => {
         :subtotal-minor="cart.subtotalMinor"
         :discount-minor="cart.discountMinor"
         :hold-seconds-left="cart.holdSecondsLeft"
-        :fee-minor="SERVICE_FEE"
         cta-label="Оформить заказ"
         @remove="remove"
         @extend="cart.extendHold()"
@@ -506,7 +513,7 @@ const sessionLabel = computed(() => {
     >
       <div>
         <p class="text-xs text-subtle">{{ cart.count }} выбрано</p>
-        <p class="text-base font-semibold tabular-nums text-content">{{ money(cart.totalMinor + SERVICE_FEE) }}</p>
+        <p class="text-base font-semibold tabular-nums text-content">{{ money(cart.totalMinor) }}</p>
       </div>
       <div class="flex gap-2">
         <NButton variant="secondary" size="sm" @click="sheetOpen = true">Открыть</NButton>

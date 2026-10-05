@@ -79,7 +79,11 @@ class CartController extends Controller
             ->where('session_id', $validated['session_id'])
             ->where('status', 'active')
             ->where('cart_token', $token)
-            ->with(['items.inventoryItem', 'items.inventoryItem.seat'])
+            // `seat.row.sector` нужны `CartItemResource` целиком: он отдаёт
+            // покупателю «Ряд N · Сектор». Без этой цепочки каждая позиция
+            // догружала связи по одной (N+1) — а до правки ресурса запрос падал
+            // с 500 ещё раньше, на `whenLoaded()` у модели.
+            ->with(['items.inventoryItem', 'items.inventoryItem.seat.row.sector'])
             ->orderBy('id')
             ->first();
 

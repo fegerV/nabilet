@@ -43,12 +43,14 @@ const emit = defineEmits<{ toggle: [item: InventoryItem, qty: number]; limit: []
 
 const selectedIds = computed(() => new Set(props.selected ?? []))
 
-/** Масштаб: привести данные (0..60) к пикселям SVG (600x400). */
-const SCALE_X = 10
-const SCALE_Y = 10
-const PAD = 30
+/** Полотно SVG и отступы. */
 const SVG_W = 620
 const SVG_H = 400
+const PAD = 30
+/** Полоса сцены сверху: места не должны в неё заезжать. */
+const STAGE_H = 46
+/** Радиус места. */
+const SEAT_R = 7
 
 /** Сцена — сверху по центру. */
 const stage = { x: (SVG_W - 200) / 2, y: 12, w: 200, h: 30 }
@@ -58,16 +60,68 @@ const seats = computed(() =>
   props.inventory.filter((i) => i.type === 'seat' && i.seat),
 )
 
-/** Координаты места → пиксели SVG. y у Яндекса растёт вниз, но мы хотим
- *  «ближе к сцене = дороже» (сцена сверху) — потому переворачиваем Y. */
+/**
+ * Габариты координат берём из ДАННЫХ, а не из констант.
+ *
+ * Здесь стояли `SCALE_X = SCALE_Y = 10` и жёсткая формула `ny = 40 - sy`
+ * («данные 0..40»). Для настоящей схемы зала это неверно: у
+ * `hall_schema_versions.schema_json` полотно 900x520, а места стоят на y = 60
+ * (ряд 1) и y = 110 (ряд 2). Тогда `ny = 40 - 60 = -20`, и `y = 30 + (-20 * 10)
+ * = -170` — координата уходит ЗА верхнюю границу viewBox. Итог: карта рисовала
+ * пустой зал с одной надписью «СЦЕНА», хотя мест было 10, и выбрать место
+ * (главное действие витрины) было физически невозможно. Проверено скриншотом
+ * живого стенда: `#/event/<slug>/seats?session=1`.
+ */
+const bounds = computed(() => {
+  const xs = seats.value.map((s) => Number(s.seat?.x ?? 0))
+  const ys = seats.value.map((s) => Number(s.seat?.y ?? 0))
+
+  if (xs.length === 0) return { minX: 0, maxX: 1, minY: 0, maxY: 1 }
+
+  const minX = Math.min(...xs)
+  const maxX = Math.max(...xs)
+  const minY = Math.min(...ys)
+  const maxY = Math.max(...ys)
+
+  // Вырожденный случай (одно место или все в одну линию) — иначе масштаб = 0.
+  return {
+    minX,
+    maxX: maxX > minX ? maxX : minX + 1,
+    minY,
+    maxY: maxY > minY ? maxY : minY + 1,
+  }
+})
+
+/** Единый масштаб по обеим осям: иначе пропорции зала исказятся. */
+const transform = computed(() => {
+  const b = bounds.value
+
+  return {
+    b,
+    scale: Math.min(
+      (SVG_W - PAD * 2) / (b.maxX - b.minX),
+      (SVG_H - PAD * 2 - STAGE_H) / (b.maxY - b.minY),
+    ),
+  }
+})
+
+/**
+ * Координаты места → пиксели SVG.
+ *
+ * Y НЕ инвертируем. Направление оси совпадает с редактором зала
+ * (`HallEditorPage`: `y = (clientY - rect.top - stage.y()) / scale`, то есть
+ * «ниже по экрану = больше y»). Инверсия зеркалила зал относительно того, что
+ * администратор видит при расстановке, и меняла ряды местами: более дорогой
+ * ряд 1 (y = 60) оказывался бы дальше от сцены, чем дешёвый ряд 2 (y = 110).
+ */
 function px(item: InventoryItem): { x: number; y: number; n: number } {
+  const { scale, b } = transform.value
   const sx = Number(item.seat?.x ?? 0)
   const sy = Number(item.seat?.y ?? 0)
-  // инвертируем Y: данные 0..40, нижний край → верх (к сцене)
-  const ny = 40 - sy
+
   return {
-    x: PAD + sx * SCALE_X,
-    y: PAD + ny * SCALE_Y,
+    x: PAD + (sx - b.minX) * scale,
+    y: PAD + STAGE_H + (sy - b.minY) * scale,
     n: Number(item.seat?.number ?? 0),
   }
 }
@@ -170,7 +224,7 @@ function seatTitle(item: InventoryItem): string {
       <!-- Места -->
       <g v-for="s in seats" :key="String(s.id)">
         <circle
-          :cx="px(s).x" :cy="px(s).y" :r="5"
+          :cx="px(s).x" :cy="px(s).y" :r="SEAT_R"
           :fill="STATE_FILL[seatState(s)] ?? STATE_FILL.unavailable"
           :class="isSeatPickable(s.status, s.available_quantity) || selectedIds.has(String(s.id)) ? 'cursor-pointer transition hover:scale-125' : 'cursor-not-allowed'"
           role="button"

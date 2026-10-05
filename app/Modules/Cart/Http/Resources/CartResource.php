@@ -15,7 +15,12 @@ class CartResource extends JsonResource
             'id' => $this->public_id,
             'status' => $this->status,
             'expires_at' => $this->expires_at?->toIso8601String(),
-            'items_count' => $this->items_count,
+            // `items_count` в таблице `carts` нет (колонки: id, public_id,
+            // user_id, cart_token, session_id, status, currency, total_amount,
+            // expires_at, ...), поэтому ключ уходил `null` при любой корзине.
+            // Считаем по загруженным позициям; если их не грузили — null, а не
+            // выдуманный ноль.
+            'items_count' => $this->relationLoaded('items') ? $this->items->count() : null,
             'total_amount' => $this->total_amount,
             'currency' => $this->currency ?? 'RUB',
             'items' => CartItemResource::collection($this->whenLoaded('items')),

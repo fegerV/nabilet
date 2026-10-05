@@ -30,14 +30,22 @@ return [
 
     // Безопасный режим (clickBeacon:false, WebVisor off) — меньше данных, но
     // совместимо с политикой конфиденциальности.
-    'safe_stage' => env('YANDEX_METRIKA_SAFE_MODE', 'false') === 'true',
+    //
+    // `filter_var(...)`, а не `=== 'true'`: phpdotenv приводит незакавыченные
+    // `true`/`false` к PHP-типам, поэтому `env()` возвращает boolean и сравнение
+    // со строкой не совпадало никогда. Флаг молча оставался выключенным при
+    // явном `=true` в `.env`.
+    'safe_stage' => filter_var(env('YANDEX_METRIKA_SAFE_MODE', false), FILTER_VALIDATE_BOOL),
 
     // Загрузка скрипта с cdn.jsdelivr.net (без cookie-домена Яндекса) — включать,
     // только если нужна работа при заблокированных куках третьих сторон.
-    'accurate_track' => env('YANDEX_METRIKA_ACCURATE_TRACK', 'false') === 'true',
+    'accurate_track' => filter_var(env('YANDEX_METRIKA_ACCURATE_TRACK', false), FILTER_VALIDATE_BOOL),
 
     // Товарная фича e-commerce: params.product для reachGoal корзины/заказа.
-    'ecommerce' => env('YANDEX_METRIKA_ECOMMERCE', 'true') === 'true',
+    // Значение по умолчанию — включено; `filter_var` нужен и здесь, иначе
+    // явное `YANDEX_METRIKA_ECOMMERCE=true` в `.env` ВЫКЛЮЧАЛ фичу
+    // (`true === 'true'` → false), то есть флаг работал наоборот.
+    'ecommerce' => filter_var(env('YANDEX_METRIKA_ECOMMERCE', true), FILTER_VALIDATE_BOOL),
 
     /*
      * События воронки → цели Метрики для Яндекс Директа.

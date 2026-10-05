@@ -24,6 +24,14 @@ const routes: RouteRecordRaw[] = [
       },
       { path: 'checkout', name: 'checkout', component: () => import('@/pages/storefront/CheckoutPage.vue') },
       {
+        // Демо-подтверждение оплаты. Путь совпадает с
+        // `YooKassaProvider::DEMO_CONFIRM_PATH` — разъехавшись, они дают 404
+        // после «оплаты» (проверено: покупатель уходил в никуда).
+        path: 'checkout/demo-pay',
+        name: 'demo-pay',
+        component: () => import('@/pages/storefront/DemoPayPage.vue'),
+      },
+      {
         path: 'payment/:result',
         name: 'payment',
         component: () => import('@/pages/storefront/PaymentResultPage.vue'),

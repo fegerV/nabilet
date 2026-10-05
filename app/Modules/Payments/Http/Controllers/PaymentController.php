@@ -8,6 +8,8 @@ use Nabilet\Core\Errors\DomainRuleViolation;
 use Nabilet\Core\Errors\NotFoundError;
 use Nabilet\Core\Errors\ValidationError;
 use Nabilet\Core\Support\StaffRole;
+use Nabilet\Modules\Cart\Models\Cart;
+use Nabilet\Modules\Cart\Support\CartToken;
 use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Payments\Models\Payment;
 use Nabilet\Modules\Payments\Services\PaymentService;
@@ -87,25 +89,45 @@ class PaymentController extends Controller
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            // `exists` с `bail`+`integer`: без `bail` MySQL приводит строку к
-            // числу (`id = '1abc'` совпадает с 1), и правило пропускает мусор.
-            'order_id' => ['bail', 'required', 'integer', 'exists:orders,id'],
+            // Здесь стояло `['bail','required','integer','exists:orders,id']`, и это
+            // ломало последний шаг покупки. Внешний идентификатор заказа в этой
+            // схеме — ULID `public_id` (так его отдаёт `OrderResource.id`, так
+            // объявлен `docs/openapi.yaml#OrderIdPath: {type: string}` и именно его
+            // возвращает `POST /cart/checkout` в поле `order_id`). Правило
+            // `integer` отбраковало этот ULID раньше, чем дело доходило до поиска:
+            // витрина получала 422 VALIDATION_ERROR на СВОЁМ ЖЕ ответе checkout, и
+            // цепочка «выбрать место → корзина → оплатить» не проходила никогда.
+            // Проверено на живом стенде.
+            //
+            // Тип не ограничиваем правилом `string`: админка и скрипты шлют
+            // `orders.id` числом, и правило отбросило бы их 422-й. Существование
+            // заказа проверяет `resolveOrder()`, а не правило `exists`: без
+            // `bail`+`integer` MySQL приводит строку к числу (`id = '1abc'`
+            // совпадает с 1), и `exists` пропускал бы мусор.
+            'order_id' => ['bail', 'required'],
             'idempotency_key' => ['nullable', 'string', 'max:255'],
         ]);
 
-        $order = Order::query()->find((int) $validated['order_id']);
+        $reference = $validated['order_id'];
+
+        // Массив/объект в `order_id` — ошибка клиента, а не 500 на приведении типа.
+        if (! is_scalar($reference)) {
+            throw new ValidationError([
+                'order_id' => ['The order id must be a string or an integer.'],
+            ]);
+        }
+
+        $order = $this->resolveOrder((string) $reference);
 
         // Оплатить можно только свой заказ: без этой проверки `order_id` из тела
         // позволял инициировать платёж по чужому заказу и получить ссылку на
-        // оплату с его суммой.
-        if (! StaffRole::isStaff($request->user())
-            && ($order === null || $order->user_id === null || (int) $order->user_id !== (int) $request->user()->id)
-        ) {
+        // оплату с его суммой. Чужой/несуществующий заказ — 404, не 403.
+        if ($order === null || ! $this->mayPay($request, $order)) {
             throw new NotFoundError('Order', (string) $validated['order_id']);
         }
 
         $result = $this->paymentService->initiatePayment(
-            (int) $validated['order_id'],
+            (int) $order->id,
             ['idempotency_key' => $validated['idempotency_key'] ?? null],
         );
 
@@ -113,6 +135,83 @@ class PaymentController extends Controller
             'payment' => $result['payment'],
             'confirmation_url' => $result['confirmation_url'],
         ]], 201);
+    }
+
+    /**
+     * Найти заказ по внешнему идентификатору.
+     *
+     * Принимает обе формы, которыми заказ адресуют в системе:
+     *   1. ULID `public_id` — то, что отдаёт `POST /cart/checkout` (`order_id`) и
+     *      `OrderResource.id`; основной внешний идентификатор;
+     *   2. числовой `orders.id` — админка и внутренние скрипты.
+     *
+     * Числовой вариант распознаётся только если строка ЦЕЛИКОМ из цифр: MySQL
+     * сравнивает `id` со строкой, приводя её к числу, поэтому `'1abc'` совпал бы
+     * с заказом 1 и открыл бы чужой заказ. Здесь — точное совпадение либо ULID.
+     */
+    private function resolveOrder(string $reference): ?Order
+    {
+        $reference = trim($reference);
+
+        if ($reference === '') {
+            return null;
+        }
+
+        if (ctype_digit($reference)) {
+            return Order::query()->find((int) $reference);
+        }
+
+        return Order::query()->where('public_id', $reference)->first();
+    }
+
+    /**
+     * Кто вправе оплатить заказ.
+     *
+     * Витрина — гостевой сценарий: корзина ключуется `X-Cart-Token`, покупатель
+     * не логинится, поэтому у заказа `user_id = NULL` (проверено на живом
+     * заказе: `CartService::checkout()` его не проставляет). Проверка «заказ мой
+     * по user_id» для такого заказа не проходит НИКОГДА, а маршрут стоял под
+     * `auth:api` — то есть оплатить гостевой заказ было нельзя ни анонимно
+     * (401), ни залогиненным (404). Сквозной сценарий «выбрать место → корзина →
+     * оплатить» обрывался на последнем шаге.
+     *
+     * Право даёт одно из трёх:
+     *   1. сотрудник (admin/manager) — видит и оплачивает любой заказ;
+     *   2. владелец — заказ привязан к аккаунту и совпадает с `$request->user()`;
+     *   3. гость, предъявивший `X-Cart-Token` той корзины, из которой создан заказ.
+     *
+     * Токен — это capability: UUID выдаётся браузеру покупателя при первом
+     * добавлении места и больше нигде не публикуется. Без него чужой заказ
+     * по-прежнему 404, поэтому IDOR остаётся закрытым — `order_id` сам по себе
+     * не даёт ничего. Токен нормализуется (`CartToken::normalize()`: длина и
+     * алфавит), сравнение идёт с `cart_token` в БД, а не с пользовательским вводом.
+     *
+     * Явная проверка `$user !== null` нужна и технически: прежний код обращался
+     * к `$request->user()->id` без неё, и анонимный запрос к заказу с
+     * заполненным `user_id` упал бы фаталом «Call to a member function on null».
+     */
+    private function mayPay(Request $request, Order $order): bool
+    {
+        $user = $request->user();
+
+        if (StaffRole::isStaff($user)) {
+            return true;
+        }
+
+        if ($user !== null && $order->user_id !== null && (int) $order->user_id === (int) $user->id) {
+            return true;
+        }
+
+        $token = CartToken::fromRequest($request);
+
+        if ($token === null || $order->cart_id === null) {
+            return false;
+        }
+
+        return Cart::query()
+            ->where('id', $order->cart_id)
+            ->where('cart_token', $token)
+            ->exists();
     }
 
     /**
