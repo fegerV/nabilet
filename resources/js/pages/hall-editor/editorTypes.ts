@@ -15,7 +15,7 @@ export type Tool =
 
 export type Autosave = 'saving' | 'saved' | 'error' | 'offline'
 
-export type StaticKind = 'stage' | 'entrance' | 'label' | 'table' | 'standing'
+export type StaticKind = 'stage' | 'entrance' | 'label' | 'table' | 'standing' | 'text'
 
 export interface ESeat {
   id: string

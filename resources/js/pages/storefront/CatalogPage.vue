@@ -44,7 +44,9 @@ async function loadEvents(): Promise<void> {
   loadError.value = null
   try {
     const res = await get<{ data: EventItem[] }>('/events?status=published&per_page=100')
-    events.value = res.data ?? []
+    // API может вернуть как { data: [...] }, так и голый массив (вложенный envelope).
+    const inner = res.data as unknown as { data?: EventItem[] } | EventItem[]
+    events.value = Array.isArray(inner) ? inner : (inner as { data: EventItem[] }).data ?? []
   } catch (e) {
     loadError.value = e instanceof Error ? e.message : String(e)
     events.value = []
