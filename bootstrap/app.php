@@ -29,7 +29,13 @@ use Nabilet\Core\Http\ApiExceptionRenderer;
  *     stack traces and internal messages must never reach a client.
  */
 return Application::configure(basePath: dirname(__DIR__))
-    ->withProviders([])
+    // Providers here are kept explicit and minimal on purpose (see the note below).
+    // The Installer provider is registered so its Blade view namespace (`installer::`)
+    // is mounted — without it `GET /install` would 500 with "view not found". It no
+    // longer loads routes (those are required from routes/web.php), so this is safe.
+    ->withProviders([
+        \Nabilet\Modules\Installer\Providers\InstallerServiceProvider::class,
+    ])
     ->withRouting(
         web: __DIR__ . '/../routes/web.php',
         api: __DIR__ . '/../routes/api.php',
@@ -58,6 +64,13 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->web(append: [
             \Nabilet\Core\Http\Middleware\SetLocale::class,
         ]);
+
+        // Installer (WordPress-стиль мастер установки) — одноразовый pre-auth
+        // эндпоинт, доступный только до создания storage/install.lock. Его POST
+        // шлёт JSON без CSRF-токена (как и положено установщику), поэтому
+        // PreventRequestForgery для /install отключаем. Повторный запуск всё равно
+        // блокируется контроллером по install.lock.
+        $middleware->validateCsrfTokens(except: ['install', 'install/*']);
 
         // ── Aliases ──────────────────────────────────────────────────────────
         // Only kernel middleware are aliased here. Modules register their own

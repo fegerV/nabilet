@@ -76,35 +76,83 @@ php -v            # ожидаем 8.3.x
 
 ---
 
-## 4. Шаги деплоя (по SSH на аккаунт TimeWeb)
+## 4. Установка через мастер (WordPress-стиль, рекомендуемый путь)
+
+После выкладки кода открываем в браузере `https://ваш-домен/install` — пошаговый
+мастер сам напишет `.env`, прогонит миграции, создаст администратора и его
+организацию, слинкует `storage`. Это основной сценарий деплоя на шаред-хостинг.
 
 ```bash
-# 0. Выбрать PHP 8.3 в панели TimeWeb, затем в SSH:
+# 0. В панели TimeWeb выбрать PHP 8.3, затем по SSH:
 php -v
 
-# 1. Положить код (весь репозиторий) в корень аккаунта так, чтобы
-#    public_html/ оказался DocumentRoot. Через git:
+# 1. Выложить код в корень аккаунта так, чтобы public_html/ стал DocumentRoot:
 git -C /home/uXXXXX pull origin main
 
-# 2. Зависимости (vendor/ в git НЕ входит — ставим на сервере):
+# 2. Зависимости (vendor/ в git НЕ входит — ставим на сервере; мастер его не ставит):
 cd /home/uXXXXX
 composer install --no-dev --optimize-autoloader
 
-# 3. Окружение:
+# 3. Права (мастер проверит сам, но заранее лучше открыть):
+chmod -R ug+w storage bootstrap/cache
+
+# 4. Открыть в браузере:  https://ваш-домен/install
+```
+
+Шаги мастера:
+
+1. **Требования** — PHP ≥ 8.1, расширения (pdo/mbstring/openssl/json/xml/curl/zip),
+   права на запись, отсутствие `.env`. Если что-то красное — поправить на сервере.
+2. **База данных** — хост/порт/имя/пользователь/пароль. **На TimeWeb хост БД — НЕ
+   `localhost`** (берётся в панели управления, напр. `mysql.timeweb.ru`), порт обычно
+   `3306`. Там же — необязательные ЮKassa Shop ID и секретный ключ.
+3. **Администратор** — email и пароль (мин. 8 символов).
+4. **Прогресс** — миграции → админ → storage → финализация → «Установка завершена».
+
+Мастер выполняет под капотом именно то, что раньше делалось вручную, и закрывает
+ряд ловушек шаред-хостинга:
+
+- пишет `.env` со сгенерированным `APP_KEY`;
+- **подменяет in-memory-конфиг БД перед `migrate`** — иначе миграции уходили на
+  boot-значения (`127.0.0.1`/`forge`) и падали;
+- создаёт пользователя-админа **и его организацию** (приложение multi-tenant: без
+  организации tenant-scoped запросы падают с `TenantContextMissingError`);
+- `storage:link` и `db:seed` запускаются в fail-soft режиме.
+
+После успеха создаётся `storage/install.lock` — повторный заход на `/install`
+блокируется (403).
+
+### Ограничения и нюансы (важно)
+
+- **Триггеры БД могут не создаться на шаред-хостинге.** Миграции
+  `2026_09_20_001100_*` и `2026_10_06_000100_*` создают MySQL-триггеры через
+  `CREATE TRIGGER`; на шаред-хостинге это часто падает с `ERROR 1419` (binary
+  logging + нет прав SUPER). Мастер **не прерывается** — триггеры опциональны
+  (defense-in-depth), те же правила защищены на уровне приложения.
+- **`composer install` обязателен** — `vendor/` не коммитится.
+- **ЮKassa опциональна** — поля можно оставить пустыми; платежи заработают после
+  заполнения в настройках.
+- **CSRF на `/install` отключён** (`bootstrap/app.php` →
+  `validateCsrfTokens(except: ['install','install/*'])`): это одноразовый pre-auth
+  эндпоинт, доступный только до `install.lock`.
+- **Кеши.** Мастер их не прогревает. Для прод-режима после установки:
+  ```bash
+  cd /home/uXXXXX
+  php artisan config:cache
+  php artisan route:cache
+  php artisan view:cache
+  ```
+
+### Ручной fallback (если мастер недоступен)
+
+```bash
+cd /home/uXXXXX
 cp .env.example .env
-#   отредактировать .env: APP_URL, DB_*, YOOKASSA_*, MAIL_*, redis (predis) и т.д.
+#   отредактировать .env: APP_URL, DB_*, YOOKASSA_*, MAIL_*, redis (predis)
 php artisan key:generate
-
-# 4. БД и хранилище:
 php artisan migrate --force
-php artisan storage:link        # public_html/storage -> ../storage/app/public
-
-# 5. Кеши (после каждого релиза):
-php artisan config:cache
-php artisan route:cache
-php artisan view:cache
-
-# 6. Права (если нужно): storage и bootstrap/cache — writable для PHP-процесса.
+php artisan storage:link
+php artisan config:cache && php artisan route:cache && php artisan view:cache
 ```
 
 После этого `https://ваш-домен/` отдаёт Laravel через `public_html/index.php`.

@@ -6,11 +6,11 @@
     <title>Установка системы Nabilet</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        .step-active { @apply border-blue-500 text-blue-600; }
-        .step-completed { @apply border-green-500 text-green-600; }
-        .step-inactive { @apply border-gray-300 text-gray-400; }
-        .check-passed { @apply text-green-600; }
-        .check-failed { @apply text-red-600; }
+        .step-active { border-color: #3b82f6; color: #2563eb; }
+        .step-completed { border-color: #22c55e; color: #16a34a; }
+        .step-inactive { border-color: #d1d5db; color: #9ca3af; }
+        .check-passed { color: #16a34a; }
+        .check-failed { color: #dc2626; }
     </style>
 </head>
 <body class="bg-gray-50 min-h-screen py-8">

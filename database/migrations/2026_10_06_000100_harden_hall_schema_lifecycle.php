@@ -46,7 +46,7 @@ return new class extends Migration
         );
 
         if (!$lifecycleTriggerExists) {
-            DB::unprepared(
+            $this->safeUnprepared(
             'CREATE TRIGGER ' . self::UPDATE_TRIGGER . "\n"
             . "BEFORE UPDATE ON hall_schema_versions\n"
             . "FOR EACH ROW\n"
@@ -118,12 +118,12 @@ return new class extends Migration
             . "    END IF;\n"
             . "  END IF;\n"
                 . "END"
-            );
+            , 'trigger ' . self::UPDATE_TRIGGER);
         }
         DB::unprepared('DROP TRIGGER IF EXISTS ' . self::LEGACY_UPDATE_TRIGGER);
 
         DB::unprepared('DROP TRIGGER IF EXISTS ' . self::DELETE_TRIGGER);
-        DB::unprepared(
+        $this->safeUnprepared(
             'CREATE TRIGGER ' . self::DELETE_TRIGGER . "\n"
             . "BEFORE DELETE ON hall_schema_versions\n"
             . "FOR EACH ROW\n"
@@ -132,13 +132,13 @@ return new class extends Migration
             . "    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Published hall schema versions cannot be deleted';\n"
             . "  END IF;\n"
             . "END"
-        );
+        , 'trigger ' . self::DELETE_TRIGGER);
 
         // MySQL does not invoke child-table triggers for foreign-key cascades.
         // Protect the parent delete path too, or deleting a hall would silently
         // cascade-delete its frozen schema versions without hitting DELETE_TRIGGER.
         DB::unprepared('DROP TRIGGER IF EXISTS ' . self::HALL_DELETE_TRIGGER);
-        DB::unprepared(
+        $this->safeUnprepared(
             'CREATE TRIGGER ' . self::HALL_DELETE_TRIGGER . "\n"
             . "BEFORE DELETE ON halls\n"
             . "FOR EACH ROW\n"
@@ -150,7 +150,32 @@ return new class extends Migration
             . "    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Hall with frozen schema versions cannot be deleted';\n"
             . "  END IF;\n"
             . "END"
-        );
+        , 'trigger ' . self::HALL_DELETE_TRIGGER);
+    }
+
+    /**
+     * Run a raw SQL statement, degrading gracefully if the host rejects it.
+     *
+     * On shared hosting (MySQL with binary logging enabled, no SUPER privilege,
+     * log_bin_trust_function_creators disabled) `CREATE TRIGGER` fails with
+     * ERROR 1419. These triggers are defense-in-depth for hall-schema
+     * immutability/freeze; the application layer enforces the same rules, so a
+     * missing trigger MUST NOT abort `php artisan migrate` — which would abort the
+     * entire install. We log and continue instead (per the intent noted above:
+     * "if creation fails, the existing protection remains active").
+     */
+    private function safeUnprepared(string $sql, string $label): void
+    {
+        try {
+            DB::unprepared($sql);
+        } catch (\Throwable $e) {
+            fwrite(STDERR, sprintf(
+                "\n  ! %s NOT applied: %s\n"
+                . "    (Hall schema immutability/freeze guard not enforced at DB level on this host.)\n\n",
+                $label,
+                $e->getMessage()
+            ));
+        }
     }
 
     public function down(): void
