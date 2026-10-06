@@ -12,6 +12,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
+            darkMode: 'class',
             theme: {
                 extend: {
                     fontFamily: { sans: ['Inter', 'system-ui', 'Segoe UI', 'sans-serif'] },
@@ -28,6 +29,16 @@
                 }
             }
         }
+    </script>
+    <!-- Применяем тему ДО отрисовки, чтобы не было вспышки светлой темы -->
+    <script>
+        (function () {
+            try {
+                var t = localStorage.getItem('installer-theme');
+                if (!t) t = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+                if (t === 'dark') document.documentElement.classList.add('dark');
+            } catch (e) {}
+        })();
     </script>
     <style>
         html { scroll-behavior: smooth; }
@@ -47,20 +58,14 @@
         }
 
         /* Индикаторы степпера */
-        .step-dot {
-            transition: all .35s cubic-bezier(.16,1,.3,1);
-        }
+        .step-dot { transition: all .35s cubic-bezier(.16,1,.3,1); }
         .step-dot.is-active {
             background: rgba(255,255,255,.18);
             border-color: #fff; color: #fff;
             box-shadow: 0 0 0 6px rgba(255,255,255,.12);
         }
-        .step-dot.is-completed {
-            background: #fff; border-color: #fff; color: #4f46e5;
-        }
-        .step-dot.is-inactive {
-            border-color: rgba(255,255,255,.35); color: rgba(255,255,255,.55);
-        }
+        .step-dot.is-completed { background: #fff; border-color: #fff; color: #4f46e5; }
+        .step-dot.is-inactive { border-color: rgba(255,255,255,.35); color: rgba(255,255,255,.55); }
         .step-title.is-active { color: #fff; }
         .step-title.is-inactive { color: rgba(255,255,255,.55); }
         .step-line.is-completed { background: #fff; }
@@ -118,14 +123,33 @@
         /* Кастомный скролл */
         .nice-scroll::-webkit-scrollbar { width: 8px; }
         .nice-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 9999px; }
+
+        /* ===== Тёмная тема: нативные оверрайды кастомных классов ===== */
+        .dark body { color-scheme: dark; }
+        .dark .field { background: #0b1220; border-color: #334155; color: #e2e8f0; }
+        .dark .field::placeholder { color: #64748b; }
+        .dark .field:focus { border-color: #818cf8; box-shadow: 0 0 0 4px rgba(129,140,248,.22); }
+        .dark .field.is-invalid { border-color: #fb7185; box-shadow: 0 0 0 4px rgba(244,63,94,.18); }
+        .dark .btn-ghost { background: #1e293b; color: #e2e8f0; border-color: #334155; }
+        .dark .btn-ghost:hover { background: #273449; }
+        .dark .pw-bar { background: #334155; }
+        .dark .nice-scroll::-webkit-scrollbar-thumb { background: #475569; }
     </style>
 </head>
 
-<body class="min-h-screen bg-slate-50 text-slate-800 antialiased selection:bg-brand-200">
+<body class="min-h-screen bg-slate-50 text-slate-800 antialiased selection:bg-brand-200 dark:bg-slate-950 dark:text-slate-100">
+
+    <!-- Переключатель темы -->
+    <button id="theme-toggle" type="button" onclick="toggleTheme()" aria-label="Переключить тему"
+            class="fixed right-4 top-4 z-50 grid h-10 w-10 place-items-center rounded-full border border-black/5 bg-white/70 text-slate-600 shadow-sm backdrop-blur transition hover:bg-white dark:border-white/10 dark:bg-slate-800/70 dark:text-slate-300">
+        <svg class="moon h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/></svg>
+        <svg class="sun hidden h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/><path stroke-linecap="round" d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+    </button>
+
     <div class="min-h-screen lg:grid lg:grid-cols-[minmax(300px,400px)_1fr]">
 
         <!-- ============ ЛЕВАЯ БРЕНД-ПАНЕЛЬ ============ -->
-        <aside class="relative hidden overflow-hidden bg-gradient-to-br from-brand-700 via-brand-600 to-violet-600 lg:flex lg:flex-col lg:justify-between p-10 text-white">
+        <aside class="relative hidden overflow-hidden bg-gradient-to-br from-brand-700 via-brand-600 to-violet-600 dark:from-indigo-900 dark:via-indigo-800 dark:to-violet-800 lg:flex lg:flex-col lg:justify-between p-10 text-white">
             <div class="blob w-72 h-72 -top-10 -left-10"></div>
             <div class="blob w-80 h-80 bottom-0 right-0" style="background:radial-gradient(circle at 70% 70%, #c4b5fd, transparent 70%);"></div>
 
@@ -152,7 +176,6 @@
 
             <!-- Вертикальный степпер -->
             <ol class="relative mt-10 space-y-1">
-                <!-- step 1 -->
                 <li class="flex gap-4" data-step="1">
                     <div class="flex flex-col items-center">
                         <div class="step-dot is-active grid h-9 w-9 place-items-center rounded-full border-2 text-sm font-bold">1</div>
@@ -163,7 +186,6 @@
                         <p class="text-xs text-white/55">Проверка сервера</p>
                     </div>
                 </li>
-                <!-- step 2 -->
                 <li class="flex gap-4" data-step="2">
                     <div class="flex flex-col items-center">
                         <div class="step-dot is-inactive grid h-9 w-9 place-items-center rounded-full border-2 text-sm font-bold">2</div>
@@ -174,7 +196,6 @@
                         <p class="text-xs text-white/55">Подключение и название</p>
                     </div>
                 </li>
-                <!-- step 3 -->
                 <li class="flex gap-4" data-step="3">
                     <div class="flex flex-col items-center">
                         <div class="step-dot is-inactive grid h-9 w-9 place-items-center rounded-full border-2 text-sm font-bold">3</div>
@@ -185,7 +206,6 @@
                         <p class="text-xs text-white/55">Учётная запись входа</p>
                     </div>
                 </li>
-                <!-- step 4 -->
                 <li class="flex gap-4" data-step="4">
                     <div class="flex flex-col items-center">
                         <div class="step-dot is-inactive grid h-9 w-9 place-items-center rounded-full border-2 text-sm font-bold">4</div>
@@ -204,47 +224,47 @@
         <main class="flex min-h-screen items-center justify-center p-5 sm:p-10">
             <div class="w-full max-w-xl">
 
-                <!-- Мобильный заголовок + прогресс (только до lg) -->
+                <!-- Мобильный заголовок + прогресс -->
                 <div class="mb-6 lg:hidden">
                     <div class="flex items-center gap-2.5">
-                        <div class="grid h-9 w-9 place-items-center rounded-xl bg-brand-600 text-white">
+                        <div class="grid h-9 w-9 place-items-center rounded-xl bg-brand-600 text-white dark:bg-brand-500">
                             <svg viewBox="0 0 24 24" fill="none" class="h-5 w-5" stroke="currentColor" stroke-width="1.8">
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M3 8a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-2a2 2 0 0 0 0-4V8Z"/>
                             </svg>
                         </div>
-                        <p class="font-extrabold text-slate-900">Nabilet</p>
+                        <p class="font-extrabold text-slate-900 dark:text-white">Nabilet</p>
                     </div>
-                    <div class="mt-4 h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
+                    <div class="mt-4 h-1.5 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
                         <div id="mobile-progress" class="h-full rounded-full bg-gradient-to-r from-brand-500 to-violet-500 transition-all duration-500" style="width:25%"></div>
                     </div>
-                    <p class="mt-1.5 text-xs font-medium text-slate-500">Шаг <span id="mobile-step">1</span> из 4</p>
+                    <p class="mt-1.5 text-xs font-medium text-slate-500 dark:text-slate-400">Шаг <span id="mobile-step">1</span> из 4</p>
                 </div>
 
                 <!-- Шапка (десктоп) -->
                 <div class="mb-6 hidden lg:block">
-                    <h2 class="text-2xl font-extrabold text-slate-900">Установка системы</h2>
-                    <p class="mt-1 text-sm text-slate-500">Заполните данные — всё остальное мастер сделает сам.</p>
+                    <h2 class="text-2xl font-extrabold text-slate-900 dark:text-white">Установка системы</h2>
+                    <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">Заполните данные — всё остальное мастер сделает сам.</p>
                 </div>
 
                 <!-- ===================== STEP 1: ТРЕБОВАНИЯ ===================== -->
                 <section id="step1" class="step-pane animate-pane">
-                    <div class="rounded-2xl bg-white p-6 shadow-soft sm:p-7">
+                    <div class="rounded-2xl bg-white p-6 shadow-soft dark:border dark:border-slate-800 dark:bg-slate-900 sm:p-7">
                         <div class="flex items-center justify-between">
-                            <h3 class="text-lg font-bold text-slate-900">Проверка требований сервера</h3>
+                            <h3 class="text-lg font-bold text-slate-900 dark:text-white">Проверка требований сервера</h3>
                             <span id="req-summary" class="hidden rounded-full px-3 py-1 text-xs font-semibold"></span>
                         </div>
-                        <p class="mt-1 text-sm text-slate-500">Мастер проверит окружение автоматически.</p>
+                        <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">Мастер проверит окружение автоматически.</p>
 
                         <div id="requirements-list" class="mt-5 space-y-2.5 nice-scroll" style="max-height:340px;overflow:auto">
-                            <div class="flex items-center gap-3 rounded-xl border border-slate-100 bg-slate-50 px-4 py-3 text-sm text-slate-400">
+                            <div class="flex items-center gap-3 rounded-xl border border-slate-100 bg-slate-50 px-4 py-3 text-sm text-slate-400 dark:border-slate-800 dark:bg-slate-800/60 dark:text-slate-500">
                                 <svg class="h-4 w-4 animate-spin text-brand-500" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 0 1 8-8v4a4 4 0 0 0-4 4H4z"/></svg>
                                 Загрузка проверок…
                             </div>
                         </div>
 
-                        <div id="requirements-error" class="mt-4 hidden rounded-xl border border-rose-200 bg-rose-50 p-4">
-                            <p class="text-sm font-semibold text-rose-700">Обнаружены проблемы:</p>
-                            <ul id="requirements-error-list" class="mt-1.5 list-disc pl-5 text-sm text-rose-600"></ul>
+                        <div id="requirements-error" class="mt-4 hidden rounded-xl border border-rose-200 bg-rose-50 p-4 dark:border-rose-500/30 dark:bg-rose-500/10">
+                            <p class="text-sm font-semibold text-rose-700 dark:text-rose-300">Обнаружены проблемы:</p>
+                            <ul id="requirements-error-list" class="mt-1.5 list-disc pl-5 text-sm text-rose-600 dark:text-rose-300/90"></ul>
                         </div>
                     </div>
 
@@ -258,38 +278,38 @@
 
                 <!-- ===================== STEP 2: БАЗА ДАННЫХ ===================== -->
                 <section id="step2" class="step-pane hidden">
-                    <div class="rounded-2xl bg-white p-6 shadow-soft sm:p-7">
-                        <h3 class="text-lg font-bold text-slate-900">Подключение к базе данных</h3>
-                        <p class="mt-1 text-sm text-slate-500">Данные из панели управления хостингом.</p>
+                    <div class="rounded-2xl bg-white p-6 shadow-soft dark:border dark:border-slate-800 dark:bg-slate-900 sm:p-7">
+                        <h3 class="text-lg font-bold text-slate-900 dark:text-white">Подключение к базе данных</h3>
+                        <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">Данные из панели управления хостингом.</p>
 
                         <form id="db-form" class="mt-5 space-y-4" novalidate>
                             <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
                                 <div class="sm:col-span-2">
-                                    <label class="mb-1.5 block text-sm font-medium text-slate-700">Хост БД <span class="text-rose-500">*</span></label>
+                                    <label class="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-200">Хост БД <span class="text-rose-500">*</span></label>
                                     <input name="db_host" required class="field" placeholder="mysql.timeweb.ru">
-                                    <p class="mt-1 text-xs text-slate-400">На Timeweb — не localhost, а значение из панели.</p>
+                                    <p class="mt-1 text-xs text-slate-400 dark:text-slate-500">На Timeweb — не localhost, а значение из панели.</p>
                                 </div>
                                 <div>
-                                    <label class="mb-1.5 block text-sm font-medium text-slate-700">Порт <span class="text-rose-500">*</span></label>
+                                    <label class="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-200">Порт <span class="text-rose-500">*</span></label>
                                     <input name="db_port" required value="3306" type="number" class="field">
                                 </div>
                             </div>
 
                             <div>
-                                <label class="mb-1.5 block text-sm font-medium text-slate-700">Имя базы данных <span class="text-rose-500">*</span></label>
+                                <label class="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-200">Имя базы данных <span class="text-rose-500">*</span></label>
                                 <input name="db_database" required class="field" placeholder="nabilet_db">
                             </div>
 
                             <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
                                 <div>
-                                    <label class="mb-1.5 block text-sm font-medium text-slate-700">Пользователь <span class="text-rose-500">*</span></label>
+                                    <label class="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-200">Пользователь <span class="text-rose-500">*</span></label>
                                     <input name="db_username" required class="field" placeholder="nabilet_user">
                                 </div>
                                 <div>
-                                    <label class="mb-1.5 block text-sm font-medium text-slate-700">Пароль <span class="text-rose-500">*</span></label>
+                                    <label class="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-200">Пароль <span class="text-rose-500">*</span></label>
                                     <div class="relative">
                                         <input name="db_password" required type="password" class="field pr-10" placeholder="••••••••">
-                                        <button type="button" onclick="toggleVis(this)" class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600" tabindex="-1">
+                                        <button type="button" onclick="toggleVis(this)" class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300" tabindex="-1">
                                             <svg class="h-5 w-5 eye-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
                                             <svg class="h-5 w-5 eye-off hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M3 3l18 18M10.6 10.6a3 3 0 0 0 4.2 4.2M9.9 5.1A9.6 9.6 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3 3.8M6 6.3A17 17 0 0 0 2 12s3.5 7 10 7a9.6 9.6 0 0 0 3.4-.6"/></svg>
                                         </button>
@@ -297,39 +317,39 @@
                                 </div>
                             </div>
 
-                            <div class="rounded-xl border border-slate-100 bg-slate-50/60 p-4">
-                                <h4 class="text-sm font-semibold text-slate-700">Параметры приложения</h4>
+                            <div class="rounded-xl border border-slate-100 bg-slate-50/60 p-4 dark:border-slate-700/60 dark:bg-slate-800/40">
+                                <h4 class="text-sm font-semibold text-slate-700 dark:text-slate-200">Параметры приложения</h4>
                                 <div class="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
                                     <div>
-                                        <label class="mb-1.5 block text-sm font-medium text-slate-700">Название сайта <span class="text-rose-500">*</span></label>
+                                        <label class="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-200">Название сайта <span class="text-rose-500">*</span></label>
                                         <input name="app_name" required value="Nabilet Ticketing" class="field">
                                     </div>
                                     <div>
-                                        <label class="mb-1.5 block text-sm font-medium text-slate-700">URL сайта <span class="text-rose-500">*</span></label>
+                                        <label class="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-200">URL сайта <span class="text-rose-500">*</span></label>
                                         <input name="app_url" required type="url" class="field" placeholder="https://mysite.ru">
                                     </div>
                                 </div>
                             </div>
 
                             <!-- ЮKassa (опционально) -->
-                            <details class="group rounded-xl border border-slate-200">
-                                <summary class="flex cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-medium text-slate-700">
+                            <details class="group rounded-xl border border-slate-200 dark:border-slate-700">
+                                <summary class="flex cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-medium text-slate-700 dark:text-slate-200">
                                     <span>ЮKassa (опционально)</span>
-                                    <svg class="h-4 w-4 text-slate-400 transition group-open:rotate-180" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 9l6 6 6-6"/></svg>
+                                    <svg class="h-4 w-4 text-slate-400 transition group-open:rotate-180 dark:text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 9l6 6 6-6"/></svg>
                                 </summary>
-                                <div class="grid grid-cols-1 gap-4 border-t border-slate-100 px-4 py-4 sm:grid-cols-2">
+                                <div class="grid grid-cols-1 gap-4 border-t border-slate-100 px-4 py-4 sm:grid-cols-2 dark:border-slate-700">
                                     <div>
-                                        <label class="mb-1.5 block text-sm font-medium text-slate-700">Shop ID</label>
+                                        <label class="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-200">Shop ID</label>
                                         <input name="yookassa_shop_id" class="field" placeholder="123456">
                                     </div>
                                     <div>
-                                        <label class="mb-1.5 block text-sm font-medium text-slate-700">Секретный ключ</label>
+                                        <label class="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-200">Секретный ключ</label>
                                         <input name="yookassa_api_key" class="field" placeholder="live_xxx">
                                     </div>
                                 </div>
                             </details>
 
-                            <div id="db-error" class="hidden rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700"></div>
+                            <div id="db-error" class="hidden rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300"></div>
                         </form>
                     </div>
 
@@ -344,39 +364,39 @@
 
                 <!-- ===================== STEP 3: АДМИН ===================== -->
                 <section id="step3" class="step-pane hidden">
-                    <div class="rounded-2xl bg-white p-6 shadow-soft sm:p-7">
-                        <h3 class="text-lg font-bold text-slate-900">Создание администратора</h3>
-                        <p class="mt-1 text-sm text-slate-500">Этой учётной записи будут доступны все разделы.</p>
+                    <div class="rounded-2xl bg-white p-6 shadow-soft dark:border dark:border-slate-800 dark:bg-slate-900 sm:p-7">
+                        <h3 class="text-lg font-bold text-slate-900 dark:text-white">Создание администратора</h3>
+                        <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">Этой учётной записи будут доступны все разделы.</p>
 
                         <form id="admin-form" class="mt-5 space-y-4" novalidate>
                             <div>
-                                <label class="mb-1.5 block text-sm font-medium text-slate-700">Email администратора <span class="text-rose-500">*</span></label>
+                                <label class="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-200">Email администратора <span class="text-rose-500">*</span></label>
                                 <input name="admin_email" required type="email" class="field" placeholder="admin@example.com">
-                                <p class="err-mail mt-1 hidden text-xs text-rose-600"></p>
+                                <p class="err-mail mt-1 hidden text-xs text-rose-600 dark:text-rose-400"></p>
                             </div>
 
                             <div>
-                                <label class="mb-1.5 block text-sm font-medium text-slate-700">Пароль <span class="text-rose-500">*</span></label>
+                                <label class="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-200">Пароль <span class="text-rose-500">*</span></label>
                                 <div class="relative">
                                     <input name="admin_password" required minlength="8" type="password" class="field pr-10" placeholder="Минимум 8 символов">
-                                    <button type="button" onclick="toggleVis(this)" class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600" tabindex="-1">
+                                    <button type="button" onclick="toggleVis(this)" class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300" tabindex="-1">
                                         <svg class="h-5 w-5 eye-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
                                         <svg class="h-5 w-5 eye-off hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M3 3l18 18M10.6 10.6a3 3 0 0 0 4.2 4.2M9.9 5.1A9.6 9.6 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3 3.8M6 6.3A17 17 0 0 0 2 12s3.5 7 10 7a9.6 9.6 0 0 0 3.4-.6"/></svg>
                                     </button>
                                 </div>
                                 <div class="mt-2 flex items-center gap-3">
                                     <div class="pw-bar flex-1"><span id="pw-fill"></span></div>
-                                    <span id="pw-label" class="text-xs font-medium text-slate-400">—</span>
+                                    <span id="pw-label" class="text-xs font-medium text-slate-400 dark:text-slate-500">—</span>
                                 </div>
                             </div>
 
                             <div>
-                                <label class="mb-1.5 block text-sm font-medium text-slate-700">Подтверждение пароля <span class="text-rose-500">*</span></label>
+                                <label class="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-200">Подтверждение пароля <span class="text-rose-500">*</span></label>
                                 <input name="admin_password_confirmation" required minlength="8" type="password" class="field" placeholder="Повторите пароль">
-                                <p class="err-confirm mt-1 hidden text-xs text-rose-600"></p>
+                                <p class="err-confirm mt-1 hidden text-xs text-rose-600 dark:text-rose-400"></p>
                             </div>
 
-                            <div id="admin-error" class="hidden rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700"></div>
+                            <div id="admin-error" class="hidden rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300"></div>
                         </form>
                     </div>
 
@@ -391,53 +411,53 @@
 
                 <!-- ===================== STEP 4: ПРОГРЕСС ===================== -->
                 <section id="step4" class="step-pane hidden">
-                    <div class="relative overflow-hidden rounded-2xl bg-white p-6 shadow-soft sm:p-8">
+                    <div class="relative overflow-hidden rounded-2xl bg-white p-6 shadow-soft dark:border dark:border-slate-800 dark:bg-slate-900 sm:p-8">
                         <div id="confetti-layer" class="pointer-events-none absolute inset-0 overflow-hidden"></div>
 
                         <div id="progress-block">
-                            <h3 class="text-lg font-bold text-slate-900">Установка системы</h3>
-                            <p class="mt-1 text-sm text-slate-500">Не закрывайте страницу до завершения.</p>
+                            <h3 class="text-lg font-bold text-slate-900 dark:text-white">Установка системы</h3>
+                            <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">Не закрывайте страницу до завершения.</p>
 
                             <div class="mt-6 space-y-3">
                                 <div class="flex items-center gap-3" id="row-migrate">
-                                    <span class="status-ico grid h-7 w-7 place-items-center rounded-full bg-slate-100 text-slate-400">
+                                    <span class="status-ico grid h-7 w-7 place-items-center rounded-full bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500">
                                         <svg class="h-4 w-4 animate-spin text-brand-500" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 0 1 8-8v4a4 4 0 0 0-4 4H4z"/></svg>
                                     </span>
-                                    <span class="text-sm font-medium text-slate-600">Выполнение миграций базы данных…</span>
+                                    <span class="text-sm font-medium text-slate-600 dark:text-slate-300">Выполнение миграций базы данных…</span>
                                 </div>
                                 <div class="flex items-center gap-3" id="row-admin">
-                                    <span class="status-ico grid h-7 w-7 place-items-center rounded-full bg-slate-100 text-slate-400">
+                                    <span class="status-ico grid h-7 w-7 place-items-center rounded-full bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500">
                                         <svg class="h-4 w-4 animate-spin text-brand-500" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 0 1 8-8v4a4 4 0 0 0-4 4H4z"/></svg>
                                     </span>
-                                    <span class="text-sm font-medium text-slate-600">Создание администратора…</span>
+                                    <span class="text-sm font-medium text-slate-600 dark:text-slate-300">Создание администратора…</span>
                                 </div>
                                 <div class="flex items-center gap-3" id="row-storage">
-                                    <span class="status-ico grid h-7 w-7 place-items-center rounded-full bg-slate-100 text-slate-400">
+                                    <span class="status-ico grid h-7 w-7 place-items-center rounded-full bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500">
                                         <svg class="h-4 w-4 animate-spin text-brand-500" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 0 1 8-8v4a4 4 0 0 0-4 4H4z"/></svg>
                                     </span>
-                                    <span class="text-sm font-medium text-slate-600">Настройка хранилища файлов…</span>
+                                    <span class="text-sm font-medium text-slate-600 dark:text-slate-300">Настройка хранилища файлов…</span>
                                 </div>
                                 <div class="flex items-center gap-3" id="row-finalize">
-                                    <span class="status-ico grid h-7 w-7 place-items-center rounded-full bg-slate-100 text-slate-400">
+                                    <span class="status-ico grid h-7 w-7 place-items-center rounded-full bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500">
                                         <svg class="h-4 w-4 animate-spin text-brand-500" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 0 1 8-8v4a4 4 0 0 0-4 4H4z"/></svg>
                                     </span>
-                                    <span class="text-sm font-medium text-slate-600">Завершение установки…</span>
+                                    <span class="text-sm font-medium text-slate-600 dark:text-slate-300">Завершение установки…</span>
                                 </div>
                             </div>
                         </div>
 
                         <div id="success-block" class="hidden py-4 text-center">
-                            <div class="success-pop mx-auto grid h-20 w-20 place-items-center rounded-full bg-emerald-100">
-                                <svg class="h-11 w-11 text-emerald-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                            <div class="success-pop mx-auto grid h-20 w-20 place-items-center rounded-full bg-emerald-100 dark:bg-emerald-500/15">
+                                <svg class="h-11 w-11 text-emerald-600 dark:text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
                             </div>
-                            <h3 class="mt-5 text-2xl font-extrabold text-slate-900">Установка завершена!</h3>
-                            <p class="mt-1.5 text-sm text-slate-500">Система готова к работе. Можно переходить в панель администратора.</p>
+                            <h3 class="mt-5 text-2xl font-extrabold text-slate-900 dark:text-white">Установка завершена!</h3>
+                            <p class="mt-1.5 text-sm text-slate-500 dark:text-slate-400">Система готова к работе. Можно переходить в панель администратора.</p>
                             <a href="/admin" class="btn btn-primary mt-6 inline-flex">Перейти в админку →</a>
                         </div>
 
-                        <div id="installation-error" class="hidden rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
+                        <div id="installation-error" class="hidden rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300">
                             <p id="installation-error-text" class="font-semibold"></p>
-                            <button onclick="location.reload()" class="mt-2 font-semibold text-rose-700 underline">Попробовать снова</button>
+                            <button onclick="location.reload()" class="mt-2 font-semibold text-rose-700 underline dark:text-rose-300">Попробовать снова</button>
                         </div>
                     </div>
                 </section>
@@ -452,9 +472,32 @@
 
         const state = { step: 1, passed: false, dbTested: false };
 
+        /* ---------- Тема ---------- */
+        function applyTheme(theme) {
+            const root = document.documentElement;
+            const moon = $('#theme-toggle .moon');
+            const sun = $('#theme-toggle .sun');
+            if (theme === 'dark') {
+                root.classList.add('dark');
+                if (moon) moon.classList.add('hidden');
+                if (sun) sun.classList.remove('hidden');
+            } else {
+                root.classList.remove('dark');
+                if (moon) moon.classList.remove('hidden');
+                if (sun) sun.classList.add('hidden');
+            }
+        }
+        function currentTheme() {
+            return document.documentElement.classList.contains('dark') ? 'dark' : 'light';
+        }
+        function toggleTheme() {
+            const next = currentTheme() === 'dark' ? 'light' : 'dark';
+            try { localStorage.setItem('installer-theme', next); } catch (e) {}
+            applyTheme(next);
+        }
+
         /* ---------- Навигация по шагам ---------- */
         function goToStep(step) {
-            // Валидация при выходе со 2-го шага
             if (step > 2 && !validateDb()) return;
 
             state.step = step;
@@ -489,7 +532,6 @@
                     if (line) line.classList.remove('is-completed');
                 }
             });
-            // мобильный прогресс
             const pct = (step / 4) * 100;
             $('#mobile-progress').style.width = pct + '%';
             $('#mobile-step').textContent = step;
@@ -512,25 +554,25 @@
                 Object.values(data.requirements).forEach(c => {
                     const ok = c.passed;
                     const icon = ok
-                        ? '<span class="grid h-6 w-6 place-items-center rounded-full bg-emerald-100 text-emerald-600">' + checkSvg() + '</span>'
-                        : '<span class="grid h-6 w-6 place-items-center rounded-full bg-rose-100 text-rose-600"><svg viewBox="0 0 24 24" fill="none" class="h-4 w-4" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M6 6l12 12M18 6L6 18"/></svg></span>';
-                    const statusCls = ok ? 'text-emerald-600' : 'text-rose-600';
-                    html += '<div class="req-item flex items-center justify-between rounded-xl border border-slate-100 bg-white px-4 py-3" style="animation-delay:' + (i++ * 40) + 'ms">'
+                        ? '<span class="grid h-6 w-6 place-items-center rounded-full bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400">' + checkSvg() + '</span>'
+                        : '<span class="grid h-6 w-6 place-items-center rounded-full bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400"><svg viewBox="0 0 24 24" fill="none" class="h-4 w-4" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M6 6l12 12M18 6L6 18"/></svg></span>';
+                    const statusCls = ok ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400';
+                    html += '<div class="req-item flex items-center justify-between rounded-xl border border-slate-100 bg-white px-4 py-3 dark:border-slate-700/60 dark:bg-slate-800/60" style="animation-delay:' + (i++ * 40) + 'ms">'
                         + '<div class="flex items-center gap-3"><span class="req-ico">' + icon + '</span>'
-                        + '<span class="text-sm font-medium text-slate-700">' + escapeHtml(c.name) + '</span></div>'
+                        + '<span class="text-sm font-medium text-slate-700 dark:text-slate-200">' + escapeHtml(c.name) + '</span></div>'
                         + '<span class="text-xs font-semibold ' + statusCls + '">' + escapeHtml(c.current) + '</span></div>';
                 });
                 list.innerHTML = html;
 
                 state.passed = data.passed;
                 const sum = $('#req-summary');
-                sum.classList.remove('hidden', 'bg-emerald-100', 'text-emerald-700', 'bg-amber-100', 'text-amber-700');
+                sum.classList.remove('hidden', 'bg-emerald-100', 'text-emerald-700', 'bg-amber-100', 'text-amber-700', 'dark:bg-emerald-500/15', 'dark:text-emerald-400', 'dark:bg-amber-500/15', 'dark:text-amber-300');
                 if (data.passed) {
-                    sum.classList.add('bg-emerald-100', 'text-emerald-700');
+                    sum.classList.add('bg-emerald-100', 'text-emerald-700', 'dark:bg-emerald-500/15', 'dark:text-emerald-400');
                     sum.textContent = 'Всё готово';
                     btn.classList.remove('hidden');
                 } else {
-                    sum.classList.add('bg-amber-100', 'text-amber-700');
+                    sum.classList.add('bg-amber-100', 'text-amber-700', 'dark:bg-amber-500/15', 'dark:text-amber-300');
                     sum.textContent = 'Есть замечания';
                     const errBox = $('#requirements-error');
                     const errList = $('#requirements-error-list');
@@ -540,7 +582,7 @@
                         .map(c => '<li>' + escapeHtml(c.name) + ': ' + escapeHtml(c.current) + '</li>').join('');
                 }
             } catch (e) {
-                list.innerHTML = '<div class="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-600">Не удалось выполнить проверку. Обновите страницу.</div>';
+                list.innerHTML = '<div class="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-600 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300">Не удалось выполнить проверку. Обновите страницу.</div>';
             }
         }
 
@@ -627,7 +669,6 @@
             }
             if (!ok) return;
 
-            // переход к прогрессу
             goToStep(4);
             runInstall();
         }
@@ -682,9 +723,9 @@
         function markDone(rowId) {
             const row = $('#' + rowId);
             const ico = $('.status-ico', row);
-            ico.className = 'status-ico grid h-7 w-7 place-items-center rounded-full bg-emerald-100 text-emerald-600';
+            ico.className = 'status-ico grid h-7 w-7 place-items-center rounded-full bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400';
             ico.innerHTML = checkSvg();
-            $('span:last-child', row).className = 'text-sm font-medium text-slate-900';
+            $('span:last-child', row).className = 'text-sm font-medium text-slate-900 dark:text-white';
         }
 
         function launchConfetti() {
@@ -714,6 +755,7 @@
         }
 
         document.addEventListener('DOMContentLoaded', () => {
+            applyTheme(currentTheme()); // синхронизируем иконку с уже применённым классом
             updateStepper(1);
             bindStrength();
             checkRequirements();
