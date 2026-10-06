@@ -50,6 +50,95 @@ use Illuminate\Database\Schema\Schema;
 
 class_alias(Schema::class, 'Illuminate\Support\Facades\Schema');
 
+/**
+ * Tables created by application migrations that are intentionally absent from the
+ * NABILET Core spec bundle. The spec is the "core" schema (64 tables); these are
+ * product/integration tables layered on top and so have no spec definition to diff
+ * against. They are allowed to exist in the migration set.
+ *
+ * This is a ratchet: it may only shrink. If one of these tables becomes part of the
+ * core spec, remove it here and the "same set of tables" check will then require it.
+ *
+ * @var list<string>
+ */
+const APP_ONLY_TABLES = [
+    'event_artists',          // event content extras (create_event_content_tables)
+    'event_dates',            // event scheduling (create_event_dates_table)
+    'event_faqs',             // event content extras
+    'event_schedule_items',   // event schedule
+    'event_speakers',         // event content extras
+    'event_sponsors',         // event content extras
+    'metrika_settings',       // Yandex.Metrika integration (create_metrika_settings_table)
+    'personal_access_tokens', // Laravel personal access tokens (create_personal_access_tokens_table)
+];
+
+/**
+ * Columns that application migrations add on top of the NABILET Core spec.
+ * Like APP_ONLY_TABLES, these are product-layer extensions with no spec
+ * definition, so they are permitted to exist in the migration set. They are
+ * excluded from the column and default diffs below.
+ *
+ * Ratchet: may only shrink. If a column below becomes part of the core spec,
+ * remove it here and the column/defaults checks will then require it.
+ *
+ * @var list<string>  "table.column"
+ */
+const APP_OWNED_COLUMNS = [
+    'users.remember_token',                  // Laravel auth (add_remember_token)
+    'carts.currency',                       // Cart model writes it; backfilled (add_currency_total_to_carts)
+    'carts.total_amount',                   // CartService checkout math; backfilled (add_currency_total_to_carts)
+];
+
+/**
+ * Indexes that application migrations add on top of the NABILET Core spec.
+ * Excluded from the named-index diff below.
+ *
+ * @var list<string>  "table.index"
+ */
+const APP_OWNED_INDEXES = [
+    'offline_bundles.idx_offline_bundles_device_hash', // multi-device sync (fix_offline_bundles_unique_constraint)
+    'offline_bundles.uq_offline_bundles_hash_device',  // replaced uq_offline_bundles_hash (fix_offline_bundles_unique_constraint)
+];
+
+/**
+ * Spec-declared indexes that migrations DELIBERATELY do not apply.
+ *
+ * This is a real, deferred spec/migration divergence — NOT an app extension.
+ * Migration 2026_10_05_000200_constrain_carts_unique_to_active.php dropped
+ * `uq_carts_token_session_status` (it raised a 500 on the second purchase of a
+ * session) and replaced it with `uq_carts_active` over a generated
+ * `active_cart_key` column. The spec still declares the old key and must be
+ * updated in a separate, explicit change. Until then the migrations are correct
+ * and this name is excluded from the "missing from migrations" check.
+ *
+ * Ratchet: may only shrink. When the spec is updated to match, delete the entry.
+ *
+ * @var list<string>  "table.index"
+ */
+const KNOWN_SPEC_INDEX_DIVERGENCES = [
+    'carts.uq_carts_token_session_status',
+];
+
+/**
+ * Strip the entries of `table.<thing>` that belong to $table from a qualified list.
+ *
+ * @param list<string> $qualified  "table.column" / "table.index"
+ * @return list<string>            the bare names for $table
+ */
+function ownEntries(array $qualified, string $table): array
+{
+    $out = [];
+    $prefix = $table . '.';
+
+    foreach ($qualified as $entry) {
+        if (str_starts_with($entry, $prefix)) {
+            $out[] = substr($entry, strlen($prefix));
+        }
+    }
+
+    return $out;
+}
+
 $root = dirname(__DIR__);
 $specFile = $root . '/nabilet_core_spec/migrations.sql';
 $migrationDir = $root . '/database/migrations';
@@ -497,6 +586,7 @@ echo "\n[4] Migrations vs spec\n";
 check('same set of tables', function () use ($tables, $spec): void {
     $have = array_keys($tables);
     $want = array_keys($spec['tables']);
+    $have = array_values(array_diff($have, APP_ONLY_TABLES));
     sort($have);
     sort($want);
 
@@ -518,6 +608,12 @@ check('same columns on every table', function () use ($tables, $spec): void {
         $want = $definition['columns'];
         sort($have);
         sort($want);
+
+        // Drop app-owned columns — they exist in the migrations by design but have
+        // no spec definition to diff against (see APP_OWNED_COLUMNS).
+        $own = ownEntries(APP_OWNED_COLUMNS, $name);
+        $have = array_values(array_diff($have, $own));
+        $want = array_values(array_diff($want, $own));
 
         if ($have !== $want) {
             $problems[] = $name . ': ' . diffReport(
@@ -566,6 +662,12 @@ check('same column defaults on every table', function () use ($tables, $spec): v
             }
         }
 
+        // App-owned columns have no spec default either (see APP_OWNED_COLUMNS).
+        // Strip them before diffing so they are not reported as drift.
+        foreach (ownEntries(APP_OWNED_COLUMNS, $name) as $col) {
+            unset($have[$col], $want[$col]);
+        }
+
         $missing = [];
         $extra = [];
 
@@ -610,6 +712,14 @@ check('same named indexes on every table', function () use ($tables, $spec): voi
         $want = $definition['indexes'];
         sort($have);
         sort($want);
+
+        // Drop app-owned indexes (no spec definition — see APP_OWNED_INDEXES) and
+        // spec indexes that migrations deliberately do not apply (real, deferred
+        // spec/migration divergence — see KNOWN_SPEC_INDEX_DIVERGENCES).
+        $own = ownEntries(APP_OWNED_INDEXES, $name);
+        $have = array_values(array_diff($have, $own));
+        $known = ownEntries(KNOWN_SPEC_INDEX_DIVERGENCES, $name);
+        $want = array_values(array_diff($want, $known));
 
         if ($have !== $want) {
             $problems[] = $name . ': ' . diffReport(
