@@ -85,6 +85,9 @@ class HallController extends Controller
         $validated = $request->validate([
             'name' => ['sometimes', 'required', 'string', 'max:255'],
             'description' => ['nullable', 'string', 'max:1000'],
+            'capacity' => ['sometimes', 'integer', 'min:0'],
+            'width' => ['sometimes', 'integer', 'min:0'],
+            'height' => ['sometimes', 'integer', 'min:0'],
         ]);
 
         $hall = $this->service->updateHall($hall, $validated);
