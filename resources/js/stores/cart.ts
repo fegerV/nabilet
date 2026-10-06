@@ -14,6 +14,7 @@ import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { extendCartHold } from '@/lib/inventory'
 import { ApiError } from '@/lib/api'
+import { plural } from '@/lib/format'
 
 export interface CartSeat {
   id: string
@@ -22,10 +23,55 @@ export interface CartSeat {
   number: number
   priceMinor: number
   kind: 'standard' | 'vip' | 'accessible'
+  /**
+   * Количество билетов на позицию. Для обычного места — 1; для стоячей зоны —
+   * сколько выбрано (сервер держит `cart_items.quantity`). Без этого поля сводка
+   * считала танцпол как один билет и расходилась с суммой на чеке.
+   */
+  quantity?: number
 }
 
 const HOLD_SECONDS = 10 * 60
 const WARN_SECONDS = 60
+
+/* ── Билеты и позиции: это РАЗНЫЕ числа ──────────────────────────────────
+ * Обычное место — одна позиция и один билет. Стоячая зона (танцпол) — одна
+ * позиция и N билетов. Пока эти два числа смешивались, сводка показывала
+ * «1 билет · 1 место» и цену одного билета для танцпола с qty = 3, а итог
+ * расходился с `orders.total_amount` на чеке. Помощники ниже — единственное
+ * место, где считается количество; дублировать формулу в компонентах нельзя.
+ */
+
+/** Билетов в позиции: qty из серверной корзины, минимум 1. */
+export function seatQuantity(seat: Pick<CartSeat, 'quantity'>): number {
+  const n = Number(seat.quantity ?? 1)
+  return Number.isFinite(n) && n >= 1 ? Math.floor(n) : 1
+}
+
+/** Стоимость позиции с учётом количества билетов. */
+export function seatLineTotal(seat: Pick<CartSeat, 'priceMinor' | 'quantity'>): number {
+  return seat.priceMinor * seatQuantity(seat)
+}
+
+/** Билетов в наборе позиций (не количество позиций!). */
+export function seatsTicketCount(seats: Array<Pick<CartSeat, 'quantity'>>): number {
+  return seats.reduce((sum, seat) => sum + seatQuantity(seat), 0)
+}
+
+/**
+ * Подпись позиции для сводки.
+ *
+ * Стоячая зона приходит с `row = 0, number = 0` — это не «ряд 0, место 0»,
+ * а «сколько билетов». Раньше сводка честно печатала «Танцпол, место 0»,
+ * и покупатель видел место, которого не существует.
+ */
+export function seatLineLabel(seat: Pick<CartSeat, 'sector' | 'row' | 'number' | 'quantity'>): string {
+  const qty = seatQuantity(seat)
+  if (seat.number === 0 && seat.row === 0) {
+    return qty > 1 ? `${seat.sector} · ${qty} ${plural(qty, 'билет', 'билета', 'билетов')}` : seat.sector
+  }
+  return `${seat.sector}, ряд ${seat.row}, место ${seat.number}`
+}
 
 /**
  * Ключ sessionStorage, под которым заказ переживает уход на платёжную страницу.
@@ -97,8 +143,15 @@ export const useCartStore = defineStore('cart', () => {
   let ticker: number | null = null
 
   const count = computed(() => selectedIds.value.size)
+  /** Билетов, а не позиций: танцпол qty=2 — это два билета в одной позиции. */
+  const selectedSeats = computed(() =>
+    [...selectedIds.value]
+      .map((id) => seats.value.find((s) => s.id === id))
+      .filter((s): s is CartSeat => s !== undefined),
+  )
+  const ticketsCount = computed(() => seatsTicketCount(selectedSeats.value))
   const subtotalMinor = computed(() =>
-    [...selectedIds.value].reduce((sum, id) => sum + (seats.value.find((s) => s.id === id)?.priceMinor ?? 0), 0),
+    selectedSeats.value.reduce((sum, seat) => sum + seatLineTotal(seat), 0),
   )
   const discountMinor = computed(() => Math.min(promoDiscountMinor.value, subtotalMinor.value))
   const totalMinor = computed(() => Math.max(0, subtotalMinor.value - discountMinor.value))
@@ -294,6 +347,8 @@ export const useCartStore = defineStore('cart', () => {
     sessionId,
     holdExtendError,
     count,
+    ticketsCount,
+    selectedSeats,
     subtotalMinor,
     discountMinor,
     totalMinor,

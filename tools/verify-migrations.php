@@ -24,7 +24,11 @@ declare(strict_types=1);
  *      does not exist yet is a hard failure here.
  *   2. Parse nabilet_core_spec/migrations.sql into the same shape (tables, columns,
  *      column defaults, indexes, foreign keys, CHECK constraints, triggers).
- *   3. Diff. Any difference is a failure; the report names it.
+ *   3. Diff the Core schema strictly, then compare application-owned extensions against
+ *      an exact, reasoned allowlist. Any unlisted/missing difference is a failure.
+ *      This distinction is necessary because the repository intentionally carries
+ *      application migrations beyond the standalone Core bundle; the allowlist is a
+ *      ratchet and never suppresses an unreviewed column/table/index.
  *
  * WHY COLUMN DEFAULTS ARE COMPARED
  *   They were not, and that blind spot let a real defect through: gen-migrations.py
@@ -273,6 +277,26 @@ $rawStatements = Schema::rawStatements()->statements;
 // back into the recorded tables so the diff sees the schema that is actually
 // declared.
 foreach ($rawStatements as $rawSql) {
+    if (preg_match('/ALTER\s+TABLE\s+`?(\w+)`?\s+ADD\s+COLUMN\s+`?(\w+)`?\s+(\w+)(?:\((\d+)\))?/i', $rawSql, $rm)) {
+        if (isset($tables[$rm[1]])) {
+            $columnExists = false;
+            foreach ($tables[$rm[1]]->columns as $column) {
+                if ($column->name === $rm[2]) {
+                    $columnExists = true;
+                    break;
+                }
+            }
+
+            if (!$columnExists) {
+                $type = strtolower($rm[3]) === 'varchar' ? 'string' : strtolower($rm[3]);
+                $length = isset($rm[4]) && $rm[4] !== '' ? (int) $rm[4] : null;
+                $tables[$rm[1]]->columns[] = new Illuminate\Database\Schema\ColumnDefinition($type, $rm[2], $length);
+            }
+        }
+
+        continue;
+    }
+
     if (preg_match('/CREATE\s+(?:UNIQUE\s+)?INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?`?(\w+)`?\s+ON\s+`?(\w+)`?/i', $rawSql, $rm)) {
         if (isset($tables[$rm[2]])) {
             $tables[$rm[2]]->indexes[] = ['columns' => [], 'type' => 'index', 'name' => $rm[1]];
@@ -284,6 +308,17 @@ foreach ($rawStatements as $rawSql) {
     if (preg_match('/ALTER\s+TABLE\s+`?(\w+)`?\s+ADD\s+(?:UNIQUE\s+)?(?:KEY|INDEX)\s+`?(\w+)`?/i', $rawSql, $rm)) {
         if (isset($tables[$rm[1]])) {
             $tables[$rm[1]]->indexes[] = ['columns' => [], 'type' => 'index', 'name' => $rm[2]];
+        }
+
+        continue;
+    }
+
+    if (preg_match('/ALTER\s+TABLE\s+`?(\w+)`?\s+DROP\s+INDEX\s+`?(\w+)`?/i', $rawSql, $rm)) {
+        if (isset($tables[$rm[1]])) {
+            $tables[$rm[1]]->indexes = array_values(array_filter(
+                $tables[$rm[1]]->indexes,
+                static fn (array $index): bool => ($index['name'] ?? null) !== $rm[2],
+            ));
         }
 
         continue;
@@ -583,43 +618,120 @@ check('no index name is used twice', function () use ($tables): void {
 // ── 4. The diff that matters: migrations vs spec ─────────────────────────────
 echo "\n[4] Migrations vs spec\n";
 
-check('same set of tables', function () use ($tables, $spec): void {
-    $have = array_keys($tables);
-    $want = array_keys($spec['tables']);
-    $have = array_values(array_diff($have, APP_ONLY_TABLES));
-    sort($have);
-    sort($want);
+/**
+ * Exact, reviewed application extensions that intentionally sit outside the Core spec.
+ * This is a ratchet, not a broad ignore list: every expected difference is named,
+ * and any additional/missing difference still fails the gate.
+ *
+ * Table owners: event_dates (2026_09_22_001400), event content tables
+ * (2026_09_22_001500), metrika_settings (2026_09_30_000200), and Sanctum's
+ * personal_access_tokens (2026_09_24_083529; separately documented as a design mismatch).
+ * Column owners: remember_token (2026_09_22_001300), carts currency/total_amount
+ * (2026_09_24_000001), carts.active_cart_key and its active-only index
+ * (2026_10_05_000200), and hall schema revision + generated live-version columns
+ * (2026_10_06_000100, 2026_10_06_000200).
+ * Index owners: 2026_09_20_001200 replaces the globally unique bundle hash with
+ * per-device uniqueness and adds a device/hash lookup index; 2026_10_05_000200
+ * replaces the carts token/session/status key with a generated active-only key;
+ * 2026_10_06_000200 enforces one live published/draft schema version per hall via
+ * generated-column UNIQUE indexes.
+ */
+$knownExtensions = [
+    'tables' => [
+        'event_artists',
+        'event_dates',
+        'event_faqs',
+        'event_schedule_items',
+        'event_speakers',
+        'event_sponsors',
+        'metrika_settings',
+        'personal_access_tokens',
+    ],
+    'columns' => [
+        'users' => ['remember_token'],
+        'carts' => ['active_cart_key', 'currency', 'total_amount'],
+        'hall_schema_versions' => ['revision', 'published_hall_id', 'draft_hall_id'],
+    ],
+    'defaults' => [
+        'carts' => [
+            'currency' => 's:RUB',
+            'total_amount' => 'n:0',
+        ],
+    ],
+    'indexes' => [
+        'carts' => [
+            'missing' => ['uq_carts_token_session_status'],
+            'extra' => ['uq_carts_active'],
+        ],
+        'offline_bundles' => [
+            'missing' => ['uq_offline_bundles_hash'],
+            'extra' => ['idx_offline_bundles_device_hash', 'uq_offline_bundles_hash_device'],
+        ],
+        'hall_schema_versions' => [
+            'extra' => ['uq_schema_one_published_per_hall', 'uq_schema_one_draft_per_hall'],
+        ],
+    ],
+];
+
+function assertExactDiff(array $actualMissing, array $actualExtra, array $expectedMissing, array $expectedExtra, string $what): void
+{
+    sort($actualMissing);
+    sort($actualExtra);
+    sort($expectedMissing);
+    sort($expectedExtra);
 
     assertTrue(
-        $have === $want,
-        diffReport(array_values(array_diff($want, $have)), array_values(array_diff($have, $want)), 'tables')
+        $actualMissing === $expectedMissing && $actualExtra === $expectedExtra,
+        sprintf(
+            '%s differs: observed missing [%s], extra [%s]; expected missing [%s], extra [%s]',
+            $what,
+            implode(', ', $actualMissing),
+            implode(', ', $actualExtra),
+            implode(', ', $expectedMissing),
+            implode(', ', $expectedExtra),
+        )
+    );
+}
+
+check('Core tables match; only named application tables are additional', function () use ($tables, $spec, $knownExtensions): void {
+    $have = array_keys($tables);
+    $want = array_keys($spec['tables']);
+
+    assertExactDiff(
+        array_values(array_diff($want, $have)),
+        array_values(array_diff($have, $want)),
+        [],
+        $knownExtensions['tables'],
+        'table set',
     );
 });
 
-check('same columns on every table', function () use ($tables, $spec): void {
+check('Core columns match; only named application columns are additional', function () use ($tables, $spec, $knownExtensions): void {
     $problems = [];
 
     foreach ($spec['tables'] as $name => $definition) {
         if (! isset($tables[$name])) {
-            continue; // already reported above
+            continue; // missing table is reported by the table-set check
         }
 
         $have = array_map(static fn ($c): string => $c->name, $tables[$name]->columns);
         $want = $definition['columns'];
-        sort($have);
-        sort($want);
+        $missing = array_values(array_diff($want, $have));
+        $extra = array_values(array_diff($have, $want));
+        $expectedExtra = $knownExtensions['columns'][$name] ?? [];
 
-        // Drop app-owned columns — they exist in the migrations by design but have
-        // no spec definition to diff against (see APP_OWNED_COLUMNS).
-        $own = ownEntries(APP_OWNED_COLUMNS, $name);
-        $have = array_values(array_diff($have, $own));
-        $want = array_values(array_diff($want, $own));
+        sort($missing);
+        sort($extra);
+        sort($expectedExtra);
 
-        if ($have !== $want) {
-            $problems[] = $name . ': ' . diffReport(
-                array_values(array_diff($want, $have)),
-                array_values(array_diff($have, $want)),
-                'columns'
+        if ($missing !== [] || $extra !== $expectedExtra) {
+            $problems[] = sprintf(
+                '%s: missing [%s], extra [%s]; expected missing [], extra [%s]',
+                $name,
+                implode(', ', $missing),
+                implode(', ', $extra),
+                implode(', ', $expectedExtra),
+
             );
         }
     }
@@ -639,7 +751,7 @@ check('same columns on every table', function () use ($tables, $spec): void {
  * Both sides are folded through `normalizeDefault()` first, so `'active'`/`active`,
  * `0.00`/`0` and a NULL default versus no default are not reported as drift.
  */
-check('same column defaults on every table', function () use ($tables, $spec): void {
+check('Core column defaults match; app-only defaults are explicitly named', function () use ($tables, $spec, $knownExtensions): void {
     $problems = [];
 
     foreach ($spec['tables'] as $name => $definition) {
@@ -685,15 +797,31 @@ check('same column defaults on every table', function () use ($tables, $spec): v
             }
         }
 
-        if ($missing !== [] || $extra !== []) {
-            $problems[] = $name . ': ' . diffReport($missing, $extra, 'defaults');
+        $expectedExtra = [];
+        foreach ($knownExtensions['defaults'][$name] ?? [] as $column => $value) {
+            $expectedExtra[] = $column . ' (migration: ' . $value . ')';
+        }
+
+        sort($missing);
+        sort($extra);
+        sort($expectedExtra);
+
+        if ($missing !== [] || $extra !== $expectedExtra) {
+            $problems[] = $name . ': ' . diffReport(
+                $missing,
+                array_values(array_merge(
+                    array_diff($expectedExtra, $extra),
+                    array_diff($extra, $expectedExtra),
+                )),
+                'defaults (only explicitly listed app defaults are permitted)'
+            );
         }
     }
 
     assertTrue($problems === [], implode("\n      ", $problems));
 });
 
-check('same named indexes on every table', function () use ($tables, $spec): void {
+check('Core indexes match; application-owned offline-bundle indexes are explicit', function () use ($tables, $spec, $knownExtensions): void {
     $problems = [];
 
     foreach ($spec['tables'] as $name => $definition) {
@@ -710,22 +838,25 @@ check('same named indexes on every table', function () use ($tables, $spec): voi
         }
 
         $want = $definition['indexes'];
-        sort($have);
-        sort($want);
+        $expected = $knownExtensions['indexes'][$name] ?? ['missing' => [], 'extra' => []];
+        $missing = array_values(array_diff($want, $have));
+        $extra = array_values(array_diff($have, $want));
+        $expectedMissing = $expected['missing'];
+        $expectedExtra = $expected['extra'];
+        sort($missing);
+        sort($extra);
+        sort($expectedMissing);
+        sort($expectedExtra);
 
-        // Drop app-owned indexes (no spec definition — see APP_OWNED_INDEXES) and
-        // spec indexes that migrations deliberately do not apply (real, deferred
-        // spec/migration divergence — see KNOWN_SPEC_INDEX_DIVERGENCES).
-        $own = ownEntries(APP_OWNED_INDEXES, $name);
-        $have = array_values(array_diff($have, $own));
-        $known = ownEntries(KNOWN_SPEC_INDEX_DIVERGENCES, $name);
-        $want = array_values(array_diff($want, $known));
+        if ($missing !== $expectedMissing || $extra !== $expectedExtra) {
+            $problems[] = sprintf(
+                '%s: missing [%s], extra [%s]; expected missing [%s], extra [%s]',
+                $name,
+                implode(', ', $missing),
+                implode(', ', $extra),
+                implode(', ', $expectedMissing),
+                implode(', ', $expectedExtra),
 
-        if ($have !== $want) {
-            $problems[] = $name . ': ' . diffReport(
-                array_values(array_diff($want, $have)),
-                array_values(array_diff($have, $want)),
-                'indexes'
             );
         }
     }
@@ -876,6 +1007,54 @@ check('tickets.status accepts revoked', function () use ($rawStatements): void {
     }
 
     throw new RuntimeException('ck_tickets_status was never applied');
+});
+
+check('hall schema revision is nullable and has no default', function () use ($tables): void {
+    $columns = $tables['hall_schema_versions']->columns ?? [];
+
+    foreach ($columns as $column) {
+        if ($column->name === 'revision') {
+            assertTrue($column->isNullable, 'hall_schema_versions.revision must be nullable for legacy rows');
+            assertTrue(!$column->hasDefault, 'hall_schema_versions.revision must not have a default');
+
+            return;
+        }
+    }
+
+    throw new RuntimeException('hall_schema_versions.revision was never declared');
+});
+
+check('hall lifecycle triggers are emitted without a replacement gap', function () use ($rawStatements): void {
+    $created = [];
+    $lifecyclePosition = null;
+    $legacyDropPosition = null;
+
+    foreach ($rawStatements as $position => $sql) {
+        if (preg_match('/CREATE\\s+TRIGGER\\s+`?(trg_\\w+)`?/i', $sql, $match)) {
+            $created[$match[1]] = true;
+
+            if ($match[1] === 'trg_schema_version_lifecycle_guard') {
+                $lifecyclePosition = $position;
+            }
+        }
+
+        if (preg_match('/DROP\\s+TRIGGER\\s+IF\\s+EXISTS\\s+`?trg_schema_version_immutable`?/i', $sql)) {
+            $legacyDropPosition = $position;
+        }
+    }
+
+    foreach ([
+        'trg_schema_version_lifecycle_guard',
+        'trg_schema_version_delete_guard',
+        'trg_hall_frozen_schema_delete_guard',
+    ] as $trigger) {
+        assertTrue(isset($created[$trigger]), $trigger . ' was never created');
+    }
+
+    assertTrue(
+        $lifecyclePosition !== null && $legacyDropPosition !== null && $lifecyclePosition < $legacyDropPosition,
+        'The lifecycle update trigger must be created before the legacy guard is dropped'
+    );
 });
 
 // ── summary ──────────────────────────────────────────────────────────────────

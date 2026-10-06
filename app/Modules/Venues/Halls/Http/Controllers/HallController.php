@@ -11,6 +11,7 @@ use Nabilet\Modules\Venues\Halls\Services\HallService;
 use Nabilet\Modules\Venues\Halls\Http\Resources\HallResource;
 use Nabilet\Modules\Venues\Halls\Http\Resources\HallCollection;
 use Nabilet\Modules\Venues\Halls\Http\Resources\SchemaVersionResource;
+use Nabilet\Modules\Venues\Halls\Domain\SchemaPayloadNormalizer;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -137,7 +138,11 @@ class HallController extends Controller
                 'width' => $version->width,
                 'height' => $version->height,
                 'background_url' => $version->background_url,
-                'schema' => $version->schema_json,
+                // Та же нормализация формы, что и в SchemaVersionResource:
+                // пустая карта rowPrices обязана быть объектом, а не массивом.
+                'schema' => is_array($version->schema_json)
+                    ? SchemaPayloadNormalizer::normalize($version->schema_json)
+                    : $version->schema_json,
                 'published_at' => $version->published_at?->toIso8601String(),
             ],
         ]);
@@ -152,7 +157,8 @@ class HallController extends Controller
             // B6: клиент может прислать id версии, которую считает черновиком.
             // Сервер проверяет принадлежность залу и статус draft; для
             // published/чужой — 409/404 в конверте §66 (см. HallService).
-            'version_id' => ['nullable', 'integer'],
+            'version_id' => ['nullable', 'integer', 'min:1'],
+            'base_revision' => ['required_with:version_id', 'integer', 'min:1'],
         ]);
 
         $version = $this->service->createSchemaDraft(
@@ -160,6 +166,7 @@ class HallController extends Controller
             $validated['payload'],
             $request->user()->id,
             isset($validated['version_id']) ? (int) $validated['version_id'] : null,
+            isset($validated['base_revision']) ? (int) $validated['base_revision'] : null,
         );
 
         return new SchemaVersionResource($version);
@@ -180,6 +187,14 @@ class HallController extends Controller
         $version = $this->service->publishSchemaVersion($versionId, $request->user()->id, $publicId);
 
         return new SchemaVersionResource($version);
+    }
+
+    /** Archive the currently published version for this hall. */
+    public function archiveSchemaVersion(string $publicId, int $versionId): SchemaVersionResource
+    {
+        return new SchemaVersionResource(
+            $this->service->archiveSchemaVersion($versionId, $publicId)
+        );
     }
 
     /**

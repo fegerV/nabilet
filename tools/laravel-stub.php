@@ -588,6 +588,14 @@ namespace Illuminate\Database\Schema {
                     $existing->foreignKeys,
                     static fn (ForeignKeyDefinition $f): bool => $f->name !== $name
                 ));
+
+                // Also drop any column-level index that referenced the dropped name.
+                foreach ($existing->columns as $column) {
+                    $column->indexes = array_values(array_filter(
+                        $column->indexes,
+                        static fn (array $index): bool => ($index['name'] ?? null) !== $name
+                    ));
+                }
             }
 
             foreach ($blueprint->foreignKeys as $fk) {
@@ -727,6 +735,41 @@ namespace Illuminate\Support\Facades {
          */
         public static function selectOne($query, $bindings = []): object|false
         {
+            $query = strtolower((string) $query);
+
+            if (str_contains($query, 'information_schema.triggers')) {
+                $triggerName = (string) ($bindings[0] ?? '');
+
+                foreach (\Illuminate\Database\Schema\Schema::rawStatements()->statements as $sql) {
+                    if (preg_match('/CREATE\s+TRIGGER\s+`?' . preg_quote($triggerName, '/') . '`?/i', $sql)) {
+                        return new \stdClass();
+                    }
+                }
+
+                return false;
+            }
+
+            if (str_contains($query, 'information_schema.statistics')) {
+                [$tableName, $indexName] = array_pad($bindings, 2, '');
+                $table = \Illuminate\Database\Schema\Schema::recorder()->tables[(string) $tableName] ?? null;
+
+                foreach ($table?->indexes ?? [] as $index) {
+                    if (($index['name'] ?? null) === $indexName) {
+                        return new \stdClass();
+                    }
+                }
+
+                foreach ($table?->columns ?? [] as $column) {
+                    foreach ($column->indexes as $index) {
+                        if (($index['name'] ?? null) === $indexName) {
+                            return new \stdClass();
+                        }
+                    }
+                }
+
+                return false;
+            }
+
             return new \stdClass();
         }
     }

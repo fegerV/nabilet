@@ -39,4 +39,5 @@ Route::middleware(['auth:api', 'admin'])->group(function () {
     Route::get('/halls/{publicId}/schema-versions', [HallController::class, 'getSchemaVersions'])->name('halls.schema-versions.index');
     Route::post('/halls/{publicId}/schema-versions/draft', [HallController::class, 'createSchemaDraft'])->name('halls.schema-versions.draft');
     Route::post('/halls/{publicId}/schema-versions/{versionId}/publish', [HallController::class, 'publishSchemaVersion'])->name('halls.schema-versions.publish');
+    Route::post('/halls/{publicId}/schema-versions/{versionId}/archive', [HallController::class, 'archiveSchemaVersion'])->name('halls.schema-versions.archive');
 });

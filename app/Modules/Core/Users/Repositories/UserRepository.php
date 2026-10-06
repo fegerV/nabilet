@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Nabilet\Modules\Core\Users\Repositories;
 
 use Nabilet\Modules\Core\Users\Models\User;
-use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 
 class UserRepository
 {
@@ -28,7 +28,13 @@ class UserRepository
         return $this->model->where('public_id', $publicId)->first();
     }
 
-    public function all(int $limit = 15): Collection
+    /**
+     * Тип возврата — пагинатор, а не Collection: `paginate()` отдаёт
+     * LengthAwarePaginator, и объявленный `Collection` ронял GET /users
+     * с TypeError 500 (админка оставалась без списка пользователей).
+     * Контроллер берёт `$users->items()` и meta — это и есть контракт.
+     */
+    public function all(int $limit = 15): LengthAwarePaginator
     {
         return $this->model->with(['roles'])->paginate($limit);
     }
@@ -88,7 +94,7 @@ class UserRepository
         })->exists();
     }
 
-    public function search(string $query, int $limit = 15): Collection
+    public function search(string $query, int $limit = 15): LengthAwarePaginator
     {
         return $this->model->where(function ($q) use ($query) {
                 $q->where('first_name', 'like', "%{$query}%")

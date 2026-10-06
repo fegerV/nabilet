@@ -35,7 +35,7 @@ import NInput from '@/components/ui/NInput.vue'
 import NCheckbox from '@/components/ui/NCheckbox.vue'
 import NCountdown from '@/components/ui/NCountdown.vue'
 import NEmptyState from '@/components/ui/NEmptyState.vue'
-import { useCartStore } from '@/stores/cart'
+import { useCartStore, seatLineLabel, seatLineTotal } from '@/stores/cart'
 import { useUiStore } from '@/stores/ui'
 import { checkoutSession, fetchCart } from '@/lib/inventory'
 import { ApiError } from '@/lib/api'
@@ -120,6 +120,9 @@ async function restoreCart(): Promise<void> {
           number: Number(item.inventory_item?.seat?.number ?? 0),
           priceMinor: Number(item.unit_price ?? 0),
           kind: 'standard' as const,
+          // Без количества танцпол qty=3 восстанавливался как один билет:
+          // сводка на оформлении и `totalMinor` занижались втрое.
+          quantity: Math.max(1, Number(item.quantity ?? 1) || 1),
         },
       ]
     })
@@ -373,16 +376,15 @@ onMounted(() => {
                 class="flex items-center justify-between gap-2 text-sm"
               >
                 <span class="truncate text-muted">
-                  Ряд {{ seat.row }}, место {{ seat.number }}
-                  <span class="text-subtle">· {{ seat.sector }}</span>
+                  {{ seatLineLabel(seat) }}
                 </span>
-                <span class="flex-none tabular-nums text-content">{{ money(seat.priceMinor) }}</span>
+                <span class="flex-none tabular-nums text-content">{{ money(seatLineTotal(seat)) }}</span>
               </li>
             </ul>
 
             <dl class="mt-4 space-y-1.5 border-t border-line pt-3 text-sm">
               <div class="flex justify-between">
-                <dt class="text-muted">{{ ticketsLabel(cart.count) }}</dt>
+                <dt class="text-muted">{{ ticketsLabel(cart.ticketsCount) }}</dt>
                 <dd class="tabular-nums text-content">{{ money(cart.subtotalMinor) }}</dd>
               </div>
               <div class="flex items-baseline justify-between border-t border-line pt-2">

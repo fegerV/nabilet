@@ -45,6 +45,15 @@ jobs:
       - name: Domain stays free of the framework
         run: php tools/verify-purity.php
 
+      # §1.2 of docs/CODE-QUALITY-GUIDE.md is the invariant this project broke
+      # most often: an error raised with the wrong shape, or with no reason at
+      # all. The ratchet is dependency-free (plain `php`, no vendor/), so there
+      # is no excuse for it not being here -- yet it was the one verifier left
+      # out, which is how a moved `Log::warning()` context in the HoldSweeper
+      # split could have gone unnoticed. The allowlist only shrinks.
+      - name: Every error body is the §66 envelope
+        run: php tools/verify-error-envelope.php
+
       - name: Module dependency graph
         run: php tools/modules.php --validate
 

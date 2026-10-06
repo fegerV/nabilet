@@ -13,6 +13,40 @@ export const SEAT = 16
 export const GAP = 6
 /** Вертикальный шаг между рядами (px). */
 export const ROW_GAP = 12
+/** Максимальный угол дуги: полукруг не сводит крайние места в одну точку. */
+export const MAX_ARC_SPREAD_DEG = 180
+
+function safeArcSpread(degrees: number): number {
+  return Math.min(MAX_ARC_SPREAD_DEG, Math.max(10, Number.isFinite(degrees) ? degrees : 180))
+}
+
+/** Найти ближайшую свободную позицию места, не перекрывающую существующие. */
+export function findFreeSeatPosition(
+  seats: Pick<ESeat, 'x' | 'y'>[],
+  x: number,
+  y: number,
+  seatSize = SEAT,
+  horizontalStep = SEAT + GAP,
+): { x: number; y: number } {
+  const collides = (candidateX: number, candidateY: number): boolean => seats.some((seat) =>
+    Math.abs(seat.x - candidateX) < seatSize && Math.abs(seat.y - candidateY) < seatSize,
+  )
+
+  let candidateX = x
+  for (let attempt = 0; attempt <= seats.length * 2; attempt += 1) {
+    if (!collides(candidateX, y)) return { x: candidateX, y }
+    candidateX += horizontalStep
+  }
+
+  // A deterministic fallback below the lowest existing seat guarantees a free
+  // slot even when the clicked row is densely packed.
+  const nextY = seats.length > 0
+    ? Math.max(...seats.map((seat) => seat.y + seatSize)) + ROW_GAP
+    : y
+  candidateX = x
+  while (collides(candidateX, nextY)) candidateX += horizontalStep
+  return { x: candidateX, y: nextY }
+}
 
 export interface SeatGridConfig {
   seat: number
@@ -24,7 +58,7 @@ const DEFAULT_CONFIG: SeatGridConfig = { seat: SEAT, gap: GAP, rowGap: ROW_GAP }
 
 /** Координата места на дуге (амфитеатр). Центр кривизны — в (arcOffsetX, arcOffsetY). */
 export function arcSeatXY(sector: ESector, r: number, n: number, seatsPerRow: number): { x: number; y: number } {
-  const theta = (sector.arcSpread * Math.PI) / 180
+  const theta = (safeArcSpread(sector.arcSpread) * Math.PI) / 180
   const R = sector.arcBaseR + r * sector.arcRowGap
   const a = seatsPerRow > 1 ? -theta / 2 + (n * theta) / (seatsPerRow - 1) : 0
   return { x: R * Math.sin(a) + sector.arcOffsetX, y: R * Math.cos(a) + sector.arcOffsetY }
@@ -48,7 +82,7 @@ export function arcLayoutParams(
   arcSpreadDeg: number,
   config: SeatGridConfig = DEFAULT_CONFIG,
 ): Pick<ESector, 'arcBaseR' | 'arcRowGap' | 'arcOffsetX' | 'arcOffsetY'> {
-  const theta = (arcSpreadDeg * Math.PI) / 180
+  const theta = (safeArcSpread(arcSpreadDeg) * Math.PI) / 180
   const rowGap = config.seat + config.rowGap
   const R0 = seatsPerRow > 1 ? ((seatsPerRow - 1) * (config.seat + config.gap)) / theta : 60
   const maxR = R0 + (rows - 1) * rowGap
@@ -118,7 +152,7 @@ export function appendRowToSector(
   const newSeats: ESeat[] = []
 
   if (sector.shape === 'arc') {
-    const theta = (sector.arcSpread * Math.PI) / 180
+    const theta = (safeArcSpread(sector.arcSpread) * Math.PI) / 180
     const newMaxR = sector.arcBaseR + (nextRow - 1) * sector.arcRowGap
     const newOffsetX = newMaxR * Math.sin(theta / 2)
     const dx = newOffsetX - sector.arcOffsetX

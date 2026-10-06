@@ -126,9 +126,7 @@ CREATE TRIGGER trg_schema_version_immutable
 BEFORE UPDATE ON hall_schema_versions
 FOR EACH ROW
 BEGIN
-  -- Any version that has left `draft` is frozen. Covering `archived` as well as
-  -- `published` matters: archiving happens after the event, and without it the
-  -- geometry of a completed, already-attended event could still be rewritten.
+  -- Any version that has left `draft` is frozen (covers `archived` too).
   IF OLD.status IN ('published', 'archived') THEN
     IF NOT (NEW.schema_json <=> OLD.schema_json)
        OR NOT (NEW.version <=> OLD.version)

@@ -203,10 +203,10 @@ class PaymentWritePathTest extends TestCase
         ]);
 
         $this->payments->processWebhook('yookassa', [
-            'event' => 'payment.canceled',
+            'event' => 'payment.failed',
             'object' => [
                 'id' => 'yk-failed-1',
-                'status' => 'canceled',
+                'status' => 'failed',
                 'cancellation_details' => ['reason' => 'insufficient_funds', 'party' => 'yoo_money'],
             ],
         ]);
@@ -220,10 +220,55 @@ class PaymentWritePathTest extends TestCase
         $this->assertSame('insufficient_funds', $metadata['failure']['code'] ?? null);
         $this->assertSame('yoo_money', $metadata['failure']['message'] ?? null);
 
-        // Заказ НЕ оплачен: отказ не должен менять его статус.
+        // Заказ НЕ оплачен: отказ не должен менять его статус на paid.
         $this->assertNotSame(
             OrderStateMachine::PAID,
             DB::table('orders')->where('id', $order->id)->value('status')
+        );
+    }
+
+    /**
+     * A12: `payment.canceled` — ОТДЕЛЬНОЕ терминальное состояние, а не синоним
+     * `failed`.
+     *
+     * Этот тест появился потому, что предыдущий (сверху) до правки отправлял
+     * `payment.canceled`, но ожидал `failed`. Так было верно ДО A12, когда оба
+     * события шли в один обработчик. После разделения обработчиков тест остался
+     * прежним — и остался незамеченным ровно потому, что Feature-набор не
+     * запускался (см. `tests/run.php`). Здесь контракт зафиксирован явно:
+     * отменённый платёж отличим от неудачного, и заказ уходит в `payment_failed`
+     * (машина разрешает ретрай другой картой).
+     */
+    public function test_webhook_canceled_is_a_distinct_terminal_state_from_failed(): void
+    {
+        $order = $this->pendingOrder();
+        $payment = $this->payments->createPayment($order->id, [
+            'provider' => 'yookassa',
+            'provider_payment_id' => 'yk-canceled-1',
+        ]);
+
+        $this->payments->processWebhook('yookassa', [
+            'event' => 'payment.canceled',
+            'object' => [
+                'id' => 'yk-canceled-1',
+                'status' => 'canceled',
+                'cancellation_details' => ['reason' => 'payment_canceled', 'party' => 'yoo_money'],
+            ],
+        ]);
+
+        $status = DB::table('payments')->where('id', $payment->id)->value('status');
+
+        $this->assertSame(PaymentStateMachine::CANCELED, $status);
+        $this->assertNotSame(
+            PaymentStateMachine::FAILED,
+            $status,
+            'A12: отмена не должна схлопываться в failed — иначе отменённый платёж неотличим от неудачного'
+        );
+
+        $this->assertSame(
+            OrderStateMachine::PAYMENT_FAILED,
+            DB::table('orders')->where('id', $order->id)->value('status'),
+            'Отмена обязана двигать заказ: иначе он навсегда висит в awaiting_payment'
         );
     }
 

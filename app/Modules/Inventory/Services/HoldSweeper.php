@@ -4,56 +4,86 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Inventory\Services;
 
-use Nabilet\Modules\Inventory\Models\SeatHold;
-use Illuminate\Support\Facades\DB;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Nabilet\Core\Support\HoldGrace;
+use Nabilet\Modules\Orders\Services\StaleOrderExpirer;
 
 /**
- * HoldSweeper — releases expired seat holds back to inventory.
- * 
- * CRITICAL PRODUCTION COMPONENT:
- * This job MUST run every minute in production to prevent:
- * - Deadlocks from holds expiring during payment
- * - Inventory starvation (all seats held but not purchased)
- * - Race conditions between hold expiry and payment webhook
- * 
- * Requirements (ТЗ §24):
- * - Run every 1-2 minutes via cron
- * - Release holds where expires_at < now() AND converted_at IS NULL
- * - Atomically increment available_quantity
- * - Log all releases for audit trail
- * - Handle concurrent sweeper instances safely
+ * HoldSweeper — возвращает просроченные брони мест в продажу.
+ *
+ * КРИТИЧЕСКИЙ ПРОИЗВОДСТВЕННЫЙ КОМПОНЕНТ.
+ * В проде этот проход ОБЯЗАН запускаться каждую минуту (см.
+ * `ClearExpiredHoldsCommand` и `routes/console.php`). Без него:
+ *  - инвентарь голодает: все места удержаны, но не куплены;
+ *  - истечение холда во время оплаты блокирует платежи;
+ *  - накапливаются гонки между снятием холда и вебхуком оплаты.
+ *
+ * Требования (ТЗ §24):
+ *  - запуск раз в 1–2 минуты по cron;
+ *  - снимать холды, где `expires_at < now() − grace` и `converted_at IS NULL`;
+ *  - атомарно увеличивать `available_quantity`;
+ *  - писать в лог каждое снятие для аудита;
+ *  - корректно переживать параллельные запуски.
+ *
+ * ОБЯЗАННОСТИ РАЗДЕЛЕНЫ (P2). Раньше класс совмещал три несвязанные роли, и
+ * это было источником дефектов, а не только неудобством чтения:
+ *  - снятие холдов — здесь;
+ *  - закрытие «вечных» неоплаченных заказов — `Orders\Services\StaleOrderExpirer`
+ *    (это про заказы, а не про холды: у них своя причина просрочки);
+ *  - проверка/перевод ОДНОГО холда в момент оплаты —
+ *    `SeatHoldLifecycle` (точечная операция внутри вебхука, а не пакетная).
+ *
+ * Общее у всех трёх — только grace-окно, и оно вынесено в
+ * `Nabilet\Core\Support\HoldGrace`, чтобы sweeper и вебхук не разошлись в
+ * оценке «жив ли ещё холд».
  */
 class HoldSweeper
 {
+    public function __construct(private readonly StaleOrderExpirer $staleOrders)
+    {
+    }
+
     /**
-     * Execute the sweep operation.
-     * 
+     * Выполнить проход: закрыть просроченные заказы, затем снять просроченные
+     * холды.
+     *
+     * Порядок важен и не переставляется. Сначала заказы: заказ, чья корзина
+     * истекла, освобождает свои места сам (через
+     * `CartItemService::releaseCartInventory()`), и делает это идемпотентно. Если
+     * сначала пройти по холдам, то места вернутся под флагом `released_at`, а
+     * заказ останется `pending` — отчётность разойдётся с фактическим
+     * инвентарём.
+     *
      * @return array{released: int, orders_expired: int, errors: array}
      */
     public function sweep(): array
     {
         // A6/A13 (план a): сначала забираем «вечные» неоплаченные заказы. Без
         // этого шага места, удержанные checkout'ом, возвращались в продажу только
-        // через 5-минутный grace холда — и зависали навсегда, если заказ так и не
+        // через grace-окно холда — и зависали навсегда, если заказ так и не
         // был оплачен (дефект «места сгорают при неоплате»).
-        $ordersExpired = $this->expireStaleOrders();
+        $ordersExpired = $this->staleOrders->expireStaleOrders();
 
+        // Момент фиксируется один раз на весь проход: иначе два вызова now()
+        // внутри цикла дали бы разные отметки и окно «поплыло» бы на длинном
+        // проходе.
         $now = CarbonImmutable::now();
         $releasedCount = 0;
         $errors = [];
 
         try {
-            // Find all expired holds that haven't been converted or released
-            // Use FOR UPDATE to prevent concurrent sweeper conflicts
+            // A13: освобождаем холд только после истечения grace-окна
+            // (expires_at + grace) — ровно как в `SeatHoldLifecycle::isHoldConvertible()`.
+            // Раньше sweep снимал холд сразу по expires_at, «побеждая» grace-окно:
+            // вебхук, пришедший в последнюю секунду grace, видел released_at и
+            // отклонял платёж, хотя по логике он ещё валиден (race-condition).
+            //
+            // `lockForUpdate()` — чтобы два параллельных sweeper'а не выбрали одни
+            // и те же строки.
             $expiredHolds = DB::table('seat_holds')
-                // A13: освобождаем холд только после истечения grace-окна
-                // (expires_at + 5 мин) — ровно как в isHoldConvertible(). Раньше
-                // sweep снимал холд сразу по expires_at, «побеждая» grace-окно:
-                // вебхук, пришедший в последнюю секунду grace, видел released_at и
-                // отклонял платёж, хотя по логике он ещё валиден (race-condition).
-                ->where('expires_at', '<', $now->subMinutes(5)->toDateTimeString())
+                ->where('expires_at', '<', HoldGrace::cutoff($now)->toDateTimeString())
                 ->whereNull('converted_at')
                 ->whereNull('released_at')
                 ->lockForUpdate()
@@ -62,36 +92,38 @@ class HoldSweeper
             foreach ($expiredHolds as $hold) {
                 try {
                     DB::transaction(function () use ($hold, $now, &$releasedCount) {
-                        // Re-check hold status inside transaction (may have been converted)
+                        // Перечитываем холд внутри транзакции: пока шёл отбор, его
+                        // мог сконвертировать вебхук оплаты.
                         $freshHold = DB::table('seat_holds')
                             ->where('id', $hold->id)
                             ->lockForUpdate()
                             ->first();
 
-                        if (!$freshHold) {
-                            // Hold was deleted concurrently
+                        if ($freshHold === null) {
+                            // Холд удалён параллельной транзакцией.
                             return;
                         }
 
                         if ($freshHold->converted_at !== null || $freshHold->released_at !== null) {
-                            // Already processed by another transaction
+                            // Уже обработан другой транзакцией — идемпотентность.
                             return;
                         }
 
-                        // Verify cart still exists and is active
+                        // Корзина ещё жива? Это только для аудита: сам факт снятия
+                        // холда от неё не зависит, но в логе полезно видеть, был ли
+                        // это «заброшенный» холд или гонка с активной корзиной.
                         $cartStillActive = DB::table('carts')
                             ->where('id', $freshHold->cart_id)
                             ->where('status', 'active')
                             ->exists();
 
-                        // Release the hold: mark as released and restore inventory
                         DB::table('seat_holds')
                             ->where('id', $freshHold->id)
                             ->update([
                                 'released_at' => $now->toDateTimeString(),
                             ]);
 
-                        // Atomically restore inventory quantity
+                        // Атомарно возвращаем количество в инвентарь.
                         $affected = DB::table('inventory_items')
                             ->where('id', $freshHold->inventory_item_id)
                             ->increment('available_quantity', (int) $freshHold->quantity);
@@ -126,6 +158,8 @@ class HoldSweeper
                         ]);
                     });
                 } catch (\Throwable $e) {
+                    // Один сбойный холд не должен останавливать проход: остальные
+                    // места обязаны вернуться в продажу.
                     $errors[] = [
                         'hold_id' => $hold->id,
                         'error' => $e->getMessage(),
@@ -147,7 +181,7 @@ class HoldSweeper
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
-            
+
             return [
                 'released' => $releasedCount,
                 'orders_expired' => $ordersExpired,
@@ -157,159 +191,11 @@ class HoldSweeper
     }
 
     /**
-     * A6/A13 (план a): заказы в pending/awaiting_payment/payment_failed, чья
-     * корзина-холд истекла (carts.expires_at + 5-минутный grace на «оплату в
-     * последнюю секунду»), переводятся в expired, а их места возвращаются в
-     * продажу. Идемпотентно: повторный проход не находит уже expired-заказы;
-     * возврат инвентаря защищён released_at у seat_holds (двойного возврата нет).
+     * Статистика по холдам для мониторинга и `--stats`.
      *
-     * Заказы без корзины (созданные напрямую через admin API) не трогаем — у них
-     * нет холда, который можно просрочить.
+     * Все три числа считаются по «незакрытым» холдам (`converted_at` и
+     * `released_at` пусты) — иначе закрытые брони раздували бы «активные».
      *
-     * @return int количество переведённых в expired заказов
-     */
-    public function expireStaleOrders(): int
-    {
-        // Grace = TTL холда (expires_at корзины) + 5 минут, ровно как в
-        // isHoldConvertible(): платёж, пришедший в последнюю секунду grace,
-        // всё ещё конвертирует заказ в paid и этот sweep его не заберёт.
-        $deadline = CarbonImmutable::now()->subMinutes(5)->toDateTimeString();
-
-        $staleOrderIds = DB::table('orders')
-            ->join('carts', 'carts.id', '=', 'orders.cart_id')
-            ->whereIn('orders.status', ['pending', 'awaiting_payment', 'payment_failed'])
-            ->where('carts.expires_at', '<', $deadline)
-            ->whereNull('orders.paid_at')
-            ->limit(100)
-            ->pluck('orders.id');
-
-        $expired = 0;
-
-        foreach ($staleOrderIds as $orderId) {
-            try {
-                DB::transaction(function () use ($orderId, &$expired): void {
-                    $order = \Nabilet\Modules\Orders\Models\Order::query()
-                        ->lockForUpdate()
-                        ->find($orderId);
-
-                    if ($order === null) {
-                        return;
-                    }
-
-                    // Финальная проверка состояния внутри транзакции: параллельный
-                    // succeeded-вебхук уже мог увести заказ в paid.
-                    if (!in_array($order->status, ['pending', 'awaiting_payment', 'payment_failed'], true)
-                        || $order->paid_at !== null) {
-                        return;
-                    }
-
-                    $cart = \Nabilet\Modules\Cart\Models\Cart::find($order->cart_id);
-
-                    if ($cart !== null && $cart->status === 'active') {
-                        $cart->update(['status' => 'abandoned']);
-                    }
-
-                    $order->update(['status' => 'expired']);
-
-                    if ($cart !== null) {
-                        app(\Nabilet\Modules\Cart\Services\CartService::class)
-                            ->releaseCartInventory($cart);
-                    } else {
-                        // Корзина удалена (легаси-данные) — освобождаем холды и
-                        // инвентарь напрямую по строкам seat_holds.
-                        $orphanHolds = DB::table('seat_holds')
-                            ->where('cart_id', $order->cart_id)
-                            ->whereNull('converted_at')
-                            ->whereNull('released_at')
-                            ->get();
-
-                        foreach ($orphanHolds as $hold) {
-                            DB::table('inventory_items')
-                                ->where('id', $hold->inventory_item_id)
-                                ->where('status', '!=', 'sold')
-                                ->increment('available_quantity', (int) $hold->quantity);
-
-                            DB::table('seat_holds')
-                                ->where('id', $hold->id)
-                                ->update(['released_at' => CarbonImmutable::now()->toDateTimeString()]);
-                        }
-                    }
-
-                    $expired++;
-
-                    Log::info('HoldSweeper: Order expired, inventory released', [
-                        'order_id' => $order->id,
-                        'cart_id' => $order->cart_id,
-                    ]);
-                });
-            } catch (\Throwable $e) {
-                Log::error('HoldSweeper: order expiry failed', [
-                    'order_id' => $orderId,
-                    'error' => $e->getMessage(),
-                ]);
-            }
-        }
-
-        return $expired;
-    }
-
-    /**
-     * Check if a specific hold is still convertible.
-     * Used during payment webhook processing to prevent race conditions.
-     * 
-     * @param int $holdId
-     * @return bool True if hold is still valid for conversion
-     */
-    public function isHoldConvertible(int $holdId): bool
-    {
-        $hold = DB::table('seat_holds')
-            ->where('id', $holdId)
-            ->first();
-
-        if (!$hold) {
-            return false;
-        }
-
-        // Already converted or released
-        if ($hold->converted_at !== null || $hold->released_at !== null) {
-            return false;
-        }
-
-        // Check if expired
-        $now = CarbonImmutable::now();
-        $expiresAt = CarbonImmutable::parse($hold->expires_at);
-
-        // Allow grace period of 5 minutes after expiry for payment completion
-        $gracePeriod = $expiresAt->addMinutes(5);
-
-        return $now->lt($gracePeriod);
-    }
-
-    /**
-     * Mark a hold as converted (successful payment).
-     * Called after payment webhook confirms success.
-     * 
-     * @param int $holdId
-     * @return bool
-     */
-    public function markAsConverted(int $holdId): bool
-    {
-        $now = CarbonImmutable::now();
-
-        $affected = DB::table('seat_holds')
-            ->where('id', $holdId)
-            ->whereNull('converted_at')
-            ->whereNull('released_at')
-            ->update([
-                'converted_at' => $now->toDateTimeString(),
-            ]);
-
-        return $affected > 0;
-    }
-
-    /**
-     * Get statistics on holds for monitoring dashboard.
-     * 
      * @return array{total_active: int, total_expired: int, expiring_soon: int}
      */
     public function getStats(): array

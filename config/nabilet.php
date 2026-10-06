@@ -48,6 +48,18 @@ return [
     'checkout' => [
         'hold_duration_minutes' => (int) env('CHECKOUT_HOLD_DURATION', 15),
         'max_items_per_order' => (int) env('CHECKOUT_MAX_ITEMS', 10),
+
+        // Grace-окно после истечения холда: сколько ещё секунд после `expires_at`
+        // платёж считается валидным, прежде чем sweeper вернёт места в продажу.
+        //
+        // ЭТО ЕДИНСТВЕННЫЙ ИСТОЧНИК ЭТОГО ЧИСЛА. Раньше `addMinutes(5)` /
+        // `subMinutes(5)` были продублированы в пяти местах трёх модулей
+        // (`HoldSweeper` ×3, `Orders\Models\SeatHold`, `Payments\Services\
+        // PaymentService`). Рассинхрон между ними — это не косметика: если
+        // `isHoldConvertible()` разрешает конвертацию, а `sweep()` уже освободил
+        // место, вебхук оплаты падает в «hold already released» и покупатель
+        // теряет оплаченное место. Меняйте значение здесь, а не по месту.
+        'hold_grace_minutes' => (int) env('CHECKOUT_HOLD_GRACE_MINUTES', 5),
     ],
     
     'payment' => [

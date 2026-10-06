@@ -23,6 +23,7 @@ const COMMANDS = [
   { label: 'Заказы', hint: 'Все заказы и возвраты', to: '/admin/orders', icon: '◫' },
   { label: 'Мероприятия', hint: 'Афиша и статусы', to: '/admin/events', icon: '▤' },
   { label: 'Схемы залов', hint: 'Редактор рассадки', to: '/admin/halls', icon: '▦' },
+  { label: 'Витрина', hint: 'Конструктор афиши и брендинг', to: '/admin/storefront', icon: '▣' },
   { label: 'Афиша', hint: 'Публичная витрина', to: '/', icon: '▧' },
   { label: 'Мои билеты', hint: 'QR и архив', to: '/tickets', icon: '◨' },
 ]

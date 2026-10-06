@@ -13,6 +13,15 @@ return [
 
     'connections' => [
 
+        /*
+         * `retry_after` — сколько секунд очередь ждёт до повторной выдачи задачи.
+         *
+         * Здесь используется `NABILET_HOLD_TTL` — историческое совпадение имён.
+         * ВНИМАНИЕ: эта переменная НЕ управляет сроком удержания мест. Холд
+         * живёт по `seat_holds.expires_at`, который `CartService` берёт из
+         * `CHECKOUT_HOLD_DURATION` (config/nabilet.php). Менять срок удержания
+         * нужно там, а не здесь.
+         */
         'database' => [
             'driver' => 'database',
             'connection' => null,

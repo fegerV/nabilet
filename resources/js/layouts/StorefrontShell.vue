@@ -6,46 +6,79 @@
  * доступны в любой точке страницы — пользователь не должен скроллить наверх,
  * чтобы понять, сколько уже выбрал. На мобильном навигация сворачивается в
  * нижнюю панель: до низа экрана дотянуться легче, чем до верха.
+ *
+ * Логотип, имя, меню, подвал и видимость поиска/корзины берутся из конфига
+ * витрины: площадка настраивает брендинг в админке, а не в коде.
  */
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUiStore } from '@/stores/ui'
 import { useCartStore } from '@/stores/cart'
+import { useStorefrontStore } from '@/stores/storefront'
 
 const ui = useUiStore()
 const cart = useCartStore()
+const storefront = useStorefrontStore()
 const router = useRouter()
 
 const search = ref('')
+const cartCount = computed(() => cart.ticketsCount)
 
-const NAV = [
-  { label: 'Афиша', to: '/', icon: '▦' },
-  { label: 'Мои билеты', to: '/tickets', icon: '◫' },
-  { label: 'Организаторам', to: '/admin', icon: '◈' },
-]
+const branding = computed(() => storefront.config.branding)
+const header = computed(() => storefront.config.header)
+const footer = computed(() => storefront.config.footer)
 
-const cartCount = computed(() => cart.count)
+/* Иконка пункта меню: конфиг хранит подпись и путь, glyph подбираем по пути,
+ * чтобы организатор не вводил «▦» руками. */
+const ICONS: Record<string, string> = { '/': '▦', '/tickets': '◫', '/admin': '◈' }
+
+const nav = computed(() => {
+  const configured = header.value.nav ?? []
+  if (!configured.length) return [{ label: 'Афиша', to: '/', icon: '▦' }]
+  return configured.map((item) => ({ label: item.label, to: item.to ?? '/', icon: ICONS[item.to ?? ''] ?? '◇' }))
+})
 
 function submitSearch(): void {
   if (search.value.trim()) router.push({ path: '/', query: { q: search.value.trim() } })
 }
+
+/**
+ * Тема по умолчанию приходит из настроек витрины («авто»/светлая/тёмная).
+ * Выбор самого пользователя важнее: если он уже переключал тему, не перебиваем.
+ */
+watch(
+  () => storefront.config.theme.mode,
+  (mode) => {
+    if (mode === 'auto') return
+    const stored = localStorage.getItem('nabilet.theme')
+    if (!stored) ui.setTheme(mode)
+  },
+  { immediate: true },
+)
 </script>
 
 <template>
   <div class="flex min-h-dvh flex-col bg-canvas">
     <header class="glass sticky top-0 z-40 border-b border-line">
       <div class="mx-auto flex h-16 max-w-content items-center gap-3 px-4 sm:gap-5 sm:px-6">
-        <!-- Логотип -->
+        <!-- Логотип: картинка площадки или литера из бренд-градиента -->
         <RouterLink to="/" class="flex flex-none items-center gap-2.5">
+          <img
+            v-if="branding.logoUrl"
+            :src="branding.logoUrl"
+            :alt="branding.name"
+            class="h-9 w-auto max-w-[8rem] object-contain"
+          />
           <span
-            class="grid h-9 w-9 place-items-center rounded-lg bg-brand-gradient text-base font-bold text-white shadow-brand"
+            v-else
+            class="grid h-9 w-9 place-items-center rounded-lg bg-brand-gradient text-base font-bold text-brand-on shadow-brand"
             aria-hidden="true"
-          >Н</span>
-          <span class="hidden text-lg font-bold tracking-tight text-content sm:block">NABILET</span>
+          >{{ branding.logoMark || branding.name.slice(0, 1) }}</span>
+          <span class="hidden text-lg font-bold tracking-tight text-content sm:block">{{ branding.name }}</span>
         </RouterLink>
 
         <!-- Поиск: на витрине ищут событие, а не раздел -->
-        <form class="min-w-0 flex-1" role="search" @submit.prevent="submitSearch">
+        <form v-if="header.showSearch" class="min-w-0 flex-1" role="search" @submit.prevent="submitSearch">
           <div class="relative">
             <span aria-hidden="true" class="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-subtle">⌕</span>
             <input
@@ -60,7 +93,7 @@ function submitSearch(): void {
 
         <nav class="hidden items-center gap-1 md:flex">
           <RouterLink
-            v-for="item in NAV"
+            v-for="item in nav"
             :key="item.to"
             :to="item.to"
             class="rounded-md px-3 py-2 text-sm text-muted transition-colors hover:bg-surface-3 hover:text-content"
@@ -72,6 +105,7 @@ function submitSearch(): void {
 
         <!-- Тема -->
         <button
+          v-if="header.showThemeToggle"
           type="button"
           class="grid h-9 w-9 flex-none place-items-center rounded-lg border border-line text-sm text-muted transition-colors hover:text-content"
           :aria-label="ui.isDark ? 'Включить светлую тему' : 'Включить тёмную тему'"
@@ -80,15 +114,16 @@ function submitSearch(): void {
 
         <!-- Корзина -->
         <button
+          v-if="header.showCart"
           type="button"
-          class="relative grid h-9 w-9 flex-none place-items-center rounded-lg bg-brand-500 text-sm text-white transition-colors hover:bg-brand-400"
+          class="relative grid h-9 w-9 flex-none place-items-center rounded-lg bg-brand-500 text-sm text-brand-on transition-colors hover:bg-brand-400"
           aria-label="Корзина"
           @click="router.push('/checkout')"
         >
           <span aria-hidden="true">◷</span>
           <span
             v-if="cartCount > 0"
-            class="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-accent-500 px-1 text-2xs font-bold text-white"
+            class="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-accent-500 px-1 text-2xs font-bold text-accent-on"
           >{{ cartCount }}</span>
         </button>
 
@@ -112,7 +147,7 @@ function submitSearch(): void {
       aria-label="Основная навигация"
     >
       <RouterLink
-        v-for="item in NAV"
+        v-for="item in nav"
         :key="item.to"
         :to="item.to"
         class="flex flex-1 flex-col items-center gap-0.5 py-2 text-2xs text-subtle transition-colors safe-bottom"
@@ -124,12 +159,15 @@ function submitSearch(): void {
     </nav>
 
     <footer class="hidden border-t border-line md:block">
-      <div class="mx-auto flex max-w-content items-center justify-between px-6 py-6 text-sm text-subtle">
-        <p>NABILET — билеты на события</p>
-        <p class="flex items-center gap-4">
-          <a href="#" class="transition-colors hover:text-content">Помощь</a>
-          <a href="#" class="transition-colors hover:text-content">Возврат</a>
-          <a href="#" class="transition-colors hover:text-content">Организаторам</a>
+      <div class="mx-auto flex max-w-content flex-wrap items-center justify-between gap-3 px-6 py-6 text-sm text-subtle">
+        <p>{{ footer.text || branding.name }}</p>
+        <p v-if="footer.links.length || footer.social.length" class="flex items-center gap-4">
+          <a
+            v-for="link in [...footer.links, ...footer.social]"
+            :key="link.label"
+            :href="link.url"
+            class="transition-colors hover:text-content"
+          >{{ link.label }}</a>
         </p>
       </div>
     </footer>

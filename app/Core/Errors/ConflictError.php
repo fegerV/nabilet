@@ -43,6 +43,27 @@ class ConflictError extends AppError
         );
     }
 
+    /**
+     * Корзина истекла.
+     *
+     * Это конфликт, а не ошибка валидации: запрос корректен, и клиент не может
+     * исправить его правкой поля — нужно начинать новую корзину. 409 позволяет
+     * витрине отличить этот случай от 422, который имеет смысл повторить.
+     *
+     * Живёт здесь, а не приватным методом в сервисе корзины, потому что бросают
+     * его три разные службы (`CartService`, `CartItemService`,
+     * `CartCheckoutService` после разделения P2), и дублировать литерал
+     * `CART_EXPIRED` по трём файлам — тот же класс дефекта, что и дублированный
+     * grace-оконный литерал.
+     */
+    public static function cartExpired(): self
+    {
+        return new self(
+            'The cart has expired. Please select your seats again.',
+            'CART_EXPIRED'
+        );
+    }
+
     /** @param array<string, mixed> $context */
     public static function idempotencyConflict(string $key, array $context = []): self
     {

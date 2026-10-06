@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Nabilet\Modules\Core\Organizations\Repositories;
 
 use Nabilet\Modules\Core\Organizations\Models\Organization;
-use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 
 class OrganizationRepository
 {
@@ -34,7 +34,12 @@ class OrganizationRepository
         return $query->first();
     }
 
-    public function all(int $limit = 15): Collection
+    /**
+     * Возвращает пагинатор, а не `Collection` — так объявлено раньше и это было
+     * неправдой: `paginate($limit)` отдаёт `LengthAwarePaginator`. Тип исправлен,
+     * чтобы объявление совпадало с фактом (см. `OrganizationService::all()`).
+     */
+    public function all(int $limit = 15): LengthAwarePaginator
     {
         return $this->model->with(['owner'])->paginate($limit);
     }

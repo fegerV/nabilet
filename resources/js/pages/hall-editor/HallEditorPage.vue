@@ -47,10 +47,28 @@ import {
   buildArcSeats,
   buildGridSeats,
   buildTableSeats,
+  findFreeSeatPosition,
   rebuildTableSeats,
   tableLayout,
 } from './seatGeometry'
+import { unwrapSchemaRoot } from './schemaImport'
+import {
+  bbox,
+  danceZoneFor,
+  parseSchemaPayload,
+  serializeSchema,
+  validateSchema,
+} from './schemaSerialization'
 import { useEditorHistory } from './useEditorHistory'
+import {
+  clampFloatOrNull,
+  clampIntOrNull,
+  normalizeRotation,
+  requiredNonNegativeError,
+  roundOrNull,
+  rowPriceError,
+  rubToMinor,
+} from './hallEditorFields'
 
 /* ── Константы ─────────────────────────────────────────────────────── */
 
@@ -114,8 +132,9 @@ const draftVersionId = ref<number | null>(null)
 const loadedPublished = ref<number | null>(null)
 const hallLoadState = ref<'idle' | 'loading' | 'ok' | 'error'>('idle')
 
-/** Реальный id версии (для publish). */
+/** Реальный id версии и номер ревизии черновика для optimistic locking. */
 let currentVersionId: number | null = null
+let currentSchemaRevision: number | null = null
 
 /**
  * Ответ сервера на последнюю попытку автосохранения. При 422 (валидация §50)
@@ -425,6 +444,13 @@ function addSeatAt(x: number, y: number): void {
     localY = anchor.y
   }
 
+  const freePosition = findFreeSeatPosition(target.seats, localX, localY)
+  if (freePosition.y !== localY) {
+    newRow = lastRow + 1
+  }
+  localX = freePosition.x
+  localY = freePosition.y
+
   const rowSeats = target.seats.filter((s) => s.row === newRow)
   const maxNumber = rowSeats.reduce((m, s) => Math.max(m, s.number), 0)
   const kind: SeatKind = 'standard'
@@ -564,12 +590,16 @@ function createStaticAt(kind: StaticKind, x: number, y: number): void {
  * text/stage/entrance, которых раньше не было — кнопки выбирали инструмент,
  * но ничего не происходило.
  */
-function handleToolClick(clientX: number, clientY: number): void {
-  if (isLocked.value) return
+function handleToolClick(clientX: number, clientY: number, altKey = false): void {
   // Клик «поверх» завершённого перетаскивания (Konva выдаёт click после
   // mouseup с тем же button) — не должен порождать второй объект.
   if (wasDragged) return
   const t = tool.value
+  if (t === 'zoom') {
+    zoomAt(altKey ? 1 / 1.12 : 1.12, clientX, clientY)
+    return
+  }
+  if (isLocked.value) return
   if (!EDIT_TOOLS.includes(t) || t === 'image' || t === 'standing') return
   const p = toCanvasPoint(clientX, clientY)
   if (!p) return
@@ -710,7 +740,7 @@ function createStandingZone(a: { x: number; y: number }, b: { x: number; y: numb
   snapshot()
   // Вместимость: ~0,66 м² на человека, условно 150 px² в масштабе схемы.
   const capacity = Math.max(10, Math.floor((w * h) / 150))
-  statics.value.push({ id: nextId('static'), kind: 'standing', x, y, width: w, height: h, capacity, text: `Фан-зона · ${capacity}` })
+  statics.value.push({ id: nextId('static'), kind: 'standing', x, y, width: w, height: h, capacity, priceMinor: form.value.priceMinor, text: `Фан-зона · ${capacity}` })
   selectedStaticIds.value = new Set([statics.value[statics.value.length - 1].id])
   selectedSeatIds.value = new Set()
   selectedSectorId.value = null
@@ -838,81 +868,103 @@ function duplicateSelection(): void {
 /* ── Автосохранение (§52): 500 ms debounce, состояния ──────────────── */
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null
+let editRevision = 0
+let persistedEditRevision = -1
+let persistInFlight: Promise<boolean> | null = null
+let isHydratingSchema = false
 function scheduleAutosave(): void {
   autosave.value = 'saving'
   if (saveTimer) clearTimeout(saveTimer)
   saveTimer = setTimeout(() => {
+    saveTimer = null
     void persistSchema()
   }, 500)
 }
 
-/** Собрать схему в формате редактора (как в exportSchema). */
+/**
+ * Собрать схему в формате редактора. Единственная точка сборки payload —
+ * и автосохранение, и экспорт в файл идут через неё (см. schemaSerialization),
+ * иначе формы неизбежно расходятся.
+ */
 function buildSchemaPayload(): unknown {
-  return {
-    version: '1.0',
-    canvas: { width: canvasSize.value.width, height: canvasSize.value.height },
-    background: backgrounds.value[0] ?? null,
-    sectors: sectors.value.map((s) => ({
-      id: s.id,
-      name: s.name,
-      x: s.x,
-      y: s.y,
-      priceMinor: s.priceMinor,
-      type: s.type ?? 'seated',
-      rowPrices: s.rowPrices,
-      shape: s.shape,
-      arcSpread: s.arcSpread,
-      arcBaseR: s.arcBaseR,
-      arcRowGap: s.arcRowGap,
-      arcOffsetX: s.arcOffsetX,
-      arcOffsetY: s.arcOffsetY,
-      seats: s.seats.map((seat) => ({
-        id: seat.id,
-        row: seat.row,
-        number: seat.number,
-        kind: seat.kind,
-        x: seat.x,
-        y: seat.y,
-      })),
-    })),
-    staticObjects: statics.value,
-  }
+  return serializeSchema({
+    canvasSize: canvasSize.value,
+    sectors: sectors.value,
+    statics: statics.value,
+    backgrounds: backgrounds.value,
+  })
 }
 
-/** Реальное сохранение черновика на сервер. */
-async function persistSchema(): Promise<void> {
-  if (!hallPublicId.value || published.value !== null) return
+/** Реальное сохранение черновика на сервер. Повторные вызовы сериализуются. */
+async function persistSchema(): Promise<boolean> {
+  if (!hallPublicId.value || published.value !== null) return false
   if (!navigator.onLine) {
     autosave.value = 'offline'
-    return
+    return false
   }
-  try {
-    const res = await send<{ id: number; version: number }>(
-              `/halls/${hallPublicId.value}/schema-versions/draft`,
-              'POST',
-              { payload: buildSchemaPayload() },
-            )
-        const d = res.data
-        const versionId = typeof d === 'object' && d && typeof d.id === 'number' ? d.id : null
-    const versionNo = typeof d === 'object' && d && typeof d.version === 'number' ? d.version : draftVersion.value
-    if (versionId) {
-      currentVersionId = versionId
-      draftVersionId.value = versionId
-      if (versionNo > 0) draftVersion.value = versionNo
+  if (persistInFlight) {
+    const saved = await persistInFlight
+    if (!saved) return false
+    return persistedEditRevision >= editRevision ? true : persistSchema()
+  }
+
+  const requestedEditRevision = editRevision
+  const versionId = currentVersionId
+  const payload: Record<string, unknown> = { payload: buildSchemaPayload() }
+  if (versionId !== null) {
+    payload.version_id = versionId
+    if (currentSchemaRevision !== null) payload.base_revision = currentSchemaRevision
+  }
+
+  const operation = (async (): Promise<boolean> => {
+    try {
+      const res = await send<{ id: number; version: number; revision: number }>(
+        `/halls/${hallPublicId.value}/schema-versions/draft`,
+        'POST',
+        payload,
+      )
+      const d = res.data
+      if (typeof d === 'object' && d) {
+        if (typeof d.id === 'number') {
+          currentVersionId = d.id
+          draftVersionId.value = d.id
+        }
+        if (typeof d.revision === 'number') currentSchemaRevision = d.revision
+        if (typeof d.version === 'number' && d.version > 0) draftVersion.value = d.version
+      }
+      persistedEditRevision = requestedEditRevision
+      autosave.value = 'saved'
+      autosaveErrors.value = []
+      lastSavedAt.value = Date.now()
+      return true
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 422) {
+        autosave.value = 'error'
+        autosaveErrors.value = describeValidationErrors(e)
+      } else {
+        autosave.value = navigator.onLine ? 'error' : 'offline'
+        autosaveErrors.value = e instanceof Error ? [e.message] : []
+      }
+      return false
     }
-    autosave.value = 'saved'
-    autosaveErrors.value = []
-    lastSavedAt.value = Date.now()
-  } catch (e) {
-    // 422 — сервер отклонил схему валидацией (§66): показываем детали по полям
-    // под индикатором автосохранения, а не общий «Ошибка сохранения».
-    if (e instanceof ApiError && e.status === 422) {
-      autosave.value = 'error'
-      autosaveErrors.value = describeValidationErrors(e)
-      return
+  })()
+  let tracked: Promise<boolean>
+  tracked = operation.finally(() => {
+    if (persistInFlight === tracked) persistInFlight = null
+  })
+  persistInFlight = tracked
+  return tracked
+}
+
+/** Отменить debounce и дождаться сохранения именно последнего состояния. */
+async function flushAutosave(): Promise<boolean> {
+  while (true) {
+    if (saveTimer) {
+      clearTimeout(saveTimer)
+      saveTimer = null
     }
-    autosave.value = navigator.onLine ? 'error' : 'offline'
-    autosaveErrors.value = []
+    if (persistedEditRevision >= editRevision && currentVersionId !== null) return true
+    if (!await persistSchema()) return false
   }
 }
 
@@ -934,7 +986,8 @@ function describeValidationErrors(e: ApiError): string[] {
 watch(
   [sectors, statics, backgrounds],
   () => {
-    if (published.value !== null) return
+    if (isHydratingSchema || published.value !== null) return
+    editRevision += 1
     scheduleAutosave()
   },
   { deep: true },
@@ -945,26 +998,29 @@ watch(
 const isLocked = computed(() => published.value !== null)
 
 function publish(): void {
-  if (sectors.value.length === 0) {
-    ui.notify('rose', 'Нечего публиковать', 'Сначала создайте хотя бы один сектор')
+  const hasSellableContent = sectors.value.some((sector) => sector.seats.length > 0)
+    || statics.value.some((object) => object.kind === 'standing' && (object.capacity ?? 0) > 0)
+  if (!hasSellableContent) {
+    ui.notify('rose', 'Нечего публиковать', 'Добавьте места или стоячую зону с вместимостью')
     return
   }
-  // Сохраним перед публикацией, чтобы у нас был id версии.
+
   async function doPublish(): Promise<void> {
     try {
-      if (!currentVersionId) {
-        await persistSchema()
+      if (!await flushAutosave()) {
+        ui.notify('rose', 'Черновик не сохранён', 'Исправьте ошибку автосохранения и повторите публикацию')
+        return
       }
       if (!currentVersionId || !hallPublicId.value) {
         ui.notify('rose', 'Черновик не сохранён', 'Не удалось создать черновик на сервере')
         return
       }
       const res = await send<{ id: number; version: number; status: string }>(
-                    `/schema-versions/${currentVersionId}/publish`,
-                    'POST',
-                    {},
-                  )
-            const d = res.data
+        `/halls/${hallPublicId.value}/schema-versions/${currentVersionId}/publish`,
+        'POST',
+        {},
+      )
+      const d = res.data
       const publishedNo = (typeof d === 'object' && d && typeof d.version === 'number') ? d.version : draftVersion.value
       published.value = publishedNo
       loadedPublished.value = publishedNo
@@ -975,9 +1031,9 @@ function publish(): void {
         `Версия ${publishedNo} опубликована`,
         'Схема стала неизменяемой: правки создадут новую версию',
       )
-    } catch {
+    } catch (e) {
       autosave.value = 'error'
-      ui.notify('rose', 'Ошибка публикации', 'Не удалось опубликовать схему')
+      ui.notify('rose', 'Ошибка публикации', e instanceof ApiError ? e.message : 'Не удалось опубликовать схему')
     }
   }
   void doPublish()
@@ -985,353 +1041,40 @@ function publish(): void {
 
 function newVersion(): void {
   published.value = null
+  currentVersionId = null
+  currentSchemaRevision = null
+  draftVersionId.value = null
+  persistedEditRevision = -1
   ui.notify('brand', 'Новый черновик', `Правки попадут в версию ${draftVersion.value}`)
 }
 
 /* ── Загрузка схемы с сервера (API) ───────────────────────────────── */
 
-interface ServerSector {
-  name: string
-  id?: string
-  x?: number
-  y?: number
-  /** Тип сектора из БД-формата (ck_sectors_type: seated|standing|mixed). */
-  type?: string
-  rows?: Array<{
-    number: string | number
-    label?: string
-    price_amount?: number
-    seats?: Array<{ number: string | number; label?: string; type?: string; x?: number; y?: number }>
-  }>
-  seats?: Array<{ id?: string; row?: number; number?: number; kind?: string; x?: number; y?: number }>
-  priceMinor?: number
-  /** В старых схемах, сохранённых из прошлой админки, цена лежит в `price`. */
-  price?: number
-  rowPrices?: Record<string, number>
-  shape?: string
-  arcSpread?: number
-  arcBaseR?: number
-  arcRowGap?: number
-  arcOffsetX?: number
-  arcOffsetY?: number
-}
-
 /**
- * Нормализация статического объекта из payload/импорта (B7/B8): приводим
- * разнородный JSON к EStatic, отбрасывая мусор без id/kind.
- */
-function normalizeStaticObject(o: unknown): EStatic | null {
-  if (!o || typeof o !== 'object') return null
-  const rec = o as Record<string, unknown>
-  if (typeof rec.id !== 'string' || typeof rec.kind !== 'string') return null
-  const kinds: StaticKind[] = ['table', 'standing', 'label', 'text', 'stage', 'entrance']
-  if (!kinds.includes(rec.kind as StaticKind)) return null
-  return {
-    id: rec.id,
-    // Импорт/старые payload'ы могут прислать 'text' вместо канонического 'label'.
-    kind: (rec.kind === 'text' ? 'label' : rec.kind) as StaticKind,
-    x: Math.round(Number(rec.x ?? 0)),
-    y: Math.round(Number(rec.y ?? 0)),
-    width: Number.isFinite(Number(rec.width)) ? Number(rec.width) : undefined,
-    height: Number.isFinite(Number(rec.height)) ? Number(rec.height) : undefined,
-    rotation: Number.isFinite(Number(rec.rotation)) ? Number(rec.rotation) : 0,
-    opacity: Number.isFinite(Number(rec.opacity)) ? Math.min(1, Math.max(0, Number(rec.opacity))) : 1,
-    locked: rec.locked === true,
-    text: typeof rec.text === 'string' ? rec.text : undefined,
-    capacity: Number.isFinite(Number(rec.capacity)) ? Math.max(0, Math.round(Number(rec.capacity))) : undefined,
-  }
-}
-
-/**
- * Нормализация фона из payload (B7): src обязателен, остальное — с дефолтами
- * по размеру холста.
- */
-function normalizeBackground(bg: Record<string, unknown>): EBackground | null {
-  if (typeof bg.src !== 'string' || !bg.src) return null
-  return {
-    id: typeof bg.id === 'string' ? bg.id : 'bg-restored',
-    src: bg.src,
-    x: Math.round(Number(bg.x ?? 0)),
-    y: Math.round(Number(bg.y ?? 0)),
-    width: Number(bg.width) > 0 ? Number(bg.width) : canvasSize.value.width,
-    height: Number(bg.height) > 0 ? Number(bg.height) : canvasSize.value.height,
-    rotation: Number.isFinite(Number(bg.rotation)) ? Number(bg.rotation) : 0,
-    locked: bg.locked === true,
-    opacity: Number.isFinite(Number(bg.opacity)) ? Math.min(1, Math.max(0, Number(bg.opacity))) : 1,
-  }
-}
-
-/**
- * Сконвертировать серверную схему (БД-формат или редакторский JSON) в состояние
- * редактора.
+ * Сконвертировать серверную схему в состояние редактора.
  *
- * Два режима, и это принципиально:
- *  - редакторский JSON (sectors[].seats[] с абсолютными координатами и полной
- *    геометрией дуги) загружается БЕЗ масштабирования — иначе F5 меняет схему
- *    (пересчёт масштаба при каждой загрузке терял точность и переставлял
- *    сектора);
- *  - «БД-формат» (sectors[].rows[].seats[], сидер/импортёр Афиши) нормализуется
- *    к сетке редактора: координаты могут быть битыми (все нули) — ряды
- *    раскладываются по константам SEAT/GAP/ROW_GAP, цены берутся из
- *    row.price_amount (или легаси sector.price).
+ * Вся логика разбора (два формата, нормировка координат, цены по рядам,
+ * восстановление подложек и статики) живёт в schemaSerialization.ts — там её
+ * можно покрыть юнит-тестами. Здесь остаётся только применение результата к
+ * ref'ам компонента.
  */
 function applyServerSchema(raw: unknown): void {
-  // Сервер может вернуть schema_json как JSON-строку (колонка JSON отдаётся
-  // драйвером как строка, а не разобранным объектом) — без этого шага весь
-  // payload читался бы как {} и статика/фон/цены «терялись» при перезагрузке (B7).
-  let input = raw
-  if (typeof input === 'string') {
-    try { input = JSON.parse(input) } catch { input = null }
-  }
-  const obj = (typeof input === 'object' && input) ? input as Record<string, unknown> : {}
-  const rawCanvas = (typeof obj.canvas === 'object' && obj.canvas)
-    ? obj.canvas as Record<string, unknown>
-    : null
-  if (rawCanvas) {
-    const w = Number(rawCanvas.width ?? canvasSize.value.width)
-    const h = Number(rawCanvas.height ?? canvasSize.value.height)
-    if (w > 0 && h > 0) canvasSize.value = { width: w, height: h }
-  }
-  const rawSectors = Array.isArray(obj.sectors) ? obj.sectors : []
+  const parsed = parseSchemaPayload(raw, canvasSize.value)
 
-  // ── Статика и фон: раньше молча выбрасывались → после перезагрузки зал
-  //    терял сцену, входы, подписи и подложку (B7). Восстанавливаем как есть. ──
-  // ВАЖНО: сервер может вернуть schema_json как JSON-строку (не распарсенный
-  // объект) — тогда `obj.staticObjects`/`obj.background` равны undefined и
-  // статика с фоном «терялись» при F5. Нормализуем payload перед чтением.
-  if (Array.isArray(obj.staticObjects)) {
-    statics.value = (obj.staticObjects as unknown[])
-      .map(normalizeStaticObject)
-      .filter((o): o is EStatic => o !== null)
-  } else {
-    statics.value = []
-  }
-  const rawBg = obj.background
-  if (typeof rawBg === 'object' && rawBg) {
-    const bg = normalizeBackground(rawBg as Record<string, unknown>)
-    backgrounds.value = bg ? [bg] : []
-  } else {
-    backgrounds.value = []
-  }
+  canvasSize.value = parsed.canvas
+  statics.value = parsed.statics
+  backgrounds.value = parsed.backgrounds
 
-  interface FlatSeat { row: number; number: number; x: number; y: number; kind: string }
-  const collected: { sector: ServerSector; seats: FlatSeat[] }[] = []
-  let allMinX = Infinity, allMaxX = -Infinity, allMinY = Infinity, allMaxY = -Infinity
-  for (const rs of rawSectors) {
-    const s = (typeof rs === 'object' && rs) ? rs as ServerSector : null
-    if (!s || !s.name) continue
-    let seats: FlatSeat[] = []
-    if (Array.isArray(s.seats)) {
-      seats = s.seats.map((seat) => ({
-        row: Number(seat.row ?? 0),
-        number: Number(seat.number ?? 0),
-        kind: (seat.kind === 'vip' || seat.kind === 'accessible' || seat.kind === 'wheelchair') ? (seat.kind === 'wheelchair' ? 'accessible' : seat.kind) : 'standard',
-        x: Number(seat.x ?? 0),
-        y: Number(seat.y ?? 0),
-      }))
-    } else if (Array.isArray(s.rows)) {
-      for (const r of s.rows) {
-        const rowNo = Number(r.number ?? 0)
-        for (const seat of r.seats ?? []) {
-          seats.push({
-            row: rowNo,
-            number: Number(seat.number ?? 0),
-            kind: seat.type === 'vip' ? 'vip' : (seat.type === 'wheelchair' || seat.type === 'accessible') ? 'accessible' : 'standard',
-            x: Number(seat.x ?? 0),
-            y: Number(seat.y ?? 0),
-          })
-        }
-      }
-    }
-    if (seats.length === 0) continue
-    collected.push({ sector: s, seats })
-    for (const p of seats) {
-      if (p.x < allMinX) allMinX = p.x
-      if (p.x > allMaxX) allMaxX = p.x
-      if (p.y < allMinY) allMinY = p.y
-      if (p.y > allMaxY) allMaxY = p.y
-    }
-  }
+  if (parsed.sectors.length > 0) {
+    sectors.value = parsed.sectors
 
-  // Формат определяется по первому сектору с местами: наличие seats[] c
-  // ненулевыми координатами + отсутствие rows[] ⇒ редакторский JSON.
-  const firstWithSeats = collected[0]
-  const isEditorFormat = !!firstWithSeats
-    && Array.isArray(firstWithSeats.sector.seats)
-    && !(firstWithSeats.sector.rows && firstWithSeats.sector.rows.length > 0)
-
-  const out: ESector[] = []
-  if (isEditorFormat) {
-    // Редакторский формат: полная геометрия сохраняется 1:1.
-    for (const { sector: s, seats: flatSeats } of collected) {
-      const srcId = typeof s.id === 'string' ? s.id : `s${out.length + 1}`
-      const rowPrices: Record<number, number> = {}
-      for (const [k, v] of Object.entries(s.rowPrices ?? {})) {
-        const rn = Number(k)
-        if (rn > 0 && typeof v === 'number' && Number.isFinite(v)) rowPrices[rn] = Math.max(0, Math.round(v))
-      }
-      out.push({
-        id: srcId,
-        name: s.name,
-        priceMinor: Math.max(0, Math.round(Number(s.priceMinor ?? s.price ?? 0))),
-        x: Math.round(Number(s.x ?? 0)),
-        y: Math.round(Number(s.y ?? 0)),
-        seats: flatSeats.map((p, i) => ({
-          id: (s.seats?.[i]?.id as string) ?? `${srcId}-${p.row}-${p.number}`,
-          row: p.row,
-          number: p.number,
-          kind: (p.kind === 'vip' || p.kind === 'accessible') ? p.kind : 'standard',
-          x: Math.round(p.x),
-          y: Math.round(p.y),
-        })),
-        rowPrices,
-        shape: s.shape === 'arc' ? 'arc' : (s.shape === 'table' ? 'table' : 'grid'),
-        arcSpread: Number(s.arcSpread ?? 120),
-        arcBaseR: Number(s.arcBaseR ?? 200),
-        arcRowGap: Number(s.arcRowGap ?? 24),
-        arcOffsetX: Number(s.arcOffsetX ?? 0),
-        arcOffsetY: Number(s.arcOffsetY ?? 0),
-        type: (s.type === 'standing' || s.type === 'mixed') ? s.type : 'seated',
-      })
-    }
-  } else {
-    // БД-формат: общий масштаб по всей схеме (координаты сидера могут быть
-    // нормализованы в 0..59/0..39 или лежать в пикселях чужого холста).
-    const pad = 40
-    const viewW = Math.max(canvasSize.value.width, 900)
-    const viewH = 620
-    const spanX = (allMaxX - allMinX) || 1
-    const spanY = (allMaxY - allMinY) || 1
-    const hasGeometry = Number.isFinite(allMinX) && allMaxX > allMinX && allMaxY > allMinY
-    const scale = hasGeometry
-      ? Math.min((viewW - pad * 2) / spanX, (viewH - pad * 2) / spanY, 60)
-      : 1
-    for (const { sector: s, seats: flatSeats } of collected) {
-      const rowPrices: Record<number, number> = {}
-      // Цены по рядам из rows[].price_amount (§50). price_amount хранится в
-      // минорных единицах (копейках) — как и editor's priceMinor
-      // (см. HallSchemaVersion::toInventoryFormat и InventoryService),
-      // конвертация валюты здесь не нужна.
-      const putRowPrice = (rn: number, val: number): void => {
-        if (rn > 0 && Number.isFinite(val) && val >= 0) {
-          rowPrices[rn] = Math.round(val)
-        }
-      }
-      for (const r of s.rows ?? []) {
-        putRowPrice(Number(r.number ?? 0), Number(r.price_amount ?? NaN))
-      }
-      // Легаси: цена могла лежать на уровне места (seat.price_amount / seat.price).
-      for (const rs of (s.rows ?? [])) {
-        const rn = Number(rs.number ?? 0)
-        for (const seat of rs.seats ?? []) {
-          const rec = seat as Record<string, unknown>
-          const sp = Number(rec.price_amount ?? rec.price ?? NaN)
-          if (Number.isFinite(sp) && !rowPrices[rn]) putRowPrice(rn, sp)
-        }
-      }
-      // Если у сектора цена не задана вовсе, но ряды имеют цены — берём
-      // минимальную цену ряда как базовую, иначе инспектор покажет 0 (B7).
-      let secPrice = Number(s.priceMinor ?? s.price ?? NaN)
-      if (!Number.isFinite(secPrice) || secPrice <= 0) {
-        const vals = Object.values(rowPrices)
-        secPrice = vals.length > 0 ? Math.min(...vals) : 0
-      }
-      let secMinX = Infinity, secMinY = Infinity
-      for (const p of flatSeats) {
-        if (p.x < secMinX) secMinX = p.x
-        if (p.y < secMinY) secMinY = p.y
-      }
-      // Если вся геометрия вырождена (нулевые координаты) — раскладываем
-      // места по стандартной сетке редактора, чтобы схема не слиплась в точку.
-      const degenerate = !hasGeometry
-      const rowsSorted = Array.from(new Set(flatSeats.map((p) => p.row))).sort((a, b) => a - b)
-      const rowIndexOf = new Map(rowsSorted.map((r, i) => [r, i]))
-      // Позиция места внутри ряда — по индексу в исходном массиве ряда.
-      const seatPosCache = new Map<number, number>()
-      let seatsSeenInRow = 0
-      let lastRowSeen = Number.NaN
-      flatSeats.forEach((p, i) => {
-        if (p.row !== lastRowSeen) { seatsSeenInRow = 0; lastRowSeen = p.row }
-        seatPosCache.set(i, seatsSeenInRow)
-        seatsSeenInRow += 1
-      })
-      const seats: ESector['seats'] = flatSeats.map((p, i) => ({
-        id: `${s.name}-${p.row}-${p.number}-${i}`,
-        row: p.row,
-        number: p.number,
-        kind: (p.kind === 'vip' || p.kind === 'accessible') ? p.kind : 'standard',
-        x: degenerate
-          ? (seatPosCache.get(i) ?? 0) * (SEAT + GAP)
-          : Math.round((p.x - secMinX) * scale),
-        y: degenerate
-          ? (rowIndexOf.get(p.row) ?? 0) * (SEAT + ROW_GAP)
-          : Math.round((p.y - secMinY) * scale),
-      }))
-      out.push({
-        id: `s${out.length + 1}`,
-        name: s.name,
-        priceMinor: Math.max(0, Math.round(secPrice)),
-        x: 0,
-        y: 0,
-        seats,
-        rowPrices,
-        shape: s.shape === 'arc' ? 'arc' : (s.shape === 'table' ? 'table' : 'grid'),
-        arcSpread: Number(s.arcSpread ?? 120),
-        arcBaseR: Number(s.arcBaseR ?? 200),
-        arcRowGap: Number(s.arcRowGap ?? 24),
-        arcOffsetX: 0,
-        arcOffsetY: 0,
-        type: (s.type === 'standing' || s.type === 'mixed') ? s.type : 'seated',
-      })
-    }
-    // Раскладка секторов БД-формата по вертикали, чтобы они не наложились.
-    let cursorY = 140
-    for (const sec of out) {
-      sec.y = cursorY
-      cursorY += bbox(sec).height + 80
-    }
-  }
-  // Геометрия банкетных столов: кэшируем центр/радиус кольца для рендера и
-  // импорта (вычисляется по местам, чтобы round-trip был детерминированным).
-  for (const sec of out) {
-    if (sec.shape === 'table') {
-      const t = tableLayout(sec)
-      sec.tableCx = t.cx
-      sec.tableCy = t.cy
-      sec.tableRing = t.ring
-    }
-  }
-  if (out.length > 0) {
-    sectors.value = out
-
-    // Автоматическая зона танцпола: для сектора, где все места в одной точке
-    // (или имя содержит «Танцпол»), рисуем пунктирную зону-оверлей в static-слое.
-    const dance = out.find((s) => /танцпол|dance/i.test(s.name ?? '') || (
-      s.seats.length > 1 &&
-      s.seats.every((p) => p.x === s.seats[0].x && p.y === s.seats[0].y)
-    ))
-    if (dance && dance.seats.length > 0) {
-      const cx = canvasSize.value.width / 2
-      const cy = 190
-      const R = 60 + Math.min(dance.seats.length, 10) * 4
-      const existing = statics.value.filter((o) => /танцпол|dance/i.test(o.text ?? ''))
-      if (existing.length === 0) {
-        statics.value = [
-          ...statics.value,
-          {
-            id: 'static-dancezone',
-            kind: 'standing',
-            x: cx - R,
-            y: cy - R * 0.6,
-            width: R * 2,
-            height: R * 1.2,
-            text: `Танцпол · ${dance.seats.length} мест`,
-            capacity: dance.seats.length,
-          },
-        ]
-      }
-    }
-  } else if (rawSectors.length === 0) {
+    // Легаси-схемы «БД-формата» приходят стоячей зоной-сектором без геометрии
+    // (все места в одной точке). Дорисовываем её подпись, иначе зал выглядит
+    // пустым. Для редакторского формата зона уже есть в staticObjects, поэтому
+    // функция возвращает null — импорт остаётся идемпотентным.
+    const zone = danceZoneFor(parsed.format, parsed.sectors, parsed.statics, parsed.canvas)
+    if (zone) statics.value = [...statics.value, zone]
+  } else if (parsed.format === 'empty') {
     // B8: импорт файла БЕЗ секторов обязан очищать схему, а не оставлять
     // старое содержимое с ложным уведомлением «Схема импортирована».
     // Пустой массив — тоже данные: это осознанный «пустой зал».
@@ -1352,6 +1095,10 @@ async function loadFromServer(): Promise<void> {
     return
   }
   hallPublicId.value = pid
+  currentVersionId = null
+  currentSchemaRevision = null
+  draftVersionId.value = null
+  isHydratingSchema = true
   try {
     const res = await get<{ data: Array<Record<string, unknown>> }>(`/halls/${pid}/schema-versions`)
     const inner = res.data
@@ -1371,6 +1118,7 @@ async function loadFromServer(): Promise<void> {
     if (chosen) {
       const versionNo = Number(chosen.version ?? 0)
       currentVersionId = Number(chosen.id ?? 0)
+      currentSchemaRevision = typeof chosen.revision === 'number' ? chosen.revision : null
       if (chosen.status === 'published') {
         published.value = versionNo
         loadedPublished.value = versionNo
@@ -1406,41 +1154,19 @@ async function loadFromServer(): Promise<void> {
   } catch (e) {
     hallLoadState.value = 'error'
     ui.notify('rose', 'Ошибка загрузки', e instanceof Error ? e.message : String(e))
+  } finally {
+    await nextTick()
+    isHydratingSchema = false
+    persistedEditRevision = editRevision
   }
 }
 
 /* ── Экспорт Schema JSON (§54) ─────────────────────────────────────── */
 
 function exportSchema(): void {
-  const schema = {
-    version: '1.0',
-    canvas: { width: canvasSize.value.width, height: canvasSize.value.height },
-    background: backgrounds.value[0] ?? null,
-    sectors: sectors.value.map((s) => ({
-      id: s.id,
-      name: s.name,
-      x: s.x,
-      y: s.y,
-      priceMinor: s.priceMinor,
-      type: s.type ?? 'seated',
-      rowPrices: s.rowPrices,
-      shape: s.shape,
-      arcSpread: s.arcSpread,
-      arcBaseR: s.arcBaseR,
-      arcRowGap: s.arcRowGap,
-      arcOffsetX: s.arcOffsetX,
-      arcOffsetY: s.arcOffsetY,
-      seats: s.seats.map((seat) => ({
-        id: seat.id,
-        row: seat.row,
-        number: seat.number,
-        kind: seat.kind,
-        x: seat.x,
-        y: seat.y,
-      })),
-    })),
-    staticObjects: statics.value,
-  }
+  // Ровно тот же payload, что уходит в автосохранение, — файл и черновик
+  // на сервере не могут разойтись.
+  const schema = buildSchemaPayload()
   const blob = new Blob([JSON.stringify(schema, null, 2)], { type: 'application/json' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
@@ -1448,88 +1174,10 @@ function exportSchema(): void {
   a.download = `hall-schema-v${published.value ?? draftVersion.value}.json`
   a.click()
   URL.revokeObjectURL(url)
-    ui.notify('brand', 'Схема экспортирована', 'Файл hall-schema.json сохранён')
-  }
+  ui.notify('brand', 'Схема экспортирована', 'Файл hall-schema.json сохранён')
+}
 
   /* ── Импорт Schema JSON (из файла Афиши или экспорта) ─────────────── */
-
-  /**
-   * Структурная валидация импортируемой схемы ДО применения (§54: «если что-то
-   * не так — конкретная ошибка»). Возвращает список понятных ошибок по полям
-   * или null, если схема пригодна к загрузке. Никаких мутаций состояния — плохой
-   * файл не затирает рабочую схему (старый onJsonChosen молча очищал зал).
-   */
-  function validateSchema(data: unknown): string[] | null {
-    const errors: string[] = []
-    if (data === null || typeof data !== 'object' || Array.isArray(data)) {
-      return ['Файл должен быть объектом схемы зала (JSON-объект), а не массивом или пустым значением']
-    }
-    const obj = data as Record<string, unknown>
-    // Обёртки вида { schema: {...} } тоже принимаем.
-    const root = (obj.schema && typeof obj.schema === 'object' && !Array.isArray(obj.schema))
-      ? obj.schema as Record<string, unknown>
-      : obj
-    if (!('sectors' in root) && !('staticObjects' in root) && !('background' in root)) {
-      return ['В файле нет ни `sectors`, ни `staticObjects`, ни `background` — это не похоже на схему зала']
-    }
-    const sectors = root.sectors
-    if (sectors !== undefined && !Array.isArray(sectors)) {
-      return ['Поле `sectors` должно быть массивом секторов']
-    }
-    const list = Array.isArray(sectors) ? sectors : []
-    if (list.length === 0 && !Array.isArray(root.staticObjects) && !root.background) {
-      return ['В схеме нет ни одного сектора и ни одного объекта — импортировать нечего']
-    }
-    list.forEach((raw, i) => {
-      if (typeof raw !== 'object' || raw === null) {
-        errors.push(`sectors[${i}]: сектор должен быть объектом`)
-        return
-      }
-      const s = raw as Record<string, unknown>
-      if (typeof s.name !== 'string' || s.name.trim() === '') {
-        errors.push(`sectors[${i}]: у сектора должно быть непустое имя (поле name)`)
-      }
-      const shape = s.shape
-      if (shape !== undefined && !['grid', 'arc', 'table'].includes(shape as string)) {
-        errors.push(`sectors[${i}].shape: недопустимая форма «${String(shape)}» (ожидается grid/arc/table)`)
-      }
-      const hasSeats = Array.isArray(s.seats) && (s.seats as unknown[]).length > 0
-      const hasRows = Array.isArray(s.rows) && (s.rows as unknown[]).length > 0
-      if (!hasSeats && !hasRows) {
-        const nm = typeof s.name === 'string' && s.name.trim() !== '' ? s.name : String(i)
-        errors.push(`sectors[${i}] (${nm}): нужны места (seats) или ряды (rows)`)
-      }
-      const checkSeat = (seat: unknown, path: string): void => {
-        if (typeof seat !== 'object' || seat === null) {
-          errors.push(`${path}: место должно быть объектом`)
-          return
-        }
-        const m = seat as Record<string, unknown>
-        if (m.row !== undefined && (!Number.isInteger(m.row) || (m.row as number) < 1)) {
-          errors.push(`${path}.row: ряд должен быть целым числом ≥ 1`)
-        }
-        if (m.number !== undefined && (!Number.isInteger(m.number) || (m.number as number) < 1)) {
-          errors.push(`${path}.number: номер места должен быть целым числом ≥ 1`)
-        }
-      }
-      if (Array.isArray(s.seats)) (s.seats as unknown[]).forEach((seat, j) => checkSeat(seat, `sectors[${i}].seats[${j}]`))
-      if (Array.isArray(s.rows)) {
-        (s.rows as unknown[]).forEach((row, r) => {
-          if (typeof row !== 'object' || row === null) {
-            errors.push(`sectors[${i}].rows[${r}]: ряд должен быть объектом`)
-            return
-          }
-          const rr = row as Record<string, unknown>
-          const no = rr.number
-          if (no !== undefined && (!Number.isInteger(no) || (no as number) < 1)) {
-            errors.push(`sectors[${i}].rows[${r}].number: номер ряда должен быть целым числом ≥ 1`)
-          }
-          if (Array.isArray(rr.seats)) (rr.seats as unknown[]).forEach((seat, j) => checkSeat(seat, `sectors[${i}].rows[${r}].seats[${j}]`))
-        })
-      }
-    })
-    return errors.length > 0 ? errors : null
-  }
 
   const jsonInput = ref<HTMLInputElement | null>(null)
   function importJsonClick(): void {
@@ -1559,8 +1207,29 @@ function exportSchema(): void {
         ui.notify('rose', 'Импорт отклонён', errors.length > 4 ? `${shown} …(+${errors.length - 4})` : shown)
         return
       }
+      const before = {
+        sectors: JSON.parse(JSON.stringify(sectors.value)) as ESector[],
+        statics: JSON.parse(JSON.stringify(statics.value)) as EStatic[],
+        backgrounds: JSON.parse(JSON.stringify(backgrounds.value)) as EBackground[],
+        canvasSize: { ...canvasSize.value },
+        selectedSeatIds: [...selectedSeatIds.value],
+        selectedSectorId: selectedSectorId.value,
+        selectedStaticIds: [...selectedStaticIds.value],
+        selectedBgIds: [...selectedBgIds.value],
+        published: published.value,
+        loadedPublished: loadedPublished.value,
+        draftVersion: draftVersion.value,
+        draftVersionId: draftVersionId.value,
+        currentVersionId,
+        currentSchemaRevision,
+        history: editorHistory.history.value.slice(),
+        future: editorHistory.future.value.slice(),
+      }
       try {
-        applyServerSchema(data)
+        const root = unwrapSchemaRoot(data)
+        if (!root) throw new Error('Файл должен содержать JSON-объект схемы зала')
+        snapshot()
+        applyServerSchema(root)
         // Если загружали поверх published — снимем блокировку, чтобы можно было править
         if (published.value !== null) {
           newVersion()
@@ -1568,6 +1237,22 @@ function exportSchema(): void {
         const count = sectors.value.reduce((acc, s) => acc + s.seats.length, 0)
         ui.notify('mint', 'Схема импортирована', `${sectors.value.length} секторов, ${count} мест`)
       } catch (e) {
+        sectors.value = before.sectors
+        statics.value = before.statics
+        backgrounds.value = before.backgrounds
+        canvasSize.value = before.canvasSize
+        selectedSeatIds.value = new Set(before.selectedSeatIds)
+        selectedSectorId.value = before.selectedSectorId
+        selectedStaticIds.value = new Set(before.selectedStaticIds)
+        selectedBgIds.value = new Set(before.selectedBgIds)
+        published.value = before.published
+        loadedPublished.value = before.loadedPublished
+        draftVersion.value = before.draftVersion
+        draftVersionId.value = before.draftVersionId
+        currentVersionId = before.currentVersionId
+        currentSchemaRevision = before.currentSchemaRevision
+        editorHistory.history.value = before.history
+        editorHistory.future.value = before.future
         ui.notify('rose', 'Ошибка импорта', e instanceof Error ? e.message : String(e))
       }
     }
@@ -1749,7 +1434,7 @@ function draw(): void {
   const canEdit = published.value === null && !isLocked.value && tool.value !== 'pan'
   for (const s of statics.value) {
     const nodes: Konva.Node[] = []
-    const stOpacity = Number.isFinite(s.opacity) ? Math.min(1, Math.max(0, s.opacity as number)) : 1
+    const stOpacity = clampFloatOrNull(s.opacity, 0, 1) ?? 1
     if (s.kind === 'entrance') {
       nodes.push(new Konva.Arrow({ points: [0, 0, 24, -18], pointerLength: 8, pointerWidth: 8, fill: '#A5F5DE', stroke: '#00C48C', strokeWidth: 2, opacity: stOpacity }))
       if (s.text) nodes.push(new Konva.Text({ x: 28, y: -8, text: s.text, fontSize: 11, fill: '#A5F5DE', listening: false, opacity: stOpacity }))
@@ -2049,22 +1734,29 @@ function draw(): void {
   selectionLayer?.draw()
 }
 
-function bbox(sector: ESector): { x: number; y: number; width: number; height: number } {
-  if (sector.seats.length === 0) return { x: 0, y: 0, width: 80, height: 40 }
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
-  for (const s of sector.seats) {
-    if (s.x < minX) minX = s.x
-    if (s.y < minY) minY = s.y
-    if (s.x + SEAT > maxX) maxX = s.x + SEAT
-    if (s.y + SEAT > maxY) maxY = s.y + SEAT
-  }
-  return { x: minX, y: minY, width: maxX - minX, height: maxY - minY }
-}
-
 function zoomBy(factor: number): void {
   if (!stage) return
   const next = Math.min(2.4, Math.max(0.4, stage.scaleX() * factor))
   stage.scale({ x: next, y: next })
+  stage.batchDraw()
+}
+
+/** Масштабирование вокруг точки клика: указанная точка холста остаётся под курсором. */
+function zoomAt(factor: number, clientX: number, clientY: number): void {
+  if (!stage) return
+  const bounds = stage.container().getBoundingClientRect()
+  const pointer = { x: clientX - bounds.left, y: clientY - bounds.top }
+  const oldScale = stage.scaleX() || 1
+  const next = Math.min(2.4, Math.max(0.4, oldScale * factor))
+  const pointInCanvas = {
+    x: (pointer.x - stage.x()) / oldScale,
+    y: (pointer.y - stage.y()) / oldScale,
+  }
+  stage.scale({ x: next, y: next })
+  stage.position({
+    x: pointer.x - pointInCanvas.x * next,
+    y: pointer.y - pointInCanvas.y * next,
+  })
   stage.batchDraw()
 }
 
@@ -2163,7 +1855,7 @@ function initCanvasAndLoad(): void {
 
   // Инструменты §47: клик по холсту создаёт объект выбранного инструмента.
   stage.on('click', (e) => {
-    handleToolClick(e.evt.clientX, e.evt.clientY)
+    handleToolClick(e.evt.clientX, e.evt.clientY, e.evt.altKey)
   })
   stage.on('mousedown', onStageMouseDown)
   stage.on('mousemove', onStageMouseMove)
@@ -2196,7 +1888,10 @@ onUnmounted(() => {
   stage?.destroy()
 })
 
-watch([sectors, statics, backgrounds, selectedSeatIds, selectedSectorId, tool], draw, { deep: true })
+watch([sectors, statics, backgrounds, selectedSeatIds, selectedSectorId, tool], () => {
+  if (stage) stage.draggable(tool.value === 'pan')
+  draw()
+}, { deep: true })
 
 /* ── Горячие клавиши (§52 + §48) ───────────────────────────────────── */
 
@@ -2242,34 +1937,27 @@ const totalSeats = computed(() => sectors.value.reduce((sum, s) => sum + s.seats
  * подсвечивается, значение НЕ попадает в модель и, соответственно, в
  * payload автосохранения. Границы — как на сервере (HallService::
  * validateSchemaPayload): цена ≥ 1 копейки, ряд/место ≥ 1.
+ *
+ * Сами правила (rowPriceError, requiredNonNegativeError, rubToMinor,
+ * clampIntOrNull, clampFloatOrNull, normalizeRotation) вынесены в
+ * ./hallEditorFields — чистый модуль без Vue и состояния, покрытый vitest.
+ * Здесь остаются только сеттеры: снимок истории + запись в модель.
  */
 
-/** Цена ряда: undefined/null = сброс индивидуальной цены (ряд берёт цену сектора). */
-function rowPriceError(v: unknown): string | undefined {
-  if (v === '' || v === null || v === undefined) return undefined
-  const n = Number(v)
-  if (!Number.isFinite(n)) return 'Введите число'
-  if (n < 0) return 'Цена не может быть отрицательной'
-  if (Math.round(n * 100) < 1) return 'Цена должна быть больше нуля'
-  return undefined
+function setSectorName(value: string): void {
+  const sector = selectedSector.value
+  if (!sector || isLocked.value || sector.name === value) return
+  snapshot()
+  sector.name = value
 }
 
-/** Обязательная неотрицательная целая величина (копейки, размеры, вместимость). */
-function requiredNonNegativeError(v: unknown, unitLabel = 'Значение'): string | undefined {
-  const n = Number(v)
-  if (v === '' || v === null || v === undefined || !Number.isFinite(n)) return `${unitLabel}: введите число`
-  if (n < 0) return `${unitLabel} не может быть отрицательным`
-  return undefined
-}
-
-/** Цена сектора в рублях (инспектор): пустое/битое значение → ошибка, модель не трогается. */
 function setSectorPriceRub(v: unknown): void {
   const sector = selectedSector.value
-  if (!sector) return
-  const n = Number(v)
-  if (!Number.isFinite(n) || n <= 0) return
+  if (!sector || isLocked.value) return
+  const next = rubToMinor(v)
+  if (next === null || sector.priceMinor === next) return
   snapshot()
-  sector.priceMinor = Math.max(1, Math.round(n * 100))
+  sector.priceMinor = next
 }
 
 /** Живая ошибка для поля «Цена сектора» в инспекторе (§50). */
@@ -2282,7 +1970,7 @@ const sectorPriceError = computed<string | undefined>(() => {
 /** Число мест за банкетным столом (инспектор): 1..60, центр стола сохраняется. */
 function setTableSeatCount(sector: ESector, raw: unknown): void {
   if (isLocked.value || sector.shape !== 'table') return
-  const n = Math.max(1, Math.min(60, Math.floor(Number(raw) || 1)))
+  const n = clampIntOrNull(Math.floor(Number(raw) || 1), 1, 60) ?? 1
   snapshot()
   rebuildTableSeats(sector, n, nextId)
   selectedSectorId.value = sector.id
@@ -2308,65 +1996,91 @@ function onRowPriceInput(row: number, raw: string): void {
   const sector = selectedSector.value
   if (!sector) return
   if (raw.trim() === '') { setRowPrice(row, null); return }
-  const rub = Number(raw)
-  if (!Number.isFinite(rub) || rub <= 0) {
+  if (rubToMinor(raw) === null) {
     ui.notify('rose', 'Некорректная цена ряда', 'Цена должна быть числом больше нуля')
     return
   }
-  setRowPrice(row, rub)
+  setRowPrice(row, Number(raw))
 }
 
 /** Индивидуальная цена ряда в рублях; пустая строка снимает переопределение (§50). */
 function setRowPrice(row: number, rub: number | '' | null): void {
   const sector = selectedSector.value
-  if (!sector) return
+  if (!sector || isLocked.value) return
   if (rub === '' || rub === null || Number.isNaN(Number(rub))) {
+    if (sector.rowPrices[row] === undefined) return
+    snapshot()
     delete sector.rowPrices[row]
     return
   }
-  const n = Number(rub)
-  if (!Number.isFinite(n) || n <= 0) return
+  const next = rubToMinor(rub)
+  if (next === null || sector.rowPrices[row] === next) return
   snapshot()
-  sector.rowPrices[row] = Math.max(1, Math.round(n * 100))
+  sector.rowPrices[row] = next
 }
 
 /** Цена сектора генератора (форма «Новый сектор», коп.): только валидные значения. */
 function setFormPriceMinor(v: unknown): void {
-  const n = Number(v)
-  if (!Number.isFinite(n) || n < 0) return
-  form.value.priceMinor = Math.max(0, Math.round(n))
+  const n = roundOrNull(v)
+  if (n === null || n < 0) return
+  form.value.priceMinor = n
 }
 
 /** Целочисленное поле формы-генератора с нижней границей (ряды, места, VIP). */
 function clampIntField<K extends 'rows' | 'seatsPerRow' | 'vipRows' | 'arcSpread'>(key: K, v: unknown, min: number, max: number): void {
-  const n = Number(v)
-  if (Number.isFinite(n)) form.value[key] = Math.min(max, Math.max(min, Math.round(n)))
+  const n = clampIntOrNull(v, min, max)
+  if (n !== null) form.value[key] = n
 }
 
 /** Размер/поворот/вместимость статики: валидируем до записи в модель. */
 function setStaticNum(s: EStatic, key: 'x' | 'y' | 'width' | 'height' | 'rotation' | 'capacity', v: unknown, min: number, max: number): void {
-  const n = Number(v)
-  if (!Number.isFinite(n)) return
-  ;(s[key] as number) = Math.min(max, Math.max(min, Math.round(n)))
+  if (isLocked.value) return
+  const next = clampIntOrNull(v, min, max)
+  if (next === null || s[key] === next) return
+  snapshot()
+  ;(s[key] as number) = next
+}
+
+function setStaticText(s: EStatic, value: string): void {
+  if (isLocked.value || s.text === value) return
+  snapshot()
+  s.text = value
+}
+
+function setStandingPriceRub(s: EStatic, raw: unknown): void {
+  if (isLocked.value || s.kind !== 'standing') return
+  const next = rubToMinor(raw)
+  if (next === null || s.priceMinor === next) return
+  snapshot()
+  s.priceMinor = next
+}
+
+function setStaticOpacity(s: EStatic, value: unknown): void {
+  if (isLocked.value) return
+  const next = clampFloatOrNull(value, 0, 1)
+  if (next === null || (s.opacity ?? 1) === next) return
+  snapshot()
+  s.opacity = next
 }
 
 /** Свойства фона (масштаб/поворот/прозрачность/позиция), §51. */
 function setBackgroundNum(bg: EBackground, key: 'x' | 'y' | 'width' | 'height' | 'rotation' | 'opacity', v: unknown): void {
+  if (isLocked.value || bg.locked) return
   const n = Number(v)
   if (!Number.isFinite(n)) return
+  let next: number
   if (key === 'opacity') {
-    bg.opacity = Math.min(1, Math.max(0, n))
-    return
+    next = clampFloatOrNull(n, 0, 1) ?? n
+  } else if (key === 'width' || key === 'height') {
+    next = clampIntOrNull(n, 1, 20000) ?? n
+  } else if (key === 'rotation') {
+    next = normalizeRotation(n)
+  } else {
+    next = roundOrNull(n) ?? n
   }
-  if (key === 'width' || key === 'height') {
-    bg[key] = Math.min(20000, Math.max(1, Math.round(n)))
-    return
-  }
-  if (key === 'rotation') {
-    bg.rotation = ((n % 360) + 360) % 360
-    return
-  }
-  bg[key] = Math.round(n)
+  if (bg[key] === next) return
+  snapshot()
+  bg[key] = next
 }
 
 function toggleBackgroundLocked(): void {
@@ -2612,7 +2326,7 @@ function setSeatKind(value: string): void {
               Места раскладываются по дуге, как в амфитеатре. Угол раствора 180° даёт полукруг.
             </p>
             <div v-if="form.shape === 'arc'" class="grid grid-cols-2 gap-2">
-              <NInput :model-value="form.arcSpread" label="Угол раствора, °" type="number" hint="180 — полукруг" @update:model-value="clampIntField('arcSpread', $event, 10, 360)" />
+              <NInput :model-value="form.arcSpread" label="Угол раствора, °" type="number" hint="180 — полукруг" @update:model-value="clampIntField('arcSpread', $event, 10, 180)" />
             </div>
             <div class="grid grid-cols-2 gap-2">
               <NInput :model-value="form.rows" label="Рядов" type="number" @update:model-value="clampIntField('rows', $event, 1, 100)" />
@@ -2630,7 +2344,7 @@ function setSeatKind(value: string): void {
             <h2 class="text-sm font-semibold text-content">Сектор · {{ selectedSector.name }}</h2>
           </div>
           <div class="space-y-3 p-3">
-            <NInput v-model="selectedSector.name" label="Название" :disabled="isLocked" />
+            <NInput :model-value="selectedSector.name" label="Название" :disabled="isLocked" @update:model-value="setSectorName" />
             <NInput
               :model-value="String(Math.round(selectedSector.priceMinor / 100))"
               label="Цена по умолчанию, ₽"
@@ -2726,16 +2440,16 @@ function setSeatKind(value: string): void {
               :model-value="selectedStatic.text ?? ''"
               label="Подпись"
               :disabled="isLocked"
-              @update:model-value="(v: string) => { if (!isLocked) selectedStatic!.text = v }"
+              @update:model-value="(v: string) => setStaticText(selectedStatic!, v)"
             />
             <div class="grid grid-cols-2 gap-2">
               <NInput
                 :model-value="String(Math.round(selectedStatic.x))" label="X, пикс." type="number" :min="0" :max="20000" :disabled="isLocked"
-                @update:model-value="(v: string | number) => setBackgroundNum(selectedStatic as never, 'x', v)"
+                @update:model-value="(v: string | number) => setStaticNum(selectedStatic!, 'x', v, 0, 20000)"
               />
               <NInput
                 :model-value="String(Math.round(selectedStatic.y))" label="Y, пикс." type="number" :min="0" :max="20000" :disabled="isLocked"
-                @update:model-value="(v: string | number) => setBackgroundNum(selectedStatic as never, 'y', v)"
+                @update:model-value="(v: string | number) => setStaticNum(selectedStatic!, 'y', v, 0, 20000)"
               />
               <NInput
                 :model-value="String(Math.round(selectedStatic.width ?? 0))" label="Ширина, пикс." type="number" :min="1" :max="20000" :disabled="isLocked"
@@ -2755,6 +2469,13 @@ function setSeatKind(value: string): void {
                 :error="requiredNonNegativeError(selectedStatic.capacity ?? 0, 'Вместимость')"
                 @update:model-value="(v: string | number) => setStaticNum(selectedStatic!, 'capacity', v, 1, 100000)"
               />
+              <NInput
+                v-if="selectedStatic.kind === 'standing'"
+                :model-value="String(Math.round((selectedStatic.priceMinor ?? 0) / 100))"
+                label="Цена за место, ₽" type="number" :min="1" :disabled="isLocked"
+                :error="rowPriceError((selectedStatic.priceMinor ?? 0) / 100)"
+                @update:model-value="(v: string | number) => setStandingPriceRub(selectedStatic!, v)"
+              />
             </div>
             <label class="block">
               <span class="mb-1 flex justify-between text-sm font-medium text-content">
@@ -2765,7 +2486,7 @@ function setSeatKind(value: string): void {
                 :value="selectedStatic.opacity ?? 1"
                 :disabled="isLocked"
                 class="w-full accent-brand-500"
-                @input="(e) => { const n = Number((e.target as HTMLInputElement).value); if (Number.isFinite(n)) selectedStatic!.opacity = Math.min(1, Math.max(0, n)) }"
+                @input="(e) => setStaticOpacity(selectedStatic!, (e.target as HTMLInputElement).value)"
               />
             </label>
             <div class="flex gap-2">

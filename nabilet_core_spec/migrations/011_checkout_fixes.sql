@@ -2,6 +2,7 @@ SET NAMES utf8mb4;
 SET time_zone = '+00:00';
 SET FOREIGN_KEY_CHECKS = 0;
 
+
 -- ============================================================ 011 — checkout fixes (D5, B2, A6)
 -- Mirrors the applied Laravel migrations:
 --   database/migrations/2026_09_29_000100_add_cart_token_and_order_cart_id.php

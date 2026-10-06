@@ -148,11 +148,14 @@ export default {
 ### Ошибка импорта компонентов
 Проверьте правильный путь к компоненту:
 ```javascript
-import HallEditor from '../../../resources/js/components/HallEditor.vue';
+import TicketBuilder from '../../../resources/js/components/TicketBuilder.vue';
 ```
 
+(Пример раньше ссылался на `components/HallEditor.vue` — компонент удалён как
+мёртвый, см. P1.9.8 в `docs/CODE-QUALITY-GUIDE.md`.)
+
 ### Проблемы с окружением jsdom
-Убедитесь, что в `vite.config.js` указано:
+Конфигурация тестов живёт в `vitest.config.ts` (не в `vite.config.js`):
 ```javascript
 test: {
   environment: 'jsdom',

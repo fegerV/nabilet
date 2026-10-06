@@ -97,6 +97,7 @@ def main():
     st, res = call("POST", f"/halls/{hall_pid}/schema-versions/draft", {"payload": payload}, token)
     ver = res["data"] if "data" in res else res
     draft_id = ver["id"]
+    base_revision = int(ver["revision"])
 
     st, res = call("GET", f"/halls/{hall_pid}/schema-versions", token=token)
     draft = [v for v in res["data"] if v["status"] == "draft"][0]
@@ -114,7 +115,16 @@ def main():
 
     # Симуляция ФИКСА: автосейв теперь шлёт `type`. Проверяем, что type не теряется.
     fixed = json.loads(json.dumps(payload))  # клиент теперь включает type
-    st, res = call("POST", f"/halls/{hall_pid}/schema-versions/draft", {"payload": fixed, "version_id": draft_id}, token)
+    st, res = call("POST", f"/halls/{hall_pid}/schema-versions/draft", {
+        "payload": fixed,
+        "version_id": draft_id,
+        "base_revision": base_revision,
+    }, token)
+    if st != 200:
+        print(f"   !! FAIL autosave -> {st}: {res}")
+        ok = False
+    else:
+        base_revision = int((res.get("data") or res).get("revision", base_revision + 1))
     st2, res2 = call("GET", f"/halls/{hall_pid}/schema-versions", token=token)
     d2 = [v for v in res2["data"] if v["id"] == draft_id][0]
     s2 = d2["schema"]

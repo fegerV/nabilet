@@ -7,14 +7,14 @@ namespace Nabilet\Tests\Unit;
 use Nabilet\Core\Errors\ConflictError;
 use Nabilet\Core\Errors\DomainRuleViolation;
 use Nabilet\Core\Support\Money;
-use Nabilet\Modules\Inventory\Domain\HoldWindow;
-use Nabilet\Modules\Inventory\Domain\InventoryStock;
-use Nabilet\Modules\Inventory\Domain\ReservationPolicy;
-use Nabilet\Modules\Inventory\Domain\SeatHold;
-use Nabilet\Modules\Orders\Domain\CartCheckout;
-use Nabilet\Modules\Orders\Domain\CartState;
-use Nabilet\Modules\Orders\Domain\CheckoutLine;
-use Nabilet\Modules\Orders\Domain\OrderPlacement;
+use Nabilet\Modules\Inventory\Domain\Superseded\HoldWindow;
+use Nabilet\Modules\Inventory\Domain\Superseded\InventoryStock;
+use Nabilet\Modules\Inventory\Domain\Superseded\ReservationPolicy;
+use Nabilet\Modules\Inventory\Domain\Superseded\SeatHold;
+use Nabilet\Modules\Orders\Domain\Superseded\CartCheckout;
+use Nabilet\Modules\Orders\Domain\Superseded\CartState;
+use Nabilet\Modules\Orders\Domain\Superseded\CheckoutLine;
+use Nabilet\Modules\Orders\Domain\Superseded\OrderPlacement;
 use Nabilet\Tests\Support\TestCase;
 
 /**

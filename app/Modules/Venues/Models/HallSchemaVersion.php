@@ -23,6 +23,7 @@ class HallSchemaVersion extends Model
         'public_id',
         'hall_id',
         'version',
+        'revision',
         'status',
         'width',
         'height',
@@ -35,6 +36,7 @@ class HallSchemaVersion extends Model
     {
         return [
             'version' => 'integer',
+            'revision' => 'integer',
             'width' => 'integer',
             'height' => 'integer',
             'schema_json' => 'array',
@@ -102,6 +104,15 @@ class HallSchemaVersion extends Model
                 $code = (string) ($sector['code'] ?? '');
                 $type = (string) ($sector['type'] ?? 'seated');
 
+                // Смещение группы сектора на холсте. Редактор хранит координаты
+                // мест ЛОКАЛЬНО внутри группы (`Konva.Group({ x: sector.x })`),
+                // поэтому нормировать их в 0..59/0..39 без смещения нельзя:
+                // сектора, разнесённые по холсту, получали одинаковые
+                // нормированные координаты и в витрине (CoordSeatMap, которая
+                // строит bbox по всем местам) рисовались друг поверх друга.
+                $sectorOffsetX = is_numeric($sector['x'] ?? null) ? (float) $sector['x'] : 0.0;
+                $sectorOffsetY = is_numeric($sector['y'] ?? null) ? (float) $sector['y'] : 0.0;
+
                 if (($type === 'seated' || $type === '') && empty($sector['rows']) && empty($sector['seats'])) {
                     $statics = $payload['staticObjects'] ?? [];
                     if (is_array($statics)) {
@@ -117,7 +128,7 @@ class HallSchemaVersion extends Model
                             $sector['rows'] = [[
                                 'number' => '1',
                                 'label' => (string) ($obj['text'] ?? 'Танцпол'),
-                                'price_amount' => (int) ($sector['priceMinor'] ?? $sector['price'] ?? 0),
+                                'price_amount' => (int) ($obj['priceMinor'] ?? $obj['price'] ?? $sector['priceMinor'] ?? $sector['price'] ?? 0),
                                 'seats' => array_fill(0, $cap, [
                                     'id' => null,
                                     'number' => '',
@@ -132,9 +143,12 @@ class HallSchemaVersion extends Model
                     }
                 }
 
-                // Уже rows-формат (из импортёра Афиши) — оставляем как есть
+                // Уже rows-формат (из импортёра Афиши) — оставляем как есть,
+                // но дописываем форму сектора и геометрию стола: без них
+                // `hall_tables` заполнить нечем, а витрина не знает, что это
+                // банкетный зал (см. InventoryService::generateFromSchema).
                             if (isset($sector['rows']) && is_array($sector['rows'])) {
-                                $sectors[] = $sector;
+                                $sectors[] = $this->withShapeAndTable($sector, $sectorOffsetX, $sectorOffsetY);
                                 continue;
                             }
 
@@ -167,11 +181,13 @@ class HallSchemaVersion extends Model
                                 sort($rowKeys);
                                 foreach ($rowKeys as $rowNum) {
                                     $rowSeats = $perRow[$rowNum];
-                    // Координаты в канвасе (пиксели) → нормализуем в 0..59/0..39
+                    // Координаты в канвасе (пиксели) → нормализуем в 0..59/0..39.
+                    // Локальные координаты места + смещение группы = координаты
+                    // холста; только в них сектора сопоставимы между собой.
                     $gridSeats = [];
                     foreach ($rowSeats as $seat) {
-                        $gx = (int) round(((int) ($seat['x'] ?? 0)) / $canvasW * 60);
-                        $gy = (int) round(((int) ($seat['y'] ?? 0)) / $canvasH * 40);
+                        $gx = (int) round((((float) ($seat['x'] ?? 0)) + $sectorOffsetX) / $canvasW * 60);
+                        $gy = (int) round((((float) ($seat['y'] ?? 0)) + $sectorOffsetY) / $canvasH * 40);
                         // inventory_items.seat_id — BIGINT: id места обязан быть числом
                                                 // (канвасные id «seat-…» — строки → заменяем числом)
                                                 $seatCounter += 1;
@@ -191,6 +207,9 @@ class HallSchemaVersion extends Model
                                             $rowPrice = (int) $sector['rowPrices'][(string) $rowNum];
                                         } elseif (isset($sector['priceMinor'])) {
                                             $rowPrice = (int) $sector['priceMinor'];
+                                        } elseif (isset($sector['price'])) {
+                                            // Legacy editor/import schemas store the same minor-unit price here.
+                                            $rowPrice = (int) $sector['price'];
                                         }
 
                                         $rows[] = [
@@ -201,7 +220,7 @@ class HallSchemaVersion extends Model
                     ];
                 }
 
-                $sectors[] = [
+                $canvasSector = [
                     'name' => $name,
                     'code' => $code,
                     'type' => $type === 'standing' ? 'standing' : (in_array($type, ['seated', 'mixed'], true) ? $type : 'seated'),
@@ -211,6 +230,17 @@ class HallSchemaVersion extends Model
                     'y' => 0,
                     'rows' => $rows,
                 ];
+
+                // Форма и геометрия стола считаются по ИСХОДНЫМ координатам
+                // холста (места + смещение группы): в $rows они уже нормированы
+                // в 0..59/0..39 и о реальном радиусе кольца ничего не говорят.
+                $sectors[] = $this->withShapeAndTable(
+                    $canvasSector,
+                    $sectorOffsetX,
+                    $sectorOffsetY,
+                    $seats,
+                    $this->shapeOf($sector),
+                );
             }
 
             // C1: стоячие зоны из статических объектов редактора. Сектор с
@@ -285,6 +315,133 @@ class HallSchemaVersion extends Model
         unset($sec);
 
         return $sectors;
+    }
+
+    /**
+     * Форма раскладки мест сектора. Редактор пишет `shape` (grid|arc|table);
+     * импортёр Афиши этого поля не знает — считаем такую схему сеткой.
+     */
+    private function shapeOf(array $sector): string
+    {
+        $shape = (string) ($sector['shape'] ?? '');
+
+        return in_array($shape, ['grid', 'arc', 'table'], true) ? $shape : 'grid';
+    }
+
+    /**
+     * Дописать сектору форму и — для банкетного стола — его геометрию.
+     *
+     * Зачем: `hall_tables` (таблица из ТЗ, раздел «схемы залов») до этого не
+     * заполнялась НИКОГДА. Стол в редакторе — это сектор `shape: 'table'` с
+     * кольцом мест, и вся его геометрия жила только внутри JSON-схемы. Теперь
+     * при генерации инвентаря она материализуется в строку `hall_tables`
+     * (см. InventoryService::generateFromSchema), и таблица перестаёт быть
+     * мёртвой: её видно в отчётах и можно отрисовать стол на витрине, не
+     * разбирая payload.
+     *
+     * Координаты считаются в ПРОСТРАНСТВЕ ХОЛСТА: места в схеме локальны для
+     * группы сектора, поэтому к ним прибавляется смещение `sector.x/sector.y`.
+     *
+     * @param  array<string, mixed>       $sector     уже собранный сектор
+     * @param  list<array<string,mixed>>|null $flatSeats  исходные места в локальных
+     *                                                   координатах; если null —
+     *                                                   берутся из `$sector['rows']`
+     * @return array<string, mixed>
+     */
+    private function withShapeAndTable(
+        array $sector,
+        float $offsetX,
+        float $offsetY,
+        ?array $flatSeats = null,
+        ?string $shape = null,
+    ): array {
+        $shape ??= $this->shapeOf($sector);
+        $sector['shape'] = $shape;
+
+        if ($shape !== 'table') {
+            return $sector;
+        }
+
+        if ($flatSeats === null) {
+            $flatSeats = [];
+            foreach ($sector['rows'] ?? [] as $row) {
+                if (!is_array($row)) {
+                    continue;
+                }
+                foreach ($row['seats'] ?? [] as $seat) {
+                    if (is_array($seat)) {
+                        $flatSeats[] = $seat;
+                    }
+                }
+            }
+        }
+
+        $sector['table'] = $this->tableGeometry($flatSeats, $offsetX, $offsetY);
+
+        return $sector;
+    }
+
+    /**
+     * Геометрия банкетного стола по кольцу мест (координаты холста).
+     *
+     * Это тот же расчёт, что делает редактор (`tableLayout` в
+     * resources/js/pages/hall-editor/seatGeometry.ts): центр — среднее мест,
+     * радиус кольца — максимальное расстояние от центра. Держать формулу в
+     * двух местах приходится потому, что редактор считает её на клиенте до
+     * сохранения, а серверу нужно материализовать её в БД при генерации
+     * инвентаря.
+     *
+     * @param  list<array<string, mixed>>  $flatSeats
+     * @return array{x: float, y: float, width: float, height: float, cx: float, cy: float, ring: float, capacity: int}
+     */
+    private function tableGeometry(array $flatSeats, float $offsetX, float $offsetY): array
+    {
+        $count = count($flatSeats);
+        if ($count === 0) {
+            return [
+                'x' => $offsetX, 'y' => $offsetY, 'width' => 0.0, 'height' => 0.0,
+                'cx' => $offsetX, 'cy' => $offsetY, 'ring' => 0.0, 'capacity' => 0,
+            ];
+        }
+
+        $sumX = 0.0;
+        $sumY = 0.0;
+        $minX = INF;
+        $maxX = -INF;
+        $minY = INF;
+        $maxY = -INF;
+        $points = [];
+
+        foreach ($flatSeats as $seat) {
+            $x = (float) ($seat['x'] ?? 0) + $offsetX;
+            $y = (float) ($seat['y'] ?? 0) + $offsetY;
+            $points[] = [$x, $y];
+            $sumX += $x;
+            $sumY += $y;
+            $minX = min($minX, $x);
+            $maxX = max($maxX, $x);
+            $minY = min($minY, $y);
+            $maxY = max($maxY, $y);
+        }
+
+        $cx = $sumX / $count;
+        $cy = $sumY / $count;
+
+        $ring = 0.0;
+        foreach ($points as [$x, $y]) {
+            $ring = max($ring, hypot($x - $cx, $y - $cy));
+        }
+
+        return [
+            'x' => $minX,
+            'y' => $minY,
+            'width' => $maxX - $minX,
+            'height' => $maxY - $minY,
+            'cx' => $cx,
+            'cy' => $cy,
+            'ring' => $ring,
+            'capacity' => $count,
+        ];
     }
 
     /**

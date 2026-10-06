@@ -94,21 +94,19 @@ class HallRepository
 
             return $hall->schemaVersions()->create([
                 'version' => $latestVersion + 1,
+                'revision' => 1,
                 'schema_json' => $payload,
                 'status' => $status,
             ]);
         }
 
     public function publishSchemaVersion(HallSchemaVersion $version): HallSchemaVersion
-        {
-            // Unpublish any currently published version for this hall
-            HallSchemaVersion::where('hall_id', $version->hall_id)
-                ->where('status', 'published')
-                ->where('id', '!=', $version->id)
-                ->update(['status' => 'archived']);
+    {
+        // HallService has already applied the domain transition under the hall
+        // lock; the repository must not silently bypass that policy by archiving
+        // sibling versions as a side effect.
+        $version->update(['status' => 'published', 'published_at' => now()]);
 
-            $version->update(['status' => 'published', 'published_at' => now()]);
-
-            return $version->fresh();
+        return $version->fresh();
     }
 }

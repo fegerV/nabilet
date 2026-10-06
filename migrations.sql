@@ -1391,10 +1391,16 @@ ALTER TABLE offline_bundles
 --   database/migrations/2026_09_29_000300_add_qr_payload_to_tickets.php
 --   database/migrations/2026_09_30_000100_add_session_event_to_orders.php
 --
---   1. carts.cart_token + orders.cart_id  — D5 «корзина на сеанс».
---   2. orders.customer_name               — B2: витрина собирала имя покупателя.
---   3. tickets.qr_payload                 — A6: QR-картинка кодирует подписанный пэйлоад.
---   4. orders.session_id / event_id       — A6: выпуск билетов резолвит их из корзины.
+--   1. carts.cart_token + orders.cart_id  — D5 «корзина на сеанс»: корзина
+--      ключуется парой (cart_token, session_id), заказ помнит корзину, из
+--      которой вырос (чинит validateHoldsForOrder).
+--   2. orders.customer_name               — B2: витрина собирала имя покупателя,
+--      но писать его было некуда.
+--   3. tickets.qr_payload                 — A6: QR-картинка кодирует подписанный
+--      пэйлоад QrSigner («NB1.<id>.<token>.<sig>»), qr_token_hash остаётся
+--      якорем проверки на чек-ине.
+--   4. orders.session_id / event_id       — A6: выпуск билетов требует их,
+--      резолвятся из корзины (carts.session_id → sessions.event_id).
 
 ALTER TABLE carts
   ADD COLUMN cart_token VARCHAR(64) NULL AFTER user_id,
