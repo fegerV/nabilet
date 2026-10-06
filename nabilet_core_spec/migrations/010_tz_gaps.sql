@@ -1,3 +1,7 @@
+SET NAMES utf8mb4;
+SET time_zone = '+00:00';
+SET FOREIGN_KEY_CHECKS = 0;
+
 -- ============================================================ 010 — ТЗ gaps
 -- Closes the six functional gaps documented in docs/REVIEW-spec-bundle.md §3.10.
 -- Each block cites the source requirement in `Мысли.md`.

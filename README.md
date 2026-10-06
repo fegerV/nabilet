@@ -141,7 +141,7 @@ php tools/verify-models-schema.php  # модели Eloquent называют т�
 | Job | Что делает | Зачем |
 | --- | --- | --- |
 | `verify` | lint, тесты, `verify-purity`, граф модулей, `verify-migrations`, `verify-state-machines`, `verify-openapi` и `verify-contract-schema` для обеих копий, `verify-models-schema`, `composer validate` | ловит расхождения кода, контракта и схемы |
-| `schema` | накатывает `migrations.sql` и сплит-сет в два разных database на MySQL 8.4, сверяет счетчики (64 таблицы / 678 колонок / 1 триггер), диффит `information_schema.columns`, проверяет триггер иммутабельности в обе стороны | доказывает, что DDL реально исполняется |
+| `schema` | накатывает `migrations.sql` и сплит-сет в два разных database на MySQL 8.4, сверяет счетчики (64 таблицы / 684 колонок / 1 триггер), диффит `information_schema.columns`, проверяет триггер иммутабельности в обе стороны | доказывает, что DDL реально исполняется |
 
 Смысл разделения: верификаторы — это статическое сравнение, они ничего не говорят о том,
 примет ли MySQL схему. А триггер нельзя выразить CHECK (нельзя сослаться на `OLD`), поэтому
