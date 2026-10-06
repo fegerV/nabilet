@@ -95,5 +95,14 @@ if (file_exists(__DIR__ . '/../app/Modules/Events/routes/web.php')) {
 }
 
 /*
+ * Installer (мастер установки, WordPress-стиль): /install
+ * Грузится из web-роутов (а не api), чтобы URL был чистым — /install без
+ * api/v1-префикса, и маршрут попадал в web-группу (сессии,共享错误), а не в api.
+ */
+if (file_exists(__DIR__ . '/../app/Modules/Installer/routes/web.php')) {
+    require __DIR__ . '/../app/Modules/Installer/routes/web.php';
+}
+
+/*
  * Sitemap routes are handled by the SEO module via api.php.
  */

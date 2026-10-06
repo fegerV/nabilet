@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Illuminate\Routing\Controller;
 use Illuminate\Validation\ValidationException;
 
@@ -56,7 +57,7 @@ SESSION_DRIVER=file
 SESSION_LIFETIME=120
 
 YOOKASSA_SHOP_ID={YOOKASSA_SHOP_ID}
-YOOKASSA_API_KEY={YOOKASSA_API_KEY}
+YOOKASSA_SECRET_KEY={YOOKASSA_SECRET_KEY}
 ENV;
 
     /**
@@ -130,8 +131,25 @@ ENV;
                 $validated['db_password']
             );
 
-            // Шаг 2: Запись .env файла
-            $this->writeEnvFile($validated);
+            // Шаг 2: Запись .env файла (возвращает сгенерированный APP_KEY)
+            $appKey = $this->writeEnvFile($validated);
+
+            // Перед запуском Artisan-команд подменяем in-memory-конфиг реальными
+            // учётными данными из формы. `config:clear` удаляет только кэш-файл, но
+            // НЕ перечитывает Dotenv в уже загруженный репозиторий конфигурации,
+            // поэтому без этой подмены `migrate`/seed уходили бы на boot-значения
+            // (127.0.0.1 / forge), а не на введённую БД, и установка падала бы.
+            config([
+                'database.connections.mysql.host' => $validated['db_host'],
+                'database.connections.mysql.port' => $validated['db_port'],
+                'database.connections.mysql.database' => $validated['db_database'],
+                'database.connections.mysql.username' => $validated['db_username'],
+                'database.connections.mysql.password' => $validated['db_password'],
+                'app.key' => $appKey,
+                'app.url' => $validated['app_url'],
+                'app.env' => 'production',
+            ]);
+            DB::purge('mysql');
 
             // Шаг 3: Очистка кэша конфигурации
             Artisan::call('config:clear');
@@ -143,8 +161,8 @@ ENV;
                 throw new \RuntimeException('Не удалось выполнить миграции базы данных');
             }
 
-            // Шаг 5: Создание администратора
-            $this->createAdminUser($validated['admin_email'], $validated['admin_password']);
+            // Шаг 5: Создание администратора и его организации
+            $this->createAdminUser($validated['admin_email'], $validated['admin_password'], $validated['app_name']);
 
             // Шаг 6: Создание symbolic link для storage
             try {
@@ -314,7 +332,7 @@ ENV;
     /**
      * Записать .env файл
      */
-    private function writeEnvFile(array $data): void
+    private function writeEnvFile(array $data): string
     {
         $envContent = self::ENV_TEMPLATE;
         $appKey = 'base64:' . base64_encode(random_bytes(32));
@@ -337,7 +355,7 @@ ENV;
             '{DB_PASSWORD}' => $data['db_password'],
             '{FILESYSTEM_DISK}' => 'public',
             '{YOOKASSA_SHOP_ID}' => $data['yookassa_shop_id'] ?? '',
-            '{YOOKASSA_API_KEY}' => $data['yookassa_api_key'] ?? '',
+            '{YOOKASSA_SECRET_KEY}' => $data['yookassa_api_key'] ?? '',
         ];
 
         $envContent = str_replace(
@@ -356,42 +374,104 @@ ENV;
         }
 
         Log::info('Installer: Файл .env успешно создан');
+
+        return $appKey;
     }
 
     /**
      * Создать пользователя-администратора
      */
-    private function createAdminUser(string $email, string $password): void
+    private function createAdminUser(string $email, string $password, string $orgName): void
     {
-        // Проверяем, существует ли модель User
-        if (!class_exists(\App\Models\User::class)) {
-            Log::warning('Installer: Модель User не найдена, создаем базового админа через DB');
-            
-            // Создаем через Query Builder если модели нет
+        $userId = null;
+
+        if (class_exists(\App\Models\User::class)) {
+            $user = \App\Models\User::create([
+                'first_name' => 'Administrator',
+                'email' => $email,
+                'password' => bcrypt($password),
+                'email_verified_at' => now(),
+                'status' => 'active',
+            ]);
+            $userId = $user->id;
+            Log::info('Installer: Администратор создан', ['id' => $userId, 'email' => $email]);
+        } else {
+            Log::warning('Installer: Модель User не найдена, создаем админа через DB');
             $userId = DB::table('users')->insertGetId([
-                'name' => 'Administrator',
+                'public_id' => Str::ulid()->toBase32(),
                 'email' => $email,
                 'password' => password_hash($password, PASSWORD_BCRYPT),
+                'first_name' => 'Administrator',
+                'status' => 'active',
                 'email_verified_at' => now(),
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
-
-            if ($userId) {
-                Log::info('Installer: Администратор создан через DB', ['id' => $userId, 'email' => $email]);
-            }
-            return;
+            Log::info('Installer: Администратор создан через DB', ['id' => $userId, 'email' => $email]);
         }
 
-        // Используем модель если она существует
-        $user = \App\Models\User::create([
-            'name' => 'Administrator',
-            'email' => $email,
-            'password' => bcrypt($password),
-            'email_verified_at' => now(),
-        ]);
+        if ($userId) {
+            $this->bootstrapOrganization((int) $userId, $orgName);
+        }
+    }
 
-        Log::info('Installer: Администратор создан', ['id' => $user->id, 'email' => $user->email]);
+    /**
+     * Create the self-hosted install's default organization and attach the admin.
+     *
+     * The app is multi-tenant (every tenant-scoped row carries organization_id) and
+     * ResolveOrganizationContext resolves the active org from the user's membership.
+     * Without this the freshly installed admin would have no org context and
+     * tenant-scoped queries would throw TenantContextMissingError. We create one
+     * org + link the admin; fail-soft so the install never blocks.
+     */
+    private function bootstrapOrganization(int $userId, string $orgName): void
+    {
+        try {
+            $slug = Str::slug($orgName) ?: 'organization';
+            if (DB::table('organizations')->where('slug', $slug)->exists()) {
+                $slug .= '-' . substr(md5((string) $userId . $orgName), 0, 6);
+            }
+
+            $organizationId = DB::table('organizations')->insertGetId([
+                'public_id' => Str::ulid()->toBase32(),
+                'name' => $orgName,
+                'slug' => $slug,
+                'status' => 'active',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            $roleId = DB::table('roles')->where('slug', 'admin')->value('id');
+            if ($roleId === null) {
+                $roleId = DB::table('roles')->insertGetId([
+                    'name' => 'Administrator',
+                    'slug' => 'admin',
+                    'description' => 'Full access (created by installer)',
+                ]);
+            }
+
+            DB::table('user_organization')->updateOrInsert(
+                ['user_id' => $userId, 'organization_id' => $organizationId],
+                ['role_id' => $roleId, 'created_at' => now()]
+            );
+
+            DB::table('user_roles')->updateOrInsert(
+                ['user_id' => $userId, 'organization_id' => $organizationId, 'role_id' => $roleId],
+                ['granted_by' => null, 'created_at' => now()]
+            );
+
+            Log::info('Installer: Организация создана и админ привязан', [
+                'organization_id' => $organizationId,
+                'role_id' => $roleId,
+                'user_id' => $userId,
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('Installer: Не удалось создать организацию для админа', [
+                'exception' => $e->getMessage(),
+            ]);
+            // Не блокируем установку: админ уже создан, организацию можно
+            // дособрать позже из админки.
+        }
     }
 
     /**

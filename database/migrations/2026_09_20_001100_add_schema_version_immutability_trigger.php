@@ -51,10 +51,11 @@ use Illuminate\Support\Facades\DB;
  *     variable)
  *
  *   So on shared hosting this migration either succeeds because the host already sets
- *   `log_bin_trust_function_creators=1` (common), or it aborts `php artisan migrate`
- *   at this file. Confirm it with the host before the first deploy, or run
- *   `migrate --pretend` to see how far it gets. There is no application-side
- *   workaround: `SET GLOBAL` needs SUPER as well.
+ *   `log_bin_trust_function_creators=1` (common), or the CREATE TRIGGER fails with
+ *   ERROR 1419. We no longer abort `php artisan migrate` over it: the trigger is
+ *   defense-in-depth only (the application layer also guards immutability), so the
+ *   migration catches the error, logs a warning, and lets the install proceed. The
+ *   immutability guarantee is simply not enforced at the DB level on that host.
  */
 return new class extends Migration
 {
@@ -84,26 +85,40 @@ return new class extends Migration
         // DB::unprepared(), not statement(): a trigger body contains semicolons in
         // BEGIN...END. DELIMITER is a *client* directive, not server syntax, so it
         // is absent here — the body is sent as one statement.
-        DB::unprepared(
-            'DROP TRIGGER IF EXISTS ' . self::TRIGGER . ";\n"
-            . 'CREATE TRIGGER ' . self::TRIGGER . "\n"
-            . "BEFORE UPDATE ON hall_schema_versions\n"
-            . "FOR EACH ROW\n"
-            . "BEGIN\n"
-            . "  IF OLD.status IN ('published', 'archived') THEN\n"
-            . "    IF NOT (NEW.schema_json <=> OLD.schema_json)\n"
-            . "       OR NOT (NEW.version <=> OLD.version)\n"
-            . "       OR NOT (NEW.hall_id <=> OLD.hall_id)\n"
-            . "       OR NOT (NEW.width <=> OLD.width)\n"
-            . "       OR NOT (NEW.height <=> OLD.height)\n"
-            . "       OR NOT (NEW.background_url <=> OLD.background_url)\n"
-            . "    THEN\n"
-            . "      SIGNAL SQLSTATE '45000'\n"
-            . "        SET MESSAGE_TEXT = '" . self::MESSAGE . "';\n"
-            . "    END IF;\n"
-            . "  END IF;\n"
-            . 'END'
-        );
+        try {
+            DB::unprepared(
+                'DROP TRIGGER IF EXISTS ' . self::TRIGGER . ";\n"
+                . 'CREATE TRIGGER ' . self::TRIGGER . "\n"
+                . "BEFORE UPDATE ON hall_schema_versions\n"
+                . "FOR EACH ROW\n"
+                . "BEGIN\n"
+                . "  IF OLD.status IN ('published', 'archived') THEN\n"
+                . "    IF NOT (NEW.schema_json <=> OLD.schema_json)\n"
+                . "       OR NOT (NEW.version <=> OLD.version)\n"
+                . "       OR NOT (NEW.hall_id <=> OLD.hall_id)\n"
+                . "       OR NOT (NEW.width <=> OLD.width)\n"
+                . "       OR NOT (NEW.height <=> OLD.height)\n"
+                . "       OR NOT (NEW.background_url <=> OLD.background_url)\n"
+                . "    THEN\n"
+                . "      SIGNAL SQLSTATE '45000'\n"
+                . "        SET MESSAGE_TEXT = '" . self::MESSAGE . "';\n"
+                . "    END IF;\n"
+                . "  END IF;\n"
+                . 'END'
+            );
+        } catch (\Throwable $e) {
+            // Shared hosting (MySQL with binary logging, no SUPER, no
+            // log_bin_trust_function_creators) answers ERROR 1419 on CREATE TRIGGER.
+            // This trigger is defense-in-depth only — the application layer also
+            // guards immutability — so we degrade gracefully instead of aborting
+            // `php artisan migrate` (which would abort the whole install).
+            fwrite(STDERR, sprintf(
+                "\n  ! Trigger %s NOT created: %s\n"
+                . "    Hall schema immutability (TZ 20/98) is not enforced at the DB level.\n\n",
+                self::TRIGGER,
+                $e->getMessage()
+            ));
+        }
     }
 
     private function supportsTriggers(): bool

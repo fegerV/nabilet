@@ -15,7 +15,10 @@ class InstallerServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
-        $this->loadRoutesFrom(__DIR__ . '/../routes/web.php');
+        // Routes are loaded by routes/api.php (it requires this module's web.php
+        // first, so the installer is reachable before any other module). Loading
+        // them again here would double-register the named routes, so we only mount
+        // the views here.
         $this->loadViewsFrom(__DIR__ . '/../resources/views', 'installer');
     }
 }
