@@ -158,6 +158,23 @@ class CartController extends Controller
         ]), $token, $isNew);
     }
 
+    public function extend(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            // `bail`/`integer` guard the BIGINT cast — see `addItem()`.
+            'session_id' => ['bail', 'required', 'integer'],
+        ]);
+
+        $token = CartToken::fromRequest($request);
+
+        $result = $this->cartService->extendHold((string) $validated['session_id'], $token);
+
+        return response()->json([
+            'message' => 'Hold extended',
+            'data' => $result,
+        ], 200);
+    }
+
     public function checkout(Request $request): JsonResponse
     {
         $validated = $request->validate([

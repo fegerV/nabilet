@@ -8,6 +8,12 @@ use Illuminate\Support\Facades\Route;
 
 // Mounted at /api/v1 by bootstrap/app.php — do not repeat the version segment.
 //
+// Гостевой «мои билеты»: билеты покупателя по X-Cart-Token (контракт D5).
+// Без auth:api — гостевая витрина не имеет аккаунта, а order.user_id = NULL.
+// Скоупровано по токену корзины, поэтому чужие билеты не отдаются. Вынесен из
+// auth:api-группы ниже: идентификация идёт по гостевому токену, а не по Bearer.
+Route::get('/my-tickets', [TicketController::class, 'mine']);
+
 // Раньше ВСЕ маршруты модуля были открыты, включая `GET /tickets/{ticket}/qr`,
 // который отдаёт `qr_payload` — подписанный токен входа. Анонимный запрос мог
 // перебрать билеты и собрать QR-ы (спека требует bearerAuth на каждом из

@@ -18,7 +18,7 @@ const props = withDefaults(
     warning?: boolean
     extendable?: boolean
   }>(),
-  { total: 600, extendable: true },
+  { total: 900, extendable: true },
 )
 
 const emit = defineEmits<{ extend: [] }>()

@@ -12,7 +12,7 @@ export type OrderStatus =
   | 'partially_refunded'
   | 'refunded'
 
-export type TicketStatus = 'issued' | 'used' | 'cancelled' | 'refunded' | 'expired'
+export type TicketStatus = 'issued' | 'used' | 'cancelled' | 'refunded' | 'expired' | 'revoked'
 
 export type EventStatus = 'draft' | 'published' | 'sold_out' | 'finished' | 'cancelled'
 

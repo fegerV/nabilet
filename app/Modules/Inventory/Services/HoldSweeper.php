@@ -48,7 +48,12 @@ class HoldSweeper
             // Find all expired holds that haven't been converted or released
             // Use FOR UPDATE to prevent concurrent sweeper conflicts
             $expiredHolds = DB::table('seat_holds')
-                ->where('expires_at', '<', $now->toDateTimeString())
+                // A13: освобождаем холд только после истечения grace-окна
+                // (expires_at + 5 мин) — ровно как в isHoldConvertible(). Раньше
+                // sweep снимал холд сразу по expires_at, «побеждая» grace-окно:
+                // вебхук, пришедший в последнюю секунду grace, видел released_at и
+                // отклонял платёж, хотя по логике он ещё валиден (race-condition).
+                ->where('expires_at', '<', $now->subMinutes(5)->toDateTimeString())
                 ->whereNull('converted_at')
                 ->whereNull('released_at')
                 ->lockForUpdate()
@@ -98,6 +103,15 @@ class HoldSweeper
                                 'quantity' => $freshHold->quantity,
                             ]);
                         }
+
+                        // A13: помечаем корзину abandoned — иначе истёкшая через
+                        // sweeper корзина оставалась 'active' с просроченным
+                        // expires_at, хотя места уже возвращены (checkout-путь ставил
+                        // abandoned, а sweep — нет, создавая расхождение в отчётности).
+                        DB::table('carts')
+                            ->where('id', $freshHold->cart_id)
+                            ->where('status', 'active')
+                            ->update(['status' => 'abandoned']);
 
                         $releasedCount++;
 
