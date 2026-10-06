@@ -1,0 +1,36 @@
+# NABILET Core — TimeWeb shared hosting front controller
+#
+# Document root: public_html/   (the application lives one level above)
+#
+# Served statically:  /build/...                  (compiled frontend assets)
+#                     /hall-editor.html,
+#                     /ticket-builder.html        (standalone pages)
+# Routed to Laravel:  everything else            →  index.php
+
+<IfModule mod_rewrite.c>
+    <IfModule mod_negotiation.c>
+        Options -MultiViews -Indexes
+    </IfModule>
+
+    RewriteEngine On
+
+    # Pass the Authorization header through to PHP (Sanctum / bearer-token auth).
+    RewriteCond %{HTTP:Authorization} .
+    RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
+    # Strip a trailing slash (except for real directories).
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteCond %{REQUEST_URI} (.+)/$
+    RewriteRule ^ %1 [L,R=301]
+
+    # Send all other requests to the front controller.
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteRule ^ index.php [L]
+</IfModule>
+
+# Block dotfiles (e.g. stray .env copies, .git, .user.ini itself) from being served.
+# Apache 2.4 syntax.
+<FilesMatch "^\.">
+    Require all denied
+</FilesMatch>
