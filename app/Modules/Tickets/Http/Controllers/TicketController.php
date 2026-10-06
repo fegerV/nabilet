@@ -6,6 +6,10 @@ namespace Nabilet\Modules\Tickets\Http\Controllers;
 
 use Nabilet\Core\Errors\NotFoundError;
 use Nabilet\Core\Support\StaffRole;
+use Nabilet\Modules\Cart\Models\Cart;
+use Nabilet\Modules\Cart\Support\CartToken;
+use Nabilet\Modules\Orders\Models\Order;
+use Nabilet\Modules\Tickets\Http\Resources\TicketCardResource;
 use Nabilet\Modules\Tickets\Models\Ticket;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -24,6 +28,55 @@ use Illuminate\Routing\Controller;
  */
 class TicketController extends Controller
 {
+    /**
+     * Билеты текущего покупателя-гостя (витрина «Мои билеты»).
+     *
+     * Витрина — гостевая: покупатель не имеет аккаунта, заказ создаётся с
+     * `user_id = NULL` и принадлежит корзине по гостевому токену (`X-Cart-Token`,
+     * контракт D5). Поэтому «мои билеты» — это билеты заказов, чьи корзины несут
+     * токен этого браузера. Чужой токен ничего не вернёт (fail-closed: нет
+     * токена → пустой список, а не 401, чтобы гость видел пустой экран, а не
+     * ошибку авторизации). Маршрут НЕ под auth:api по той же причине.
+     */
+    public function mine(Request $request): JsonResponse
+    {
+        $token = CartToken::fromRequest($request);
+
+        // A guest token is a bearer capability for signed QR payloads. Require
+        // UUID-sized entropy here even though other authenticated cart paths
+        // accept short account-derived tokens; otherwise a guessed short token
+        // could disclose another buyer's tickets.
+        if ($token === null || strlen($token) < 32) {
+            return response()->json(['data' => []]);
+        }
+
+        $cartIds = Cart::query()
+            ->where('cart_token', $token)
+            ->pluck('id');
+
+        if ($cartIds->isEmpty()) {
+            return response()->json(['data' => []]);
+        }
+
+        $orderIds = Order::query()
+            ->whereIn('cart_id', $cartIds)
+            ->pluck('id');
+
+        if ($orderIds->isEmpty()) {
+            return response()->json(['data' => []]);
+        }
+
+        $tickets = Ticket::query()
+            ->with(['orderItem', 'session.venue', 'seat.row.sector', 'standingZone', 'event'])
+            ->whereIn('order_id', $orderIds)
+            ->orderByDesc('created_at')
+            ->get();
+
+        return response()->json([
+            'data' => TicketCardResource::collection($tickets),
+        ]);
+    }
+
     public function index(Request $request): JsonResponse
     {
         $filters = $request->only(['order_id', 'session_id', 'user_id', 'status']);

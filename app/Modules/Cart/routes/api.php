@@ -11,4 +11,7 @@ Route::prefix('cart')->group(function () {
     Route::post('/items', [CartController::class, 'addItem']);
     Route::delete('/items/{itemId}', [CartController::class, 'removeItem']);
     Route::post('/checkout', [CartController::class, 'checkout']);
+    // B5: продление серверного холда. Гостевой токен (X-Cart-Token) обязателен —
+    // без него сервер не найдёт корзину покупателя и вернёт CART_EXPIRED.
+    Route::post('/extend', [CartController::class, 'extend']);
 });

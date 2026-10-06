@@ -12,6 +12,8 @@
  */
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
+import { extendCartHold } from '@/lib/inventory'
+import { ApiError } from '@/lib/api'
 
 export interface CartSeat {
   id: string
@@ -72,6 +74,10 @@ export const useCartStore = defineStore('cart', () => {
   const loading = ref(false)
   /** cart_item_id по id места — для снятия холда на сервере. */
   const meta = ref<Record<string, string>>({})
+  /** Сеанс, к которому относится корзина — нужен для продления холда на сервере. */
+  const sessionId = ref<string | null>(null)
+  /** Сообщение об ошибке продления: честный провал вместо имитации успеха (B5). */
+  const holdExtendError = ref<string | null>(null)
   /** Момент серверного expires_at (мс). Источник истины по таймеру — сервер. */
   const holdExpiresAtMs = ref<number | null>(null)
 
@@ -124,6 +130,7 @@ export const useCartStore = defineStore('cart', () => {
     selectedIds.value = new Set()
     seats.value = []
     meta.value = {}
+    holdExtendError.value = null
     promoCode.value = null
     promoDiscountMinor.value = 0
     // orderId/orderTotalMinor НЕ сбрасываем: они нужны странице результата
@@ -191,17 +198,35 @@ export const useCartStore = defineStore('cart', () => {
     ticker = window.setInterval(tick, 1000)
   }
 
+  /** Запомнить сеанс корзины (вызывается со страницы оформления). */
+  function setSession(id: string | null): void {
+    sessionId.value = id ? String(id) : null
+  }
+
   /**
-   * «Продлить» честно говорит пользователю: серверный холд не продлевается
-   * (endpoint расширения не существует). Кнопка остаётся, но стор больше не
-   * рисует ложные «ещё 10 минут»: если есть серверный дедлайн — он и правит.
+   * «Продлить» — реально продлевает серверный холд (B5).
+   *
+   * Раньше кнопка лишь перерисовывала локальный таймер (endpoint расширения
+   * отсутствовал) — серверный холд истекал, места уходили, а UI показывал
+   * ложные «ещё 10 минут». Теперь вызываем POST /cart/extend и синхронизируем
+   * таймер с возвращённым expires_at. При ошибке — честное сообщение, без
+   * имитации успеха.
    */
-  function extendHold(): void {
-    if (holdExpiresAtMs.value !== null) {
-      tick()
+  async function extendHold(): Promise<void> {
+    holdExtendError.value = null
+    if (!sessionId.value) {
+      holdExtendError.value = 'Не удалось определить сеанс для продления холда.'
       return
     }
-    startHold(HOLD_SECONDS)
+    try {
+      const expiresAt = await extendCartHold(sessionId.value)
+      setHoldExpiry(expiresAt)
+    } catch (e) {
+      holdExtendError.value =
+        e instanceof ApiError
+          ? e.message
+          : 'Не удалось продлить удержание. Попробуйте оформить заказ заново.'
+    }
   }
 
   /** Холд истёк: выбор снимается, но серверные item'ы могут ещё жить — помечаем. */
@@ -266,6 +291,8 @@ export const useCartStore = defineStore('cart', () => {
     promoCode,
     promoDiscountMinor,
     loading,
+    sessionId,
+    holdExtendError,
     count,
     subtotalMinor,
     discountMinor,
@@ -278,6 +305,7 @@ export const useCartStore = defineStore('cart', () => {
     setOrder,
     startHold,
     setHoldExpiry,
+    setSession,
     extendHold,
     markSeatHeld,
     release,

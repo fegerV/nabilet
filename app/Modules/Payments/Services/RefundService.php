@@ -5,11 +5,16 @@ declare(strict_types=1);
 namespace Nabilet\Modules\Payments\Services;
 
 use Nabilet\Core\Errors\DomainRuleViolation;
+use Nabilet\Core\Support\Money;
 use Nabilet\Modules\Payments\Models\Payment;
 use Nabilet\Modules\Payments\Models\Refund;
+use Nabilet\Modules\Payments\Domain\RefundLedger;
 use Nabilet\Modules\Payments\Repositories\PaymentRepository;
 use Nabilet\Modules\Payments\StateMachines\PaymentStateMachine;
 use Nabilet\Modules\Payments\StateMachines\RefundStateMachine;
+use Nabilet\Modules\Orders\StateMachines\OrderStateMachine;
+use Nabilet\Modules\Tickets\Models\Ticket;
+use Nabilet\Modules\Tickets\StateMachines\TicketStateMachine;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -125,6 +130,36 @@ final class RefundService
                 'status' => 'pending',
                 'payload_json' => ['refund_id' => $refund->id, 'reason' => $reason],
             ]);
+
+            // A14: заказ обязан отражать возврат. Статус выводится из ДЕНЕГ через
+            // RefundLedger (никогда руками): полный возврат → 'refunded', частичный →
+            // 'partially_refunded'. Без этого заказ вечно висел 'paid', а билеты
+            // оставались сканируемыми (дефект «возвращённый билет проходит check-in»).
+            $order = $payment->order;
+
+            if ($order !== null) {
+                $ledger = new RefundLedger();
+                $outcome = $ledger->evaluate(
+                    Money::of((int) $payment->amount, $payment->currency ?? 'RUB'),
+                    Money::of($totalRefunded, $payment->currency ?? 'RUB'),
+                    Money::of($refundAmount, $payment->currency ?? 'RUB'),
+                );
+
+                if ($outcome->isAllowed() && $outcome->orderStatus() !== null) {
+                    $order->update(['status' => $outcome->orderStatus()]);
+
+                    // При ПОЛНОМ возврате аннулируем ещё не использованные билеты,
+                    // чтобы их QR не проходил check-in (CheckinEvaluator отвергает REFUNDED).
+                    if ($outcome->orderStatus() === OrderStateMachine::REFUNDED) {
+                        Ticket::where('order_id', $order->id)
+                            ->where('status', TicketStateMachine::ISSUED)
+                            ->update([
+                                'status' => TicketStateMachine::REFUNDED,
+                                'refunded_at' => now(),
+                            ]);
+                    }
+                }
+            }
 
             return $payment->fresh();
         });

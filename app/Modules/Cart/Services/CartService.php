@@ -150,6 +150,17 @@ class CartService
                 ->lockForUpdate()
                 ->firstOrFail();
 
+            // A4: место обязано принадлежать сеансу корзины. Без проверки клиент
+            // мог положить в корзину сеанса S место сеанса Z — холд записывался
+            // на чужой сеанс, а checkout создавал заказ одного сеанса с билетами
+            // другого. Отказываем чужеродный inventory_item.
+            if ((int) $inventoryItem->session_id !== (int) $sessionId) {
+                throw new ConflictError(
+                    'The selected seat belongs to a different session.',
+                    'ITEM_SESSION_MISMATCH'
+                );
+            }
+
             // Check if item already exists in cart
             $existingItem = CartItem::query()
                 ->where('cart_id', $cart->id)
@@ -240,7 +251,11 @@ class CartService
                 ->first();
 
             if ($inventoryItem) {
-                $inventoryItem->increment('available_quantity');
+                // A5: возвращаем ровно столько мест, сколько было в позиции. Раньше
+                // при quantity>1 (например, стоячая зона qty=2) место возвращалось
+                // не полностью — available_quantity занижался на (quantity-1) и
+                // возникал рассинхрон с реальным числом свободных мест.
+                $inventoryItem->increment('available_quantity', (int) $cartItem->quantity);
                 if ($inventoryItem->status === 'sold_out') {
                     // Есть свободные — место снова можно держать в корзинах.
                     $inventoryItem->update(['status' => 'available']);
@@ -458,6 +473,76 @@ class CartService
             ]);
 
             return true;
+        });
+    }
+
+    /**
+     * Продлить серверный холд корзины (B5).
+     *
+     * Сбрасывает `carts.expires_at` на `now + holdDurationMinutes()` и пролонгирует
+     * все ещё активные `seat_holds` этой корзины на тот же дедлайн. Идемпотентно:
+     * уже снятые (`released_at`) или конвертированные (`converted_at`) холды не
+     * трогаем, поэтому повторный вызов не «вернёт» место дважды.
+     *
+     * Раньше кнопка «Продлить» в UI лишь перерисовывала локальный таймер — серверный
+     * холд не продлевался (endpoint расширения отсутствовал). Теперь продление
+     * реально отодвигает серверный `expires_at`, и UI живёт ровно до него.
+     *
+     * @throws ConflictError cart not found, expired, empty, or no longer active
+     */
+    public function extendHold(string $sessionId, ?string $token = null): array
+    {
+        $token = CartToken::normalize($token);
+
+        if ($token === null || strlen($token) < 32) {
+            // This endpoint is guest-only and extends a capability-owned hold;
+            // require UUID-sized entropy rather than account-derived/weak tokens.
+            throw self::cartExpired();
+        }
+
+        return DB::transaction(function () use ($sessionId, $token): array {
+            $cart = Cart::query()
+                ->where('session_id', $sessionId)
+                ->where('status', 'active')
+                ->where('cart_token', $token)
+                ->lockForUpdate()
+                ->first();
+
+            $now = CarbonImmutable::now();
+            // Не воскресить истёкшую корзину: sweeper мог уже вернуть места
+            // в продажу. Продлевать можно только действующий hold.
+            if (!$cart || $cart->expires_at === null || $cart->expires_at->lte($now)) {
+                throw self::cartExpired();
+            }
+
+            if (!$cart->items()->exists()) {
+                throw new ConflictError('The cart is empty.', 'CART_EMPTY');
+            }
+
+            $activeHolds = \Nabilet\Modules\Orders\Models\SeatHold::query()
+                ->where('cart_id', $cart->id)
+                ->whereNull('released_at')
+                ->whereNull('converted_at')
+                ->lockForUpdate()
+                ->get(['id']);
+
+            if ($activeHolds->isEmpty()) {
+                throw self::cartExpired();
+            }
+
+            // Продлеваем независимо от текущего остатка — даже если до истечения
+            // осталась минута, холд сбрасывается на полный срок.
+            $newExpires = $now->addMinutes($this->holdDurationMinutes());
+            $cart->update(['expires_at' => $newExpires]);
+
+            // Пролонгируем только заблокированные активные холды: снятые при
+            // отмене места или уже конвертированные в заказ трогать нельзя. В той
+            // же транзакции это исключает гонку со sweeper'ом и checkout.
+            \Nabilet\Modules\Orders\Models\SeatHold::query()
+                ->whereIn('id', $activeHolds->modelKeys())
+                ->update(['expires_at' => $newExpires]);
+
+            return ['expires_at' => $newExpires->toIso8601String()];
         });
     }
 

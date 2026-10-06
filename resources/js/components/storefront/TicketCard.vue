@@ -7,7 +7,7 @@
  * сканеры надёжнее читают тёмное на светлом. Ряд, место и время набраны крупно:
  * это те три вещи, которые человек ищет в последние минуты перед входом.
  */
-import { onMounted, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import QRCode from 'qrcode'
 import NStatusBadge from '@/components/ui/NStatusBadge.vue'
 import { money, dateFull, time } from '@/lib/format'
@@ -17,22 +17,49 @@ import { cn } from '@/lib/cn'
 const props = defineProps<{ ticket: TicketCardType }>()
 
 const qrUrl = ref('')
+const qrFailed = ref(false)
 
-onMounted(async () => {
-  try {
-    qrUrl.value = await QRCode.toDataURL(props.ticket.qrPayload, {
-      width: 320,
-      margin: 1,
-      errorCorrectionLevel: 'M',
-      color: { dark: '#120F24', light: '#FFFFFF' },
-    })
-  } catch {
+let qrGeneration = 0
+watch(
+  () => [props.ticket.status, props.ticket.qrPayload] as const,
+  async ([status, payload]) => {
+    const generation = ++qrGeneration
     qrUrl.value = ''
-  }
-})
+    qrFailed.value = false
+    // Показываем сканируемый код только для действующего билета. QR уже
+    // использованных/возвращённых/отозванных билетов может вводить в заблуждение.
+    if (status !== 'issued') return
+    if (!payload) {
+      qrFailed.value = true
+      return
+    }
+    try {
+      const url = await QRCode.toDataURL(payload, {
+        width: 320,
+        margin: 1,
+        errorCorrectionLevel: 'M',
+        color: { dark: '#120F24', light: '#FFFFFF' },
+      })
+      if (generation === qrGeneration) qrUrl.value = url
+    } catch {
+      if (generation === qrGeneration) {
+        qrUrl.value = ''
+        qrFailed.value = true
+      }
+    }
+  },
+  { immediate: true },
+)
 
-const used = props.ticket.status === 'used'
 const inactive = props.ticket.status !== 'issued'
+const inactiveLabel: Record<string, string> = {
+  used: 'Использован',
+  cancelled: 'Отменён',
+  refunded: 'Возврат оформлен',
+  expired: 'Истёк',
+  revoked: 'Отозван',
+}
+const qrCaption = computed(() => inactiveLabel[props.ticket.status] ?? 'Покажите на входе')
 </script>
 
 <template>
@@ -60,11 +87,11 @@ const inactive = props.ticket.status !== 'issued'
         <dl class="mt-4 grid grid-cols-3 gap-3">
           <div>
             <dt class="text-2xs uppercase tracking-wide text-subtle">Ряд</dt>
-            <dd class="text-xl font-bold tabular-nums text-content">{{ ticket.row }}</dd>
+            <dd class="text-xl font-bold tabular-nums text-content">{{ ticket.row || '—' }}</dd>
           </div>
           <div>
             <dt class="text-2xs uppercase tracking-wide text-subtle">Место</dt>
-            <dd class="text-xl font-bold tabular-nums text-content">{{ ticket.seat }}</dd>
+            <dd class="text-xl font-bold tabular-nums text-content">{{ ticket.seat || '—' }}</dd>
           </div>
           <div>
             <dt class="text-2xs uppercase tracking-wide text-subtle">Цена</dt>
@@ -74,7 +101,8 @@ const inactive = props.ticket.status !== 'issued'
 
         <p class="mt-3 flex items-center gap-1.5 text-sm text-content">
           <span aria-hidden="true" class="text-brand-400">◷</span>
-          {{ dateFull(ticket.sessionAt) }}, {{ time(ticket.sessionAt) }}
+          <template v-if="ticket.sessionAt">{{ dateFull(ticket.sessionAt) }}, {{ time(ticket.sessionAt) }}</template>
+          <template v-else>Дата и время не указаны</template>
         </p>
 
         <p class="mt-3 border-t border-dashed border-line pt-3 font-mono text-2xs text-subtle">
@@ -92,9 +120,10 @@ const inactive = props.ticket.status !== 'issued'
           :alt="`QR-код билета ${ticket.code}`"
           class="h-32 w-32 rounded-lg bg-white p-1.5 sm:h-full sm:w-full sm:max-w-[128px]"
         />
-        <div v-else class="skeleton h-24 w-24" />
-        <p :class="cn('text-center text-2xs', used ? 'text-subtle' : 'text-brand-400')">
-          {{ used ? 'Использован' : 'Покажите на входе' }}
+        <div v-else-if="ticket.status === 'issued' && !qrFailed" class="skeleton h-24 w-24" />
+        <div v-else class="grid h-24 w-24 place-items-center rounded-lg bg-surface-2 text-center text-xs text-subtle">QR недоступен</div>
+        <p :class="cn('text-center text-2xs', inactive ? 'text-subtle' : 'text-brand-400')">
+          {{ qrCaption }}
         </p>
       </div>
     </div>

@@ -19,18 +19,20 @@ class CheckinController extends Controller
     public function scan(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            // `bail`/`integer` guard the BIGINT lookups: MySQL coerces a string
-            // comparison instead of rejecting it, so `exists` can match `'1abc'` to
-            // row 1. See `CartController::addItem()` for the measurements.
-            'ticket_id' => ['bail', 'required', 'integer', 'exists:tickets,id'],
+            // A11.2: вход строго по подписанному QR. ticket_id опционален и нужен
+            // только для кросс-проверки; без qr_payload скан отклоняется (422), что
+            // закрывает подделку по перебираемому целочисленному id.
+            'qr_payload' => ['required', 'string'],
+            'ticket_id' => ['bail', 'nullable', 'integer', 'exists:tickets,id'],
             'device_id' => ['bail', 'nullable', 'integer', 'exists:checkin_devices,id'],
             'session_id' => ['bail', 'required', 'integer', 'exists:sessions,id'],
         ]);
 
         $result = $this->scanService->scan(
-            (int) $validated['ticket_id'],
+            (int) ($validated['ticket_id'] ?? 0),
             (int) $validated['session_id'],
-            isset($validated['device_id']) ? (int) $validated['device_id'] : null
+            isset($validated['device_id']) ? (int) $validated['device_id'] : null,
+            $validated['qr_payload'] ?? null
         );
 
         return response()->json(['data' => $result]);
@@ -48,12 +50,26 @@ class CheckinController extends Controller
     public function verify(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            // `bail`/`integer` guard the BIGINT cast — see `scan()`.
-            'ticket_id' => ['bail', 'required', 'integer', 'exists:tickets,id'],
+            // A11.2: верификация тоже строго по подписанному QR.
+            'qr_payload' => ['required', 'string'],
+            'ticket_id' => ['bail', 'nullable', 'integer', 'exists:tickets,id'],
             'session_id' => ['bail', 'required', 'integer', 'exists:sessions,id'],
         ]);
 
-        $ticket = Ticket::findOrFail($validated['ticket_id']);
+        $verified = $this->scanService->verifyQr($validated['qr_payload']);
+
+        if ($verified === null) {
+            return response()->json([
+                'data' => [
+                    'ticket_id' => (int) ($validated['ticket_id'] ?? 0),
+                    'is_valid' => false,
+                    'status' => 'invalid_qr',
+                    'reason' => 'QR_SIGNATURE_INVALID',
+                ],
+            ]);
+        }
+
+        $ticket = Ticket::where('public_id', $verified['ticketId'])->firstOrFail();
 
         $isValid = $this->scanService->canCheckin($ticket, (int) $validated['session_id']);
 

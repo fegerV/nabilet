@@ -33,6 +33,7 @@ const TICKET: Record<TicketStatus, { label: string; tone: Tone; dot: boolean }> 
   cancelled: { label: 'Отменён', tone: 'neutral', dot: false },
   refunded: { label: 'Возврат', tone: 'rose', dot: false },
   expired: { label: 'Истёк', tone: 'neutral', dot: false },
+  revoked: { label: 'Отозван', tone: 'rose', dot: false },
 }
 
 const EVENT: Record<EventStatus, { label: string; tone: Tone; dot: boolean }> = {

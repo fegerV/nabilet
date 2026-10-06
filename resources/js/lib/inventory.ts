@@ -164,3 +164,16 @@ export async function checkoutSession(
 ): Promise<{ data: CheckoutResult }> {
   return send<CheckoutResult>('/cart/checkout', 'POST', { session_id: Number(sessionId), ...customer })
 }
+
+/**
+ * Продлить серверный холд корзины (B5). Возвращает новый `expires_at`
+ * (ISO-строка), по которому UI синхронизирует свой таймер. Гостевой токен
+ * (X-Cart-Token) подставляет api.ts — сервер найдёт именно корзину этого
+ * покупателя. При отсутствии активной корзины сервер вернёт 409 CART_EXPIRED.
+ */
+export async function extendCartHold(sessionId: number | string): Promise<string> {
+  const res = await send<{ expires_at: string }>('/cart/extend', 'POST', {
+    session_id: Number(sessionId),
+  })
+  return res.data.expires_at
+}

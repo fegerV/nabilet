@@ -356,6 +356,43 @@ paths:
         '204': { description: Released }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /api/v1/cart/extend:
+    post:
+      tags: [Cart]
+      summary: Extend the active guest-cart hold
+      description: >-
+        Extends an unexpired, non-empty cart and its active seat holds by the
+        configured checkout hold duration. A cart that has expired cannot be
+        revived, because its inventory may already have been released.
+      operationId: extendGuestCartHold
+      parameters:
+        - $ref: '#/components/parameters/CartToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [session_id]
+              properties:
+                session_id: { type: integer, minimum: 1 }
+      responses:
+        '200':
+          description: Hold extended
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [expires_at]
+                    properties:
+                      expires_at: { type: string, format: date-time }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
   /api/v1/orders:
     post:
       tags: [Orders]
@@ -469,6 +506,45 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/TicketListResponse' }
+
+  /api/v1/my-tickets:
+    get:
+      tags: [Tickets]
+      summary: List tickets belonging to the current guest browser
+      description: >-
+        Guest storefront endpoint. The high-entropy X-Cart-Token capability
+        scopes the response to orders created from carts belonging to that
+        browser. Without a valid token, returns an empty list. No bearer token
+        is required; do not expose tickets from other cart tokens.
+      operationId: listGuestTickets
+      parameters:
+        - $ref: '#/components/parameters/CartTokenOptional'
+      responses:
+        '200':
+          description: Guest tickets
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, code, eventTitle, venue, sessionAt, sector, row, seat, priceMinor, status, qrPayload]
+                      properties:
+                        id: { type: string, description: Ticket public_id }
+                        code: { type: string }
+                        eventTitle: { type: string }
+                        venue: { type: string }
+                        sessionAt: { type: string, format: date-time, nullable: true }
+                        sector: { type: string }
+                        row: { type: integer }
+                        seat: { type: integer }
+                        priceMinor: { type: integer, minimum: 0 }
+                        status: { type: string, enum: [issued, used, cancelled, refunded, expired, revoked] }
+                        qrPayload: { type: string, nullable: true, description: Signed payload; only active issued tickets should be presented for entry }
 
   /api/v1/tickets/{ticket}:
     get:
@@ -2038,6 +2114,18 @@ components:
       name: X-Checkout-Token
       required: true
       schema: { type: string }
+    CartToken:
+      in: header
+      name: X-Cart-Token
+      required: true
+      description: High-entropy guest cart capability issued to this browser.
+      schema: { type: string, minLength: 32, maxLength: 64 }
+    CartTokenOptional:
+      in: header
+      name: X-Cart-Token
+      required: false
+      description: Guest cart capability. If omitted, the endpoint returns an empty ticket list.
+      schema: { type: string, minLength: 32, maxLength: 64 }
 
     PromoCodeIdPath:
       in: path

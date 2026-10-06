@@ -298,8 +298,11 @@ class PaymentService
                     break;
 
                 case 'payment.failed':
-                case 'payment.canceled':
                     $this->handlePaymentFailed($payment, $payload);
+                    break;
+
+                case 'payment.canceled':
+                    $this->handlePaymentCanceled($payment, $payload);
                     break;
 
                 default:
@@ -336,8 +339,14 @@ class PaymentService
                     'provider_payment_id' => $payment->provider_payment_id,
                 ]);
 
-                // Reject payment - holds have expired
-                throw new \RuntimeException('Seat holds have expired. Payment cannot be completed.');
+                // Reject payment - holds have expired. Возвращаем структурированную
+                // 409 (SEAT_HOLDS_EXPIRED) вместо «голого» RuntimeException, который
+                // долетал до клиента как 500: транзакция вебхука откатывается, заказ
+                // не переходит в paid, места вернутся sweep-путём.
+                throw new \Nabilet\Core\Errors\ConflictError(
+                    'Seat holds have expired. Payment cannot be completed.',
+                    'SEAT_HOLDS_EXPIRED'
+                );
             }
         }
 
@@ -498,6 +507,31 @@ class PaymentService
 
             // Вернуть места тем же sweep-путём: холды заказа ещё не converted,
             // sweeper освободит инвентарь в ближайший проход.
+            $this->holdSweeper->sweep();
+        }
+    }
+
+    /**
+     * A12: отмена платежа провайдером (payment.canceled) — отличный от failed
+     * статус. Раньше оба события шли в handlePaymentFailed и платёж помечался
+     * 'failed', из-за чего отменённый платёж был неотличим от неудачного. Здесь
+     * статус платежа становится PaymentStateMachine::CANCELED ('canceled'), а заказ
+     * уводится в payment_failed (разрешён ретрай другой картой), места возвращаются.
+     */
+    protected function handlePaymentCanceled(Payment $payment, array $payload): void
+    {
+        if (!$this->machine->can($payment->status, PaymentStateMachine::CANCELED)) {
+            return;
+        }
+
+        $payment->update(['status' => PaymentStateMachine::CANCELED]);
+
+        $order = $payment->order;
+
+        if ($order !== null && $this->orders->canTransition($order, OrderStateMachine::PAYMENT_FAILED)) {
+            $this->orders->markPaymentFailed($order);
+
+            // Холды заказа ещё не converted — sweep освободит инвентарь.
             $this->holdSweeper->sweep();
         }
     }

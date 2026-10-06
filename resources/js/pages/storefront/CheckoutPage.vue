@@ -234,6 +234,7 @@ async function pay(): Promise<void> {
 }
 
 onMounted(() => {
+  cart.setSession(sessionId.value)
   void restoreCart()
 })
 </script>
@@ -356,9 +357,14 @@ onMounted(() => {
             <NCountdown
               v-if="cart.holdSecondsLeft > 0"
               :seconds-left="cart.holdSecondsLeft"
+              :total="900"
               class="mb-4"
               @extend="cart.extendHold()"
             />
+
+            <p v-if="cart.holdExtendError" class="mb-4 text-xs text-rose-400">
+              {{ cart.holdExtendError }}
+            </p>
 
             <ul class="space-y-2">
               <li

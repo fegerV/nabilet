@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Tickets\Services;
 
+use Nabilet\Core\Support\QrSigner;
 use Nabilet\Modules\Tickets\Domain\CheckinEvaluator;
 use Nabilet\Modules\Tickets\Domain\ScanMode;
 use Nabilet\Modules\Tickets\Domain\ScanOutcome;
@@ -34,23 +35,65 @@ class TicketScanService
     /**
      * Scan a ticket and record the check-in.
      *
+     * A11.2 (Critical): если передан `qr_payload`, его подпись обязана быть
+     * проверена через QrSigner. Без этого любой, знающий перебираемый ticket_id
+     * (и session_id), мог «погасить» чужой билет, не предъявляя валидного QR —
+     * классическая подделка входа. Если `qr_payload` не передан (внутренний вызов,
+     * например TicketService::checkInTicket), используется прежний путь по id.
+     *
      * @return array{success: bool, message: string, result?: string, ticket?: Ticket, scan?: TicketScan, reason?: string}
      */
-    public function scan(int $ticketId, int $sessionId, ?int $deviceId = null): array
+    public function scan(int $ticketId, int $sessionId, ?int $deviceId = null, ?string $qrPayload = null): array
     {
-        return DB::transaction(function () use ($ticketId, $sessionId, $deviceId) {
-            // Load ticket with lock to prevent concurrent modifications
-            $ticket = Ticket::query()
-                ->where('id', $ticketId)
-                ->lockForUpdate()
-                ->first();
+        return DB::transaction(function () use ($ticketId, $sessionId, $deviceId, $qrPayload) {
+            // A11.2: вход по QR — проверяем подпись, иначе отклоняем.
+            if ($qrPayload !== null) {
+                $verified = $this->makeQrSigner()->verify($qrPayload);
 
-            if (!$ticket) {
-                return [
-                    'success' => false,
-                    'message' => 'Ticket not found',
-                    'reason' => 'TICKET_NOT_FOUND',
-                ];
+                if ($verified === null) {
+                    return [
+                        'success' => false,
+                        'message' => 'QR signature is invalid',
+                        'reason' => 'QR_SIGNATURE_INVALID',
+                    ];
+                }
+
+                // Пэйлоад несёт public_id билета (QrSigner «NB1.<publicId>.<token>.<sig>»).
+                $ticket = Ticket::query()
+                    ->where('public_id', $verified['ticketId'])
+                    ->lockForUpdate()
+                    ->first();
+
+                if (!$ticket) {
+                    return [
+                        'success' => false,
+                        'message' => 'Ticket not found',
+                        'reason' => 'TICKET_NOT_FOUND',
+                    ];
+                }
+
+                // Кросс-проверка с переданным ticket_id (если указан).
+                if ($ticketId !== 0 && $ticket->id !== $ticketId) {
+                    return [
+                        'success' => false,
+                        'message' => 'Ticket id does not match QR',
+                        'reason' => 'TICKET_ID_MISMATCH',
+                    ];
+                }
+            } else {
+                // Прежний путь по целочисленному id (внутренний вызов без QR).
+                $ticket = Ticket::query()
+                    ->where('id', $ticketId)
+                    ->lockForUpdate()
+                    ->first();
+
+                if (!$ticket) {
+                    return [
+                        'success' => false,
+                        'message' => 'Ticket not found',
+                        'reason' => 'TICKET_NOT_FOUND',
+                    ];
+                }
             }
 
             // tickets.session_id is a first-class column (spec schema); there is
@@ -142,6 +185,35 @@ class TicketScanService
         }
 
         return ['valid' => true, 'result' => $outcome->result];
+    }
+
+    /**
+     * Проверить подпись QR-пэйлоада и вернуть извлечённый public_id билета.
+     * Используется публичным эндпоинтом verify для децентрализованной валидации.
+     *
+     * @return array{ticketId: string, token: string}|null null при невалидной подписи
+     */
+    public function verifyQr(string $payload): ?array
+    {
+        return $this->makeQrSigner()->verify($payload);
+    }
+
+    /**
+     * Секрет подписи QR: TICKET_QR_SECRET / NABILET_QR_SECRET, либо APP_KEY
+     * (логика скопирована из TicketService::makeQrSigner, чтобы не плодить
+     * сервис-локаторы). QrSigner сам отказывается работать с секретом < 32 байт.
+     */
+    private function makeQrSigner(): QrSigner
+    {
+        $secret = config('nabilet.ticket.qr_secret')
+            ?: env('NABILET_QR_SECRET')
+            ?: (string) config('app.key');
+
+        if (str_starts_with($secret, 'base64:')) {
+            $secret = (string) base64_decode(substr($secret, 7), true);
+        }
+
+        return new QrSigner($secret);
     }
 
     /**

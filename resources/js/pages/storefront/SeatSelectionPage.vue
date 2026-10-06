@@ -61,6 +61,7 @@ const externallyHeld = computed(() => cart.heldExternally)
 
 async function loadSeats(): Promise<void> {
   const sid = sessionId.value
+  cart.setSession(sid || null)
   if (!sid) {
     loadError.value = 'Сеанс не указан'
     loading.value = false
@@ -473,6 +474,10 @@ const sessionLabel = computed(() => {
           </p>
         </div>
       </div>
+
+      <p v-if="cart.holdExtendError" class="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-400" role="alert">
+        {{ cart.holdExtendError }}
+      </p>
 
       <!-- Итог: на десктопе колонкой -->
       <aside class="hidden lg:sticky lg:top-24 lg:block lg:self-start">

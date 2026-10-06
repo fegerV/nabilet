@@ -58,7 +58,7 @@ const KIND_LABEL: Record<CartSeat['kind'], string | null> = {
 
     <!-- Таймер удержания -->
     <div v-if="holdSecondsLeft > 0" :class="dense ? 'p-3' : 'border-b border-line p-3'">
-      <NCountdown :seconds-left="holdSecondsLeft" @extend="emit('extend')" />
+      <NCountdown :seconds-left="holdSecondsLeft" :total="900" @extend="emit('extend')" />
     </div>
 
     <!-- Список мест -->
