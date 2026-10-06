@@ -56,7 +56,7 @@ nobody registers (§4.4).
 | Security headers | `X-Request-ID`, CSP, `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy` all present — `AssignRequestId` and `ApplySecurityHeaders` are live |
 | Database connection | reachable; 13 migrations ran |
 | Live schema — tables | 64 spec tables present (65 incl. Laravel's `migrations`) |
-| Live schema — columns | 678 spec columns all present; **1 extra** (`users.remember_token`) |
+| Live schema — columns | 684 spec columns all present; **1 extra** (`users.remember_token`) |
 | Live schema — foreign keys | 93 live / 93 spec |
 | Live schema — unique constraints | 81 live / 81 spec |
 | Live schema — CHECK constraints | 35 live / 35 spec — and proven to reject violating writes (§3) |
@@ -537,7 +537,7 @@ invariants (§3) and the error contract being violated everywhere (§7).
 gaps; reads the running system, so it is not a CI gate), `tools/verify-error-envelope.php` (§7.5) and
 `tools/verify-auth-live.php` (§4.4 — the only gate that can tell that `auth:api` throws, because both
 faults behind #13/#14 parse cleanly and every route is declared). The two live verifiers self-check
-before reporting: against 64 tables / 678 columns, and by asserting the row counts are back where they
+before reporting: against 64 tables / 684 columns, and by asserting the row counts are back where they
 started. The repro scripts are `tools/repro-binary-ip.php` (#15) and `tools/repro-role-alias.php`
 (#17); each exits non-zero if the behaviour it documents changes, so a fix forces the doc to move.
 

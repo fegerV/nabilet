@@ -558,6 +558,38 @@ namespace Illuminate\Database\Schema {
             $blueprint = new Blueprint($table);
             $callback($blueprint);
 
+            $existing = $this->tables[$table];
+
+            // ALTER additions must be folded back into the recorded table. The
+            // original implementation discarded them, so every column/index added by
+            // Schema::table() — the checkout migrations, the TZ-gap closure (010),
+            // and any later migration — was invisible to verify-migrations.php and
+            // reported as drift ("cart_token missing from migrations", etc.).
+            foreach ($blueprint->columns as $col) {
+                $existing->columns[] = $col;
+            }
+
+            foreach ($blueprint->indexes as $idx) {
+                $existing->indexes[] = $idx;
+            }
+
+            // Process DROP COLUMN / DROP INDEX / DROP UNIQUE / DROP FOREIGN so the
+            // verifier sees the post-ALTER shape, not only the additions.
+            foreach ($blueprint->drops as $name) {
+                $existing->columns = array_values(array_filter(
+                    $existing->columns,
+                    static fn (ColumnDefinition $c): bool => $c->name !== $name
+                ));
+                $existing->indexes = array_values(array_filter(
+                    $existing->indexes,
+                    static fn (array $i): bool => ($i['name'] ?? null) !== $name
+                ));
+                $existing->foreignKeys = array_values(array_filter(
+                    $existing->foreignKeys,
+                    static fn (ForeignKeyDefinition $f): bool => $f->name !== $name
+                ));
+            }
+
             foreach ($blueprint->foreignKeys as $fk) {
                 $this->addedForeignKeys[$table][] = $fk;
             }
