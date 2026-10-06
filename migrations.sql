@@ -1383,3 +1383,31 @@ ALTER TABLE media_links
 ALTER TABLE offline_bundles
   ADD CONSTRAINT ck_offline_bundles_counts CHECK (ticket_count >= 0 AND revoked_count >= 0),
   ADD CONSTRAINT ck_offline_bundles_window CHECK (expires_at IS NULL OR expires_at >= generated_at);
+
+-- ============================================================ checkout fixes (D5, B2, A6)
+-- Mirrors the applied Laravel migrations and the split bundle 011:
+--   database/migrations/2026_09_29_000100_add_cart_token_and_order_cart_id.php
+--   database/migrations/2026_09_29_000200_add_order_customer_name.php
+--   database/migrations/2026_09_29_000300_add_qr_payload_to_tickets.php
+--   database/migrations/2026_09_30_000100_add_session_event_to_orders.php
+--
+--   1. carts.cart_token + orders.cart_id  — D5 «корзина на сеанс».
+--   2. orders.customer_name               — B2: витрина собирала имя покупателя.
+--   3. tickets.qr_payload                 — A6: QR-картинка кодирует подписанный пэйлоад.
+--   4. orders.session_id / event_id       — A6: выпуск билетов резолвит их из корзины.
+
+ALTER TABLE carts
+  ADD COLUMN cart_token VARCHAR(64) NULL AFTER user_id,
+  ADD UNIQUE KEY uq_carts_token_session_status (cart_token, session_id, status);
+
+ALTER TABLE orders
+  ADD COLUMN session_id BIGINT UNSIGNED NULL AFTER user_id,
+  ADD COLUMN event_id BIGINT UNSIGNED NULL AFTER session_id,
+  ADD COLUMN customer_name VARCHAR(255) NULL AFTER customer_email,
+  ADD COLUMN cart_id BIGINT UNSIGNED NULL AFTER promo_code_id,
+  ADD KEY idx_orders_session (session_id),
+  ADD KEY idx_orders_event (event_id),
+  ADD KEY idx_orders_cart (cart_id);
+
+ALTER TABLE tickets
+  ADD COLUMN qr_payload VARCHAR(255) NULL AFTER qr_token_hash;
