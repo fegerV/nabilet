@@ -6,9 +6,9 @@ namespace Nabilet\Tests\Unit;
 
 use Nabilet\Core\Errors\ConflictError;
 use Nabilet\Core\Errors\DomainRuleViolation;
-use Nabilet\Modules\Inventory\Domain\HoldWindow;
-use Nabilet\Modules\Inventory\Domain\InventoryStock;
-use Nabilet\Modules\Inventory\Domain\ReservationPolicy;
+use Nabilet\Modules\Inventory\Domain\Superseded\HoldWindow;
+use Nabilet\Modules\Inventory\Domain\Superseded\InventoryStock;
+use Nabilet\Modules\Inventory\Domain\Superseded\ReservationPolicy;
 use Nabilet\Tests\Support\TestCase;
 
 /**

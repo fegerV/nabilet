@@ -8,15 +8,18 @@ import { describe, expect, it } from 'vitest'
 import type { ESector } from '../../../resources/js/pages/hall-editor/editorTypes'
 import {
   GAP,
+  MAX_ARC_SPREAD_DEG,
   ROW_GAP,
   SEAT,
   appendRowToSector,
+  findFreeSeatPosition,
   arcLayoutParams,
   arcSeatXY,
   buildArcSeats,
   buildGridSeats,
   seatKindFor,
 } from '../../../resources/js/pages/hall-editor/seatGeometry'
+import { unwrapSchemaRoot } from '../../../resources/js/pages/hall-editor/schemaImport'
 
 let counter = 0
 const nextId = (prefix: string) => `${prefix}-${(counter += 1)}`
@@ -92,6 +95,15 @@ describe('seatGeometry: дуга (амфитеатр)', () => {
     const mid = arcSeatXY(sector, 2, (n - 1) / 2, n)
     expect((first.x + last.x) / 2).toBeCloseTo(mid.x, 6)
   })
+
+  it('ограничивает полный круг полукругом, не совмещая крайние места', () => {
+    const sector = makeArcSector()
+    sector.arcSpread = 360
+    const seats = buildArcSeats(sector, 1, 10, 0, nextId)
+    expect(MAX_ARC_SPREAD_DEG).toBe(180)
+    expect(Math.hypot(seats[0].x - seats[9].x, seats[0].y - seats[9].y)).toBeGreaterThan(SEAT)
+    expect(arcLayoutParams(1, 10, 360).arcBaseR).toBe(arcLayoutParams(1, 10, 180).arcBaseR)
+  })
 })
 
 describe('seatGeometry: appendRowToSector', () => {
@@ -127,5 +139,34 @@ describe('seatGeometry: seatKindFor', () => {
     expect(seatKindFor(1, 0, 8, 1)).toBe('accessible')
     expect(seatKindFor(1, 3, 8, 1)).toBe('standard')
     expect(seatKindFor(0, 3, 8, 1)).toBe('vip')
+  })
+})
+
+describe('seatGeometry: поиск свободного места', () => {
+  it('сдвигает новое место, если предложенная позиция пересекается с существующей', () => {
+    const existing = [{ x: 22, y: 0 }, { x: 44, y: 0 }]
+    const free = findFreeSeatPosition(existing, 22, 0)
+    expect(free).toEqual({ x: 66, y: 0 })
+    expect(existing.some((seat) => Math.abs(seat.x - free.x) < SEAT && Math.abs(seat.y - free.y) < SEAT)).toBe(false)
+  })
+
+  it('уходит на свободный ряд, если горизонтальная полоса плотно занята', () => {
+    const existing = Array.from({ length: 4 }, (_, i) => ({ x: i * 22, y: 0 }))
+    const free = findFreeSeatPosition(existing, 0, 0, SEAT, 4)
+    expect(free.y).toBeGreaterThan(Math.max(...existing.map((seat) => seat.y + SEAT)))
+  })
+})
+
+describe('schemaImport: envelope', () => {
+  it('возвращает внутреннюю схему для { schema }', () => {
+    const schema = { sectors: [{ name: 'Партер', seats: [] }] }
+    expect(unwrapSchemaRoot({ schema })).toBe(schema)
+  })
+
+  it('оставляет обычный JSON схемы без изменений и отклоняет не-объекты', () => {
+    const schema = { sectors: [] }
+    expect(unwrapSchemaRoot(schema)).toBe(schema)
+    expect(unwrapSchemaRoot([])).toBeNull()
+    expect(unwrapSchemaRoot(null)).toBeNull()
   })
 })

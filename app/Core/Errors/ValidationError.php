@@ -16,13 +16,22 @@ class ValidationError extends AppError
     /**
      * @param  array<string, list<string>>  $errors  field => messages
      * @param  array<string, mixed>         $context
+     * @param  string                       $errorCode  стабильный код для клиента.
+     *
+     * По умолчанию `VALIDATION_ERROR` (контракт §66). Доменные правила, у
+     * которых есть собственный код, обязаны его передать: `AppError` обещает,
+     * что клиент ветвится на `code`, а не на текст. Раньше передать код было
+     * нельзя — второй аргумент конструктора это `$message`, поэтому
+     * `HallService::refuse()` клал `SCHEMA_EMPTY_PAYLOAD` в текст сообщения, и
+     * наружу уходило `VALIDATION_ERROR` (см. коммит конструктора залов).
      */
     public function __construct(
         public readonly array $errors = [],
         string $message = 'The given data was invalid.',
         array $context = [],
+        string $errorCode = 'VALIDATION_ERROR',
     ) {
-        parent::__construct($message, 'VALIDATION_ERROR', 422, $context);
+        parent::__construct($message, $errorCode, 422, $context);
     }
 
     /** @return list<string> */

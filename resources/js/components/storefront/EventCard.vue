@@ -20,8 +20,10 @@ const posterStyle = computed(() => {
   if (poster) {
     return { backgroundImage: `url(${poster})` }
   }
+  // Запасной градиент — из бренд-кистей площадки, а не из зашитого фиолета:
+  // иначе витрина с зелёным брендом показывает фиолетовые обложки.
   return {
-    background: `linear-gradient(145deg, ${props.event.posterFrom ?? '#7C3AED'} 0%, ${props.event.posterTo ?? '#FF5C22'} 100%)`,
+    background: `linear-gradient(145deg, ${props.event.posterFrom ?? 'rgb(var(--brand-500))'} 0%, ${props.event.posterTo ?? 'rgb(var(--accent-500))'} 100%)`,
   }
 })
 

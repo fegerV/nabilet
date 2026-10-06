@@ -11,6 +11,15 @@
 
 const BASE_URL: string = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? '/api/v1'
 
+/**
+ * Ошибка API в §66-конверте.
+ *
+ * `details` — ВСЕГДА карта «поле → сообщения» (`Record<string, string[]>`),
+ * извлечённая из `error.details.fields` сервера. Единая форма важна: на неё
+ * опираются и `CheckoutPage` (привязка сообщений к инпутам), и обработчики
+ * холда. Раньше `request()` читал несуществующий `error.errors`, поэтому
+ * `details` был `null` и серверные ошибки валидации не доходили до UI вообще.
+ */
 export class ApiError extends Error {
   readonly status: number
   readonly code: string | null
@@ -105,6 +114,63 @@ export interface PageMeta {
   last_page: number
 }
 
+/* ── Разбор §66-конверта ошибки ───────────────────────────────────────────
+ * Один источник правды для `request()` и `upload()`. Раньше каждый разбирал
+ * конверт по-своему, и они разошлись: `upload()` знал про `details.fields`,
+ * а `request()` читал `error.errors`, которого сервер не отдаёт. Дублирование
+ * парсинга — и есть корневая причина; поэтому вынесено в две функции ниже.
+ */
+
+/** Похоже ли значение на карту «поле → массив сообщений». */
+function isFieldMap(value: object): boolean {
+  const entries = Object.entries(value)
+  return entries.length > 0 && entries.every(([, v]) => Array.isArray(v))
+}
+
+/**
+ * Извлечь карту ошибок по полям.
+ *
+ * Канонический путь — `error.details.fields` (`ValidationError::toResponse()`).
+ * Дополнительно принимаем `error.details` как саму карту полей (форма, которую
+ * ожидает `CheckoutPage`) и устаревший `error.errors` (форма Laravel).
+ */
+function extractFieldErrors(payload: unknown): Record<string, string[]> | null {
+  if (!payload || typeof payload !== 'object' || !('error' in payload)) return null
+
+  const error = (payload as { error?: unknown }).error
+  if (!error || typeof error !== 'object') return null
+  const envelope = error as Record<string, unknown>
+
+  const details = envelope.details
+  if (details && typeof details === 'object') {
+    const fields = (details as Record<string, unknown>).fields
+    if (fields && typeof fields === 'object') return fields as Record<string, string[]>
+    if (isFieldMap(details)) return details as Record<string, string[]>
+  }
+
+  const errors = envelope.errors
+  if (errors && typeof errors === 'object') return errors as Record<string, string[]>
+
+  return null
+}
+
+/** Машинный код (`error.code`) и человекочитаемое сообщение из конверта. */
+function extractErrorMeta(payload: unknown, status: number): { message: string; code: string | null } {
+  const p = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : null
+  const envelope = p && p.error && typeof p.error === 'object' ? (p.error as Record<string, unknown>) : null
+
+  const message =
+    envelope && typeof envelope.message === 'string' && envelope.message !== ''
+      ? envelope.message
+      : typeof p?.message === 'string' && p.message !== ''
+        ? p.message
+        : `HTTP ${status}`
+
+  const code = envelope && envelope.code != null ? String(envelope.code) : null
+
+  return { message, code }
+}
+
 /** Универсальная выборка: возвращает объект { data, meta? } уже развёрнутым. */
 export async function request<T = unknown>(path: string, options: ApiOptions = {}): Promise<T> {
   const token = getToken()
@@ -134,7 +200,7 @@ export async function request<T = unknown>(path: string, options: ApiOptions = {
   try {
     res = await fetch(`${BASE_URL}${path}`, {
       method: options.method ?? 'GET',
-      headers: options.body === undefined ? headers : headers,
+      headers,
       body: options.body === undefined ? undefined : JSON.stringify(options.body),
     })
   } catch {
@@ -156,20 +222,9 @@ export async function request<T = unknown>(path: string, options: ApiOptions = {
 
   if (!res.ok) {
     // 401 → протухла сессия админа; даём странице решить (редирект на логин).
-    const msg =
-      payload && typeof payload === 'object' && 'message' in payload
-        ? String((payload as { message: unknown }).message)
-        : `HTTP ${res.status}`
-    const code =
-      payload && typeof payload === 'object' && 'error' in payload
-        ? String((payload as { error: { code?: unknown } }).error?.code ?? null)
-        : null
-    const details =
-      payload && typeof payload === 'object' && 'error' in payload
-        ? (payload as { error: { errors?: Record<string, string[]> } }).error?.errors ?? null
-        : null
+    const { message, code } = extractErrorMeta(payload, res.status)
     if (res.status === 401 && code !== 'bad_credentials') setToken(null)
-    throw new ApiError(res.status, msg, code, details)
+    throw new ApiError(res.status, message, code, extractFieldErrors(payload))
   }
 
   return payload as T
@@ -211,25 +266,9 @@ export async function upload<D>(path: string, formData: FormData, method: 'POST'
   }
 
   if (!res.ok) {
-    const p = payload as Record<string, unknown> | null
-    const msg =
-      p && typeof p === 'object' && 'error' in p
-        ? String((p.error as { message?: unknown }).message ?? `HTTP ${res.status}`)
-        : p && typeof p === 'object' && 'message' in p
-          ? String(p.message)
-          : `HTTP ${res.status}`
-    const code =
-      p && typeof p === 'object' && 'error' in p
-        ? String((p.error as { code?: unknown }).code ?? null)
-        : null
-    const details =
-      p && typeof p === 'object' && 'error' in p
-        ? ((p.error as { errors?: Record<string, string[]>; details?: { fields?: Record<string, string[]> } }).errors
-            ?? (p.error as { details?: { fields?: Record<string, string[]> } }).details?.fields
-            ?? null)
-        : null
+    const { message, code } = extractErrorMeta(payload, res.status)
     if (res.status === 401 && code !== 'bad_credentials') setToken(null)
-    throw new ApiError(res.status, msg, code, details)
+    throw new ApiError(res.status, message, code, extractFieldErrors(payload))
   }
 
   return payload as { data: D }

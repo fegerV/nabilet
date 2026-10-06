@@ -30,6 +30,7 @@ import {
 } from '@/lib/hall'
 import { cn } from '@/lib/cn'
 import { money } from '@/lib/format'
+import { MAX_TICKETS_PER_ORDER } from '@/lib/inventory'
 
 const props = withDefaults(
   defineProps<{
@@ -39,7 +40,7 @@ const props = withDefaults(
     /** Схема зала. Если не передана — демо-зал. */
     sectors?: Sector[]
   }>(),
-  { maxSelection: 10 },
+  { maxSelection: MAX_TICKETS_PER_ORDER },
 )
 
 const emit = defineEmits<{ toggle: [seat: Seat, sectorName: string]; limit: [] }>()
@@ -322,3 +323,30 @@ function onSeatKeydown(event: KeyboardEvent, index: number): void {
     </div>
   </div>
 </template>
+
+<style scoped>
+/**
+ * WCAG 2.2 SC 2.5.8 «Target Size (Minimum)»: зона нажатия ≥ 24×24 CSS px.
+ *
+ * Визуальный размер места — 22 px (`SEAT_SIZE`), и менять его нельзя: от него
+ * считает всю геометрию `seatLeft()`/`seatTop()`, и в редакторе залов тоже.
+ * Поэтому расширяем ТОЛЬКО зону нажатия на 1 px в каждую сторону — картинка
+ * не сдвигается ни на пиксель.
+ *
+ * Перекрытие с соседями исключено арифметически: шаг места
+ * `SEAT_SIZE + SEAT_GAP` = 22 + 6 = 28 px, расширенная зона занимает 24 px,
+ * между зонами остаётся 4 px. Промах на чужое место (худший исход, чем
+ * мелкая цель) невозможен.
+ *
+ * Стиль локальный, а не в `app.css`: `.seat` — ГЛОБАЛЬНЫЙ класс
+ * (`resources/css/app.css`), его же навешивает `SeatLegend.vue` на образцы
+ * легенды. Положив `::after` в `app.css`, мы дали бы зону нажатия и им — а
+ * образцы легенды декоративны и не нажимаются вовсе. Здесь `scoped`
+ * ограничивает правило одним компонентом.
+ */
+.seat::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+}
+</style>

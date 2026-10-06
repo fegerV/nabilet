@@ -7,7 +7,7 @@ namespace Nabilet\Modules\Core\Organizations\Services;
 use Nabilet\Modules\Core\Organizations\Models\Organization;
 use Nabilet\Modules\Core\Organizations\Repositories\OrganizationRepository;
 use Nabilet\Modules\Core\Users\Models\User;
-use Illuminate\Support\Collection;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -24,8 +24,15 @@ class OrganizationService
      * `Cannot access protected property` — not a style preference. These methods are the
      * only supported way for a controller to reach the repository, and they keep the
      * dependency pointing inward (controller → service → repository).
+     *
+     * Возвращаемый тип — `LengthAwarePaginator`, а не `Collection`: `all()` уходит в
+     * `paginate($limit)`. Раньше здесь стоял `Collection`, то есть объявленный
+     * контракт противоречил фактическому. Работало лишь потому, что
+     * `ResourceCollection::toResponse()` распознаёт `AbstractPaginator` и отдаёт
+     * метаданные пагинации, — но любой вызывающий, поверивший объявлению и
+     * вызвавший метод коллекции, получил бы пагинатор.
      */
-    public function all(int $limit = 15): Collection
+    public function all(int $limit = 15): LengthAwarePaginator
     {
         return $this->repository->all($limit);
     }

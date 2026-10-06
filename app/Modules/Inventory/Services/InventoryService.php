@@ -12,6 +12,7 @@ use Nabilet\Modules\Inventory\Repositories\InventoryItemRepository;
 use Nabilet\Modules\Sessions\Models\Session;
 use Nabilet\Modules\Venues\Models\HallRow;
 use Nabilet\Modules\Venues\Models\HallSchemaVersion;
+use Nabilet\Modules\Venues\Models\HallTable;
 use Nabilet\Modules\Venues\Models\Seat;
 use Nabilet\Modules\Venues\Models\Sector;
 use Nabilet\Modules\Venues\Models\StandingZone;
@@ -44,6 +45,19 @@ class InventoryService
 
             // rows-формат (конвертация канваса, если нужно)
             $sectors = $schemaVersion->toInventoryFormat();
+
+            // 0. Снимаем инвентарь сессии ДО удаления геометрии.
+            //
+            // Порядок критичен: `inventory_items.seat_id` и `standing_zone_id`
+            // ссылаются на `seats` / `standing_zones` с ON DELETE RESTRICT, а
+            // позиции инвентаря удалялись в конце метода. Повторный вызов
+            // generateFromSchema() для той же сессии (пересборка зала после
+            // правки схемы) падал с 1451 «Cannot delete or update a parent row»
+            // на первом же месте — то есть пересобрать инвентарь было нельзя
+            // вообще, ни разу. Проданные билеты по-прежнему защищены: у
+            // `tickets.seat_id` тоже RESTRICT, поэтому попытка пересобрать зал с
+            // продажами по-прежнему падает — но уже явно и не разрушая данные.
+            InventoryItem::where('session_id', $session->id)->delete();
 
             // 1. Пересоздаём геометрию (sectors → rows → seats)
             $oldSectors = Sector::query()->where('schema_version_id', $schemaVersion->id)->get();
@@ -116,13 +130,43 @@ class InventoryService
                                     }
                                 }
                 $sector->update(['capacity' => $capacity]);
+
+                // Банкетный стол (сектор `shape: 'table'`) — материализуем его
+                // геометрию в `hall_tables`. Раньше таблица не заполнялась
+                // НИКОГДА (0 строк во всех БД): стол существовал только как
+                // кольцо мест внутри JSON-схемы, а из ТЗ-таблица оставалась
+                // мёртвой. Старые строки не чистим вручную — `hall_tables`
+                // ссылается на `sectors` с ON DELETE CASCADE, а сектора выше
+                // пересоздаются.
+                if (($sectorData['shape'] ?? null) === 'table' && is_array($sectorData['table'] ?? null)) {
+                    $table = $sectorData['table'];
+                    HallTable::create([
+                        'sector_id' => $sector->id,
+                        'name' => (string) ($sectorData['name'] ?? 'Стол'),
+                        // width/height в БД NOT NULL, поэтому вырожденное кольцо
+                        // (все места в одной точке) даёт минимальный размер,
+                        // а не 0 — иначе строка не вставится.
+                        'x' => (float) ($table['x'] ?? 0),
+                        'y' => (float) ($table['y'] ?? 0),
+                        'width' => max(1.0, (float) ($table['width'] ?? 0)),
+                        'height' => max(1.0, (float) ($table['height'] ?? 0)),
+                        'rotation' => 0,
+                        'capacity' => (int) ($table['capacity'] ?? 0),
+                        // Радиус кольца — не колонка, а метаданные: по нему
+                        // витрина рисует круглый стол, а не прямоугольник.
+                        'metadata_json' => [
+                            'cx' => (float) ($table['cx'] ?? 0),
+                            'cy' => (float) ($table['cy'] ?? 0),
+                            'ring' => (float) ($table['ring'] ?? 0),
+                        ],
+                    ]);
+                }
             }
 
-            // 2. Пересоздаём инвентарь сессии из мест.
+            // 2. Собираем инвентарь сессии из мест.
             // Standing-зоны и сидячие места вставляются ОТДЕЛЬНО: у них разный набор колонок,
             // а bulk insert (Model::insert) требует одинаковых ключей у всех строк.
-                                    InventoryItem::where('session_id', $session->id)->delete();
-
+            // Прежний инвентарь уже снят шагом 0 (до удаления геометрии).
                                     $seatItems = [];
                                     $standingItems = [];
                                                 foreach ($sectorModels as $sector) {
@@ -377,7 +421,7 @@ class InventoryService
 
     /**
      * Пересчёт carts.total_amount по всем активным корзинам (та же формула, что
-     * в CartService::recalculateCartTotal — сумма total_price позиций).
+     * в CartItemService::recalculateCartTotal — сумма total_price позиций).
      */
     protected function recalculateAffectedCarts(): int
     {

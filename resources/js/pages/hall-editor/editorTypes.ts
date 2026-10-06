@@ -77,6 +77,8 @@ export interface EStatic {
   locked?: boolean
   text?: string
   capacity?: number
+  /** Цена standing-зоны в минорных единицах (копейках). */
+  priceMinor?: number
 }
 
 export interface EBackground {

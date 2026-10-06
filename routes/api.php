@@ -45,6 +45,12 @@ $moduleRoutes = [
     __DIR__ . '/../app/Modules/Core/Organizations/routes/api.php',
     __DIR__ . '/../app/Modules/Venues/Halls/routes/api.php',
     __DIR__ . '/../app/Modules/Seo/routes/api.php',
+    // Конструктор витрины: публичный конфиг + админские настройки.
+    __DIR__ . '/../app/Modules/Storefront/routes/api.php',
+    // Аналитика: публичный конфиг счётчика + админские настройки Метрики.
+    // Файл существовал, но не был подключён — раздел «Интеграции» в админке
+    // упирался в 404 для обоих эндпоинтов.
+    __DIR__ . '/../app/Modules/Analytics/routes/api.php',
 ];
 
 foreach ($moduleRoutes as $routeFile) {

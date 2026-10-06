@@ -14,6 +14,13 @@ parameters:
     # dependency-free test runner (tests/run.php) unable to cover it.
     excludePaths:
         - app/Core/Support/helpers.php
+        # Superseded migrations. `database/archive-superseded-migrations/README.md`
+        # says outright that these must never be run — they describe a different
+        # schema (66 tables, `event_sessions`, enum-based inventory). Analysing them
+        # produced 6 errors about `ForeignKeyDefinition::comment()` in files nobody
+        # may execute, which is noise that hides real findings. Excluded, not fixed:
+        # the files are a historical record, not code under maintenance.
+        - database/archive-superseded-migrations
 
     ignoreErrors:
         # Config files legitimately reference classes created in later phases
@@ -22,4 +29,10 @@ parameters:
             message: '#Class Nabilet\\Modules\\Users\\Models\\User not found#'
             path: config/auth.php
 
-    checkMissingIterableValueType: false
+    # `checkMissingIterableValueType: false` stood here and did two bad things:
+    # it printed a deprecation warning on EVERY run (PHPStan 1.12), and its
+    # replacement (`ignoreErrors` → `identifier: missingType.iterableValue`)
+    # matched nothing, so PHPStan reported "Ignored error pattern … was not
+    # matched" — a new error caused by the attempt to silence one. Removed
+    # outright: at level 5 nothing needs suppressing here, which was verified by
+    # re-running with the option gone and getting the same set of real findings.

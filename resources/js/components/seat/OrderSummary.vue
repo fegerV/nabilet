@@ -10,7 +10,7 @@ import { computed } from 'vue'
 import NButton from '../ui/NButton.vue'
 import NCountdown from '../ui/NCountdown.vue'
 import { money, seatsLabel, ticketsLabel } from '@/lib/format'
-import type { CartSeat } from '@/stores/cart'
+import { seatLineLabel, seatLineTotal, seatQuantity, seatsTicketCount, type CartSeat } from '@/stores/cart'
 import { cn } from '@/lib/cn'
 
 const props = withDefaults(
@@ -34,6 +34,14 @@ const serviceFee = computed(() => props.feeMinor)
 const totalMinor = computed(() => Math.max(0, props.subtotalMinor + serviceFee.value - props.discountMinor))
 const sorted = computed(() => [...props.seats].sort((a, b) => a.row - b.row || a.number - b.number))
 const empty = computed(() => props.seats.length === 0)
+
+/**
+ * Билетов, а не позиций.
+ *
+ * Танцпол qty=3 — одна позиция и три билета. Здесь стояло `seats.length`,
+ * и сводка обещала «1 билет» там, где сервер выставлял три.
+ */
+const ticketsCount = computed(() => seatsTicketCount(props.seats))
 
 const KIND_LABEL: Record<CartSeat['kind'], string | null> = {
   standard: null,
@@ -80,21 +88,21 @@ const KIND_LABEL: Record<CartSeat['kind'], string | null> = {
                 seat.kind === 'vip' ? 'bg-gold-gradient text-ink-950' : 'bg-surface-3 text-muted',
               )
             "
-          >{{ seat.row }}</span>
+          >{{ seat.row > 0 ? seat.row : `×${seatQuantity(seat)}` }}</span>
 
           <div class="min-w-0 flex-1">
             <p class="truncate text-sm text-content">
-              {{ seat.sector }}, место {{ seat.number }}
+              {{ seatLineLabel(seat) }}
               <span v-if="KIND_LABEL[seat.kind]" class="ml-1 text-2xs text-brand-400">{{ KIND_LABEL[seat.kind] }}</span>
             </p>
           </div>
 
-          <span class="flex-none text-sm tabular-nums text-content">{{ money(seat.priceMinor) }}</span>
+          <span class="flex-none text-sm tabular-nums text-content">{{ money(seatLineTotal(seat)) }}</span>
 
           <button
             type="button"
             class="flex-none text-subtle transition-colors hover:text-rose-400"
-            :aria-label="`Убрать место ${seat.number} ряда ${seat.row}`"
+            :aria-label="`Убрать: ${seatLineLabel(seat)}`"
             @click="emit('remove', seat.id)"
           >✕</button>
         </li>
@@ -105,7 +113,7 @@ const KIND_LABEL: Record<CartSeat['kind'], string | null> = {
     <div :class="cn('flex-none', dense ? 'px-3 pb-3' : 'border-t border-line p-4')">
       <dl class="space-y-1.5 text-sm">
         <div class="flex justify-between">
-          <dt class="text-muted">{{ ticketsLabel(seats.length) }} · {{ seatsLabel(seats.length) }}</dt>
+          <dt class="text-muted">{{ ticketsLabel(ticketsCount) }} · {{ seatsLabel(seats.length) }}</dt>
           <dd class="tabular-nums text-content">{{ money(subtotalMinor) }}</dd>
         </div>
         <div v-if="serviceFee > 0" class="flex justify-between">

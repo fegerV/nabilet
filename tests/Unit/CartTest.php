@@ -6,13 +6,13 @@ namespace Nabilet\Tests\Unit;
 
 use Nabilet\Core\Errors\DomainRuleViolation;
 use Nabilet\Core\Support\Money;
-use Nabilet\Modules\Cart\Domain\Cart;
-use Nabilet\Modules\Cart\Domain\CartDecision;
-use Nabilet\Modules\Cart\Domain\CartItem;
-use Nabilet\Modules\Cart\Domain\CartPolicy;
-use Nabilet\Modules\Inventory\Domain\HoldWindow;
-use Nabilet\Modules\Inventory\Domain\SeatHold;
-use Nabilet\Modules\Orders\Domain\CartState;
+use Nabilet\Modules\Cart\Domain\Superseded\Cart;
+use Nabilet\Modules\Cart\Domain\Superseded\CartDecision;
+use Nabilet\Modules\Cart\Domain\Superseded\CartItem;
+use Nabilet\Modules\Cart\Domain\Superseded\CartPolicy;
+use Nabilet\Modules\Inventory\Domain\Superseded\HoldWindow;
+use Nabilet\Modules\Inventory\Domain\Superseded\SeatHold;
+use Nabilet\Modules\Orders\Domain\Superseded\CartState;
 use Nabilet\Tests\Support\TestCase;
 
 /**

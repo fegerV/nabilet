@@ -131,7 +131,13 @@ final class AuthWiringTest extends TestCase
         $provider = $this->read('app/Modules/Auth/Providers/AuthServiceProvider.php');
 
         $this->assertStringContainsString('$guard->setRequest(', $provider);
-        $this->assertStringContainsString("$app->refresh('request'", $provider);
+        // Экранированный `\$` обязателен. В двойных кавычках PHP интерполирует
+        // `$app->refresh` как свойство `refresh` несуществующей переменной `$app`:
+        // выдаёт два warning'а и подставляет пустую строку, из-за чего игла
+        // вырождалась в `('request'` — тест «проходил», даже если бы провайдер
+        // вызывал `->refresh('request'` на чём угодно. Проверка была слабее, чем
+        // заявлено в её же комментарии.
+        $this->assertStringContainsString("\$app->refresh('request'", $provider);
     }
 
     public function testTheProviderDoesNotLoadRoutesItself(): void

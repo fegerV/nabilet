@@ -11,7 +11,7 @@ import NBadge from './NBadge.vue'
 import type { EventStatus, OrderStatus, TicketStatus, Tone } from '@/lib/types'
 
 const props = defineProps<{
-  kind: 'order' | 'ticket' | 'event' | 'session' | 'hall' | 'venue'
+  kind: 'order' | 'ticket' | 'event' | 'session' | 'hall' | 'venue' | 'payment' | 'user'
   status: OrderStatus | TicketStatus | EventStatus | string
   size?: 'sm' | 'md'
 }>()
@@ -60,8 +60,31 @@ const HALL: Record<string, { label: string; tone: Tone; dot: boolean }> = {
 /** Площадка использует ту же машину состояний, что и зал (active/inactive). */
 const VENUE = HALL
 
+/**
+ * Платёж: статусы провайдера (см. Payment::$status). «succeeded» и «pending»
+ * — самые частые, и путать их нельзя: по «pending» деньги ещё не пришли,
+ * хотя покупатель мог уже увидеть экран успеха.
+ */
+const PAYMENT: Record<string, { label: string; tone: Tone; dot: boolean }> = {
+  pending: { label: 'В обработке', tone: 'sun', dot: true },
+  waiting_for_capture: { label: 'Ждёт подтверждения', tone: 'sun', dot: true },
+  succeeded: { label: 'Оплачен', tone: 'mint', dot: false },
+  canceled: { label: 'Отменён', tone: 'neutral', dot: false },
+  cancelled: { label: 'Отменён', tone: 'neutral', dot: false },
+  failed: { label: 'Ошибка', tone: 'rose', dot: false },
+  refunded: { label: 'Возврат', tone: 'rose', dot: false },
+  partially_refunded: { label: 'Частичный возврат', tone: 'sun', dot: false },
+}
+
+/** Пользователь: active/inactive/banned из `users.status`. */
+const USER: Record<string, { label: string; tone: Tone; dot: boolean }> = {
+  active: { label: 'Активен', tone: 'mint', dot: true },
+  inactive: { label: 'Неактивен', tone: 'neutral', dot: false },
+  banned: { label: 'Заблокирован', tone: 'rose', dot: false },
+}
+
 /** Разные сущности — разные наборы статусов, поэтому выбор идёт по типу. */
-const meta =
+const resolved =
   props.kind === 'order'
     ? ORDER[props.status as OrderStatus]
     : props.kind === 'ticket'
@@ -72,7 +95,18 @@ const meta =
           ? HALL[props.status as string]
           : props.kind === 'venue'
             ? VENUE[props.status as string]
-            : EVENT[props.status as EventStatus]
+            : props.kind === 'payment'
+              ? PAYMENT[props.status as string]
+              : props.kind === 'user'
+                ? USER[props.status as string]
+                : EVENT[props.status as EventStatus]
+
+/**
+ * Неизвестный статус (новый провайдер, ручная правка БД) не должен ронять
+ * страницу: показываем сам код — администратору он всё равно полезнее,
+ * чем пустая ячейка.
+ */
+const meta = resolved ?? { label: props.status || '—', tone: 'neutral' as Tone, dot: false }
 </script>
 
 <template>

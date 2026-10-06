@@ -6,7 +6,8 @@ namespace Nabilet\Modules\Cart\Http\Controllers;
 
 use Nabilet\Modules\Cart\Http\Resources\CartResource;
 use Nabilet\Modules\Cart\Models\Cart;
-use Nabilet\Modules\Cart\Services\CartService;
+use Nabilet\Modules\Cart\Services\CartCheckoutService;
+use Nabilet\Modules\Cart\Services\CartItemService;
 use Nabilet\Modules\Cart\Support\CartToken;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -18,7 +19,7 @@ use Illuminate\Routing\Controller;
  * There is deliberately no `try`/`catch` and no `response()->json(['error' => …])`
  * anywhere in this controller. Every failure — a missing `session_id`, an exhausted
  * inventory item, an expired cart — is raised as an `AppError` (by the validator or by
- * `CartService`) and rendered by `ApiExceptionRenderer` into the §66 envelope. Catching
+ * `CartItemService`) and rendered by `ApiExceptionRenderer` into the §66 envelope. Catching
  * and re-shaping here is what produced bodies like `{"error":"session_id required"}`:
  * a flat string with no `code` to branch on and no `request_id` to correlate a support
  * ticket with a log line.
@@ -32,7 +33,8 @@ use Illuminate\Routing\Controller;
 class CartController extends Controller
 {
     public function __construct(
-        protected CartService $cartService
+        protected CartItemService $cartItems,
+        protected CartCheckoutService $cartCheckout,
     ) {}
 
     /**
@@ -94,6 +96,22 @@ class CartController extends Controller
 
     public function addItem(Request $request): JsonResponse
     {
+        // Лимит билетов на заказ — ИЗ КОНФИГА, а не литералом.
+        //
+        // Здесь стояло `max:10`, и это было единственное место, где лимит
+        // реально применялся. При этом в проекте существовали ещё два его
+        // объявления, и оба не работали:
+        //   * `NABILET_MAX_SEATS_PER_ORDER=8` в `.env` — не читал никто;
+        //   * `nabilet.checkout.max_items_per_order` (CHECKOUT_MAX_ITEMS) —
+        //     ключ конфига не читался вовсе.
+        // Оператор правил «anti-scalping guard» и не получал никакого эффекта:
+        // в настройках стояло 8, а система пропускала 10.
+        //
+        // Теперь источник один — config/nabilet.php → CHECKOUT_MAX_ITEMS.
+        // То же число уходит витрине в `meta.max_tickets_per_order`
+        // (InventoryController::index), чтобы клиент не держал свою копию.
+        $maxPerOrder = max(1, (int) config('nabilet.checkout.max_items_per_order', 10));
+
         $validated = $request->validate([
             // `bail` + `integer` are load-bearing here, not decoration. `sessions.id`
             // and `inventory_items.id` are BIGINT, and MySQL does not reject a
@@ -113,16 +131,16 @@ class CartController extends Controller
             // is not enough on its own — `exists` would still run.
             'session_id' => ['bail', 'required', 'integer', 'exists:sessions,id'],
             'inventory_item_id' => ['bail', 'required', 'integer', 'exists:inventory_items,id'],
-            'quantity' => ['required', 'integer', 'min:1', 'max:10'],
+            'quantity' => ['required', 'integer', 'min:1', 'max:' . $maxPerOrder],
         ]);
 
         [$token, $isNew] = $this->resolveToken($request);
 
-        // `CartService::addItem()` declares `string $sessionId`, and this file is under
+        // `CartItemService::addItem()` declares `string $sessionId`, and this file is under
         // `strict_types=1`, so an integer `session_id` in the JSON body would be a
         // TypeError rather than a cast. The spec types `session_id` as a string, but a
         // client that sends a number must not get a 500.
-        $cartItem = $this->cartService->addItem(
+        $cartItem = $this->cartItems->addItem(
             (string) $validated['session_id'],
             (int) $validated['inventory_item_id'],
             (int) $validated['quantity'],
@@ -151,7 +169,7 @@ class CartController extends Controller
 
         [$token, $isNew] = $this->resolveToken($request);
 
-        $this->cartService->removeItem((string) $validated['session_id'], $itemId, $token);
+        $this->cartItems->removeItem((string) $validated['session_id'], $itemId, $token);
 
         return $this->withTokenHeader(response()->json([
             'message' => 'Item removed from cart successfully',
@@ -167,7 +185,7 @@ class CartController extends Controller
 
         $token = CartToken::fromRequest($request);
 
-        $result = $this->cartService->extendHold((string) $validated['session_id'], $token);
+        $result = $this->cartItems->extendHold((string) $validated['session_id'], $token);
 
         return response()->json([
             'message' => 'Hold extended',
@@ -188,7 +206,7 @@ class CartController extends Controller
 
         [$token, $isNew] = $this->resolveToken($request);
 
-        $checkoutResult = $this->cartService->checkout((string) $validated['session_id'], [
+        $checkoutResult = $this->cartCheckout->checkout((string) $validated['session_id'], [
             'customer_name' => $validated['customer_name'] ?? null,
             'customer_email' => $validated['customer_email'],
             'customer_phone' => $validated['customer_phone'] ?? null,

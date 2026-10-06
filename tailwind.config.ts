@@ -21,32 +21,42 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        /* Бренд: электрик-фиолетовый. Действие, навигация, выбранное место. */
+        /* Бренд: электрик-фиолетовый. Действие, навигация, выбранное место.
+         *
+         * Шкала задана CSS-переменными, а не литералами: витрина настраивается
+         * из админки (конструктор → «Цвета»), и организатор меняет гамму без
+         * пересборки фронта. Переменные выставляет lib/theme.ts на <html>;
+         * в :root лежат те же значения, поэтому без конфига всё выглядит
+         * как раньше, а `<alpha-value>` сохраняет модификаторы вида /40. */
         brand: {
-          50: '#F2F0FF',
-          100: '#E7E2FF',
-          200: '#CFC5FF',
-          300: '#B0A0FF',
-          400: '#8E74FF',
-          500: '#6D4AFF',
-          600: '#5A31F0',
-          700: '#4921C9',
-          800: '#3B1BA1',
-          900: '#2F1780',
-          950: '#1D0E52',
+          50: 'rgb(var(--brand-50) / <alpha-value>)',
+          100: 'rgb(var(--brand-100) / <alpha-value>)',
+          200: 'rgb(var(--brand-200) / <alpha-value>)',
+          300: 'rgb(var(--brand-300) / <alpha-value>)',
+          400: 'rgb(var(--brand-400) / <alpha-value>)',
+          500: 'rgb(var(--brand-500) / <alpha-value>)',
+          600: 'rgb(var(--brand-600) / <alpha-value>)',
+          700: 'rgb(var(--brand-700) / <alpha-value>)',
+          800: 'rgb(var(--brand-800) / <alpha-value>)',
+          900: 'rgb(var(--brand-900) / <alpha-value>)',
+          950: 'rgb(var(--brand-950) / <alpha-value>)',
+          /* Читаемый цвет поверх brand-500: считается от яркости, иначе белая
+           * подпись на светло-жёлтом бренде не читается. */
+          on: 'rgb(var(--brand-on) / <alpha-value>)',
         },
         /* Акцент: коралл. Покупка, деньги, срочность, дедлайн. */
         accent: {
-          50: '#FFF4EF',
-          100: '#FFE5D9',
-          200: '#FFC7AD',
-          300: '#FFA37C',
-          400: '#FF7F4D',
-          500: '#FF5C22',
-          600: '#F03F00',
-          700: '#C63200',
-          800: '#9C2A05',
-          900: '#7D250A',
+          50: 'rgb(var(--accent-50) / <alpha-value>)',
+          100: 'rgb(var(--accent-100) / <alpha-value>)',
+          200: 'rgb(var(--accent-200) / <alpha-value>)',
+          300: 'rgb(var(--accent-300) / <alpha-value>)',
+          400: 'rgb(var(--accent-400) / <alpha-value>)',
+          500: 'rgb(var(--accent-500) / <alpha-value>)',
+          600: 'rgb(var(--accent-600) / <alpha-value>)',
+          700: 'rgb(var(--accent-700) / <alpha-value>)',
+          800: 'rgb(var(--accent-800) / <alpha-value>)',
+          900: 'rgb(var(--accent-900) / <alpha-value>)',
+          on: 'rgb(var(--accent-on) / <alpha-value>)',
         },
         /* Ожидание: hold, таймер, «место придержано». */
         sun: { 100: '#FFF3D6', 200: '#FFE4A8', 300: '#FFD470', 400: '#FFC53D', 500: '#FFB020', 600: '#E59400', 700: '#B87200' },
@@ -92,14 +102,16 @@ const config: Config = {
         '5xl': ['3rem', { lineHeight: '3.2rem', letterSpacing: '-0.03em' }],
         '6xl': ['3.75rem', { lineHeight: '3.9rem', letterSpacing: '-0.035em' }],
       },
+      /* Радиус — масштаб от одной переменной: конструктор витрины крутит
+       * «скругление» одной настройкой, а не набором классов. */
       borderRadius: {
-        sm: '6px',
-        DEFAULT: '10px',
-        md: '12px',
-        lg: '16px',
-        xl: '20px',
-        '2xl': '26px',
-        '3xl': '34px',
+        sm: 'calc(var(--radius) * 0.4)',
+        DEFAULT: 'calc(var(--radius) * 0.62)',
+        md: 'calc(var(--radius) * 0.75)',
+        lg: 'var(--radius)',
+        xl: 'calc(var(--radius) * 1.25)',
+        '2xl': 'calc(var(--radius) * 1.6)',
+        '3xl': 'calc(var(--radius) * 2.1)',
       },
       boxShadow: {
         /* Слои глубины: от «плоско на поверхности» до «парит над витриной». */
@@ -108,9 +120,10 @@ const config: Config = {
         md: '0 8px 24px -6px rgb(11 9 24 / 0.16)',
         lg: '0 18px 48px -12px rgb(11 9 24 / 0.24)',
         xl: '0 32px 72px -20px rgb(11 9 24 / 0.34)',
-        /* Свечение под бренд-CTA: единственная «эмоция» в интерфейсе. */
-        brand: '0 10px 30px -8px rgb(109 74 255 / 0.55)',
-        accent: '0 10px 30px -8px rgb(255 92 34 / 0.55)',
+        /* Свечение под бренд-CTA: единственная «эмоция» в интерфейсе. Цвет —
+         * из переменной, чтобы тень совпадала с брендом организатора. */
+        brand: '0 10px 30px -8px rgb(var(--brand-500) / 0.55)',
+        accent: '0 10px 30px -8px rgb(var(--accent-500) / 0.55)',
         'inner-line': 'inset 0 0 0 1px rgb(255 255 255 / 0.06)',
       },
       transitionTimingFunction: {
@@ -126,9 +139,9 @@ const config: Config = {
         'scale-in': { from: { opacity: '0', transform: 'scale(0.96)' }, to: { opacity: '1', transform: 'none' } },
         shimmer: { '100%': { transform: 'translateX(100%)' } },
         'pulse-ring': {
-          '0%': { boxShadow: '0 0 0 0 rgb(109 74 255 / 0.45)' },
-          '70%': { boxShadow: '0 0 0 10px rgb(109 74 255 / 0)' },
-          '100%': { boxShadow: '0 0 0 0 rgb(109 74 255 / 0)' },
+          '0%': { boxShadow: '0 0 0 0 rgb(var(--brand-500) / 0.45)' },
+          '70%': { boxShadow: '0 0 0 10px rgb(var(--brand-500) / 0)' },
+          '100%': { boxShadow: '0 0 0 0 rgb(var(--brand-500) / 0)' },
         },
         /* Пульсация метки места, которое держит другой покупатель. */
         'hold-blink': { '0%,100%': { opacity: '1' }, '50%': { opacity: '0.55' } },
@@ -143,12 +156,19 @@ const config: Config = {
         'hold-blink': 'hold-blink 1.6s ease-in-out infinite',
       },
       backgroundImage: {
-        'brand-gradient': 'linear-gradient(135deg, #6D4AFF 0%, #8E74FF 45%, #FF5C22 130%)',
-        'accent-gradient': 'linear-gradient(135deg, #FF5C22 0%, #FF7F4D 60%, #FFC53D 120%)',
+        /* Градиенты тоже из переменных: они собираются из бренд-кистей на
+         * стороне клиента (lib/theme.ts), иначе смена цвета ломала бы плашки. */
+        'brand-gradient': 'var(--gradient-brand)',
+        'accent-gradient': 'var(--gradient-accent)',
         'gold-gradient': 'linear-gradient(135deg, #FFD05C 0%, #F5B417 100%)',
         /* Сцена: подсветка зала сверху — узнаваемый силуэт любого концертного зала. */
-        stage: 'radial-gradient(120% 100% at 50% 0%, rgb(109 74 255 / 0.35) 0%, transparent 62%)',
+        stage: 'var(--gradient-stage)',
         'seat-stripes': 'repeating-linear-gradient(45deg, currentColor 0 2px, transparent 2px 6px)',
+        /* «Держит другой»: горизонтальная штриховка поверх янтарной заливки.
+         * Состояние должно читаться НЕ только цветом (дальтонизм): free —
+         * сплошное, held — «зарешёченное», unavailable — диагональные полосы.
+         * Три разных текстуры, а не три оттенка. */
+        'seat-held': 'repeating-linear-gradient(0deg, rgb(0 0 0 / 0.30) 0 1.5px, transparent 1.5px 5px)',
       },
       spacing: { 18: '4.5rem', 22: '5.5rem', 30: '7.5rem' },
       maxWidth: { content: '1240px', prose: '68ch' },

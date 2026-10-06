@@ -43,6 +43,12 @@ const GROUPS = [
     ],
   },
   {
+    label: 'Витрина',
+    items: [
+      { label: 'Конструктор', to: '/admin/storefront', icon: '▣' },
+    ],
+  },
+  {
     label: 'Настройки',
     items: [
       { label: 'Пользователи', to: '/admin/users', icon: '☺' },

@@ -17,6 +17,9 @@ SET FOREIGN_KEY_CHECKS = 0;
 -- DATETIME(6), money as integer minor units, utf8mb4_unicode_ci, and the
 -- uq_ / idx_ / fk_ / ck_ naming scheme enforced by 009.
 
+SET NAMES utf8mb4;
+SET time_zone = '+00:00';
+
 -- ---------------------------------------------------------- 1. promo codes (§86)
 -- §86 lists the conditions a code may carry: fixed / percent / first_purchase /
 -- event / category / date / quantity. They map onto discount_type, scope,

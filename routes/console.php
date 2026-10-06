@@ -9,7 +9,9 @@ use Illuminate\Support\Facades\Schedule;
  *
  * Two schedulers are required by the domain and are registered by their modules
  * in later phases, not here:
- *   - hold sweeper      — releases expired seat holds (ТЗ §24, NABILET_HOLD_TTL)
+ *   - hold sweeper      — releases expired seat holds (ТЗ §24; срок берётся из
+ *                         `seat_holds.expires_at`, а не из NABILET_HOLD_TTL —
+ *                         см. пояснение в ClearExpiredHoldsCommand)
  *   - session expiry    — moves tickets to `expired` after a session ends
  *
  * Until then this stays empty; an artisan schedule that references missing jobs

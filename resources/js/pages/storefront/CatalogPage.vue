@@ -1,132 +1,74 @@
 <script setup lang="ts">
 /**
- * Афиша.
+ * Витрина: страница собирается из секций, настроенных в админке.
  *
- * Первый экран отвечает на вопрос «что происходит рядом и сколько это стоит»,
- * поэтому цена и дата видны сразу, без перехода. Категории — сегменты, а не
- * выпадающий список: выбрать «Кино» одним касанием быстрее, чем открыть список.
+ * Раньше афиша была жёстко зашитой разметкой — поменять порядок блоков можно
+ * было только в коде. Теперь страница — рендер конфига: состав, порядок,
+ * заголовки и поведение виджетов задаёт организатор в конструкторе, а здесь
+ * только обход секций.
+ *
+ * Если секций нет (организатор удалил все), показываем минимальную афишу:
+ * пустая витрина — состояние, из которого непонятно, как вернуть блоки,
+ * поэтому мы его не допускаем.
  */
-import { computed, ref } from 'vue'
-import { useRoute } from 'vue-router'
-import EventCard from '@/components/storefront/EventCard.vue'
-import NEmptyState from '@/components/ui/NEmptyState.vue'
-import NSegmented from '@/components/ui/NSegmented.vue'
-import { get } from '@/lib/api'
-import type { EventCard as EventCardType } from '@/lib/types'
+import { computed, onMounted, watch } from 'vue'
+import SectionShell from '@/components/storefront/widgets/SectionShell.vue'
+import { isFlushWidget, widgetComponent } from '@/components/storefront/widgets/index'
+import { useStorefrontStore } from '@/stores/storefront'
+import { useCatalogStore } from '@/stores/catalog'
+import { createSection, setting, type StorefrontSection } from '@/lib/storefront'
 
-const route = useRoute()
-const category = ref('Все')
-const query = computed(() => String(route.query.q ?? '').toLowerCase())
+const storefront = useStorefrontStore()
+const catalog = useCatalogStore()
 
-/* Реальные события из API: /api/v1/events?status=published */
-const events = ref<CatalogEvent[]>([])
-const loading = ref(true)
-const loadError = ref<string | null>(null)
-
-/* Проп EventCard — единственный источник правды для карточек афиши. */
-type CatalogEvent = EventCardType & {
-  category?: { name?: string } | null
-  venue?: { name?: string; city?: string } | null
-  organization?: { name?: string } | null
-}
-
-async function loadEvents(): Promise<void> {
-  loading.value = true
-  loadError.value = null
-  try {
-    const res = await get<{ data: CatalogEvent[] }>('/events?status=published&per_page=100')
-    // API может вернуть как { data: [...] }, так и голый массив (вложенный envelope).
-    const inner = res.data as unknown as { data?: CatalogEvent[] } | CatalogEvent[]
-    events.value = Array.isArray(inner) ? inner : (inner as { data: CatalogEvent[] }).data ?? []
-  } catch (e) {
-    loadError.value = e instanceof Error ? e.message : String(e)
-    events.value = []
-  } finally {
-    loading.value = false
-  }
-}
-loadEvents()
-
-/* Категории строим из реальных данных + «Все» */
-const categories = computed(() => {
-  const set = new Set<string>()
-  for (const it of events.value) {
-    const name = it.category?.name
-    if (name) set.add(name)
-  }
-  return ['Все', ...set]
+onMounted(() => {
+  void catalog.load()
+  if (!storefront.config.sections.length) void storefront.load()
 })
 
-const segments = computed(() => categories.value.map((c) => ({ value: c, label: c })))
-
-const filteredEvents = computed(() => {
-  const q = query.value
-  return events.value.filter((event) => {
-    const byCategory = category.value === 'Все' || (event.category?.name ?? '') === category.value
-    const title = event.title ?? ''
-    const venue = event.venue?.name ?? ''
-    const city = event.venue?.city ?? ''
-    const byQuery = !q || title.toLowerCase().includes(q) || venue.toLowerCase().includes(q) || city.toLowerCase().includes(q)
-    return byCategory && byQuery
+const sections = computed<StorefrontSection[]>(() => {
+  // «Категории» в авто-режиме не показываем, когда у мероприятий нет жанров:
+  // иначе на витрине висит заголовок «Куда пойти» и под ним ничего.
+  const list = storefront.sections.filter((section) => {
+    if (section.type !== 'categories') return true
+    if (setting<string>(section.settings, 'source', 'auto') !== 'auto') return true
+    return catalog.categories.length > 0
   })
+
+  return list.length ? list : [createSection('hero'), createSection('posters', 'Афиша')]
 })
 
-function resetFilters(): void {
-  category.value = 'Все'
-}
+/** Иконка сайта и заголовок вкладки — из брендинга площадки. */
+watch(
+  () => [storefront.config.branding.name, storefront.config.branding.faviconUrl] as const,
+  ([name, favicon]) => {
+    if (name) document.title = `${name} — афиша мероприятий`
+    if (favicon) {
+      let link = document.querySelector<HTMLLinkElement>('link[rel="icon"]')
+      if (!link) {
+        link = document.createElement('link')
+        link.rel = 'icon'
+        document.head.appendChild(link)
+      }
+      link.href = favicon
+    }
+  },
+  { immediate: true },
+)
 </script>
 
 <template>
   <div>
-    <!-- Герой: задаёт тон витрине, но не отнимает место у афиши -->
-    <section class="relative overflow-hidden border-b border-line">
-      <div class="pointer-events-none absolute inset-0 bg-stage" aria-hidden="true" />
-      <div class="relative mx-auto max-w-content px-4 py-10 sm:px-6 sm:py-14">
-        <p class="mb-3 inline-flex items-center gap-2 rounded-full border border-brand-500/30 bg-brand-500/10 px-3 py-1 text-xs font-medium text-brand-300">
-          <span class="h-1.5 w-1.5 rounded-full bg-brand-400 animate-pulse-ring" aria-hidden="true" />
-          Билеты без наценки за кассу
-        </p>
-        <h1 class="max-w-2xl text-balance text-4xl font-bold leading-tight tracking-tight text-content sm:text-5xl">
-          Выберите событие —<br />
-          <span class="bg-brand-gradient bg-clip-text text-transparent">место найдём на схеме зала</span>
-        </h1>
-        <p class="mt-4 max-w-xl text-pretty text-base text-muted">
-          Реальная рассадка, честные цены и билет с QR, который контролёр считает даже без интернета.
-        </p>
-      </div>
-    </section>
-
-    <!-- Фильтры -->
-    <div class="sticky top-16 z-30 border-b border-line bg-canvas/85 backdrop-blur">
-      <div class="mx-auto max-w-content overflow-x-auto px-4 py-3 sm:px-6 no-scrollbar">
-        <NSegmented v-model="category" :segments="segments" aria-label="Категории событий" size="sm" />
-      </div>
-    </div>
-
-    <!-- Сетка -->
-    <div class="mx-auto max-w-content px-4 py-6 sm:px-6">
-      <p class="mb-4 text-sm text-subtle">
-              {{ filteredEvents.length }} {{ filteredEvents.length === 1 ? 'событие' : 'событий' }}
-              <template v-if="query"> по запросу «{{ query }}»</template>
-            </p>
-
-      <div v-if="loading" class="py-10 text-sm text-subtle">Загрузка афиши…</div>
-
-          <div v-else-if="loadError" class="surface-card py-6 text-sm text-danger-500">Не удалось загрузить события: {{ loadError }}</div>
-
-          <div v-else-if="filteredEvents.length" class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              <EventCard v-for="event in filteredEvents" :key="event.id" :event="event" />
-            </div>
-
-      <NEmptyState
-        v-else
-        class="surface-card mt-2"
-        icon="⌕"
-        title="Ничего не нашлось"
-        description="Попробуйте другую категорию или сбросьте фильтры — возможно, событие ещё в черновике."
-        action-label="Сбросить фильтры"
-        @action="resetFilters"
-      />
-    </div>
+    <template v-for="(section, index) in sections" :key="section.id">
+      <SectionShell
+        v-if="widgetComponent(section.type)"
+        :title="section.title"
+        :subtitle="section.subtitle"
+        :flush="isFlushWidget(section.type)"
+        :tight="index === sections.length - 1"
+      >
+        <component :is="widgetComponent(section.type)" :section="section" />
+      </SectionShell>
+    </template>
   </div>
 </template>

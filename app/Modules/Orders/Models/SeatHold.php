@@ -6,6 +6,7 @@ namespace Nabilet\Modules\Orders\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Nabilet\Core\Support\HoldGrace;
 use Nabilet\Modules\Inventory\Models\InventoryItem;
 use Nabilet\Modules\Cart\Models\Cart;
 
@@ -81,16 +82,35 @@ class SeatHold extends Model
     }
 
     /**
-     * Check if hold can be converted to order
+     * Check if hold can be converted to order.
+     *
+     * Тонкая обёртка над `HoldGrace`: само правило («`expires_at` плюс
+     * grace-окно») живёт в `Nabilet\Core\Support\HoldGrace`, а не здесь. Раньше
+     * метод повторял арифметику окна и условие `isFuture() || now()->lt(…)` —
+     * это была вторая копия правила, которая могла разойтись с
+     * `SeatHoldLifecycle` и с sweeper'ом. Расхождение стоило бы покупателю
+     * места, за которое он уже заплатил.
+     *
+     * Сейчас метод никем не вызывается: проверку в момент оплаты делает
+     * `SeatHoldLifecycle::isHoldConvertible()`. Оставлен как выражение того же
+     * правила на уровне модели. Если потребитель так и не появится — удалить
+     * (см. docs/CODE-QUALITY-GUIDE.md §9, P1.9.9).
      */
     public function isConvertible(): bool
     {
-        if (!$this->isActive()) {
-            return false;
-        }
+        return $this->isActive() && HoldGrace::isWithinGrace($this->expires_at);
+    }
 
-        // Allow grace period of 5 minutes after expiry for payment completion
-        $gracePeriod = $this->expires_at->copy()->addMinutes(5);
-        return $this->expires_at->isFuture() || now()->lt($gracePeriod);
+    /**
+     * Grace-окно после истечения холда, в минутах.
+     *
+     * Делегат к `HoldGrace::minutes()`. Ключ конфига читается ровно в одном
+     * месте — иначе у sweeper'а, вебхука и модели появилось бы три разных
+     * значения. Оставлен как публичная точка входа для кода, которому нужно
+     * только число.
+     */
+    public static function graceMinutes(): int
+    {
+        return HoldGrace::minutes();
     }
 }

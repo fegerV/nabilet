@@ -10,10 +10,13 @@ declare(strict_types=1);
  *
  * WHY THIS EXISTS
  *   This dependency-free check compares the Eloquent layer under
- *   `app/Modules/{module}/Models/` with the canonical SQL DDL without booting Laravel or
- *   opening a database connection. It catches invalid table/fillable/cast names,
- *   but it does not prove that a runtime query, relation or migration works; those
- *   still need PHP/MySQL integration tests.
+ *   `app/Modules/{module}/Models/` with the canonical SQL DDL plus explicitly
+ *   declared application-owned additive columns. It does so without booting Laravel
+ *   or opening a database connection. Each extension must point to a migration whose
+ *   exact table/column declaration is verified below; this is not a general drift
+ *   allowlist. The check catches invalid table/fillable/cast names, but it does not
+ *   prove that a runtime query, relation or migration works; those still need
+ *   PHP/MySQL integration tests.
  *
  *   This project has already paid for schema-name drift once: middleware read
  *   `key`, `response_code` and `updated_at`, none of which existed. Checking model
@@ -53,6 +56,24 @@ const EXPECTED_TABLES = 64;
 const EXPECTED_COLUMNS = 684;
 
 /**
+ * Application-owned additions to the Core schema, each tied to its owning migration.
+ * These are included only after the migration's exact declaration is verified. Keep
+ * this list minimal; a stale or renamed declaration must fail instead of masking drift.
+ *
+ * @var list<array{table: string, column: string, migration: string, pattern: string}>
+ */
+const APPLICATION_SCHEMA_EXTENSIONS = [
+    [
+        'table' => 'hall_schema_versions',
+        'column' => 'revision',
+        'migration' => 'database/migrations/2026_10_06_000100_harden_hall_schema_lifecycle.php',
+        'pattern' => '~Schema::table\\(\\s*[\'\"]hall_schema_versions[\'\"]\\s*,[\\s\\S]*?'
+            . '\\$table->unsignedBigInteger\\(\\s*[\'\"]revision[\'\"]\\s*\\)'
+            . '\\s*->nullable\\(\\)\\s*->after\\(\\s*[\'\"]schema_json[\'\"]\\s*\\)~',
+    ],
+];
+
+/**
  * Fields the generated models declare that the schema does not have.
  *
  * Grouped by model. The reason is shared per model because the cause is shared:
@@ -64,6 +85,12 @@ const EXPECTED_COLUMNS = 684;
  *
  * @var array<string, array<string, string>>
  */
+const APPLICATION_EXTENSION_FIELDS = [
+    'HallSchemaVersion' => [
+        'revision' => 'optimistic-lock token owned by the Laravel application migration 2026_10_06_000100; checked for nullable/no-default in verify-migrations.php and deliberately excluded from the standalone Core bundle',
+    ],
+];
+
 const INVENTED_FIELDS = [
     'AbAssignment' => [
         'ab_experiment_id' => 'names ab_experiment_id/ab_variant_id/visitor_id; ab_assignments stores the experiment and variant as experiment_id/variant_id',
@@ -256,6 +283,56 @@ function parseDdl(string $file): array
 }
 
 /**
+ * Add only application columns whose owning migration still declares them exactly.
+ *
+ * @param array<string, list<string>> $tables
+ * @return array<string, list<string>>
+ */
+function applyApplicationSchemaExtensions(string $root, array $tables): array
+{
+    foreach (APPLICATION_SCHEMA_EXTENSIONS as $extension) {
+        $table = $extension['table'];
+        $column = $extension['column'];
+        $migrationPath = $root . '/' . $extension['migration'];
+
+        if (! isset($tables[$table])) {
+            throw new RuntimeException(sprintf(
+                'Application extension %s.%s targets a table absent from the Core schema',
+                $table,
+                $column,
+            ));
+        }
+
+        if (! is_file($migrationPath)) {
+            throw new RuntimeException('Application extension migration is missing: ' . $extension['migration']);
+        }
+
+        $migration = file_get_contents($migrationPath);
+
+        if ($migration === false || ! preg_match($extension['pattern'], $migration)) {
+            throw new RuntimeException(sprintf(
+                'Application extension %s.%s is no longer declared by %s',
+                $table,
+                $column,
+                $extension['migration'],
+            ));
+        }
+
+        if (in_array($column, $tables[$table], true)) {
+            throw new RuntimeException(sprintf(
+                'Application extension %s.%s is already in the Core DDL; remove the duplicate extension entry',
+                $table,
+                $column,
+            ));
+        }
+
+        $tables[$table][] = $column;
+    }
+
+    return $tables;
+}
+
+/**
  * Every model file under app/Modules.
  *
  * @return list<string>
@@ -357,6 +434,9 @@ if (count($tables) !== EXPECTED_TABLES || $columnCount !== EXPECTED_COLUMNS) {
     exit(1);
 }
 
+$tables = applyApplicationSchemaExtensions($root, $tables);
+$columnCount = array_sum(array_map('count', $tables));
+
 $models = findModels($root);
 $rootPrefix = str_replace('\\', '/', $root) . '/';
 
@@ -367,13 +447,19 @@ if ($models === []) {
     exit(1);
 }
 
-printf("  Schema: %d tables, %d columns\n", count($tables), $columnCount);
+printf(
+    "  Core schema: %d tables, %d columns; verified application extensions: %d column(s)\n",
+    count($tables),
+    EXPECTED_COLUMNS,
+    count(APPLICATION_SCHEMA_EXTENSIONS),
+);
 printf("  Models: %d\n\n", count($models));
 
 $unknownTables = [];
 $unknownFields = [];
 $noTable = [];
 $checkedFields = 0;
+$applicationExtensionsSeen = [];
 
 /**
  * FQCN => source, for every model we scan.
@@ -467,7 +553,27 @@ foreach ($models as $path) {
     foreach (array_unique($declared) as $field) {
         $checkedFields++;
 
-        if ($field === 'id' || in_array($field, $tables[$table], true)) {
+        if ($field === 'id') {
+            continue;
+        }
+
+        if (isset(APPLICATION_EXTENSION_FIELDS[$class][$field])) {
+            if (!in_array($field, $tables[$table], true)) {
+                $unknownFields[$class . '.' . $field] = sprintf(
+                    '%s  %s -> %s.%s (declared application extension is not present in parsed schema)',
+                    str_pad($rel, 52),
+                    $class,
+                    $table,
+                    $field,
+                );
+            } else {
+                $applicationExtensionsSeen[$class][$field] = true;
+            }
+
+            continue;
+        }
+
+        if (in_array($field, $tables[$table], true)) {
             continue;
         }
 
@@ -489,6 +595,21 @@ foreach ($models as $path) {
             $table,
             $field
         );
+    }
+}
+
+$staleApplicationExtensions = [];
+foreach (APPLICATION_EXTENSION_FIELDS as $class => $fields) {
+    foreach ($fields as $field => $reason) {
+        if (!isset($applicationExtensionsSeen[$class][$field])) {
+            $staleApplicationExtensions[] = $class . '.' . $field . ' — ' . $reason;
+        }
+    }
+}
+
+if ($staleApplicationExtensions !== []) {
+    foreach ($staleApplicationExtensions as $extension) {
+        $unknownFields['stale:' . $extension] = 'stale application extension entry: ' . $extension;
     }
 }
 

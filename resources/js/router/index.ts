@@ -67,6 +67,14 @@ const routes: RouteRecordRaw[] = [
               name: 'admin-hall-editor',
               component: () => import('@/pages/hall-editor/HallEditorPage.vue'),
             },
+      // Конструктор витрины: объявлен до :section, иначе catch-all съедал бы путь.
+      { path: 'storefront', name: 'admin-storefront', component: () => import('@/pages/admin/AdminStorefrontPage.vue') },
+      // Реальные разделы вместо заглушек — на свои эндпоинты.
+      { path: 'tickets', name: 'admin-tickets', component: () => import('@/pages/admin/AdminTicketsPage.vue') },
+      { path: 'payments', name: 'admin-payments', component: () => import('@/pages/admin/AdminPaymentsPage.vue') },
+      { path: 'users', name: 'admin-users', component: () => import('@/pages/admin/AdminUsersPage.vue') },
+      { path: 'analytics', name: 'admin-analytics', component: () => import('@/pages/admin/AdminAnalyticsPage.vue') },
+      { path: 'integrations', name: 'admin-integrations', component: () => import('@/pages/admin/AdminIntegrationsPage.vue') },
       { path: ':section', name: 'admin-section', component: () => import('@/pages/admin/AdminPlaceholderPage.vue') },
     ],
   },

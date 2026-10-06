@@ -6,6 +6,7 @@ namespace Nabilet\Modules\Payments\Services;
 
 use Nabilet\Core\Errors\DomainRuleViolation;
 use Nabilet\Core\StateMachine\StateMachine;
+use Nabilet\Core\Support\HoldGrace;
 use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Orders\Models\SeatHold;
 use Nabilet\Modules\Orders\Services\OrderService;
@@ -14,6 +15,7 @@ use Nabilet\Modules\Payments\Models\Payment;
 use Nabilet\Modules\Payments\Repositories\PaymentRepository;
 use Nabilet\Modules\Payments\StateMachines\PaymentStateMachine;
 use Nabilet\Modules\Inventory\Services\HoldSweeper;
+use Nabilet\Modules\Inventory\Services\SeatHoldLifecycle;
 use Nabilet\Modules\Tickets\Services\TicketService;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
@@ -40,6 +42,14 @@ class PaymentService
 
     public function __construct(
         protected PaymentRepository $repository,
+        // Две разные роли холда, отсюда две зависимости (P2):
+        //  - `$holdLifecycle` — точечная проверка/перевод ОДНОГО холда при
+        //    обработке вебхука (`isHoldConvertible`, `markAsConverted`);
+        //  - `$holdSweeper` — пакетный проход по всем холдам, который нужно
+        //    дёрнуть, когда платёж упал и места надо вернуть немедленно, не
+        //    дожидаясь ближайшего запуска Cron.
+        // Раньше обе роли жили в одном классе, и вызывающий код не различал их.
+        protected SeatHoldLifecycle $holdLifecycle,
         protected HoldSweeper $holdSweeper,
         protected OrderService $orders,
         protected PaymentProviderRegistry $providers,
@@ -404,7 +414,8 @@ class PaymentService
 
     /**
      * Validate that all holds for an order are still convertible.
-     * Uses HoldSweeper's isHoldConvertible() method with proper locking.
+     * Uses SeatHoldLifecycle::isHoldConvertible() — точечную проверку одного
+     * холда, а не пакетный `HoldSweeper`.
      *
      * A13 (мертвая ветка): раньше брался $order->items()->first()?->cart_id —
      * у order_items колонки cart_id нет, поэтому валидация молча скатывалась в
@@ -412,8 +423,8 @@ class PaymentService
      *  - источник истины — orders.cart_id (миграция 2026_09_29);
      *  - если по корзине есть активные seat_holds — проверяем каждый;
      *  - если холдов нет вовсе (легаси-заказы) — фолбэк на carts.expires_at +
-     *    grace-окно HoldSweeper (5 минут), чтобы не отклонять платежи, созданные
-     *    до введения материализованных холдов.
+     *    grace-окно (`HoldGrace`), чтобы не отклонять платежи, созданные до
+     *    введения материализованных холдов.
      */
     protected function validateHoldsForOrder(Order $order): bool
     {
@@ -429,7 +440,7 @@ class PaymentService
             ->get();
 
         foreach ($holds as $hold) {
-            if (!$this->holdSweeper->isHoldConvertible($hold->id)) {
+            if (!$this->holdLifecycle->isHoldConvertible($hold->id)) {
                 return false;
             }
         }
@@ -447,7 +458,11 @@ class PaymentService
 
         $now = \Carbon\CarbonImmutable::now();
 
-        return $now->lt(\Carbon\CarbonImmutable::parse($cartExpiresAt)->addMinutes(5));
+        // То же grace-окно, что и в sweeper'е/вебхуке — из общего класса
+        // `HoldGrace`, а не литералом и не через повторную арифметику: иначе
+        // «оплата в последнюю секунду» проходит здесь, но место уже освобождено
+        // sweeper'ом.
+        return HoldGrace::isWithinGrace(\Carbon\CarbonImmutable::parse($cartExpiresAt), $now);
     }
 
     /**
@@ -467,7 +482,7 @@ class PaymentService
             ->get();
 
         foreach ($holds as $hold) {
-            $this->holdSweeper->markAsConverted($hold->id);
+            $this->holdLifecycle->markAsConverted($hold->id);
         }
     }
 

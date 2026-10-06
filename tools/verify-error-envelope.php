@@ -63,6 +63,13 @@ const ACCEPTED = [
         'Console/queue service: log context and a returned summary array, not an HTTP body.',
     'Modules/Inventory/Services/HoldSweeper.php#E2' =>
         'Console/queue service: log context and a returned summary array, not an HTTP body.',
+
+    // The order-expiry half of the sweep, extracted from `HoldSweeper` (P2). The
+    // accepted violation moved with the code: `'error' => $e->getMessage()` here is
+    // the context of a `Log::error()` for one failed order inside a Cron run, not a
+    // response body. Same reasoning as the two entries above, same call site lineage.
+    'Modules/Orders/Services/StaleOrderExpirer.php#E2' =>
+        'Console/queue service (extracted from HoldSweeper): log context for one failed order, not an HTTP body.',
 ];
 
 /** The only keys the §66 envelope defines inside `error`. */

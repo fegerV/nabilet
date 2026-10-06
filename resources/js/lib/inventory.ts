@@ -13,6 +13,21 @@
 
 import { request, get, send } from './api'
 
+/**
+ * Максимум билетов за один заказ — ЗАПАСНОЕ значение.
+ *
+ * Основной источник — сервер: `GET /inventory` отдаёт лимит в
+ * `meta.max_tickets_per_order`, и витрина использует именно его
+ * (см. `fetchInventory` → `maxTicketsPerOrder`). Константа нужна только как
+ * фолбэк, если ответ пришёл от старой сборки API без этого поля.
+ *
+ * Раньше значение было ЕДИНСТВЕННЫМ и жёстко продублированным здесь, в дефолте
+ * `SeatMap` и в тексте уведомления. Снижение лимита на сервере тогда давало
+ * «кнопка нажимается, а запрос отвергается 422-м». Дублировать его заново
+ * нельзя: меняйте `CHECKOUT_MAX_ITEMS` на сервере.
+ */
+export const MAX_TICKETS_PER_ORDER = 10
+
 /** Статусы inventory_items на бэкенде (InventoryItemStateMachine + CartService). */
 export type InventoryStatus = 'available' | 'held' | 'sold_out' | 'sold' | 'blocked' | 'disabled' | 'unavailable' | string
 
@@ -32,7 +47,11 @@ export interface InventoryItem {
   seat?: {
     id: number
     row_id?: number
-    number?: number
+    /** Настоящий НОМЕР ряда (`hall_rows.number` = 1, 2, …). НЕ `row_id`. */
+    row_number?: number | string | null
+    /** Имя сектора из схемы зала («Партер», «Стол 1»). */
+    sector_name?: string | null
+    number?: number | string
     label?: string
     type?: string
     x?: number | string
@@ -47,6 +66,11 @@ export interface InventoryResult {
   total: number
   /** True, если сервер отдал не все места (мы дошли до лимита страниц). */
   truncated: boolean
+  /**
+   * Лимит билетов на заказ, каким его видит СЕРВЕР (`meta.max_tickets_per_order`).
+   * Фолбэк — `MAX_TICKETS_PER_ORDER`, если поле не пришло.
+   */
+  maxTicketsPerOrder: number
 }
 
 const INVENTORY_PAGE_SIZE = 500
@@ -63,24 +87,33 @@ export async function fetchInventory(sessionId: number | string): Promise<Invent
   let total = 0
   let lastPage = 1
   let page = 1
+  // Лимит приходит вместе с первой страницей; если сервер его не отдал
+  // (старая сборка API) — остаётся фолбэк-константа.
+  let maxTicketsPerOrder = MAX_TICKETS_PER_ORDER
 
   for (;;) {
-    const res = await get<InventoryItem[], { current_page: number; per_page: number; total: number; last_page: number }>(
-      `/inventory?session_id=${sessionId}&per_page=${INVENTORY_PAGE_SIZE}&page=${page}`,
-    )
+    const res = await get<
+      InventoryItem[],
+      { current_page: number; per_page: number; total: number; last_page: number; max_tickets_per_order?: number }
+    >(`/inventory?session_id=${sessionId}&per_page=${INVENTORY_PAGE_SIZE}&page=${page}`)
     // Laravel paginator: { data: [...], meta: {...} }. Иначе data — уже массив.
-    const maybe = res as unknown as { data: InventoryItem[] | { data?: InventoryItem[] }; meta?: { total?: number; last_page?: number } }
+    const maybe = res as unknown as {
+      data: InventoryItem[] | { data?: InventoryItem[] }
+      meta?: { total?: number; last_page?: number; max_tickets_per_order?: number }
+    }
     const inner = maybe.data
     const list = Array.isArray(inner) ? inner : ((inner as { data?: InventoryItem[] })?.data ?? [])
     if (!Array.isArray(list)) break
     items.push(...list)
     total = Number(maybe.meta?.total ?? items.length) || items.length
     lastPage = Number(maybe.meta?.last_page ?? 1) || 1
+    const serverLimit = Number(maybe.meta?.max_tickets_per_order)
+    if (Number.isFinite(serverLimit) && serverLimit >= 1) maxTicketsPerOrder = Math.floor(serverLimit)
     if (list.length === 0 || page >= lastPage || page >= INVENTORY_MAX_PAGES) break
     page += 1
   }
 
-  return { items, total, truncated: items.length < total }
+  return { items, total, truncated: items.length < total, maxTicketsPerOrder }
 }
 
 /** Ответ addItem/GET /cart — форма корзины, которую понимает клиент. */
@@ -100,8 +133,8 @@ export interface ServerCart {
   total_amount?: string | number
   currency?: string
   items?: Array<{
-    /** public_id (ULID) из CartItemResource — НЕ годится для DELETE-роута. */
-    id?: string
+    /** `cart_items.id` — именно этот id ждёт `DELETE /cart/items/{id}`. */
+    id?: number | string
     quantity?: number
     unit_price?: string | number
     inventory_item?: { id?: string | number; type?: string; seat?: { number?: number; row?: number; sector?: string } | null } | null
