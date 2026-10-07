@@ -9,7 +9,7 @@
 C:\Project\nabilet
 ├─ app/Modules/            ← 11 модулей Laravel, API почти готов
 ├─ resources/js/           ← Vue 3 + Vite + Pinia
-│  ├─ lib/                 ← api.ts (клиент), inventory.ts, hall.ts, metrika.ts (Метрика→Директ), mock.ts (остаточные импорты — убрать)
+│  ├─ lib/                 ← api.ts (клиент), inventory.ts, hall.ts, metrika.ts (Метрика→Директ), mock.ts (орфановый — удалить на этапе 4)
 │  ├─ components/ui/       ← свой UI-кит: NButton, NInput, NDataTable, NModal...
 │  ├─ components/seat/     ← SeatMap, SeatLegend, OrderSummary
 │  ├─ pages/storefront/    ← витрина (Catalog, Event, SeatSelection, Checkout...)
@@ -27,7 +27,7 @@ C:\Project\nabilet
 - Витрина переведена на API: Catalog, EventPage, SeatSelection, Checkout. ✅
 - SEO-страницы по slug: `GET /event/{slug}` + `GET /event/{slug}/{publicId}` + JSON-LD. ✅
 - Холд/снятие/checkout работают через API (атомарный decrement, финализация в sold). ✅
-- Моки в витрине убраны полностью; `mock.ts` остался в двух импортах вне витрины (`AdminDashboardPage.vue`, `TicketsPage.vue`) — убрать на этапе 4. ⚠️
+- Моки в витрине убраны полностью; `lib/mock.ts` **больше никем не импортируется** (только упоминание в комментарии `TicketsPage.vue`) — удалить на этапе 4. ⚠️
 - API-клиент `lib/api.ts` (baseUrl, ошибки, токен) — готов. ✅
 
 ## Roadmap (этапы)
@@ -84,7 +84,12 @@ C:\Project\nabilet
 
 ### Этап 4. Чистка и релиз
 - [ ] Удалить `lib/mock.ts` полностью (никто не импортирует)
+- [ ] Удалить демо-страницы `public/ticket-builder.html` и `public/hall-editor.html` (отслеживаются в git, содержат «заглушка»; не относятся к Vue SPA)
+- [ ] Убрать `AdminPlaceholderPage.vue` + роут `:section` (заменить реальными разделами или пометить experimental)
 - [ ] Проверить бандл: нет ли в admin-чанках моковых данных
+- [ ] **До реализации MVP-продажи:** транзакционная почта (подтверждение заказа + доставка билета) и исходящая доставка вебхуков подписчикам (`Http::post` + `RetryPolicy`) — сейчас отсутствуют (см. `PRODUCTION-READINESS.md` §3, пп. 5–6)
+- [ ] **Auth:** `forgot-password` / `reset-password` / `verify-email` в `AuthController` — сейчас `notImplemented` (3 эндпоинта)
+- [ ] **CI:** добавить прогон `php vendor/bin/phpunit` + `vitest run` + `docker build` (сейчас CI гонит только dependency-free верификаторы ядра)
 - [ ] Деплой-пакет: `npm run build` → dist/, ZIP с vendor/, установщик
 - [ ] На шаред-хостинге: проверить API, SPA, SEO-страницы, sitemap
 
