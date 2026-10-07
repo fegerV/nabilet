@@ -11,6 +11,7 @@ import { describe, expect, it } from 'vitest'
 import {
   EMPTY_BOUNDS,
   fitPoints,
+  fitSeatRadius,
   pointBounds,
   projectPoint,
 } from '../../../resources/js/lib/seatViewport'
@@ -91,6 +92,17 @@ describe('fitPoints', () => {
 
     expect(Number.isFinite(fit.scale)).toBe(true)
     expect(fit.scale).toBeGreaterThan(0)
+  })
+})
+
+describe('fitSeatRadius', () => {
+  it('keeps normalized dense seats distinct after projection', () => {
+    expect(fitSeatRadius([{ x: 10, y: 8 }, { x: 10.5, y: 8 }], 6)).toBe(2)
+  })
+
+  it('uses the maximum dot size for sparse maps and a single point', () => {
+    expect(fitSeatRadius([{ x: 0, y: 0 }, { x: 100, y: 100 }], 1)).toBe(6)
+    expect(fitSeatRadius([{ x: 2, y: 4 }], 1)).toBe(6)
   })
 })
 

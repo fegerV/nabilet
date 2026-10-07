@@ -25,6 +25,7 @@ import NBadge from '@/components/ui/NBadge.vue'
 import NSegmented from '@/components/ui/NSegmented.vue'
 import { useUiStore } from '@/stores/ui'
 import { money, plural } from '@/lib/format'
+import { buildSeatPricePalette } from '@/lib/hall'
 import { cn } from '@/lib/cn'
 import { ApiError, get, send } from '@/lib/api'
 import type {
@@ -1307,15 +1308,21 @@ let selectionLayer: Konva.Layer | null = null
 let observer: ResizeObserver | null = null
 
 const COLORS = {
-  standard: '#3B3468',
+  standard: '#24B8E8',
   vip: '#F5B417',
   accessible: '#2AA3FF',
   selected: '#6D4AFF',
-  stage: '#6D4AFF',
+  stage: '#F0F2F5',
 }
 
-function seatFill(seat: ESeat): string {
-  return COLORS[seat.kind]
+const seatPriceColors = computed(() => buildSeatPricePalette(
+  sectors.value.flatMap((sector) => sector.seats.map((seat) => sector.rowPrices[seat.row] ?? sector.priceMinor)),
+))
+const seatPriceLegend = computed(() => [...seatPriceColors.value].map(([price, color]) => ({ price, color })))
+
+function seatFill(seat: ESeat, sector: ESector): string {
+  const price = sector.rowPrices[seat.row] ?? sector.priceMinor
+  return seatPriceColors.value.get(price) ?? COLORS[seat.kind]
 }
 
 function draw(): void {
@@ -1441,22 +1448,22 @@ function draw(): void {
     } else if (s.kind === 'label' && s.text) {
       nodes.push(new Konva.Text({ text: s.text, fontSize: 14, fill: '#B0A0FF', opacity: stOpacity }))
     } else if (s.kind === 'table') {
-      nodes.push(new Konva.Rect({ width: s.width ?? 44, height: s.height ?? 32, cornerRadius: 6, fill: '#3B3468', stroke: '#8E74FF', strokeWidth: 1, opacity: stOpacity }))
-      nodes.push(new Konva.Text({ y: (s.height ?? 32) / 2 - 6, width: s.width ?? 44, align: 'center', text: 'Стол', fontSize: 10, fill: '#C9B8FF', listening: false, opacity: stOpacity }))
+      nodes.push(new Konva.Rect({ width: s.width ?? 44, height: s.height ?? 32, cornerRadius: 10, fill: '#F4F5F7', stroke: '#D5D9E0', strokeWidth: 1, opacity: stOpacity }))
+      nodes.push(new Konva.Text({ y: (s.height ?? 32) / 2 - 6, width: s.width ?? 44, align: 'center', text: 'Стол', fontSize: 10, fill: '#626B78', listening: false, opacity: stOpacity }))
     } else if (s.kind === 'stage') {
       nodes.push(new Konva.Rect({
         width: s.width ?? 260,
         height: s.height ?? 34,
         cornerRadius: [4, 4, 16, 16],
-        fillLinearGradientStartPoint: { x: 0, y: 0 },
-        fillLinearGradientEndPoint: { x: s.width ?? 260, y: 0 },
-        fillLinearGradientColorStops: [0, '#6D4AFF', 1, '#FF5C22'],
+        fill: COLORS.stage,
+        stroke: '#D5D9E0',
+        strokeWidth: 1,
         opacity: stOpacity,
       }))
-      nodes.push(new Konva.Text({ y: 10, width: s.width ?? 260, align: 'center', text: s.text || 'СЦЕНА', fontSize: 12, fontStyle: 'bold', letterSpacing: 3, fill: '#FFFFFF', listening: false, opacity: stOpacity }))
+      nodes.push(new Konva.Text({ y: 10, width: s.width ?? 260, align: 'center', text: s.text || 'СЦЕНА', fontSize: 12, fontStyle: 'bold', letterSpacing: 2, fill: '#596273', listening: false, opacity: stOpacity }))
     } else if (s.kind === 'standing' && s.width && s.height) {
-      nodes.push(new Konva.Rect({ width: s.width, height: s.height, fill: 'rgba(58,50,112,0.55)', stroke: '#C9A0FF', strokeWidth: 2, dash: [8, 5], opacity: stOpacity }))
-      if (s.text) nodes.push(new Konva.Text({ x: -40, y: -22, width: s.width + 80, align: 'center', text: s.text, fontSize: 15, fontStyle: 'bold', fill: '#FFFFFF', listening: false, opacity: stOpacity }))
+      nodes.push(new Konva.Rect({ width: s.width, height: s.height, fill: 'rgba(234,237,241,0.72)', stroke: '#AEB5C0', strokeWidth: 1.5, dash: [7, 5], opacity: stOpacity }))
+      if (s.text) nodes.push(new Konva.Text({ x: -40, y: -22, width: s.width + 80, align: 'center', text: s.text, fontSize: 13, fontStyle: 'bold', fill: '#596273', listening: false, opacity: stOpacity }))
     }
     if (nodes.length === 0) continue
     const isSelected = selectedStaticIds.value.has(s.id)
@@ -1564,72 +1571,82 @@ function draw(): void {
       }
     }
 
-    // Стоячая зона: сектор «Танцпол» (или все места в одной точке) →
-            // рисуем зону-овал, а не кучу перекрытых квадратиков.
-            const isDanceZone = /танцпол|dance/i.test(sector.name ?? '') ||
-              (sector.seats.length > 1 &&
-                sector.seats.every((p) => p.x === sector.seats[0].x && p.y === sector.seats[0].y))
-            if (isDanceZone && sector.seats.length > 0) {
-              if (typeof console !== 'undefined') console.log('[hall-editor] standing zone:', sector.name, sector.seats.length, sector.seats[0].x, sector.seats[0].y)
-              const cx = sector.seats[0].x + SEAT / 2
-              const cy = sector.seats[0].y + SEAT / 2
-              const R = 30 + Math.min(sector.seats.length, 10) * 3
-              group.add(
-                new Konva.Ellipse({
-                  x: cx,
-                  y: cy,
-                  radiusX: R,
-                  radiusY: R * 0.6,
-                  fill: 'rgba(42,36,80,0.65)',
-                  stroke: '#8E74FF',
-                  strokeWidth: 1,
-                  dash: [6, 4],
-                  listening: false,
-                }),
-              )
-              group.add(
-                new Konva.Text({
-                  x: cx + R + 6,
-                  y: cy - 6,
-                  text: `Танцпол · ${sector.seats.length} мест`,
-                  fontSize: 12,
-                  fill: '#E8E0FF',
-                  listening: false,
-                }),
-              )
-            }
+    // Наименование «Столы на танцполе» не делает сектор standing: столы остаются
+    // продаваемыми местами, а овал рисуем только для настоящей или вырожденной зоны.
+    const isTableSector = sector.shape === 'table' || sector.name.toLocaleLowerCase('ru').includes('стол')
+    const seatsCollapsed = sector.seats.length > 1
+      && sector.seats.every((seat) => seat.x === sector.seats[0].x && seat.y === sector.seats[0].y)
+    const isDanceZone = !isTableSector && sector.seats.length > 0 && (
+      sector.type === 'standing' || /^(танцпол|dance(?:\s*floor)?)$/i.test(sector.name.trim()) || seatsCollapsed
+    )
+    if (isDanceZone) {
+      const cx = sector.seats[0].x + SEAT / 2
+      const cy = sector.seats[0].y + SEAT / 2
+      const R = 30 + Math.min(sector.seats.length, 10) * 3
+      group.add(new Konva.Ellipse({
+        x: cx,
+        y: cy,
+        radiusX: R,
+        radiusY: R * 0.6,
+        fill: 'rgba(234,237,241,0.72)',
+        stroke: '#AEB5C0',
+        strokeWidth: 1,
+        dash: [6, 4],
+        listening: false,
+      }))
+      group.add(new Konva.Text({
+        x: cx + R + 6,
+        y: cy - 6,
+        text: `Танцпол · ${sector.seats.length} мест`,
+        fontSize: 11,
+        fill: '#596273',
+        listening: false,
+      }))
+    }
 
             // Банкетный стол: рисуем «крышку» стола по центру кольца мест.
             if (sector.shape === 'table') {
               const t = tableLayout(sector)
-              group.add(
-                new Konva.Ellipse({
-                  x: t.cx,
-                  y: t.cy,
-                  radiusX: t.ring,
-                  radiusY: t.ring * 0.72,
-                  fill: 'rgba(38,32,70,0.92)',
-                  stroke: '#8E74FF',
-                  strokeWidth: 1.5,
+              const topWidth = Math.max(12, t.ring * 0.46)
+              const topHeight = Math.max(9, t.ring * 0.34)
+              group.add(new Konva.Ellipse({
+                x: t.cx,
+                y: t.cy,
+                radiusX: topWidth,
+                radiusY: topHeight,
+                fill: '#F4F5F7',
+                stroke: '#D5D9E0',
+                strokeWidth: 1,
+                listening: false,
+              }))
+              const tableNumber = sector.name.match(/стол\s*№?\s*(\d+)/i)?.[1]
+              if (tableNumber) {
+                group.add(new Konva.Text({
+                  x: t.cx - topWidth,
+                  y: t.cy - 6,
+                  width: topWidth * 2,
+                  text: tableNumber,
+                  align: 'center',
+                  fontSize: 11,
+                  fontStyle: 'bold',
+                  fill: '#626B78',
                   listening: false,
-                }),
-              )
+                }))
+              }
             }
 
             for (const seat of sector.seats) {
               if (isDanceZone) break
               const isSelected = selectedSeatIds.value.has(seat.id)
-      const rect = new Konva.Rect({
+      const rect = new Konva.Circle({
         id: seat.id,
         name: 'seat',
-        x: seat.x,
-        y: seat.y,
-        width: SEAT,
-        height: SEAT,
-        cornerRadius: 5,
-        fill: isSelected ? COLORS.selected : seatFill(seat),
-        stroke: isSelected ? '#B0A0FF' : undefined,
-        strokeWidth: isSelected ? 1 : 0,
+        x: seat.x + SEAT / 2,
+        y: seat.y + SEAT / 2,
+        radius: SEAT / 2 - 1,
+        fill: isSelected ? COLORS.selected : seatFill(seat, sector),
+        stroke: isSelected ? '#FFFFFF' : 'rgba(22,35,56,0.18)',
+        strokeWidth: isSelected ? 1.5 : 1,
         // Групповое перемещение мест (§48): тянуть можно только выделенные;
         // drag отключается на уровне места, пока группа сектора неактивна.
         draggable: published.value === null && tool.value === 'select' && isSelected,
@@ -1653,8 +1670,8 @@ function draw(): void {
         }
       })
       rect.on('dragmove', () => {
-        const nx = Math.round(rect.x())
-        const ny = Math.round(rect.y())
+        const nx = Math.round(rect.x() - SEAT / 2)
+        const ny = Math.round(rect.y() - SEAT / 2)
         const before = seatDragBefore.get(seat.id)
         if (!before) return
         const dx = nx - before.x
@@ -1680,20 +1697,20 @@ function draw(): void {
 
             group.add(rect)
 
-            // Подпись номера места (мелкая, под квадратом) — при маленьком SEAT
-            // номер сбоку от квадрата почти нечитаем, поэтому под ним.
-            group.add(
-                          new Konva.Text({
-                            x: seat.x - 6,
-                            y: seat.y + SEAT + 1,
-                            width: SEAT + 12,
-                            text: String(seat.number),
-                            fontSize: 8,
-                            fill: 'rgba(176,160,255,0.55)',
-                            align: 'center',
-                            listening: false,
-                          }),
-                        )
+            // Номера показываем только у выделенного места: плотные карты остаются
+            // читаемыми на общем плане, но точный номер виден при работе с местом.
+            if (isSelected) {
+              group.add(new Konva.Text({
+                x: seat.x - 8,
+                y: seat.y + SEAT + 2,
+                width: SEAT + 16,
+                text: String(seat.number),
+                fontSize: 9,
+                fill: '#475569',
+                align: 'center',
+                listening: false,
+              }))
+            }
           }
 
     group.on('click', (e) => {
@@ -2296,6 +2313,12 @@ function setSeatKind(value: string): void {
               isLocked && 'cursor-default',
             )"
           />
+          <div v-if="seatPriceLegend.length" class="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-line px-3 py-2" aria-label="Цены мест на схеме">
+            <span class="text-2xs font-medium text-subtle">Цены:</span>
+            <span v-for="item in seatPriceLegend" :key="item.price" class="flex items-center gap-1.5 text-2xs text-muted">
+              <i class="size-2.5 rounded-full" :style="{ backgroundColor: item.color }" /> {{ money(item.price) }}
+            </span>
+          </div>
 
           <div class="flex flex-wrap items-center justify-between gap-2 border-t border-line px-3 py-2 text-2xs text-subtle">
             <span>

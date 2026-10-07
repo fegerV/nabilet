@@ -130,3 +130,35 @@ export function projectPoint(
     y: fit.offsetY + (y - fit.bounds.minY) * fit.scale,
   }
 }
+
+/**
+ * Подбирать радиус точки по фактическому шагу после вписывания координат.
+ * Импортёр Афиши может нормировать очень большой план до диапазона 0..60;
+ * постоянный радиус 6 тогда больше расстояния между креслами и сливает ряды.
+ */
+export function fitSeatRadius(
+  points: readonly { x: number; y: number }[],
+  scale: number,
+  maxRadius = 6,
+  minRadius = 2,
+): number {
+  const sorted = points
+    .filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y))
+    .map((point) => ({ x: point.x, y: point.y }))
+    .sort((a, b) => a.x - b.x || a.y - b.y)
+  if (sorted.length < 2) return maxRadius
+
+  let nearest = Number.POSITIVE_INFINITY
+  for (let i = 0; i < sorted.length - 1; i += 1) {
+    for (let j = i + 1; j < Math.min(sorted.length, i + 24); j += 1) {
+      const dx = (sorted[j].x - sorted[i].x) * scale
+      if (dx > maxRadius * 2) break
+      const dy = (sorted[j].y - sorted[i].y) * scale
+      const distance = Math.hypot(dx, dy)
+      if (distance > 0 && distance < nearest) nearest = distance
+    }
+  }
+
+  if (!Number.isFinite(nearest)) return maxRadius
+  return Math.min(maxRadius, Math.max(minRadius, nearest * 0.34))
+}

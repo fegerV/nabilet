@@ -32,11 +32,52 @@ export interface Sector {
   rows: Row[]
 }
 
-export const SEAT_SIZE = 22
-export const SEAT_GAP = 6
-export const ROW_GAP = 12
+/** Цвета свободных мест следуют ценовым уровням, как в Яндекс Афише. */
+export const SEAT_PRICE_PALETTE = ['#24B8E8', '#4FC45D', '#FFC928', '#63D4E9', '#D879B8', '#F27C5B'] as const
+
+/** Один цвет на один уникальный прайс: одинаковая цена читается одинаково на любой карте. */
+export function buildSeatPricePalette(prices: readonly number[]): Map<number, string> {
+  const tiers = [...new Set(prices.map(Number).filter(Number.isFinite).map(Math.round))].sort((a, b) => a - b)
+  return new Map(tiers.map((price, index) => [price, SEAT_PRICE_PALETTE[index % SEAT_PRICE_PALETTE.length]]))
+}
+
+export interface TableSeatPoint {
+  sectorName?: string | null
+  x: number
+  y: number
+}
+
+export interface TableMark {
+  name: string
+  x: number
+  y: number
+  ring: number
+  label: string
+}
+
+/** Собирает точки мест в отдельные круглые столы, не путая с standing-зонами. */
+export function groupTableSeatPoints(points: readonly TableSeatPoint[]): TableMark[] {
+  const groups = new Map<string, TableSeatPoint[]>()
+  for (const point of points) {
+    const name = String(point.sectorName ?? '')
+    if (!name.toLocaleLowerCase('ru').includes('стол')) continue
+    if (!groups.has(name)) groups.set(name, [])
+    groups.get(name)!.push(point)
+  }
+
+  return [...groups.entries()].map(([name, seats]) => {
+    const x = seats.reduce((sum, seat) => sum + seat.x, 0) / seats.length
+    const y = seats.reduce((sum, seat) => sum + seat.y, 0) / seats.length
+    const ring = Math.max(...seats.map((seat) => Math.hypot(seat.x - x, seat.y - y)), 0)
+    return { name, x, y, ring, label: name.match(/стол\s*№?\s*(\d+)/i)?.[1] ?? '' }
+  })
+}
+
+export const SEAT_SIZE = 16
+export const SEAT_GAP = 8
+export const ROW_GAP = 14
 const ROW_LABEL_WIDTH = 30
-const SECTOR_GAP = 40
+const SECTOR_GAP = 48
 
 /** Простой детерминированный ПСЧ: демо-данные должны быть одинаковыми при каждом рендере. */
 function makeRandom(seed: number) {

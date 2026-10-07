@@ -24,6 +24,7 @@ import {
   sectorHeight,
   seatLeft,
   seatTop,
+  buildSeatPricePalette,
   type Row,
   type Seat,
   type Sector,
@@ -99,6 +100,9 @@ const placed = computed<PlacedSeat[]>(() =>
     ),
   ),
 )
+
+const priceColors = computed(() => buildSeatPricePalette(placed.value.map(({ seat }) => seat.priceMinor)))
+const priceLegend = computed(() => [...priceColors.value].map(([price, color]) => ({ price, color })))
 
 /* ── Масштаб и панорама ─────────────────────────────────────────────── */
 
@@ -227,10 +231,12 @@ function onSeatKeydown(event: KeyboardEvent, index: number): void {
 </script>
 
 <template>
-  <div class="relative overflow-hidden rounded-xl border border-line bg-surface-2">
-    <!-- Подсветка сцены: якорь «верх = сцена» -->
-    <div class="pointer-events-none absolute inset-x-0 top-0 h-40 bg-stage" aria-hidden="true" />
-
+  <div class="relative overflow-hidden rounded-xl border border-line bg-surface">
+    <div v-if="priceLegend.length" class="relative z-10 flex flex-wrap gap-x-3 gap-y-1.5 border-b border-line px-3 py-2" aria-label="Цены мест">
+      <span v-for="item in priceLegend" :key="item.price" class="flex items-center gap-1.5 text-2xs text-muted">
+        <i class="size-2.5 rounded-full" :style="{ backgroundColor: item.color }" />{{ money(item.price) }}
+      </span>
+    </div>
     <!-- Масштаб -->
     <div class="absolute right-3 top-3 z-20 flex flex-col gap-1.5">
       <button
@@ -272,7 +278,7 @@ function onSeatKeydown(event: KeyboardEvent, index: number): void {
       >
         <!-- Сцена -->
         <div
-          class="stage-bar absolute left-1/2 top-6 flex h-11 w-64 -translate-x-1/2 items-center justify-center rounded-b-2xl rounded-t-md text-sm font-semibold uppercase tracking-[0.2em] text-white"
+          class="stage-bar absolute left-1/2 top-6 flex h-11 w-64 -translate-x-1/2 items-center justify-center rounded-b-2xl rounded-t-md text-sm font-semibold uppercase tracking-[0.2em] text-content"
         >
           Сцена
         </div>
@@ -305,12 +311,13 @@ function onSeatKeydown(event: KeyboardEvent, index: number): void {
           :id="`seat-${p.seat.id}`"
           :key="p.seat.id"
           type="button"
-          :class="cn('seat absolute', visualState(p.seat), !isPickable(p.seat) && 'pointer-events-none')"
+          :class="cn('seat absolute', visualState(p.seat), p.seat.state === 'free' && 'seat--price', !isPickable(p.seat) && 'pointer-events-none')"
           :style="{
             left: `${p.x}px`,
             top: `${p.y}px`,
             width: `${SEAT_SIZE}px`,
             height: `${SEAT_SIZE}px`,
+            '--seat-price-color': priceColors.get(p.seat.priceMinor) ?? '#24B8E8',
           }"
           :aria-label="ariaLabel(p)"
           :aria-pressed="selectedSet.has(p.seat.id)"
@@ -328,15 +335,10 @@ function onSeatKeydown(event: KeyboardEvent, index: number): void {
 /**
  * WCAG 2.2 SC 2.5.8 «Target Size (Minimum)»: зона нажатия ≥ 24×24 CSS px.
  *
- * Визуальный размер места — 22 px (`SEAT_SIZE`), и менять его нельзя: от него
- * считает всю геометрию `seatLeft()`/`seatTop()`, и в редакторе залов тоже.
- * Поэтому расширяем ТОЛЬКО зону нажатия на 1 px в каждую сторону — картинка
- * не сдвигается ни на пиксель.
- *
- * Перекрытие с соседями исключено арифметически: шаг места
- * `SEAT_SIZE + SEAT_GAP` = 22 + 6 = 28 px, расширенная зона занимает 24 px,
- * между зонами остаётся 4 px. Промах на чужое место (худший исход, чем
- * мелкая цель) невозможен.
+ * Видимая точка — 16 px, но область нажатия 24 px соответствует минимуму WCAG.
+ * Геометрический шаг 24 px (`SEAT_SIZE + SEAT_GAP`), поэтому соседние hit-area
+ * не перекрываются: увеличение зоны не меняет центр места и не перехватывает
+ * нажатия по соседним креслам.
  *
  * Стиль локальный, а не в `app.css`: `.seat` — ГЛОБАЛЬНЫЙ класс
  * (`resources/css/app.css`), его же навешивает `SeatLegend.vue` на образцы
@@ -347,6 +349,6 @@ function onSeatKeydown(event: KeyboardEvent, index: number): void {
 .seat::after {
   content: '';
   position: absolute;
-  inset: -1px;
+  inset: -4px;
 }
 </style>

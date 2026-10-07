@@ -12,7 +12,7 @@ import { cn } from '@/lib/cn'
 withDefaults(defineProps<{ compact?: boolean }>(), { compact: false })
 
 const SWATCH: Record<SeatState, string> = {
-  free: 'seat',
+  free: 'seat seat--price',
   selected: 'seat seat--selected',
   held: 'seat seat--held',
   sold: 'seat seat--sold',
@@ -35,7 +35,12 @@ const items = SEAT_LEGEND
     "
   >
     <li v-for="item in items" :key="item.state" class="flex items-center gap-1.5 text-muted">
-      <span :class="SWATCH[item.state]" class="h-3.5 w-3.5 flex-none !rounded-[3px] hover:transform-none" aria-hidden="true" />
+      <span
+        :class="SWATCH[item.state]"
+        class="h-3.5 w-3.5 flex-none !rounded-full hover:transform-none"
+        :style="item.state === 'free' ? { '--seat-price-color': '#24B8E8' } : undefined"
+        aria-hidden="true"
+      />
       {{ item.label }}
     </li>
   </ul>

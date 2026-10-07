@@ -15,7 +15,8 @@ import { computed, ref } from 'vue'
 import { money, plural } from '@/lib/format'
 import type { InventoryItem } from '@/lib/inventory'
 import { seatStateFromStatus, isSeatPickable } from '@/lib/seatStatus'
-import { fitPoints, projectPoint } from '@/lib/seatViewport'
+import { buildSeatPricePalette, groupTableSeatPoints, type TableMark } from '@/lib/hall'
+import { fitPoints, fitSeatRadius, projectPoint } from '@/lib/seatViewport'
 import { DANCE_BOX_HEIGHT, danceZoneLayout } from '@/lib/danceZone'
 
 /** Палитра состояний — согласована с CSS-классами seat--* и основной легендой. */
@@ -28,8 +29,7 @@ const STATE_FILL: Record<string, string> = {
 }
 
 const LEGEND_ITEMS: Array<{ state: string; label: string }> = [
-  { state: 'free', label: 'свободно' },
-  { state: 'selected', label: 'ваш выбор' },
+  { state: 'selected', label: 'выбрано' },
   { state: 'held', label: 'держит другой' },
   { state: 'sold', label: 'продано' },
   { state: 'unavailable', label: 'недоступно' },
@@ -74,8 +74,7 @@ const SVG_H = 400
 const PAD = 30
 /** Полоса сцены сверху: места не должны в неё заезжать. */
 const STAGE_H = 46
-/** Радиус места. */
-const SEAT_R = 7
+/** Радиус адаптируется к шагу после нормализации данных зала. */
 /**
  * Полоса зоны танцпола снизу и зазор до ближайшего места.
  *
@@ -102,6 +101,26 @@ const stage = { x: (SVG_W - 200) / 2, y: 12, w: 200, h: 30 }
 const seats = computed(() =>
   props.inventory.filter((i) => i.type === 'seat' && i.seat),
 )
+
+const priceColors = computed(() => buildSeatPricePalette(seats.value.map((item) => Number(item.price_amount ?? 0))))
+const priceLegend = computed(() => [...priceColors.value].map(([price, color]) => ({ price, color })))
+
+/** Центр и номер банкетного стола вычисляются из кольца мест — отдельная геометрия API не нужна. */
+const tableMarks = computed(() => groupTableSeatPoints(
+  seats.value.map((item) => ({
+    sectorName: item.seat?.sector_name,
+    x: Number(item.seat?.x ?? 0),
+    y: Number(item.seat?.y ?? 0),
+  })),
+))
+
+function tablePixel(mark: TableMark): { x: number; y: number; radius: number } {
+  const center = projectPoint(mark.x, mark.y, fit.value)
+  return {
+    ...center,
+    radius: Math.max(4, Math.min(12, mark.ring * fit.value.scale * 0.68)),
+  }
+}
 
 /**
  * Габариты и масштаб берём из ДАННЫХ, а не из констант.
@@ -134,6 +153,10 @@ const fit = computed(() =>
     },
   ),
 )
+const seatRadius = computed(() => fitSeatRadius(
+  seats.value.map((item) => ({ x: Number(item.seat?.x ?? 0), y: Number(item.seat?.y ?? 0) })),
+  fit.value.scale,
+))
 
 /**
  * Координаты места → пиксели SVG.
@@ -380,6 +403,9 @@ function seatState(item: InventoryItem): string {
 function seatFill(item: InventoryItem): string {
   const state = seatState(item)
   if (state === 'held') return 'url(#heldHatch)'
+  if (state === 'free') {
+    return priceColors.value.get(Math.round(Number(item.price_amount ?? 0))) ?? STATE_FILL.free
+  }
   return STATE_FILL[state] ?? STATE_FILL.unavailable
 }
 
@@ -404,13 +430,20 @@ function isPickable(item: InventoryItem): boolean {
 
 <template>
   <div class="overflow-hidden rounded-xl border border-line bg-surface-2">
-    <div class="flex flex-wrap items-center justify-between gap-3 px-3 py-2 text-2xs text-subtle">
-      <span>{{ seats.length }} мест · танцпол {{ dance?.available_quantity ?? 0 }} билетов</span>
-      <span class="text-layer flex flex-wrap gap-2">
-        <span v-for="l in LEGEND_ITEMS" :key="l.state" class="flex items-center gap-1">
-          <i class="inline-block size-2.5 rounded-[2px]" :style="{ background: STATE_FILL[l.state] }" /> {{ l.label }}
+    <div class="flex flex-col gap-2 border-b border-line px-3 py-2 text-2xs text-subtle">
+      <div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+        <span>{{ seats.length }} мест · танцпол {{ dance?.available_quantity ?? 0 }} билетов</span>
+        <span class="text-layer flex flex-wrap gap-x-3 gap-y-1">
+          <span v-for="item in priceLegend" :key="item.price" class="flex items-center gap-1.5">
+            <i class="inline-block size-2.5 rounded-full" :style="{ backgroundColor: item.color }" /> {{ money(item.price) }}
+          </span>
         </span>
-      </span>
+      </div>
+      <div class="flex flex-wrap gap-x-3 gap-y-1 text-layer">
+        <span v-for="l in LEGEND_ITEMS" :key="l.state" class="flex items-center gap-1.5">
+          <i class="inline-block size-2.5 rounded-full" :style="{ background: STATE_FILL[l.state] }" /> {{ l.label }}
+        </span>
+      </div>
     </div>
 
     <div class="relative">
@@ -467,8 +500,8 @@ function isPickable(item: InventoryItem): boolean {
           aria-label="Схема зала"
         >
           <!-- Сцена -->
-          <rect :x="stage.x" :y="stage.y" :width="stage.w" :height="stage.h" rx="4" fill="url(#stageGrad)" />
-          <text :x="SVG_W / 2" :y="stage.y + 21" text-anchor="middle" fill="#fff" font-size="13" font-weight="600">СЦЕНА</text>
+          <rect :x="stage.x" :y="stage.y" :width="stage.w" :height="stage.h" rx="5" fill="#F0F2F5" stroke="#D8DCE3" stroke-width="1" />
+          <text :x="SVG_W / 2" :y="stage.y + 21" text-anchor="middle" fill="#596273" font-size="12" font-weight="600" letter-spacing="1.2">СЦЕНА</text>
 
           <!-- Танцпол -->
           <g v-if="dance && danceRect">
@@ -484,13 +517,13 @@ function isPickable(item: InventoryItem): boolean {
               @keydown.enter.prevent="toggleDance"
               @keydown.space.prevent="toggleDance"
             />
-            <text :x="SVG_W / 2" :y="danceRect.titleY" text-anchor="middle" fill="#F0C060" font-size="14" font-weight="700">{{ danceText?.title }}</text>
-            <text :x="SVG_W / 2" :y="danceRect.priceY" text-anchor="middle" fill="#E8E0FF" font-size="12">{{ danceText?.price }}</text>
-            <text :x="SVG_W / 2" :y="danceRect.countY" text-anchor="middle" fill="#E8E0FF" font-size="12">{{ danceText?.count }}</text>
+            <text :x="SVG_W / 2" :y="danceRect.titleY" text-anchor="middle" fill="#596273" font-size="14" font-weight="700">{{ danceText?.title }}</text>
+            <text :x="SVG_W / 2" :y="danceRect.priceY" text-anchor="middle" fill="#596273" font-size="12">{{ danceText?.price }}</text>
+            <text :x="SVG_W / 2" :y="danceRect.countY" text-anchor="middle" fill="#596273" font-size="12">{{ danceText?.count }}</text>
             <text
               v-if="!dancePickerOpen"
               :x="SVG_W / 2" :y="danceRect.hintY" text-anchor="middle"
-              :fill="danceSelected ? '#C9A0FF' : '#C9C0E8'" font-size="11"
+              :fill="danceSelected ? '#5B43C6' : '#667181'" font-size="11"
             >{{ danceText?.hint }}</text>
 
             <!-- Селектор количества билетов -->
@@ -511,10 +544,31 @@ function isPickable(item: InventoryItem): boolean {
             </g>
           </g>
 
+          <!-- Столешницы строятся под креслами из центра их координатного кольца. -->
+          <g v-for="table in tableMarks" :key="table.name" aria-hidden="true">
+            <circle
+              :cx="tablePixel(table).x"
+              :cy="tablePixel(table).y"
+              :r="tablePixel(table).radius"
+              fill="#F4F5F7"
+              stroke="#D5D9E0"
+              stroke-width="1"
+            />
+            <text
+              v-if="table.label && tablePixel(table).radius >= 4"
+              :x="tablePixel(table).x"
+              :y="tablePixel(table).y + 3"
+              text-anchor="middle"
+              fill="#626B78"
+              font-size="8"
+              font-weight="600"
+            >{{ table.label }}</text>
+          </g>
+
           <!-- Места -->
           <g v-for="s in seats" :key="String(s.id)">
             <circle
-              :cx="px(s).x" :cy="px(s).y" :r="SEAT_R"
+              :cx="px(s).x" :cy="px(s).y" :r="seatRadius"
               :fill="seatFill(s)"
               :stroke="focusedId === String(s.id) ? '#ffffff' : 'none'"
               :stroke-width="focusedId === String(s.id) ? 2.5 : 0"

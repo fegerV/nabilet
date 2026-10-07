@@ -195,7 +195,7 @@
 
   /* Метка места в схеме зала. Состояния совпадают с легендой и API. */
   .seat {
-    @apply relative rounded-[5px] transition-all duration-120 ease-out;
+    @apply relative rounded-full transition-all duration-120 ease-out;
     background-color: rgb(var(--seat-free));
     box-shadow: inset 0 0 0 1px rgb(var(--seat-free-line));
   }
@@ -233,11 +233,23 @@
     @apply bg-sky-500;
     box-shadow: inset 0 0 0 1px theme('colors.sky.300');
   }
+  .seat--price {
+    background-color: var(--seat-price-color, #24B8E8);
+    box-shadow: inset 0 0 0 1px rgb(22 35 56 / 0.16);
+  }
+  .seat--price.seat--vip {
+    box-shadow: inset 0 0 0 2px rgb(144 91 0 / 0.78);
+  }
+  .seat--price.seat--accessible {
+    box-shadow: inset 0 0 0 2px rgb(20 102 174 / 0.9);
+  }
 
   /* Полоса «сцена» — якорь ориентации в зале. */
   .stage-bar {
-    background: theme('backgroundImage.brand-gradient');
-    box-shadow: theme('boxShadow.brand');
+    background: #F0F2F5;
+    border: 1px solid #D8DCE3;
+    color: #596273;
+    box-shadow: none;
   }
 
   /* Скелетон загрузки: витрина не должна прыгать. */
