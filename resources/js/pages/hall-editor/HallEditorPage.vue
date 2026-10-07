@@ -28,6 +28,7 @@ import { money, plural } from '@/lib/format'
 import { buildSeatPricePalette } from '@/lib/hall'
 import { cn } from '@/lib/cn'
 import { ApiError, get, send } from '@/lib/api'
+import { usePersistedRef } from '@/lib/usePersistedRef'
 import type {
   Autosave,
   EBackground,
@@ -43,14 +44,23 @@ import {
   GAP,
   ROW_GAP,
   SEAT,
+  alignSeats,
+  applySeatStep,
   appendRowToSector,
   arcLayoutParams,
   buildArcSeats,
   buildGridSeats,
   buildTableSeats,
+  deleteRow,
+  distributeSeats,
   findFreeSeatPosition,
+  insertRowAfter,
   rebuildTableSeats,
+  renumberAllSeats,
+  rowNumbers,
+  seatsInRow,
   tableLayout,
+  type AlignEdge,
 } from './seatGeometry'
 import { unwrapSchemaRoot } from './schemaImport'
 import {
@@ -75,22 +85,40 @@ import {
 
 const ui = useUiStore()
 
+/** Границы масштаба холста: ниже 40 % места неразличимы, выше 240 % — избыточно. */
+const MIN_ZOOM = 0.4
+const MAX_ZOOM = 2.4
+
 /* ── Инструменты (§47) ─────────────────────────────────────────────── */
 
-const TOOLS: { value: Tool; label: string; icon: string; hint: string }[] = [
-  { value: 'select', label: 'Выделение', icon: '↖', hint: 'Клик или рамка — выделить' },
-  { value: 'pan', label: 'Панорама', icon: '✋', hint: 'Тяните холст, чтобы двигать вид' },
-  { value: 'zoom', label: 'Масштаб', icon: '🔍', hint: 'Клик приближает, Alt+клик — отдаляет' },
-  { value: 'seat', label: 'Место', icon: '▪', hint: 'Клик в секторе — добавить место' },
-  { value: 'row', label: 'Ряд', icon: '▤', hint: 'Добавить ряд к выбранному сектору' },
-  { value: 'sector', label: 'Сектор', icon: '▣', hint: 'Тяните прямоугольник — создать сектор' },
-  { value: 'table', label: 'Стол', icon: '◫', hint: 'Клик — создать банкетный стол с местами' },
-  { value: 'standing', label: 'Standing', icon: '▦', hint: 'Тяните прямоугольник — стоячая зона' },
-  { value: 'text', label: 'Текст', icon: 'T', hint: 'Клик — поставить подпись' },
-  { value: 'image', label: 'Фон', icon: '🖼', hint: 'Загрузить PNG/JPG/WEBP/SVG под схемой' },
-  { value: 'stage', label: 'Сцена', icon: '▬', hint: 'Клик — поставить сцену' },
-  { value: 'entrance', label: 'Вход', icon: '↗', hint: 'Клик — поставить вход' },
+/**
+ * Инструменты (§47). `key` — одиночная горячая клавиша: набор из двенадцати
+ * инструментов мышью — это двенадцать промахов; клавиша выбирает инструмент
+ * мгновенно и не требует искать кнопку глазами.
+ */
+const TOOLS: { value: Tool; label: string; icon: string; hint: string; key?: string }[] = [
+  { value: 'select', label: 'Выделение', icon: '↖', hint: 'Клик или рамка — выделить', key: 'V' },
+  { value: 'pan', label: 'Панорама', icon: '✋', hint: 'Тяните холст, чтобы двигать вид', key: 'H' },
+  { value: 'zoom', label: 'Масштаб', icon: '🔍', hint: 'Клик приближает, Alt+клик — отдаляет', key: 'Z' },
+  { value: 'seat', label: 'Место', icon: '▪', hint: 'Клик в секторе — добавить место', key: 'S' },
+  { value: 'row', label: 'Ряд', icon: '▤', hint: 'Добавить ряд к выбранному сектору', key: 'R' },
+  { value: 'sector', label: 'Сектор', icon: '▣', hint: 'Тяните прямоугольник — создать сектор', key: 'B' },
+  { value: 'table', label: 'Стол', icon: '◫', hint: 'Клик — создать банкетный стол с местами', key: 'T' },
+  { value: 'standing', label: 'Standing', icon: '▦', hint: 'Тяните прямоугольник — стоячая зона', key: 'G' },
+  { value: 'text', label: 'Текст', icon: 'T', hint: 'Клик — поставить подпись', key: 'X' },
+  { value: 'image', label: 'Фон', icon: '🖼', hint: 'Загрузить PNG/JPG/WEBP/SVG под схемой', key: 'I' },
+  { value: 'stage', label: 'Сцена', icon: '▬', hint: 'Клик — поставить сцену', key: 'C' },
+  { value: 'entrance', label: 'Вход', icon: '↗', hint: 'Клик — поставить вход', key: 'E' },
 ]
+
+/** Выбранный инструмент одним объектом — для подписи в тулбаре холста. */
+const currentTool = computed(() => TOOLS.find((t) => t.value === tool.value))
+
+/** Выбор инструмента из панели: фон открывает диалог файла, остальные — нет. */
+function selectTool(value: Tool): void {
+  tool.value = value
+  if (value === 'image') triggerImageUpload()
+}
 
 /** Подписи видов статики для панели свойств (§47). */
 const STATIC_KIND_LABELS: Record<StaticKind, string> = {
@@ -101,6 +129,16 @@ const STATIC_KIND_LABELS: Record<StaticKind, string> = {
   table: 'Стол',
   standing: 'Стоячая зона',
 }
+
+/** Кнопки выравнивания выделенных мест: край/центр по обеим осям. */
+const ALIGN_ACTIONS: { edge: AlignEdge; label: string; hint: string }[] = [
+  { edge: 'left', label: '⇤ Влево', hint: 'Прижать к левому краю выделения' },
+  { edge: 'center-x', label: '↔ Центр X', hint: 'Выровнять по центру по горизонтали' },
+  { edge: 'right', label: 'Вправо ⇥', hint: 'Прижать к правому краю выделения' },
+  { edge: 'top', label: '⤒ Вверх', hint: 'Прижать к верхнему краю выделения' },
+  { edge: 'center-y', label: '↕ Центр Y', hint: 'Выровнять по центру по вертикали' },
+  { edge: 'bottom', label: 'Вниз ⤓', hint: 'Прижать к нижнему краю выделения' },
+]
 
 /* ── Состояние схемы ───────────────────────────────────────────────── */
 
@@ -210,9 +248,30 @@ watch(autosaveErrors, (list) => {
 
 const tool = ref<Tool>('select')
 
-/* Полоски панелей: по умолчанию скрыты на узких экранах — канвасу максимум места. */
-const showTools = ref(typeof window !== 'undefined' && window.innerWidth >= 1500)
-const showInspector = ref(typeof window !== 'undefined' && window.innerWidth >= 1500)
+/*
+ * Полоски панелей и их вид — ПРЕДПОЧТЕНИЕ человека, а не данные схемы, поэтому
+ * живут в localStorage (usePersistedRef): свернул панель ради места — она
+ * остаётся свёрнутой и после F5, и при переходе между разделами.
+ *
+ * По умолчанию панели РАЗВЁРНУТЫ независимо от ширины окна. Раньше видимость
+ * зависела от window.innerWidth на момент монтирования, и это давало скрытые
+ * панели там, где человек их ждал: ширина контейнера в SPA меняется при
+ * сворачивании меню, а измерение делалось один раз. Предсказуемость важнее
+ * одной сэкономленной полоски — панель сворачивается одной кнопкой.
+ */
+const showTools = usePersistedRef('hallEditor.tools.visible', true)
+const showInspector = usePersistedRef('hallEditor.inspector.visible', true)
+/** Развёрнутый вид панели инструментов: подписи к иконкам против узкой колонки. */
+const toolsWide = usePersistedRef('hallEditor.tools.wide', true)
+/** Привязка к сетке при перетаскивании: ряды перестают «плыть» на пару пикселей. */
+const snapEnabled = usePersistedRef('hallEditor.snap', false)
+/** Шаг сетки привязки (px). Совпадает с шагом мест по умолчанию (SEAT+GAP=22). */
+const SNAP_STEP = SEAT + GAP
+
+/** Текущий масштаб холста (1 = 100 %) — обновляется функциями zoom/fit. */
+const zoomLevel = ref(1)
+/** Масштаб в процентах для индикатора в тулбаре холста. */
+const zoomPercent = computed(() => Math.round(zoomLevel.value * 100))
 
 /* Форма нового сектора (§49): сектор / форма / ряд / кол-во мест / шаг. */
 const form = ref({
@@ -223,6 +282,9 @@ const form = ref({
   priceMinor: 850000,
   vipRows: 2,
   arcSpread: 160,
+  /** Шаг мест и рядов в пикселях — плотность рассадки (см. applyStep). */
+  seatStep: SEAT + GAP,
+  rowStep: SEAT + ROW_GAP,
 })
 
 let idCounter = 0
@@ -325,6 +387,145 @@ function addRowToSelected(): void {
   // старые места, чтобы новый (самый широкий) ряд остался симметричным.
   const { row: nextRow } = appendRowToSector(sector, seatsPerRow, nextId)
   ui.notify('mint', `Ряд ${nextRow} добавлен`, `${seatsPerRow} мест${sector.shape === 'arc' ? ', по дуге' : ''}`)
+}
+
+/** Номера рядов выбранного сектора — для списка операций с рядами (§48). */
+const selectedRowNumbers = computed(() =>
+  selectedSector.value ? rowNumbers(selectedSector.value) : [],
+)
+
+/** Ряд, к которому применяются операции «вставить/удалить» (по умолчанию последний). */
+const activeRow = ref<number | null>(null)
+
+/** Синхронизировать активный ряд при смене сектора: список не должен «висеть» на чужом ряду. */
+watch(selectedSectorId, () => {
+  const rows = selectedRowNumbers.value
+  activeRow.value = rows.length > 0 ? rows[rows.length - 1] : null
+})
+
+/**
+ * Выделить весь ряд: места ряда попадают в общий мультиселект, и дальше с ними
+ * работает всё, что уже умеет мультивыделение — цена, тип, дублирование,
+ * перемещение и переназначение сектора. Отдельного «режима ряда» не заводим:
+ * два разных механизма выделения неизбежно расходятся в поведении.
+ */
+function selectRow(row: number): void {
+  const sector = selectedSector.value
+  if (!sector) return
+  const ids = seatsInRow(sector, row).map((s) => s.id)
+  selectedSeatIds.value = new Set(ids)
+  selectedSectorId.value = sector.id
+  selectedStaticIds.value = new Set()
+  selectedBgIds.value = new Set()
+}
+
+/** Удалить ряд целиком с перенумерацией последующих (см. deleteRow). */
+function removeRow(row: number): void {
+  const sector = selectedSector.value
+  if (!sector || isLocked.value) return
+  snapshot()
+  const removed = deleteRow(sector, row)
+  if (removed === 0) {
+    editorHistory.undo() // ничего не изменилось — не оставляем пустой шаг истории
+    return
+  }
+  selectedSeatIds.value = new Set()
+  const rows = rowNumbers(sector)
+  activeRow.value = rows.length > 0 ? rows[Math.min(row - 1, rows.length - 1)] : null
+  ui.notify('mint', `Ряд ${row} удалён`, `${removed} мест`)
+}
+
+/** Вставить ряд ниже активного, копируя число мест ряда-соседа. */
+function addRowAfter(row: number): void {
+  const sector = selectedSector.value
+  if (!sector || isLocked.value) return
+  if (sector.shape === 'table') {
+    ui.notify('sun', 'Стол — это одно кольцо', 'У стола нет рядов: число мест меняется в свойствах стола')
+    return
+  }
+  const sample = seatsInRow(sector, row)[0]
+  const count = sample ? seatsInRow(sector, row).length : form.value.seatsPerRow
+  snapshot()
+  const created = insertRowAfter(sector, row, count, nextId)
+  selectedSeatIds.value = new Set(seatsInRow(sector, created).map((s) => s.id))
+  activeRow.value = created
+  ui.notify('mint', `Ряд ${created} вставлен`, `${count} мест`)
+}
+
+/** Перенумеровать места во всех рядах сектора слева направо, 1..N. */
+function resequenceSelectedSector(): void {
+  const sector = selectedSector.value
+  if (!sector || isLocked.value) return
+  snapshot()
+  const changed = renumberAllSeats(sector)
+  if (changed === 0) {
+    editorHistory.undo()
+    ui.notify('sun', 'Нумерация уже верна', 'Места в каждом ряду идут слева направо без пропусков')
+    return
+  }
+  ui.notify('mint', 'Места перенумерованы', `Изменено рядов: ${changed}`)
+}
+
+/**
+ * Применить новый шаг сетки к сектору (только прямоугольные).
+ * Отдельные поля «шаг мест» и «шаг рядов» в пикселях: именно ими правят
+ * плотность рассадки, когда зал нужно уместить в другие габариты.
+ */
+function applyStep(seatStep: number, rowStep: number): void {
+  const sector = selectedSector.value
+  if (!sector || isLocked.value) return
+  snapshot()
+  if (!applySeatStep(sector, seatStep, rowStep)) {
+    editorHistory.undo()
+    ui.notify('sun', 'Только для сетки', 'Шаг мест и рядов задаётся у прямоугольного сектора; дуга и стол строятся по радиусу')
+    return
+  }
+  ui.notify('mint', 'Шаг обновлён', `Места — ${seatStep} px, ряды — ${rowStep} px`)
+}
+
+/* ── Выравнивание выделенных мест (§48) ────────────────────────────── */
+
+/** Места, к которым применяется выравнивание: только выделенные. */
+function selectedSeatObjects(): ESeat[] {
+  const out: ESeat[] = []
+  for (const sector of sectors.value) {
+    for (const seat of sector.seats) {
+      if (selectedSeatIds.value.has(seat.id)) out.push(seat)
+    }
+  }
+  return out
+}
+
+/** Выровнять выделенные места по краю или центру. */
+function alignSelected(edge: AlignEdge): void {
+  if (isLocked.value) return
+  const seats = selectedSeatObjects()
+  if (seats.length < 2) {
+    ui.notify('sun', 'Нужно минимум два места', 'Выровнять одно место не с чем — выделите ряд или группу')
+    return
+  }
+  snapshot()
+  if (!alignSeats(seats, edge)) {
+    editorHistory.undo()
+    return
+  }
+  ui.notify('mint', 'Выровнено', `${seats.length} мест`)
+}
+
+/** Равномерно распределить выделенные места по горизонтали или вертикали. */
+function distributeSelected(axis: 'x' | 'y'): void {
+  if (isLocked.value) return
+  const seats = selectedSeatObjects()
+  if (seats.length < 3) {
+    ui.notify('sun', 'Нужно минимум три места', 'Распределение задаёт равный шаг между крайними')
+    return
+  }
+  snapshot()
+  if (!distributeSeats(seats, axis)) {
+    editorHistory.undo()
+    return
+  }
+  ui.notify('mint', axis === 'x' ? 'Распределено по горизонтали' : 'Распределено по вертикали', `${seats.length} мест`)
 }
 
 /**
@@ -744,8 +945,14 @@ function onStageMouseMove(e: Konva.KonvaEventObject<MouseEvent>): void {
   } else if (dragMode === 'seat-move') {
     // Временное смещение выделенных мест (до отпускания — без записи в модель
     // ряда: финализация и перенумерация произойдут на mouseup).
-    const dx = p.x - dragStart.x
-    const dy = p.y - dragStart.y
+    let dx = p.x - dragStart.x
+    let dy = p.y - dragStart.y
+    // Привязка к сетке: место встаёт в тот же ритм, что и сгенерированные,
+    // иначе ряды «плывут» на 3-4 px и это видно на всю схему.
+    if (snapEnabled.value) {
+      dx = Math.round(dx / SNAP_STEP) * SNAP_STEP
+      dy = Math.round(dy / SNAP_STEP) * SNAP_STEP
+    }
     for (const [id, before] of seatDragBefore) {
       const sector = sectors.value.find((s) => s.id === before.sectorId)
       const seat = sector?.seats.find((s) => s.id === id)
@@ -878,6 +1085,26 @@ function applyMarqueeSelection(): void {
     selectedSeatIds.value = picked
     selectedSectorId.value = null
   }
+}
+
+/**
+ * Выделить все места зала (Ctrl A). Действие нужно ровно там, где ряды
+ * правят массово: сменить цену всему залу, перенести сектор целиком.
+ * Статика и фон при этом снимаются — иначе Delete унёс бы и их.
+ */
+function selectAllSeats(): void {
+  const all = new Set<string>()
+  for (const sector of sectors.value) {
+    for (const seat of sector.seats) all.add(seat.id)
+  }
+  if (all.size === 0) {
+    ui.notify('sun', 'Нет мест', 'Сначала создайте сектор с местами')
+    return
+  }
+  selectedSeatIds.value = all
+  selectedSectorId.value = null
+  selectedStaticIds.value = new Set()
+  selectedBgIds.value = new Set()
 }
 
 function deleteSelection(): void {
@@ -1826,8 +2053,9 @@ function draw(): void {
 
 function zoomBy(factor: number): void {
   if (!stage) return
-  const next = Math.min(2.4, Math.max(0.4, stage.scaleX() * factor))
+  const next = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, stage.scaleX() * factor))
   stage.scale({ x: next, y: next })
+  zoomLevel.value = next
   stage.batchDraw()
 }
 
@@ -1837,7 +2065,7 @@ function zoomAt(factor: number, clientX: number, clientY: number): void {
   const bounds = stage.container().getBoundingClientRect()
   const pointer = { x: clientX - bounds.left, y: clientY - bounds.top }
   const oldScale = stage.scaleX() || 1
-  const next = Math.min(2.4, Math.max(0.4, oldScale * factor))
+  const next = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, oldScale * factor))
   const pointInCanvas = {
     x: (pointer.x - stage.x()) / oldScale,
     y: (pointer.y - stage.y()) / oldScale,
@@ -1847,6 +2075,7 @@ function zoomAt(factor: number, clientX: number, clientY: number): void {
     x: pointer.x - pointInCanvas.x * next,
     y: pointer.y - pointInCanvas.y * next,
   })
+  zoomLevel.value = next
   stage.batchDraw()
 }
 
@@ -1854,6 +2083,7 @@ function fit(): void {
   if (!stage) return
   stage.scale({ x: 1, y: 1 })
   stage.position({ x: 0, y: 0 })
+  zoomLevel.value = 1
   stage.batchDraw()
 }
 
@@ -1890,6 +2120,7 @@ function fitToContent(): void {
     x: (viewW - w * scale) / 2 - minX * scale,
     y: (viewH - h * scale) / 2 - minY * scale,
   })
+  zoomLevel.value = scale
   stage.batchDraw()
 }
 
@@ -1985,16 +2216,101 @@ watch([sectors, statics, backgrounds, selectedSeatIds, selectedSectorId, tool], 
 
 /* ── Горячие клавиши (§52 + §48) ───────────────────────────────────── */
 
+/** Ввод идёт в поле — клавиши принадлежат полю, а не холсту. */
+function isTypingTarget(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null
+  if (!el) return false
+  const tag = el.tagName
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable
+}
+
+/**
+ * Сдвиг выделения стрелками. Одно нажатие — шаг сетки привязки (или 1 px, если
+ * привязка выключена), Shift — сразу на десять шагов. Без этого подвинуть место
+ * на пару пикселей можно было только мышью, с промахом и потерей ряда.
+ */
+function nudgeSelection(dx: number, dy: number): boolean {
+  if (isLocked.value) return false
+  const hasSeats = selectedSeatIds.value.size > 0
+  const hasStatics = selectedStaticIds.value.size > 0
+  if (!hasSeats && !hasStatics) return false
+  const step = snapEnabled.value ? SNAP_STEP : 1
+  snapshot()
+  if (hasSeats) {
+    for (const sector of sectors.value) {
+      for (const seat of sector.seats) {
+        if (selectedSeatIds.value.has(seat.id)) {
+          seat.x += dx * step
+          seat.y += dy * step
+        }
+      }
+    }
+  }
+  if (hasStatics) {
+    for (const item of statics.value) {
+      if (selectedStaticIds.value.has(item.id) && !item.locked) {
+        item.x += dx * step
+        item.y += dy * step
+      }
+    }
+  }
+  return true
+}
+
 function onKeyDown(e: KeyboardEvent): void {
-  if (!e.target || (e.target as HTMLElement).tagName === 'INPUT' || (e.target as HTMLElement).tagName === 'TEXTAREA') return
-  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+  if (isTypingTarget(e.target)) return
+
+  // Модификаторы + буква — раскладка не должна влиять на срабатывание.
+  const key = e.key.toLowerCase()
+  if ((e.ctrlKey || e.metaKey) && key === 'z') {
     e.preventDefault()
     e.shiftKey ? redo() : undo()
     return
   }
+  if ((e.ctrlKey || e.metaKey) && key === 'a') {
+    e.preventDefault()
+    selectAllSeats()
+    return
+  }
+  // Ctrl+D — дублировать (как в графических редакторах), а не заложить в закладки.
+  if ((e.ctrlKey || e.metaKey) && key === 'd') {
+    if (selectedSeatIds.value.size === 0) return
+    e.preventDefault()
+    duplicateSelection()
+    return
+  }
+  if (e.ctrlKey || e.metaKey || e.altKey) return
+
   if (e.key === 'Delete' || e.key === 'Backspace') {
     e.preventDefault()
     deleteSelection()
+    return
+  }
+  if (e.key === 'Escape') {
+    selectedSeatIds.value = new Set()
+    selectedStaticIds.value = new Set()
+    selectedBgIds.value = new Set()
+    selectedSectorId.value = null
+    return
+  }
+
+  // Стрелки — точный сдвиг выделенного.
+  const arrowStep: Record<string, [number, number]> = {
+    ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1],
+  }
+  const arrow = arrowStep[e.key]
+  if (arrow) {
+    const mult = e.shiftKey ? 10 : 1
+    if (nudgeSelection(arrow[0] * mult, arrow[1] * mult)) e.preventDefault()
+    return
+  }
+
+  // Одиночная буква — выбор инструмента (см. TOOLS[].key). Наборы совпадают
+  // с привычными из графических редакторов: V — выделение, H — панорама.
+  const picked = TOOLS.find((t) => t.key && t.key.toLowerCase() === key)
+  if (picked && !(isLocked.value && picked.value !== 'select' && picked.value !== 'pan' && picked.value !== 'zoom')) {
+    e.preventDefault()
+    selectTool(picked.value)
   }
 }
 onMounted(() => window.addEventListener('keydown', onKeyDown))
@@ -2137,7 +2453,7 @@ function setFormPriceMinor(v: unknown): void {
 }
 
 /** Целочисленное поле формы-генератора с нижней границей (ряды, места, VIP). */
-function clampIntField<K extends 'rows' | 'seatsPerRow' | 'vipRows' | 'arcSpread'>(key: K, v: unknown, min: number, max: number): void {
+function clampIntField<K extends 'rows' | 'seatsPerRow' | 'vipRows' | 'arcSpread' | 'seatStep' | 'rowStep'>(key: K, v: unknown, min: number, max: number): void {
   const n = clampIntOrNull(v, min, max)
   if (n !== null) form.value[key] = n
 }
@@ -2238,6 +2554,35 @@ function setSeatKind(value: string): void {
   seat.kind = value as SeatKind
 }
 
+/** Тип выделенных мест, если он у всех один; иначе '' (селект показывает «не менять»). */
+const groupSeatKind = computed(() => {
+  const seats = selectedSeatObjects()
+  if (seats.length === 0) return ''
+  const first = seats[0].kind
+  return seats.every((s) => s.kind === first) ? first : ''
+})
+
+/** Назначить тип всем выделенным местам (обычное / VIP / для маломобильных). */
+function setSeatKindForSelection(kind: SeatKind): void {
+  if (isLocked.value || selectedSeatIds.value.size === 0) return
+  snapshot()
+  let changed = 0
+  for (const sector of sectors.value) {
+    for (const seat of sector.seats) {
+      if (selectedSeatIds.value.has(seat.id) && seat.kind !== kind) {
+        seat.kind = kind
+        changed += 1
+      }
+    }
+  }
+  if (changed === 0) {
+    editorHistory.undo()
+    return
+  }
+  const label = KIND_OPTIONS.find((o) => o.value === kind)?.label ?? kind
+  ui.notify('mint', 'Тип места изменён', `${label} · ${changed} мест`)
+}
+
 /**
  * Индивидуальная цена выделенных мест (минорные единицы). `null` снимает
  * переопределение — место снова берёт цену ряда/сектора. Работает и для
@@ -2290,190 +2635,257 @@ function reassignSelectedSeats(targetSectorId: string): void {
 </script>
 
 <template>
-  <div class="mx-auto max-w-[1500px]">
-    <!-- Заголовок, версия, автосохранение, экспорт -->
-    <div class="flex flex-wrap items-end justify-between gap-3">
-      <div class="min-w-0">
-        <h1 class="text-2xl font-bold tracking-tight text-content">Редактор схем залов</h1>
-        <p class="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted">
-          Большой зал ·
-          <NBadge :tone="isLocked ? 'mint' : 'sun'" dot>
-            {{ isLocked ? `Опубликовано v${published}` : `Черновик v${draftVersion}` }}
-          </NBadge>
-          <span class="text-subtle">{{ totalSeats }} {{ plural(totalSeats, 'место', 'места', 'мест') }}</span>
-          <span class="text-subtle">·</span>
-          <span
-            :class="cn(
-              'inline-flex items-center gap-1 text-2xs',
-              autosave === 'saving' && 'text-sun-400',
-              autosave === 'saved' && 'text-mint-400',
-              autosave === 'error' && 'text-rose-400',
-              autosave === 'offline' && 'text-subtle',
-            )"
-          >
-            <span aria-hidden="true">
-              <template v-if="autosave === 'saving'">⟳</template>
-              <template v-else-if="autosave === 'saved'">●</template>
-              <template v-else-if="autosave === 'error'">!</template>
-              <template v-else>○</template>
-            </span>
-            {{
-              autosave === 'saving' ? 'Сохраняется…'
-              : autosave === 'saved' ? 'Сохранено'
-              : autosave === 'error' ? (autosaveErrors.length ? 'Схема отклонена сервером' : 'Ошибка сохранения')
-              : 'Нет соединения'
-            }}
-          </span>
-        </p>
-        <!-- Детали отклонения черновика сервером (422, конверт §66) — под индикатором. -->
-        <ul v-if="autosave === 'error' && autosaveErrors.length > 0" class="mt-1.5 max-w-xl rounded-md border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-2xs text-rose-300">
-          <li v-for="(line, i) in autosaveErrors" :key="i">{{ line }}</li>
-        </ul>
+  <!--
+    Раскладка редактора подчинена одному требованию: канвас занимает всё, что
+    осталось от экрана, а панели при желании убираются совсем.
+
+    Высота считается от вьюпорта (`h-dvh` минус 4rem шапки оболочки): раньше
+    холст был зафиксирован на 680 px и на большом мониторе обрезал и без того
+    тесное поле работы с рядами. Отрицательные отступы компенсируют паддинги
+    <main> оболочки (`px-4 py-5` → `sm:px-6 sm:py-6`), чтобы редактор занял
+    область целиком, без полосы вокруг холста. Шапка редактора сжата в одну
+    строку — версия, автосохранение и действия переехали в неё.
+  -->
+  <div class="-mx-4 -my-5 flex h-[calc(100dvh-4rem)] flex-col sm:-mx-6 sm:-my-6">
+    <!-- Шапка редактора: одна строка, чтобы не отъедать высоту у холста -->
+    <header class="flex flex-none flex-wrap items-center gap-x-3 gap-y-2 border-b border-line px-3 py-2">
+      <div class="flex min-w-0 items-center gap-2">
+        <h1 class="truncate text-sm font-semibold tracking-tight text-content">Схема зала</h1>
+        <NBadge :tone="isLocked ? 'mint' : 'sun'" dot>
+          {{ isLocked ? `Опубликовано v${published}` : `Черновик v${draftVersion}` }}
+        </NBadge>
+        <span class="hidden text-2xs text-subtle sm:inline">{{ totalSeats }} {{ plural(totalSeats, 'место', 'места', 'мест') }}</span>
       </div>
 
-      <div class="flex flex-wrap gap-2">
-              <NButton variant="ghost" size="sm" @click="exportSchema">Экспорт JSON</NButton>
-              <NButton variant="ghost" size="sm" @click="importJsonClick">Импорт JSON</NButton>
-              <NButton v-if="isLocked" variant="secondary" @click="newVersion">Новая версия</NButton>
-              <NButton v-else variant="primary" @click="publish">Опубликовать</NButton>
-            </div>
-    </div>
+      <!-- Индикатор автосохранения: точка + текст, без отдельного блока -->
+      <span
+        :class="cn(
+          'flex items-center gap-1 text-2xs',
+          autosave === 'saving' && 'text-sun-400',
+          autosave === 'saved' && 'text-mint-400',
+          autosave === 'error' && 'text-rose-400',
+          autosave === 'offline' && 'text-subtle',
+        )"
+        :title="autosave === 'error' && autosaveErrors.length ? autosaveErrors.join('\n') : undefined"
+      >
+        <span aria-hidden="true">
+          <template v-if="autosave === 'saving'">⟳</template>
+          <template v-else-if="autosave === 'saved'">●</template>
+          <template v-else-if="autosave === 'error'">!</template>
+          <template v-else>○</template>
+        </span>
+        {{
+          autosave === 'saving' ? 'Сохраняется…'
+          : autosave === 'saved' ? 'Сохранено'
+          : autosave === 'error' ? (autosaveErrors.length ? 'Схема отклонена' : 'Ошибка')
+          : 'Нет связи'
+        }}
+      </span>
 
-    <div
-          class="mt-5 grid gap-4"
-          :class="
-            showTools && showInspector ? 'grid-cols-[220px_1fr_320px]'
-            : showTools ? 'grid-cols-[220px_1fr]'
-            : showInspector ? 'grid-cols-[1fr_320px]'
-            : 'grid-cols-1'
-          "
-        >
-          <!-- Инструменты -->
-                <aside v-if="showTools" class="space-y-3">
-        <div class="surface-card overflow-hidden">
-          <div class="border-b border-line px-3 py-2.5">
-            <h2 class="text-xs font-semibold uppercase tracking-wide text-subtle">Инструменты · §47</h2>
+      <div class="flex-1" />
+
+      <div class="flex flex-wrap items-center gap-1.5">
+        <NButton variant="ghost" size="sm" @click="exportSchema">Экспорт</NButton>
+        <NButton variant="ghost" size="sm" @click="importJsonClick">Импорт</NButton>
+        <NButton v-if="isLocked" variant="secondary" size="sm" @click="newVersion">Новая версия</NButton>
+        <NButton v-else variant="primary" size="sm" @click="publish">Опубликовать</NButton>
+      </div>
+    </header>
+
+    <!-- Детали отклонения черновика (422, конверт §66) — отдельной строкой под шапкой -->
+    <ul
+      v-if="autosave === 'error' && autosaveErrors.length > 0"
+      class="flex-none border-b border-rose-500/30 bg-rose-500/10 px-3 py-1.5 text-2xs text-rose-300"
+    >
+      <li v-for="(line, i) in autosaveErrors" :key="i">{{ line }}</li>
+    </ul>
+
+    <!-- Рабочая область: инструменты · холст · свойства, каждый блок сворачивается.
+         `relative` — потому что на узком экране панели выезжают ПОВЕРХ холста,
+         а не сжимают его: место для работы с рядами важнее одновременного показа. -->
+    <div class="relative flex min-h-0 flex-1">
+      <aside
+        v-if="showTools"
+        :class="cn(
+          'flex min-h-0 flex-none flex-col border-r border-line bg-surface',
+          'absolute inset-y-0 left-0 z-20 shadow-xl md:static md:z-auto md:shadow-none',
+          toolsWide ? 'w-[232px]' : 'w-[60px]',
+        )"
+      >
+        <div class="flex flex-none items-center justify-between gap-1 border-b border-line px-2 py-1.5">
+          <h2 v-if="toolsWide" class="px-1 text-2xs font-semibold uppercase tracking-wide text-subtle">Инструменты</h2>
+          <div class="flex flex-1 justify-end gap-0.5">
+            <button
+              type="button"
+              class="grid h-6 w-6 place-items-center rounded text-xs text-muted transition-colors hover:bg-surface-3 hover:text-content"
+              :title="toolsWide ? 'Компактный вид' : 'Развёрнутый вид'"
+              @click="toolsWide = !toolsWide"
+            >{{ toolsWide ? '⇤' : '⇥' }}</button>
+            <button
+              type="button"
+              class="grid h-6 w-6 place-items-center rounded text-xs text-muted transition-colors hover:bg-surface-3 hover:text-content"
+              title="Скрыть инструменты (освободить место)"
+              @click="showTools = false"
+            >✕</button>
           </div>
-          <div class="grid grid-cols-2 gap-1 p-2">
+        </div>
+
+        <div class="min-h-0 flex-1 overflow-y-auto">
+          <!-- Инструменты §47: плиткой в развёрнутом виде, колонкой — в компактном -->
+          <div :class="cn('grid gap-1 p-2', toolsWide ? 'grid-cols-2' : 'grid-cols-1')">
             <button
               v-for="item in TOOLS"
               :key="item.value"
               type="button"
-              :title="item.hint"
-              :disabled="isLocked && item.value !== 'select' && item.value !== 'pan'"
+              :title="`${item.label} — ${item.hint}${item.key ? ` (${item.key})` : ''}`"
+              :disabled="isLocked && item.value !== 'select' && item.value !== 'pan' && item.value !== 'zoom'"
               :class="cn(
-                'flex flex-col items-center gap-0.5 rounded-md px-1.5 py-2 text-2xs transition-colors',
+                'flex items-center gap-1.5 rounded-md text-2xs transition-colors',
+                toolsWide ? 'flex-col gap-0.5 px-1.5 py-2' : 'justify-center px-1 py-2',
                 tool === item.value ? 'bg-brand-500/15 text-brand-300 ring-1 ring-brand-500/30' : 'text-muted hover:bg-surface-3 hover:text-content',
-                isLocked && item.value !== 'select' && item.value !== 'pan' && 'cursor-not-allowed opacity-40',
+                isLocked && item.value !== 'select' && item.value !== 'pan' && item.value !== 'zoom' && 'cursor-not-allowed opacity-40',
               )"
-              @click="() => { tool = item.value; if (item.value === 'image') triggerImageUpload() }"
+              @click="selectTool(item.value)"
             >
               <span aria-hidden="true" class="text-base leading-none">{{ item.icon }}</span>
-              <span class="truncate">{{ item.label }}</span>
+              <span v-if="toolsWide" class="truncate">{{ item.label }}</span>
             </button>
           </div>
-        </div>
 
-        <div class="surface-card overflow-hidden">
-          <div class="border-b border-line px-3 py-2.5">
-            <h2 class="text-xs font-semibold uppercase tracking-wide text-subtle">История · §52</h2>
+          <!-- История §52 -->
+          <div class="border-t border-line px-2 py-2">
+            <div :class="cn('flex gap-1', toolsWide ? '' : 'flex-col')">
+              <NButton variant="secondary" size="sm" block :disabled="isLocked || !canUndo" @click="undo">↶<span v-if="toolsWide"> Отменить</span></NButton>
+              <NButton variant="secondary" size="sm" block :disabled="isLocked || !canRedo" @click="redo">↷<span v-if="toolsWide"> Повторить</span></NButton>
+            </div>
+            <p v-if="toolsWide" class="px-1 pt-1.5 text-2xs text-subtle">
+              <kbd class="rounded border border-line px-1 font-mono">Ctrl Z</kbd> · <kbd class="rounded border border-line px-1 font-mono">Ctrl ⇧ Z</kbd>
+            </p>
           </div>
-          <div class="flex gap-1 p-2">
-            <NButton variant="secondary" size="sm" block :disabled="isLocked || !canUndo" @click="undo">
-              ↶ Отменить
-            </NButton>
-            <NButton variant="secondary" size="sm" block :disabled="isLocked || !canRedo" @click="redo">
-              ↷ Повторить
-            </NButton>
-          </div>
-          <p class="px-3 pb-2 text-2xs text-subtle">
-            <kbd class="rounded border border-line px-1 font-mono">Ctrl Z</kbd> · <kbd class="rounded border border-line px-1 font-mono">Ctrl ⇧ Z</kbd>
-          </p>
-        </div>
 
-        <div class="surface-card overflow-hidden">
-          <div class="border-b border-line px-3 py-2.5">
-            <h2 class="text-xs font-semibold uppercase tracking-wide text-subtle">Секторы</h2>
+          <!-- Секторы -->
+          <div class="border-t border-line">
+            <h2 v-if="toolsWide" class="px-3 pt-2 text-2xs font-semibold uppercase tracking-wide text-subtle">Секторы</h2>
+            <ul class="divide-y divide-line">
+              <li v-if="sectors.length === 0" class="px-3 py-4 text-center text-2xs text-subtle">Пока пусто</li>
+              <li v-for="sector in sectors" :key="sector.id">
+                <button
+                  type="button"
+                  :title="sector.name"
+                  :class="cn(
+                    'flex w-full items-center justify-between gap-2 py-2 text-left text-sm transition-colors',
+                    toolsWide ? 'px-3' : 'justify-center px-1',
+                    selectedSectorId === sector.id ? 'bg-brand-500/10 text-brand-300' : 'text-muted hover:bg-surface-2',
+                  )"
+                  @click="selectedSectorId = sector.id; selectedSeatIds = new Set()"
+                >
+                  <span :class="cn('truncate', !toolsWide && 'text-2xs')">{{ toolsWide ? sector.name : (sector.name.slice(0, 2) || '--') }}</span>
+                  <span v-if="toolsWide" class="flex-none text-2xs tabular-nums text-subtle">{{ sector.seats.length }}</span>
+                </button>
+              </li>
+            </ul>
           </div>
-          <ul class="max-h-56 divide-y divide-line overflow-y-auto">
-            <li v-if="sectors.length === 0" class="px-3 py-4 text-center text-xs text-subtle">Пока пусто</li>
-            <li v-for="sector in sectors" :key="sector.id">
-              <button
-                type="button"
-                :class="cn(
-                  'flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm transition-colors',
-                  selectedSectorId === sector.id ? 'bg-brand-500/10 text-brand-300' : 'text-muted hover:bg-surface-2',
-                )"
-                @click="selectedSectorId = sector.id; selectedSeatIds = new Set()"
-              >
-                <span class="truncate">{{ sector.name }}</span>
-                <span class="flex-none text-2xs tabular-nums text-subtle">{{ sector.seats.length }}</span>
-              </button>
-            </li>
-          </ul>
         </div>
       </aside>
 
-      <!-- Холст -->
-      <section class="min-w-0">
-        <div class="surface-card overflow-hidden">
-          <div class="flex items-center justify-between border-b border-line px-3 py-2">
-            <div class="flex items-center gap-2 text-2xs text-subtle">
-              <span class="rounded bg-surface-3 px-1.5 py-0.5">{{ TOOLS.find((t) => t.value === tool)?.label }}</span>
-              <span>{{ TOOLS.find((t) => t.value === tool)?.hint }}</span>
-            </div>
-            <div class="flex gap-1">
-                          <button type="button" class="grid h-7 w-7 place-items-center rounded border border-line text-xs text-muted hover:text-content" aria-label="Приблизить" @click="zoomBy(1.15)">+</button>
-                          <button type="button" class="grid h-7 w-7 place-items-center rounded border border-line text-xs text-muted hover:text-content" aria-label="Отдалить" @click="zoomBy(0.87)">−</button>
-                          <button type="button" class="grid h-7 w-7 place-items-center rounded border border-line text-2xs text-muted hover:text-content" aria-label="Вписать" @click="fit">⤢</button>
-                        </div>
-                        <div class="flex gap-1">
-                          <button
-                            type="button"
-                            class="grid h-7 rounded border px-2 text-2xs transition-colors"
-                            :class="showTools ? 'border-brand-500/40 text-brand-300 bg-brand-500/10' : 'border-line text-muted hover:text-content'"
-                            :title="showTools ? 'Скрыть инструменты' : 'Показать инструменты'"
-                            @click="showTools = !showTools"
-                          >Инструменты</button>
-                          <button
-                            type="button"
-                            class="grid h-7 rounded border px-2 text-2xs transition-colors"
-                            :class="showInspector ? 'border-brand-500/40 text-brand-300 bg-brand-500/10' : 'border-line text-muted hover:text-content'"
-                            :title="showInspector ? 'Скрыть свойства' : 'Показать свойства'"
-                            @click="showInspector = !showInspector"
-                          >Свойства</button>
-                        </div>
+      <!-- Колонка холста -->
+      <section class="flex min-h-0 min-w-0 flex-1 flex-col">
+        <!-- Тулбар холста: текущий инструмент, масштаб, режимы привязки -->
+        <div class="flex flex-none flex-wrap items-center gap-2 border-b border-line px-2 py-1.5">
+          <button
+            v-if="!showTools"
+            type="button"
+            class="grid h-7 place-items-center rounded border border-line px-2 text-2xs text-muted transition-colors hover:text-content"
+            title="Показать инструменты"
+            @click="showTools = true"
+          >Инструменты</button>
+
+          <div class="flex min-w-0 items-center gap-1.5 text-2xs text-subtle">
+            <span class="rounded bg-surface-3 px-1.5 py-0.5 text-content">{{ currentTool?.label }}</span>
+            <span class="hidden truncate md:inline">{{ currentTool?.hint }}</span>
           </div>
 
-          <input ref="imageInput" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" class="hidden" @change="onImageChosen" />
-          <input ref="jsonInput" type="file" accept=".json,application/json" class="hidden" @change="onJsonChosen" />
+          <div class="flex-1" />
 
-          <div
-            ref="canvasHost"
-            :class="cn(
-              'h-[680px] w-full bg-surface-2',
-              tool === 'pan' ? 'cursor-grab active:cursor-grabbing' : 'cursor-crosshair',
-              isLocked && 'cursor-default',
-            )"
-          />
-          <div v-if="seatPriceLegend.length" class="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-line px-3 py-2" aria-label="Цены мест на схеме">
-            <span class="text-2xs font-medium text-subtle">Цены:</span>
-            <span v-for="item in seatPriceLegend" :key="item.price" class="flex items-center gap-1.5 text-2xs text-muted">
-              <i class="size-2.5 rounded-full" :style="{ backgroundColor: item.color }" /> {{ money(item.price) }}
-            </span>
+          <!-- Режимы, влияющие на работу с рядами/местами -->
+          <div class="flex items-center gap-1">
+            <button
+              type="button"
+              :class="cn(
+                'grid h-7 place-items-center rounded border px-2 text-2xs transition-colors',
+                snapEnabled ? 'border-brand-500/40 bg-brand-500/10 text-brand-300' : 'border-line text-muted hover:text-content',
+              )"
+              title="Привязка к сетке при перетаскивании"
+              @click="snapEnabled = !snapEnabled"
+            >Сетка</button>
+            <button
+              type="button"
+              class="grid h-7 place-items-center rounded border border-line px-2 text-2xs text-muted transition-colors hover:text-content"
+              title="Выделить все места (Ctrl A)"
+              @click="selectAllSeats"
+            >Все</button>
           </div>
 
-          <div class="flex flex-wrap items-center justify-between gap-2 border-t border-line px-3 py-2 text-2xs text-subtle">
-            <span>
-              Колесо — масштаб · перетаскивание — панорама · <kbd class="rounded border border-line px-1 font-mono">Del</kbd> — удалить · <kbd class="rounded border border-line px-1 font-mono">⇧</kbd>+клик — множественное выделение
-            </span>
-            <span v-if="isLocked">Опубликованная версия неизменяема</span>
+          <div class="flex gap-1">
+            <button type="button" class="grid h-7 w-7 place-items-center rounded border border-line text-xs text-muted hover:text-content" aria-label="Приблизить" @click="zoomBy(1.15)">+</button>
+            <button type="button" class="grid h-7 w-7 place-items-center rounded border border-line text-xs text-muted hover:text-content" aria-label="Отдалить" @click="zoomBy(0.87)">−</button>
+            <button type="button" class="grid h-7 w-7 place-items-center rounded border border-line text-2xs text-muted hover:text-content" aria-label="Вписать содержимое" title="Вписать схему в окно" @click="fitToContent">⤢</button>
+            <span class="grid h-7 min-w-[3rem] place-items-center rounded border border-line px-1 text-2xs tabular-nums text-subtle" title="Текущий масштаб">{{ zoomPercent }}%</span>
           </div>
+
+          <button
+            v-if="!showInspector"
+            type="button"
+            class="grid h-7 place-items-center rounded border border-line px-2 text-2xs text-muted transition-colors hover:text-content"
+            title="Показать свойства"
+            @click="showInspector = true"
+          >Свойства</button>
+        </div>
+
+        <input ref="imageInput" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" class="hidden" @change="onImageChosen" />
+        <input ref="jsonInput" type="file" accept=".json,application/json" class="hidden" @change="onJsonChosen" />
+
+        <!-- Холст: занимает всю оставшуюся высоту -->
+        <div
+          ref="canvasHost"
+          :class="cn(
+            'min-h-0 flex-1 w-full bg-surface-2',
+            tool === 'pan' ? 'cursor-grab active:cursor-grabbing' : 'cursor-crosshair',
+            isLocked && 'cursor-default',
+          )"
+        />
+
+        <div v-if="seatPriceLegend.length" class="flex flex-none flex-wrap items-center gap-x-3 gap-y-1 border-t border-line px-3 py-1.5" aria-label="Цены мест на схеме">
+          <span class="text-2xs font-medium text-subtle">Цены:</span>
+          <span v-for="item in seatPriceLegend" :key="item.price" class="flex items-center gap-1.5 text-2xs text-muted">
+            <i class="size-2.5 rounded-full" :style="{ backgroundColor: item.color }" /> {{ money(item.price) }}
+          </span>
+        </div>
+
+        <div class="flex flex-none flex-wrap items-center justify-between gap-2 border-t border-line px-3 py-1 text-2xs text-subtle">
+          <span class="truncate">
+            Колесо — масштаб · <kbd class="rounded border border-line px-1 font-mono">Space</kbd>+тяга или средняя кнопка — панорама · <kbd class="rounded border border-line px-1 font-mono">V</kbd>/<kbd class="rounded border border-line px-1 font-mono">H</kbd> — инструменты
+          </span>
+          <span v-if="isLocked" class="flex-none">Опубликованная версия неизменяема</span>
         </div>
       </section>
 
       <!-- Инспектор -->
-            <aside v-if="showInspector" class="min-w-0 space-y-3">
+      <aside
+        v-if="showInspector"
+        class="absolute inset-y-0 right-0 z-20 flex min-h-0 w-[320px] flex-none flex-col border-l border-line bg-surface shadow-xl md:static md:z-auto md:shadow-none"
+      >
+        <div class="flex flex-none items-center justify-between gap-1 border-b border-line px-2 py-1.5">
+          <h2 class="px-1 text-2xs font-semibold uppercase tracking-wide text-subtle">Свойства</h2>
+          <button
+            type="button"
+            class="grid h-6 w-6 place-items-center rounded text-xs text-muted transition-colors hover:bg-surface-3 hover:text-content"
+            title="Скрыть свойства (освободить место)"
+            @click="showInspector = false"
+          >✕</button>
+        </div>
+
+        <div class="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
         <!-- Сведения о зале (§54: город/адрес/описание/фото) -->
         <div class="surface-card overflow-hidden">
           <div class="border-b border-line px-3 py-2.5">
@@ -2554,33 +2966,99 @@ function reassignSelectedSeats(targetSectorId: string): void {
               />
               <p class="text-2xs text-subtle">Банкетный стол: места по кольцу, одна цена на весь стол.</p>
             </template>
-            <details v-if="selectedSector.seats.length" class="text-xs">
-              <summary class="cursor-pointer select-none text-muted hover:text-content">Цены по рядам · §50</summary>
-              <div class="mt-2 max-h-40 space-y-1 overflow-y-auto rounded bg-surface-2 p-2">
-                <div
-                  v-for="row in Array.from(new Set(selectedSector.seats.map((s) => s.row))).sort((a, b) => a - b)"
-                  :key="row"
-                  class="flex items-center justify-between gap-2"
-                >
-                  <span class="text-subtle">Ряд {{ row }}</span>
-                  <input
-                    :value="selectedSector.rowPrices[row] != null ? Math.round(selectedSector.rowPrices[row] / 100) : ''"
-                    type="number"
-                    min="1"
-                    step="1"
-                    placeholder="—"
-                    :disabled="isLocked"
-                    :title="rowPriceInputError(row)"
+            <template v-if="selectedSector.shape !== 'table'">
+              <!-- Ряды: выбор, вставка, удаление, цены — всё в одном месте.
+                   Ряд это единица работы (зал на 400 мест правят рядами, а не
+                   местами), поэтому его операции стоят выше по списку, чем
+                   свойства отдельного места. -->
+              <details v-if="selectedSector.seats.length" open class="text-xs">
+                <summary class="cursor-pointer select-none text-muted hover:text-content">
+                  Ряды · {{ selectedRowNumbers.length }} · §48
+                </summary>
+                <div class="mt-2 max-h-56 space-y-1 overflow-y-auto rounded bg-surface-2 p-2">
+                  <div
+                    v-for="row in selectedRowNumbers"
+                    :key="row"
                     :class="cn(
-                      'h-8 w-20 rounded-md border bg-surface px-2 text-right text-sm text-content tabular-nums focus:outline-none disabled:opacity-50',
-                      rowPriceInputError(row) ? 'border-rose-500' : 'border-line focus:border-brand-400',
+                      'flex items-center gap-1.5 rounded px-1.5 py-1 transition-colors',
+                      activeRow === row ? 'bg-brand-500/10' : 'hover:bg-surface-3',
                     )"
-                    @change="onRowPriceInput(row, ($event.target as HTMLInputElement).value)"
+                  >
+                    <button
+                      type="button"
+                      class="flex-1 truncate text-left text-subtle transition-colors hover:text-content"
+                      :title="`Выделить все места ряда ${row}`"
+                      @click="activeRow = row; selectRow(row)"
+                    >Ряд {{ row }}</button>
+                    <span class="flex-none text-2xs tabular-nums text-subtle">{{ seatsInRow(selectedSector, row).length }}</span>
+                    <input
+                      :value="selectedSector.rowPrices[row] != null ? Math.round(selectedSector.rowPrices[row] / 100) : ''"
+                      type="number"
+                      min="1"
+                      step="1"
+                      placeholder="—"
+                      :disabled="isLocked"
+                      :title="rowPriceInputError(row)"
+                      class="h-7 w-16 flex-none rounded-md border bg-surface px-1.5 text-right text-xs text-content tabular-nums focus:outline-none disabled:opacity-50"
+                      :class="rowPriceInputError(row) ? 'border-rose-500' : 'border-line focus:border-brand-400'"
+                      @change="onRowPriceInput(row, ($event.target as HTMLInputElement).value)"
+                    />
+                    <button
+                      type="button"
+                      class="grid h-6 w-6 flex-none place-items-center rounded text-2xs text-muted transition-colors hover:bg-surface-3 hover:text-content"
+                      :disabled="isLocked"
+                      title="Вставить ряд ниже"
+                      @click="addRowAfter(row)"
+                    >＋</button>
+                    <button
+                      type="button"
+                      class="grid h-6 w-6 flex-none place-items-center rounded text-2xs text-muted transition-colors hover:bg-rose-500/10 hover:text-rose-400 disabled:opacity-40"
+                      :disabled="isLocked"
+                      title="Удалить ряд"
+                      @click="removeRow(row)"
+                    >✕</button>
+                  </div>
+                </div>
+              </details>
+
+              <!-- Шаг сетки: плотность рассадки в пикселях -->
+              <details class="text-xs">
+                <summary class="cursor-pointer select-none text-muted hover:text-content">Шаг мест и рядов</summary>
+                <div class="mt-2 grid grid-cols-2 gap-2">
+                  <NInput
+                    :model-value="String(SEAT + GAP)"
+                    label="Шаг мест, px"
+                    type="number"
+                    :min="1"
+                    :disabled="isLocked"
+                    hint="Расстояние между центрами соседних мест"
+                    @update:model-value="(v: string | number) => clampIntField('seatStep', v, 1, 400)"
+                  />
+                  <NInput
+                    :model-value="String(SEAT + ROW_GAP)"
+                    label="Шаг рядов, px"
+                    type="number"
+                    :min="1"
+                    :disabled="isLocked"
+                    hint="Расстояние между рядами"
+                    @update:model-value="(v: string | number) => clampIntField('rowStep', v, 1, 400)"
                   />
                 </div>
+                <NButton
+                  variant="secondary" size="sm" block class="mt-2"
+                  :disabled="isLocked || selectedSector.shape !== 'grid'"
+                  @click="applyStep(form.seatStep, form.rowStep)"
+                >Применить шаг</NButton>
+                <p v-if="selectedSector.shape !== 'grid'" class="mt-1 text-2xs text-subtle">
+                  Дуга и стол строятся по радиусу — шаг к ним не применяется.
+                </p>
+              </details>
+
+              <div class="flex gap-2">
+                <NButton variant="secondary" size="sm" block :disabled="isLocked" @click="addRowToSelected">+ Ряд</NButton>
+                <NButton variant="secondary" size="sm" block :disabled="isLocked" @click="resequenceSelectedSector">Нумерация</NButton>
               </div>
-            </details>
-            <NButton variant="secondary" size="sm" :disabled="isLocked" @click="addRowToSelected">+ Ряд</NButton>
+            </template>
             <NButton variant="danger" block :disabled="isLocked" @click="() => { snapshot(); sectors = sectors.filter((s) => s.id !== selectedSectorId); selectedSectorId = null }">Удалить сектор</NButton>
           </div>
         </div>
@@ -2627,6 +3105,46 @@ function reassignSelectedSeats(targetSectorId: string): void {
                 :disabled="isLocked"
                 @update:model-value="(v: string | number) => setSeatPriceRub(String(v).trim() === '' ? null : Number(v))"
               />
+              <!-- Тип места для группы: без этого «сделать ряд VIP» требовало
+                   бы выбирать место за местом — а ряд это ровно тот случай,
+                   когда тип назначают всем сразу. -->
+              <NSelect
+                :model-value="groupSeatKind"
+                :options="[{ value: '', label: '— не менять —' }, ...KIND_OPTIONS]"
+                label="Тип всех выбранных"
+                :disabled="isLocked"
+                @update:model-value="(v: string) => { if (v) setSeatKindForSelection(v as SeatKind) }"
+              />
+              <!-- Выравнивание и распределение: тонкая правка уже расставленного -->
+              <div>
+                <span class="mb-1 block text-sm font-medium text-content">Выравнивание</span>
+                <div class="grid grid-cols-3 gap-1">
+                  <button
+                    v-for="a in ALIGN_ACTIONS" :key="a.edge"
+                    type="button"
+                    class="rounded-md border border-line px-1 py-1.5 text-2xs text-muted transition-colors hover:bg-surface-3 hover:text-content"
+                    :disabled="isLocked"
+                    :title="a.hint"
+                    @click="alignSelected(a.edge)"
+                  >{{ a.label }}</button>
+                </div>
+                <div class="mt-1 grid grid-cols-2 gap-1">
+                  <button
+                    type="button"
+                    class="rounded-md border border-line px-1 py-1.5 text-2xs text-muted transition-colors hover:bg-surface-3 hover:text-content"
+                    :disabled="isLocked"
+                    title="Расставить выбранные места с равным шагом по горизонтали"
+                    @click="distributeSelected('x')"
+                  >Ровно по X</button>
+                  <button
+                    type="button"
+                    class="rounded-md border border-line px-1 py-1.5 text-2xs text-muted transition-colors hover:bg-surface-3 hover:text-content"
+                    :disabled="isLocked"
+                    title="Расставить выбранные места с равным шагом по вертикали"
+                    @click="distributeSelected('y')"
+                  >Ровно по Y</button>
+                </div>
+              </div>
             </template>
             <div v-if="sectors.length > 1">
               <NSelect
@@ -2776,6 +3294,7 @@ function reassignSelectedSeats(targetSectorId: string): void {
         <p v-if="!selectedSector && selectedSeatIds.size === 0 && selectedStaticIds.size === 0 && !selectedBackground" class="px-1 text-xs text-subtle">
           Выберите сектор, место, объект или фон на холсте — здесь появятся их свойства
         </p>
+        </div>
       </aside>
     </div>
   </div>
