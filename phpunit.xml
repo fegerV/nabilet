@@ -32,5 +32,9 @@
         <env name="CACHE_DRIVER" value="array"/>
         <env name="SESSION_DRIVER" value="array"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
+        <!-- The queue's sync driver executes afterCommit jobs during a test. Use
+             Laravel's in-memory mail transport so order lifecycle tests never
+             attempt to open a real SMTP connection. -->
+        <env name="MAIL_MAILER" value="array" force="true"/>
     </php>
 </phpunit>

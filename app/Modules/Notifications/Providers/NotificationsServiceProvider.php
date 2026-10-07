@@ -15,6 +15,9 @@ class NotificationsServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
-        $this->loadRoutesFrom(__DIR__ . '/../routes/api.php');
+        // Маршруты НЕ грузятся отсюда: они подключены централизованно в
+        // routes/api.php, откуда получают префикс /api/v1. Через
+        // loadRoutesFrom они зарегистрировались бы в корне без префикса —
+        // ровно то, из-за чего провайдеры модулей не регистрируются скопом.
     }
 }

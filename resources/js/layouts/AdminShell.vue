@@ -53,6 +53,8 @@ const GROUPS = [
     items: [
       { label: 'Пользователи', to: '/admin/users', icon: '☺' },
       { label: 'Интеграции', to: '/admin/integrations', icon: '⇄' },
+      { label: 'Вебхуки', to: '/admin/webhooks', icon: '⌁' },
+      { label: 'Шаблоны писем', to: '/admin/notification-templates', icon: '✉' },
       { label: 'Аналитика', to: '/admin/analytics', icon: '▲' },
     ],
   },

@@ -36,6 +36,8 @@ $moduleRoutes = [
     __DIR__ . '/../app/Modules/Payments/routes/api.php',
     __DIR__ . '/../app/Modules/Tickets/routes/api.php',
     __DIR__ . '/../app/Modules/Webhooks/routes/api.php',
+    // Редактирование шаблонов транзакционных писем (админка).
+    __DIR__ . '/../app/Modules/Notifications/routes/api.php',
     __DIR__ . '/../app/Modules/Core/Users/routes/api.php',
     __DIR__ . '/../app/Modules/Core/Organizations/routes/api.php',
     __DIR__ . '/../app/Modules/Venues/Halls/routes/api.php',

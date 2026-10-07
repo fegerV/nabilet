@@ -1,0 +1,11 @@
+{
+  "name": "storefront",
+  "title": "Конструктор витрины",
+  "version": "1.0.0",
+  "enabled": true,
+  "priority": 60,
+  "requires": ["organizations"],
+  "permissions": ["storefront.view", "storefront.edit"],
+  "provides": [],
+  "description": "Публичная витрина, собираемая из JSON-конфига: секции-виджеты, тема, брендинг, меню и подвал. Конфиг хранится в storefront_settings и отдаётся публичным эндпоинтом; новый виджет — это компонент плюс запись в реестре виджетов и в белом списке полей сервиса."
+}

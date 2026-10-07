@@ -74,6 +74,8 @@ const APP_ONLY_TABLES = [
     'event_sponsors',         // event content extras
     'metrika_settings',       // Yandex.Metrika integration (create_metrika_settings_table)
     'personal_access_tokens', // Laravel personal access tokens (create_personal_access_tokens_table)
+    'failed_jobs',            // Laravel queue bookkeeping (create_queue_tables); needed to see a webhook that exhausted its attempts
+    'jobs',                   // Laravel database queue (create_queue_tables); transactional mail and outbound webhooks are dispatched onto it
 ];
 
 /**
@@ -646,18 +648,25 @@ $knownExtensions = [
         'event_sponsors',
         'metrika_settings',
         'personal_access_tokens',
+        'storefront_settings', // конструктор витрины (Storefront)
+        'failed_jobs',         // очередь Laravel (create_queue_tables)
+        'jobs',                // очередь Laravel: транзакционная почта и исходящие вебхуки
     ],
     'columns' => [
         'users' => ['remember_token'],
         'carts' => ['active_cart_key', 'currency', 'total_amount'],
         'hall_schema_versions' => ['revision', 'published_hall_id', 'draft_hall_id'],
+        // Сведения о зале и цена места (add_hall_details_and_seat_price):
+        // детали зала правятся отдельно от версии схемы, цена на место
+        // перекрывает цену ряда.
+        'halls' => ['city', 'address', 'exterior_photo_url', 'interior_photo_url'],
+        'seats' => ['price_amount'],
     ],
-    'defaults' => [
-        'carts' => [
-            'currency' => 's:RUB',
-            'total_amount' => 'n:0',
-        ],
-    ],
+    // Значения по умолчанию для app-only колонок сюда НЕ пишутся: такие колонки
+    // перечислены в APP_OWNED_COLUMNS и вычитаются из сравнения до diff-а.
+    // Дублирование (было для carts.currency/carts.total_amount) ломало проверку
+    // в обе стороны: колонка вычиталась, а ожидалась — и diff никогда не сходился.
+    'defaults' => [],
     'indexes' => [
         'carts' => [
             'missing' => ['uq_carts_token_session_status'],
@@ -824,6 +833,17 @@ check('Core column defaults match; app-only defaults are explicitly named', func
 check('Core indexes match; application-owned offline-bundle indexes are explicit', function () use ($tables, $spec, $knownExtensions): void {
     $problems = [];
 
+    // Индексы, созданные сырым SQL (`CREATE UNIQUE INDEX ... ON <table>`),
+    // рекордер схемы не видит: он собирает только объявления Blueprint. Без
+    // этого разбора инвариант «одна живая версия схемы на зал» выглядел бы
+    // несуществующим, хотя миграция его создаёт.
+    $rawIndexes = [];
+    foreach (\Illuminate\Database\Schema\Schema::rawStatements()->statements as $sql) {
+        if (preg_match('/CREATE\s+(?:UNIQUE\s+)?INDEX\s+`?(\w+)`?\s+ON\s+`?(\w+)`?/i', (string) $sql, $m)) {
+            $rawIndexes[strtolower($m[2])][] = $m[1];
+        }
+    }
+
     foreach ($spec['tables'] as $name => $definition) {
         if (! isset($tables[$name])) {
             continue;
@@ -837,12 +857,21 @@ check('Core indexes match; application-owned offline-bundle indexes are explicit
             }
         }
 
+        foreach ($rawIndexes[strtolower($name)] ?? [] as $indexName) {
+            if (! in_array($indexName, $have, true)) {
+                $have[] = $indexName;
+            }
+        }
+
         $want = $definition['indexes'];
-        $expected = $knownExtensions['indexes'][$name] ?? ['missing' => [], 'extra' => []];
+        $expected = $knownExtensions['indexes'][$name] ?? [];
         $missing = array_values(array_diff($want, $have));
         $extra = array_values(array_diff($have, $want));
-        $expectedMissing = $expected['missing'];
-        $expectedExtra = $expected['extra'];
+        // Оба ключа необязательны: запись может называть только `extra` (так для
+        // hall_schema_versions). Без `?? []` в sort() уходил null и вся проверка
+        // падала, не дойдя до сравнения.
+        $expectedMissing = $expected['missing'] ?? [];
+        $expectedExtra = $expected['extra'] ?? [];
         sort($missing);
         sort($extra);
         sort($expectedMissing);

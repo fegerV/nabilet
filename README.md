@@ -270,9 +270,10 @@ add_filter('ticket.price', fn (int $price) => $price + 300, priority: 20);
 | Commerce: корзина → заказ → оплата → билеты/QR/check-in | ✅ через API |
 | Публичная часть (витрина на API, SEO по slug, JSON-LD, sitemap) | ✅ готово |
 | Админка | ✅ Vue-админка (Sanctum + роли); Filament удалён полностью |
-| Остаточные моки фронта (`mock.ts`: `AdminDashboardPage.vue`, `TicketsPage.vue`) | 🟡 убрать на этапе 4 (ROADMAP) |
+| Остаточные моки фронта (`mock.ts`) и демо-HTML | ✅ удалены; источник — `docs/PRODUCTION-READINESS.md` |
+| Транзакционные письма + исходящие вебхуки | ✅ код реализован; перед production нужны SMTP credentials, migration/worker/scheduler и live smoke test |
 | Интеграции: Яндекс Метрика → Директ | 🟡 сервер + клиентское ядро готовы (контракт `metrikaConfig` в `docs/openapi.yaml`); точки `trackEvent`, env, UI настроек — в работе (ROADMAP, этап 5) |
-| Чистка моков, релизный деплой-пакет | ⚪ предстоят (ROADMAP, этап 4) |
+| Релизный деплой-пакет | ⚪ предстоит (ROADMAP, этап 4) |
 | Решение по промокодам, переводам, медиатеке | ⚪ требуется — см. REVIEW §3.10 |
 | Решение по изоляции арендаторов | ⚪ требуется — см. ARCHITECTURE §6 |
 

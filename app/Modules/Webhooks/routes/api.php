@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Illuminate\Support\Facades\Route;
 use Nabilet\Modules\Webhooks\Http\Controllers\WebhookController;
+use Nabilet\Modules\Webhooks\Http\Controllers\WebhookSubscriptionController;
 
 /*
  * Webhooks Module API Routes
@@ -15,6 +16,17 @@ Route::post('/webhooks/payment/{provider}', [WebhookController::class, 'payment'
 
 // Generic webhook endpoint with signature verification
 Route::post('/webhooks/{type}', [WebhookController::class, 'handle'])->name('webhooks.handle');
+
+// Управление ИСХОДЯЩИМИ вебхуками (подписками). Отдельный префикс, чтобы не
+// смешивать с точками приёма: inbound-маршруты аутентифицируются подписью
+// провайдера и открыты, эти — только для администратора организации.
+Route::prefix('webhook-subscriptions')->middleware(['auth:api', 'admin'])->group(function () {
+    Route::get('/', [WebhookSubscriptionController::class, 'index']);
+    Route::post('/', [WebhookSubscriptionController::class, 'store']);
+    Route::put('/{webhook}', [WebhookSubscriptionController::class, 'update'])->whereNumber('webhook');
+    Route::delete('/{webhook}', [WebhookSubscriptionController::class, 'destroy'])->whereNumber('webhook');
+    Route::get('/{webhook}/deliveries', [WebhookSubscriptionController::class, 'deliveries'])->whereNumber('webhook');
+});
 
 // Здесь был второй, ПОЛНОСТЬЮ идентичный маршрут с именем `webhooks.handle2`:
 // тот же метод, тот же путь. Он назывался «алиасом», но алиасом не был —

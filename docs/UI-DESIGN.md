@@ -350,7 +350,7 @@ resources/
 │   │   ├── format.ts           # money, dateFull, time, plural
 │   │   ├── hall.ts             # позиционирование секторов
 │   │   ├── types.ts            # общие типы
-│   │   └── mock.ts             # мок-данные (заменяется на API)
+│   │   └── tickets.ts          # запросы билетов покупателя к API
 │   ├── components/
 │   │   ├── ui/                 # библиотека компонентов (15 шт.)
 │   │   ├── seat/               # SeatMap, SeatLegend, OrderSummary

@@ -11,16 +11,16 @@
 - Моки убираем — всё на реальный Laravel API.
 - SEO: страницы мероприятий — каждая со своим slug (не id).
 
-## Текущее состояние (проверено 2026-09-24)
-- Laravel API почти готов: 10 модулей, CRUD events/sessions/venues/halls/inventory/orders/payments.
-- **Витрина полностью на API**: Catalog, EventPage (по slug), SeatSelection (реальная схema зала),
-  Checkout — всё через `lib/api.ts`. Моки в витрине убраны.
-- **Холд/снятие/checkout работают**: атомарный decrement inventory, финализация sold, возврат при снятии.
-- **SEO-страницы по slug работают**: `GET /event/{slug}` (301 на canonical с publicId) + JSON-LD.
-- **Текущее состояние админки**: Vue-страницы (`pages/admin/`) читают API; остатки `lib/mock.ts` — только в `AdminDashboardPage.vue` и `TicketsPage.vue` (удалить на этапе 4 ROADMAP «Чистка»).
-- Filament: ✅ удалён полностью — провайдер, ресурсы, страницы, справка, чек-лист (этап выполнен).
-- Пробел в API закрыт (этап 1 ✅): Sessions и Venues получили write-эндпоинты (`POST/PATCH/DELETE` под `auth:sanctum, admin`).
-- Авторизация админки ✅ (этап 1): Sanctum-токены + middleware ролей `EnsureAdminRole` (admin/manager).
+## Исторический снимок (проверен 2026-09-24)
+
+Этот файл — план миграции админки, а не текущий аудит. Состояние репозитория и
+оставшиеся задачи сверять по [`PRODUCTION-READINESS.md`](PRODUCTION-READINESS.md)
+и [`ROADMAP.md`](ROADMAP.md): в частности, `lib/mock.ts` уже удалён; старые
+пункты «удалить mock.ts» ниже — исторические записи, не открытые задачи.
+
+- Vue-витрина переведена на API, Filament удалён.
+- Позднее добавлены реальные админ-страницы, редакторы почтовых шаблонов и
+  исходящих вебхуков; полная актуальная карта — в production readiness документе.
 
 ## Документы
 - `docs/ROADMAP.md` — статусы этапов, сверяться перед работой (источник истины).

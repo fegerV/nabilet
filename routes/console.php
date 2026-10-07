@@ -23,3 +23,20 @@ use Illuminate\Support\Facades\Schedule;
 // На Timeweb настроить в Crontab: * * * * * /opt/php82/bin/php /path/to/artisan schedule:run
 Schedule::command('seats:clear-expired')->everyMinute();
 
+// Очередь: транзакционная почта и исходящие вебхуки кладутся в неё, чтобы
+// сетевые вызовы не попадали в транзакцию оплаты. На шаред-хостинге нет
+// постоянных воркеров, поэтому очередь разбирается порциями по крону:
+// `--stop-when-empty` заставляет воркера выйти, как только она опустела, а
+// `--max-time` гарантирует выход до следующей минуты.
+//
+// Lock снимается через 5 минут, а не через стандартные 24 часа: если воркер
+// убьют, суточная блокировка остановила бы всю почту до ручного вмешательства.
+Schedule::command('queue:work --stop-when-empty --max-time=50 --queue=default')
+    ->everyMinute()
+    ->withoutOverlapping(5);
+
+// Повторы доставки вебхуков, у которых наступил next_retry_at. Ретрит не сама
+// джоба, а эта команда: решение о повторе принимает RetryPolicy, который не
+// повторяет 4xx — иначе мы превратились бы в источник нагрузки на чужой сервер.
+Schedule::command('webhooks:retry-pending')->everyMinute();
+

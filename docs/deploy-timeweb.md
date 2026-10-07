@@ -32,8 +32,6 @@
 └── public_html/                   ← DocumentRoot (то, что видно по HTTP)
     ├── index.php                  ← НОВЫЙ тонкий вход (требует ../public/index.php)
     ├── .htaccess                  ← НОВЫЙ rewrite на index.php
-    ├── hall-editor.html           (стендэлоун-страница)
-    ├── ticket-builder.html        (стендэлоун-страница)
     └── build/                     (скомпилированный фронтенд, отслеживается в git)
 ```
 
@@ -159,36 +157,66 @@ php artisan config:cache && php artisan route:cache && php artisan view:cache
 
 ---
 
-## 5. Фронтенд (замечание по сборке)
+## 5. Фронтенд (активная сборка)
 
-В репозитории **две** vite-конфигурации:
-
-- `vite.config.ts` (активная) — выводит в `dist/` (локальная разработка / SPA).
-- `vite.config.js` (legacy) — выводит в `public_html/build/` с `manifest: true`;
-  именно её выхлоп и отслеживается в git для шаред-хостинга.
-
-Чтобы обновить ассеты на сервере без npm на хосте, соберите локально и закоммитьте:
+- `vite.config.ts` — активная конфигурация приложения: `npm run build` создаёт
+  `dist/index.html` и `dist/assets/*`. Laravel отдаёт этот SPA-файл из `routes/web.php`
+  и SEO-роутов; после изменения Vue-кода именно `dist/` должен попасть в релиз.
+- `vite.config.js` — legacy-конфигурация для отдельного набора ассетов в
+  `public_html/build/`; она не является источником активной страницы SPA. Не
+  запускайте её вместо `vite.config.ts` для production-сборки.
+- Демо-страницы `ticket-builder.html` и `hall-editor.html` вместе с их копиями и
+  ассетами удалены; отдельно публиковать их больше не нужно.
 
 ```bash
 npm ci
-npx vite build --config vite.config.js     # → public_html/build/{assets,*.html}
-git add public_html/build && git commit && git push
+npm run build
 ```
-
-`public_html/build/index.php` — вестigial-копия `public/index.php`, оставшаяся от
-сборки; не используется маршрутизацией (root ведёт на `public_html/index.php`).
-Можно удалить при следующей чистке, на работу не влияет.
 
 ---
 
-## 6. Очереди / фон (опционально)
+## 6. Очередь и расписание (обязательно для писем и вебхуков)
 
-Если используются очереди/расписание, на шаред-хостинге они ставятся через
-cron в панели TimeWeb, например:
+Транзакционные письма и исходящие вебхуки ставятся в database queue. После
+развёртывания примените миграции, включая `jobs` и `failed_jobs`:
+
+```bash
+php artisan migrate --force
+```
+
+Настройте `.env` — значения ниже взять у вашего SMTP-провайдера; реальные
+пароли не хранить в git:
+
+```dotenv
+QUEUE_CONNECTION=database
+MAIL_MAILER=smtp
+MAIL_HOST=<SMTP-хост>
+MAIL_PORT=587
+MAIL_USERNAME=<SMTP-пользователь>
+MAIL_PASSWORD=<SMTP-пароль>
+MAIL_ENCRYPTION=tls
+MAIL_FROM_ADDRESS=<подтверждённый адрес отправителя>
+MAIL_FROM_NAME="${APP_NAME}"
+```
+
+Планировщик запускает worker очереди порциями (50 секунд каждую минуту) и
+поднимает отложенные повторы вебхуков. Установите cron в панели TimeWeb:
 
 ```cron
 * * * * * cd /home/uXXXXX && php artisan schedule:run >> /dev/null 2>&1
 ```
+
+При первом развёртывании (и после добавления новых шаблонов) создайте системные
+шаблоны писем; существующие тексты сидер не перезаписывает:
+
+```bash
+php artisan db:seed --class='Database\\Seeders\\NotificationTemplateSeeder' --force
+```
+
+После изменения `.env` очистите/пересоберите config cache, затем проверьте
+`php artisan schedule:list` и выполните тест-покупку на реальный SMTP-ящик.
+
+---
 
 ---
 
