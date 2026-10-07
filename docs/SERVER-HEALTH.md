@@ -358,7 +358,7 @@ Unbuilt namespaces, by count:
 | `/api/v1/promo-codes/*` | 3 | |
 | `/api/v1/media/*` | 2 | |
 | translations (`/venues/…`, `/pages/…`) | 4 | |
-| auth password/email paths | 3 | app has `/auth/forgot-password`; spec has `/auth/password/forgot` |
+| auth password/email paths | 0 | ✅ приведены к контракту: `/auth/password/forgot`, `/auth/password/reset`, `/auth/email/verify` (было `/auth/forgot-password` и т.п.) |
 | OAuth callbacks, telegram, health, webhooks/yookassa, others | 5 | |
 
 Some of these are genuine missing features; some are naming mismatches (cart vs carts,
@@ -568,9 +568,13 @@ started. The repro scripts are `tools/repro-binary-ip.php` (#15) and `tools/repr
   the module is still a facade. `registerCustomer`, `sendPasswordResetLink`, `resetPassword` and
   `verifyEmail` do not exist, and `AuthController` still returns the flat
   `{"error":"Invalid credentials"}` — the last `E1` ratchet exception.
-- **Password reset and email verification have no storage.** `password_reset_tokens` does not exist in
-  the live database (0 columns) although `config/auth.php` names it. The plan is a signed stateless
-  token — an HMAC over user id + email + expiry — rather than a table the spec does not define.
+- **Password reset and email verification are implemented with a signed stateless token.**
+  `password_reset_tokens` does not exist in the live database (0 columns) although `config/auth.php`
+  names it. `AccountTokenService` issues a `Crypt`-encrypted payload (user public id + e-mail +
+  purpose + expiry + a password-hash fingerprint) instead of adding a table the spec does not
+  define. The fingerprint is what makes the token single-use: a successful reset rewrites the
+  password hash, so every older link fails verification. `AccountRecoveryService` performs the
+  reset inside a transaction and revokes every session for the user.
 - **`/api/v1/cart` vs `/api/v1/carts` is structural, not a rename.** The spec models a cart as a
   resource addressed by `{cart}`; the app keys the cart by `session_id` in the body/query and has no
   cart id in the URL at all. `GET /api/v1/carts/{cart}` cannot be produced by adding a prefix — the

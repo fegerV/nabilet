@@ -57,7 +57,7 @@ placeholder админ-секций `AdminPlaceholderPage.vue` (только д�
 
 | # | Где | Что | Серьёзность | Влияние на прод |
 |---|---|---|---|---|
-| 1 | `app/Modules/Auth/Http/Controllers/AuthController.php:113,129,137` | `forgot-password`, `reset-password`, `verify-email` → `notImplemented` (3 эндпоинта) | 🟡 средняя | Нет восстановления пароля и верификации email; MVP может жить без, но это база |
+| 1 | `app/Modules/Auth/**` | `forgot-password` / `reset-password` / `verify-email` — **реализованы** (см. ниже) | ✅ закрыто | Восстановление пароля и подтверждение адреса работают; пути приведены к контракту (`/auth/password/forgot`, `/auth/password/reset`, `/auth/email/verify`) |
 | 2 | `resources/js/pages/admin/AdminPlaceholderPage.vue` + `router/index.ts` catch-all | Placeholder остаётся только для админ-разделов, у которых ещё нет реальной страницы | 🟡 средняя | Такие разделы нельзя считать реализованными; письма и вебхуки к ним больше не относятся |
 | 3 | `.env` → `MAIL_HOST`, `MAIL_USERNAME`, `MAIL_PASSWORD`, `MAIL_FROM_ADDRESS` | Локальная конфигурация не содержит SMTP-хоста/учётных данных | 🔴 высокая до настройки | Письмо корректно создаётся и ставится в очередь, но транспорт не сможет подключиться; реальные credentials не коммитить |
 | 4 | `app/Modules/Embed/**` | Embed-виджет — скелет (`EmbedDomain` модель + `EmbedServiceProvider`); контроллер/роут/рендер не подтверждены | 🟡 средняя | ТЗ §: виджет для чужих сайтов; функциональность не доведена |
@@ -111,7 +111,14 @@ placeholder админ-секций `AdminPlaceholderPage.vue` (только д�
   минутный cron для `schedule:run` и выполнить живой smoke test транспорта.
 
 ### P1 — качество MVP
-1. **Auth:** `forgot-password` / `reset-password` / `verify-email`.
+1. **Auth:** `forgot-password` / `reset-password` / `verify-email`. — **✅ сделано.**
+   `AccountTokenService` выпускает подписанный stateless-токен (Crypt, полезная
+   нагрузка: user public_id + e-mail + purpose + срок + отпечаток хеша пароля);
+   `AccountRecoveryService` проводит сброс (в транзакции, с отзывом всех сессий)
+   и подтверждение адреса; письма идут по редактируемым шаблонам
+   (`account.password_reset`, `account.email_verification`). Пути эндпоинтов
+   приведены к `docs/openapi.yaml`. Лимит `throttle:auth` — 5/мин на пару
+   e-mail+IP и 20/мин на IP.
 2. **Placeholder-разделы:** заменить catch-all `AdminPlaceholderPage.vue` реальными
    экранами или явно пометить оставшиеся экспериментальными.
 3. **CI:** добавить шаги `php vendor/bin/phpunit` + `vitest run` + `docker build` (после

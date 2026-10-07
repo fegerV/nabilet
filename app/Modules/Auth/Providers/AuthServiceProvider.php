@@ -5,7 +5,10 @@ declare(strict_types=1);
 namespace Nabilet\Modules\Auth\Providers;
 
 use Illuminate\Contracts\Auth\Guard;
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Nabilet\Modules\Auth\Guards\SessionTokenGuard;
 use Nabilet\Modules\Auth\Services\SessionIssuer;
@@ -44,6 +47,42 @@ class AuthServiceProvider extends ServiceProvider
         // the API middleware group — a duplicate public surface, not a harmless
         // repeat. Routes stay in one place.
         $this->registerSessionTokenDriver();
+        $this->registerRateLimiters();
+    }
+
+    /**
+     * Named rate limiters for the auth endpoints (`throttle:auth` on the routes).
+     *
+     * Registered through the `RateLimiter` facade so the framework's own
+     * `throttle` middleware enforces them. That matters for the error shape:
+     * `ThrottleRequestsException` is already mapped to the §66 envelope with code
+     * `TOO_MANY_REQUESTS` by `ApiExceptionRenderer`, so a limit breach is a 429
+     * every client can branch on rather than a middleware-specific body.
+     *
+     * `Nabilet\Core\Http\Middleware\RateLimiter` exists in the tree but was never
+     * aliased and is not in the kernel, so `throttle:auth` never reached it. This
+     * is the mechanism that is actually wired.
+     *
+     * WHY LOGIN IS LIMITED BY `email + IP` AND NOT BY IP ALONE
+     *   A whole office or a mobile carrier NAT shares one public address. Keying
+     *   only on IP would lock every user behind it out of their own account once
+     *   five of them typed a password. Pairing the address with the submitted
+     *   e-mail means one busy shared IP does not become a denial of service, while
+     *   a spray across many accounts from the same IP is still capped by the
+     *   per-IP bucket below. `forgot-password` deliberately does NOT include the
+     *   e-mail: an attacker varying the address would otherwise reset the counter
+     *   on every attempt, which is exactly the abuse the limit is for.
+     */
+    private function registerRateLimiters(): void
+    {
+        RateLimiter::for('auth', function (Request $request): array {
+            $email = (string) ($request->input('email') ?? '');
+
+            return [
+                Limit::perMinute(5)->by('auth:' . ($email === '' ? $request->ip() : $email . '|' . $request->ip())),
+                Limit::perMinute(20)->by('auth-ip:' . $request->ip()),
+            ];
+        });
     }
 
     /**

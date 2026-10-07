@@ -61,9 +61,15 @@ return [
     /*
      * `password_reset_tokens` does NOT exist in the schema — verified against the
      * live database, where the table had zero columns. The ТЗ defines no
-     * password-reset table either. The Auth module therefore issues a signed,
-     * stateless reset token (HMAC over user id + email + expiry) instead of
-     * inventing storage; see `docs/REVIEW-spec-bundle.md`.
+     * password-reset table either.
+     *
+     * The `users` entry below is therefore NOT the storage the reset flow uses:
+     * nothing reads this table. `Nabilet\Modules\Auth\Services\AccountTokenService`
+     * issues a signed, stateless reset token (Crypt, payload = user public id +
+     * e-mail + purpose + expiry + password-hash fingerprint) and the flow never
+     * touches a table. This block is kept only so the `passwords` key resolves for
+     * anything that asks for it by name; `expire: 60` is superseded by
+     * `AccountTokenService::DEFAULT_TTL`.
      */
     'passwords' => [
         'users' => [

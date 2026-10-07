@@ -85,7 +85,7 @@ class TransactionalMailTest extends TestCase
     {
         $this->seed(\Database\Seeders\NotificationTemplateSeeder::class);
 
-        self::assertSame(7, NotificationTemplate::query()->where('channel', 'email')->count());
+        self::assertSame(9, NotificationTemplate::query()->where('channel', 'email')->count());
 
         $template = NotificationTemplate::query()->where('code', 'order.paid')->firstOrFail();
         $template->update(['subject' => 'Мой изменённый заголовок']);
@@ -93,6 +93,6 @@ class TransactionalMailTest extends TestCase
         $this->seed(\Database\Seeders\NotificationTemplateSeeder::class);
 
         self::assertSame('Мой изменённый заголовок', $template->fresh()->subject);
-        self::assertSame(7, NotificationTemplate::query()->where('channel', 'email')->count());
+        self::assertSame(9, NotificationTemplate::query()->where('channel', 'email')->count());
     }
 }

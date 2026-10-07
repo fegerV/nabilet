@@ -5,9 +5,14 @@ declare(strict_types=1);
 namespace Nabilet\Modules\Auth\Http\Controllers;
 
 use Illuminate\Routing\Controller;
+use Nabilet\Core\Errors\ValidationError;
+use Nabilet\Modules\Auth\Http\Requests\ForgotPasswordRequest;
 use Nabilet\Modules\Auth\Http\Requests\RegisterRequest;
 use Nabilet\Modules\Auth\Http\Requests\LoginRequest;
+use Nabilet\Modules\Auth\Http\Requests\ResetPasswordRequest;
+use Nabilet\Modules\Auth\Http\Requests\VerifyEmailRequest;
 use Nabilet\Modules\Auth\Http\Resources\AuthResource;
+use Nabilet\Modules\Auth\Services\AccountRecoveryService;
 use Nabilet\Modules\Auth\Services\ClientContext;
 use Nabilet\Modules\Auth\Services\SessionIssuer;
 use Nabilet\Modules\Core\Users\Services\UserService;
@@ -20,6 +25,7 @@ class AuthController extends Controller
     public function __construct(
         private readonly UserService $userService,
         private readonly SessionIssuer $sessions,
+        private readonly AccountRecoveryService $recovery,
     ) {}
 
     /**
@@ -110,50 +116,77 @@ class AuthController extends Controller
     }
 
     /**
-     * Request password reset — NOT IMPLEMENTED.
+     * Request a password reset link by e-mail.
      *
-     * Kept as a routed endpoint so the API surface does not silently change, but
-     * it answers 501 rather than calling a service method that does not exist.
-     * The flow needs storage the schema does not have: `nabilet_core_spec` defines
-     * no `password_reset_tokens` (or equivalent) table, and `docs/openapi.yaml`
-     * does not document this path. Until both exist, any real implementation here
-     * would be inventing a contract. Admin-driven resets go through
-     * `UserService::updateUser()`.
+     * ALWAYS 204, whether or not the address belongs to an account.
+     *
+     * That is the whole point of the endpoint's contract: a 404 for an unknown
+     * address turns it into an account-enumeration oracle, and an attacker who can
+     * ask "does this person shop here?" in a loop has a mailing list. The service
+     * returns `void` precisely so this controller has nothing to branch on — the
+     * asymmetry cannot leak by accident later.
+     *
+     * The rate limit (`throttle:auth`) is the other half: without it the endpoint
+     * is also a way to mass-mail a victim from our own domain. It lives on the
+     * route, not here, so it applies before validation runs.
      */
-    public function forgotPassword(Request $request): JsonResponse
+    public function forgotPassword(ForgotPasswordRequest $request): Response
     {
-        return $this->notImplemented('POST /api/v1/auth/forgot-password');
+        $this->recovery->requestPasswordReset($request->validated('email'));
+
+        return response()->noContent();
     }
 
     /**
-     * Reset password with token — NOT IMPLEMENTED. See `forgotPassword()`.
+     * Complete a password reset with the token from the e-mail.
+     *
+     * A rejected token is a 422 with a field error rather than a 401: this is not
+     * an authentication failure — the caller is not sending credentials — it is an
+     * unusable input, and the §66 envelope puts it where the form can render it.
+     * One message covers expired, forged and already-used tokens on purpose; the
+     * differences are not the caller's business and telling them apart helps only
+     * someone probing.
      */
-    public function resetPassword(Request $request): JsonResponse
+    public function resetPassword(ResetPasswordRequest $request): Response
     {
-        return $this->notImplemented('POST /api/v1/auth/reset-password');
+        $done = $this->recovery->resetPassword(
+            $request->validated('token'),
+            $request->validated('email'),
+            $request->validated('password'),
+        );
+
+        if (! $done) {
+            throw new ValidationError([
+                'token' => ['Ссылка для сброса пароля недействительна или истекла.'],
+            ], 'Ссылка для сброса пароля недействительна или истекла.', [], 'PASSWORD_RESET_TOKEN_INVALID');
+        }
+
+        return response()->noContent();
     }
 
     /**
-     * Verify email address — NOT IMPLEMENTED. See `forgotPassword()`.
+     * Confirm an e-mail address from the link sent at registration.
      *
-     * `users.email_verified_at` exists and registration stamps it, so there is no
-     * verification state left to move; a token flow would need a table that the
-     * schema does not define.
+     * Requires an authenticated session (`auth:api` on the route) AND a valid
+     * token. The session proves the caller is the account holder right now; the
+     * token proves control of the mailbox. Either alone is weaker: a stolen
+     * session should not be able to mark an address verified, and a forwarded link
+     * should not work for a different logged-in user.
      */
-    public function verifyEmail(Request $request): JsonResponse
+    public function verifyEmail(VerifyEmailRequest $request): JsonResponse
     {
-        return $this->notImplemented('POST /api/v1/auth/verify-email');
-    }
+        if (! $this->recovery->verifyEmail($request->validated('token'))) {
+            throw new ValidationError([
+                'token' => ['Ссылка подтверждения недействительна или истекла.'],
+            ], 'Ссылка подтверждения недействительна или истекла.', [], 'EMAIL_VERIFICATION_TOKEN_INVALID');
+        }
 
-    /** A uniform, greppable answer for the endpoints above. */
-    private function notImplemented(string $endpoint): JsonResponse
-    {
+        $user = $request->user();
+
         return response()->json([
-            'error' => 'Not Implemented',
-            'message' => sprintf(
-                '%s is routed but has no implementation: the schema defines no token storage for it.',
-                $endpoint,
-            ),
-        ], 501);
+            'data' => [
+                'user' => $user === null ? null : new AuthResource($user->load('roles')),
+            ],
+        ]);
     }
 }
