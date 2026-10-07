@@ -12,10 +12,13 @@ import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUiStore } from '@/stores/ui'
 import { logout, clearCurrentUser } from '@/lib/auth'
+import { usePersistedRef } from '@/lib/usePersistedRef'
 
 const ui = useUiStore()
 const router = useRouter()
-const collapsed = ref(false)
+/** Свёрнутость меню переживает F5: человек, свернувший его ради места, не должен
+ *  разворачивать его заново на каждой перезагрузке (см. usePersistedRef). */
+const collapsed = usePersistedRef('admin.sidebar.collapsed', false)
 
 async function doLogout(): Promise<void> {
   await logout()
@@ -111,6 +114,8 @@ const currentOrg = ref(ORGANIZATIONS[0])
         <button
           type="button"
           class="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-muted transition-colors hover:bg-surface-3 hover:text-content"
+          :title="collapsed ? 'Развернуть меню' : 'Свернуть меню'"
+          :aria-expanded="!collapsed"
           @click="collapsed = !collapsed"
         >
           <span aria-hidden="true" class="grid h-5 w-5 flex-none place-items-center">{{ collapsed ? '»' : '«' }}</span>
