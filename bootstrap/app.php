@@ -41,6 +41,12 @@ return Application::configure(basePath: dirname(__DIR__))
         // routes/api.php), так что регистрация здесь безопасна — префикс /api/v1
         // никуда не теряется.
         \Nabilet\Modules\Orders\Providers\OrderServiceProvider::class,
+        // Провайдер уведомлений применяет SMTP-настройки из админки к runtime-
+        // конфигу mail. Это нужно на КАЖДОМ бутстрапе: письма уходят и из
+        // веб-запроса, и из воркера очереди, и оба обязаны видеть одно и то же.
+        // Маршруты модуля тоже подключены централизованно, так что префикс не
+        // теряется.
+        \Nabilet\Modules\Notifications\Providers\NotificationsServiceProvider::class,
     ])
     ->withRouting(
         web: __DIR__ . '/../routes/web.php',

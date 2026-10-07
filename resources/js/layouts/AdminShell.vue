@@ -55,6 +55,7 @@ const GROUPS = [
       { label: 'Интеграции', to: '/admin/integrations', icon: '⇄' },
       { label: 'Вебхуки', to: '/admin/webhooks', icon: '⌁' },
       { label: 'Шаблоны писем', to: '/admin/notification-templates', icon: '✉' },
+      { label: 'Почта (SMTP)', to: '/admin/mail', icon: '⚙' },
       { label: 'Аналитика', to: '/admin/analytics', icon: '▲' },
     ],
   },

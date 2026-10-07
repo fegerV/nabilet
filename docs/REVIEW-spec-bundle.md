@@ -1545,7 +1545,8 @@ GET /api/v1/users → 500
 **14** путей обслуживаются как в спеке, **67** — нет. Незакрытые пространства имён: `/admin/*`
 (24), `/embed/*` (8), `/me/*` (5), checkin + `/checkin-devices/*` + `/offline-bundles/*` (5),
 `/carts/*` (4), `/promo-codes/*` (3), `/media/*` (2), переводы `/venues/…` и `/pages/…` (4),
-парольные пути auth (3 — приложение имеет `/auth/forgot-password`, спека `/auth/password/forgot`),
+парольные пути auth (0 — приведены к контракту: `/auth/password/forgot`, `/auth/password/reset`,
+`/auth/email/verify`),
 OAuth-колбэки, telegram, health, `/webhooks/yookassa` и прочее (5).
 
 Часть из этого — действительно нереализованные функции, часть — расхождения в именовании
@@ -1630,6 +1631,13 @@ trigger  live    1   spec    1   ok
 ---
 
 ### 3.24.8 Главный блокер: модуль аутентификации — фасад, а не «не установлен Sanctum»
+
+> **СТАТУС: ИСТОРИЯ (снимок состояния на момент аудита).** Раздел описывает, что было
+> *измерено тогда*, и намеренно не переписан. Что закрыто позже: `register`/`login`/`logout`
+> переведены на `SessionIssuer` (Bearer из `user_sessions`), а `forgot-password`,
+> `reset-password` и `verify-email` реализованы через `AccountTokenService` +
+> `AccountRecoveryService` с путями по контракту. Актуальный список — в
+> `docs/PRODUCTION-READINESS.md`.
 
 **Это исправление вывода пункта 3.24.2.** Ранее было зафиксировано: «`laravel/sanctum` отсутствует
 в зависимостях». Это верно, но это не главная проблема, и установка Sanctum была бы неверным
@@ -2051,9 +2059,11 @@ $app->getLoadedProviders()  → 53 провайдера, из них под Modu
 
 ### 3.25.6 Открытые решения
 
-- **`password_reset_tokens` не существует** (0 колонок), хотя `config/auth.php` его называет. План —
-  подписанный stateless-токен (HMAC по user id + email + срок), а не новая таблица, которой в спеке
-  нет.
+- **`password_reset_tokens` не существует** (0 колонок), хотя `config/auth.php` его называет.
+  **РЕШЕНО:** реализован подписанный stateless-токен (`AccountTokenService`, Crypt; полезная
+  нагрузка — user public_id + e-mail + purpose + срок + отпечаток хеша пароля), новая таблица в
+  спеку не добавлялась. Одноразовость обеспечивается отпечатком: успешный сброс меняет хеш
+  пароля, и все прежние ссылки перестают проверяться.
 - **Раздвоение моделей `User`.** `App\Models\User` — модель панели Filament (провайдер `users`);
   `Nabilet\Modules\Core\Users\Models\User` — каноническая модель модуля (провайдер `api_users`). Обе
   указывают на одну таблицу. Решение о слиянии не принято.

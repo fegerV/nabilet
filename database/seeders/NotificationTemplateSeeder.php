@@ -6,6 +6,7 @@ namespace Database\Seeders;
 
 use App\Models\NotificationTemplate;
 use Illuminate\Database\Seeder;
+use Nabilet\Modules\Notifications\Support\AccountNotificationCodes;
 use Nabilet\Modules\Notifications\Support\OrderNotificationCodes;
 use RuntimeException;
 
@@ -40,21 +41,29 @@ final class NotificationTemplateSeeder extends Seeder
      */
     public function run(): void
     {
-        $templates = $this->templates();
+        $templates = array_merge($this->orderTemplates(), $this->accountTemplates());
 
-        // Сид и обсервер обязаны знать один и тот же набор кодов. Если здесь
-        // появится шаблон, которого нет в OrderNotificationCodes (или наоборот),
-        // сид падает — расхождение должно быть видно сразу, а не по отсутствию
-        // писем на проде.
-        $seeded = array_column($templates, 'code');
+        // Сид и обсервер обязаны знать один и тот же набор кодов ЗАКАЗА. Если
+        // здесь появится шаблон заказа, которого нет в OrderNotificationCodes
+        // (или наоборот), сид падает — расхождение должно быть видно сразу, а не
+        // по отсутствию писем на проде.
+        //
+        // Сверяются только коды `order.*`: письма о доступе к аккаунту не
+        // приходят от обсервера заказа, у них свой список
+        // (`AccountNotificationCodes`), и добавлять их в проверку значило бы
+        // сравнивать два разных набора.
+        $seededOrders = array_values(array_filter(
+            array_column($templates, 'code'),
+            static fn (string $code): bool => str_starts_with($code, 'order.'),
+        ));
         $expected = OrderNotificationCodes::all();
-        sort($seeded);
+        sort($seededOrders);
         sort($expected);
 
-        if ($seeded !== $expected) {
+        if ($seededOrders !== $expected) {
             throw new RuntimeException(sprintf(
-                'Расхождение кодов шаблонов: в сиде [%s], в OrderNotificationCodes [%s].',
-                implode(', ', $seeded),
+                'Расхождение кодов шаблонов заказов: в сиде [%s], в OrderNotificationCodes [%s].',
+                implode(', ', $seededOrders),
                 implode(', ', $expected),
             ));
         }
@@ -87,7 +96,7 @@ final class NotificationTemplateSeeder extends Seeder
     /**
      * @return list<array{code: string, subject: string, body_html: string, body_text: string}>
      */
-    private function templates(): array
+    private function orderTemplates(): array
     {
         return [
             $this->template(
@@ -187,6 +196,94 @@ final class NotificationTemplateSeeder extends Seeder
             ),
         ];
 
+    }
+
+    /**
+     * Письма о доступе к аккаунту: восстановление пароля и подтверждение адреса.
+     *
+     * Переменных здесь меньше, чем у заказов: `{{action_url}}` — готовая ссылка,
+     * собранная сервисом (токен в шаблон не попадает), и `{{expires_in_minutes}}`
+     * для текста о сроке. Список доступных переменных объявлен в
+     * `AccountNotificationCodes::variables()` и совпадает с тем, что
+     * подставляет `AccountMailService`.
+     *
+     * Тон писем — намеренно без деталей о событии и сумме: это письмо о
+     * безопасности, и единственное, что читателю нужно, — что делать дальше.
+     * Если действие запрошено не им, он должен понять это из первой строки.
+     *
+     * @return list<array{code: string, subject: string, body_html: string, body_text: string}>
+     */
+    private function accountTemplates(): array
+    {
+        return [
+            $this->accountTemplate(
+                code: AccountNotificationCodes::PASSWORD_RESET,
+                subject: 'Смена пароля',
+                intro: 'Здравствуйте, {{customer_name}}!',
+                body: 'Вы запросили смену пароля. Нажмите кнопку ниже, чтобы задать новый пароль.',
+                action: 'Если вы не запрашивали смену пароля, просто проигнорируйте это письмо —'
+                    . ' пароль останется прежним.',
+                urlLabel: 'Задать новый пароль',
+                text: "Здравствуйте, {{customer_name}}!\n\n"
+                    . "Вы запросили смену пароля. Перейдите по ссылке, чтобы задать новый:\n"
+                    . "{{action_url}}\n\n"
+                    . "Ссылка действует {{expires_in_minutes}} минут.\n"
+                    . "Если вы не запрашивали смену пароля, проигнорируйте это письмо.\n",
+            ),
+            $this->accountTemplate(
+                code: AccountNotificationCodes::EMAIL_VERIFICATION,
+                subject: 'Подтверждение адреса электронной почты',
+                intro: 'Здравствуйте, {{customer_name}}!',
+                body: 'Подтвердите адрес электронной почты, чтобы получать билеты и уведомления о заказах.',
+                action: 'Если вы не регистрировались на нашем сайте, просто проигнорируйте это письмо.',
+                urlLabel: 'Подтвердить адрес',
+                text: "Здравствуйте, {{customer_name}}!\n\n"
+                    . "Подтвердите адрес электронной почты:\n"
+                    . "{{action_url}}\n\n"
+                    . "Ссылка действует {{expires_in_minutes}} минут.\n"
+                    . "Если вы не регистрировались, проигнорируйте это письмо.\n",
+            ),
+        ];
+    }
+
+    /**
+     * Собрать запись шаблона письма о доступе к аккаунту.
+     *
+     * @return array{code: string, subject: string, body_html: string, body_text: string}
+     */
+    private function accountTemplate(
+        string $code,
+        string $subject,
+        string $intro,
+        string $body,
+        string $action,
+        string $urlLabel,
+        string $text,
+    ): array {
+        // Кнопка-ссылка собирается платформенно-нейтрально (таблица вместо
+        // flex/grid): почтовые клиенты Outlook и старые мобильные клиенты
+        // выкидывают современную вёрстку, и нажимаемая кнопка превращается в
+        // строку без ссылки — а это единственное, ради чего письмо отправлено.
+        $html = '<div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,'
+            . 'sans-serif;max-width:600px;margin:0 auto;color:#111827;">'
+            . '<p style="margin:0 0 12px;">' . $intro . '</p>'
+            . '<p style="margin:0 0 20px;line-height:1.5;">' . $body . '</p>'
+            . '<table role="presentation" cellpadding="0" cellspacing="0" border="0">'
+            . '<tr><td style="border-radius:6px;background:#4f46e5;">'
+            . '<a href="{{action_url}}" target="_blank" rel="noopener"'
+            . ' style="display:inline-block;padding:12px 20px;font-size:15px;font-weight:600;'
+            . 'color:#ffffff;text-decoration:none;">' . $urlLabel . '</a></td></tr></table>'
+            . '<p style="margin:20px 0 0;font-size:13px;line-height:1.5;color:#6b7280;">'
+            . 'Ссылка действует {{expires_in_minutes}} минут.</p>'
+            . '<p style="margin:12px 0 0;line-height:1.5;color:#4b5563;">' . $action . '</p>'
+            . '</div>';
+
+        return [
+            'code' => $code,
+            'subject' => $subject,
+            'body_html' => $html,
+            'body_text' => $text,
+        ];
     }
 
     /**
