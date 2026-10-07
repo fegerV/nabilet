@@ -80,7 +80,12 @@ const routes: RouteRecordRaw[] = [
       { path: 'notification-templates', name: 'admin-notification-templates', component: () => import('@/pages/admin/AdminNotificationTemplatesPage.vue') },
       { path: 'webhooks', name: 'admin-webhooks', component: () => import('@/pages/admin/AdminWebhooksPage.vue') },
       { path: 'mail', name: 'admin-mail', component: () => import('@/pages/admin/AdminMailSettingsPage.vue') },
-      { path: ':section', name: 'admin-section', component: () => import('@/pages/admin/AdminPlaceholderPage.vue') },
+      // Catch-all для неизвестных адресов админки. Разделов-заглушек больше нет:
+      // все пункты меню ведут на реальные экраны, поэтому единственное, чем может
+      // быть этот маршрут, — опечатка в URL. Он отдаёт честный «Раздел не найден»
+      // вместо прежнего «ещё не реализован», который для несуществующего раздела
+      // прямо вводил в заблуждение.
+      { path: ':section', name: 'admin-not-found', component: () => import('@/pages/admin/AdminNotFoundPage.vue') },
     ],
   },
 ]
