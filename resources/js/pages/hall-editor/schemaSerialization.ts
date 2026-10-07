@@ -31,6 +31,8 @@ export interface SerializedSeat {
   kind: SeatKind
   x: number
   y: number
+  /** Индивидуальная цена места (минорные единицы). Отсутствует — цена ряда/сектора. */
+  priceMinor?: number
 }
 
 export interface SerializedSector {
@@ -111,6 +113,11 @@ export function serializeSchema(state: EditorSchemaState): SerializedSchema {
         kind: seat.kind,
         x: seat.x,
         y: seat.y,
+        // Индивидуальная цена места пишется, только если она задана. Отсутствие
+        // ключа означает «взять цену ряда/сектора» — так round-trip детерминирован.
+        ...(seat.priceMinor != null && seat.priceMinor > 0
+          ? { priceMinor: Math.round(seat.priceMinor) }
+          : {}),
       })),
     })),
     staticObjects: state.statics.map((o) => ({ ...o })),
@@ -205,6 +212,7 @@ interface ServerSeat {
   id?: unknown
   price_amount?: unknown
   price?: unknown
+  priceMinor?: unknown
   /** Только для элементов rows[] — места внутри ряда. */
   seats?: unknown
 }
@@ -231,6 +239,12 @@ interface ServerSector {
 function num(v: unknown, fallback = 0): number {
   const n = Number(v)
   return Number.isFinite(n) ? n : fallback
+}
+
+/** Цена места: валидное положительное целое в минорных единицах, иначе undefined. */
+function readSeatPrice(v: unknown): number | undefined {
+  const n = Number(v)
+  return Number.isFinite(n) && n > 0 ? Math.round(n) : undefined
 }
 
 function toSeatKind(raw: unknown, fromDb: boolean): SeatKind {
@@ -299,7 +313,7 @@ export function parseSchemaPayload(raw: unknown, canvasSize: SchemaCanvas): Norm
 
   const rawSectors = Array.isArray(obj.sectors) ? obj.sectors : []
 
-  interface FlatSeat { row: number; number: number; x: number; y: number; kind: SeatKind }
+  interface FlatSeat { row: number; number: number; x: number; y: number; kind: SeatKind; priceMinor?: number }
   const collected: { sector: ServerSector; seats: FlatSeat[] }[] = []
   const droppedSectors: string[] = []
   let allMinX = Infinity, allMaxX = -Infinity, allMinY = Infinity, allMaxY = -Infinity
@@ -315,6 +329,7 @@ export function parseSchemaPayload(raw: unknown, canvasSize: SchemaCanvas): Norm
         kind: toSeatKind(seat?.kind, false),
         x: num(seat?.x, 0),
         y: num(seat?.y, 0),
+        priceMinor: readSeatPrice(seat?.priceMinor ?? seat?.price ?? seat?.price_amount),
       }))
     } else if (Array.isArray(s.rows)) {
       for (const r of s.rows as ServerSeat[]) {
@@ -326,6 +341,7 @@ export function parseSchemaPayload(raw: unknown, canvasSize: SchemaCanvas): Norm
             kind: toSeatKind(seat?.type, true),
             x: num(seat?.x, 0),
             y: num(seat?.y, 0),
+            priceMinor: readSeatPrice(seat?.priceMinor ?? seat?.price_amount ?? seat?.price),
           })
         }
       }
@@ -376,6 +392,7 @@ export function parseSchemaPayload(raw: unknown, canvasSize: SchemaCanvas): Norm
           kind: p.kind,
           x: Math.round(p.x),
           y: Math.round(p.y),
+          priceMinor: p.priceMinor,
         })),
         rowPrices,
         shape: s.shape === 'arc' ? 'arc' : (s.shape === 'table' ? 'table' : 'grid'),
@@ -458,13 +475,19 @@ export function parseSchemaPayload(raw: unknown, canvasSize: SchemaCanvas): Norm
         y: degenerate
           ? (rowIndexOf.get(p.row) ?? 0) * (SEAT + ROW_GAP)
           : Math.round((p.y - secMinY) * scale),
+        priceMinor: p.priceMinor,
       }))
       out.push({
         id: `s${out.length + 1}`,
         name: s.name as string,
         priceMinor: Math.max(0, Math.round(secPrice)),
-        x: 0,
-        y: 0,
+        // Сохраняем ВЗАИМНОЕ расположение секторов исходной схемы (§54): при
+        // наличии геометрии позиция сектора берётся из ограничивающей рамки
+        // его мест в координатах источника. Раньше все секторы БД-формата
+        // укладывались вертикально друг под другом, и импортированный план
+        // Афиши терял реальную раскладку зала.
+        x: hasGeometry ? Math.round(secMinX - allMinX + pad) : 0,
+        y: hasGeometry ? Math.round(secMinY - allMinY + pad) : 0,
         seats,
         rowPrices,
         shape: s.shape === 'arc' ? 'arc' : (s.shape === 'table' ? 'table' : 'grid'),
@@ -476,11 +499,14 @@ export function parseSchemaPayload(raw: unknown, canvasSize: SchemaCanvas): Norm
         type: (s.type === 'standing' || s.type === 'mixed') ? s.type : 'seated',
       })
     }
-    // Раскладка секторов БД-формата по вертикали, чтобы они не наложились.
-    let cursorY = 140
-    for (const sec of out) {
-      sec.y = cursorY
-      cursorY += bbox(sec).height + 80
+    // БД-формат без геометрии (вырожденные координаты) раскладываем по
+    // вертикали, чтобы секторы не наложились друг на друга.
+    if (!hasGeometry) {
+      let cursorY = 140
+      for (const sec of out) {
+        sec.y = cursorY
+        cursorY += bbox(sec).height + 80
+      }
     }
   }
 

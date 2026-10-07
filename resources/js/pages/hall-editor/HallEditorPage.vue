@@ -133,6 +133,65 @@ const draftVersionId = ref<number | null>(null)
 const loadedPublished = ref<number | null>(null)
 const hallLoadState = ref<'idle' | 'loading' | 'ok' | 'error'>('idle')
 
+/* ── Сведения о зале (§54: город/адрес/описание/фото) ──────────────── */
+
+interface HallDetails {
+  name: string
+  description: string
+  city: string
+  address: string
+  exterior_photo_url: string
+  interior_photo_url: string
+}
+
+const hallDetails = ref<HallDetails>({
+  name: '',
+  description: '',
+  city: '',
+  address: '',
+  exterior_photo_url: '',
+  interior_photo_url: '',
+})
+const hallSaving = ref(false)
+
+function loadHallDetails(): void {
+  if (!hallPublicId.value) return
+  void get<Partial<HallDetails>>(`/halls/${hallPublicId.value}`)
+    .then((res) => {
+      const d = res.data
+      hallDetails.value = {
+        name: d.name ?? hallDetails.value.name,
+        description: d.description ?? '',
+        city: d.city ?? '',
+        address: d.address ?? '',
+        exterior_photo_url: d.exterior_photo_url ?? '',
+        interior_photo_url: d.interior_photo_url ?? '',
+      }
+    })
+    .catch(() => { /* сведения о зале не критичны для редактора схемы */ })
+}
+
+async function saveHallDetails(): Promise<void> {
+  if (!hallPublicId.value || hallSaving.value) return
+  hallSaving.value = true
+  try {
+    const payload = {
+      name: hallDetails.value.name,
+      description: hallDetails.value.description?.trim() || null,
+      city: hallDetails.value.city?.trim() || null,
+      address: hallDetails.value.address?.trim() || null,
+      exterior_photo_url: hallDetails.value.exterior_photo_url?.trim() || null,
+      interior_photo_url: hallDetails.value.interior_photo_url?.trim() || null,
+    }
+    await send(`/halls/${hallPublicId.value}`, 'PUT', payload)
+    ui.notify('mint', 'Сведения о зале сохранены')
+  } catch (e) {
+    ui.notify('rose', 'Не удалось сохранить', e instanceof Error ? e.message : String(e))
+  } finally {
+    hallSaving.value = false
+  }
+}
+
 /** Реальный id версии и номер ревизии черновика для optimistic locking. */
 let currentVersionId: number | null = null
 let currentSchemaRevision: number | null = null
@@ -1096,6 +1155,7 @@ async function loadFromServer(): Promise<void> {
     return
   }
   hallPublicId.value = pid
+  loadHallDetails()
   currentVersionId = null
   currentSchemaRevision = null
   draftVersionId.value = null
@@ -1231,6 +1291,19 @@ function exportSchema(): void {
         if (!root) throw new Error('Файл должен содержать JSON-объект схемы зала')
         snapshot()
         applyServerSchema(root)
+        // Метаданные зала из импорта (§54): город/адрес/описание/фото. Не
+        // перезаписываем уже заданные значения, чтобы не затереть правки.
+        const hallMeta = (root as Record<string, unknown>).hall
+        if (hallMeta && typeof hallMeta === 'object') {
+          const m = hallMeta as Record<string, unknown>
+          const pick = (k: string): string =>
+            typeof m[k] === 'string' && (m[k] as string).trim() ? (m[k] as string) : ''
+          if (!hallDetails.value.city) hallDetails.value.city = pick('city')
+          if (!hallDetails.value.address) hallDetails.value.address = pick('address')
+          if (!hallDetails.value.description) hallDetails.value.description = pick('description')
+          if (!hallDetails.value.exterior_photo_url) hallDetails.value.exterior_photo_url = pick('exterior_photo_url')
+          if (!hallDetails.value.interior_photo_url) hallDetails.value.interior_photo_url = pick('interior_photo_url')
+        }
         // Если загружали поверх published — снимем блокировку, чтобы можно было править
         if (published.value !== null) {
           newVersion()
@@ -1316,12 +1389,12 @@ const COLORS = {
 }
 
 const seatPriceColors = computed(() => buildSeatPricePalette(
-  sectors.value.flatMap((sector) => sector.seats.map((seat) => sector.rowPrices[seat.row] ?? sector.priceMinor)),
+  sectors.value.flatMap((sector) => sector.seats.map((seat) => seat.priceMinor ?? sector.rowPrices[seat.row] ?? sector.priceMinor)),
 ))
 const seatPriceLegend = computed(() => [...seatPriceColors.value].map(([price, color]) => ({ price, color })))
 
 function seatFill(seat: ESeat, sector: ESector): string {
-  const price = sector.rowPrices[seat.row] ?? sector.priceMinor
+  const price = seat.priceMinor ?? sector.rowPrices[seat.row] ?? sector.priceMinor
   return seatPriceColors.value.get(price) ?? COLORS[seat.kind]
 }
 
@@ -1949,6 +2022,26 @@ const selectedBackground = computed<EBackground | null>(() => {
 })
 const totalSeats = computed(() => sectors.value.reduce((sum, s) => sum + s.seats.length, 0))
 
+/** Целевой сектор для переназначения выделенных мест (§54). */
+const reassignTarget = ref<string>('')
+/** Сектора, в которые можно перенести (кроме текущего). */
+const reassignOptions = computed(() =>
+  sectors.value
+    .filter((s) => s.id !== selectedSectorId.value)
+    .map((s) => ({ value: s.id, label: s.name })),
+)
+/** Цена (₽) первого выделенного места — для группового поля «Цена всех выбранных». */
+const groupSeatPriceRub = computed(() => {
+  for (const sector of sectors.value) {
+    for (const seat of sector.seats) {
+      if (selectedSeatIds.value.has(seat.id)) {
+        return (seat.priceMinor ?? sector.rowPrices[seat.row] ?? sector.priceMinor) / 100
+      }
+    }
+  }
+  return 0
+})
+
 /* ── Валидация числовых полей (§50: цены в копейках) ──────────────────
  * Нечисло / NaN / отрицательное значение / ноль для цены — ошибка: поле
  * подсвечивается, значение НЕ попадает в модель и, соответственно, в
@@ -2144,6 +2237,56 @@ function setSeatKind(value: string): void {
   snapshot()
   seat.kind = value as SeatKind
 }
+
+/**
+ * Индивидуальная цена выделенных мест (минорные единицы). `null` снимает
+ * переопределение — место снова берёт цену ряда/сектора. Работает и для
+ * группового выделения (на все выбранные места сразу).
+ */
+function setSeatPriceRub(value: number | null): void {
+  if (selectedSeatIds.value.size === 0) return
+  snapshot()
+  for (const sector of sectors.value) {
+    for (const seat of sector.seats) {
+      if (selectedSeatIds.value.has(seat.id)) {
+        seat.priceMinor = value == null || !Number.isFinite(value) || value <= 0 ? null : Math.round(value * 100)
+      }
+    }
+  }
+}
+
+/**
+ * Переназначить выделенные места в другой сектор (§54: «переназначать места»).
+ * Координаты мест переводятся так, чтобы они сохранили положение на холсте,
+ * а не «прыгнули» к нулю целевого сектора. id пересоздаётся, чтобы не было
+ * коллизий с uuid сектора-источника.
+ */
+function reassignSelectedSeats(targetSectorId: string): void {
+  if (selectedSeatIds.value.size === 0) return
+  const target = sectors.value.find((s) => s.id === targetSectorId)
+  if (!target) return
+  snapshot()
+  const moving: ESeat[] = []
+  for (const sector of sectors.value) {
+    if (sector.id === targetSectorId) continue
+    const kept: ESeat[] = []
+    for (const seat of sector.seats) {
+      if (selectedSeatIds.value.has(seat.id)) {
+        const dx = sector.x - target.x
+        const dy = sector.y - target.y
+        moving.push({ ...seat, id: nextId('seat'), x: seat.x + dx, y: seat.y + dy })
+      } else {
+        kept.push(seat)
+      }
+    }
+    sector.seats = kept
+  }
+  target.seats = [...target.seats, ...moving]
+  selectedSectorId.value = targetSectorId
+  selectedSeatIds.value = new Set(moving.map((s) => s.id))
+  reassignTarget.value = ''
+  ui.notify('brand', 'Места переназначены', `${moving.length} → «${target.name}»`)
+}
 </script>
 
 <template>
@@ -2331,6 +2474,24 @@ function setSeatKind(value: string): void {
 
       <!-- Инспектор -->
             <aside v-if="showInspector" class="min-w-0 space-y-3">
+        <!-- Сведения о зале (§54: город/адрес/описание/фото) -->
+        <div class="surface-card overflow-hidden">
+          <div class="border-b border-line px-3 py-2.5">
+            <h2 class="text-sm font-semibold text-content">Сведения о зале</h2>
+            <p class="mt-0.5 text-xs text-subtle">Город, адрес, описание и фото</p>
+          </div>
+          <div class="space-y-3 p-3">
+            <NInput v-model="hallDetails.name" label="Название зала" placeholder="Большой зал" />
+            <NInput v-model="hallDetails.city" label="Город" placeholder="Москва" />
+            <NInput v-model="hallDetails.address" label="Адрес" placeholder="ул. Тверская, 1" />
+            <NInput v-model="hallDetails.description" label="Описание" placeholder="Описание зала" />
+            <NInput v-model="hallDetails.exterior_photo_url" label="Фото снаружи (URL)" placeholder="https://…" />
+            <NInput v-model="hallDetails.interior_photo_url" label="Фото внутри (URL)" placeholder="https://…" />
+            <NButton variant="secondary" block :disabled="hallSaving" @click="saveHallDetails">
+              {{ hallSaving ? 'Сохраняем…' : 'Сохранить сведения' }}
+            </NButton>
+          </div>
+        </div>
         <!-- Генератор сектора (§49) -->
         <div class="surface-card overflow-hidden">
           <div class="border-b border-line px-3 py-2.5">
@@ -2444,8 +2605,39 @@ function setSeatKind(value: string): void {
                 :disabled="isLocked"
                 @update:model-value="setSeatKind"
               />
+              <NInput
+                :model-value="String(Math.round((singleSelectedSeat.priceMinor ?? 0) / 100))"
+                label="Цена места, ₽"
+                type="number"
+                :min="0"
+                hint="Пусто — цена ряда/сектора"
+                :disabled="isLocked"
+                :error="rowPriceError((singleSelectedSeat.priceMinor ?? 0) / 100)"
+                @update:model-value="(v: string | number) => setSeatPriceRub(String(v).trim() === '' ? null : Number(v))"
+              />
             </template>
             <p v-else class="text-xs text-subtle">Групповые операции действуют на все выделенные места.</p>
+            <template v-if="selectedSeatIds.size > 1">
+              <NInput
+                :model-value="String(Math.round((groupSeatPriceRub) / 100))"
+                label="Цена всех выбранных, ₽"
+                type="number"
+                :min="0"
+                hint="Установит индивидуальную цену каждому месту"
+                :disabled="isLocked"
+                @update:model-value="(v: string | number) => setSeatPriceRub(String(v).trim() === '' ? null : Number(v))"
+              />
+            </template>
+            <div v-if="sectors.length > 1">
+              <NSelect
+                :model-value="reassignTarget"
+                :options="reassignOptions"
+                label="Переназначить в сектор"
+                hint="Переносит выбранные места, сохраняя их положение на холсте"
+                :disabled="isLocked"
+                @update:model-value="(v: string) => { reassignTarget = v; if (v) reassignSelectedSeats(v) }"
+              />
+            </div>
             <div class="flex gap-2">
               <NButton variant="secondary" size="sm" block :disabled="isLocked" @click="duplicateSelection">Дублировать</NButton>
               <NButton variant="danger" size="sm" block :disabled="isLocked" @click="deleteSelection">Удалить</NButton>

@@ -5,7 +5,10 @@ declare(strict_types=1);
 namespace Nabilet\Modules\Venues\Halls\Http\Controllers;
 
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Nabilet\Core\Errors\NotFoundError;
+use Nabilet\Core\Errors\ValidationError;
 use Nabilet\Modules\Venues\Models\Hall;
 use Nabilet\Modules\Venues\Halls\Services\HallService;
 use Nabilet\Modules\Venues\Halls\Http\Resources\HallResource;
@@ -63,7 +66,11 @@ class HallController extends Controller
             // `'1abc'` to row 1. See `CartController::addItem()` for the measurements.
             'venue_id' => ['bail', 'required', 'integer', 'exists:venues,id'],
             'name' => ['required', 'string', 'max:255'],
-            'description' => ['nullable', 'string', 'max:1000'],
+            'description' => ['nullable', 'string', 'max:2000'],
+            'city' => ['nullable', 'string', 'max:150'],
+            'address' => ['nullable', 'string', 'max:500'],
+            'exterior_photo_url' => ['nullable', 'string', 'max:2048', 'url:https'],
+            'interior_photo_url' => ['nullable', 'string', 'max:2048', 'url:https'],
             'capacity' => ['nullable', 'integer', 'min:0'],
             'width' => ['nullable', 'integer', 'min:0'],
             'height' => ['nullable', 'integer', 'min:0'],
@@ -84,7 +91,11 @@ class HallController extends Controller
 
         $validated = $request->validate([
             'name' => ['sometimes', 'required', 'string', 'max:255'],
-            'description' => ['nullable', 'string', 'max:1000'],
+            'description' => ['nullable', 'string', 'max:2000'],
+            'city' => ['nullable', 'string', 'max:150'],
+            'address' => ['nullable', 'string', 'max:500'],
+            'exterior_photo_url' => ['nullable', 'string', 'max:2048', 'url:https'],
+            'interior_photo_url' => ['nullable', 'string', 'max:2048', 'url:https'],
             'capacity' => ['sometimes', 'integer', 'min:0'],
             'width' => ['sometimes', 'integer', 'min:0'],
             'height' => ['sometimes', 'integer', 'min:0'],

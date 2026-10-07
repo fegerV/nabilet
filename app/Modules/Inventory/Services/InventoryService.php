@@ -125,6 +125,10 @@ class InventoryService
                                                                                                 'y' => $seatData['y'] ?? 0,
                                                                                                 'rotation' => 0,
                                                                                                 'status' => 'active',
+                                                                    // Индивидуальная цена места (§54): побеждает цену ряда.
+                                                                    'price_amount' => isset($seatData['priceMinor']) && is_numeric($seatData['priceMinor']) && (int) $seatData['priceMinor'] > 0
+                                                                        ? (int) $seatData['priceMinor']
+                                                                        : null,
                                         ]);
                                         $capacity += 1;
                                     }
@@ -212,7 +216,8 @@ class InventoryService
                                                     'session_id' => $session->id,
                                                     'type' => 'seat',
                                                     'seat_id' => $seat->id,
-                                                    'price_amount' => $row->price_amount,
+                                                    // Индивидуальная цена места перекрывает цену ряда.
+                                                    'price_amount' => $seat->price_amount ?? $row->price_amount,
                                                     'currency' => 'RUB',
                                                     'capacity' => 1,
                                                     'available_quantity' => 1,

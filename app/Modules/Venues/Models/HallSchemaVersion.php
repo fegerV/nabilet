@@ -198,6 +198,11 @@ class HallSchemaVersion extends Model
                             'type' => $mapSeatType((string) ($seat['kind'] ?? 'standard')),
                             'x' => $gx,
                             'y' => $gy,
+                            // Индивидуальная цена места (опционально): побеждает
+                            // цену ряда при генерации инвентаря (§54).
+                            'priceMinor' => isset($seat['priceMinor']) && is_numeric($seat['priceMinor']) && (int) $seat['priceMinor'] > 0
+                                ? (int) $seat['priceMinor']
+                                : null,
                         ];
                     }
 
