@@ -22,6 +22,7 @@ class Seat extends Model
         'public_id',
         'row_id',
         'number',
+        'price_amount',
         'label',
         'x',
         'y',
@@ -36,6 +37,7 @@ class Seat extends Model
     protected function casts(): array
     {
         return [
+            'price_amount' => 'integer',
             'x' => 'decimal:3',
             'y' => 'decimal:3',
             'width' => 'decimal:3',

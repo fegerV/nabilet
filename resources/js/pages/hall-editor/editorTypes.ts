@@ -24,6 +24,8 @@ export interface ESeat {
   kind: SeatKind
   x: number
   y: number
+  /** Индивидуальная цена места (минорные единицы). null — брать цену ряда/сектора. */
+  priceMinor?: number | null
 }
 
 export type SectorShape = 'grid' | 'arc' | 'table'
