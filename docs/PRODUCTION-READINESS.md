@@ -13,20 +13,24 @@
 **Готово и работает:** прикладной слой (22 контроллера, 18 API Resources), Vue 3 SPA
 (витрина + админка + конструктор залов + конструктор билетов), платёжный провайдер YooKassa
 (реальные вызовы `api.yookassa.ru/v3`, проверка подписи вебхука, возвраты), доменная логика
-ядра (покрыта тестами). **Тесты зелёные: Vitest 128/128, PHPUnit 96/96** (проверено 2026-10-07).
+ядра (покрыта тестами). **Проверки зелёные: Vitest 128/128, PHPUnit 105/105 (430 assertions),
+vue-tsc и Vite production build** (проверено 2026-10-07).
 
-**Блокирует реальную продажу билетов:**
-1. **Транзакционная почта** — покупатель не получает подтверждение заказа и билет по email
-   (Mail используется только в `NewsletterService`; писем по заказам/билетам нет).
-2. **Исходящая доставка вебхуков** — домен `RetryPolicy`/`DeliveryAttempt` есть, но **нет
-   транспорта** (`Http::post` к подписчикам не реализован); внешние системы не получают события.
+**P0 в коде закрыт 2026-10-07:** подключена транзакционная почта по редактируемым шаблонам,
+исходящие вебхуки по переходам статусов заказа, удалены `mock.ts` и демо-страницы (включая
+сгенерированные копии/ассеты из `public_html/build`). Реализованы статусы `awaiting_payment`,
+`paid`, `cancelled`, `refunded`, `partially_refunded`, `payment_failed`, `expired` (все допустимые статусы по `ck_orders_status`, кроме исходного `pending`).
 
-**Нужно убрать перед релизом (мусор/демо):** орфановый `resources/js/lib/mock.ts`, демо-страницы
-`public/ticket-builder.html` и `public/hall-editor.html` (отслеживаются в git, содержат
-«заглушка»), placeholder админ-секций `AdminPlaceholderPage.vue`.
+**Релиз всё ещё требует настройки среды:** включить очередь `database`, применить миграцию
+таблиц `jobs`/`failed_jobs`, включить планировщик раз в минуту (он разбирает очередь и повторы
+вебхуков), заполнить реальные SMTP-параметры и `MAIL_FROM_ADDRESS`. В текущем локальном
+`.env` SMTP-хост пустой, поэтому почта не может уйти до настройки; SMTP и живой endpoint
+партнёра не тестировались. P0-код закрыт, конфигурация production-транспорта — ещё нет.
 
-**Желательно до MVP:** восстановление пароля и верификация email (`AuthController` — 3 эндпоинта
-`notImplemented`); довести CI до прогона PHPUnit + Vitest + сборки образа.
+**Остаются перед MVP:** восстановление пароля и верификация email (`AuthController` — 3
+эндпоинта `notImplemented`); довести CI до прогона PHPUnit + Vitest + сборки образа;
+placeholder админ-секций `AdminPlaceholderPage.vue` (только для разделов, не заменённых
+реальными страницами).
 
 ---
 
@@ -34,16 +38,17 @@
 
 | Область | Статус | Как проверено |
 |---|---|---|
-| HTTP-слой | **22 контроллера**, **18 API Resources**, централизованная регистрация в `routes/api.php` | glob `app/Modules/**/Http/Controllers/*.php`, `*/Http/Resources/*.php` |
+| HTTP-слой | Модульные контроллеры и API Resources, маршруты централизованы в `routes/api.php` | `app/Modules/**/Http/Controllers/`, `*/Http/Resources/` |
 | Аутентификация/роли | Sanctum + `EnsureAdminRole`, `AuthResource` отдаёт роли, write-роуты защищены | `AuthController`, middleware |
 | Каталог/витрина | Catalog, EventPage, SeatSelection, Checkout — на реальном API (`lib/api.ts`) | `resources/js/pages/storefront/` |
-| Админка (Vue) | Логин, Мероприятия, Сеансы, Площадки, Залы, Заказы, конструктор схем | `resources/js/pages/admin/` |
+| Админка (Vue) | Логин, Мероприятия, Сеансы, Площадки, Залы, Заказы, интеграции, редактор шаблонов писем, управление исходящими вебхуками | `resources/js/pages/admin/` |
 | Конструктор залов | Загрузка/автосейв/публикация схем, импорт JSON, конвертация в инвентарь | `HallEditorPage.vue`, `HallSchemaVersion::toInventoryFormat` |
 | Платежи | `YooKassaProvider` (реальный API), `PaymentProviderRegistry`, `WebhookSignatureVerifier`, `RefundService` | `app/Modules/Payments/` |
-| Уведомления | `NewsletterService` (Mail), шаблоны, модель `Notification` | `app/Modules/Notifications/` |
+| Транзакционная почта | `TransactionalMailService`, редактируемые `notification_templates`, статусы заказов, `Notification`-лог + `afterCommit()` queue | `app/Modules/Notifications/`, `OrderObserver` |
+| Исходящие вебхуки | Подписки по организации и событиям, HMAC-SHA256, SSRF guard, retry policy, журнал доставок | `app/Modules/Webhooks/`, `webhooks`/`webhook_deliveries` |
 | Инвентарь/корзина/заказы/билеты | Сквозной контур реализован; цены, холды, чекаут, выпуск билетов | `Cart`/`Inventory`/`Orders`/`Tickets` модули + PHPUnit |
 | Тесты ядра (dependency-free) | 596 методов / 1216 утверждений (исторически) | `tests/run.php` |
-| Тесты прикладного слоя | Vitest 128/128, PHPUnit 96/96 | запуск 2026-10-07 |
+| Тесты прикладного слоя | Vitest 128/128, PHPUnit 105/105 (430 assertions) | запуск 2026-10-07 |
 | Документация | ARCHITECTURE, ROADMAP, deploy-timeweb, CODE-QUALITY-GUIDE, Техническая спецификация | `docs/` |
 
 ---
@@ -53,13 +58,10 @@
 | # | Где | Что | Серьёзность | Влияние на прод |
 |---|---|---|---|---|
 | 1 | `app/Modules/Auth/Http/Controllers/AuthController.php:113,129,137` | `forgot-password`, `reset-password`, `verify-email` → `notImplemented` (3 эндпоинта) | 🟡 средняя | Нет восстановления пароля и верификации email; MVP может жить без, но это база |
-| 2 | `public/ticket-builder.html`, `public/hall-editor.html` | Отслеживаются в git демо-страницы в web-корне; содержат «Для демонстрации показываем заглушку» | 🟡 низкая | Шум; отдаются по прямому URL `/ticket-builder.html`, `/hall-editor.html`; не относятся к Vue SPA |
-| 3 | `resources/js/lib/mock.ts` | Орфановый файл демо-данных (импортируется только в комментарии `TicketsPage.vue`) | 🟢 низкая | Мёртвый код, не функциональная заглушка (данные витрины давно на API) |
-| 4 | `resources/js/pages/admin/AdminPlaceholderPage.vue` + `router/index.ts:78` (роут `:section`) | Placeholder админ-секций для не реализованных разделов | 🟡 средняя | Часть админки — заглушки; реальные страницы подключены не для всех разделов |
-| 5 | `app/Modules/Webhooks/**` (транспорт) | Исходящая доставка вебхуков подписчикам: домен `RetryPolicy`/`DeliveryAttempt` есть, `Http::post` к подписчикам **нет** | 🔴 высокая | Внешние системы не получают события (только входящие вебхуки от YooKassa реализованы) |
-| 6 | `app/Modules/Notifications/**` + `Orders`/`Tickets` | Транзакционная почта: подтверждение заказа, доставка билета — **не реализованы**; Mail только в `NewsletterService` | 🔴 высокая | Покупатель не получает билет по email — критично для продажи |
-| 7 | `app/Modules/Embed/**` | Embed-виджет — скелет (`EmbedDomain` модель + `EmbedServiceProvider`); контроллер/роут/рендер не подтверждены | 🟡 средняя | ТЗ §: виджет для чужих сайтов; функциональность не доведена |
-| 8 | Android Checker | Отдельное приложение (офлайн-бандлы) | ⚪ вне web-MVP | Не блокирует веб-продажи |
+| 2 | `resources/js/pages/admin/AdminPlaceholderPage.vue` + `router/index.ts` catch-all | Placeholder остаётся только для админ-разделов, у которых ещё нет реальной страницы | 🟡 средняя | Такие разделы нельзя считать реализованными; письма и вебхуки к ним больше не относятся |
+| 3 | `.env` → `MAIL_HOST`, `MAIL_USERNAME`, `MAIL_PASSWORD`, `MAIL_FROM_ADDRESS` | Локальная конфигурация не содержит SMTP-хоста/учётных данных | 🔴 высокая до настройки | Письмо корректно создаётся и ставится в очередь, но транспорт не сможет подключиться; реальные credentials не коммитить |
+| 4 | `app/Modules/Embed/**` | Embed-виджет — скелет (`EmbedDomain` модель + `EmbedServiceProvider`); контроллер/роут/рендер не подтверждены | 🟡 средняя | ТЗ §: виджет для чужих сайтов; функциональность не доведена |
+| 5 | Android Checker | Отдельное приложение (офлайн-бандлы) | ⚪ вне web-MVP | Не блокирует веб-продажи |
 
 **Примечание по безопасности/качеству:** ранее отмеченные в `LAUNCH-READINESS.md` дефекты
 (перекос пространств имён, 88 выдуманных колонок, отсутствие `vendor/`/`composer.lock`,
@@ -74,31 +76,46 @@
 | Область | Оценка | Комментарий |
 |---|---|---|
 | Ядро / доменная логика (прайсинг, корзина, инвентарь, заказы, билеты, чекин, платежи, приватность, тенантность) | 🟢 | Покрыта тестами, дефекты доказаны исполнением |
-| API / HTTP-слой | 🟢 | 22 контроллера, валидация, ресурсы, Sanctum, централизованные роуты |
-| Фронтенд (витрина + админка + редактор залов + конструктор билетов) | 🟢 | Vue 3 + TS, на реальном API, типы чистые (`vue-tsc`) |
+| API / HTTP-слой | 🟢 | Валидация, роли, мультитенантные админские маршруты и централизованное подключение |
+| Фронтенд (витрина + админка + редактор залов + конструктор билетов) | 🟢 | Vue 3 + TS, на реальном API, `vue-tsc` и production build проходят |
 | Платежи (YooKassa: создание/статус/возврат + входящий вебхук) | 🟡 | Реализовано; **не проверено** против живого API (нужны реальные ключи и e2e) |
-| Уведомления / почта | 🔴 | Нет транзакционной почты; нет исходящих вебхуков |
+| Уведомления / почта | 🟡 | Письма и вебхуки подключены и протестированы; production SMTP/cron не настроены |
 | Auth (reset/verify email) | 🟡 | Логин/роли есть; восстановление пароля и верификация — заглушки |
 | Инфраструктура (Docker / деплой / бэкапы / мониторинг / ротация секретов / 152-ФЗ / PII-логи) | 🟡 | Docker-файлы и `docs/deploy-timeweb.md` есть; образ не собирался; бэкапы/мониторинг/ротация/логирование без PII не проверены |
-| CI | 🟡 | `.github/workflows/ci.yml` гонит только dependency-free верификаторы ядра; **не запускает PHPUnit (96) и Vitest (128)**, не собирает образ |
+| CI | 🟡 | `.github/workflows/ci.yml` гонит dependency-free верификаторы ядра; **не запускает PHPUnit и Vitest**, не собирает образ |
 
 ---
 
 ## 5. План закрытия перед продакшеном
 
-### P0 — блокирует реальную продажу
-1. **Транзакционная почта.** `OrderConfirmation` + `TicketDelivery` (Mail) при checkout и оплате;
-   настроить mail driver (SMTP) в `.env`. Критерий: после оплаты покупатель получает письмо с билетом.
-2. **Исходящая доставка вебхуков.** HttpClient-диспетчер, использующий `RetryPolicy`
-   (`4xx` не повторять, `3xx` не следовать, exponential backoff + jitter, лимит попыток).
-   Критерий: подписчик получает событие; повторная доставка идемпотентна.
+### P0 — код закрыт; остаётся настроить production
+- [x] Транзакционная почта по `awaiting_payment`, `paid`, `cancelled`, `refunded`,
+  `partially_refunded`, `payment_failed`, `expired`; шаблоны редактируются
+  через админку, письмо оплаты включает выпущенные билеты.
+- [x] Исходящие вебхуки по тем же статусам: HMAC-SHA256, ограничение SSRF, 4xx не
+  ретраятся, 3xx не переходятся, backoff+jitter и идемпотентность fan-out.
+- [x] Удалены `mock.ts`, демо-страницы/копии из `public_html/build` и мёртвая точка входа.
+- [x] Удалены четыре устаревших дубля моделей `app/Modules/Notifications/Models/*`
+  (`Consent`, `Notification`, `NotificationTemplate`, `PrivacyRequest`) — они объявляли
+  колонки, которых нет в схеме (`subject_template`, `is_subscribed`,
+  `notification_template_id`, `reason`), и `User` ссылался именно на них, то есть
+  relations `consents()/notifications()/privacyRequests()` упали бы в рантайме.
+  `User` переведён на канонические `App\Models\*`; `PrivacyRequest` создан в
+  `App\Models` по реальной схеме. `verify-models-schema`: 68→64 модели,
+  460→442 поля, долг `INVENTED_FIELDS` 69→59.
+- [x] Исправлен `SendWebhookDeliveryJob`: `error_message` обнулялся и при `abandoned`
+  (4xx/исчерпание лимита), поэтому причина остановки доставки терялась — ровно то,
+  ради чего `DeliveryOutcome` разделяет `permanent_failure` и `retry_limit_reached`.
+  Теперь сообщение сохраняется; `error_message` очищается только при успешной доставке.
+- [ ] На production настроить SMTP, применить миграцию `jobs`/`failed_jobs`, установить
+  минутный cron для `schedule:run` и выполнить живой smoke test транспорта.
 
 ### P1 — качество MVP
-3. **Auth:** `forgot-password` / `reset-password` / `verify-email` (с почтой из P0).
-4. **Убрать моки/демо:** удалить `resources/js/lib/mock.ts`, `public/ticket-builder.html`,
-   `public/hall-editor.html`, заменить `AdminPlaceholderPage.vue` реальными разделами или пометить experimental.
-5. **CI:** добавить шаги `php vendor/bin/phpunit` + `vitest run` + `docker build` (после появления
-   воспроизводимого `composer install`).
+1. **Auth:** `forgot-password` / `reset-password` / `verify-email`.
+2. **Placeholder-разделы:** заменить catch-all `AdminPlaceholderPage.vue` реальными
+   экранами или явно пометить оставшиеся экспериментальными.
+3. **CI:** добавить шаги `php vendor/bin/phpunit` + `vitest run` + `docker build` (после
+   появления воспроизводимого `composer install`).
 
 ### P2 — полнота
 6. **Embed-виджет:** довести до рабочего состояния или явно пометить experimental/out-of-scope.
@@ -114,8 +131,36 @@
   пулы `forks`/`threads`, после `rm -rf node_modules/.vite`). Ранее фиксировавшаяся ошибка
   `Cannot read properties of undefined (reading 'config')` **не воспроизводится** — была транзиентным
   состоянием кэша, не дефектом кода.
-- `php vendor/bin/phpunit` → **96/96** (386 assertions); `RefreshDatabase` делает `migrate:fresh` на
+- `php vendor/bin/phpunit --no-coverage` → **105/105** (430 assertions), включая новые тесты
+  транзакционных писем, OrderObserver, HMAC/webhook delivery, retry policy и SSRF guard;
+  `RefreshDatabase` делает `migrate:fresh` на
   `nabilet_test_suite` без ошибки 1419 (триггерная миграция `harden_hall_schema_lifecycle` проходит —
   `log_bin_trust_function_creators=1` выставлен глобально).
-- Подсчёт контроллеров/ресурсов — по дереву `app/Modules`; незавершённые места — grep по
-  `notImplemented`, `mock`, `Http::post`/`DeliveryAttempt` к подписчикам, `Mail::` в `Orders`/`Tickets`.
+- `vue-tsc --noEmit` и `vite build --config vite.config.ts` → прошли; `verify-migrations.php` → 16/16;
+  `verify-models-schema`, `verify-purity`, `verify-module-structure`, `verify-autoload`,
+  `verify-error-envelope`, OpenAPI и contract-schema — прошли.
+- Оставшиеся места проверять по `notImplemented` (Auth), placeholder-роутам, production SMTP/cron
+  и live e2e платежей/вебхуков.
+
+### Живой сквозной прогон P0 (2026-10-07, рабочая БД)
+
+Проведён на реальном сервере (`artisan serve`) и рабочей БД, не только в тестах:
+
+- Вход админом → `GET /api/v1/notification-templates` отдаёт 7 шаблонов и словарь
+  переменных; без токена — **401**.
+- `POST /notification-templates/2/preview` рендерит HTML и text письма `order.paid`
+  с подстановкой всех переменных (имя, номер заказа, мероприятие, дата, площадка,
+  форматированная сумма, блок билетов).
+- Подписка на вебхук с публичным `https` создаётся (**201**, секрет + `retry_limit=10`);
+  внутренний адрес `http://127.0.0.1:...` отвергается (**422**) — SSRF-guard работает.
+- Переход заказа `pending → paid` ставит **2 джобы** (`SendOrderNotificationJob` +
+  `DispatchOrderWebhookJob`); воркер доводит их до конца, fan-out создаёт
+  `webhook_deliveries`, `SendWebhookDeliveryJob` делает реальный подписанный POST.
+- Ретрай-петля: `webhooks:retry-pending` по «состаренному» `next_retry_at` поднимает
+  повторно ровно 1 доставку.
+
+Замечания окружения (не дефекты кода): миграция `2026_10_07_000500_create_queue_tables`
+в рабочей БД была **Pending** и применена в ходе проверки — без неё любая `dispatch()`
+падала бы на отсутствии `jobs`. Локальный `MAIL_MAILER=smtp` без SMTP-сервера и
+отсутствие CA-бандла дают `failed` в `notifications` и TLS-ошибку у вебхука —
+на production с настроенным SMTP и валидным сертификатом это ожидаемо исчезает.

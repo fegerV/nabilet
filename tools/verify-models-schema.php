@@ -71,6 +71,41 @@ const APPLICATION_SCHEMA_EXTENSIONS = [
             . '\\$table->unsignedBigInteger\\(\\s*[\'\"]revision[\'\"]\\s*\\)'
             . '\\s*->nullable\\(\\)\\s*->after\\(\\s*[\'\"]schema_json[\'\"]\\s*\\)~',
     ],
+    [
+        'table' => 'halls',
+        'column' => 'city',
+        'migration' => 'database/migrations/2026_10_07_000400_add_hall_details_and_seat_price.php',
+        'pattern' => '~Schema::table\\(\\s*[\'\"]halls[\'\"]\\s*,[\\s\\S]*?'
+            . '\\$table->string\\(\\s*[\'\"]city[\'\"]\\s*,\\s*150\\s*\\)~',
+    ],
+    [
+        'table' => 'halls',
+        'column' => 'address',
+        'migration' => 'database/migrations/2026_10_07_000400_add_hall_details_and_seat_price.php',
+        'pattern' => '~Schema::table\\(\\s*[\'\"]halls[\'\"]\\s*,[\\s\\S]*?'
+            . '\\$table->string\\(\\s*[\'\"]address[\'\"]\\s*,\\s*500\\s*\\)~',
+    ],
+    [
+        'table' => 'halls',
+        'column' => 'exterior_photo_url',
+        'migration' => 'database/migrations/2026_10_07_000400_add_hall_details_and_seat_price.php',
+        'pattern' => '~Schema::table\\(\\s*[\'\"]halls[\'\"]\\s*,[\\s\\S]*?'
+            . '\\$table->string\\(\\s*[\'\"]exterior_photo_url[\'\"]\\s*,\\s*2048\\s*\\)~',
+    ],
+    [
+        'table' => 'halls',
+        'column' => 'interior_photo_url',
+        'migration' => 'database/migrations/2026_10_07_000400_add_hall_details_and_seat_price.php',
+        'pattern' => '~Schema::table\\(\\s*[\'\"]halls[\'\"]\\s*,[\\s\\S]*?'
+            . '\\$table->string\\(\\s*[\'\"]interior_photo_url[\'\"]\\s*,\\s*2048\\s*\\)~',
+    ],
+    [
+        'table' => 'seats',
+        'column' => 'price_amount',
+        'migration' => 'database/migrations/2026_10_07_000400_add_hall_details_and_seat_price.php',
+        'pattern' => '~Schema::table\\(\\s*[\'\"]seats[\'\"]\\s*,[\\s\\S]*?'
+            . '\\$table->bigInteger\\(\\s*[\'\"]price_amount[\'\"]\\s*\\)~',
+    ],
 ];
 
 /**
@@ -89,6 +124,28 @@ const APPLICATION_EXTENSION_FIELDS = [
     'HallSchemaVersion' => [
         'revision' => 'optimistic-lock token owned by the Laravel application migration 2026_10_06_000100; checked for nullable/no-default in verify-migrations.php and deliberately excluded from the standalone Core bundle',
     ],
+    'Hall' => [
+        'city' => 'сведения о зале, добавленные миграцией 2026_10_07_000400; правятся отдельно от версии схемы и намеренно не входят в Core-бандл',
+        'address' => 'сведения о зале, добавленные миграцией 2026_10_07_000400; правятся отдельно от версии схемы',
+        'exterior_photo_url' => 'фото зала, добавленное миграцией 2026_10_07_000400',
+        'interior_photo_url' => 'фото зала, добавленное миграцией 2026_10_07_000400',
+    ],
+    'Seat' => [
+        'price_amount' => 'цена конкретного места (миграция 2026_10_07_000400); перекрывает цену ряда, поэтому не выводима из inventories',
+    ],
+];
+
+/**
+ * Таблицы, которых нет в Core-бандле потому, что их создают миграции приложения.
+ *
+ * Проверять поля такой модели нечем: DDL для неё отсутствует, поэтому модель
+ * пропускается целиком. Список обязан совпадать с app-only таблицами в
+ * tools/verify-migrations.php — там же обосновывается, почему таблица не в спеке.
+ *
+ * @var list<string>
+ */
+const APPLICATION_ONLY_TABLES = [
+    'storefront_settings', // конструктор витрины (модуль Storefront)
 ];
 
 const INVENTED_FIELDS = [
@@ -125,10 +182,6 @@ const INVENTED_FIELDS = [
         'currency' => 'names currency/total_amount; carts stores total_price and has no currency column',
         'total_amount' => 'names currency/total_amount; carts stores total_price and has no currency column',
     ],
-    'Consent' => [
-        'channel' => 'names channel/is_subscribed; consents stores consent_type/status',
-        'is_subscribed' => 'names channel/is_subscribed; consents stores consent_type/status',
-    ],
     'HeatmapEvent' => [
         'properties' => 'names properties/scroll_depth; heatmap_events stores payload_json and has no scroll depth',
         'scroll_depth' => 'names properties/scroll_depth; heatmap_events stores payload_json and has no scroll depth',
@@ -152,25 +205,11 @@ const INVENTED_FIELDS = [
         'config' => 'names is_active/config; modules stores enabled/config_json',
         'is_active' => 'names is_active/config; modules stores enabled/config_json',
     ],
-    'Notification' => [
-        'notification_template_id' => 'names notification_template_id/payload; notifications stores template_id/payload_json',
-        'payload' => 'names notification_template_id/payload; notifications stores template_id/payload_json',
-    ],
-    'NotificationTemplate' => [
-        'body_template' => 'names name/subject_template/body_template/variables/is_active; notification_templates stores code/subject/body_text/body_html/active',
-        'is_active' => 'names name/subject_template/body_template/variables/is_active; notification_templates stores code/subject/body_text/body_html/active',
-        'name' => 'names name/subject_template/body_template/variables/is_active; notification_templates stores code/subject/body_text/body_html/active',
-        'subject_template' => 'names name/subject_template/body_template/variables/is_active; notification_templates stores code/subject/body_text/body_html/active',
-        'variables' => 'names name/subject_template/body_template/variables/is_active; notification_templates stores code/subject/body_text/body_html/active',
-    ],
     'Page' => [
         'is_published' => 'names is_published; pages stores status and published_at',
     ],
     'PageTranslation' => [
         'meta_description' => 'names meta_description; page_translations stores description/seo_description',
-    ],
-    'PrivacyRequest' => [
-        'reason' => 'names reason; privacy_requests stores type/status/payload_json',
     ],
     'PromoCode' => [
         'expires_at' => 'names type/value/max_uses/used_count/expires_at/is_active; promo_codes stores discount_type, value_amount/value_percent, max_redemptions, redemptions_count, valid_until, status',
@@ -532,6 +571,10 @@ foreach ($models as $path) {
     }
 
     if (! isset($tables[$table])) {
+        if (in_array($table, APPLICATION_ONLY_TABLES, true)) {
+            continue; // таблица приложения, DDL для неё проверяет verify-migrations.php
+        }
+
         $unknownTables[] = sprintf('%s (%s) -> %s', $rel, $class, $table);
         continue;
     }

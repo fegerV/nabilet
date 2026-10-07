@@ -272,4 +272,4 @@ Marketplace, multi-organization, White Label, Partner API, Affiliate, cashier, s
 | Этап 8 — Расширение | 🟡 начат: импорт схем из Афиши (`tools/import_yandex_hallplan.py`); каталог площадок ХМАО — предстоит |
 | Этап 9 — Платформа | ⚪ не начат |
 
-**Чистка и релиз (ROADMAP, этап 4):** остатки `lib/mock.ts` — в `AdminDashboardPage.vue` и `TicketsPage.vue` (удалить), пересборка `npm run build`, деплой-пакет на шаред-хостинг — предстоят.
+**Чистка и релиз (ROADMAP, этап 4):** `lib/mock.ts` и демо-страницы удалены. Остались сборка/проверка релизного пакета на целевом shared-хостинге и production smoke test; P0-письма/вебхуки реализованы, но SMTP и минутный scheduler требуют настройки в окружении.

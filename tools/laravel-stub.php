@@ -732,8 +732,14 @@ namespace Illuminate\Support\Facades {
          * Stand-in for DB::selectOne(). Migrations use it for probes like
          * `select version()`; the stub returns a generic stdClass so property
          * access (->version, ->c) works without a live database.
+         *
+         * "Not found" is NULL, not false — that is what the real connection
+         * returns (`array_shift()` of an empty result). It matters: a migration
+         * that probes with `DB::selectOne(...) !== null` treats `false` as
+         * "a row was found", so returning false made `hasIndex()` report every
+         * index as existing and silently skipped its CREATE.
          */
-        public static function selectOne($query, $bindings = []): object|false
+        public static function selectOne($query, $bindings = []): object|null
         {
             $query = strtolower((string) $query);
 
@@ -746,7 +752,7 @@ namespace Illuminate\Support\Facades {
                     }
                 }
 
-                return false;
+                return null;
             }
 
             if (str_contains($query, 'information_schema.statistics')) {
@@ -767,10 +773,26 @@ namespace Illuminate\Support\Facades {
                     }
                 }
 
-                return false;
+                return null;
             }
 
             return new \stdClass();
+        }
+
+        /**
+         * Stand-in for DB::select(). The stub records SCHEMA, it has no rows, so
+         * every data probe answers "nothing found". A migration that asserts an
+         * invariant on existing data ("no second published schema version per
+         * hall") therefore passes — which is the state of a freshly created
+         * database, the only state this verifier can reason about at all.
+         *
+         * Without this method such a migration aborted the whole run with
+         * "Call to undefined method DB::select()", and the verifier stopped
+         * before reaching any later migration.
+         */
+        public static function select($query, $bindings = []): array
+        {
+            return [];
         }
     }
 }

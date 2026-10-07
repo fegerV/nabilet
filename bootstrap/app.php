@@ -35,6 +35,12 @@ return Application::configure(basePath: dirname(__DIR__))
     // longer loads routes (those are required from routes/web.php), so this is safe.
     ->withProviders([
         \Nabilet\Modules\Installer\Providers\InstallerServiceProvider::class,
+        // Провайдер заказов бутится явно: он вешает OrderObserver, единственную
+        // точку, откуда расходятся письма и исходящие вебхуки по статусу заказа.
+        // Маршруты модуля он не грузит (они подключены централизованно в
+        // routes/api.php), так что регистрация здесь безопасна — префикс /api/v1
+        // никуда не теряется.
+        \Nabilet\Modules\Orders\Providers\OrderServiceProvider::class,
     ])
     ->withRouting(
         web: __DIR__ . '/../routes/web.php',
@@ -50,6 +56,10 @@ return Application::configure(basePath: dirname(__DIR__))
     // command fails as a whole — so this one is wired up here by hand.
     ->withCommands([
         \Nabilet\Modules\Inventory\Console\ClearExpiredHoldsCommand::class,
+        // Поднимает повторы доставки вебхуков по next_retry_at. Зарегистрирован
+        // здесь по той же причине, что и очистка холдов: провайдеры модулей не
+        // бутятся, а планировщик ссылается на команду по имени.
+        \Nabilet\Modules\Webhooks\Console\RetryPendingWebhookDeliveriesCommand::class,
     ])
     ->withMiddleware(function (Middleware $middleware): void {
         // ── Global stack, in order ───────────────────────────────────────────

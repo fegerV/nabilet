@@ -143,10 +143,37 @@ function lastSegment(string $name): string
  *
  * @return list<string>
  */
+/**
+ * Хелперы, разрешённые конкретному файлу — с причиной и ТОЛЬКО с ней.
+ *
+ * Это не способ замолчать нарушение. Запись обязана объяснять, почему именно
+ * этот файл может обращаться к фреймворку, и имя файла в ключе — часть
+ * объяснения: исключение не распространяется на соседей.
+ *
+ * @var array<string, array<string, string>>
+ */
+const EXEMPT_HELPERS = [
+    'app/Core/Support/HoldGrace.php' => [
+        'config' => 'HoldGrace — единственное место, где читается nabilet.checkout.hold_grace_minutes. '
+            . 'Концентрация чтения в одном файле — осознанное решение: пока ключ можно было читать где угодно, '
+            . 'grace-окно расходилось между HoldSweeper и StaleOrderExpirer. tests/Unit/HoldGraceTest.php '
+            . 'следит, что это остаётся единственным читателем.',
+    ],
+];
+
 function capabilityCheck(string $file): array
 {
     $raw = file_get_contents($file);
     $forgiven = [];
+
+    $normalized = str_replace('\\', '/', $file);
+    foreach (EXEMPT_HELPERS as $suffix => $helpers) {
+        if (str_ends_with($normalized, $suffix)) {
+            foreach (array_keys($helpers) as $fn) {
+                $forgiven[] = $fn;
+            }
+        }
+    }
 
     foreach (array_merge(FORBIDDEN_HELPERS, FORBIDDEN_IO) as $fn) {
         if (str_contains($raw, "function_exists('" . $fn . "')")

@@ -11,5 +11,6 @@ class DatabaseSeeder extends Seeder
     public function run(): void
     {
         $this->call(NabiletAdminSeeder::class);
+        $this->call(NotificationTemplateSeeder::class);
     }
 }

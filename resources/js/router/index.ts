@@ -75,6 +75,10 @@ const routes: RouteRecordRaw[] = [
       { path: 'users', name: 'admin-users', component: () => import('@/pages/admin/AdminUsersPage.vue') },
       { path: 'analytics', name: 'admin-analytics', component: () => import('@/pages/admin/AdminAnalyticsPage.vue') },
       { path: 'integrations', name: 'admin-integrations', component: () => import('@/pages/admin/AdminIntegrationsPage.vue') },
+      // Транзакционная почта и исходящие вебхуки: объявлены до :section,
+      // иначе catch-all съедал бы пути и показывал заглушку.
+      { path: 'notification-templates', name: 'admin-notification-templates', component: () => import('@/pages/admin/AdminNotificationTemplatesPage.vue') },
+      { path: 'webhooks', name: 'admin-webhooks', component: () => import('@/pages/admin/AdminWebhooksPage.vue') },
       { path: ':section', name: 'admin-section', component: () => import('@/pages/admin/AdminPlaceholderPage.vue') },
     ],
   },
