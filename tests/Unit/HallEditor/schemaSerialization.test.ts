@@ -276,6 +276,11 @@ describe('danceZoneFor: идемпотентность импорта', () => {
     const existing: EStatic = { id: 'z', kind: 'standing', x: 0, y: 0, text: 'Танцпол · 5 мест', capacity: 5 }
     expect(danceZoneFor('db', [danceSector()], [existing], CANVAS)).toBeNull()
   })
+
+  it('не принимает банкетные столы на танцполе за стоячую зону', () => {
+    const table = tableSector(10, { name: 'Столы на танцполе · стол 57' })
+    expect(danceZoneFor('db', [table], [], CANVAS)).toBeNull()
+  })
 })
 
 describe('normalizeBackground', () => {

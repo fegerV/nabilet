@@ -517,10 +517,14 @@ export function danceZoneFor(
   canvasSize: SchemaCanvas,
 ): EStatic | null {
   if (format !== 'db') return null
-  const dance = sectors.find((s) => /танцпол|dance/i.test(s.name ?? '') || (
-    s.seats.length > 1
-    && s.seats.every((p) => p.x === s.seats[0].x && p.y === s.seats[0].y)
-  ))
+  const dance = sectors.find((s) => {
+    const name = (s.name ?? '').toLocaleLowerCase('ru')
+    const isTable = s.shape === 'table' || name.includes('стол')
+    return !isTable && (/танцпол|dance/i.test(name) || (
+      s.seats.length > 1
+      && s.seats.every((p) => p.x === s.seats[0].x && p.y === s.seats[0].y)
+    ))
+  })
   if (!dance || dance.seats.length === 0) return null
   if (statics.some((o) => /танцпол|dance/i.test(o.text ?? ''))) return null
   const cx = canvasSize.width / 2
