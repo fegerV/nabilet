@@ -121,11 +121,14 @@ jobs:
   # 18.09.2 with no Compose. Shipping them unvalidated is how a stack file ends up
   # referencing a service that does not exist, so here a runner does the checking.
   #
-  # This deliberately does NOT build the image. `composer install` needs a
-  # composer.lock, and none is committed — it cannot be generated without network
-  # access to Packagist. A build job today would fail on an unresolved question
-  # rather than on a defect in these files. Once the lock is committed, add
-  # `docker build .` here; that is the check this job is holding the place for.
+  # `docker build` IS now performed. It used to be held back because no
+  # composer.lock was committed and `composer install` therefore could not resolve
+  # reproducibly. The lock is committed, and the Dockerfile already prefers
+  # `composer install` when it sees one, so the build is meaningful rather than a
+  # test of Packagist's availability.
+  #
+  # The build is NOT run against the local Docker on the dev machine (see above);
+  # a runner is the first place it can be attempted at all.
   # ───────────────────────────────────────────────────────────────────────────
   docker:
     name: Container files
@@ -144,6 +147,29 @@ jobs:
           # `error` only: the default threshold fails on style warnings such as
           # "pin the apk version", which is noise for an internal image.
           failure-threshold: error
+
+      # The image is actually assembled, which is the only check that proves the
+      # Dockerfile is internally consistent: a COPY of a path that does not exist,
+      # a missing extension the code needs at boot, an `install` against a lock
+      # that cannot resolve. hadolint reads the file; this runs it.
+      #
+      # `docker/build-push-action` with `push: false` keeps the result in the
+      # runner's local daemon and lets BuildKit cache the dependency layer, so
+      # a red build here is a defect in the image rather than a slow network.
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build the production image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          load: false
+          # Fail on a lock/install mismatch instead of silently falling back —
+          # the Dockerfile itself already prefers `composer install` when a lock
+          # is present, and one is committed.
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
   # ───────────────────────────────────────────────────────────────────────────
   # The authoritative check: does the DDL actually execute on MySQL 8.4?
@@ -289,3 +315,147 @@ jobs:
           UPDATE hall_schema_versions SET schema_json = '{"draft":true}' WHERE id = 2;
           SQL
           echo "draft versions remain editable"
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # The PHP test suite, against a real MySQL 8.4.
+  #
+  # This is where the application layer is actually exercised. The `verify` job
+  # reads code without ever running it, which is exactly how a controller calling
+  # a method that does not exist (`UserService::sendPasswordResetLink()`), or one
+  # reading a protected property, shipped as a 500 on every request and was
+  # caught only by hand. Nothing in the static set can see either.
+  #
+  # `RefreshDatabase` drops and rebuilds every table on each run, so the database
+  # is disposable by construction and this job must never point at anything else.
+  # phpunit.xml already forces the DB_* values, so an inherited shell variable
+  # cannot redirect `migrate:fresh` to a different database — the service below
+  # is only here to satisfy those forced values.
+  # ───────────────────────────────────────────────────────────────────────────
+  phpunit:
+    name: PHP test suite
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: rootpass
+          MYSQL_DATABASE: nabilet_test_suite
+        ports:
+          # phpunit.xml pins 3307; a runner has no other MySQL, but keeping the
+          # port identical to the documented local setup means the same file works
+          # in both places without a CI-only branch.
+          - 3307:3306
+        options: >-
+          --health-cmd="mysqladmin ping -prootpass"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Extensions mirror composer.json's `require` (json, mbstring, openssl,
+      # pdo) plus pdo_mysql, without which the suite cannot connect at all.
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: json, mbstring, openssl, pdo, pdo_mysql
+          coverage: none
+          tools: none
+
+      # `composer.lock` is committed, so this resolves to an exact, reproducible
+      # set. `--no-scripts` because `post-autoload-dump` runs `package:discover`,
+      # which boots the app and needs a reachable database; the autoloader is
+      # dumped explicitly instead.
+      - name: Validate the lock is in sync with composer.json
+        run: composer validate --no-check-publish --strict
+
+      - name: Install dependencies from the lock
+        run: composer install --prefer-dist --no-interaction --no-progress --no-scripts
+
+      - name: Dump the autoloader
+        run: composer dump-autoload --optimize --no-scripts
+
+      # `phpunit.xml` forces DB_HOST=127.0.0.1 / DB_PORT=3307 / DB_DATABASE=
+      # nabilet_test_suite / root / rootpass with force="true", so the suite
+      # itself cannot be redirected. But `artisan key:generate` below BOOTS the
+      # application, and a boot reads `.env` — where the shipped defaults point at
+      # port 3306 and a `nabilet` user that does not exist in this job. Writing the
+      # service's coordinates into `.env` keeps the boot working without touching
+      # the file that actually governs the tests.
+      - name: Point the environment file at the CI database
+        run: |
+          cp .env.example .env
+          sed -i 's/^DB_HOST=.*/DB_HOST=127.0.0.1/'     .env
+          sed -i 's/^DB_PORT=.*/DB_PORT=3307/'          .env
+          sed -i 's/^DB_DATABASE=.*/DB_DATABASE=nabilet_test_suite/' .env
+          sed -i 's/^DB_USERNAME=.*/DB_USERNAME=root/'  .env
+          sed -i 's/^DB_PASSWORD=.*/DB_PASSWORD=rootpass/' .env
+          grep -E '^DB_(HOST|PORT|DATABASE|USERNAME)=' .env
+
+      - name: Generate an application key
+        run: php artisan key:generate --ansi
+
+      # The immutability trigger in migration 2026_10_06_000100 needs SUPER (or
+      # this flag) to be created, and MySQL refuses it otherwise with ERROR 1419.
+      # The migration is fail-soft, so without this the suite would pass while
+      # silently testing a database that lacks the trigger.
+      - name: Allow trigger creation without SUPER
+        run: |
+          mysql -h 127.0.0.1 -P 3307 -uroot -prootpass \
+            -e "SET GLOBAL log_bin_trust_function_creators = 1;"
+
+      - name: Run the test suite
+        run: php vendor/bin/phpunit
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # The frontend: types, unit tests, and a real bundle.
+  #
+  # `vue-tsc` is the only thing that reads the .vue templates and the typed
+  # store/api layer, so a broken prop or a missing `v-model` binding is invisible
+  # to every PHP-side check. `vite build` is separate from it on purpose: a file
+  # can typecheck and still fail to bundle (a bad import path, a circular
+  # dependency), and the failure mode is a blank page in production.
+  #
+  # The build is also what proves the router's dynamic imports resolve. Every
+  # admin page is `() => import(...)`, so a renamed or deleted component is a
+  # runtime 404 rather than a compile error — which is exactly how the deleted
+  # `AdminPlaceholderPage.vue` would have surfaced if the catch-all still pointed
+  # at it.
+  # ───────────────────────────────────────────────────────────────────────────
+  frontend:
+    name: Frontend (types, tests, build)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      # `package-lock.json` is committed, so `npm ci` installs the exact tree
+      # rather than resolving ranges and drifting from what was tested locally.
+      - name: Install dependencies from the lock
+        run: npm ci --no-audit --no-fund
+
+      - name: Type-check the SPA
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm run test
+
+      - name: Production build
+        run: npm run build
+
+      # The build output is what nginx actually serves. If it is missing, every
+      # other check can be green while the deployed site is blank.
+      - name: The bundle was emitted
+        run: |
+          test -f dist/index.html || { echo "::error::dist/index.html was not produced"; exit 1; }
+          test -d dist/assets || { echo "::error::dist/assets was not produced"; exit 1; }
+          echo "built: $(find dist/assets -name '*.js' | wc -l) JS chunks, $(find dist/assets -name '*.css' | wc -l) CSS files"
