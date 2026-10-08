@@ -3,12 +3,18 @@
  * Форма мероприятия (админка) — удобное создание/редактирование события.
  *
  * Секции: Основное · Афиша (drag&drop-загрузка файла ИЛИ URL, живое превью) ·
- * Шаблон билета · Описание · SEO. Создание: POST /api/v1/events (multipart при
- * выбранном файле), обновление: PATCH /api/v1/events/{id}. Ошибки валидации
- * API (error.details.fields) привязываются к конкретным полям формы.
+ * Сеансы (площадка, зал, дата) · Шаблон билета · Описание · SEO.
+ * Создание: POST /api/v1/events (multipart при выбранном файле), обновление:
+ * PATCH /api/v1/events/{id}. Ошибки валидации API (error.details.fields)
+ * привязываются к конкретным полям формы.
  *
- * Про жизненный цикл: дата/время и цены живут не в событии, а в сеансах —
- * после создания предлагаем перейти к сеансам и ценам (кнопка-подсказка).
+ * ПРО ДАТУ, ВРЕМЯ И ПЛОЩАДКУ. Их здесь нет и не может быть как полей карточки:
+ * в таблице `events` таких колонок не существует, а `venue_id`, `hall_id` и
+ * `starts_at` — NOT NULL в `sessions`. Одно мероприятие идёт несколько дней в
+ * разных залах, и «дата мероприятия» без сеанса не определена. Поэтому форма не
+ * притворяется, что хранит дату, а даёт создать сеанс на месте — секция
+ * «Сеансы». Раньше отсюда вела только кнопка «К сеансам →» на другой экран, и
+ * администратор не находил ответа на «где и когда» вообще.
  *
  * ПРО СТАТУС. Здесь его больше НЕЛЬЗЯ выбрать. Раньше в форме стоял
  * `<select>` со статусами, и на обновлении он ничего не делал:
@@ -26,8 +32,11 @@ import NButton from '@/components/ui/NButton.vue'
 import NInput from '@/components/ui/NInput.vue'
 import NSelect from '@/components/ui/NSelect.vue'
 import NStatusBadge from '@/components/ui/NStatusBadge.vue'
+import SessionFormModal from '@/components/admin/SessionFormModal.vue'
 import { useUiStore } from '@/stores/ui'
 import { ApiError, get, request, send, upload } from '@/lib/api'
+import { dateFull, time } from '@/lib/format'
+import type { SessionRecord } from '@/lib/sessionForm'
 
 const route = useRoute()
 const router = useRouter()
@@ -228,6 +237,83 @@ async function loadTemplates(): Promise<void> {
   }
 }
 
+/* ── Сеансы: где и когда ────────────────────────────────────────────────────
+ * Дата, время, площадка и зал живут в `sessions`, а не в `events`: в самой
+ * таблице `events` таких колонок нет вообще, а в `sessions` они NOT NULL.
+ * Значит, «назначить дату и площадку» — это всегда создание сеанса, и карточка
+ * мероприятия обязана уметь это делать сама: без сеанса публикация отклоняется
+ * (`NO_SESSIONS`), а покупателю нечего показать — ни даты, ни зала, ни цены.
+ */
+const sessions = ref<SessionRecord[]>([])
+const sessionsLoading = ref(false)
+const sessionsError = ref<string | null>(null)
+const sessionModalOpen = ref(false)
+const editingSession = ref<SessionRecord | null>(null)
+/** Якорь для «настроить» в блоке готовности: не уводим со страницы. */
+const sessionsSection = ref<HTMLElement | null>(null)
+
+/**
+ * Сеансы этого мероприятия.
+ *
+ * Счётчик готовности берётся ОТСЮДА, а не из `GET /events/{id}`: здесь приходит
+ * весь список, и он же обновляется после создания сеанса. Ответ
+ * `publish`/`cancel` отдаёт `EventResource` без загруженных связей, поэтому
+ * опираться на него в счётчике нельзя.
+ */
+async function loadSessions(): Promise<void> {
+  if (!isEdit.value) {
+    sessions.value = []
+    sessionCount.value = 0
+    return
+  }
+
+  sessionsLoading.value = true
+  sessionsError.value = null
+
+  try {
+    const res = await get<SessionRecord[]>(`/sessions?event_id=${eventId.value}&per_page=100`)
+    // `/sessions` отдаёт пагинатор внутри `data`, а не плоский массив.
+    const inner = res.data as unknown as { data?: SessionRecord[] } | SessionRecord[]
+    sessions.value = Array.isArray(inner) ? inner : (inner.data ?? [])
+    sessionCount.value = sessions.value.length
+  } catch (err) {
+    sessionsError.value = err instanceof Error ? err.message : String(err)
+  } finally {
+    sessionsLoading.value = false
+  }
+}
+
+function openNewSession(): void {
+  editingSession.value = null
+  sessionModalOpen.value = true
+}
+
+function openEditSession(session: SessionRecord): void {
+  editingSession.value = session
+  sessionModalOpen.value = true
+}
+
+/**
+ * После сохранения сеанса — обновить список и снять прошлый вердикт политики.
+ * Вердикт снимается потому, что он относился к прошлому состоянию: «нет сеансов»
+ * после создания сеанса уже неправда, и оставлять это сообщение на экране значит
+ * утверждать то, чего больше нет.
+ */
+async function onSessionSaved(): Promise<void> {
+  actionNotice.value = null
+  await loadSessions()
+}
+
+/** Площадка сеанса — по названию: администратор читает имена, а не id. */
+function venueNameOf(session: SessionRecord): string {
+  return session.venue?.name ?? '—'
+}
+
+/** Показать секцию сеансов вместо перехода на другой экран. */
+function scrollToSessions(): void {
+  sessionsSection.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
+
 async function load(): Promise<void> {
   setPosterFile(null)
   fieldErrors.value = {}
@@ -235,6 +321,9 @@ async function load(): Promise<void> {
   // Справочник шаблонов нужен обеим веткам, поэтому грузится параллельно и
   // не блокирует показ формы: `templatesLoading` рисует состояние в самом поле.
   void loadTemplates()
+  // Сеансы — тоже параллельно: они нужны и для списка «где и когда», и для
+  // счётчика готовности, но форма не должна их ждать.
+  void loadSessions()
 
   if (!isEdit.value) {
     error.value = null
@@ -584,7 +673,9 @@ const publishedAtText = computed<string | null>(() => {
     <div class="mb-5">
       <button type="button" class="text-sm text-muted hover:text-content" @click="router.push('/admin/events')">← Мероприятия</button>
       <h1 class="mt-1 text-2xl font-bold tracking-tight text-content">{{ isEdit ? 'Редактировать мероприятие' : 'Новое мероприятие' }}</h1>
-      <p v-if="!isEdit" class="mt-1 text-sm text-muted">Заполните карточку — даты, зал и цены настраиваются отдельно, в сеансах.</p>
+      <p v-if="!isEdit" class="mt-1 text-sm text-muted">
+        Заполните карточку. Сеансы — площадка, зал и дата — появятся здесь же после сохранения.
+      </p>
     </div>
 
     <div v-if="error" class="surface-card mb-4 border-rose-500/30 px-4 py-3 text-sm text-rose-400">{{ error }}</div>
@@ -660,6 +751,58 @@ const publishedAtText = computed<string | null>(() => {
             <button v-if="posterShown" type="button" class="block text-xs text-rose-400 hover:underline" @click="clearPoster">Убрать афишу</button>
           </div>
         </div>
+      </section>
+
+      <!--
+        ── Сеансы: где и когда ──
+        Требование звучало как «на этой странице нет выбора площадки, назначения
+        даты и времени». Колонок для них в `events` не существует (см. docblock),
+        поэтому здесь не поля, а список сеансов и создание нового — то есть тот
+        же путь, что и на экране «Сеансы», но не покидая карточку.
+      -->
+      <section v-if="isEdit" ref="sessionsSection" class="rounded-xl border border-line p-4">
+        <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h2 class="text-xs font-semibold uppercase tracking-wide text-subtle">Сеансы — где и когда</h2>
+          <NButton variant="secondary" size="sm" @click="openNewSession">Добавить сеанс</NButton>
+        </div>
+
+        <p class="mb-3 text-xs leading-relaxed text-subtle">
+          Площадка, зал и дата хранятся в сеансах, а не в карточке: одно мероприятие может
+          идти несколько дней в разных залах. Из сеанса покупатель видит дату, зал и цены.
+        </p>
+
+        <p
+          v-if="sessionsError"
+          class="mb-3 rounded-lg border border-sun-500/30 bg-sun-500/10 px-3 py-2 text-xs leading-relaxed text-sun-400"
+        >
+          Список сеансов не загрузился: {{ sessionsError }}
+        </p>
+
+        <p v-else-if="sessionsLoading" class="text-sm text-muted">Загрузка сеансов…</p>
+
+        <p
+          v-else-if="sessions.length === 0"
+          class="rounded-lg border border-dashed border-line bg-surface-2 px-3 py-4 text-sm leading-relaxed text-muted"
+        >
+          Сеансов нет — у мероприятия пока нет ни даты, ни зала, и опубликовать его нельзя:
+          покупателю нечего показать. Нажмите
+          <b class="text-content">«Добавить сеанс»</b> и выберите площадку, зал и дату.
+        </p>
+
+        <ul v-else class="divide-y divide-line">
+          <li v-for="s in sessions" :key="s.id" class="flex flex-wrap items-center gap-x-3 gap-y-2 py-2.5">
+            <button type="button" class="min-w-0 flex-1 text-left" @click="openEditSession(s)">
+              <span class="block text-sm font-medium text-content tabular-nums">
+                {{ dateFull(s.starts_at) }}, {{ time(s.starts_at) }}
+              </span>
+              <span class="block truncate text-xs text-muted">
+                {{ venueNameOf(s) }}<template v-if="s.hall?.name"> · {{ s.hall.name }}</template>
+              </span>
+            </button>
+            <NStatusBadge kind="session" :status="s.status" />
+            <NButton variant="ghost" size="sm" @click="router.push(`/admin/sessions/${s.id}/prices`)">Цены</NButton>
+          </li>
+        </ul>
       </section>
 
       <!-- ── Шаблон билета ── -->
@@ -753,7 +896,7 @@ const publishedAtText = computed<string | null>(() => {
               <span v-else-if="sessionCount === 0" class="text-sun-400">нет — публиковать нечего</span>
               <span v-else>
                 {{ sessionCount }} ·
-                <button type="button" class="text-brand-500 hover:underline" @click="router.push(`/admin/sessions?event=${eventId}`)">настроить</button>
+                <button type="button" class="text-brand-500 hover:underline" @click="scrollToSessions">настроить</button>
               </span>
             </dd>
           </div>
@@ -808,5 +951,18 @@ const publishedAtText = computed<string | null>(() => {
         <NButton v-if="!isEdit" variant="primary" :loading="saving" @click.prevent="save(true)">Создать и настроить сеанс →</NButton>
       </div>
     </form>
+
+    <!--
+      Форма сеанса та же, что на экране «Сеансы»: держать вторую копию нельзя —
+      они разъедутся ровно так же, как разъехались выбор зала и вывод площадки
+      на сервере. `lock-event-id` фиксирует мероприятие: мы уже в его карточке.
+    -->
+    <SessionFormModal
+      v-model:open="sessionModalOpen"
+      :session="editingSession"
+      :lock-event-id="eventId"
+      :lock-event-title="form.title"
+      @saved="onSessionSaved"
+    />
   </div>
 </template>

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Inventory\Services;
 
+use Nabilet\Core\Errors\ConflictError;
 use Nabilet\Core\Errors\NotFoundError;
 use Nabilet\Modules\Cart\Models\Cart;
 use Nabilet\Modules\Cart\Models\CartItem;
@@ -35,8 +36,11 @@ class InventoryService
      *   - rows-формат импортёра Афиши (sectors[].rows[].seats[] c price_amount)
      *     — используется напрямую.
      *
-     * Геометрия пересоздаётся (deletе старых секторов/рядов/мест), затем вставляется
-     * инвентарь со ссылками на свежесозданные места.
+     * ГЕОМЕТРИЯ ПРИНАДЛЕЖИТ ВЕРСИИ СХЕМЫ, А НЕ СЕАНСУ. В цепочке
+     * `sectors.schema_version_id` → `hall_rows.sector_id` → `seats.row_id` нет
+     * `session_id`; сеансу принадлежит только инвентарь (`inventory_items`).
+     * Поэтому геометрия материализуется ОДИН раз на версию схемы, а второй и
+     * последующие сеансы в том же зале её переиспользуют — см. `existingGeometry()`.
      */
     public function generateFromSchema(HallSchemaVersion $schemaVersion, Session $session): int
     {
@@ -46,33 +50,33 @@ class InventoryService
             // rows-формат (конвертация канваса, если нужно)
             $sectors = $schemaVersion->toInventoryFormat();
 
-            // 0. Снимаем инвентарь сессии ДО удаления геометрии.
+            // 0. Снимаем инвентарь СЕССИИ — и только его.
             //
             // Порядок критичен: `inventory_items.seat_id` и `standing_zone_id`
-            // ссылаются на `seats` / `standing_zones` с ON DELETE RESTRICT, а
-            // позиции инвентаря удалялись в конце метода. Повторный вызов
-            // generateFromSchema() для той же сессии (пересборка зала после
-            // правки схемы) падал с 1451 «Cannot delete or update a parent row»
-            // на первом же месте — то есть пересобрать инвентарь было нельзя
-            // вообще, ни разу. Проданные билеты по-прежнему защищены: у
-            // `tickets.seat_id` тоже RESTRICT, поэтому попытка пересобрать зал с
-            // продажами по-прежнему падает — но уже явно и не разрушая данные.
+            // ссылаются на `seats` / `standing_zones` с ON DELETE RESTRICT.
+            // Проданные билеты по-прежнему защищены: у `tickets.seat_id` тоже
+            // RESTRICT, поэтому пересборка зала с продажами падает — но уже
+            // явно и не разрушая данные.
             InventoryItem::where('session_id', $session->id)->delete();
 
-            // 1. Пересоздаём геометрию (sectors → rows → seats)
-            $oldSectors = Sector::query()->where('schema_version_id', $schemaVersion->id)->get();
-            foreach ($oldSectors as $sector) {
-                $rows = HallRow::query()->where('sector_id', $sector->id)->get();
-                foreach ($rows as $row) {
-                    Seat::query()->where('row_id', $row->id)->delete();
-                }
-                HallRow::query()->where('sector_id', $sector->id)->delete();
-            }
-            Sector::query()->where('schema_version_id', $schemaVersion->id)->delete();
+            // 1. Геометрия — ОДИН раз на версию схемы (см. docblock метода).
+            //
+            // Раньше метод всегда удалял её и создавал заново. На первом сеансе
+            // это незаметно, на втором — падение: `inventory_items.seat_id`
+            // держит `seats` через ON DELETE RESTRICT, поэтому `delete from
+            // seats` упирался в FK (SQLSTATE 23000 / 1451) и `POST /sessions`
+            // отвечал 500. Второй сеанс в том же зале нельзя было создать
+            // вообще — ни на другую дату, ни на другое время.
+            $sectorModels = $this->existingGeometry($schemaVersion, $sectors);
+
+            // Пустой список = «геометрия уже на месте, материализовать нечего».
+            // Цикл ниже — это материализация, и на существующей геометрии он не
+            // должен выполниться ни разу.
+            $sectorsToCreate = $sectorModels === null ? $sectors : [];
+            $sectorModels ??= [];
 
             $seatCounter = 0;
-            $sectorModels = [];
-            foreach ($sectors as $sectorData) {
+            foreach ($sectorsToCreate as $sectorData) {
                 $sector = Sector::create([
                     'schema_version_id' => $schemaVersion->id,
                     'name' => $sectorData['name'] ?? 'Сектор',
@@ -179,13 +183,20 @@ class InventoryService
                                                     if (($sector->type ?? 'seated') === 'standing' && $sector->capacity > 0) {
                                                         $standingRow = HallRow::query()->where('sector_id', $sector->id)->first();
                                                         $standingPrice = (int) ($standingRow?->price_amount ?? 0);
-                                                        $zone = StandingZone::create([
-                                                            'sector_id' => $sector->id,
-                                                            'name' => $sector->name ?? 'Стоячая зона',
-                                                            'capacity' => $sector->capacity,
-                                                            'price_amount' => $standingPrice,
-                                                            'currency' => 'RUB',
-                                                        ]);
+                                                        // Зона принадлежит версии схемы (через сектор), поэтому при
+                                                        // переиспользовании геометрии её нельзя создавать второй раз:
+                                                        // иначе каждый новый сеанс добавлял бы ещё одну зону с тем же
+                                                        // именем, а `standing_zone_id` первого сеанса указывал бы на
+                                                        // старую. Берём существующую, цену не трогаем — её меняет
+                                                        // `updateRowPrices()`.
+                                                        $zone = StandingZone::query()->where('sector_id', $sector->id)->first()
+                                                            ?? StandingZone::create([
+                                                                'sector_id' => $sector->id,
+                                                                'name' => $sector->name ?? 'Стоячая зона',
+                                                                'capacity' => $sector->capacity,
+                                                                'price_amount' => $standingPrice,
+                                                                'currency' => 'RUB',
+                                                            ]);
                                                         $standingItems[] = [
                                                             'public_id' => (string) Str::ulid()->toBase32(),
                                                             'session_id' => $session->id,
@@ -248,6 +259,129 @@ class InventoryService
 
                         return $total;
         });
+    }
+
+    /**
+     * Вернуть уже материализованную геометрию версии схемы — или `null`, если её
+     * нужно материализовать.
+     *
+     * `null` означает «геометрии нет»: либо её никогда не создавали, либо она
+     * устарела и была безопасно снята. Массив секторов означает «переиспользуй».
+     *
+     * УСТАРЕВАНИЕ. `schema_json` опубликованной версии не меняется — правка схемы
+     * создаёт НОВУЮ версию (`POST /halls/{publicId}/schema-versions/draft`),
+     * поэтому расхождение с `schema_json` означает ручную правку в БД или старый
+     * баг. Пересобрать геометрию в этом случае можно только если на неё никто не
+     * ссылается: `seats` и `standing_zones` держат `inventory_items` ДРУГИХ
+     * сеансов через ON DELETE RESTRICT (инвентарь текущего снят вызывающим).
+     * Если ссылаются — падаем с 409: молча отдать покупателю схему, которой уже
+     * нет, хуже, чем отказать администратору с объяснением.
+     *
+     * @param  array<int, array<string, mixed>>  $sectors  rows-формат схемы
+     * @return array<int, Sector>|null
+     */
+    private function existingGeometry(HallSchemaVersion $schemaVersion, array $sectors): ?array
+    {
+        $sectorIds = Sector::query()
+            ->where('schema_version_id', $schemaVersion->id)
+            ->pluck('id')
+            ->all();
+
+        if ($sectorIds === []) {
+            return null;
+        }
+
+        $rowIds = HallRow::query()->whereIn('sector_id', $sectorIds)->pluck('id')->all();
+
+        if ($this->geometryMatchesSchema($sectors, $sectorIds, $rowIds)) {
+            // `orderBy('id')` — порядок материализации: сектора создавались в
+            // порядке схемы, поэтому сортировка по id его воспроизводит. Порядок
+            // влияет только на порядок позиций инвентаря, но лучше он, чем
+            // произвольный порядок из БД.
+            return Sector::query()->whereIn('id', $sectorIds)->orderBy('id')->get()->all();
+        }
+
+        $seatIds = $rowIds === [] ? [] : Seat::query()->whereIn('row_id', $rowIds)->pluck('id')->all();
+        $zoneIds = StandingZone::query()->whereIn('sector_id', $sectorIds)->pluck('id')->all();
+
+        // Инвентарь текущей сессии уже снят, поэтому любая оставшаяся ссылка —
+        // чужая.
+        $seatsInUse = $seatIds !== [] && InventoryItem::query()->whereIn('seat_id', $seatIds)->exists();
+        $zonesInUse = $zoneIds !== [] && InventoryItem::query()->whereIn('standing_zone_id', $zoneIds)->exists();
+
+        if ($seatsInUse || $zonesInUse) {
+            throw new ConflictError(
+                sprintf(
+                    'Hall schema version %d has geometry that no longer matches its schema, but other sessions already sell seats from it. Publish a new schema version instead of changing this one.',
+                    $schemaVersion->id
+                ),
+                'SCHEMA_GEOMETRY_IN_USE',
+                [
+                    'schema_version_id' => $schemaVersion->id,
+                    'seats_in_use' => $seatsInUse,
+                    'standing_zones_in_use' => $zonesInUse,
+                ]
+            );
+        }
+
+        // Ссылок нет — снимаем и материализуем заново. Порядок обязателен: места
+        // → ряды → зоны → сектора (`hall_rows`/`standing_zones` держат `sectors`
+        // каскадом, но `inventory_items` — RESTRICT, поэтому удаляем явно).
+        if ($seatIds !== []) {
+            Seat::query()->whereIn('id', $seatIds)->delete();
+        }
+        HallRow::query()->whereIn('sector_id', $sectorIds)->delete();
+        StandingZone::query()->whereIn('sector_id', $sectorIds)->delete();
+        Sector::query()->whereIn('id', $sectorIds)->delete();
+
+        return null;
+    }
+
+    /**
+     * Совпадает ли материализованная геометрия с текущей схемой.
+     *
+     * Сравниваются количества, а не координаты: этого достаточно, чтобы отличить
+     * «та же схема» от «схему поправили», а стоит это три `COUNT` вместо чтения
+     * всех мест зала. Проверка вызывается один раз на созданный сеанс.
+     *
+     * @param  array<int, array<string, mixed>>  $sectors
+     * @param  array<int, int|string>  $sectorIds
+     * @param  array<int, int|string>  $rowIds
+     */
+    private function geometryMatchesSchema(array $sectors, array $sectorIds, array $rowIds): bool
+    {
+        if (count($sectorIds) !== count($sectors)) {
+            return false;
+        }
+
+        $expectedRows = 0;
+        $expectedSeats = 0;
+
+        foreach ($sectors as $sectorData) {
+            // У стоячей зоны физических мест нет: материализация создаёт ряд, но
+            // до создания `seats` не доходит (вместимость зоны живёт в
+            // `sectors.capacity`). Без этого исключения стоячий зал считался бы
+            // устаревшим при каждом новом сеансе.
+            $isStanding = ($sectorData['type'] ?? 'seated') === 'standing';
+
+            foreach ($sectorData['rows'] ?? [] as $rowData) {
+                $expectedRows++;
+
+                if (! $isStanding) {
+                    $expectedSeats += count($rowData['seats'] ?? []);
+                }
+            }
+        }
+
+        if (HallRow::query()->whereIn('sector_id', $sectorIds)->count() !== $expectedRows) {
+            return false;
+        }
+
+        if ($expectedSeats === 0) {
+            return true;
+        }
+
+        return Seat::query()->whereIn('row_id', $rowIds)->count() === $expectedSeats;
     }
 
     /**
