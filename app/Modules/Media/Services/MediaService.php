@@ -125,7 +125,21 @@ class MediaService
             'disk' => $disk,
             'path' => (string) $stored,
             'filename' => (string) ($file->getClientOriginalName() ?: basename((string) $stored)),
-            'mime_type' => (string) ($file->getClientMimeType() ?: 'application/octet-stream'),
+            // Тип берётся из СОДЕРЖИМОГО, а не из того, что заявил клиент, — по
+            // той же причине, по которой выше из содержимого выводится
+            // расширение. Раньше здесь стоял `getClientMimeType()`, и это было
+            // внутренним противоречием: путь защищён от клиента, а тип — нет.
+            //
+            // От типа зависит, что увидит покупатель: витрина решает по
+            // `mime_type`, рисовать `<img>` или значок видео. Клиент, отправивший
+            // `application/octet-stream` (curl, часть инструментов, ОС без
+            // сопоставления расширения), превращал фотографию в «🎬».
+            //
+            // Проверка `mimes:` в контроллере читает содержимое тем же
+            // `guessExtension()`, поэтому «дошло до записи» уже означает, что тип
+            // определим и разрешён; фолбэк остаётся только на случай, когда
+            // определение не удалось.
+            'mime_type' => (string) ($file->getMimeType() ?: 'application/octet-stream'),
             'size_bytes' => (int) $file->getSize(),
             'width' => $width,
             'height' => $height,
