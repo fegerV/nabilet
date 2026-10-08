@@ -191,7 +191,10 @@ CREATE TABLE IF NOT EXISTS offline_bundles (
   updated_at DATETIME(6) NOT NULL,
   PRIMARY KEY (id),
   UNIQUE KEY uq_offline_bundles_public_id (public_id),
-  UNIQUE KEY uq_offline_bundles_hash (bundle_hash),
+  -- Per (bundle_hash, check-in device), not global — see migrations.sql for the
+  -- rationale. A global UNIQUE on bundle_hash alone broke multi-device sync.
+  UNIQUE KEY uq_offline_bundles_hash_device (bundle_hash, checkin_device_id),
+  KEY idx_offline_bundles_device_hash (checkin_device_id, bundle_hash),
   KEY idx_offline_bundles_device (checkin_device_id, generated_at),
   KEY idx_offline_bundles_session (session_id),
   CONSTRAINT fk_offline_bundles_org FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE,

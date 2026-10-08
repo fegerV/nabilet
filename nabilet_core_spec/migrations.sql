@@ -1323,7 +1323,13 @@ CREATE TABLE IF NOT EXISTS offline_bundles (
   updated_at DATETIME(6) NOT NULL,
   PRIMARY KEY (id),
   UNIQUE KEY uq_offline_bundles_public_id (public_id),
-  UNIQUE KEY uq_offline_bundles_hash (bundle_hash),
+  -- Uniqueness is per (bundle_hash, check-in device), NOT global. A global
+  -- UNIQUE on bundle_hash alone let the first device download a bundle and made
+  -- every other device fail with a duplicate-key error, although §43 expects the
+  -- same bundle content on all of them. This is the spec side of
+  -- 2026_09_20_001200_fix_offline_bundles_unique_constraint.
+  UNIQUE KEY uq_offline_bundles_hash_device (bundle_hash, checkin_device_id),
+  KEY idx_offline_bundles_device_hash (checkin_device_id, bundle_hash),
   KEY idx_offline_bundles_device (checkin_device_id, generated_at),
   KEY idx_offline_bundles_session (session_id),
   CONSTRAINT fk_offline_bundles_org FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE,
@@ -1413,8 +1419,31 @@ ALTER TABLE offline_bundles
 --      резолвятся из корзины (carts.session_id → sessions.event_id).
 
 ALTER TABLE carts
-  ADD COLUMN cart_token VARCHAR(64) NULL AFTER user_id,
-  ADD UNIQUE KEY uq_carts_token_session_status (cart_token, session_id, status);
+  ADD COLUMN cart_token VARCHAR(64) NULL AFTER user_id;
+
+-- Уникальность корзины — только среди АКТИВНЫХ (инвариант D5: два параллельных
+-- покупателя одного сеанса работают в разных корзинах). Ключ
+-- uq_carts_token_session_status, стоявший здесь раньше, запрещал больше одной
+-- корзины на пару (токен, сеанс) В КАЖДОМ статусе: первая покупка переводила
+-- корзину в `converted`, вторая создавала активную и на оформлении тоже
+-- пыталась стать `converted` — и получала 1062 Duplicate entry, то есть сырой
+-- 500 на обычном «купить ещё раз». Исторические `converted`/`abandoned`
+-- ограничивать нечем: их может быть сколько угодно.
+--
+-- Частичных индексов MySQL не умеет, поэтому «только active» выражено
+-- вычисляемой колонкой: у активной корзины ключ <токен>-<сеанс>, у всех прочих
+-- NULL, а уникальный индекс допускает сколько угодно NULL.
+-- VIRTUAL, а не STORED: STORED пересобирает таблицу (ALGORITHM=COPY) и заново
+-- создаёт внешние ключи, а это падает с ERROR 1215 (Cannot add foreign key
+-- constraint). Проверено обеими формами на живом стенде.
+--
+-- Это spec-сторона 2026_10_05_000200_constrain_carts_unique_to_active.
+ALTER TABLE carts
+  ADD COLUMN active_cart_key VARCHAR(128)
+    GENERATED ALWAYS AS (
+      IF(status = 'active', CONCAT(COALESCE(cart_token, ''), '-', session_id), NULL)
+    ) VIRTUAL,
+  ADD UNIQUE KEY uq_carts_active (active_cart_key);
 
 ALTER TABLE orders
   ADD COLUMN session_id BIGINT UNSIGNED NULL AFTER user_id,

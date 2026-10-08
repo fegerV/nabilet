@@ -110,20 +110,20 @@ const APP_OWNED_INDEXES = [
 /**
  * Spec-declared indexes that migrations DELIBERATELY do not apply.
  *
- * This is a real, deferred spec/migration divergence — NOT an app extension.
- * Migration 2026_10_05_000200_constrain_carts_unique_to_active.php dropped
- * `uq_carts_token_session_status` (it raised a 500 on the second purchase of a
- * session) and replaced it with `uq_carts_active` over a generated
- * `active_cart_key` column. The spec still declares the old key and must be
- * updated in a separate, explicit change. Until then the migrations are correct
- * and this name is excluded from the "missing from migrations" check.
+ * Currently EMPTY. The last entry — `carts.uq_carts_token_session_status` — was
+ * resolved by moving the corrected definition into the spec bundle itself
+ * (`nabilet_core_spec/migrations.sql`): the buggy global key was replaced there
+ * by the generated `carts.active_cart_key` + `uq_carts_active`, so the spec and
+ * the migrations now agree and no exclusion is needed. The `offline_bundles`
+ * global-hash divergence was closed the same way.
  *
- * Ratchet: may only shrink. When the spec is updated to match, delete the entry.
+ * Ratchet: entries may only be removed. Adding one back means the spec bundle is
+ * knowingly wrong again.
  *
  * @var list<string>  "table.index"
  */
 const KNOWN_SPEC_INDEX_DIVERGENCES = [
-    'carts.uq_carts_token_session_status',
+    // (empty — see the doc block above)
 ];
 
 /**
@@ -630,14 +630,16 @@ echo "\n[4] Migrations vs spec\n";
  * (2026_09_22_001500), metrika_settings (2026_09_30_000200), and Sanctum's
  * personal_access_tokens (2026_09_24_083529; separately documented as a design mismatch).
  * Column owners: remember_token (2026_09_22_001300), carts currency/total_amount
- * (2026_09_24_000001), carts.active_cart_key and its active-only index
- * (2026_10_05_000200), and hall schema revision + generated live-version columns
+ * (2026_09_24_000001), and hall schema revision + generated live-version columns
  * (2026_10_06_000100, 2026_10_06_000200).
- * Index owners: 2026_09_20_001200 replaces the globally unique bundle hash with
- * per-device uniqueness and adds a device/hash lookup index; 2026_10_05_000200
- * replaces the carts token/session/status key with a generated active-only key;
- * 2026_10_06_000200 enforces one live published/draft schema version per hall via
- * generated-column UNIQUE indexes.
+ * Index owner: 2026_10_06_000200 enforces one live published/draft schema version
+ * per hall via generated-column UNIQUE indexes.
+ *
+ * RESOLVED (no longer listed here): the `offline_bundles` global-hash index
+ * (2026_09_20_001200) and the `carts` token/session/status key
+ * (2026_10_05_000200). Both were corrections of a genuinely wrong spec, so the
+ * spec bundle was fixed instead of the divergence being tolerated — see
+ * `nabilet_core_spec/migrations.sql`.
  */
 $knownExtensions = [
     'tables' => [
@@ -656,7 +658,7 @@ $knownExtensions = [
     ],
     'columns' => [
         'users' => ['remember_token'],
-        'carts' => ['active_cart_key', 'currency', 'total_amount'],
+        'carts' => ['currency', 'total_amount'],
         'hall_schema_versions' => ['revision', 'published_hall_id', 'draft_hall_id'],
         // Сведения о зале и цена места (add_hall_details_and_seat_price):
         // детали зала правятся отдельно от версии схемы, цена на место
@@ -670,14 +672,6 @@ $knownExtensions = [
     // в обе стороны: колонка вычиталась, а ожидалась — и diff никогда не сходился.
     'defaults' => [],
     'indexes' => [
-        'carts' => [
-            'missing' => ['uq_carts_token_session_status'],
-            'extra' => ['uq_carts_active'],
-        ],
-        'offline_bundles' => [
-            'missing' => ['uq_offline_bundles_hash'],
-            'extra' => ['idx_offline_bundles_device_hash', 'uq_offline_bundles_hash_device'],
-        ],
         'hall_schema_versions' => [
             'extra' => ['uq_schema_one_published_per_hall', 'uq_schema_one_draft_per_hall'],
         ],
@@ -832,7 +826,7 @@ check('Core column defaults match; app-only defaults are explicitly named', func
     assertTrue($problems === [], implode("\n      ", $problems));
 });
 
-check('Core indexes match; application-owned offline-bundle indexes are explicit', function () use ($tables, $spec, $knownExtensions): void {
+check('Core indexes match; application-owned indexes are explicit', function () use ($tables, $spec, $knownExtensions): void {
     $problems = [];
 
     // Индексы, созданные сырым SQL (`CREATE UNIQUE INDEX ... ON <table>`),

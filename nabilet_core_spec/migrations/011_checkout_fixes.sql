@@ -22,8 +22,19 @@ SET FOREIGN_KEY_CHECKS = 0;
 --      резолвятся из корзины (carts.session_id → sessions.event_id).
 
 ALTER TABLE carts
-  ADD COLUMN cart_token VARCHAR(64) NULL AFTER user_id,
-  ADD UNIQUE KEY uq_carts_token_session_status (cart_token, session_id, status);
+  ADD COLUMN cart_token VARCHAR(64) NULL AFTER user_id;
+
+-- Uniqueness only among ACTIVE carts (D5). The previous
+-- uq_carts_token_session_status key allowed one cart per (token, session) in
+-- EVERY status, so the second purchase in the same session raised 1062 on the
+-- conversion to `converted`. Partial indexes do not exist in MySQL, hence the
+-- generated key. See migrations.sql for the full rationale.
+ALTER TABLE carts
+  ADD COLUMN active_cart_key VARCHAR(128)
+    GENERATED ALWAYS AS (
+      IF(status = 'active', CONCAT(COALESCE(cart_token, ''), '-', session_id), NULL)
+    ) VIRTUAL,
+  ADD UNIQUE KEY uq_carts_active (active_cart_key);
 
 ALTER TABLE orders
   ADD COLUMN session_id BIGINT UNSIGNED NULL AFTER user_id,
