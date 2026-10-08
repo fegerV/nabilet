@@ -74,6 +74,11 @@ const routes: RouteRecordRaw[] = [
       // найден». Открытый шаблон живёт в query (`?template=12`), а не в
       // отдельном маршруте: конструктор — это тот же раздел с открытым макетом.
       { path: 'ticket-templates', name: 'admin-ticket-templates', component: () => import('@/pages/admin/AdminTicketTemplatesPage.vue') },
+      // Библиотека файлов: афиши, галереи, документы, видео организации. Объявлена
+      // до :section по той же причине, что storefront и ticket-templates, — иначе
+      // catch-all показал бы «Раздел не найден». До этого экрана не было вовсе:
+      // модуль Media отдавал пять эндпоинтов, но посмотреть файлы было негде.
+      { path: 'media', name: 'admin-media', component: () => import('@/pages/admin/AdminMediaPage.vue') },
       // Реальные разделы вместо заглушек — на свои эндпоинты.
       { path: 'tickets', name: 'admin-tickets', component: () => import('@/pages/admin/AdminTicketsPage.vue') },
       { path: 'payments', name: 'admin-payments', component: () => import('@/pages/admin/AdminPaymentsPage.vue') },

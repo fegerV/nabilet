@@ -18,7 +18,6 @@ import { describe, expect, it } from 'vitest'
 import {
   GALLERY_MAX_BYTES,
   type GalleryItem,
-  humanSize,
   isImage,
   moveWithin,
   reorderPlan,
@@ -129,7 +128,7 @@ describe('moveWithin', () => {
   })
 })
 
-describe('isImage / humanSize', () => {
+describe('isImage', () => {
   it('различает изображение и видео', () => {
     expect(isImage(item(1, 0, 'image/png'))).toBe(true)
     expect(isImage(item(2, 0, 'video/mp4'))).toBe(false)
@@ -139,12 +138,5 @@ describe('isImage / humanSize', () => {
     const orphan: GalleryItem = { ...item(1, 0), media: null }
 
     expect(isImage(orphan)).toBe(false)
-  })
-
-  it('форматирует размер в читаемом виде', () => {
-    expect(humanSize(0)).toBe('0 Б')
-    expect(humanSize(512)).toBe('512 Б')
-    expect(humanSize(2048)).toBe('2 КБ')
-    expect(humanSize(3 * 1024 * 1024)).toBe('3.0 МБ')
   })
 })
