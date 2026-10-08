@@ -20,7 +20,7 @@ use Nabilet\Modules\Cart\Models\Cart;
 use App\Models\Consent;
 use App\Models\Notification;
 use App\Models\PrivacyRequest;
-use Nabilet\Modules\Content\Models\MediaAsset;
+use Nabilet\Modules\Media\Models\MediaAsset;
 use Nabilet\Modules\Analytics\Models\HeatmapEvent;
 use Nabilet\Modules\Analytics\Models\AnalyticsEvent;
 use Nabilet\Modules\Analytics\Models\AbAssignment;

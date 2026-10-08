@@ -123,10 +123,16 @@ class Organization extends Model
 
     /**
      * Get the media assets belonging to this organization.
+     *
+     * Ссылается на модель модуля Media, а не на `Content\Models\MediaAsset`:
+     * у той были выдуманные колонки (`name` вместо `filename`/`path`), поэтому
+     * связь описывала таблицу, которой нет. Модуль Content — кандидат на
+     * удаление (см. `tools/verify-module-structure.php`), и держать в нём
+     * канонический маппинг нельзя: файлы переехали в свой модуль.
      */
     public function mediaAssets(): HasMany
     {
-        return $this->hasMany(\Nabilet\Modules\Content\Models\MediaAsset::class, 'organization_id');
+        return $this->hasMany(\Nabilet\Modules\Media\Models\MediaAsset::class, 'organization_id');
     }
 
     /**
