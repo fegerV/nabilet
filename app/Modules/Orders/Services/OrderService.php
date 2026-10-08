@@ -29,6 +29,9 @@ class OrderService
         return DB::transaction(function () use ($data) {
             $inventoryItems = [];
             $totalAmount = 0;
+            $sessionId = $data['session_id'] ?? null;
+            $eventId = $data['event_id'] ?? null;
+
             foreach ($data['items'] ?? [] as $itemData) {
                 $item = InventoryItem::findOrFail($itemData['inventory_item_id']);
                 $quantity = max(1, (int) ($itemData['quantity'] ?? 1));
@@ -44,13 +47,30 @@ class OrderService
                     );
                 }
 
+                // A6-цепочка «заказ → оплата → билет» требует, чтобы заказ помнил
+                // сеанс и событие: `tickets.session_id`/`event_id` NOT NULL, и
+                // TicketService берёт их именно отсюда. Раньше здесь их не было, и
+                // заказы, созданные этим путём, имели session_id = NULL — билеты
+                // по ним не выпускались, а напоминание за сутки (OrderReminderSweeper)
+                // не находило дату сеанса. Берём из позиции склада: у неё сеанс есть
+                // всегда, а у события он один на все позиции заказа.
+                if ($sessionId === null && $item->session_id !== null) {
+                    $sessionId = (int) $item->session_id;
+                }
+
                 $inventoryItems[] = [$item, $quantity];
                 $totalAmount += $quantity * (int) $item->price_amount;
+            }
+
+            if ($eventId === null && $sessionId !== null) {
+                $eventId = $this->repository->eventIdForSession((int) $sessionId);
             }
 
             $order = $this->repository->create([
                 'organization_id' => $data['organization_id'],
                 'user_id' => $data['user_id'] ?? null,
+                'session_id' => $sessionId,
+                'event_id' => $eventId,
                 'status' => 'pending',
                 'payment_status' => 'pending',
                 'subtotal_amount' => $totalAmount,

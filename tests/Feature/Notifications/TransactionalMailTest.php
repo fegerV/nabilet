@@ -10,6 +10,8 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
 use Nabilet\Modules\Notifications\Mail\TemplateMail;
 use Nabilet\Modules\Notifications\Services\TransactionalMailService;
+use Nabilet\Modules\Notifications\Support\AccountNotificationCodes;
+use Nabilet\Modules\Notifications\Support\OrderNotificationCodes;
 use Tests\TestCase;
 
 class TransactionalMailTest extends TestCase
@@ -85,7 +87,15 @@ class TransactionalMailTest extends TestCase
     {
         $this->seed(\Database\Seeders\NotificationTemplateSeeder::class);
 
-        self::assertSame(9, NotificationTemplate::query()->where('channel', 'email')->count());
+        // Считаем не константой, а по списку кодов: сид обязан поставить ровно
+        // один шаблон на каждый код заказа плюс письма о доступе к аккаунту.
+        // Число, вбитое руками, приходилось бы править при каждом новом письме
+        // (так и случилось при добавлении `order.reminder`), и тест падал бы не
+        // на дефекте, а на расхождении счётчика.
+        $expected = count(OrderNotificationCodes::all())
+            + count(AccountNotificationCodes::all());
+
+        self::assertSame($expected, NotificationTemplate::query()->where('channel', 'email')->count());
 
         $template = NotificationTemplate::query()->where('code', 'order.paid')->firstOrFail();
         $template->update(['subject' => 'Мой изменённый заголовок']);
@@ -93,6 +103,6 @@ class TransactionalMailTest extends TestCase
         $this->seed(\Database\Seeders\NotificationTemplateSeeder::class);
 
         self::assertSame('Мой изменённый заголовок', $template->fresh()->subject);
-        self::assertSame(9, NotificationTemplate::query()->where('channel', 'email')->count());
+        self::assertSame($expected, NotificationTemplate::query()->where('channel', 'email')->count());
     }
 }
