@@ -28,12 +28,15 @@ import { get, send, upload } from '@/lib/api'
 import {
   GALLERY_TYPES,
   type GalleryItem,
-  humanSize,
   isImage,
   moveWithin,
   reorderPlan,
   validateGalleryFile,
 } from '@/lib/eventGallery'
+// `humanSize` — общая функция библиотеки файлов, а не часть галереи. Держать её
+// в двух местах значит однажды увидеть «2 КБ» на одном экране и «2.0 КБ» на
+// другом; поэтому она импортируется из общего модуля.
+import { humanSize } from '@/lib/mediaLibrary'
 
 const props = defineProps<{ eventId: number }>()
 

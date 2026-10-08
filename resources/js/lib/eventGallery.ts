@@ -17,6 +17,7 @@
  * для мгновенной отзывчивости; после ответа список перечитывается. Иначе два
  * администратора, открывшие одну галерею, разошлись бы в порядке навсегда.
  */
+import { humanSize } from './mediaLibrary'
 
 /** Файл внутри связи — то, что отдаёт `MediaLinkResource`. */
 export interface GalleryMedia {
@@ -52,14 +53,6 @@ export const GALLERY_MAX_BYTES = 10 * 1024 * 1024
  * мероприятия им не место — это фотографии и видео, а не документы).
  */
 export const GALLERY_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/avif', 'image/gif', 'video/mp4', 'video/webm']
-
-/** Читаемая подпись типа файла для списка. */
-export function humanSize(bytes: number): string {
-  if (!Number.isFinite(bytes) || bytes <= 0) return '0 Б'
-  if (bytes < 1024) return `${bytes} Б`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} КБ`
-  return `${(bytes / 1024 / 1024).toFixed(1)} МБ`
-}
 
 /**
  * Проверка файла ДО отправки.
