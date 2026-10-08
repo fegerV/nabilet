@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Events\Http\Controllers;
 
+use Nabilet\Core\Support\AssetUrl;
 use Nabilet\Modules\Events\Domain\EventStatus;
 use Nabilet\Modules\Events\Models\Event;
 use Nabilet\Modules\Events\Repositories\EventRepository;
@@ -187,14 +188,14 @@ class EventPageController
      * `og:image` для события без постера получал
      * `https://…/storage/images/og-default.svg` — 404. Превью в мессенджере
      * не строилось, а робот соцсети кэшировал ошибку на сутки.
+     *
+     * Сама логика теперь в `AssetUrl`: у этих двух корней появился второй
+     * потребитель (письмо с билетом, где нужна афиша), и копия правила — это
+     * ровно тот способ, которым ошибка выше и появилась.
      */
     private function storageUrl(string $path): string
     {
-        if (str_starts_with($path, 'http')) {
-            return $path;
-        }
-
-        return config('app.url') . '/storage/' . ltrim($path, '/');
+        return AssetUrl::storage($path);
     }
 
     /**
@@ -205,11 +206,7 @@ class EventPageController
      */
     private function publicUrl(string $path): string
     {
-        if (str_starts_with($path, 'http')) {
-            return $path;
-        }
-
-        return config('app.url') . '/' . ltrim($path, '/');
+        return AssetUrl::public($path);
     }
 
     /**

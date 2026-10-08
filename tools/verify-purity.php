@@ -411,8 +411,28 @@ echo str_repeat('─', 74), "\n\n";
 $files = [];
 
 foreach ($pureDirs as $dir) {
-    foreach (glob($root . '/' . $dir . '/*.php') ?: [] as $file) {
-        $files[] = $file;
+    $base = $root . '/' . $dir;
+
+    if (! is_dir($base)) {
+        continue;
+    }
+
+    // РЕКУРСИВНО, а не `glob($dir . '/*.php')`.
+    //
+    // Подкаталог внутри `Domain/` — это всё ещё домен: `Domain/Qr/`,
+    // `Domain/Superseded/`. Плоский glob их не видел, то есть файлы лежали в
+    // охраняемом каталоге и при этом не проверялись вообще. Это ровно тот
+    // случай, о котором предупреждает шапка этого файла: зелёный результат,
+    // молча исключающий файлы, хуже красного.
+    $iterator = new RecursiveIteratorIterator(
+        new RecursiveDirectoryIterator($base, FilesystemIterator::SKIP_DOTS)
+    );
+
+    foreach ($iterator as $file) {
+        /** @var SplFileInfo $file */
+        if ($file->getExtension() === 'php') {
+            $files[] = $file->getPathname();
+        }
     }
 }
 
