@@ -61,7 +61,7 @@ class EventController extends Controller
                     ], 404);
                 }
 
-                $event->load(['category', 'translations', 'sessions.hall', 'sessions.inventoryItems', 'organization']);
+                $event->load(['category', 'translations', 'sessions.hall', 'sessions.inventoryItems', 'organization', 'galleryLinks.mediaAsset']);
 
                         $resource = new EventResource($event);
                         $data = $resource->toArray(request());
@@ -77,6 +77,29 @@ class EventController extends Controller
                                             ->count(),
                                     ])
                                     ->toArray();
+
+                // Дополнительные фото и видео — прямо в публичном ответе, а не
+                // отдельным запросом. Отдельный эндпоинт потребовал бы второго
+                // круга к серверу на каждое открытие страницы события, ради
+                // данных, которые нужны ровно на этой странице и больше нигде.
+                //
+                // Файлы с `deleted_at` отсеиваются: связь при мягком удалении
+                // файла снимается, но полагаться на это здесь нельзя — иначе
+                // страница покажет карточку без картинки.
+                $data['gallery'] = $event->galleryLinks
+                    ->filter(fn ($link) => $link->mediaAsset !== null)
+                    ->map(fn ($link) => [
+                        'id' => $link->mediaAsset->id,
+                        'url' => $link->mediaAsset->url(),
+                        'filename' => $link->mediaAsset->filename,
+                        'mime_type' => $link->mediaAsset->mime_type,
+                        'width' => $link->mediaAsset->width,
+                        'height' => $link->mediaAsset->height,
+                        'alt_text' => $link->mediaAsset->alt_text,
+                        'position' => $link->position,
+                    ])
+                    ->values()
+                    ->toArray();
 
                 return response()->json([
                     'data' => $data,

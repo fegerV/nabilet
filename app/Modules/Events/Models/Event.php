@@ -105,4 +105,35 @@ class Event extends Model
     {
         return $this->hasMany(\Nabilet\Modules\Tickets\Models\Ticket::class);
     }
+
+    /**
+     * Дополнительные фото и видео мероприятия.
+     *
+     * ПОЧЕМУ `entity_id`, А НЕ `event_id`
+     *
+     * `media_links` — ОДНА таблица для всех видов объектов (мероприятия,
+     * площадки, залы, организации): у неё полиморфный ключ
+     * `entity_type` + `entity_id` и индекс `idx_media_links_entity` по нему.
+     * Поэтому связь задаётся парой «тип + идентификатор», и условие по типу
+     * здесь обязательно: без него `entity_id = 5` подтянул бы файлы зала с
+     * тем же номером. Это не «лишний where», а вторая половина ключа.
+     *
+     * Связь ведёт к `media_links`, а не к `media_assets` напрямую: роль и
+     * позиция файла принадлежат связи, и один и тот же файл может быть
+     * одновременно афишей и элементом галереи.
+     *
+     * РОЛЬ ФИЛЬТРУЕТСЯ ЗДЕСЬ, А НЕ У ПОТРЕБИТЕЛЯ. Файл, назначенный афишей
+     * (`role = poster`), не должен попадать в галерею: афиша показывается
+     * отдельным блоком, и без этого условия она появилась бы на странице
+     * дважды. Оба потребителя — админский `EventGalleryController` и публичная
+     * страница события — получают одинаковый набор.
+     */
+    public function galleryLinks(): HasMany
+    {
+        return $this->hasMany(\Nabilet\Modules\Media\Models\MediaLink::class, 'entity_id')
+            ->where('entity_type', \Nabilet\Modules\Media\Domain\MediaEntityType::EVENT)
+            ->where('role', \Nabilet\Modules\Media\Domain\MediaRole::GALLERY)
+            ->orderBy('position')
+            ->orderBy('id');
+    }
 }

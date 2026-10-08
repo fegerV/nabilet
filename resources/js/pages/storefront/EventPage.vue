@@ -50,6 +50,25 @@ interface EventDetail {
   organization?: { name?: string } | null
   venue?: { name?: string; city?: string } | null
   price_from_minor?: number
+  /** Дополнительные фото и видео: приходят в этом же ответе, см. showBySlug. */
+  gallery?: GalleryItem[]
+}
+
+/**
+ * Элемент галереи.
+ *
+ * `mime_type` приходит с сервера, а не угадывается по расширению: подписывать
+ * `<img>` на видео значит показать битую картинку вместо плеера.
+ */
+interface GalleryItem {
+  id: number
+  url: string
+  filename: string
+  mime_type: string
+  width: number | null
+  height: number | null
+  alt_text: string | null
+  position: number
 }
 
 const event = ref<EventDetail | null>(null)
@@ -96,6 +115,44 @@ const catName = computed(() => {
 const startsAtOf = (s: SessionItem): string => s.starts_at ?? s.startsAt ?? ''
 const availableOf = (s: SessionItem): number => s.available_seats ?? s.availableSeats ?? 0
 const hallOf = (s: SessionItem): string => s.hall_name ?? s.hall ?? ''
+
+/* ── Дополнительные фото и видео ─────────────────────────────────────────────
+ * Приходят в том же ответе, что и само событие (`gallery`), поэтому отдельного
+ * запроса и состояния загрузки здесь нет: пока грузится страница, грузится и
+ * галерея. Порядок задаёт сервер (`position`) — на витрине он тот же, что
+ * администратор выставил в карточке мероприятия.
+ */
+const gallery = computed<GalleryItem[]>(() => event.value?.gallery ?? [])
+
+const isGalleryImage = (item: GalleryItem): boolean => item.mime_type.startsWith('image/')
+
+/** Просмотр во весь экран. `null` — закрыто. */
+const lightbox = ref<GalleryItem | null>(null)
+
+function openLightbox(item: GalleryItem): void {
+  lightbox.value = item
+}
+
+function closeLightbox(): void {
+  lightbox.value = null
+}
+
+// Escape закрывает просмотр. Слушатель висит только пока окно открыто: иначе
+// страница перехватывала бы Escape всегда, включая момент, когда закрывать
+// нечего.
+watch(lightbox, (open) => {
+  if (typeof window === 'undefined') return
+
+  if (open) {
+    window.addEventListener('keydown', onLightboxKey)
+  } else {
+    window.removeEventListener('keydown', onLightboxKey)
+  }
+})
+
+function onLightboxKey(e: KeyboardEvent): void {
+  if (e.key === 'Escape') closeLightbox()
+}
 
 const soldOut = computed(() => !activeSession.value || availableOf(activeSession.value) === 0)
 const fewLeft = computed(() => {
@@ -199,6 +256,34 @@ function buy(): void {
                       вход на площадку открывается за час до начала. Билеты с местами на схеме зала:
                       ряд и место вы выбираете сами, а не получаете «лучшее из свободных».
                     </p>
+
+          <!--
+            ── Дополнительные фото и видео ──
+            Блока не существовало вообще: раздел «Дополнительные фото и видео»
+            в карточке мероприятия отсутствовал, а таблица `media_links` стояла
+            пустой, потому что модуль Media не отдавал ни одного маршрута.
+          -->
+          <section v-if="gallery.length" class="mt-8">
+            <h2 class="text-lg font-semibold text-content">Фотографии и видео</h2>
+            <ul class="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
+              <li v-for="item in gallery" :key="item.id">
+                <button
+                  type="button"
+                  class="block w-full overflow-hidden rounded-xl border border-line bg-surface-2 transition hover:border-brand-500"
+                  @click="openLightbox(item)"
+                >
+                  <img
+                    v-if="isGalleryImage(item)"
+                    :src="item.url"
+                    :alt="item.alt_text ?? item.filename"
+                    class="aspect-[4/3] w-full object-cover"
+                    loading="lazy"
+                  />
+                  <span v-else class="flex aspect-[4/3] w-full items-center justify-center text-3xl" aria-hidden="true">🎬</span>
+                </button>
+              </li>
+            </ul>
+          </section>
 
                     <h2 class="mt-8 text-lg font-semibold text-content">Схема зала</h2>
                     <p class="mt-1 text-sm text-muted">{{ activeSession ? hallOf(activeSession) : '' }}</p>
@@ -314,6 +399,43 @@ function buy(): void {
       <p v-if="fewLeft" class="mt-2 text-xs text-accent-400">
         Осталось мало мест — лучше не откладывать
       </p>
+    </div>
+
+    <!--
+      Просмотр файла во весь экран. `role="dialog"` и `aria-modal` — чтобы
+      скринридер не читал страницу под окном; закрытие по клику на фон и по
+      Escape обязательно: окно без выхода — ловушка.
+    -->
+    <div
+      v-if="lightbox"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+      role="dialog"
+      aria-modal="true"
+      :aria-label="lightbox.alt_text ?? lightbox.filename"
+      @click="closeLightbox"
+    >
+      <button
+        type="button"
+        class="absolute right-4 top-4 rounded-lg bg-white/10 px-3 py-1.5 text-sm text-white transition hover:bg-white/20"
+        @click.stop="closeLightbox"
+      >
+        Закрыть
+      </button>
+
+      <img
+        v-if="isGalleryImage(lightbox)"
+        :src="lightbox.url"
+        :alt="lightbox.alt_text ?? lightbox.filename"
+        class="max-h-full max-w-full rounded-lg object-contain"
+        @click.stop
+      />
+      <video
+        v-else
+        :src="lightbox.url"
+        class="max-h-full max-w-full rounded-lg"
+        controls
+        @click.stop
+      />
     </div>
   </div>
 </template>
