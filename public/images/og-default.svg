@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-label="NABILET — билеты на события">
+  <!--
+    Изображение-заглушка для Open Graph.
+
+    ЗАЧЕМ ЭТОТ ФАЙЛ. `StructuredDataService::buildImageUrls()` подставляет его,
+    когда у события нет постера, а `EventPageController` — когда нет `poster` для
+    `og:image`. До этого файла не существовало, и обе ссылки отвечали 404:
+    в JSON-LD уезжал неработающий `image` (для schema.org/Event обязательное
+    поле), а в мессенджерах карточка ссылки раскрывалась пустой.
+
+    ПОЧЕМУ SVG, А НЕ JPG/PNG. В окружении нет ни ImageMagick, ни librsvg, ни
+    `sharp` — конвертировать нечем. SVG принимают все площадки, которые для нас
+    важны: Google (изображения индексируются и служат `image` в разметке),
+    Telegram, VK, Twitter/X. Facebook исторически требовал растровый формат, но
+    он не входит в целевой список проекта («Сургут-Концерт», аудитория РФ).
+
+    Если понадобится JPEG — файл с тем же именем и растровым содержимым
+    подхватится без правок в коде, потому что код ссылается на путь, а не на тип.
+  -->
+  <defs>
+    <!-- Те же кисти, что в `resources/css/app.css` (--brand-500 / --accent-500),
+         чтобы заглушка не выбивалась из фирменного стиля витрины. -->
+    <linearGradient id="brand" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6D4AFF"/>
+      <stop offset="45%" stop-color="#8E74FF"/>
+      <stop offset="130%" stop-color="#FF5C22"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="0%" r="80%">
+      <stop offset="0%" stop-color="#6D4AFF" stop-opacity="0.55"/>
+      <stop offset="62%" stop-color="#6D4AFF" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="1200" height="630" fill="#0B0918"/>
+  <rect width="1200" height="630" fill="url(#glow)"/>
+
+  <!-- Декоративное «поле мест» — намёк на выбор места на схеме зала. -->
+  <g opacity="0.16" fill="#FFFFFF">
+    <circle cx="150" cy="150" r="7"/><circle cx="210" cy="150" r="7"/><circle cx="270" cy="150" r="7"/>
+    <circle cx="150" cy="210" r="7"/><circle cx="210" cy="210" r="7"/><circle cx="270" cy="210" r="7"/>
+    <circle cx="930" cy="420" r="7"/><circle cx="990" cy="420" r="7"/><circle cx="1050" cy="420" r="7"/>
+    <circle cx="930" cy="480" r="7"/><circle cx="990" cy="480" r="7"/><circle cx="1050" cy="480" r="7"/>
+  </g>
+
+  <g transform="translate(96 220)">
+    <text x="0" y="0"
+          font-family="'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"
+          font-size="104" font-weight="700" fill="#FFFFFF" letter-spacing="-2">NABILET</text>
+
+    <rect x="4" y="42" width="132" height="8" rx="4" fill="url(#brand)"/>
+
+    <text x="0" y="112"
+          font-family="'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"
+          font-size="40" fill="#B0A0FF">Билеты на события</text>
+
+    <text x="0" y="172"
+          font-family="'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"
+          font-size="28" fill="#7A729F">Выбор мест на схеме зала · Оплата онлайн · QR-билет</text>
+  </g>
+</svg>

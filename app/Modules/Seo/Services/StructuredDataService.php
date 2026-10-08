@@ -94,7 +94,57 @@ class StructuredDataService
             ];
         }
 
-        return $structuredData;
+        // Убираем пустые значения ПОСЛЕ сборки, а не проверками на каждом поле.
+        //
+        // ПОЧЕМУ ЭТО НУЖНО. Схема ниже читает поля через `?? ''`, поэтому
+        // отсутствующая в исходных данных площадка даёт `"name": ""`, а
+        // отсутствующий `postal_code` — `"postalCode": ""`. Валидатор Google
+        // считает пустую строку значением и ругается на неполное поле:
+        // `location.address` с пустым `streetAddress` — это ошибка, тогда как
+        // ОТСУТСТВИЕ ключа ошибкой не является (поле просто опционально).
+        //
+        // Спецификация JSON-LD на этот счёт однозначна: незнакомые ключи мало
+        // того что игнорируются — они и не ожидаются. `"validFrom": null`
+        // уезжало наружу ровно так же (см. `buildOffers()`), и это тоже
+        // отбраковывалось.
+        //
+        // `array_filter` с такой лямбдой, а не без неё: без лямбды PHP вырежет
+        // и `0`, и `'0'`, а `"price": 0` для бесплатного мероприятия —
+        // осмысленное значение, которое терять нельзя.
+        return $this->pruneEmpty($structuredData);
+    }
+
+    /**
+     * Рекурсивно вычищает пустые строки, null и пустые массивы/объекты.
+     *
+     * `false` и `0` сохраняются: в schema.org это валидные значения
+     * (`isAccessibleForFree: false`, `price: 0`).
+     *
+     * @param array<string, mixed> $data
+     *
+     * @return array<string, mixed>
+     */
+    private function pruneEmpty(array $data): array
+    {
+        foreach ($data as $key => $value) {
+            if (is_array($value)) {
+                $value = $this->pruneEmpty($value);
+
+                if ($value === []) {
+                    unset($data[$key]);
+                    continue;
+                }
+
+                $data[$key] = $value;
+                continue;
+            }
+
+            if ($value === null || $value === '') {
+                unset($data[$key]);
+            }
+        }
+
+        return $data;
     }
 
     /**
@@ -150,7 +200,18 @@ class StructuredDataService
             $images[] = $this->resolveImageUrl($eventData['cover']);
         }
 
-        return $images !== [] ? $images : [config('app.url') . '/images/og-default.jpg'];
+        // Заглушка, когда у события нет ни постера, ни обложки.
+        //
+        // `image` — ОБЯЗАТЕЛЬНОЕ поле для schema.org/Event: без него Google
+        // не покажет событие в расширенном результате, даже если всё остальное
+        // заполнено. Поэтому «нет картинки» здесь нельзя выразить отсутствием
+        // ключа — нужен рабочий адрес.
+        //
+        // Файл раньше не существовал (`.jpg`), и ссылка вела в 404, что для
+        // валидатора хуже отсутствия: он видит поле и проверяет его.
+        // Лежит в `public/images/`, а не в `storage/`, потому что это статика
+        // приложения, а не загруженный пользователем файл.
+        return $images !== [] ? $images : [config('app.url') . '/images/og-default.svg'];
     }
 
     /**

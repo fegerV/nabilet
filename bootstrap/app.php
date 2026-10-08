@@ -72,6 +72,11 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->append(\Nabilet\Core\Http\Middleware\AssignRequestId::class);
         $middleware->append(\Nabilet\Core\Http\Middleware\ResolveOrganizationContext::class);
         $middleware->append(\Nabilet\Core\Http\Middleware\ApplySecurityHeaders::class);
+        // Запрет индексации служебных страниц (`X-Robots-Tag`). Стоит в global
+        // stack, а не в группе `web`, потому что витрина отдаётся и из web-роутов
+        // (`/`, `/checkout`), и из API (`/api/v1/my-tickets`) — а закрывать надо
+        // оба входа. Подробности и список путей — в самом классе.
+        $middleware->append(\Nabilet\Core\Http\Middleware\PreventIndexingOfServicePages::class);
 
         $middleware->api(prepend: [
             \Nabilet\Core\Http\Middleware\ForceJsonResponse::class,
