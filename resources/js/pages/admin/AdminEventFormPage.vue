@@ -3,7 +3,8 @@
  * Форма мероприятия (админка) — удобное создание/редактирование события.
  *
  * Секции: Основное · Афиша (drag&drop-загрузка файла ИЛИ URL, живое превью) ·
- * Сеансы (площадка, зал, дата) · Шаблон билета · Описание · SEO.
+ * Дополнительные фото и видео · Сеансы (площадка, зал, дата) · Шаблон билета ·
+ * Описание · SEO.
  * Создание: POST /api/v1/events (multipart при выбранном файле), обновление:
  * PATCH /api/v1/events/{id}. Ошибки валидации API (error.details.fields)
  * привязываются к конкретным полям формы.
@@ -33,6 +34,7 @@ import NInput from '@/components/ui/NInput.vue'
 import NSelect from '@/components/ui/NSelect.vue'
 import NStatusBadge from '@/components/ui/NStatusBadge.vue'
 import SessionFormModal from '@/components/admin/SessionFormModal.vue'
+import EventGallerySection from '@/components/admin/EventGallerySection.vue'
 import { useUiStore } from '@/stores/ui'
 import { ApiError, get, request, send, upload } from '@/lib/api'
 import { dateFull, time } from '@/lib/format'
@@ -752,6 +754,16 @@ const publishedAtText = computed<string | null>(() => {
           </div>
         </div>
       </section>
+
+      <!--
+        ── Дополнительные фото и видео ──
+        Раздела не было вообще: «Дополнительные фото и видео» отсутствовало
+        полностью, а таблица `media_links` — та, для этого и предназначенная, —
+        стояла пустой, потому что модуль Media не отдавал ни одного маршрута.
+        Только в режиме правки: у нового мероприятия ещё нет id, к которому
+        можно привязать файл.
+      -->
+      <EventGallerySection v-if="isEdit && eventId" :event-id="eventId" />
 
       <!--
         ── Сеансы: где и когда ──

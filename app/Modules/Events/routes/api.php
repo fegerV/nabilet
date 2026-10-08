@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Nabilet\Modules\Events\Http\Controllers\EventController;
+use Nabilet\Modules\Events\Http\Controllers\EventGalleryController;
 use Illuminate\Support\Facades\Route;
 
 // The global apiPrefix in bootstrap/app.php already mounts this file at /api/v1.
@@ -40,4 +41,25 @@ Route::prefix('events')->group(function () {
     Route::post('/{event}/cancel', [EventController::class, 'cancel'])
         ->middleware(['auth:api', 'admin'])
         ->whereNumber('event');
+
+    // ── Дополнительные фото и видео ──────────────────────────────────────
+    //
+    // До этого раздела в форме мероприятия не было ни одного поля для
+    // дополнительных фото: «Дополнительные фото и видео» отсутствовало
+    // полностью, а таблицы `media_assets`/`media_links` стояли пустыми, потому
+    // что модуль Media не отдавал ни одного маршрута.
+    //
+    // Загрузка идёт через POST /media с `entity_type=event` — там же, где все
+    // файлы. Здесь только привязка уже загруженного файла и снятие привязки:
+    // `media_id` в теле, роль по умолчанию `gallery`.
+    //
+    // `admin`, как и у остальных правок мероприятия: галерею видит каждый
+    // покупатель на странице события.
+    Route::middleware(['auth:api', 'admin'])->group(function (): void {
+        Route::get('/{event}/gallery', [EventGalleryController::class, 'index'])->whereNumber('event');
+        Route::post('/{event}/gallery', [EventGalleryController::class, 'store'])->whereNumber('event');
+        Route::delete('/{event}/gallery/{media}', [EventGalleryController::class, 'destroy'])
+            ->whereNumber('event')
+            ->whereNumber('media');
+    });
 });
