@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Events\Providers;
 
+use Nabilet\Modules\Events\Domain\EventPublicationPolicy;
 use Nabilet\Modules\Events\Repositories\EventRepository;
+use Nabilet\Modules\Events\Services\EventPublicationService;
 use Nabilet\Modules\Events\Services\EventService;
 use Illuminate\Support\ServiceProvider;
 
@@ -14,6 +16,11 @@ class EventServiceProvider extends ServiceProvider
     {
         $this->app->singleton(EventRepository::class);
         $this->app->singleton(EventService::class);
+
+        // Политика не имеет состояния — синглтон здесь ради того, чтобы
+        // `EventPublicationService` не конструировал её на каждый запрос.
+        $this->app->singleton(EventPublicationPolicy::class);
+        $this->app->singleton(EventPublicationService::class);
     }
 
     public function boot(): void

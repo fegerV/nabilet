@@ -134,6 +134,12 @@ CREATE TABLE IF NOT EXISTS events (
   public_id CHAR(26) NOT NULL,
   organization_id BIGINT UNSIGNED NOT NULL,
   category_id BIGINT UNSIGNED NULL,
+  -- Оформление билета для этого мероприятия. NULL — стандартный вид билета.
+  -- Макет принадлежит МЕРОПРИЯТИЮ, а не сеансу: у концерта с дневным и вечерним
+  -- сеансами билет обязан выглядеть одинаково, иначе покупатель решает, что
+  -- один из двух билетов поддельный. ON DELETE SET NULL, а не CASCADE: удаление
+  -- макета не должно уносить с собой мероприятие вместе с заказами.
+  ticket_template_id BIGINT UNSIGNED NULL,
   title VARCHAR(500) NOT NULL,
   slug VARCHAR(255) NOT NULL,
   short_description TEXT NULL,
@@ -157,8 +163,12 @@ CREATE TABLE IF NOT EXISTS events (
   KEY idx_events_org_status (organization_id, status),
   KEY idx_events_category (category_id),
   KEY idx_events_published (published_at),
+  KEY idx_events_ticket_template (ticket_template_id),
   CONSTRAINT fk_events_org FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE RESTRICT,
-  CONSTRAINT fk_events_category FOREIGN KEY (category_id) REFERENCES event_categories(id) ON DELETE SET NULL
+  CONSTRAINT fk_events_category FOREIGN KEY (category_id) REFERENCES event_categories(id) ON DELETE SET NULL,
+  -- Ссылка вперёд: ticket_templates объявлена ниже по файлу. Это безопасно,
+  -- потому что файл открывается `SET FOREIGN_KEY_CHECKS = 0`.
+  CONSTRAINT fk_events_ticket_template FOREIGN KEY (ticket_template_id) REFERENCES ticket_templates(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS event_translations (

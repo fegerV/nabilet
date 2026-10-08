@@ -4,9 +4,31 @@ declare(strict_types=1);
 
 use Nabilet\Modules\Tickets\Http\Controllers\CheckinController;
 use Nabilet\Modules\Tickets\Http\Controllers\TicketController;
+use Nabilet\Modules\Tickets\Http\Controllers\TicketTemplateController;
 use Illuminate\Support\Facades\Route;
 
 // Mounted at /api/v1 by bootstrap/app.php — do not repeat the version segment.
+//
+// Шаблоны билетов (конструктор).
+//
+// Маршрутов не существовало ВООБЩЕ, хотя `TicketBuilder.vue` обращался к
+// `/api/ticket-templates` (без префикса версии и без токена — через голый axios).
+// То есть конструктор был недостижим: сохранение уходило в 404, а список
+// шаблонов жил захардкоженным в компоненте.
+//
+// `admin` поверх `auth:api`: шаблон определяет вид билета, который получит
+// каждый покупатель, и правка видна всем сразу.
+Route::prefix('ticket-templates')->middleware(['auth:api', 'admin'])->group(function () {
+    Route::get('/', [TicketTemplateController::class, 'index']);
+    Route::post('/', [TicketTemplateController::class, 'store']);
+    // `whereNumber` — по той же причине, что и у `/tickets/{ticket}`: неявная
+    // привязка приводит путь к int, поэтому `/ticket-templates/1abc` открывал
+    // шаблон 1. С ограничением — 404.
+    Route::get('/{template}', [TicketTemplateController::class, 'show'])->whereNumber('template');
+    Route::put('/{template}', [TicketTemplateController::class, 'update'])->whereNumber('template');
+    Route::patch('/{template}', [TicketTemplateController::class, 'update'])->whereNumber('template');
+    Route::delete('/{template}', [TicketTemplateController::class, 'destroy'])->whereNumber('template');
+});
 //
 // Гостевой «мои билеты»: билеты покупателя по X-Cart-Token (контракт D5).
 // Без auth:api — гостевая витрина не имеет аккаунта, а order.user_id = NULL.

@@ -6,7 +6,17 @@
  * состояний из docs/STATE-MACHINES.md. Если статус заказа «awaiting_payment»
  * — он везде «Ждём оплаты» и везде одного цвета: в таблице заказов, в шапке
  * деталки, в письме. Пользователь учит систему один раз.
+ *
+ * ПОДПИСЬ СЧИТАЕТСЯ РЕАКТИВНО. Раньше `resolved` и `meta` были обычными
+ * константами, посчитанными один раз в `setup()`: компонент показывал статус
+ * на момент СОЗДАНИЯ и больше никогда его не пересчитывал. В таблицах это не
+ * было заметно (строка монтируется уже со своим статусом), а на форме
+ * мероприятия стало видно сразу: после нажатия «Готова к продаже» событие
+ * переходило в `published`, дата публикации подставлялась, а бейдж продолжал
+ * писать «Черновик». То есть экран утверждал, что публикация не прошла, ровно
+ * в тот момент, когда она прошла.
  */
+import { computed } from 'vue'
 import NBadge from './NBadge.vue'
 import type { EventStatus, OrderStatus, TicketStatus, Tone } from '@/lib/types'
 
@@ -83,30 +93,37 @@ const USER: Record<string, { label: string; tone: Tone; dot: boolean }> = {
   banned: { label: 'Заблокирован', tone: 'rose', dot: false },
 }
 
-/** Разные сущности — разные наборы статусов, поэтому выбор идёт по типу. */
-const resolved =
-  props.kind === 'order'
-    ? ORDER[props.status as OrderStatus]
-    : props.kind === 'ticket'
-      ? TICKET[props.status as TicketStatus]
-      : props.kind === 'session'
-        ? SESSION[props.status as string]
-        : props.kind === 'hall'
-          ? HALL[props.status as string]
-          : props.kind === 'venue'
-            ? VENUE[props.status as string]
-            : props.kind === 'payment'
-              ? PAYMENT[props.status as string]
-              : props.kind === 'user'
-                ? USER[props.status as string]
-                : EVENT[props.status as EventStatus]
-
 /**
+ * Разные сущности — разные наборы статусов, поэтому выбор идёт по типу.
+ *
+ * `computed`, а не `const`: статус приходит пропом и меняется на живом экране
+ * (публикация мероприятия, отмена заказа). Обычная константа зафиксировала бы
+ * первый отрисованный статус навсегда.
+ *
  * Неизвестный статус (новый провайдер, ручная правка БД) не должен ронять
  * страницу: показываем сам код — администратору он всё равно полезнее,
  * чем пустая ячейка.
  */
-const meta = resolved ?? { label: props.status || '—', tone: 'neutral' as Tone, dot: false }
+const meta = computed(() => {
+  const resolved =
+    props.kind === 'order'
+      ? ORDER[props.status as OrderStatus]
+      : props.kind === 'ticket'
+        ? TICKET[props.status as TicketStatus]
+        : props.kind === 'session'
+          ? SESSION[props.status as string]
+          : props.kind === 'hall'
+            ? HALL[props.status as string]
+            : props.kind === 'venue'
+              ? VENUE[props.status as string]
+              : props.kind === 'payment'
+                ? PAYMENT[props.status as string]
+                : props.kind === 'user'
+                  ? USER[props.status as string]
+                  : EVENT[props.status as EventStatus]
+
+  return resolved ?? { label: props.status || '—', tone: 'neutral' as Tone, dot: false }
+})
 </script>
 
 <template>

@@ -32,6 +32,10 @@ class Event extends Model
         'public_id',
         'organization_id',
         'category_id',
+        // Макет билета для этого мероприятия. NULL — стандартный вид билета
+        // (см. TicketTemplateResolver). Необязателен намеренно: требовать шаблон
+        // ДО создания мероприятия значило бы блокировать продажу ради оформления.
+        'ticket_template_id',
         'title',
         'slug',
         'short_description',
@@ -52,6 +56,7 @@ class Event extends Model
     {
         return [
             'duration_minutes' => 'integer',
+            'ticket_template_id' => 'integer',
             'published_at' => 'datetime:Y-m-d H:i:s.u',
             'created_at' => 'datetime:Y-m-d H:i:s.u',
             'updated_at' => 'datetime:Y-m-d H:i:s.u',
@@ -62,6 +67,18 @@ class Event extends Model
     public function organization(): BelongsTo
     {
         return $this->belongsTo(\Nabilet\Modules\Core\Organizations\Models\Organization::class);
+    }
+
+    /**
+     * Шаблон оформления билета.
+     *
+     * Связь может быть null — либо шаблон не назначен, либо его удалили
+     * (FK `ON DELETE SET NULL`). Оба случая обрабатываются одинаково: билет
+     * уходит в стандартном виде, а не остаётся без оформления.
+     */
+    public function ticketTemplate(): BelongsTo
+    {
+        return $this->belongsTo(\Nabilet\Modules\Tickets\Models\TicketTemplate::class, 'ticket_template_id');
     }
 
     public function category(): BelongsTo
