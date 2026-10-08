@@ -52,6 +52,11 @@ $moduleRoutes = [
     __DIR__ . '/../app/Modules/Webhooks/routes/api.php',
     // Редактирование шаблонов транзакционных писем (админка).
     __DIR__ . '/../app/Modules/Notifications/routes/api.php',
+    // Медиа: список, загрузка, метаданные, удаление (контракт: /api/v1/media).
+    // Файл маршрутов существовал не всегда: провайдер модуля пытался загрузить
+    // его из `boot()`, но каталога `routes/` не было, а сам провайдер не был
+    // зарегистрирован — поэтому вызов не выполнялся и ошибка была не видна.
+    __DIR__ . '/../app/Modules/Media/routes/api.php',
     __DIR__ . '/../app/Modules/Core/Users/routes/api.php',
     __DIR__ . '/../app/Modules/Core/Organizations/routes/api.php',
     __DIR__ . '/../app/Modules/Venues/Halls/routes/api.php',

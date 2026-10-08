@@ -23,4 +23,10 @@ return [
     // перечисляем его явно, чтобы биндинги работали для вебхуков и рефандов.
     Nabilet\Modules\Payments\Providers\PaymentServiceProvider::class,
     Nabilet\Modules\Tickets\Providers\TicketServiceProvider::class,
+
+    // Media: провайдер регистрируется ради биндинга `MediaService` с диском из
+    // `nabilet.media.disk`. Свои маршруты он НЕ грузит (иначе они появились бы
+    // без префикса /api/v1) — поэтому он безопасен для этого файла, в отличие
+    // от провайдеров, о которых предупреждает комментарий выше.
+    Nabilet\Modules\Media\Providers\MediaServiceProvider::class,
 ];
