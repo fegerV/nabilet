@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Nabilet\Modules\Events\Http\Requests;
 
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\Rule;
 use Nabilet\Core\Errors\ValidationError;
 use Nabilet\Modules\Events\Models\Event;
 use Illuminate\Foundation\Http\FormRequest;
@@ -18,9 +20,36 @@ class StoreEventRequest extends FormRequest
      * Eloquent ушёл бы в 500 на несуществующую колонку. Даты живут в
      * sessions/event_dates, цены — в inventory_row_prices.
      *
+     * ЭТИ ПОЛЯ БОЛЬШЕ НЕ ТЕРЯЮТСЯ МОЛЧА (см. `droppedFields()`). Раньше клиент,
+     * отправивший `start_date`, получал 201 и был уверен, что дата сохранена —
+     * а её не было нигде. Теперь имена отброшенных полей возвращаются в
+     * `meta.ignored_fields`, а факт пишется в лог. Поведение то же (поля
+     * по-прежнему не пишутся), но перестало быть невидимым.
+     *
      * @var list<string>
      */
     private const NON_COLUMN_FIELDS = ['start_date', 'end_date', 'timezone', 'currency', 'is_featured', 'min_price', 'max_price', 'metadata'];
+
+    /**
+     * Что реально было отброшено: поле => значение.
+     *
+     * Только непустые значения: `null` и `''` в payload — это обычная форма
+     * (поле есть в HTML-форме, но не заполнено), а не потеря данных. Сообщать о
+     * них значило бы показывать предупреждение на каждом сохранении.
+     *
+     * @var array<string, mixed>
+     */
+    private array $droppedFields = [];
+
+    /**
+     * Имена полей, значения которых некуда было записать.
+     *
+     * @return array<string, mixed>
+     */
+    public function droppedFields(): array
+    {
+        return $this->droppedFields;
+    }
 
     public function authorize(): bool
     {
@@ -45,6 +74,17 @@ class StoreEventRequest extends FormRequest
             // See `CartController::addItem()` for the measurements.
             'organization_id' => ['bail', 'nullable', 'integer', 'exists:organizations,id'],
             'category_id' => ['bail', 'nullable', 'integer', 'exists:event_categories,id'],
+            // Макет билета. `Rule::exists` с условием по организации, а не просто
+            // `exists:ticket_templates,id`: без условия администратор одной
+            // организации мог бы назначить своему мероприятию ЧУЖОЙ макет —
+            // покупатели увидели бы билет с чужой символикой.
+            'ticket_template_id' => [
+                'bail',
+                'nullable',
+                'integer',
+                Rule::exists('ticket_templates', 'id')
+                    ->where(fn ($query) => $query->where('organization_id', $this->resolveOrganizationId())),
+            ],
             'public_id' => ['nullable', 'string', 'max:64', 'unique:events,public_id'],
             'slug' => ['required', 'string', 'max:255'],
             'title' => ['required', 'string', 'max:255'],
@@ -57,7 +97,35 @@ class StoreEventRequest extends FormRequest
             'start_date' => ['nullable', 'date'],
             'end_date' => ['nullable', 'date'],
             'timezone' => ['nullable', 'string', 'max:64'],
-            'status' => ['nullable', 'in:draft,published,archived,cancelled'],
+            // `status` здесь СОЗНАТЕЛЬНО отсутствует — как и в UpdateEventRequest.
+            //
+            // ПОЧЕМУ ИМЕННО ОТСУТСТВИЕ ПРАВИЛА, А НЕ ВЫРЕЗАНИЕ. Правило
+            // `in:draft,published,archived,cancelled` пропускало тело
+            // `{"status": "published"}`, `EventService::create()` проверял только
+            // `EventStatus::isValid()`, и значение уходило в `INSERT` — событие
+            // публиковалось в обход `EventPublicationPolicy`, без сеансов и без
+            // `published_at`. Это ровно та строка, которую `auditDecision()`
+            // помечает `PUBLISHED_WITHOUT_A_MOMENT`, а `EventStatus::publiclyVisible()`
+            // пускает в sitemap: «тонкая страница» с первого дня.
+            //
+            // `Validator::validated()` собирает результат, перебирая `getRules()`,
+            // и берёт значения из СНИМКА данных, сделанного при создании
+            // валидатора. Поэтому удаление ключа из входного набора (то, что
+            // делает `stripStatusField()`) на `validated()` не влияет вообще:
+            // ключа не будет в результате только тогда, когда для него нет
+            // правила. Так же устроена защита на обновлении, и так же
+            // `stripNonColumnFields()` защищает не запись (её защищает
+            // `Event::$fillable`), а только мета-отчёт `meta.ignored_fields`.
+            //
+            // Побочный эффект, и это цель: любое созданное событие — `draft`.
+            // Единственный путь к `published` — `POST /events/{id}/publish`,
+            // который спрашивает политику. Если однажды понадобится создавать
+            // сразу опубликованным, это отдельное решение с явным `published_at`,
+            // а не побочный эффект поля в теле запроса.
+            //
+            // Разница с `UpdateEventRequest` осталась одна и она в пользу
+            // мягкости: `status: "banana"` больше не даёт 422, а молча
+            // игнорируется — как и все прочие поля без правил.
             'is_featured' => ['boolean'],
             'min_price' => ['nullable', 'integer', 'min:0'],
             'max_price' => ['nullable', 'integer', 'min:0'],
@@ -120,6 +188,28 @@ class StoreEventRequest extends FormRequest
         $this->storeUploadedPoster();
         $this->normalizePosterMapping();
         $this->stripNonColumnFields();
+        $this->stripStatusField();
+    }
+
+    /**
+     * Убирает `status` из входных данных.
+     *
+     * ЭТО НЕ ТО, ЧТО ЗАЩИЩАЕТ ЗАПИСЬ. Защищает отсутствие правила `status` в
+     * `rules()`: `Validator::validated()` перебирает `getRules()` и читает
+     * значения из снимка данных, сделанного при создании валидатора, поэтому
+     * удаление ключа из входного набора в результат не попадает. Тот, кто
+     * вернёт правило и понадеется на этот метод, откроет обход политики снова.
+     *
+     * Метод нужен для второго: `$request->input('status')` читают мимо
+     * `validated()` — логи, отладка, будущий код. Пока значение лежит во входном
+     * наборе, оно выглядит как принятое. `UpdateEventRequest` держит такой же
+     * метод по той же причине, и симметрия здесь важнее экономии четырёх строк:
+     * расхождение этих двух классов и было причиной дефекта.
+     */
+    protected function stripStatusField(): void
+    {
+        $this->request->remove('status');
+        $this->getInputSource()->remove('status');
     }
 
     /**
@@ -191,15 +281,55 @@ class StoreEventRequest extends FormRequest
      * (он перечитывает живой источник данных) вернул только поля таблицы
      * `events`. Повторные вызовы безопасны: удалённые ключи исчезают из
      * all() и не обрабатываются снова.
+     *
+     * Здесь же фиксируется, что именно было отброшено. Раньше метод молча
+     * удалял значения, и клиент, приславший `start_date`, получал 201 без
+     * единого признака, что дата не сохранена нигде.
      */
     protected function stripNonColumnFields(): void
     {
         foreach (self::NON_COLUMN_FIELDS as $field) {
+            $value = $this->input($field, '__missing__');
+
+            // Пустое значение — это норма: поле присутствует в HTML-форме, но не
+            // заполнено. Предупреждать о нём значит шуметь на каждом сохранении.
+            if ($value !== '__missing__' && $value !== null && $value !== '' && $value !== []) {
+                $this->droppedFields[$field] = $value;
+            }
+
             $this->request->remove($field);
             $this->getInputSource()->remove($field);
         }
 
         $this->request->remove('__poster_stored');
         $this->getInputSource()->remove('__poster_stored');
+
+        if ($this->droppedFields !== []) {
+            Log::warning('Поля мероприятия отброшены: в таблице `events` для них нет колонок.', [
+                'fields' => array_keys($this->droppedFields),
+                'hint' => 'Дата и время живут в сеансах (sessions.starts_at), цены — в ценах рядов.',
+            ]);
+        }
+    }
+
+    /**
+     * Организация, которой должен принадлежать назначаемый шаблон билета.
+     *
+     * Тот же порядок, что в `EventController::store()`: организация пользователя,
+     * иначе первая в системе. Дублирование здесь неизбежно — правило валидации
+     * выполняется ДО контроллера, и к моменту проверки `organization_id` в
+     * payload ещё нет (его подставляет контроллер).
+     */
+    private function resolveOrganizationId(): int
+    {
+        $fromUser = $this->user()?->organizations()->first()?->id;
+
+        if ($fromUser !== null) {
+            return (int) $fromUser;
+        }
+
+        return (int) (\Nabilet\Modules\Core\Organizations\Models\Organization::query()
+            ->orderBy('id')
+            ->value('id') ?? 0);
     }
 }

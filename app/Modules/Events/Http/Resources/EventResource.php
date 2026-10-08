@@ -25,6 +25,11 @@ class EventResource extends JsonResource
             'public_id' => $this->public_id,
             'slug' => $this->slug,
             'organization_id' => $this->organization_id,
+            // Макет билета. Отдаётся и id (для формы), и имя (для списка):
+            // без имени админка показывала бы «Шаблон #4» и заставляла
+            // открывать справочник, чтобы понять, что выбрано.
+            'ticket_template_id' => $this->ticket_template_id,
+            'ticket_template_name' => $this->whenLoaded('ticketTemplate', fn () => $this->ticketTemplate?->name),
             'category' => $this->whenLoaded('category', fn() => new EventCategoryResource($this->category)),
             'title' => $this->title,
             'description' => $this->description,

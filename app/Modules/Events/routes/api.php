@@ -22,4 +22,22 @@ Route::prefix('events')->group(function () {
     Route::put('/{event}', [EventController::class, 'update'])->middleware(['auth:api', 'admin'])->whereNumber('event');
     Route::patch('/{event}', [EventController::class, 'update'])->middleware(['auth:api', 'admin'])->whereNumber('event');
     Route::delete('/{event}', [EventController::class, 'destroy'])->middleware(['auth:api', 'admin'])->whereNumber('event');
+
+    // ── Публикация и отмена ──────────────────────────────────────────────
+    //
+    // Отдельные эндпоинты, а не `status` в теле `PUT`. Причина — проверки:
+    // `EventPublicationPolicy` отказывает событию без сеансов (нет даты, нет
+    // цены, нет кнопки «купить»). Обходной путь через `PUT /events/{id}` со
+    // `status = 'published'` таких страниц не создаёт, но и не мешает им
+    // появиться: он не запускает НИ ОДНОЙ проверки готовности.
+    //
+    // Глагол POST, а не PATCH: это не правка поля, а переход состояния.
+    // Повторный вызов идемпотентен — политика возвращает `no_change`
+    // и ничего не пишет (см. `EventPublicationService::publish()`).
+    Route::post('/{event}/publish', [EventController::class, 'publish'])
+        ->middleware(['auth:api', 'admin'])
+        ->whereNumber('event');
+    Route::post('/{event}/cancel', [EventController::class, 'cancel'])
+        ->middleware(['auth:api', 'admin'])
+        ->whereNumber('event');
 });

@@ -8,6 +8,7 @@ use Nabilet\Modules\Events\Http\Requests\StoreEventRequest;
 use Nabilet\Modules\Events\Http\Requests\UpdateEventRequest;
 use Nabilet\Modules\Events\Http\Resources\EventResource;
 use Nabilet\Modules\Events\Models\Event;
+use Nabilet\Modules\Events\Services\EventPublicationService;
 use Nabilet\Modules\Events\Services\EventService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -16,7 +17,8 @@ use Illuminate\Routing\Controller;
 class EventController extends Controller
 {
     public function __construct(
-        private readonly EventService $eventService
+        private readonly EventService $eventService,
+        private readonly EventPublicationService $publication
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -96,6 +98,13 @@ class EventController extends Controller
         
         return response()->json([
             'data' => new EventResource($event->fresh()),
+            // Поля, которые клиент прислал, но записать их некуда (в `events`
+            // нет колонок). Возвращаем их имена, чтобы админка могла сказать
+            // «эти поля проигнорированы», а не показывать успешное сохранение
+            // поверх молча потерянных значений.
+            'meta' => [
+                'ignored_fields' => array_keys($request->droppedFields()),
+            ],
         ], 201);
     }
 
@@ -106,6 +115,9 @@ class EventController extends Controller
         
         return response()->json([
             'data' => new EventResource($event->fresh()),
+            'meta' => [
+                'ignored_fields' => array_keys($request->droppedFields()),
+            ],
         ]);
     }
 
@@ -114,5 +126,51 @@ class EventController extends Controller
         $this->eventService->delete($event);
         
         return response()->json(null, 204);
+    }
+
+    /**
+     * POST /api/v1/events/{event}/publish
+     *
+     * Единственный путь к статусу `published`. До этого эндпоинта публикация
+     * выполнялась присланным в теле `status = 'published'`, и проверки
+     * готовности (`EventPublicationPolicy`) не запускались вообще — событие без
+     * сеансов попадало на витрину и в sitemap как «тонкая страница».
+     *
+     * 409, а не 422: запрос синтаксически корректен, отказ вызван состоянием
+     * ресурса (нет сеансов, уже удалено). 422 в §66 envelope означает ошибку
+     * валидации полей, и путать эти случаи — значит ломать обработку на клиенте.
+     */
+    public function publish(Event $event): JsonResponse
+    {
+        $decision = $this->publication->publish($event);
+
+        return response()->json([
+            'data' => new EventResource($event->fresh()),
+            'meta' => [
+                'verdict' => $decision->verdict,
+                // `no_change` — событие уже было опубликовано; запись не
+                // производилась, `updated_at` не менялся.
+                'changed' => $decision->requiresWrite(),
+            ],
+        ]);
+    }
+
+    /**
+     * POST /api/v1/events/{event}/cancel
+     *
+     * Отмена блокируется, если по событию есть оплаченные заказы: билеты нельзя
+     * аннулировать раньше, чем покупателям вернут деньги (ТЗ §13).
+     */
+    public function cancel(Event $event): JsonResponse
+    {
+        $decision = $this->publication->cancel($event);
+
+        return response()->json([
+            'data' => new EventResource($event->fresh()),
+            'meta' => [
+                'verdict' => $decision->verdict,
+                'changed' => $decision->requiresWrite(),
+            ],
+        ]);
     }
 }

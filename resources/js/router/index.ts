@@ -69,6 +69,11 @@ const routes: RouteRecordRaw[] = [
             },
       // Конструктор витрины: объявлен до :section, иначе catch-all съедал бы путь.
       { path: 'storefront', name: 'admin-storefront', component: () => import('@/pages/admin/AdminStorefrontPage.vue') },
+      // Шаблоны билетов: конструктор макета билета. Объявлен до :section по той
+      // же причине, что и storefront, — иначе catch-all показывал бы «Раздел не
+      // найден». Открытый шаблон живёт в query (`?template=12`), а не в
+      // отдельном маршруте: конструктор — это тот же раздел с открытым макетом.
+      { path: 'ticket-templates', name: 'admin-ticket-templates', component: () => import('@/pages/admin/AdminTicketTemplatesPage.vue') },
       // Реальные разделы вместо заглушек — на свои эндпоинты.
       { path: 'tickets', name: 'admin-tickets', component: () => import('@/pages/admin/AdminTicketsPage.vue') },
       { path: 'payments', name: 'admin-payments', component: () => import('@/pages/admin/AdminPaymentsPage.vue') },
