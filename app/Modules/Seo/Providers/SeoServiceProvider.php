@@ -6,15 +6,46 @@ namespace Nabilet\Modules\Seo\Providers;
 
 use Illuminate\Support\ServiceProvider;
 
+/**
+ * SEO module service provider (ТЗ §38).
+ *
+ * РОУТЫ ЗДЕСЬ НЕ ГРУЗЯТСЯ — и это не упущение.
+ *
+ * `routes/api.php` подключает `app/Modules/Seo/routes/api.php` централизованно.
+ * Если бы провайдер дополнительно вызвал `loadRoutesFrom()`, произошло бы два
+ * разрыва сразу:
+ *
+ *   1. ПРЕФИКС. `withRouting(apiPrefix: 'api/v1')` применяет префикс к файлу,
+ *      указанному в `bootstrap/app.php`. Файл, загруженный провайдером, в этот
+ *      пайплайн не попадает и регистрируется в корне — то есть sitemap уехал бы
+ *      на `/sitemap.xml`. Строка `Sitemap:` в `public/robots.txt` начала бы
+ *      указывать на 404 (или, что хуже, на рабочий адрес, который картой не
+ *      является).
+ *
+ *   2. ДУБЛИРОВАНИЕ. Те же имена маршрутов (`sitemap.index`, `sitemap.events`,
+ *      `sitemap.static`) регистрировались бы дважды. Laravel перезаписывает
+ *      маршрут по имени, оставляя в таблице две записи, и `route()` начинает
+ *      возвращать адрес без префикса — пока порядок регистрации не изменится.
+ *
+ * Раньше здесь стоял `boot()` с `loadRoutesFrom()`. Он не стрелял только
+ * потому, что `SeoServiceProvider` не перечислен ни в `bootstrap/providers.php`,
+ * ни среди бутящихся провайдеров `config/nabilet.php`. То есть баг был не
+ * исправлен, а спрятан: первый же, кто добавил бы провайдер в реестр — а это
+ * логичный шаг при нормализации провайдеров — получил бы и потерю префикса,
+ * и дубли маршрутов одновременно.
+ *
+ * ЕСЛИ ПОНАДОБИТСЯ ЧТО-ТО ЗАРЕГИСТРИРОВАТЬ (сервис, биндинг, view-неймспейс):
+ * добавляйте это в `register()`, но не переносите сюда загрузку роутов.
+ * Правильное место для новых маршрутов модуля — файл `routes/api.php` модуля,
+ * подключаемый централизованно.
+ */
 class SeoServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
-        // Bind SEO services
-    }
-
-    public function boot(): void
-    {
-        $this->loadRoutesFrom(__DIR__ . '/../routes/api.php');
+        // Биндинги SEO-сервисов не нужны: `SitemapService` и
+        // `StructuredDataService` не имеют зависимостей и разрешаются
+        // контейнером автоматически. `SitemapController` получает
+        // `SitemapService` через конструктор — это работает без биндинга.
     }
 }

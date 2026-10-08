@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-label="NABILET">
+  <!--
+    Иконка сайта. До неё браузер запрашивал `/favicon.ico`, получал 404 и
+    показывал вкладку без опознавательных знаков — при четырёх-пяти открытых
+    вкладках витрины это заметно. Формат SVG понимают все актуальные браузеры;
+    ссылка на файл добавлена в `index.html`.
+
+    Рисунок читается при 16×16: одна буква и градиентная подложка, без мелких
+    деталей, которые в этом размере превращаются в грязь.
+  -->
+  <defs>
+    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6D4AFF"/>
+      <stop offset="60%" stop-color="#8E74FF"/>
+      <stop offset="100%" stop-color="#FF5C22"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="64" height="64" rx="14" fill="url(#g)"/>
+
+  <path d="M18 46V18h7.4l13.2 18.1V18H46v28h-7.4L25.4 27.9V46H18z"
+        fill="#FFFFFF"/>
+</svg>
