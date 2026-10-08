@@ -17,9 +17,9 @@ use Illuminate\Support\Facades\Schema;
  * инфраструктурная мелочь.
  *
  * Это НЕ таблицы Core-спеки: `migrations.sql` описывает домен билетов, а очереди
- * — принадлежность фреймворка. Поэтому они внесены в APP_ONLY_TABLES
- * (tools/verify-migrations.php) рядом с `personal_access_tokens` и не меняют
- * счётчики таблиц/колонок спецификации.
+ * — принадлежность фреймворка. Поэтому они остаются app-only и перечислены в
+ * `knownExtensions['tables']` (tools/verify-migrations.php) рядом с
+ * `personal_access_tokens`, не меняя счётчики таблиц/колонок спецификации.
  *
  * Схема взята канонической для Laravel: `reserved_at`/`available_at`/
  * `created_at` — unix-секунды, и воркер рассчитывает именно на такой формат.

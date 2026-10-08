@@ -52,8 +52,8 @@ $listMode = in_array('--list', $argv, true);
 $reportMode = in_array('--report', $argv, true);
 
 /** From information_schema on MySQL 8.4. Update in the same commit as the schema. */
-const EXPECTED_TABLES = 64;
-const EXPECTED_COLUMNS = 686;
+const EXPECTED_TABLES = 73;
+const EXPECTED_COLUMNS = 785;
 
 /**
  * Application-owned additions to the Core schema, each tied to its owning migration.
@@ -63,49 +63,13 @@ const EXPECTED_COLUMNS = 686;
  * @var list<array{table: string, column: string, migration: string, pattern: string}>
  */
 const APPLICATION_SCHEMA_EXTENSIONS = [
-    [
-        'table' => 'hall_schema_versions',
-        'column' => 'revision',
-        'migration' => 'database/migrations/2026_10_06_000100_harden_hall_schema_lifecycle.php',
-        'pattern' => '~Schema::table\\(\\s*[\'\"]hall_schema_versions[\'\"]\\s*,[\\s\\S]*?'
-            . '\\$table->unsignedBigInteger\\(\\s*[\'\"]revision[\'\"]\\s*\\)'
-            . '\\s*->nullable\\(\\)\\s*->after\\(\\s*[\'\"]schema_json[\'\"]\\s*\\)~',
-    ],
-    [
-        'table' => 'halls',
-        'column' => 'city',
-        'migration' => 'database/migrations/2026_10_07_000400_add_hall_details_and_seat_price.php',
-        'pattern' => '~Schema::table\\(\\s*[\'\"]halls[\'\"]\\s*,[\\s\\S]*?'
-            . '\\$table->string\\(\\s*[\'\"]city[\'\"]\\s*,\\s*150\\s*\\)~',
-    ],
-    [
-        'table' => 'halls',
-        'column' => 'address',
-        'migration' => 'database/migrations/2026_10_07_000400_add_hall_details_and_seat_price.php',
-        'pattern' => '~Schema::table\\(\\s*[\'\"]halls[\'\"]\\s*,[\\s\\S]*?'
-            . '\\$table->string\\(\\s*[\'\"]address[\'\"]\\s*,\\s*500\\s*\\)~',
-    ],
-    [
-        'table' => 'halls',
-        'column' => 'exterior_photo_url',
-        'migration' => 'database/migrations/2026_10_07_000400_add_hall_details_and_seat_price.php',
-        'pattern' => '~Schema::table\\(\\s*[\'\"]halls[\'\"]\\s*,[\\s\\S]*?'
-            . '\\$table->string\\(\\s*[\'\"]exterior_photo_url[\'\"]\\s*,\\s*2048\\s*\\)~',
-    ],
-    [
-        'table' => 'halls',
-        'column' => 'interior_photo_url',
-        'migration' => 'database/migrations/2026_10_07_000400_add_hall_details_and_seat_price.php',
-        'pattern' => '~Schema::table\\(\\s*[\'\"]halls[\'\"]\\s*,[\\s\\S]*?'
-            . '\\$table->string\\(\\s*[\'\"]interior_photo_url[\'\"]\\s*,\\s*2048\\s*\\)~',
-    ],
-    [
-        'table' => 'seats',
-        'column' => 'price_amount',
-        'migration' => 'database/migrations/2026_10_07_000400_add_hall_details_and_seat_price.php',
-        'pattern' => '~Schema::table\\(\\s*[\'\"]seats[\'\"]\\s*,[\\s\\S]*?'
-            . '\\$table->bigInteger\\(\\s*[\'\"]price_amount[\'\"]\\s*\\)~',
-    ],
+    // EMPTY on purpose. Every column that used to be listed here now lives in the
+    // Core DDL itself (nabilet_core_spec/migrations/012_application_domain.sql):
+    // hall_schema_versions.revision, halls.city/address/exterior_photo_url/
+    // interior_photo_url and seats.price_amount. The mechanism stays because it is
+    // the right place to record the NEXT application-owned column — the guard
+    // below fails loudly if an entry duplicates the Core DDL, which is exactly how
+    // this list was emptied.
 ];
 
 /**
