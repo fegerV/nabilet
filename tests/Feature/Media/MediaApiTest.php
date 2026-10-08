@@ -38,6 +38,19 @@ class MediaApiTest extends TestCase
 
     private int $organizationId;
 
+    /**
+     * Минимальный контейнер MP4: только `ftyp`-бокс. Тип определяется по нему.
+     *
+     * Файл нужен настоящий, а не `fake()->create()`: тот создаёт поток нулей, и
+     * определение типа по содержимому даёт `application/octet-stream` — проверка
+     * `mimes:` отвергла бы файл раньше, чем дело дошло бы до списка типов.
+     */
+    private const MP4_BYTES = "\x00\x00\x00\x20ftypisom\x00\x00\x02\x00isomiso2avc1mp41";
+
+    /** Заголовок EBML с DocType `webm` — по нему определяется тип. */
+    private const WEBM_BYTES = "\x1A\x45\xDF\xA3\x9F\x42\x86\x81\x01\x42\xF7\x81\x01"
+        . "\x42\xF2\x81\x04\x42\xF3\x81\x08\x42\x82\x84webm\x42\x87\x81\x02\x42\x85\x81\x02";
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -259,6 +272,54 @@ class MediaApiTest extends TestCase
         $this->assertSame(1, $response->json('meta.total'));
     }
 
+    /**
+     * Список отдаёт связи файла, а не только его метаданные.
+     *
+     * Библиотека файлов показывает, к чему привязан файл: администратор решает,
+     * удалять ли файл, глядя на список. Без `links` в ответе списка он удалял бы
+     * вслепую — вместе с файлом уехала бы афиша или галерея мероприятия.
+     *
+     * Проверяются ОБЕ ветки `index()`: общий список и режим «галерея объекта».
+     * Они собирают ответ по-разному, и одна из них уже могла бы молча потерять
+     * поле — тогда в списке файлов связь видна, а в галерее нет.
+     */
+    public function test_the_list_shows_what_each_file_is_attached_to(): void
+    {
+        $this->actingAsAdmin();
+
+        $attached = $this->makeAsset();
+        $loose = $this->makeAsset();
+
+        DB::table('media_links')->insert([
+            'media_asset_id' => $attached->id,
+            'entity_type' => 'event',
+            'entity_id' => 777,
+            'role' => 'gallery',
+            'position' => 0,
+            'created_at' => now(),
+        ]);
+
+        $rows = collect($this->getJson('/api/v1/media')->assertStatus(200)->json('data'))
+            ->keyBy('id');
+
+        $this->assertSame('event', $rows[(int) $attached->id]['links'][0]['entity_type']);
+        $this->assertSame(777, $rows[(int) $attached->id]['links'][0]['entity_id']);
+        $this->assertSame('gallery', $rows[(int) $attached->id]['links'][0]['role']);
+
+        // У непривязанного файла ключ есть, но список пуст: `links` присутствует,
+        // потому что связь загружена, — «нет связей» и «поле не пришло» это
+        // разные вещи, и клиент вправе на них опираться.
+        $this->assertSame([], $rows[(int) $loose->id]['links']);
+
+        $filtered = collect(
+            $this->getJson('/api/v1/media?entity_type=event&entity_id=777')
+                ->assertStatus(200)
+                ->json('data')
+        )->keyBy('id');
+
+        $this->assertSame(777, $filtered[(int) $attached->id]['links'][0]['entity_id']);
+    }
+
     public function test_per_page_is_capped(): void
     {
         $this->actingAsAdmin();
@@ -267,6 +328,62 @@ class MediaApiTest extends TestCase
 
         $response->assertStatus(200);
         $this->assertSame(100, $response->json('meta.per_page'));
+    }
+
+    /**
+     * Видео принимается — потому что интерфейс его предлагает.
+     *
+     * `GALLERY_TYPES` (`resources/js/lib/eventGallery.ts`) содержит `video/mp4`
+     * и `video/webm`, поле выбора файла объявляет их в `accept`, а витрина
+     * рисует всё, что не начинается с `image/`, как `<video>`. Серверный список
+     * типов при этом видео НЕ содержал: администратор выбирал файл, который
+     * интерфейс только что предложил, и получал 422 «должен быть одного из
+     * типов: jpg, jpeg, png, …». Тест держит обещание интерфейса и список типов
+     * вместе — разъехавшись, они снова дадут тупик без внятной причины.
+     */
+    public function test_video_types_are_accepted_because_the_gallery_offers_them(): void
+    {
+        $this->actingAsAdmin();
+
+        $cases = [
+            ['clip.mp4', self::MP4_BYTES, 'video/mp4'],
+            ['clip.webm', self::WEBM_BYTES, 'video/webm'],
+        ];
+
+        foreach ($cases as [$name, $bytes, $expectedMime]) {
+            $response = $this->post('/api/v1/media', [
+                'file' => $this->uploadedFile($name, $bytes, $expectedMime),
+            ]);
+
+            $response->assertStatus(201);
+            $this->assertSame($name, $response->json('data.filename'));
+            $this->assertSame($expectedMime, $response->json('data.mime_type'), $name);
+        }
+    }
+
+    /**
+     * Тип файла берётся из содержимого, а не из заявки клиента.
+     *
+     * От `mime_type` зависит, что увидит покупатель: витрина решает по нему,
+     * рисовать картинку или значок видео. Раньше в базу писался
+     * `getClientMimeType()` — то, что сказал клиент. Клиент, отправивший
+     * `application/octet-stream` (curl, часть инструментов, ОС без сопоставления
+     * расширения), записывал этот тип, и фотография показывалась как «🎬».
+     *
+     * Здесь клиент намеренно врёт про тип, а файл — настоящий PNG.
+     */
+    public function test_the_stored_mime_type_comes_from_the_content_not_the_client(): void
+    {
+        $this->actingAsAdmin();
+
+        $response = $this->post('/api/v1/media', [
+            'file' => $this->uploadedFile('photo.png', $this->pngBytes(100, 60), 'application/octet-stream'),
+        ]);
+
+        $response->assertStatus(201);
+        $this->assertSame('image/png', $response->json('data.mime_type'));
+        $this->assertSame(100, $response->json('data.width'));
+        $this->assertSame(60, $response->json('data.height'));
     }
 
     /**
@@ -379,6 +496,40 @@ class MediaApiTest extends TestCase
             'entity_id' => 1,
             'position' => 5,
         ]);
+    }
+
+    /**
+     * Настоящий загруженный файл с заданным содержимым и ЗАЯВЛЕННЫМ типом.
+     *
+     * `UploadedFile::fake()` для этого не годится: его `mimeType()` подменяет и
+     * `getMimeType()`, поэтому «клиент соврал про тип» в тесте превратилось бы
+     * в «файл действительно такого типа» — проверка ничего бы не проверяла.
+     * Здесь тип, названный клиентом, и тип, определённый по содержимому, —
+     * разные значения, как и в реальном запросе.
+     */
+    private function uploadedFile(string $name, string $bytes, string $clientMime): UploadedFile
+    {
+        $dir = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'nabilet-media-' . Str::random(8);
+        mkdir($dir);
+
+        $path = $dir . DIRECTORY_SEPARATOR . $name;
+        file_put_contents($path, $bytes);
+
+        return new UploadedFile($path, $name, $clientMime, null, true);
+    }
+
+    /** Настоящий PNG заданного размера — содержимое, а не подпись типа. */
+    private function pngBytes(int $width, int $height): string
+    {
+        $image = imagecreatetruecolor($width, $height);
+
+        ob_start();
+        imagepng($image);
+        $bytes = (string) ob_get_clean();
+
+        imagedestroy($image);
+
+        return $bytes;
     }
 
     private function makeAsset(): MediaAsset
