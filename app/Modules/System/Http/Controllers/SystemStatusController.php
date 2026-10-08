@@ -1,121 +1,119 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Nabilet\Modules\System\Http\Controllers;
 
-use Illuminate\Routing\Controller;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Storage;
+use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Log;
+use Nabilet\Core\Logging\RedactSensitiveData;
+use Nabilet\Modules\System\Services\HealthProbe;
 
 /**
- * Диагностика и обслуживание установки: статус, очистка кэша, OPTIMIZE TABLE,
- * просмотр логов, бэкап по требованию.
+ * Админская диагностика установки: состояние, просмотр логов, очистка кэша.
  *
- * ВНИМАНИЕ: модуль не зарегистрирован ни в `routes/api.php`, ни в `routes/web.php`,
- * и в меню админки пункта «Система» нет — контроллер недостижим по HTTP. Плюс
- * раньше он не мог быть загружен вообще: объявлял пространство имён `App\Modules\...`
- * и наследовал `App\Http\Controllers\Controller`, которого в проекте не существует
- * (`app/Http/Controllers/` отсутствует), а фасад `Storage` использовался без импорта.
- * Пространство имён и импорты приведены к принятому в проекте `Nabilet\Modules\...`,
- * чтобы файл не оставался миной: любой будущий маршрут на него падал бы фаталом.
+ * ДОСТУП
+ *   Все методы вызываются только из-под `auth:api` + `admin` — маршруты
+ *   объявлены в `app/Modules/System/routes/api.php`. Это не формальность:
+ *   ответ `status()` содержит точные версии PHP и Laravel (номер версии
+ *   отображается на список известных уязвимостей), геометрию диска и путь к
+ *   логам, а `viewLogs()` — содержимое лога. Анонимному клиенту это отдавать
+ *   нельзя. Публичный `GET /api/v1/health` (см. `HealthController`) отвечает
+ *   на вопрос «живо ли» минимальной нагрузкой и без этих сведений.
  *
- * Решение «подключать или удалять» — за владельцем продукта, оно не принимается
- * молча правкой namespace.
+ * ЧЕГО ЗДЕСЬ СОЗНАТЕЛЬНО НЕТ
+ *   Раньше в классе были ещё три метода — `optimizeDatabase()`,
+ *   `clearCache()` с `Cache::flush()` и `createBackup()`. Они не были
+ *   подключены ни одним маршрутом (контроллер вообще был недостижим по HTTP),
+ *   то есть правок поведения здесь нет — только удаление недостижимого кода.
+ *   Основания, по которым они не были заведены как эндпоинты:
+ *
+ *   - `optimizeDatabase()` выполняет `OPTIMIZE TABLE` по КАЖДОЙ таблице. Это
+ *     блокирующая DDL: на большой базе она идёт минутами, а HTTP-запрос
+ *     столько не живёт — клиент получит таймаут, операция продолжится, и
+ *     повторить её будет нечем. Место такой команды — `artisan`/cron.
+ *   - `createBackup()` ссылался на `App\Modules\Backups\Services\
+ *     YandexDiskBackupService`, который запускает `mysqldump` через `exec()`
+ *     из веб-запроса, передаёт пароль в аргументах командной строки (виден в
+ *     `ps`) и загружает архив на Яндекс.Диск. При этом в проекте уже есть
+ *     проверенный конвейер `database/backup/backup.sh`: `--single-transaction`,
+ *     сжатие, опциональный GPG, сверка SHA-256, загрузка в S3 и ротация.
+ *     Заводить по HTTP вторую, худшую реализацию бэкапа — это понижение
+ *     надёжности, а не диагностика.
+ *   - `clearCache()` вызывал `Cache::flush()`, который очищает хранилище
+ *     целиком, а не кэш приложения. Оставлена только очистка штатным
+ *     `cache:clear`.
+ *
+ *   Если в админке появится страница «Система», эти операции стоит завести
+ *   как artisan-команды и запускать их оттуда фоново, а не расширять этот
+ *   контроллер.
  */
 class SystemStatusController extends Controller
 {
-    /**
-     * Проверка состояния системы
-     */
-    public function status()
-    {
-        $checks = [
-            'database' => $this->checkDatabase(),
-            'cache' => $this->checkCache(),
-            'storage' => $this->checkStorage(),
-            'disk_space' => $this->checkDiskSpace(),
-            'php_version' => PHP_VERSION,
-            'laravel_version' => app()->version(),
-            'memory_usage' => memory_get_usage(true),
-            'last_backup' => $this->getLastBackupTime(),
-        ];
+    /** Сколько дней считать резервную копию свежей. */
+    private const BACKUP_STALE_HOURS = 26;
 
-        $overallStatus = 'healthy';
-        foreach ($checks as $key => $value) {
-            if (is_array($value) && isset($value['status']) && $value['status'] === 'error') {
-                $overallStatus = 'degraded';
-                break;
-            }
-        }
+    public function __construct(private readonly HealthProbe $probe)
+    {
+    }
+
+    /**
+     * Подробный отчёт о состоянии для админки.
+     *
+     * Код ответа здесь всегда 200: это отчёт, а не проба. Отвечать 503 на
+     * «состояние» неверно — тело всё равно содержит разбор, и клиент, который
+     * умеет его читать, получил бы ошибку вместо данных. Машиночитаемый
+     * вердикт о работоспособности отдаёт `GET /api/v1/health`, и решение о
+     * критичности зависимостей принимает `HealthProbe` — то же самое, что и
+     * для публичного эндпоинта. Два разных ответа на вопрос «здорово ли» были
+     * бы ровно тем расхождением, которое здесь недопустимо.
+     */
+    public function status(): JsonResponse
+    {
+        $checks = $this->probe->checks();
 
         return response()->json([
-            'status' => $overallStatus,
-            'checks' => $checks,
+            'status' => $this->probe->status(),
+            'checks' => [
+                'database' => $this->describe($checks['database'], 'Соединение с БД установлено'),
+                'redis' => $this->describe($checks['redis'], 'Redis отвечает'),
+                'queue' => $this->describe($checks['queue'], 'Очередь доступна'),
+                'disk_space' => $this->checkDiskSpace(),
+                'last_backup' => $this->getLastBackupTime(),
+            ],
+            'runtime' => [
+                'php_version' => PHP_VERSION,
+                'laravel_version' => app()->version(),
+                'memory_usage_bytes' => memory_get_usage(true),
+            ],
+            'version' => (string) config('nabilet.version', '0.0.0'),
             'timestamp' => now()->toIso8601String(),
         ]);
     }
 
     /**
-     * Очистка кэша
+     * Просмотр последних строк лога.
+     *
+     * Файл на диске уже прошёл фильтр `RedactSensitiveData` (каналы `daily` и
+     * `security`), но здесь строки проходят его ЕЩЁ РАЗ и это не избыточно:
+     * в файле лежат записи, сделанные до появления фильтра, и отдать их из
+     * админки как есть — значит воспроизвести утечку через интерфейс.
      */
-    public function clearCache()
-    {
-        try {
-            Cache::flush();
-            \Artisan::call('cache:clear');
-            \Artisan::call('config:clear');
-            \Artisan::call('view:clear');
-            
-            return response()->json([
-                'success' => true,
-                'message' => 'Кэш успешно очищен',
-            ]);
-        } catch (\Exception $e) {
-            return $this->envelope('CACHE_CLEAR_FAILED', 'Не удалось очистить кэш.', 500);
-        }
-    }
-
-    /**
-     * Оптимизация базы данных
-     */
-    public function optimizeDatabase()
-    {
-        try {
-            $tables = DB::select('SHOW TABLES');
-            $dbName = config('database.connections.mysql.database');
-            $optimizedTables = [];
-
-            foreach ($tables as $tableObj) {
-                $tableName = reset($tableObj);
-                if ($tableName !== 'migrations') {
-                    DB::statement("OPTIMIZE TABLE {$tableName}");
-                    $optimizedTables[] = $tableName;
-                }
-            }
-
-            return response()->json([
-                'success' => true,
-                'message' => 'База данных оптимизирована',
-                'tables_optimized' => count($optimizedTables),
-            ]);
-        } catch (\Exception $e) {
-            return $this->envelope('DB_OPTIMIZE_FAILED', 'Не удалось оптимизировать базу данных.', 500);
-        }
-    }
-
-    /**
-     * Просмотр логов
-     */
-    public function viewLogs(Request $request)
+    public function viewLogs(Request $request, RedactSensitiveData $redactor): JsonResponse
     {
         $lines = max(1, min(2000, (int) $request->get('lines', 100)));
+
         // Канал `daily` пишет в `laravel-YYYY-MM-DD.log`; файла `laravel.log`
-        // в проекте нет, поэтому прежний код всегда отвечал «Log file not found»
-        // и логи нельзя было посмотреть вообще. Берём самый свежий по mtime.
+        // в проекте нет, поэтому прежний код всегда отвечал «Log file not
+        // found» и логи нельзя было посмотреть вообще. Берём самый свежий по
+        // mtime.
         $candidates = glob(storage_path('logs/laravel*.log')) ?: [];
         $logPath = null;
         $newest = -1;
+
         foreach ($candidates as $candidate) {
             $mtime = @filemtime($candidate);
             if ($mtime !== false && $mtime > $newest) {
@@ -131,15 +129,15 @@ class SystemStatusController extends Controller
         $file = new \SplFileObject($logPath);
         $file->seek(PHP_INT_MAX);
         $totalLines = $file->key() + 1;
-        
+
         $startLine = max(0, $totalLines - $lines);
         $logs = [];
 
         $file->seek($startLine);
-        while (!$file->eof()) {
+        while (! $file->eof()) {
             $line = $file->current();
-            if (!empty(trim($line))) {
-                $logs[] = $line;
+            if (! empty(trim($line))) {
+                $logs[] = $redactor->scrubText($line);
             }
             $file->next();
         }
@@ -148,34 +146,45 @@ class SystemStatusController extends Controller
             'logs' => array_reverse($logs),
             'total_lines' => $totalLines,
             'showing_from' => $startLine,
+            'file' => basename($logPath),
         ]);
     }
 
     /**
-     * Создание бэкапа по требованию
+     * Очистка кэша приложения.
+     *
+     * Событие пишется в канал `security`: очистка кэша — привилегированное
+     * действие, и вопрос «кто это сделал и когда» должен иметь ответ.
      */
-    public function createBackup()
+    public function clearCache(): JsonResponse
     {
         try {
-            $backupService = new \App\Modules\Backups\Services\YandexDiskBackupService();
-            $result = $backupService->createFullBackup();
+            Artisan::call('cache:clear');
+            Artisan::call('config:clear');
+            Artisan::call('view:clear');
+
+            Log::channel('security')->warning('Кэш очищен через админку', [
+                'user_id' => request()->user()?->getAuthIdentifier(),
+                'ip' => request()->ip(),
+            ]);
 
             return response()->json([
                 'success' => true,
-                'message' => 'Бэкап успешно создан и загружен на Яндекс.Диск',
-                'backup' => $result,
+                'message' => 'Кэш успешно очищен',
             ]);
-        } catch (\Exception $e) {
-            return $this->envelope('BACKUP_FAILED', 'Не удалось создать резервную копию.', 500);
+        } catch (\Throwable $e) {
+            // Внутренний текст исключения остаётся в логе, клиенту — конверт.
+            Log::error('Не удалось очистить кэш через админку', ['exception' => $e]);
+
+            return $this->envelope('CACHE_CLEAR_FAILED', 'Не удалось очистить кэш.', 500);
         }
     }
 
     /**
-     * Конверт §66. Внутренние сообщения исключений в ответ не попадают — только
-     * в лог: раньше `'message' => '…: ' . $e->getMessage()` публиковал клиенту
-     * текст драйвера БД и абсолютные пути.
+     * Конверт §66. Внутренние сообщения исключений в ответ не попадают —
+     * только в лог.
      */
-    private function envelope(string $code, string $message, int $status): \Illuminate\Http\JsonResponse
+    private function envelope(string $code, string $message, int $status): JsonResponse
     {
         return response()->json([
             'error' => [
@@ -186,46 +195,26 @@ class SystemStatusController extends Controller
         ], $status);
     }
 
-    private function checkDatabase()
+    /**
+     * @param  array{state: string, critical: bool}  $check
+     * @return array<string, mixed>
+     */
+    private function describe(array $check, string $okMessage): array
     {
-        try {
-            DB::connection()->getPdo();
-            return ['status' => 'ok', 'message' => 'Database connection successful'];
-        } catch (\Exception $e) {
-            return ['status' => 'error', 'message' => 'Database connection failed.'];
-        }
+        return match ($check['state']) {
+            HealthProbe::OK => ['status' => 'ok', 'message' => $okMessage],
+            HealthProbe::NOT_CONFIGURED => [
+                'status' => 'info',
+                'message' => 'Не используется в текущей конфигурации',
+            ],
+            default => ['status' => 'error', 'message' => 'Проверка не пройдена'],
+        };
     }
 
-    private function checkCache()
-    {
-        try {
-            Cache::put('health_check', 'ok', 60);
-            $value = Cache::get('health_check');
-            return $value === 'ok' 
-                ? ['status' => 'ok', 'message' => 'Cache working properly']
-                : ['status' => 'error', 'message' => 'Cache read/write failed'];
-        } catch (\Exception $e) {
-            return ['status' => 'error', 'message' => 'Cache is not available.'];
-        }
-    }
-
-    private function checkStorage()
-    {
-        try {
-            $testFile = 'health_check_' . time() . '.tmp';
-            Storage::put($testFile, 'test');
-            $exists = Storage::exists($testFile);
-            Storage::delete($testFile);
-
-            return $exists
-                ? ['status' => 'ok', 'message' => 'Storage working properly']
-                : ['status' => 'error', 'message' => 'Storage write/read failed'];
-        } catch (\Exception $e) {
-            return ['status' => 'error', 'message' => 'Storage is not writable.'];
-        }
-    }
-
-    private function checkDiskSpace()
+    /**
+     * @return array<string, mixed>
+     */
+    private function checkDiskSpace(): array
     {
         $freeSpace = disk_free_space(base_path());
         $totalSpace = disk_total_space(base_path());
@@ -248,29 +237,57 @@ class SystemStatusController extends Controller
         ];
     }
 
-    private function getLastBackupTime()
+    /**
+     * Свежесть последней резервной копии.
+     *
+     * Раньше метод искал `*.zip` в `storage/app/backups` — каталоге, в который
+     * штатный конвейер НИКОГДА не пишет (он кладёт `nabilet_*.sql[.gz|.zst]` в
+     * `database/backup`, см. `database/backup/backup.sh`). То есть при живой
+     * истории бэкапов отчёт всегда показывал «No backups found» — зеркальное
+     * отражение той же болезни, что и вечно-зелёный health-check: сигнал,
+     * который врёт. Проверяем там, где файлы действительно лежат, и считаем
+     * давность: бэкап старше суток — это `warning`, а не «информация».
+     */
+    private function getLastBackupTime(): array
     {
-        $backupDir = storage_path('app/backups');
-        if (!is_dir($backupDir)) {
-            return ['status' => 'info', 'message' => 'No backups found'];
+        $backupDir = database_path('backup');
+
+        if (! is_dir($backupDir)) {
+            return ['status' => 'error', 'message' => 'Каталог резервных копий не найден'];
         }
 
-        $files = glob($backupDir . '/*.zip');
-        if (empty($files)) {
-            return ['status' => 'info', 'message' => 'No backups found'];
+        $files = array_merge(
+            glob($backupDir . '/nabilet_*.sql') ?: [],
+            glob($backupDir . '/nabilet_*.sql.gz') ?: [],
+            glob($backupDir . '/nabilet_*.sql.zst') ?: [],
+        );
+
+        if ($files === []) {
+            return ['status' => 'error', 'message' => 'Резервные копии не найдены'];
         }
 
-        usort($files, function($a, $b) {
-            return filemtime($b) - filemtime($a);
-        });
+        $newest = 0;
+        $latest = null;
 
-        $latestBackup = $files[0];
-        $time = filemtime($latestBackup);
+        foreach ($files as $file) {
+            $mtime = @filemtime($file);
+            if ($mtime !== false && $mtime > $newest) {
+                $newest = $mtime;
+                $latest = $file;
+            }
+        }
+
+        if ($latest === null) {
+            return ['status' => 'error', 'message' => 'Резервные копии не найдены'];
+        }
+
+        $ageHours = round((time() - $newest) / 3600, 1);
 
         return [
-            'status' => 'ok',
-            'last_backup' => date('Y-m-d H:i:s', $time),
-            'age_hours' => round((time() - $time) / 3600, 1),
+            'status' => $ageHours > self::BACKUP_STALE_HOURS ? 'warning' : 'ok',
+            'last_backup' => date('Y-m-d H:i:s', $newest),
+            'age_hours' => $ageHours,
+            'file' => basename($latest),
         ];
     }
 }

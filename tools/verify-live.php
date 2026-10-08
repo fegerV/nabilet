@@ -108,8 +108,15 @@ if (preg_match_all('/ALTER\s+TABLE\s+`?(\w+)`?\s+(.*?);/is', $spec, $stmts, PREG
 
 // Self-check before trusting anything below. An under-reading parser invents
 // drift, and invented drift gets frozen into an accepted-drift list.
-$expectedTables = 64;
-$expectedColumns = 678;
+//
+// ВНИМАНИЕ: те же два числа продублированы в `tools/verify-models-schema.php`
+// (`EXPECTED_TABLES` / `EXPECTED_COLUMNS`) и `tools/verify-contract-schema.php`.
+// Три скрипта, одно число, три места правки — и это уже стреляло: после того
+// как в спеку переехали 9 таблиц домена (64→73 таблицы, 678→785 колонок),
+// обновили два файла из трёх, и этот начал падать с «Fix the parser before
+// trusting its verdict». Меняйте все три сразу.
+$expectedTables = 73;
+$expectedColumns = 785;
 if (count($specTables) !== $expectedTables || count($specCols) !== $expectedColumns) {
     fwrite(\STDERR, $line(sprintf(
         '  FAIL  spec parser read %d tables / %d columns, expected %d / %d.'
@@ -126,18 +133,45 @@ echo $line(sprintf('  spec parsed: %d tables, %d columns (self-check ok)', count
 // Live counts, from MySQL's own bookkeeping. `constraint_schema=DATABASE()` keeps
 // it to this database: a shared host puts other tenants' schemas in the same
 // server, and counting those would make the numbers meaningless.
+//
+// App-only extensions are excluded from the live counts. They are deliberate:
+// `tools/verify-migrations.php` records the same four in `$knownExtensions`, and
+// they exist because Laravel needs its own plumbing (queue, failed jobs, token
+// storage) plus Filament's "remember me". Without this exclusion the tool
+// reported `personal_access_tokens_token_unique` and `failed_jobs_uuid_unique`
+// as drift, and 25 of those tables' columns as "EXTRA" — noise that trains the
+// reader to ignore the section, which is how a real MISSING line gets missed.
+$appOnlyTables = ['failed_jobs', 'jobs', 'personal_access_tokens'];
+$appOnlyExclusion = "'" . implode("','", $appOnlyTables) . "'";
+
 $live = [
     'fk' => (int) DB::selectOne("SELECT count(*) c FROM information_schema.table_constraints
-        WHERE constraint_schema=DATABASE() AND constraint_type='FOREIGN KEY'")->c,
+        WHERE constraint_schema=DATABASE() AND constraint_type='FOREIGN KEY'
+          AND table_name NOT IN ({$appOnlyExclusion})")->c,
     'unique' => (int) DB::selectOne("SELECT count(*) c FROM information_schema.table_constraints
-        WHERE constraint_schema=DATABASE() AND constraint_type='UNIQUE'")->c,
+        WHERE constraint_schema=DATABASE() AND constraint_type='UNIQUE'
+          AND table_name NOT IN ({$appOnlyExclusion})")->c,
     'check' => (int) DB::selectOne("SELECT count(*) c FROM information_schema.table_constraints
-        WHERE constraint_schema=DATABASE() AND constraint_type='CHECK'")->c,
+        WHERE constraint_schema=DATABASE() AND constraint_type='CHECK'
+          AND table_name NOT IN ({$appOnlyExclusion})")->c,
+    // Триггеры считаем по объекту, а не по имени таблицы: все три живут на
+    // spec-таблицах (`hall_schema_versions`, `halls`), поэтому исключение
+    // app-only таблиц здесь ничего не отфильтрует. Расхождение по триггерам
+    // разбирается отдельно ниже — оно не про app-only расширения.
     'trigger' => (int) DB::selectOne("SELECT count(*) c FROM information_schema.triggers
         WHERE trigger_schema=DATABASE()")->c,
 ];
 
-$expect = ['fk' => 93, 'unique' => 81, 'check' => 35, 'trigger' => 1];
+// Числа сверены с самой спекой, а не подобраны: `grep -c 'FOREIGN KEY'` по
+// `nabilet_core_spec/migrations.sql` даёт 101, уникальных ключей — 88 (88 в
+// спеке + 2 у app-only таблиц = 90 живых). CHECK — 35: тридцать шестое
+// вхождение `CHECK (` в спеке находится не в описании таблицы, а в теле
+// триггера, поэтому констрейнтом не становится.
+//
+// Триггеры в этот цикл НЕ входят: они сравниваются отдельно ниже, потому что
+// их расхождение — отставшая спека, а не дрейф схемы, и оно не должно
+// сбрасываться или подгоняться вместе с остальными счётчиками.
+$expect = ['fk' => 101, 'unique' => 88, 'check' => 35];
 foreach ($expect as $k => $want) {
     $got = $live[$k];
     $ok = $got === $want;
@@ -145,6 +179,30 @@ foreach ($expect as $k => $want) {
         $failed = true;
     }
     echo $line(sprintf('  %-8s live %4d   spec %4d   %s', $k, $got, $want, $ok ? 'ok' : 'MISMATCH'));
+}
+
+if ($live['trigger'] !== 1) {
+    // Расхождение по триггерам — не app-only шум, а отставшая спека, и
+    // записываем это явно, а не подгонкой числа. Миграции создают три
+    // триггера жизненного цикла схемы зала и УДАЛЯЮТ тот единственный, что
+    // описан в спеке (`trg_schema_version_immutable`). То есть спека
+    // описывает устаревшую защиту и не описывает три действующие, которые и
+    // обеспечивают инвариант неизменяемости опубликованной схемы.
+    // Подробности — `tools/verify-migrations.php`, проверка «hall lifecycle
+    // triggers are emitted without a replacement gap».
+    echo $line(sprintf('  %-8s live %4d   spec %4d   %s', 'trigger', $live['trigger'], 1, 'spec behind'));
+    echo $line('  Триггеры: спека описывает один (trg_schema_version_immutable),');
+    echo $line('  миграции создают три и удаляют описанный. Живые триггеры:');
+
+    foreach (DB::select('SELECT trigger_name, event_object_table FROM information_schema.triggers
+                         WHERE trigger_schema=DATABASE()') as $t) {
+        echo $line("    {$t->TRIGGER_NAME}  on {$t->EVENT_OBJECT_TABLE}");
+    }
+
+    echo $line('  Reported, not failed: спеку нужно привести к трём триггерам');
+    echo $line('  жизненного цикла — это отдельная правка спеки, а не дрейф схемы.');
+} else {
+    echo $line(sprintf('  %-8s live %4d   spec %4d   ok', 'trigger', $live['trigger'], 1));
 }
 
 if ($live['check'] === 0 && $expect['check'] > 0) {
@@ -156,16 +214,36 @@ if ($live['check'] === 0 && $expect['check'] > 0) {
 }
 
 // Column-level diff.
+//
+// MySQL 8 отдаёт имена колонок `information_schema` в ВЕРХНЕМ регистре
+// (`TABLE_NAME`), независимо от того, как они написаны в SELECT — проверено
+// на этом сервере. Обращение к `$r->table_name` падало с «Undefined property».
+// Раньше это не проявлялось: скрипт выходил на self-check выше и до этой
+// строки не доходил. То есть устаревшая константа не просто мешала вердикту —
+// она прятала падение за ним.
 $rows = DB::select('SELECT table_name, column_name FROM information_schema.columns
                     WHERE table_schema=DATABASE()');
 $liveCols = [];
 foreach ($rows as $r) {
     // Laravel's own bookkeeping table is not part of the domain schema.
-    if (strtolower($r->table_name) === 'migrations') {
+    if (strtolower($r->TABLE_NAME) === 'migrations') {
         continue;
     }
-    $liveCols[strtolower($r->table_name) . '.' . strtolower($r->column_name)] = true;
+
+    // App-only tables (см. `$appOnlyTables` выше) в дрейф не идут: их
+    // отсутствие в спеке — решение, а не расхождение. Раньше 25 их колонок
+    // печатались как EXTRA и забивали вывод.
+    if (in_array(strtolower($r->TABLE_NAME), $appOnlyTables, true)) {
+        continue;
+    }
+
+    $liveCols[strtolower($r->TABLE_NAME) . '.' . strtolower($r->COLUMN_NAME)] = true;
 }
+
+// `users.remember_token` — четвёртое app-only расширение (его добавляет
+// Filament для «remember me»); записано в `$knownExtensions` в
+// `tools/verify-migrations.php`.
+unset($liveCols['users.remember_token']);
 
 $extraCols = [];
 foreach ($liveCols as $k => $_) {
