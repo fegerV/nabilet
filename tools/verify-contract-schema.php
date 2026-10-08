@@ -220,8 +220,8 @@ function parseDdlColumns(string $file): array
  * drift is reported, so a broken parser fails loudly instead of quietly inventing
  * drift. If the schema legitimately grows, update these in the same commit.
  */
-const EXPECTED_TABLES = 64;
-const EXPECTED_COLUMNS = 686;
+const EXPECTED_TABLES = 73;
+const EXPECTED_COLUMNS = 785;
 
 /**
  * @param array<string, list<string>> $tables

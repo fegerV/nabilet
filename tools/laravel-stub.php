@@ -102,16 +102,35 @@ namespace Illuminate\Database\Schema {
 
         public function unique(?string $name = null): self
         {
-            $this->indexes[] = ['type' => 'unique', 'name' => $name];
+            $this->indexes[] = [
+                'type' => 'unique',
+                'name' => $name ?? $this->autoIndexName('unique'),
+            ];
 
             return $this;
         }
 
         public function index(?string $name = null): self
         {
-            $this->indexes[] = ['type' => 'index', 'name' => $name];
+            $this->indexes[] = [
+                'type' => 'index',
+                'name' => $name ?? $this->autoIndexName('index'),
+            ];
 
             return $this;
+        }
+
+        /**
+         * The name Laravel would give an index on this single column.
+         *
+         * A column-level `->index()` has no columns argument, so the name can only
+         * be built from the owning blueprint's table plus the column. Without the
+         * blueprint reference there is nothing to name it after; `''` is returned
+         * in that (unreachable in practice) case so the caller still gets a string.
+         */
+        private function autoIndexName(string $type): string
+        {
+            return Blueprint::autoName($this->blueprint?->table ?? '', [$this->name], $type);
         }
 
         public function primary(): self
@@ -140,7 +159,14 @@ namespace Illuminate\Database\Schema {
         public function constrained(?string $table = null, ?string $column = 'id'): ForeignKeyDefinition
         {
             $table ??= $this->name;
-            $fk = new ForeignKeyDefinition($this->name, $table, $column ?? 'id');
+            $fk = new ForeignKeyDefinition(
+                $this->name,
+                $table,
+                $column ?? 'id',
+                // Laravel names this constraint `<table>_<column>_foreign`. Recording
+                // NULL instead would drop the FK out of the migration/spec diff.
+                Blueprint::autoName($this->blueprint?->table ?? '', [$this->name], 'foreign'),
+            );
 
             // Register on the owning table — see the $blueprint property docblock.
             if ($this->blueprint !== null) {
@@ -280,6 +306,25 @@ namespace Illuminate\Database\Schema {
 
         public function __construct(public string $table)
         {
+        }
+
+        /**
+         * Laravel's own name for an index it was not given a name for.
+         *
+         * Mirrors `Blueprint::createIndexName()`: `{table}_{col}_{col}_{type}`,
+         * lower-cased, with `-` and `.` folded to `_`.
+         *
+         * Synthesising it here is load-bearing. Without it, `$table->index(['a',
+         * 'b'])` records a NULL name, and because the migration/spec diff compares
+         * index NAMES, such an index was invisible to the gate — it could not be
+         * reported as missing, extra or duplicated. Every unnamed index and
+         * foreign key in the migration set was silently unchecked.
+         *
+         * @param list<string> $columns
+         */
+        public static function autoName(string $table, array $columns, string $type): string
+        {
+            return str_replace(['-', '.'], '_', strtolower($table . '_' . implode('_', $columns) . '_' . $type));
         }
 
         public function id(string $column = 'id'): ColumnDefinition
@@ -427,8 +472,15 @@ namespace Illuminate\Database\Schema {
 
             // The explicit constraint name matters: the spec names every FK, and
             // verify-migrations.php diffs those names. Dropping it here would make
-            // the diff silently vacuous.
-            $fk = new ForeignKeyDefinition($column, '', 'id', $name);
+            // the diff silently vacuous. When the migration gives no name, Laravel
+            // generates one — reproduce that rather than recording NULL, or the FK
+            // disappears from the diff entirely.
+            $fk = new ForeignKeyDefinition(
+                $column,
+                '',
+                'id',
+                $name ?? self::autoName($this->table, [$column], 'foreign'),
+            );
             $this->foreignKeys[] = $fk;
 
             return $fk;
@@ -461,20 +513,24 @@ namespace Illuminate\Database\Schema {
         /** @param list<string>|string $columns */
         public function unique(array|string $columns, ?string $name = null): void
         {
+            $columns = is_array($columns) ? array_values($columns) : [$columns];
+
             $this->indexes[] = [
-                'columns' => is_array($columns) ? array_values($columns) : [$columns],
+                'columns' => $columns,
                 'type' => 'unique',
-                'name' => $name,
+                'name' => $name ?? self::autoName($this->table, $columns, 'unique'),
             ];
         }
 
         /** @param list<string>|string $columns */
         public function index(array|string $columns, ?string $name = null): void
         {
+            $columns = is_array($columns) ? array_values($columns) : [$columns];
+
             $this->indexes[] = [
-                'columns' => is_array($columns) ? array_values($columns) : [$columns],
+                'columns' => $columns,
                 'type' => 'index',
-                'name' => $name,
+                'name' => $name ?? self::autoName($this->table, $columns, 'index'),
             ];
         }
 

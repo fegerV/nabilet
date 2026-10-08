@@ -55,35 +55,10 @@ use Illuminate\Database\Schema\Schema;
 class_alias(Schema::class, 'Illuminate\Support\Facades\Schema');
 
 /**
- * Tables created by application migrations that are intentionally absent from the
- * NABILET Core spec bundle. The spec is the "core" schema (64 tables); these are
- * product/integration tables layered on top and so have no spec definition to diff
- * against. They are allowed to exist in the migration set.
- *
- * This is a ratchet: it may only shrink. If one of these tables becomes part of the
- * core spec, remove it here and the "same set of tables" check will then require it.
- *
- * @var list<string>
- */
-const APP_ONLY_TABLES = [
-    'event_artists',          // event content extras (create_event_content_tables)
-    'event_dates',            // event scheduling (create_event_dates_table)
-    'event_faqs',             // event content extras
-    'event_schedule_items',   // event schedule
-    'event_speakers',         // event content extras
-    'event_sponsors',         // event content extras
-    'metrika_settings',       // Yandex.Metrika integration (create_metrika_settings_table)
-    'personal_access_tokens', // Laravel personal access tokens (create_personal_access_tokens_table)
-    'failed_jobs',            // Laravel queue bookkeeping (create_queue_tables); needed to see a webhook that exhausted its attempts
-    'jobs',                   // Laravel database queue (create_queue_tables); transactional mail and outbound webhooks are dispatched onto it
-    'order_reminders',        // day-before reminder log (create_order_reminders_table); unique(order_id) is the only idempotency guard a cron-driven sweep can rely on
-];
-
-/**
  * Columns that application migrations add on top of the NABILET Core spec.
- * Like APP_ONLY_TABLES, these are product-layer extensions with no spec
- * definition, so they are permitted to exist in the migration set. They are
- * excluded from the column and default diffs below.
+ * These are framework-layer extensions with no spec definition, so they are
+ * permitted to exist in the migration set; they are excluded from the column and
+ * default diffs below.
  *
  * Ratchet: may only shrink. If a column below becomes part of the core spec,
  * remove it here and the column/defaults checks will then require it.
@@ -91,40 +66,23 @@ const APP_ONLY_TABLES = [
  * @var list<string>  "table.column"
  */
 const APP_OWNED_COLUMNS = [
-    'users.remember_token',                  // Laravel auth (add_remember_token)
-    'carts.currency',                       // Cart model writes it; backfilled (add_currency_total_to_carts)
-    'carts.total_amount',                   // CartService checkout math; backfilled (add_currency_total_to_carts)
+    'users.remember_token', // Laravel auth (add_remember_token)
 ];
 
-/**
- * Indexes that application migrations add on top of the NABILET Core spec.
- * Excluded from the named-index diff below.
+/*
+ * REMOVED RATCHETS — do not reintroduce these as constants.
  *
- * @var list<string>  "table.index"
+ * Three constants used to sit here: APP_ONLY_TABLES, APP_OWNED_INDEXES and
+ * KNOWN_SPEC_INDEX_DIVERGENCES. None of them was read anywhere — every check
+ * goes through $knownExtensions below — so adding an entry to them changed
+ * nothing while looking authoritative, which is worse than having no list at
+ * all. Their content is folded into $knownExtensions (the one list that IS
+ * enforced) and into the comments there.
+ *
+ * The spec divergences they described are closed too: the buggy
+ * `carts.uq_carts_token_session_status` and `offline_bundles.uq_offline_bundles_hash`
+ * now appear in the spec bundle in their corrected form.
  */
-const APP_OWNED_INDEXES = [
-    'offline_bundles.idx_offline_bundles_device_hash', // multi-device sync (fix_offline_bundles_unique_constraint)
-    'offline_bundles.uq_offline_bundles_hash_device',  // replaced uq_offline_bundles_hash (fix_offline_bundles_unique_constraint)
-];
-
-/**
- * Spec-declared indexes that migrations DELIBERATELY do not apply.
- *
- * Currently EMPTY. The last entry — `carts.uq_carts_token_session_status` — was
- * resolved by moving the corrected definition into the spec bundle itself
- * (`nabilet_core_spec/migrations.sql`): the buggy global key was replaced there
- * by the generated `carts.active_cart_key` + `uq_carts_active`, so the spec and
- * the migrations now agree and no exclusion is needed. The `offline_bundles`
- * global-hash divergence was closed the same way.
- *
- * Ratchet: entries may only be removed. Adding one back means the spec bundle is
- * knowingly wrong again.
- *
- * @var list<string>  "table.index"
- */
-const KNOWN_SPEC_INDEX_DIVERGENCES = [
-    // (empty — see the doc block above)
-];
 
 /**
  * Strip the entries of `table.<thing>` that belong to $table from a qualified list.
@@ -626,56 +584,36 @@ echo "\n[4] Migrations vs spec\n";
  * This is a ratchet, not a broad ignore list: every expected difference is named,
  * and any additional/missing difference still fails the gate.
  *
- * Table owners: event_dates (2026_09_22_001400), event content tables
- * (2026_09_22_001500), metrika_settings (2026_09_30_000200), and Sanctum's
- * personal_access_tokens (2026_09_24_083529; separately documented as a design mismatch).
- * Column owners: remember_token (2026_09_22_001300), carts currency/total_amount
- * (2026_09_24_000001), and hall schema revision + generated live-version columns
- * (2026_10_06_000100, 2026_10_06_000200).
- * Index owner: 2026_10_06_000200 enforces one live published/draft schema version
- * per hall via generated-column UNIQUE indexes.
+ * What is left here is FRAMEWORK PLUMBING only. The product-domain extensions
+ * (event dates and content, Yandex.Metrika settings, storefront settings, the
+ * reminder log, cart currency/total, hall details, seat price, hall schema
+ * revision and the single-live-version indexes) now live in the spec bundle
+ * itself, as `nabilet_core_spec/migrations/012_application_domain.sql`. The spec
+ * is the source of truth, so they belong there and no longer need tolerating.
  *
- * RESOLVED (no longer listed here): the `offline_bundles` global-hash index
- * (2026_09_20_001200) and the `carts` token/session/status key
- * (2026_10_05_000200). Both were corrections of a genuinely wrong spec, so the
- * spec bundle was fixed instead of the divergence being tolerated — see
- * `nabilet_core_spec/migrations.sql`.
+ * Still app-only, deliberately:
+ *   - `personal_access_tokens` (2026_09_24_083529) — Sanctum's own table;
+ *   - `jobs` / `failed_jobs` (2026_10_07_000500) — the Laravel database queue
+ *     that transactional mail and outbound webhooks are dispatched onto;
+ *   - `users.remember_token` (2026_09_22_001300) — Laravel auth.
+ * These are owned by the framework, which may migrate them itself; promising a
+ * stable Core contract for them would be a promise this project cannot keep.
  */
 $knownExtensions = [
     'tables' => [
-        'event_artists',
-        'event_dates',
-        'event_faqs',
-        'event_schedule_items',
-        'event_speakers',
-        'event_sponsors',
-        'metrika_settings',
-        'personal_access_tokens',
-        'storefront_settings', // конструктор витрины (Storefront)
-        'failed_jobs',         // очередь Laravel (create_queue_tables)
-        'jobs',                // очередь Laravel: транзакционная почта и исходящие вебхуки
-        'order_reminders',     // журнал напоминаний за сутки (create_order_reminders_table)
+        'personal_access_tokens', // Laravel Sanctum (create_personal_access_tokens_table)
+        'failed_jobs',            // очередь Laravel (create_queue_tables)
+        'jobs',                   // очередь Laravel: транзакционная почта и исходящие вебхуки
     ],
     'columns' => [
         'users' => ['remember_token'],
-        'carts' => ['currency', 'total_amount'],
-        'hall_schema_versions' => ['revision', 'published_hall_id', 'draft_hall_id'],
-        // Сведения о зале и цена места (add_hall_details_and_seat_price):
-        // детали зала правятся отдельно от версии схемы, цена на место
-        // перекрывает цену ряда.
-        'halls' => ['city', 'address', 'exterior_photo_url', 'interior_photo_url'],
-        'seats' => ['price_amount'],
     ],
     // Значения по умолчанию для app-only колонок сюда НЕ пишутся: такие колонки
     // перечислены в APP_OWNED_COLUMNS и вычитаются из сравнения до diff-а.
     // Дублирование (было для carts.currency/carts.total_amount) ломало проверку
     // в обе стороны: колонка вычиталась, а ожидалась — и diff никогда не сходился.
     'defaults' => [],
-    'indexes' => [
-        'hall_schema_versions' => [
-            'extra' => ['uq_schema_one_published_per_hall', 'uq_schema_one_draft_per_hall'],
-        ],
-    ],
+    'indexes' => [],
 ];
 
 function assertExactDiff(array $actualMissing, array $actualExtra, array $expectedMissing, array $expectedExtra, string $what): void
@@ -850,6 +788,18 @@ check('Core indexes match; application-owned indexes are explicit', function () 
         foreach ($tables[$name]->indexes as $index) {
             if ($index['name'] !== null) {
                 $have[] = $index['name'];
+            }
+        }
+
+        // Индексы, объявленные на самой колонке (`foreignId('x')->index()` —
+        // цепочка на ColumnDefinition, а не на Blueprint), лежат в
+        // `$column->indexes`, и без этого обхода для diff-а их не существует:
+        // реальный индекс создаётся, а проверка его не видит.
+        foreach ($tables[$name]->columns as $column) {
+            foreach ($column->indexes as $index) {
+                if (($index['name'] ?? null) !== null) {
+                    $have[] = $index['name'];
+                }
             }
         }
 
