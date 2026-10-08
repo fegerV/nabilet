@@ -66,6 +66,11 @@ return Application::configure(basePath: dirname(__DIR__))
         // здесь по той же причине, что и очистка холдов: провайдеры модулей не
         // бутятся, а планировщик ссылается на команду по имени.
         \Nabilet\Modules\Webhooks\Console\RetryPendingWebhookDeliveriesCommand::class,
+        // Напоминание за сутки до мероприятия. Тоже по расписанию, поэтому
+        // регистрация обязательна: неизвестная команда в routes/console.php
+        // валит весь `schedule:run`, и тогда перестают работать и холды, и
+        // очередь — а не только напоминания.
+        \Nabilet\Modules\Orders\Console\SendEventRemindersCommand::class,
     ])
     ->withMiddleware(function (Middleware $middleware): void {
         // ── Global stack, in order ───────────────────────────────────────────

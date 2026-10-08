@@ -76,6 +76,7 @@ const APP_ONLY_TABLES = [
     'personal_access_tokens', // Laravel personal access tokens (create_personal_access_tokens_table)
     'failed_jobs',            // Laravel queue bookkeeping (create_queue_tables); needed to see a webhook that exhausted its attempts
     'jobs',                   // Laravel database queue (create_queue_tables); transactional mail and outbound webhooks are dispatched onto it
+    'order_reminders',        // day-before reminder log (create_order_reminders_table); unique(order_id) is the only idempotency guard a cron-driven sweep can rely on
 ];
 
 /**
@@ -651,6 +652,7 @@ $knownExtensions = [
         'storefront_settings', // конструктор витрины (Storefront)
         'failed_jobs',         // очередь Laravel (create_queue_tables)
         'jobs',                // очередь Laravel: транзакционная почта и исходящие вебхуки
+        'order_reminders',     // журнал напоминаний за сутки (create_order_reminders_table)
     ],
     'columns' => [
         'users' => ['remember_token'],

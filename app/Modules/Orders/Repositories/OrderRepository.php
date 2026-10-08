@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Orders\Repositories;
 
+use Illuminate\Support\Facades\DB;
 use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Orders\Models\OrderItem;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -13,6 +14,21 @@ class OrderRepository
     public function __construct(
         protected Order $model
     ) {}
+
+    /**
+     * Событие, к которому относится сеанс.
+     *
+     * Нужно при создании заказа: `tickets.event_id` NOT NULL, а позиция склада
+     * знает только сеанс. Отдельный запрос, а не связь через модель, потому что
+     * вызывается внутри транзакции создания заказа и не должен тянуть объект
+     * сеанса целиком.
+     */
+    public function eventIdForSession(int $sessionId): ?int
+    {
+        $eventId = DB::table('sessions')->where('id', $sessionId)->value('event_id');
+
+        return $eventId === null ? null : (int) $eventId;
+    }
 
     public function find(int $id, ?int $organizationId = null): ?Order
     {

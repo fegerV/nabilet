@@ -7,6 +7,7 @@ namespace Nabilet\Modules\Orders\Providers;
 use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Orders\Observers\OrderObserver;
 use Nabilet\Modules\Orders\Repositories\OrderRepository;
+use Nabilet\Modules\Orders\Services\OrderReminderSweeper;
 use Nabilet\Modules\Orders\Services\OrderService;
 use Illuminate\Support\ServiceProvider;
 
@@ -16,6 +17,10 @@ class OrderServiceProvider extends ServiceProvider
     {
         $this->app->singleton(OrderRepository::class);
         $this->app->singleton(OrderService::class);
+        // Напоминание за сутки до мероприятия. Ставится в контейнер явно:
+        // провайдер модуля бутится (bootstrap/app.php), а команда
+        // `orders:send-reminders` резолвит свип из контейнера.
+        $this->app->singleton(OrderReminderSweeper::class);
     }
 
     public function boot(): void
