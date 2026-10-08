@@ -44,7 +44,47 @@ return [
         'qr_secret' => env('TICKET_QR_SECRET'),
         'qr_ttl' => (int) env('TICKET_QR_TTL', 3600),
     ],
-    
+
+    /*
+     * Пути, которые выполняются БЕЗ арендатора (организации).
+     *
+     * Читает `ResolveOrganizationContext::isSystemPath()`; такие запросы идут
+     * через `OrganizationContext::withoutScope()`, то есть отсутствие
+     * организации здесь — явное решение, видимое в ревью, а не догадка.
+     *
+     * ПОЧЕМУ ЭТОТ КЛЮЧ ВООБЩЕ ПОЯВИЛСЯ
+     *   Раньше ключа не было, `config('nabilet.tenancy.system_paths', [])`
+     *   возвращал пустой массив, и `isSystemPath()` всегда отвечал `false`.
+     *   То есть документированный обход арендатора (он описан в шапке
+     *   `ResolveOrganizationContext` — «installer, health, webhooks, sitemap»)
+     *   был мёртвым кодом: он не выполнялся ни разу. Список ниже — это
+     *   восстановление задокументированного поведения, а не новая политика.
+     *
+     * ЗАЧЕМ ЭТО НУЖНО ИМЕННО ПРОВЕРКАМ СОСТОЯНИЯ
+     *   `/health` опрашивает балансировщик, у которого нет ни пользователя, ни
+     *   cookie. Сейчас он работает «по счастливой случайности»: нет
+     *   пользователя — нет организации. Но если в установке появится
+     *   host-маппинг (`resolveFromHost`, white-label поддомены), проверка
+     *   состояния внезапно оказалась бы внутри арендатора, а её результат
+     *   начал бы зависеть от того, какая организация привязана к хосту.
+     *   Проверка живости обязана быть независимой от арендатора по построению.
+     */
+    'tenancy' => [
+        'system_paths' => [
+            'up',
+            'api/v1/ping',
+            'api/v1/health',
+            'install',
+            'install/*',
+            'webhooks/*',
+            'api/v1/webhooks/*',
+            'sitemap.xml',
+            'api/v1/sitemap.xml',
+            'robots.txt',
+        ],
+    ],
+
+
     'checkout' => [
         'hold_duration_minutes' => (int) env('CHECKOUT_HOLD_DURATION', 15),
         'max_items_per_order' => (int) env('CHECKOUT_MAX_ITEMS', 10),

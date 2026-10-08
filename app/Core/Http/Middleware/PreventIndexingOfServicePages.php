@@ -76,6 +76,9 @@ final class PreventIndexingOfServicePages
         'api/v1/me/*',
         'api/v1/tickets',
         'api/v1/tickets/*',
+        // Диагностика системы: версии PHP/Laravel, геометрия диска, логи.
+        // Уже закрыта токеном, но URL-ы утекают через Referer и скриншоты.
+        'api/v1/admin/system/*',
     ];
 
     public function handle(Request $request, Closure $next): Response
