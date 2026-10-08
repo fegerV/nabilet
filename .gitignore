@@ -58,6 +58,14 @@ storage/framework/cache/data/*
 storage/framework/sessions/*
 storage/framework/views/*
 storage/framework/testing/*
+
+# Симлинк `php artisan storage:link` — создаётся на сервере при деплое
+# (`docs/deploy-timeweb.md`), частью репозитория не является. Без этой строки git
+# идёт СКВОЗЬ симлинк и показывает каждый загруженный файл дважды — и как
+# `storage/app/public/…`, и как `public/storage/…`. Тогда обычный `git add -A`
+# опубликовал бы пользовательские медиа в публичном репозитории.
+/public/storage
+
 .phpunit.result.cache
 .phpunit.cache/
 coverage/
