@@ -1,6 +1,10 @@
 <script setup>
-import { ref, onMounted } from 'vue';
-import axios from 'axios';
+import { ref, onMounted, watch } from 'vue';
+// Раньше здесь был `axios` напрямую: он не несёт Authorization-заголовок
+// (интерсепторов в проекте нет) и обращался к `/api/ticket-templates` без
+// префикса версии, то есть сохранение шаблона уходило в 401/404. Теперь —
+// общий клиент `@/lib/api`, который и токен подставляет, и разбирает §66-конверт.
+import { get, send, ApiError } from '@/lib/api';
 import {
     CANVAS_PRESETS,
     DEFAULT_TICKET_VARIABLES,
@@ -10,17 +14,22 @@ import {
     syncDerivedCoordinates,
     duplicateAsElement,
     renderTextContent as renderVars,
-    getQrCodeUrl as qrUrl,
 } from '@/lib/ticketBuilder';
+// QR рисуется ЛОКАЛЬНО (@/lib/qr). Раньше здесь стояла ссылка на внешний
+// api.qrserver.com, которая отправляла подписанный `qr_payload` билета третьей
+// стороне вместе с IP покупателя — см. комментарий в начале lib/qr.ts.
+import { QR_PREVIEW_FALLBACK, renderQrDataUrl } from '@/lib/qr';
 
 const props = defineProps({
     templateId: {
         type: [Number, String],
         default: null
     },
+    // Оставлен для обратной совместимости с вызывающим кодом, но в payload
+    // НЕ уходит: организацию сервер берёт из токена (см. buildTemplatePayload).
     organizationId: {
         type: [Number, String],
-        required: true
+        default: null
     }
 });
 
@@ -36,6 +45,15 @@ const showTemplateModal = ref(false);
 const templateName = ref('');
 const selectedTemplate = ref(null);
 
+// Состояние обращения к API: занятость кнопок и текст ошибки.
+const saving = ref(false);
+const loading = ref(false);
+const deleting = ref(false);
+const loadError = ref(null);
+// Имя открытого шаблона: подставляется в модалку сохранения, чтобы при
+// обновлении не печатать название заново.
+const currentTemplateName = ref('');
+
 // Размеры холста
 const canvasWidth = ref(600);
 const canvasHeight = ref(400);
@@ -43,34 +61,63 @@ const canvasHeight = ref(400);
 // Элементы на холсте
 const elements = ref([]);
 
-// Готовые шаблоны
-const templates = ref([
+// Готовые шаблоны, загруженные из БД (GET /ticket-templates).
+//
+// Раньше здесь лежал захардкоженный массив из пяти «шаблонов» — они выглядели
+// как сохранённые, но жили только в памяти вкладки: выбрать их было можно, а
+// сохранить — нет, потому что `template_json` этих объектов никуда не уходил.
+// Теперь список приходит из БД, а прежние макеты стали стартовыми заготовками
+// (BUILT_IN_LAYOUTS ниже) — из них начинают новый шаблон.
+const templates = ref([]);
+const templatesLoading = ref(false);
+const templatesError = ref(null);
+
+async function loadTemplates() {
+    templatesLoading.value = true;
+    templatesError.value = null;
+    try {
+        const res = await get('/ticket-templates');
+        const payload = res.data;
+        templates.value = Array.isArray(payload) ? payload : (payload?.data ?? []);
+    } catch (e) {
+        templatesError.value = e instanceof Error ? e.message : String(e);
+        templates.value = [];
+    } finally {
+        templatesLoading.value = false;
+    }
+}
+
+// Стартовые заготовки макета.
+//
+// Это НЕ сохранённые шаблоны: они не имеют id и не приходят с сервера. Из них
+// начинают новый шаблон — так администратору не нужно рисовать билет с нуля.
+// Заготовка «переменная: …» использует синтаксис {{...}}, который понимает
+// renderTextContent().
+const BUILT_IN_LAYOUTS = [
     {
-        id: 1,
+        key: 'classic-concert',
         name: 'Классический концерт',
-        thumbnail: 'classic-concert',
         config: {
             backgroundColor: '#1a1a2e',
             elements: [
                 { id: 1, type: 'rectangle', x: 0, y: 0, width: 600, height: 400, fill: '#1a1a2e' },
-                { id: 2, type: 'text', x: 50, y: 50, content: 'НАЗВАНИЕ СОБЫТИЯ', fontSize: 32, fontWeight: 'bold', color: '#ffffff' },
-                { id: 3, type: 'text', x: 50, y: 100, content: 'Дата и время', fontSize: 18, color: '#e94560' },
-                { id: 4, type: 'text', x: 50, y: 150, content: 'Место проведения', fontSize: 16, color: '#cccccc' },
+                { id: 2, type: 'text', x: 50, y: 50, content: '{{event.name}}', fontSize: 32, fontWeight: 'bold', color: '#ffffff' },
+                { id: 3, type: 'text', x: 50, y: 100, content: '{{event.date}}', fontSize: 18, color: '#e94560' },
+                { id: 4, type: 'text', x: 50, y: 150, content: '{{event.venue}}', fontSize: 16, color: '#cccccc' },
                 { id: 5, type: 'qr', x: 400, y: 250, size: 120 },
-                { id: 6, type: 'text', x: 50, y: 350, content: 'Место: {{seat.row}} Ряд {{seat.number}}', fontSize: 14, color: '#ffffff' }
+                { id: 6, type: 'text', x: 50, y: 350, content: '{{seat.info}}', fontSize: 14, color: '#ffffff' }
             ]
         }
     },
     {
-        id: 2,
+        key: 'minimal',
         name: 'Минимализм',
-        thumbnail: 'minimal',
         config: {
             backgroundColor: '#ffffff',
             elements: [
                 { id: 1, type: 'rectangle', x: 0, y: 0, width: 600, height: 400, fill: '#ffffff' },
                 { id: 2, type: 'line', x1: 0, y1: 80, x2: 600, y2: 80, stroke: '#000000', strokeWidth: 2 },
-                { id: 3, type: 'text', x: 40, y: 40, content: 'EVENT NAME', fontSize: 28, fontWeight: 'bold', color: '#000000' },
+                { id: 3, type: 'text', x: 40, y: 40, content: '{{event.name}}', fontSize: 28, fontWeight: 'bold', color: '#000000' },
                 { id: 4, type: 'text', x: 40, y: 120, content: '{{event.name}}', fontSize: 16, color: '#333333' },
                 { id: 5, type: 'text', x: 40, y: 160, content: '{{event.date}}', fontSize: 14, color: '#666666' },
                 { id: 6, type: 'qr', x: 420, y: 200, size: 150 },
@@ -79,51 +126,48 @@ const templates = ref([
         }
     },
     {
-        id: 3,
+        key: 'festival',
         name: 'Фестиваль',
-        thumbnail: 'festival',
         config: {
             backgroundColor: '#ff6b6b',
             elements: [
                 { id: 1, type: 'rectangle', x: 0, y: 0, width: 600, height: 400, fill: '#ff6b6b' },
                 { id: 2, type: 'circle', cx: 500, cy: 80, r: 60, fill: '#feca57' },
-                { id: 3, type: 'text', x: 30, y: 60, content: 'FESTIVAL', fontSize: 36, fontWeight: 'bold', color: '#ffffff' },
-                { id: 4, type: 'text', x: 30, y: 100, content: '2024', fontSize: 48, fontWeight: 'bold', color: '#feca57' },
+                { id: 3, type: 'text', x: 30, y: 60, content: '{{event.name}}', fontSize: 36, fontWeight: 'bold', color: '#ffffff' },
+                { id: 4, type: 'text', x: 30, y: 100, content: '{{event.date}}', fontSize: 20, color: '#feca57' },
                 { id: 5, type: 'text', x: 30, y: 200, content: '{{event.name}}', fontSize: 20, color: '#ffffff' },
                 { id: 6, type: 'qr', x: 380, y: 220, size: 140 },
-                { id: 7, type: 'text', x: 30, y: 350, content: 'Ticket #{{ticket.number}}', fontSize: 14, color: '#ffffff' }
+                { id: 7, type: 'text', x: 30, y: 350, content: '{{ticket.number}}', fontSize: 14, color: '#ffffff' }
             ]
         }
     },
     {
-        id: 4,
+        key: 'theater',
         name: 'Театральный',
-        thumbnail: 'theater',
         config: {
             backgroundColor: '#2c3e50',
             elements: [
                 { id: 1, type: 'rectangle', x: 0, y: 0, width: 600, height: 400, fill: '#2c3e50' },
                 { id: 2, type: 'rectangle', x: 20, y: 20, width: 560, height: 360, fill: 'transparent', stroke: '#d4af37', strokeWidth: 3 },
-                { id: 3, type: 'text', x: 50, y: 80, content: 'ПРЕМЬЕРА', fontSize: 24, fontWeight: 'bold', color: '#d4af37' },
+                { id: 3, type: 'text', x: 50, y: 80, content: '{{event.name}}', fontSize: 24, fontWeight: 'bold', color: '#d4af37' },
                 { id: 4, type: 'text', x: 50, y: 130, content: '{{event.name}}', fontSize: 22, color: '#ecf0f1' },
                 { id: 5, type: 'text', x: 50, y: 180, content: '{{event.venue}}', fontSize: 16, color: '#bdc3c7' },
                 { id: 6, type: 'qr', x: 400, y: 240, size: 130 },
-                { id: 7, type: 'text', x: 50, y: 350, content: 'Место: {{seat.info}}', fontSize: 14, color: '#ecf0f1' }
+                { id: 7, type: 'text', x: 50, y: 350, content: '{{seat.info}}', fontSize: 14, color: '#ecf0f1' }
             ]
         }
     },
     {
-        id: 5,
+        key: 'business',
         name: 'Деловой',
-        thumbnail: 'business',
         config: {
             backgroundColor: '#f8f9fa',
             elements: [
                 { id: 1, type: 'rectangle', x: 0, y: 0, width: 600, height: 400, fill: '#f8f9fa' },
                 { id: 2, type: 'rectangle', x: 0, y: 0, width: 600, height: 80, fill: '#343a40' },
-                { id: 3, type: 'text', x: 40, y: 50, content: 'BUSINESS EVENT', fontSize: 24, fontWeight: 'bold', color: '#ffffff' },
+                { id: 3, type: 'text', x: 40, y: 50, content: '{{event.name}}', fontSize: 24, fontWeight: 'bold', color: '#ffffff' },
                 { id: 4, type: 'text', x: 40, y: 120, content: '{{event.name}}', fontSize: 18, color: '#212529' },
-                { id: 5, type: 'text', x: 40, y: 160, content: '{{event.date}} | {{event.time}}', fontSize: 14, color: '#6c757d' },
+                { id: 5, type: 'text', x: 40, y: 160, content: '{{event.date}} {{event.time}}', fontSize: 14, color: '#6c757d' },
                 { id: 6, type: 'line', x1: 40, y1: 200, x2: 560, y2: 200, stroke: '#dee2e6', strokeWidth: 1 },
                 { id: 7, type: 'qr', x: 420, y: 230, size: 120 },
                 { id: 8, type: 'text', x: 40, y: 250, content: '{{ticket.holder}}', fontSize: 16, color: '#212529' },
@@ -131,7 +175,7 @@ const templates = ref([
             ]
         }
     }
-]);
+];
 
 // Переменные для подстановки данных (дефолты — @/lib/ticketBuilder)
 const ticketVariables = DEFAULT_TICKET_VARIABLES;
@@ -237,70 +281,140 @@ function duplicateElement() {
 }
 
 // Применение шаблона
+// Применить макет к холсту.
+//
+// Принимает ДВЕ разные формы, и это не небрежность: сохранённый шаблон приходит
+// из API как `{ id, name, template_json: { elements } }` (модель кастит
+// template_json в массив), а стартовая заготовка — как `{ key, name, config }`.
+// Раньше функция знала только про `config`, поэтому сохранённый шаблон из БД
+// дал бы `Cannot read properties of undefined (reading 'elements')`.
+function elementsOf(source) {
+    const config = source?.template_json ?? source?.config ?? {};
+    const parsed = typeof config === 'string' ? JSON.parse(config) : config;
+    return Array.isArray(parsed?.elements) ? parsed.elements : [];
+}
+
 function applyTemplate(template) {
     selectedTemplate.value = template;
-    canvasWidth.value = 600;
-    canvasHeight.value = 400;
-    elements.value = cloneElement(template.config.elements);
+    elements.value = cloneElement(elementsOf(template));
     selectedElement.value = null;
+    if (template?.name) {
+        templateName.value = template.name;
+        // Имя из БД — это имя открытого шаблона: подставляем в модалку
+        // сохранения, чтобы обновление не создавало второй с тем же именем.
+        if (template.id) currentTemplateName.value = template.name;
+    }
+}
+
+// Применить стартовую заготовку (BUILT_IN_LAYOUTS).
+function applyLayout(layout) {
+    applyTemplate(layout);
+}
+
+// Начать новый шаблон с пустого холста.
+function resetCanvas() {
+    if (elements.value.length && !window.confirm('Очистить холст? Несохранённые изменения будут потеряны.')) {
+        return;
+    }
+    elements.value = [];
+    selectedElement.value = null;
+    selectedTemplate.value = null;
+    templateName.value = '';
+    currentTemplateName.value = '';
 }
 
 // Открытие модального окна сохранения
 function openSaveModal() {
-    templateName.value = '';
+    // При редактировании существующего шаблона предлагаем его текущее имя:
+    // пустое поле на каждое «сохранить» заставляло печатать название заново.
+    templateName.value = currentTemplateName.value || '';
     showTemplateModal.value = true;
 }
 
-// Сохранение шаблона
+// Сохранение шаблона: создание либо обновление.
+//
+// Различие принципиально. Раньше всегда шёл POST, поэтому повторное нажатие
+// «Сохранить» создавало ВТОРОЙ шаблон с тем же именем, а `templateId`
+// оставался прежним — администратор правил один макет, а в списке появлялся
+// новый. Теперь при наличии `templateId` идёт PUT.
 async function saveTemplate() {
-    if (!templateName.value.trim()) {
+    const name = templateName.value.trim();
+    if (!name) {
         alert('Введите название шаблона');
         return;
     }
-    
+
+    saving.value = true;
     try {
         const payload = buildTemplatePayload({
-            name: templateName.value,
-            organizationId: props.organizationId,
+            name,
             canvasWidth: canvasWidth.value,
             canvasHeight: canvasHeight.value,
             config: { backgroundColor: '#ffffff', elements: elements.value },
         });
 
-        const response = await axios.post('/api/ticket-templates', payload);
-        
-        if (response.data.success || response.data.id) {
-            emit('template-saved', response.data);
-            showTemplateModal.value = false;
-            alert('Шаблон успешно сохранён!');
-        } else {
-            throw new Error('Ошибка сохранения');
-        }
-    } catch (error) {
-        console.error('Save error:', error);
-        alert('Ошибка при сохранении шаблона: ' + (error.response?.data?.message || error.message));
+        const isUpdate = Boolean(props.templateId);
+        const res = isUpdate
+            ? await send(`/ticket-templates/${props.templateId}`, 'PUT', payload)
+            : await send('/ticket-templates', 'POST', payload);
+
+        const saved = res.data;
+        currentTemplateName.value = name;
+        showTemplateModal.value = false;
+        emit('template-saved', saved);
+        await loadTemplates();
+    } catch (e) {
+        const detail = e instanceof ApiError && e.details
+            ? Object.values(e.details).flat().join(' ')
+            : (e instanceof Error ? e.message : String(e));
+        alert('Ошибка при сохранении шаблона: ' + detail);
+    } finally {
+        saving.value = false;
     }
 }
 
 // Загрузка существующего шаблона
 async function loadTemplate() {
     if (!props.templateId) return;
-    
+
+    loading.value = true;
     try {
-        const response = await axios.get(`/api/ticket-templates/${props.templateId}`);
-        const template = response.data;
-        
-        if (template.template_json) {
-            // Модель кастит template_json в массив; строка — легаси двойного кодирования.
-            const config = typeof template.template_json === 'string'
-                ? JSON.parse(template.template_json)
-                : template.template_json;
-            canvasWidth.value = template.width || 600;
-            canvasHeight.value = template.height || 400;
-            elements.value = config.elements || [];
-        }
-    } catch (error) {
-        console.error('Load error:', error);
+        const res = await get(`/ticket-templates/${props.templateId}`);
+        const template = res.data;
+        if (!template) return;
+
+        // Модель кастит template_json в массив; строка — легаси двойного кодирования.
+        const config = typeof template.template_json === 'string'
+            ? JSON.parse(template.template_json)
+            : (template.template_json ?? {});
+
+        canvasWidth.value = template.width || 600;
+        canvasHeight.value = template.height || 400;
+        elements.value = config.elements || [];
+        currentTemplateName.value = template.name || '';
+    } catch (e) {
+        loadError.value = e instanceof Error ? e.message : String(e);
+    } finally {
+        loading.value = false;
+    }
+}
+
+// Удаление текущего шаблона.
+//
+// Подтверждение обязательно: макет собирается вручную и нигде не дублируется,
+// поэтому удаление необратимо.
+async function deleteTemplate() {
+    if (!props.templateId) return;
+    if (!window.confirm('Удалить шаблон? Действие необратимо.')) return;
+
+    deleting.value = true;
+    try {
+        await send(`/ticket-templates/${props.templateId}`, 'DELETE');
+        emit('template-deleted', props.templateId);
+    } catch (e) {
+        alert('Не удалось удалить шаблон: ' + (e instanceof Error ? e.message : String(e)));
+    } finally {
+        deleting.value = false;
     }
 }
 
@@ -309,36 +423,53 @@ function renderTextContent(content) {
     return renderVars(content, ticketVariables);
 }
 
-// Генерация URL для QR кода
-function getQrCodeUrl(data) {
-    return qrUrl(data);
+// Локальный рендер QR для превью на холсте.
+//
+// Шаблон не может вызвать асинхронную функцию: `renderQrDataUrl` возвращает
+// Promise, а `:src` ждёт строку. Поэтому коды считаются заранее по watcher'у и
+// складываются в кэш, а шаблон только читает готовый data-URI.
+//
+// Ключ кэша — `id:payload`: при перетаскивании элемента payload не меняется,
+// и код не перерисовывается; при смене данных (например, при подстановке
+// реального билета вместо заглушки) ключ меняется и код строится заново.
+const qrDataUrls = ref({});
+
+watch(
+    () => elements.value
+        .filter((el) => el.type === 'qr')
+        .map((el) => [el.id, String(el.data || QR_PREVIEW_FALLBACK)]),
+    async (qrElements) => {
+        for (const [id, payload] of qrElements) {
+            const key = `${id}:${payload}`;
+            if (qrDataUrls.value[key] !== undefined) continue;
+
+            try {
+                qrDataUrls.value[key] = await renderQrDataUrl(payload, { width: 240, margin: 1 });
+            } catch {
+                // Пустая строка, а не исключение: один нечитаемый элемент не
+                // должен ронять весь конструктор. Шаблон покажет «QR недоступен».
+                qrDataUrls.value[key] = '';
+            }
+        }
+    },
+    { immediate: true, deep: true },
+);
+
+/** Готовый data-URI для элемента-QR, либо '' пока код не построен. */
+function qrPreviewSrc(element) {
+    const payload = String(element.data || QR_PREVIEW_FALLBACK);
+    return qrDataUrls.value[`${element.id}:${payload}`] || '';
 }
 
-// Экспорт в PDF
-async function exportToPDF() {
-    try {
-        const response = await axios.post('/api/tickets/generate-preview', {
-            elements: elements.value,
-            width: canvasWidth.value,
-            height: canvasHeight.value,
-            variables: ticketVariables
-        }, {
-            responseType: 'blob'
-        });
-        
-        const blob = new Blob([response.data], { type: 'application/pdf' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = `ticket_preview_${Date.now()}.pdf`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
-    } catch (error) {
-        console.error('PDF export error:', error);
-        alert('Ошибка при генерации PDF');
-    }
+// Печать макета (она же «сохранить как PDF»).
+//
+// Раньше здесь был POST на `/api/tickets/generate-preview` — эндпоинта не
+// существует, PDF-пакета в composer.json нет, поэтому кнопка всегда падала в
+// `alert('Ошибка при генерации PDF')`. Вместо фиктивного сервера используем
+// печать браузера: диалог печати умеет «Сохранить как PDF» из коробки, а
+// `@media print` в конце файла оставляет на листе только холст билета.
+function printPreview() {
+    window.print();
 }
 
 // Изменение размера холста (пресеты — CANVAS_PRESETS из @/lib/ticketBuilder)
@@ -350,6 +481,8 @@ function resizeCanvas(preset) {
 }
 
 onMounted(() => {
+    // Шаблоны нужны всегда (вкладка «Шаблоны»), поэтому грузим сразу.
+    loadTemplates();
     if (props.templateId) {
         loadTemplate();
     }
@@ -361,11 +494,11 @@ onMounted(() => {
         <!-- Toolbar -->
         <div class="builder-toolbar">
             <div class="toolbar-section">
-                <button @click="openSaveModal" class="btn btn-primary">
-                    💾 Сохранить шаблон
+                <button @click="openSaveModal" :disabled="saving" class="btn btn-primary">
+                    💾 {{ saving ? 'Сохранение…' : (props.templateId ? 'Обновить шаблон' : 'Сохранить шаблон') }}
                 </button>
-                <button @click="exportToPDF" class="btn btn-success">
-                    📥 Экспорт PDF
+                <button @click="printPreview" class="btn btn-success">
+                    🖨️ Печать / PDF
                 </button>
                 <button @click="deleteSelected" :disabled="!selectedElement" class="btn btn-danger">
                     🗑️ Удалить
@@ -391,7 +524,22 @@ onMounted(() => {
                 <button @click="zoom = Math.min(zoom + 10, 200)" class="btn btn-icon">+</button>
             </div>
         </div>
-        
+
+        <!-- Строка состояния: какой шаблон открыт и не сорвалась ли загрузка.
+             Раньше ошибка загрузки уходила только в console.error, поэтому
+             открытый шаблон молча оставался пустым холстом, и администратор
+             начинал рисовать поверх несуществующего макета. -->
+        <div v-if="loading || loadError || currentTemplateName" class="builder-status">
+            <span v-if="loading">Загружаем шаблон…</span>
+            <span v-else-if="loadError" class="builder-status-error">
+                Не удалось загрузить шаблон: {{ loadError }}
+            </span>
+            <span v-else>
+                Открыт шаблон: <b>{{ currentTemplateName }}</b>
+                <template v-if="props.templateId"> · обновление перезапишет его</template>
+            </span>
+        </div>
+
         <div class="builder-main">
             <!-- Left Sidebar - Elements -->
             <div class="sidebar sidebar-left">
@@ -448,26 +596,74 @@ onMounted(() => {
                 
                 <!-- Templates Panel -->
                 <div v-if="activeTab === 'templates'" class="panel-content">
-                    <div class="templates-grid">
-                        <div 
-                            v-for="template in templates" 
+                    <div class="templates-actions">
+                        <button @click="resetCanvas" class="btn btn-secondary btn-block">＋ Новый пустой</button>
+                        <button
+                            v-if="props.templateId"
+                            @click="deleteTemplate"
+                            :disabled="deleting"
+                            class="btn btn-danger btn-block"
+                        >
+                            🗑️ {{ deleting ? 'Удаление…' : 'Удалить шаблон' }}
+                        </button>
+                    </div>
+
+                    <h4 class="category-title">Мои шаблоны</h4>
+
+                    <p v-if="templatesLoading" class="panel-hint">Загружаем шаблоны…</p>
+                    <p v-else-if="templatesError" class="panel-hint panel-hint-error">
+                        Не удалось загрузить: {{ templatesError }}
+                    </p>
+                    <p v-else-if="!templates.length" class="panel-hint">
+                        Сохранённых шаблонов пока нет. Соберите макет и нажмите «Сохранить шаблон».
+                    </p>
+
+                    <div v-else class="templates-grid">
+                        <div
+                            v-for="template in templates"
                             :key="template.id"
                             @click="applyTemplate(template)"
                             class="template-card"
                             :class="{ selected: selectedTemplate?.id === template.id }"
                         >
-                            <div class="template-preview" :style="{ background: template.config.backgroundColor }">
-                                <div v-for="el in template.config.elements" :key="el.id" class="preview-element">
-                                    <span v-if="el.type === 'text'" :style="{ 
-                                        fontSize: `${el.fontSize / 3}px`,
+                            <div class="template-preview" :style="{ background: elementsOf(template)[0]?.fill || '#ffffff' }">
+                                <div v-for="el in elementsOf(template).slice(0, 8)" :key="el.id" class="preview-element">
+                                    <span v-if="el.type === 'text'" :style="{
+                                        fontSize: `${(el.fontSize || 14) / 3}px`,
                                         color: el.color,
                                         fontWeight: el.fontWeight
-                                    }">{{ el.content.substring(0, 15) }}...</span>
+                                    }">{{ String(el.content || '').substring(0, 15) }}</span>
                                     <div v-if="el.type === 'qr'" class="preview-qr"></div>
                                     <div v-if="el.type === 'rectangle'" class="preview-shape" :style="{ background: el.fill }"></div>
                                 </div>
                             </div>
                             <p class="template-name">{{ template.name }}</p>
+                            <p class="template-meta">{{ template.width }}×{{ template.height }}</p>
+                        </div>
+                    </div>
+
+                    <!-- Стартовые заготовки: не шаблоны из БД, а макеты-образцы,
+                         из которых начинают новый билет. -->
+                    <h4 class="category-title">Заготовки</h4>
+                    <div class="templates-grid">
+                        <div
+                            v-for="layout in BUILT_IN_LAYOUTS"
+                            :key="layout.key"
+                            @click="applyLayout(layout)"
+                            class="template-card"
+                        >
+                            <div class="template-preview" :style="{ background: layout.config.backgroundColor }">
+                                <div v-for="el in layout.config.elements" :key="el.id" class="preview-element">
+                                    <span v-if="el.type === 'text'" :style="{
+                                        fontSize: `${(el.fontSize || 14) / 3}px`,
+                                        color: el.color,
+                                        fontWeight: el.fontWeight
+                                    }">{{ String(el.content || '').substring(0, 15) }}</span>
+                                    <div v-if="el.type === 'qr'" class="preview-qr"></div>
+                                    <div v-if="el.type === 'rectangle'" class="preview-shape" :style="{ background: el.fill }"></div>
+                                </div>
+                            </div>
+                            <p class="template-name">{{ layout.name }}</p>
                         </div>
                     </div>
                 </div>
@@ -562,13 +758,22 @@ onMounted(() => {
                                 }"
                             ></div>
                             
-                            <!-- QR Code Element -->
+                            <!-- QR Code Element.
+                                 `src` — локально построенный data-URI
+                                 (@/lib/qr). Пока код не готов, показываем
+                                 рамку-заглушку, а не пустой <img>: пустая
+                                 картинка выглядит как сломанный билет. -->
                             <div 
                                 v-if="element.type === 'qr'"
                                 class="element-qr"
                                 :style="{ width: `${element.size}px`, height: `${element.size}px` }"
                             >
-                                <img :src="getQrCodeUrl(element.data)" alt="QR Code" />
+                                <img
+                                    v-if="qrPreviewSrc(element)"
+                                    :src="qrPreviewSrc(element)"
+                                    alt="QR Code"
+                                />
+                                <div v-else class="qr-placeholder">QR</div>
                             </div>
                             
                             <!-- Barcode Element -->
@@ -968,6 +1173,51 @@ onMounted(() => {
 }
 
 /* Templates Grid */
+.templates-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 16px;
+}
+
+.btn-block {
+    width: 100%;
+    justify-content: center;
+}
+
+/* Строка состояния под тулбаром: имя открытого шаблона и ошибка загрузки. */
+.builder-status {
+    flex: none;
+    padding: 8px 20px;
+    background: #e2e8f0;
+    border-bottom: 1px solid #cbd5e1;
+    font-size: 12px;
+    color: #475569;
+}
+
+.builder-status-error {
+    color: #dc2626;
+    font-weight: 600;
+}
+
+.panel-hint {
+    margin: 6px 0 0;
+    font-size: 12px;
+    line-height: 1.5;
+    color: #64748b;
+}
+
+.panel-hint-error {
+    color: #dc2626;
+}
+
+.template-meta {
+    margin: 0 0 8px;
+    padding: 0 10px;
+    font-size: 11px;
+    color: #94a3b8;
+}
+
 .templates-grid {
     display: grid;
     grid-template-columns: 1fr;
@@ -1090,6 +1340,28 @@ onMounted(() => {
     width: 100%;
     height: 100%;
     object-fit: contain;
+}
+
+/* Пока локальный рендер не отдал data-URI (canvas рисуется асинхронно),
+   показываем рамку, а не пустое место: пустая область выглядит как
+   сломанный билет и провоцирует «оно не работает» вместо «секунду». */
+.qr-placeholder {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: repeating-linear-gradient(
+        45deg,
+        #f1f5f9,
+        #f1f5f9 6px,
+        #e2e8f0 6px,
+        #e2e8f0 12px
+    );
+    color: #64748b;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
 }
 
 .element-barcode, .element-image {
@@ -1248,5 +1520,48 @@ onMounted(() => {
 
 ::-webkit-scrollbar-thumb:hover {
     background: #94a3b8;
+}
+
+/* Печать макета (кнопка «Печать / PDF»).
+   На листе остаётся только холст билета: панели, тулбар и сетка конструктора
+   при печати превращаются в мусор вокруг макета. Холст принудительно
+   показывается в реальном размере без зума и трансформаций — иначе напечатанный
+   билет окажется уменьшенным до текущего масштаба редактора. */
+@media print {
+    .builder-toolbar,
+    .sidebar,
+    .sidebar-left,
+    .sidebar-right,
+    .sidebar-tabs,
+    .panel-content {
+        display: none !important;
+    }
+
+    .ticket-builder-container {
+        height: auto;
+        background: #ffffff;
+    }
+
+    .builder-main {
+        display: block;
+        overflow: visible;
+        padding: 0;
+    }
+
+    .canvas-area {
+        padding: 0;
+        background: #ffffff;
+        overflow: visible;
+    }
+
+    .canvas-inner {
+        transform: none !important;
+    }
+
+    .ticket-canvas {
+        transform: none !important;
+        box-shadow: none !important;
+        margin: 0 auto;
+    }
 }
 </style>

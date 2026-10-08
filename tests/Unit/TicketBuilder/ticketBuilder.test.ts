@@ -14,7 +14,6 @@ import {
   cloneElement,
   duplicateAsElement,
   flattenVariables,
-  getQrCodeUrl,
   normalizeNewElement,
   renderTextContent,
   syncDerivedCoordinates,
@@ -24,15 +23,28 @@ describe('buildTemplatePayload', () => {
   it('sends template_json as an object, not a double-encoded string', () => {
     const payload = buildTemplatePayload({
       name: 'Тест',
-      organizationId: 7,
       canvasWidth: 600,
       canvasHeight: 400,
       config: { backgroundColor: '#fff', elements: [{ id: 1, type: 'text', x: 0, y: 0 }] },
     })
     expect(typeof payload.template_json).toBe('object')
     expect((payload.template_json as any).elements).toHaveLength(1)
-    expect(payload.organization_id).toBe(7)
     expect(payload.width).toBe(600)
+    expect(payload.height).toBe(400)
+    expect(payload.name).toBe('Тест')
+  })
+
+  it('does NOT send organization_id — the tenant comes from the token', () => {
+    // Клиент не должен называть арендатора: сервер берёт организацию из токена
+    // (TicketTemplateController::organizationId()). Поле в payload означало бы
+    // возможность записать шаблон в чужую организацию.
+    const payload = buildTemplatePayload({
+      name: 'Тест',
+      canvasWidth: 600,
+      canvasHeight: 400,
+      config: { backgroundColor: '#fff', elements: [] },
+    })
+    expect('organization_id' in payload).toBe(false)
   })
 })
 
@@ -82,14 +94,14 @@ describe('renderTextContent', () => {
   })
 })
 
-describe('CANVAS_PRESETS / getQrCodeUrl', () => {
+describe('CANVAS_PRESETS', () => {
   it('has the four presets used by the toolbar', () => {
     expect(CANVAS_PRESETS.mobile).toEqual({ width: 400, height: 600 })
     expect(Object.keys(CANVAS_PRESETS)).toEqual(['mobile', 'desktop', 'square', 'wide'])
   })
-  it('encodes QR data', () => {
-    expect(getQrCodeUrl('a b')).toContain('data=a%20b')
-  })
+  // QR-рендер вынесен в @/lib/qr и покрыт tests/Unit/TicketBuilder/qr.test.ts:
+  // прежняя getQrCodeUrl() отдавала ссылку на внешний api.qrserver.com вместе
+  // с подписанным токеном входа, поэтому её удалили целиком.
   it('cloneElement is deep', () => {
     const src = { a: { b: [1] } }
     const c = cloneElement(src)

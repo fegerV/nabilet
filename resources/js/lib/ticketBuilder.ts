@@ -49,17 +49,21 @@ export const DEFAULT_TICKET_VARIABLES: TicketVariables = {
  * кодирование, несовместимое с кастомизацией `'template_json' => 'array'`
  * в app/Models/TicketTemplate.php (модель ожидала объект, а получала
  * строку со встроенным JSON). Теперь отдаётся структура целиком.
+ *
+ * `organization_id` в payload ОТСУТСТВУЕТ намеренно. Раньше он брался из
+ * пропа компонента и уезжал в тело запроса, но сервер его игнорирует:
+ * `TicketTemplateController::store()` берёт организацию из токена. Оставлять
+ * поле значило бы давать клиенту возможность назвать чужого арендатора —
+ * правило проекта «организацию брать из токена, не из тела запроса».
  */
 export function buildTemplatePayload(params: {
   name: string
-  organizationId: number | string
   canvasWidth: number
   canvasHeight: number
   config: CanvasConfig
 }): Record<string, unknown> {
   return {
     name: params.name,
-    organization_id: params.organizationId,
     format: 'mobile',
     width: params.canvasWidth,
     height: params.canvasHeight,
@@ -160,9 +164,14 @@ export function renderTextContent(content: string | undefined, vars: TicketVaria
   return content.replace(/\{\{([\w.]+)\}\}/g, (whole, key: string) => flat[key] ?? whole)
 }
 
-/** URL внешнего сервиса генерации QR-кодов для превью. */
-export function getQrCodeUrl(data?: string): string {
-  const qrData = encodeURIComponent(data || 'https://nabilet.com')
-  return `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${qrData}`
-}
+// ЗДЕСЬ БЫЛА `getQrCodeUrl()`, ВОЗВРАЩАВШАЯ ССЫЛКУ НА api.qrserver.com.
+//
+// Она подставляла `qr_payload` билета — подписанный токен входа — в
+// query-параметр чужого сервиса, то есть отдавала третьей стороне и сам токен,
+// и IP покупателя. Функция удалена целиком, а не «переписана на локальный
+// рендер», чтобы прежний вызов нельзя было случайно вернуть: рендер QR теперь
+// живёт в `@/lib/qr` (`renderQrDataUrl` / `renderQrSvg`), и это единственная
+// точка генерации кода в проекте.
+//
+// `TicketBuilder.vue` берёт функцию оттуда; в шаблоне это обычный `import`.
 
