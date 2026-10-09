@@ -77,6 +77,12 @@ $moduleRoutes = [
     // `EmbedAccessService`. Файл существовал не всегда: модуль был пустым
     // провайдером, поэтому все восемь путей контракта отвечали 404.
     __DIR__ . '/../app/Modules/Embed/routes/api.php',
+    // Pricing: промокоды (контракт: /api/v1/promo-codes — list/create/get/
+    // patch/delete/validate). Файл существовал не всегда: модуль содержал
+    // только домен (`PromoEvaluator`) и провайдер-заглушку, поэтому все шесть
+    // путей контракта отвечали 404, а checkout отказывал любому коду со
+    // стабильным PROMO_CODE_NOT_SUPPORTED.
+    __DIR__ . '/../app/Modules/Pricing/routes/api.php',
 ];
 
 foreach ($moduleRoutes as $routeFile) {
