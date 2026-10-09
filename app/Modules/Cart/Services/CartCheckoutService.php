@@ -122,16 +122,6 @@ final class CartCheckoutService
                 }
             }
 
-            // Промокод пока не применяется: молча игнорировать
-            // пользательский ввод хуже честного отказа — клиент увидит
-            // стабильный 422 PROMO_CODE_NOT_SUPPORTED, а не счёт без скидки.
-            if (!empty($customer['promo_code'])) {
-                throw new DomainRuleViolation(
-                    'Promo codes are not supported yet.',
-                    'PROMO_CODE_NOT_SUPPORTED',
-                );
-            }
-
             // Mark cart as converted
             $cart->update(['status' => 'converted']);
 
@@ -157,15 +147,56 @@ final class CartCheckoutService
             $event = $session?->event()->first();
             $organizationId = $event->organization_id ?? $session?->venue?->organization_id ?? 1;
 
+            // Промокод: код проверяется ДО создания заказа — чистая оценка через
+            // тот же PromoEvaluator, что и POST /promo-codes/validate (второго
+            // источника правды о скидке нет). Отказ бросает исключение внутри
+            // DB::transaction: заказ не создаётся, пометка корзины `converted`
+            // откатывается, инвентарь остаётся удержанным холдом — покупатель
+            // может исправить код и повторить оформление.
+            $promoCode = null;
+            $promoEvaluation = null;
+
+            if (!empty($customer['promo_code'])) {
+                $promoCode = $this->promos->findByCode(
+                    $organizationId,
+                    (string) $customer['promo_code']
+                );
+
+                if ($promoCode === null) {
+                    throw new DomainRuleViolation(
+                        'Promo code not found.',
+                        'PROMO_CODE_NOT_FOUND',
+                    );
+                }
+
+                $promoEvaluation = $this->promos->evaluateForCart($promoCode, $cart);
+
+                if (!$promoEvaluation->valid) {
+                    throw new DomainRuleViolation(
+                        sprintf('Promo code cannot be applied: %s.', (string) $promoEvaluation->rejectionReason),
+                        'PROMO_CODE_REJECTED',
+                    );
+                }
+            }
+
+            $subtotalAmount = (int) ($cart->total_amount ?? 0);
+            $discountAmount = $promoEvaluation?->discount->minorUnits() ?? 0;
+            // Двойная страховка от отрицательного итога: evaluator уже режет
+            // скидку по подытогу применимых строк, но scope-строки могут быть
+            // меньше всей корзины, а total_amount когда-нибудь начнёт включать
+            // сборы — тогда subtotal и total разойдутся.
+            $discountAmount = min($discountAmount, $subtotalAmount);
+            $totalAmount = max(0, $subtotalAmount - $discountAmount);
+
             $order = Order::create([
                 'organization_id' => $organizationId,
                 'user_id' => null,
                 'status' => 'pending',
                 'payment_status' => 'pending',
-                'subtotal_amount' => (int) ($cart->total_amount ?? 0),
-                'discount_amount' => 0,
+                'subtotal_amount' => $subtotalAmount,
+                'discount_amount' => $discountAmount,
                 'fee_amount' => 0,
-                'total_amount' => (int) ($cart->total_amount ?? 0),
+                'total_amount' => $totalAmount,
                 'currency' => $cart->currency ?? 'RUB',
                 // A6-цепочка «заказ → оплата → билет»: заказ помнит корзину,
                 // сеанс и событие, из которых вырос. PaymentService использует
@@ -194,6 +225,16 @@ final class CartCheckoutService
                 ]);
             }
 
+            // Расход кода — ПОСЛЕ создания заказа: redeem() пишет redemption со
+            // ссылкой на order_id. Счётчик двигается условным UPDATE (см.
+            // PromoCodeService::redeem), и весь блок — в этой же транзакции:
+            // откат заказа откатывает и использование кода. Анонимная корзина
+            // (user_id null) лимит на покупателя не расходует — per_user_limit
+            // считается по аутентифицированным пользователям.
+            if ($promoCode !== null && $promoEvaluation !== null) {
+                $this->promos->redeem($promoCode, $order, $promoEvaluation, $cart->user_id === null ? null : (int) $cart->user_id);
+            }
+
             return [
                 'cart_id' => $cart->id,
                 'order_id' => $order->public_id,
@@ -204,7 +245,9 @@ final class CartCheckoutService
                     'unit_price' => $item->unit_price,
                     'total_price' => $item->total_price,
                 ])->toArray(),
-                'total_amount' => $cart->total_amount,
+                'total_amount' => $totalAmount,
+                'subtotal_amount' => $subtotalAmount,
+                'discount_amount' => $discountAmount,
                 'currency' => $cart->currency,
             ];
         });
