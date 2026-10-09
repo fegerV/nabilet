@@ -177,10 +177,11 @@ function handlePayError(error: unknown): void {
     return
   }
 
-  if (error.code === 'PROMO_CODE_NOT_SUPPORTED') {
-    // Промокод мы больше не отправляем; ветка оставлена, чтобы серверный отказ
-    // был понятен, если поле когда-нибудь вернётся в форму.
-    ui.notify('sun', 'Промокоды не поддерживаются', error.message)
+  if (error.code === 'PROMO_CODE_REJECTED' || error.code === 'PROMO_CODE_NOT_FOUND' || error.code === 'PROMO_CODE_EXHAUSTED') {
+    // Checkout теперь реально оценивает промокод (PromoEvaluator): отказ —
+    // это 422 с машинным кодом, а не заглушка NOT_SUPPORTED. Сообщение
+    // сервера уже объясняет причину (expired / min_order_amount / лимиты).
+    ui.notify('sun', 'Промокод не применён', error.message)
     return
   }
 
