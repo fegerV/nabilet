@@ -18,6 +18,8 @@ import NStatusBadge from '@/components/ui/NStatusBadge.vue'
 import NButton from '@/components/ui/NButton.vue'
 import NDataTable from '@/components/ui/NDataTable.vue'
 import NEmptyState from '@/components/ui/NEmptyState.vue'
+import NCard from '@/components/ui/NCard.vue'
+import NPageHeader from '@/components/ui/NPageHeader.vue'
 import { get } from '@/lib/api'
 import { money, relative, dateLong, ticketsLabel } from '@/lib/format'
 import type { Column } from '@/components/ui/NDataTable.vue'
@@ -310,23 +312,21 @@ const topEvents = computed(() => {
 const period = computed(() =>
   new Intl.DateTimeFormat('ru-RU', { month: 'long', year: 'numeric' }).format(new Date()),
 )
+
+/** Подпись к обзору: привязывает цифры к моменту, а в загрузке не врёт числом. */
+const headerSubtitle = computed(() =>
+  loading.value ? 'Загрузка данных…' : `${period.value} · ${orders.value.length} заказов в системе`,
+)
 </script>
 
 <template>
   <div class="mx-auto max-w-[1400px]">
-    <div class="flex flex-wrap items-end justify-between gap-3">
-      <div>
-        <h1 class="text-2xl font-bold tracking-tight text-content">Обзор</h1>
-        <p class="mt-1 text-sm text-muted">
-          <template v-if="loading">Загрузка данных…</template>
-          <template v-else>{{ period }} · {{ orders.length }} заказов в системе</template>
-        </p>
-      </div>
-      <div class="flex gap-2">
+    <NPageHeader title="Обзор" :subtitle="headerSubtitle">
+      <template #actions>
         <NButton variant="secondary" @click="router.push('/admin/analytics')">Аналитика</NButton>
         <NButton variant="primary" @click="router.push('/admin/events/new')">Новое событие</NButton>
-      </div>
-    </div>
+      </template>
+    </NPageHeader>
 
     <div v-if="error" class="surface-card mt-5 border-rose-500/30 px-4 py-3 text-sm text-rose-400">
       Не удалось загрузить данные обзора: {{ error }}
@@ -355,15 +355,14 @@ const period = computed(() =>
 
     <div class="mt-5 grid gap-5 xl:grid-cols-[1fr_380px]">
       <div class="min-w-0 space-y-5">
-        <section class="surface-card p-4">
-          <div class="flex items-center justify-between">
-            <h2 class="text-sm font-semibold text-content">Продажи по дням</h2>
-            <NBadge tone="brand">Последние 12 дней</NBadge>
-          </div>
+      <NCard title="Продажи по дням" icon="▤">
+        <template #actions>
+          <NBadge tone="brand">Последние 12 дней</NBadge>
+        </template>
 
-          <svg
-            :viewBox="`0 0 ${CHART_W} ${CHART_H}`"
-            class="mt-4 h-44 w-full"
+        <svg
+          :viewBox="`0 0 ${CHART_W} ${CHART_H}`"
+          class="mt-4 h-44 w-full"
             preserveAspectRatio="none"
             role="img"
             aria-label="График продаж по дням"
@@ -390,7 +389,7 @@ const period = computed(() =>
             <span>{{ series[Math.floor(series.length / 2)]?.label }}</span>
             <span>{{ series[series.length - 1]?.label }}</span>
           </div>
-        </section>
+        </NCard>
 
         <section>
           <div class="mb-3 flex items-center justify-between">
@@ -435,11 +434,7 @@ const period = computed(() =>
       </div>
 
       <aside class="min-w-0">
-        <section class="surface-card overflow-hidden">
-          <div class="border-b border-line px-4 py-3">
-            <h2 class="text-sm font-semibold text-content">Требует внимания</h2>
-            <p class="mt-0.5 text-xs text-subtle">То, что мешает продажам прямо сейчас</p>
-          </div>
+        <NCard title="Требует внимания" description="То, что мешает продажам прямо сейчас" padding="none">
           <ul v-if="tasks.length" class="divide-y divide-line">
             <li v-for="task in tasks" :key="task.id" class="flex items-center gap-3 px-4 py-3">
               <span
@@ -456,11 +451,10 @@ const period = computed(() =>
             <template v-if="loading">Проверяем…</template>
             <template v-else>Всё в порядке — срочных задач нет.</template>
           </p>
-        </section>
+        </NCard>
 
-        <section class="surface-card mt-4 p-4">
-          <h2 class="text-sm font-semibold text-content">Мероприятия по выручке</h2>
-          <ul v-if="topEvents.length" class="mt-3 space-y-2.5">
+        <NCard title="Мероприятия по выручке" class="mt-4">
+          <ul v-if="topEvents.length" class="space-y-2.5">
             <li v-for="(item, index) in topEvents" :key="item.title">
               <div class="flex items-center justify-between gap-2 text-xs">
                 <span class="min-w-0 truncate text-muted">{{ item.title }}</span>
@@ -476,7 +470,7 @@ const period = computed(() =>
             </li>
           </ul>
           <p v-else class="mt-2 text-xs text-subtle">Выручка появится после первых оплат.</p>
-        </section>
+        </NCard>
       </aside>
     </div>
   </div>
