@@ -10,9 +10,13 @@ use Nabilet\Core\Errors\ConflictError;
 use Nabilet\Core\Errors\DomainRuleViolation;
 use Nabilet\Core\Errors\ValidationError;
 use Nabilet\Modules\Cart\Models\Cart;
+use Nabilet\Modules\Core\Organizations\Models\Organization;
+use Nabilet\Modules\Events\Models\Session;
 use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Orders\Models\OrderItem;
-use Nabilet\Modules\Sessions\Models\Session;
+use Nabilet\Modules\Orders\Models\PromoCode;
+use Nabilet\Modules\Pricing\Services\PromoCodeService;
+use Nabilet\Modules\Sessions\Models\Session as SessionsSession;
 
 /**
  * CartCheckoutService — превращение корзины в заказ.
@@ -24,8 +28,10 @@ use Nabilet\Modules\Sessions\Models\Session;
  */
 final class CartCheckoutService
 {
-    public function __construct(private readonly CartItemService $items)
-    {
+    public function __construct(
+        private readonly CartItemService $items,
+        private readonly PromoCodeService $promos = new PromoCodeService(),
+    ) {
     }
 
     /**
