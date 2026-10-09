@@ -109,6 +109,19 @@ jobs:
       - name: Module directories match the registry
         run: php tools/verify-module-structure.php
 
+      # Route registration had two owners and nothing noticed. A module provider
+      # called `loadRoutesFrom()` while the same file was also required from
+      # `routes/api.php`, so Payments registered an unprefixed second copy of
+      # every endpoint — including the public webhook — absent from the contract
+      # and outside the API middleware group. Worse, Laravel keys routes by
+      # method+uri, so the two copies of `webhooks/payment/{provider}` did not
+      # even reach the same controller. The opposite also happened: the Media
+      # route file existed but nothing required it, so `/api/v1/media` was a 404
+      # that read as a missing feature. There is no vendor/ here to run
+      # `route:list`, so both directions are decided statically instead.
+      - name: Routes have exactly one owner
+        run: php tools/verify-route-ownership.php
+
       - name: Composer manifest is valid
         run: composer validate --no-check-publish --no-check-lock
 
