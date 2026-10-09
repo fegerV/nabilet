@@ -15,6 +15,8 @@ import NButton from '@/components/ui/NButton.vue'
 import NInput from '@/components/ui/NInput.vue'
 import NSelect from '@/components/ui/NSelect.vue'
 import NCheckbox from '@/components/ui/NCheckbox.vue'
+import NCard from '@/components/ui/NCard.vue'
+import NPageHeader from '@/components/ui/NPageHeader.vue'
 import { useUiStore } from '@/stores/ui'
 import { get, send } from '@/lib/api'
 
@@ -166,36 +168,31 @@ async function sendTest(): Promise<void> {
 
 <template>
   <div class="mx-auto max-w-[900px]">
-    <div class="flex flex-wrap items-end justify-between gap-3">
-      <div>
-        <h1 class="text-2xl font-bold tracking-tight text-content">Почта (SMTP)</h1>
-        <p class="mt-1 text-sm text-muted">
-          Параметры отправки писем покупателям. Настраиваются здесь, без правки файлов на сервере.
-        </p>
-      </div>
-    </div>
+    <NPageHeader
+      title="Почта (SMTP)"
+      subtitle="Параметры отправки писем покупателям. Настраиваются здесь, без правки файлов на сервере."
+    />
 
     <div v-if="error" class="surface-card mt-5 border-rose-500/30 px-4 py-3 text-sm text-rose-400">
       Не удалось загрузить настройки: {{ error }}
     </div>
 
-    <div v-if="!loading && !error" class="surface-card mt-5 p-4 sm:p-5">
-      <div class="flex flex-wrap items-center justify-between gap-3">
-        <p class="text-sm font-semibold text-content">Сервер исходящей почты</p>
+    <NCard
+      v-if="!loading && !error"
+      class="mt-5"
+      title="Сервер исходящей почты"
+      description="Если хост не заполнен, используется транспорт из конфигурации сервера. Заполните хост, чтобы переключить отправку на SMTP с этих параметров."
+    >
+      <template #actions>
         <span
           class="rounded-full px-2.5 py-1 text-xs font-medium"
           :class="effectiveMailer === 'smtp' ? 'bg-mint-500/15 text-mint-400' : 'bg-sun-500/15 text-sun-400'"
         >
           {{ effectiveMailer === 'smtp' ? `SMTP: ${effectiveHost || 'не задан'}` : `транспорт: ${effectiveMailer || '—'}` }}
         </span>
-      </div>
+      </template>
 
-      <p class="mt-3 text-xs text-muted">
-        Если хост не заполнен, используется транспорт из конфигурации сервера. Заполните хост,
-        чтобы переключить отправку на SMTP с этих параметров.
-      </p>
-
-      <div class="mt-4 grid gap-4 sm:grid-cols-2">
+      <div class="grid gap-4 sm:grid-cols-2">
         <NInput v-model="form.host" label="Хост SMTP" placeholder="smtp.yandex.ru" />
         <NInput v-model="form.port" type="number" label="Порт" placeholder="587" />
         <NInput v-model="form.username" label="Пользователь" placeholder="noreply@example.ru" />
@@ -232,15 +229,16 @@ async function sendTest(): Promise<void> {
         </NButton>
         <span v-if="isDirty" class="text-xs text-sun-400">Есть несохранённые изменения</span>
       </div>
-    </div>
+    </NCard>
 
     <!-- Тестовое письмо -->
-    <div v-if="!loading && !error" class="surface-card mt-5 p-4 sm:p-5">
-      <p class="text-sm font-semibold text-content">Проверка</p>
-      <p class="mt-2 text-xs text-muted">
-        Отправит одно письмо на указанный адрес текущими настройками. Сохраните изменения перед проверкой.
-      </p>
-      <div class="mt-4 flex flex-wrap items-end gap-3">
+    <NCard
+      v-if="!loading && !error"
+      class="mt-5"
+      title="Проверка"
+      description="Отправит одно письмо на указанный адрес текущими настройками. Сохраните изменения перед проверкой."
+    >
+      <div class="flex flex-wrap items-end gap-3">
         <div class="min-w-[240px] flex-1">
           <NInput v-model="testRecipient" type="email" label="Куда отправить" placeholder="you@example.ru" />
         </div>
@@ -252,6 +250,6 @@ async function sendTest(): Promise<void> {
           {{ testing ? 'Отправка…' : 'Отправить тест' }}
         </NButton>
       </div>
-    </div>
+    </NCard>
   </div>
 </template>

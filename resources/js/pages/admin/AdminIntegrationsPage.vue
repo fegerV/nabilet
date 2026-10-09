@@ -14,6 +14,8 @@ import NButton from '@/components/ui/NButton.vue'
 import NInput from '@/components/ui/NInput.vue'
 import NSelect from '@/components/ui/NSelect.vue'
 import NCheckbox from '@/components/ui/NCheckbox.vue'
+import NCard from '@/components/ui/NCard.vue'
+import NPageHeader from '@/components/ui/NPageHeader.vue'
 import { useUiStore } from '@/stores/ui'
 import { get, send } from '@/lib/api'
 
@@ -131,30 +133,23 @@ async function copy(url: string): Promise<void> {
 
 <template>
   <div class="mx-auto max-w-[1100px]">
-    <div class="flex flex-wrap items-end justify-between gap-3">
-      <div>
-        <h1 class="text-2xl font-bold tracking-tight text-content">Интеграции</h1>
-        <p class="mt-1 text-sm text-muted">Счётчик аналитики, вебхуки оплаты и карта сайта.</p>
-      </div>
-    </div>
+    <NPageHeader title="Интеграции" subtitle="Счётчик аналитики, вебхуки оплаты и карта сайта." />
 
     <div v-if="error" class="surface-card mt-5 border-rose-500/30 px-4 py-3 text-sm text-rose-400">
       Не удалось загрузить настройки: {{ error }}
     </div>
 
     <!-- Метрика -->
-    <div class="surface-card mt-5 p-4 sm:p-5">
-      <div class="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p class="text-sm font-semibold text-content">Яндекс Метрика</p>
-          <p class="mt-0.5 text-xs text-subtle">
-            ID счётчика и цели для Директа. Токен доступа задаётся только в .env — в интерфейсе он не показывается.
-          </p>
-        </div>
+    <NCard
+      class="mt-5"
+      title="Яндекс Метрика"
+      description="ID счётчика и цели для Директа. Токен доступа задаётся только в .env — в интерфейсе он не показывается."
+    >
+      <template #actions>
         <NButton variant="primary" size="sm" :loading="saving" :disabled="!isDirty" @click="save">Сохранить</NButton>
-      </div>
+      </template>
 
-      <div class="mt-5 grid gap-4 sm:grid-cols-2">
+      <div class="grid gap-4 sm:grid-cols-2">
         <NInput
           v-model="form.counter_id"
           label="ID счётчика"
@@ -177,12 +172,11 @@ async function copy(url: string): Promise<void> {
         <NCheckbox v-model="form.safe_stage" label="Безопасный режим" description="Не отправлять данные на stage" />
         <NCheckbox v-model="form.accurate_track" label="Точный трекинг" description="Точнее, но тяжелее для страницы" />
       </div>
-    </div>
+    </NCard>
 
     <!-- Адреса -->
-    <div class="surface-card mt-5 p-4 sm:p-5">
-      <p class="text-sm font-semibold text-content">Адреса для внешних сервисов</p>
-      <div class="mt-4 space-y-3">
+    <NCard class="mt-5" title="Адреса для внешних сервисов">
+      <div class="space-y-3">
         <div v-for="endpoint in ENDPOINTS" :key="endpoint.label" class="rounded-lg border border-line bg-surface-2 p-3">
           <div class="flex flex-wrap items-center justify-between gap-2">
             <p class="text-sm text-content">{{ endpoint.label }}</p>
@@ -192,12 +186,11 @@ async function copy(url: string): Promise<void> {
           <p class="mt-1 text-xs text-subtle">{{ endpoint.hint }}</p>
         </div>
       </div>
-    </div>
+    </NCard>
 
     <!-- Цели -->
-    <div v-if="form.goals && Object.keys(form.goals).length" class="surface-card mt-5 p-4 sm:p-5">
-      <p class="text-sm font-semibold text-content">Цели, которые отправляет витрина</p>
-      <div class="mt-3 flex flex-wrap gap-2">
+    <NCard v-if="form.goals && Object.keys(form.goals).length" class="mt-5" title="Цели, которые отправляет витрина">
+      <div class="flex flex-wrap gap-2">
         <span
           v-for="(goal, key) in form.goals"
           :key="key"
@@ -206,6 +199,6 @@ async function copy(url: string): Promise<void> {
           {{ key }} → {{ goal }}
         </span>
       </div>
-    </div>
+    </NCard>
   </div>
 </template>
