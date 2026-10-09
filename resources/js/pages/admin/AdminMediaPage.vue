@@ -30,6 +30,7 @@ import NInput from '@/components/ui/NInput.vue'
 import NModal from '@/components/ui/NModal.vue'
 import { useUiStore } from '@/stores/ui'
 import { request, send, upload } from '@/lib/api'
+import type { PageMeta } from '@/lib/api'
 import {
   MEDIA_ACCEPT,
   MEDIA_TYPES_LABEL,
@@ -45,20 +46,15 @@ import {
 } from '@/lib/mediaLibrary'
 
 /**
- * `meta` списка файлов.
+ * `meta` списка файлов — общий `PageMeta` из `lib/api.ts`.
  *
- * Поле называется `page` — так объявлено в контракте
- * (`components/schemas/PaginationMeta`), и модуль Media отдаёт именно его.
- * Общий тип `PageMeta` в `lib/api.ts` объявляет `current_page`: так его отдают
- * восемь других контроллеров. Это существующее расхождение, и тянуть его в
- * новую страницу не нужно — здесь описан тот ответ, который приходит.
+ * Раньше здесь был локальный интерфейс с полем `page`: модуль Media отдавал
+ * его, потому что так было записано в контракте, а восемь других контроллеров
+ * отдавали `current_page`. Локальная копия типа и была симптомом — странице
+ * приходилось описывать ответ, который ни один общий тип не описывал.
+ * Расхождение устранено в пользу `current_page` (см. `MediaController::index`),
+ * и тип теперь общий.
  */
-interface MediaPageMeta {
-  page: number
-  per_page: number
-  total: number
-  last_page: number
-}
 
 const PER_PAGE = 24
 
@@ -99,7 +95,7 @@ async function load(): Promise<void> {
   loadError.value = null
 
   try {
-    const res = await request<{ data: MediaAsset[]; meta?: MediaPageMeta }>(
+    const res = await request<{ data: MediaAsset[]; meta?: PageMeta }>(
       `/media?per_page=${PER_PAGE}&page=${page.value}`,
     )
 

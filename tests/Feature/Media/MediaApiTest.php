@@ -331,6 +331,53 @@ class MediaApiTest extends TestCase
     }
 
     /**
+     * Номер страницы называется `current_page`, а не `page`.
+     *
+     * Контракт (`PaginationMeta`) объявлял `page`, и модуль Media был
+     * единственным, кто ему следовал, — то есть расходился с восемью другими
+     * списками API и с типом `PageMeta` во фронтенде, который объявляет
+     * `current_page`. Прав оказался код: `current_page` — форма Laravel
+     * (`LengthAwarePaginator::toArray()`), и локальная копия типа в
+     * `AdminMediaPage.vue` существовала ровно потому, что общий тип не
+     * описывал ответ.
+     *
+     * Проверяются обе ветки `index()`: они строят `meta` независимо — одну
+     * через `paginate()`, другую вручную, — и починить одну, забыв вторую,
+     * здесь легко.
+     */
+    public function test_the_page_key_is_current_page(): void
+    {
+        $this->actingAsAdmin();
+
+        $attached = $this->makeAsset();
+
+        DB::table('media_links')->insert([
+            'media_asset_id' => $attached->id,
+            'entity_type' => 'event',
+            'entity_id' => 4242,
+            'role' => 'gallery',
+            'position' => 0,
+            'created_at' => now(),
+        ]);
+
+        $branches = [
+            'общий список' => '/api/v1/media',
+            'галерея объекта' => '/api/v1/media?entity_type=event&entity_id=4242',
+        ];
+
+        foreach ($branches as $label => $url) {
+            $response = $this->getJson($url);
+            $response->assertStatus(200);
+
+            $this->assertSame(1, $response->json('meta.current_page'), $label);
+            $this->assertNull(
+                $response->json('meta.page'),
+                $label . ': ключ `page` — прежнее имя, он не должен вернуться'
+            );
+        }
+    }
+
+    /**
      * Видео принимается — потому что интерфейс его предлагает.
      *
      * `GALLERY_TYPES` (`resources/js/lib/eventGallery.ts`) содержит `video/mp4`
