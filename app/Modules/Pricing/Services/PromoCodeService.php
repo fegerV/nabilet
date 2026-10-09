@@ -69,10 +69,12 @@ final class PromoCodeService
             ->first();
 
         if ($code === null) {
-            throw new NotFoundError(
-                sprintf('Promo code "%s" not found.', $publicId),
-                'PROMO_CODE_NOT_FOUND'
-            );
+            // Сигнатура NotFoundError — (resource, resourceId): класс САМ
+            // составляет и сообщение, и код. Ресурс называется в singular
+            // snake-case ('promo_code' -> PROMO_CODE_NOT_FOUND), идентификатор
+            // уходит в сообщение. Текст сообщения сюда никогда не передаётся:
+            // именно так раньше рождались коды вида «CART NOT FOUND._NOT_FOUND».
+            throw new NotFoundError('promo_code', $publicId);
         }
 
         return $code;
@@ -110,11 +112,31 @@ final class PromoCodeService
     /**
      * Обновить код (PATCH-семантика: отсутствуют поля — остаются как были).
      *
+     * Коллизия (organization_id, code) проверяется и здесь, а не только в
+     * create(): без предпроверки переименование на существующий код упиралось
+     * бы в ошибку драйвера уникального индекса (500) вместо контрактного
+     * PROMO_CODE_EXISTS (409). Исключение — когда код не меняют.
+     *
      * @param array<string, mixed> $input
      */
     public function update(PromoCode $code, array $input): PromoCode
     {
         $attributes = $this->normalize($input, partial: true);
+
+        if (isset($attributes['code']) && $attributes['code'] !== $code->code) {
+            $clash = PromoCode::query()
+                ->where('organization_id', $code->organization_id)
+                ->where('code', $attributes['code'])
+                ->whereKeyNot($code->id)
+                ->exists();
+
+            if ($clash) {
+                throw new ConflictError(
+                    sprintf('Promo code "%s" already exists.', $attributes['code']),
+                    'PROMO_CODE_EXISTS'
+                );
+            }
+        }
 
         if ($attributes !== []) {
             $code->update($attributes);
@@ -336,7 +358,18 @@ final class PromoCodeService
         }
 
         if (!$partial || array_key_exists('value_percent', $input)) {
-            $out['value_percent'] = number_format((float) ($input['value_percent'] ?? 0), 2, '.', '');
+            $percent = round((float) ($input['value_percent'] ?? 0), 2);
+
+            // DECIMAL(5,2) вмещает не более 999.99, но смысл колонки — процент
+            // скидки: максимум 100.00 (домен PromoCodeDefinition режет базисные
+            // пункты на 10000). Без этой границы значение 150 молча проходило бы
+            // в БД, а движок цен падал бы на нём уже при оценке (непригодный для
+            // клиента 500 вместо честного 422 на записи).
+            if ($percent < 0 || $percent > 100) {
+                throw new DomainRuleViolation('value_percent must be between 0 and 100.', 'INVALID_PROMO_VALUE');
+            }
+
+            $out['value_percent'] = number_format($percent, 2, '.', '');
         }
 
         if (!$partial || array_key_exists('currency', $input)) {

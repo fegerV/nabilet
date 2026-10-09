@@ -8,9 +8,11 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Nabilet\Core\Errors\NotFoundError;
+use Nabilet\Core\Errors\TenantContextMissingError;
 use Nabilet\Core\Errors\ValidationError;
 use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Cart\Models\Cart;
+use Nabilet\Modules\Orders\Models\PromoCode;
 use Nabilet\Modules\Pricing\Http\Resources\PromoCodeResource;
 use Nabilet\Modules\Pricing\Services\PromoCodeService;
 
@@ -67,16 +69,40 @@ class PromoCodeController extends Controller
     {
         $this->assertRequired($request, ['code', 'discount_type']);
 
-        $code = $this->promos->create($this->organizationId(), $request->all());
+        // Тот же white-list контракта PromoCodeCreate, что и в update():
+        // redemptions_count / organization_id не должны проходить из тела
+        // запроса даже на создании.
+        static $allowed = [
+            'code', 'discount_type', 'value_amount', 'value_percent', 'currency',
+            'scope', 'event_id', 'event_category_id', 'min_order_amount',
+            'max_redemptions', 'per_user_limit', 'status', 'valid_from', 'valid_until',
+        ];
+
+        $code = $this->promos->create($this->organizationId(), $request->only($allowed));
 
         return response()->json(['data' => new PromoCodeResource($code)], 201);
     }
 
+    /**
+     * Обновить код (PATCH-семантика: отсутствуют поля — остаются как были).
+     */
     public function update(Request $request, string $promoCode): JsonResponse
     {
         $code = $this->promos->findForOrganization($this->organizationId(), $promoCode);
 
-        $code = $this->promos->update($code, $request->all());
+        // White-list контракта PromoCodeUpdate. `$request->all()` сюда не
+        // проходит: он позволил бы протащить redemptions_count (счётчик расхода
+        // — прямое подделывание лимита), organization_id (межтенантовый
+        // перенос) и произвольные колонки схемы.
+        static $allowed = [
+            'code', 'discount_type', 'value_amount', 'value_percent',
+            'scope', 'event_id', 'event_category_id', 'min_order_amount',
+            'max_redemptions', 'per_user_limit', 'status', 'valid_from', 'valid_until',
+        ];
+
+        $input = $request->only($allowed);
+
+        $code = $this->promos->update($code, $input);
 
         return response()->json(['data' => new PromoCodeResource($code)]);
     }
@@ -96,6 +122,14 @@ class PromoCodeController extends Controller
      * корзины ещё нет. Второй вариант не умеет проверять scope=event/category:
      * по одной сумме нельзя понять, ЧТО именно в корзине, поэтому такие коды
      * при оценке вслепую отвергаются честной причиной, а не молча применяются.
+     *
+     * АРЕНДАТОР. Путь публичный: `ResolveOrganizationContext` заполняет контекст
+     * только из аутентифицированного пользователя или host-маппинга, поэтому
+     * здесь он может быть пуст. Молчаливый откат «на первую организацию в БД»
+     * означал бы, что покупатель с кодом чужой организации получает её цены и
+     * существование её кодов (oracle), а админ без контекста начал бы работать
+     * с чужим tenant'ом. Поэтому контекст обязателен: без него — честный
+     * TENANT_CONTEXT_MISSING, а не угадывание.
      *
      * Имя метода — `check`, а не `validate`: Illuminate Controller уже имеет
      * финальный `validate(Validator)` для трейта AuthorizesRequests, и метод с
@@ -153,7 +187,9 @@ class PromoCodeController extends Controller
             $cart = Cart::query()->where('cart_token', $token)->where('status', 'active')->first();
 
             if ($cart === null) {
-                throw new NotFoundError('Cart not found.', 'CART_NOT_FOUND');
+                // NotFoundError(resource, resourceId): код составляется классом
+                // ('cart' -> CART_NOT_FOUND), идентификатор — в сообщении.
+                throw new NotFoundError('cart', $token);
             }
 
             return $cart;
@@ -165,7 +201,7 @@ class PromoCodeController extends Controller
             $cart = Cart::query()->whereKey((int) $cartId)->where('status', 'active')->first();
 
             if ($cart === null) {
-                throw new NotFoundError('Cart not found.', 'CART_NOT_FOUND');
+                throw new NotFoundError('cart', $cartId);
             }
 
             return $cart;
@@ -223,16 +259,26 @@ class PromoCodeController extends Controller
         }
     }
 
+    /**
+     * Активный арендатор — строго из контекста запроса.
+     *
+     * БЕЗ отката «первая организация в БД». Дыра была двусторонней:
+     *   - публичный /validate без tenant-контекста попадал бы в произвольный
+     *     (первый по id) tenant и отвечал valid:true/valid:false по чужим
+     *     кодам — это oracle существования и утечка скидок между организациями;
+     *   - админский CRUD без контекста молча начинал жить в чужом tenant'е.
+     * OrganizationContext спроектирован fail-closed (`id()` бросает
+     * TenantContextMissingError), и контроллер обязан следовать этому правилу,
+     * а не обходить его собственным fallback'ом.
+     */
     private function organizationId(): int
     {
-        $contextId = $this->context->tryId();
+        $contextId = $this->context->id(PromoCode::class);
 
-        if ($contextId !== null && ctype_digit((string) $contextId)) {
-            return (int) $contextId;
+        if (! ctype_digit($contextId)) {
+            throw new TenantContextMissingError(PromoCode::class);
         }
 
-        return (int) (\Nabilet\Modules\Core\Organizations\Models\Organization::query()
-            ->orderBy('id')
-            ->value('id') ?? 0);
+        return (int) $contextId;
     }
 }
