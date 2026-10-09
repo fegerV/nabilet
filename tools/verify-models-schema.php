@@ -137,11 +137,12 @@ const INVENTED_FIELDS = [
         'event_type' => 'names event_type/properties; analytics_events stores event_name/properties_json',
         'properties' => 'names event_type/properties; analytics_events stores event_name/properties_json',
     ],
-    'ApiKey' => [
-        'abilities' => 'names token_hash/abilities/last_used_at; api_keys stores key_hash/scopes_json and has NO last-used column at all -- the COUNT of such columns returned 0 (REVIEW §3.19)',
-        'last_used_at' => 'names token_hash/abilities/last_used_at; api_keys stores key_hash/scopes_json and has NO last-used column at all -- the COUNT of such columns returned 0 (REVIEW §3.19)',
-        'token_hash' => 'names token_hash/abilities/last_used_at; api_keys stores key_hash/scopes_json and has NO last-used column at all -- the COUNT of such columns returned 0 (REVIEW §3.19)',
-    ],
+    // `ApiKey` is deliberately absent: `app/Modules/System/Models/ApiKey.php`
+    // declared `token_hash`, `abilities` and `last_used_at`, none of which is a
+    // column. The model was rewritten against the real DDL
+    // (`key_prefix`, `key_hash`, `scopes_json`, `expires_at`, `revoked_at`) and
+    // the three entries were removed here in the same change — a ratchet that
+    // keeps an entry after the debt is paid stops being a ratchet.
     'Cart' => [
         'currency' => 'names currency/total_amount; carts stores total_price and has no currency column',
         'total_amount' => 'names currency/total_amount; carts stores total_price and has no currency column',
