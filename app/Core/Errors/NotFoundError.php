@@ -23,9 +23,25 @@ class NotFoundError extends AppError
             $resourceId === ''
                 ? sprintf('%s not found.', $resource)
                 : sprintf('%s not found: %s.', $resource, $resourceId),
-            strtoupper($resource) . '_NOT_FOUND',
+            self::codeFor($resource),
             404,
             $context,
         );
+    }
+
+    /**
+     * SCREAMING_SNAKE код ошибки по имени ресурса.
+     *
+     * `strtoupper('Hall row')` дал бы «HALL ROW_NOT_FOUND» — с пробелом внутри
+     * константы; контракт требует HALL_ROW_NOT_FOUND. Поэтому пробелы и дефисы
+     * превращаются в подчёркивания (snake_case-имена при этом не меняются:
+     * 'promo_code' -> PROMO_CODE_NOT_FOUND). Это единственный генератор кода в
+     * этом классе: вызывающий не может передать в `resource` текст сообщения и
+     * получить на провод «CART NOT FOUND._NOT_FOUND» (дефект, из-за которого
+     * клиентский бранчинг по `error.code` молча ломался).
+     */
+    private static function codeFor(string $resource): string
+    {
+        return strtoupper(str_replace([' ', '-'], '_', trim($resource))) . '_NOT_FOUND';
     }
 }

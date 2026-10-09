@@ -2976,7 +2976,8 @@ components:
       properties:
         code: { type: string }
         cart_id: { type: string, nullable: true }
-        order_amount: { type: integer, description: Integer minor units (kopecks) }
+        cart_token: { type: string, nullable: true, description: Guest cart token (X-Cart-Token); alternative to cart_id }
+        order_amount: { type: integer, description: Integer minor units (kopecks). Used when there is no cart yet; scope event/category cannot be checked against a bare amount and such codes are rejected with an explicit reason. }
 
     PromoCodeValidation:
       type: object
