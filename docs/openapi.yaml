@@ -2152,7 +2152,11 @@ components:
     PaginationMeta:
       type: object
       properties:
-        page: { type: integer }
+        # `current_page`, не `page`: это форма Laravel
+        # (`LengthAwarePaginator::toArray()`) и то, что читает `PageMeta` в
+        # `resources/js/lib/api.ts`. Восемь списков API отдают её; документ
+        # объявлял `page` и расходился с ними.
+        current_page: { type: integer }
         per_page: { type: integer }
         total: { type: integer }
         last_page: { type: integer }

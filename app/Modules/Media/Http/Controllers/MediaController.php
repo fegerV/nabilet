@@ -115,8 +115,14 @@ class MediaController extends Controller
 
             return response()->json([
                 'data' => MediaAssetResource::collection($slice),
+                // Ключ — `current_page`, как в остальных списках и в типе
+                // `PageMeta` витрины. Здесь стояло `page`: контракт объявлял
+                // именно его, и этот контроллер был единственным, кто контракт
+                // соблюдал, — то есть расходился с семью другими. Прав оказался
+                // код, а не документ: `current_page` — форма Laravel
+                // (`LengthAwarePaginator::toArray()`), её и читает фронтенд.
                 'meta' => [
-                    'page' => $page,
+                    'current_page' => $page,
                     'per_page' => $perPage,
                     'total' => $total,
                     'last_page' => max(1, (int) ceil($total / $perPage)),
@@ -140,7 +146,7 @@ class MediaController extends Controller
         return response()->json([
             'data' => MediaAssetResource::collection($paginator->items()),
             'meta' => [
-                'page' => $paginator->currentPage(),
+                'current_page' => $paginator->currentPage(),
                 'per_page' => $paginator->perPage(),
                 'total' => $paginator->total(),
                 'last_page' => $paginator->lastPage(),
