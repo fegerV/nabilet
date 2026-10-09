@@ -23,8 +23,10 @@ class CheckinServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        // Load routes for check-in endpoints
-        $this->loadRoutesFrom(__DIR__ . '/../routes/api.php');
+        // Маршруты модуля подключены централизованно в routes/api.php, внутри
+        // группы /api/v1. Загрузка отсюда зарегистрировала бы их второй раз —
+        // в корне, без префикса и вне API-группы middleware. См.
+        // tools/verify-route-ownership.php.
 
         // Load views if needed
         // $this->loadViewsFrom(__DIR__ . '/../resources/views', 'checkin');

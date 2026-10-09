@@ -82,7 +82,7 @@ placeholder админ-секций `AdminPlaceholderPage.vue` (только д�
 | Уведомления / почта | 🟡 | Письма и вебхуки подключены и протестированы; production SMTP/cron не настроены |
 | Auth (reset/verify email) | 🟡 | Логин/роли есть; восстановление пароля и верификация — заглушки |
 | Инфраструктура (Docker / деплой / бэкапы / мониторинг / ротация секретов / 152-ФЗ / PII-логи) | 🟡 | Docker-файлы и `docs/deploy-timeweb.md` есть; образ не собирался; бэкапы/мониторинг/ротация/логирование без PII не проверены |
-| CI | 🟡 | `.github/workflows/ci.yml` гонит dependency-free верификаторы ядра; **не запускает PHPUnit и Vitest**, не собирает образ |
+| CI | 🟢 | `.github/workflows/ci.yml` гоняет dependency-free верификаторы ядра, **PHPUnit** на MySQL 8.4, **Vitest + vue-tsc + production build**, собирает образ и применяет spec-бандл к MySQL |
 
 ---
 
@@ -126,7 +126,12 @@ placeholder админ-секций `AdminPlaceholderPage.vue` (только д�
    честный «Раздел не найден» с названием введённого сегмента и подсказкой по
    опечатке (Левенштейн, порог ≤ 2). Тест: `tests/Unit/Admin/adminNotFound.test.ts`.
 3. **CI:** добавить шаги `php vendor/bin/phpunit` + `vitest run` + `docker build` (после
-   появления воспроизводимого `composer install`).
+   появления воспроизводимого `composer install`). — **✅ сделано.** В `ci.yml` пять
+   job'ов: `verify` (dependency-free верификаторы, включая `verify-route-ownership`),
+   `phpunit` (MySQL 8.4 + `composer install` из коммитнутого `composer.lock`),
+   `frontend` (`npm ci` → `vue-tsc` → `vitest` → `vite build` → проверка, что бандл
+   действительно выпущен), `schema` (применение spec-бандла и сверка двух его
+   рендеров) и `docker` (сборка образа).
 
 ### P2 — полнота
 6. **Embed-виджет:** довести до рабочего состояния или явно пометить experimental/out-of-scope.

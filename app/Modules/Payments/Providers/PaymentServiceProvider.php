@@ -43,6 +43,9 @@ class PaymentServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
-        $this->loadRoutesFrom(__DIR__ . '/../routes/api.php');
+        // Маршруты модуля подключены централизованно в routes/api.php, внутри
+        // группы /api/v1. Загрузка отсюда зарегистрировала бы их второй раз —
+        // в корне, без префикса и вне API-группы middleware. См.
+        // tools/verify-route-ownership.php.
     }
 }
