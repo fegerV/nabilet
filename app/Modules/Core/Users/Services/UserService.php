@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Nabilet\Core\Errors\ValidationError;
 use Nabilet\Modules\Auth\Services\SessionIssuer;
+use Nabilet\Modules\Core\Users\Domain\UserStatus;
 use Nabilet\Modules\Core\Users\Models\User;
 use Nabilet\Modules\Core\Users\Repositories\UserRepository;
 
@@ -85,7 +86,7 @@ class UserService
         // `status` в `active` — это разблокировка: отзывать нечего, наоборот,
         // пользователю снова разрешён вход.
         $revokeSessions = array_key_exists('password', $data)
-            || (array_key_exists('status', $data) && $data['status'] !== 'active');
+            || (array_key_exists('status', $data) && $data['status'] !== UserStatus::ACTIVE);
 
         return DB::transaction(function () use ($user, $data, $revokeSessions): User {
             $updated = $this->repository->update($user, $data);
@@ -103,11 +104,29 @@ class UserService
         return $this->repository->delete($user);
     }
 
+    /**
+     * Проверить учётные данные и право на вход.
+     *
+     * Статус — часть аутентификации, а не отдельный флаг рядом с ней. До этой
+     * правки метод сверял только хеш пароля, поэтому `status = 'banned'`
+     * действовал до первого логина: админ отзывал сессии (см.
+     * `UserSessionRevocationTest`), а забаненный получал новые тем же паролем.
+     * Отзыв сессий и отказ во входе — половины одного правила.
+     *
+     * Возврат `null` вместо отдельной ошибки — сознательно: ответ на «неверный
+     * пароль» и на «учётная запись заблокирована» обязан совпадать, иначе вход
+     * превращается в оракул состояния чужого аккаунта (та же логика, что у
+     * `forgotPassword`, который всегда отвечает 204).
+     */
     public function authenticate(string $email, string $password): ?User
     {
         $user = $this->repository->findByEmail($email);
 
         if (!$user || !Hash::check($password, $user->password)) {
+            return null;
+        }
+
+        if (!UserStatus::mayAuthenticate($user->status)) {
             return null;
         }
 

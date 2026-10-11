@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Nabilet\Modules\Auth\Http\Controllers;
 
 use Illuminate\Routing\Controller;
+use Nabilet\Core\Errors\AuthError;
 use Nabilet\Core\Errors\ValidationError;
 use Nabilet\Modules\Auth\Http\Requests\ForgotPasswordRequest;
 use Nabilet\Modules\Auth\Http\Requests\RegisterRequest;
@@ -76,9 +77,18 @@ class AuthController extends Controller
         );
 
         if (!$user) {
-            return response()->json([
-                'error' => 'Invalid credentials'
-            ], 401);
+            // §66: плоский `{"error": "Invalid credentials"}` был последним
+            // исключением из контракта. Ратчет `tools/verify-error-envelope.php`
+            // держал его с пометкой «заблокировано перестройкой аутентификации»;
+            // перестройка выполнена (bearer-guard на `user_sessions`), поэтому
+            // причина перестала быть верной и запись снята.
+            //
+            // Код `bad_credentials` — не украшение. `resources/js/lib/api.ts`
+            // на любой 401 стирает сохранённый токен, КРОМЕ этого кода: иначе
+            // неудачная попытка входа выкидывала бы уже открытую сессию. До
+            // этой правки сервер не отдавал код вообще, и исключение на клиенте
+            // было недостижимым.
+            throw new AuthError('Invalid email or password.', 'bad_credentials', 401);
         }
 
         $user->load('roles');

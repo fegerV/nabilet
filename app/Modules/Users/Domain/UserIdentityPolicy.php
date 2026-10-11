@@ -11,10 +11,22 @@ namespace Nabilet\Modules\Users\Domain;
  * `tools/repro-user-identity.sql`; they are collected in REVIEW §3.17.
  *
  * WHAT IS DELIBERATELY NOT HERE
- *   `users.status` has no CHECK and no agreed vocabulary, so the status is never
- *   validated — only `deleted_at` is used as the deletion marker, because that is
- *   the column that exists. Inventing a status vocabulary would be a decision the
- *   spec bundle has not made (§3.11).
+ *   `users.status` is not validated by this policy: its vocabulary lives in
+ *   `Nabilet\Modules\Core\Users\Domain\UserStatus` (`active` / `inactive` /
+ *   `banned`) and is enforced where it belongs — at authentication, by
+ *   `UserService::authenticate()`. That class exists because the vocabulary was
+ *   previously written down in exactly one place, as the string
+ *   `in:active,inactive,banned` inside a controller rule, so nothing but that one
+ *   endpoint knew it and a ban had no effect on logging in.
+ *
+ *   The column is now backed by a CHECK in the schema as well —
+ *   `ck_users_status` (split `013_users_status_check.sql`), the same three values.
+ *   Code stays fail-closed regardless: an unrecognised value refuses the login
+ *   rather than allowing it, which covers rows written before the constraint
+ *   existed.
+ *
+ *   Only `deleted_at` is used as the deletion marker, because that is the column
+ *   that exists.
  *
  *   Password strength, rate limits and session handling belong elsewhere; this
  *   policy answers only "is this identity usable, and may it take this address".
