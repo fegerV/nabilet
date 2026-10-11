@@ -485,6 +485,26 @@ jobs:
       - name: Production build
         run: npm run build
 
+      # The shell is a contract between two jobs. The PHP job injects its
+      # server-side SEO block into `dist/index.html`, which makes it depend on
+      # four things in that markup: `<title>`, `<meta name="description">`,
+      # `</head>` and `<div id="app"></div>`. It cannot check them itself: it has
+      # no build, because `dist/` is not tracked and the PHP job never runs Vite.
+      # So the check lives here, in the one place the build exists.
+      #
+      # The PHP suite runs against the fixture `tests/Fixtures/storefront-shell.html`
+      # instead of a build artifact, so without this step a frontend rename of
+      # `#app` would go unnoticed: the event page would silently lose its
+      # server-rendered text and, with it, the whole point of the SEO work (P-20).
+      - name: The built shell keeps the contract the PHP injector relies on
+        run: |
+          set -e
+          for needle in '<div id="app"></div>' '<title>' '<meta name="description"' '</head>'; do
+            grep -qF "$needle" dist/index.html \
+              || { echo "::error::dist/index.html lost '$needle' - the server-side SEO injection is broken"; exit 1; }
+          done
+          echo "shell contract intact"
+
       # The build output is what nginx actually serves. If it is missing, every
       # other check can be green while the deployed site is blank.
       - name: The bundle was emitted

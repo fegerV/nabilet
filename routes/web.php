@@ -15,7 +15,12 @@ use Illuminate\Support\Facades\Route;
  */
 
 Route::get('/', function () {
-    $indexFile = __DIR__ . '/../dist/index.html';
+    // Путь к оболочке читается из того же ключа, что и в
+    // `EventPageController::spaShellPath()`. Вопрос «собрана ли витрина» обязан
+    // иметь один ответ: раньше здесь стоял жёсткий `__DIR__ . '/../dist/index.html'`,
+    // и вторая копия решения расходилась с первой при любом изменении. Заодно
+    // тесты получили возможность подменить путь вместо удаления реальной сборки.
+    $indexFile = (string) config('nabilet.storefront.shell_path', base_path('dist/index.html'));
 
     if (!file_exists($indexFile)) {
         return response()->json([
