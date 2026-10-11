@@ -182,5 +182,6 @@ async function submit(): Promise<void> {
           создаются вовсе.
         -->
       </div>
+    </div>
   </div>
 </template>
