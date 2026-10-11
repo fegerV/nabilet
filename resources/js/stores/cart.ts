@@ -196,14 +196,20 @@ export const useCartStore = defineStore('cart', () => {
    *
    * Нужен при полной перезагрузке на шаге оформления: стор живёт в памяти, а
    * холды на сервере — нет, поэтому без восстановления F5 на `/checkout` рисует
-   * «корзина пуста» поверх реально удержанных мест. Идентификаторы здесь —
-   * публичные id инвентаря (как их отдаёт `CartItemResource`); для оформления
-   * этого достаточно: заказ строит сервер по своей корзине, а не по нашему списку.
+   * «корзина пуста» поверх реально удержанных мест.
+   *
+   * `cartItemIds` — B2: пары «id места → `cart_items.id`» из `GET /cart`.
+   * `CartItemResource` отдаёт настоящий `cart_items.id`, и именно его принимает
+   * `DELETE /cart/items/{id}` (`CartController::removeItem(int $itemId)`).
+   * Без восстановления этой карты снятие холда с восстановленного места уходило
+   * на DELETE с внутренним inventory-ID (или без id вовсе) и не отпускало
+   * серверный холд: место оставалось занятым до истечения TTL.
    */
-  function hydrate(items: CartSeat[]): void {
+  function hydrate(items: CartSeat[], cartItemIds?: Record<string, string>): void {
     if (items.length === 0) return
     seats.value = [...items]
     selectedIds.value = new Set(items.map((s) => s.id))
+    if (cartItemIds) meta.value = { ...cartItemIds }
     if (holdSecondsLeft.value === 0 && holdExpiresAtMs.value === null) startHold()
   }
 

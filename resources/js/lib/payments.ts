@@ -18,7 +18,7 @@
  *     предъявить нечего; без заголовка сервер отвечает 404.
  */
 
-import { send } from './api'
+import { get, send } from './api'
 
 /** Ресурс платежа (подмножество, нужное витрине). */
 export interface PaymentResource {
@@ -30,6 +30,16 @@ export interface PaymentResource {
   amount?: number | string
   currency?: string
   payment_url?: string | null
+}
+
+/** Статусы платежа из `ck_payments_status` (спек `payments`). */
+export type PaymentStatus = 'pending' | 'waiting_for_capture' | 'succeeded' | 'canceled' | 'failed' | string
+
+/** Дальше опрашивать сервер бессмысленно: решение принято. */
+export const TERMINAL_PAYMENT_STATUSES: readonly string[] = ['succeeded', 'canceled', 'failed']
+
+export function isTerminalPaymentStatus(status: string | undefined | null): boolean {
+  return TERMINAL_PAYMENT_STATUSES.includes(String(status ?? '').toLowerCase())
 }
 
 export interface InitiatePaymentResult {
@@ -89,6 +99,48 @@ export async function confirmDemoPayment(paymentId: string): Promise<PaymentReso
   const res = await send<PaymentResource>('/payments/demo-pay', 'POST', { payment_id: paymentId })
 
   return res.data
+}
+
+/* ── Авторитетный статус (C2) ───────────────────────────────────────────────
+ * Страница результата раньше доверяла параметру роута: неизвестное значение
+ * (`#/payment/unknown-result`) показывало «Билеты готовы», потому что дефолтом
+ * стоял success. Теперь экран спрашивает сервер, а параметр роута — только
+ * подсказка. Доступ: сотрудник, владелец заказа либо гость с `X-Cart-Token`
+ * (подставляет api.ts) — тот же capability, что у `POST /payments`.
+ */
+
+/** Прочитать платёж с сервера: `GET /payments/{payment}` → `{ data: Payment }`. */
+export async function fetchPayment(paymentId: string | number): Promise<PaymentResource> {
+  const res = await get<PaymentResource>(`/payments/${encodeURIComponent(String(paymentId))}`)
+
+  return res.data
+}
+
+/**
+ * Запомнить платёж в sessionStorage: уход на оплату — полная навигация, и по
+ * возврату страница результата должна знать, ЧТО у сервера спрашивать.
+ * sessionStorage, а не localStorage: сценарий живёт одной вкладкой.
+ */
+const PAYMENT_STORAGE_KEY = 'nabilet_last_payment'
+
+export function rememberPaymentId(paymentId: string | number | null | undefined): void {
+  try {
+    const value = paymentId == null ? '' : String(paymentId)
+    if (value) sessionStorage.setItem(PAYMENT_STORAGE_KEY, value)
+    else sessionStorage.removeItem(PAYMENT_STORAGE_KEY)
+  } catch {
+    /* приватный режим — просто спросим по подсказке роута */
+  }
+}
+
+export function recallPaymentId(): string | null {
+  try {
+    const value = sessionStorage.getItem(PAYMENT_STORAGE_KEY)
+
+    return value && value !== '' ? value : null
+  } catch {
+    return null
+  }
 }
 
 /**
