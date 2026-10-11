@@ -105,6 +105,11 @@ class PaymentController extends Controller
             // `bail`+`integer` MySQL приводит строку к числу (`id = '1abc'`
             // совпадает с 1), и `exists` пропускал бы мусор.
             'order_id' => ['bail', 'required'],
+            // S-07: ключ обязателен по существу, но источником может быть и
+            // заголовок `Idempotency-Key` (имя из контракта) — поэтому здесь он
+            // `nullable`, а требование «непустой» выставляет сервис, который
+            // умеет читать только итоговое значение. Правило `max:255` остаётся:
+            // оно ловит тело до сервиса и даёт штатный 422 в конверте Laravel.
             'idempotency_key' => ['nullable', 'string', 'max:255'],
         ]);
 
@@ -126,15 +131,25 @@ class PaymentController extends Controller
             throw new NotFoundError('Order', (string) $validated['order_id']);
         }
 
+        // S-07: ключ идемпотентности обязателен. Контракт объявляет его
+        // заголовком `Idempotency-Key` (`docs/openapi.yaml`), витрина шлёт телом
+        // `idempotency_key` — принимаем оба, чтобы требование не зависело от
+        // транспорта. Заголовок может прийти массивом (дубли), поэтому в сервис
+        // уходит только строка; пустое значение отсекает `initiatePayment()`.
+        $idempotencyKey = $validated['idempotency_key'] ?? $request->header('Idempotency-Key');
+
         $result = $this->paymentService->initiatePayment(
             (int) $order->id,
-            ['idempotency_key' => $validated['idempotency_key'] ?? null],
+            ['idempotency_key' => is_string($idempotencyKey) ? $idempotencyKey : null],
         );
 
+        // 200 на повторе, 201 только на реальном создании: клиент по коду
+        // отличает «я только что начал платёж» от «я повторяю тот же запрос»,
+        // а не догадывается по телу ответа.
         return response()->json(['data' => [
             'payment' => $result['payment'],
             'confirmation_url' => $result['confirmation_url'],
-        ]], 201);
+        ]], $result['created'] ? 201 : 200);
     }
 
     /**
@@ -215,6 +230,38 @@ class PaymentController extends Controller
     }
 
     /**
+     * Возврат денег по платежу (ТЗ §85).
+     *
+     * `RefundService` был реализован полностью — валидация остатка, машина
+     * состояний возврата, запрос к провайдеру, RefundLedger — но НЕ вызывался ни
+     * одним маршрутом: возвраты существовали только в коде и тестах. Оператор не
+     * мог вернуть деньги покупателю ни из админки, ни через API.
+     *
+     * Роут закрыт `admin`: возврат — финансовая операция, её не должен уметь
+     * инициировать сам покупатель.
+     */
+    public function refund(Request $request, Payment $payment): JsonResponse
+    {
+        $this->assertCanSee($request, $payment);
+
+        $validated = $request->validate([
+            // Без `amount` возвращается весь остаток платежа.
+            'amount' => ['nullable', 'integer', 'min:1'],
+            'reason' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        $payment = $this->paymentService->refundPayment(
+            $payment,
+            $validated['amount'] ?? null,
+            $validated['reason'] ?? null,
+        );
+
+        return response()->json([
+            'data' => $payment->load(['refunds', 'transactions']),
+        ]);
+    }
+
+    /**
      * Fail-closed: чужой платёж неотличим от несуществующего.
      */
     private function assertCanSee(Request $request, Payment $payment): void
@@ -245,6 +292,22 @@ class PaymentController extends Controller
         if (! (bool) config('nabilet.payment.demo_mode', false)) {
             return response()->json([
                 'error' => ['code' => 'DEMO_DISABLED', 'message' => 'Demo mode is off'],
+            ], 403);
+        }
+
+        // Второй барьер (аудит R-13). Маршрут анонимен и подтверждает оплату, а
+        // защищён был ТОЛЬКО флагом из `.env`. Флаг переживает копирование
+        // конфига между окружениями, поэтому окружение проверяется независимо от
+        // него: в продакшене эндпоинт отказывает даже при включённом флаге.
+        // `ProductionSafetyProvider` не даёт приложению подняться с этим флагом,
+        // но барьер в самом эндпоинте не зависит от того, зарегистрирован ли
+        // провайдер.
+        if (app()->environment('production')) {
+            return response()->json([
+                'error' => [
+                    'code' => 'DEMO_FORBIDDEN',
+                    'message' => 'Demo payments are disabled in production',
+                ],
             ], 403);
         }
 

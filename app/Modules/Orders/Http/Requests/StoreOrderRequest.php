@@ -26,7 +26,25 @@ class StoreOrderRequest extends FormRequest
             'items' => ['required', 'array', 'min:1'],
             'items.*.inventory_item_id' => ['bail', 'required', 'integer', 'exists:inventory_items,id'],
             'items.*.quantity' => ['required', 'integer', 'min:1', 'max:10'],
-            'items.*.price' => ['required', 'integer', 'min:0'],
+            // `items.*.price` ЗДЕСЬ СОЗНАТЕЛЬНО ОТСУТСТВУЕТ.
+            //
+            // Цена всегда берётся из `inventory_items.price_amount` — клиент на
+            // неё не влияет (`OrderService::createOrder`). Раньше правило
+            // `['required','integer','min:0']` стояло, но значение не
+            // использовалось: контракт API обещал поле, которого сервер не
+            // читает. Это не уязвимость сегодня и мина под завтра.
+            //
+            // Почему мина. `$request->validated()` возвращает ТОЛЬКО поля, для
+            // которых объявлено правило. Пока правило есть, `price` попадает в
+            // массив, который уходит в сервис, и достаточно одного рефакторинга
+            // (`$order->items()->create($itemData)` вместо поштучного переноса
+            // полей), чтобы клиентская цена оказалась рядом с `total_amount` в
+            // БД. Убрав правило, мы убираем и поле из `validated()` — то есть
+            // закрываем не симптом, а сам канал.
+            //
+            // Если понадобится сверять цену с клиентом (например, показывать
+            // «цена изменилась»), это делается сравнением с серверной ценой и
+            // отказом при расхождении, а не доверием присланному числу.
             'promo_code' => ['nullable', 'string', 'max:64'],
             'customer_email' => ['required', 'email', 'max:255'],
             'customer_name' => ['required', 'string', 'max:255'],

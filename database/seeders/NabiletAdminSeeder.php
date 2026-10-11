@@ -107,6 +107,21 @@ class NabiletAdminSeeder extends Seeder
             }
         }
 
+        // Роли и права (выше) нужны ВСЕГДА: без них RBAC не работает, а
+        // установщик вызывает `db:seed --force` сразу после миграций.
+        //
+        // Демо-организация и три учётки с паролями, опубликованными в исходниках
+        // (`admin@nabilet.local / admin123` с полной ролью admin), — это данные
+        // для разработки, и на боевом стенде они означают открытую настежь
+        // админку. Поэтому создаём их только вне production или по явному
+        // флагу NABILET_SEED_DEMO=true (аудит установщика B-2).
+        if (! $this->shouldSeedDemoData()) {
+            $this->command?->warn('Демо-учётки не создаются: production без NABILET_SEED_DEMO=true.');
+            echo "NABILET roles/permissions seeded; demo accounts skipped (production).\n";
+
+            return;
+        }
+
         // Организация. public_id — ULID-совместимая строка char(26); генерим
         // только при вставке, иначе повторный запуск менял бы публичный
         // идентификатор и ломал уже выданные ссылки.
@@ -176,5 +191,21 @@ class NabiletAdminSeeder extends Seeder
         echo "  Admin:   admin@nabilet.local / admin123\n";
         echo "  Manager: manager@nabilet.local / manager123\n";
         echo "  Support: support@nabilet.local / support123\n";
+    }
+
+    /**
+     * Создавать ли демо-организацию и демо-учётки.
+     *
+     * `false` в production, пока явно не выставлен `NABILET_SEED_DEMO=true`.
+     * В остальных окружениях (local, testing) демо-данные нужны как раньше —
+     * поэтому тесты и локальная разработка не меняют поведение.
+     */
+    private function shouldSeedDemoData(): bool
+    {
+        if (config('nabilet.seed_demo') === true) {
+            return true;
+        }
+
+        return ! app()->environment('production');
     }
 }

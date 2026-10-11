@@ -25,4 +25,8 @@ Route::prefix('orders')->middleware(['auth:api'])->group(function () {
     // открывал заказ 1. С ограничением — 404 (fail-closed).
     Route::get('/{order}', [OrderController::class, 'show'])->whereNumber('order');
     Route::post('/{order}/cancel', [OrderController::class, 'cancel'])->middleware('admin')->whereNumber('order');
+    // Возврат денег по заказу (ТЗ §85). Диалог отмены в админке обещал возврат
+    // по оплаченному заказу, но выполнять его было нечем — `RefundService` не
+    // вызывался ни одним маршрутом.
+    Route::post('/{order}/refund', [OrderController::class, 'refund'])->middleware('admin')->whereNumber('order');
 });

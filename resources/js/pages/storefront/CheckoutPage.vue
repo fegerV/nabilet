@@ -39,7 +39,7 @@ import { useCartStore, seatLineLabel, seatLineTotal } from '@/stores/cart'
 import { useUiStore } from '@/stores/ui'
 import { checkoutSession, fetchCart } from '@/lib/inventory'
 import { ApiError } from '@/lib/api'
-import { anchorDemoUrl, initiatePayment } from '@/lib/payments'
+import { anchorDemoUrl, initiatePayment, newIdempotencyKey } from '@/lib/payments'
 import { money, ticketsLabel } from '@/lib/format'
 import { cn } from '@/lib/cn'
 
@@ -64,6 +64,22 @@ const submitted = ref(false)
 const serverErrors = ref<Record<string, string>>({})
 /** Идёт восстановление корзины из `GET /cart` (F5 или возврат с оплаты). */
 const restoring = ref(false)
+
+/**
+ * Ключ идемпотентности платежа (S-07).
+ *
+ * Живёт в пределах одного «намерения оплатить»: пока пользователь на этой
+ * странице и не получил ошибку, повторные вызовы `pay()` (двойной клик,
+ * ретрай транспорта) шлют ОДИН и тот же ключ — сервер вернёт тот же платёж
+ * вместо второго. Сбрасывается после ошибки: новая попытка после сбоя — это
+ * уже другой запрос, и она должна получить новый платёж, а не прежний.
+ */
+const paymentKey = ref('')
+
+function idempotencyKey(): string {
+  if (!paymentKey.value) paymentKey.value = newIdempotencyKey()
+  return paymentKey.value
+}
 
 const localErrors = computed(() => {
   const out: Record<string, string> = {}
@@ -146,6 +162,11 @@ function applyServerErrors(error: ApiError): void {
 }
 
 function handlePayError(error: unknown): void {
+  // Любая ошибка завершает попытку: следующий клик — это новый запрос и он
+  // обязан получить новый ключ идемпотентности, иначе сервер вернул бы платёж
+  // прежней (неудавшейся) попытки вместе с её мёртвой ссылкой на оплату.
+  paymentKey.value = ''
+
   if (!(error instanceof ApiError)) {
     ui.notify('rose', 'Оплата не началась', error instanceof Error ? error.message : 'Попробуйте ещё раз')
     return
@@ -219,8 +240,9 @@ async function pay(): Promise<void> {
     cart.setOrder(order.order_id, Number(order.total_amount))
 
     // 3. Платёж. Гостевой заказ авторизуется заголовком X-Cart-Token,
-    //    который подставляет api.ts (`PaymentController::mayPay()`).
-    const { confirmation_url } = await initiatePayment(order.order_id)
+    //    который подставляет api.ts (`PaymentController::mayPay()`). Ключ
+    //    идемпотентности обязателен и стабилен в пределах попытки (S-07).
+    const { confirmation_url } = await initiatePayment(order.order_id, idempotencyKey())
 
     if (!confirmation_url) {
       ui.notify('sun', 'Нет ссылки на оплату', 'Заказ создан. Попробуйте оплатить ещё раз.')

@@ -86,7 +86,27 @@ class StoreEventRequest extends FormRequest
                     ->where(fn ($query) => $query->where('organization_id', $this->resolveOrganizationId())),
             ],
             'public_id' => ['nullable', 'string', 'max:64', 'unique:events,public_id'],
-            'slug' => ['required', 'string', 'max:255'],
+            // `slug` — ЭТО ПУБЛИЧНЫЙ АДРЕС (`/event/{slug}/{publicId}`), поэтому
+            // проверка уникальности ГЛОБАЛЬНАЯ, без оговорки по организации
+            // (SEO-аудит P-03).
+            //
+            // Раньше правило было `['required','string','max:255']`, а
+            // уникальность обеспечивал индекс `uq_events_org_slug` —
+            // организация + slug. Пока организация одна, всё сходилось; при
+            // двух второй организатор мог создать событие с уже занятым
+            // адресом, и `/event/novyj-god/…` открывал бы произвольное из двух.
+            //
+            // Теперь индекс глобальный (`uq_events_slug`, миграция
+            // 2026_10_11_000100), и без этого правила коллизия превратилась бы
+            // в `QueryException` → 500 вместо внятного 422 с указанием поля.
+            // Порядок «сначала валидация, потом БД» здесь не косметика:
+            // администратор должен видеть, какое поле конфликтует.
+            'slug' => [
+                'required',
+                'string',
+                'max:255',
+                Rule::unique('events', 'slug'),
+            ],
             'title' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
             'short_description' => ['nullable', 'string', 'max:500'],
@@ -145,6 +165,30 @@ class StoreEventRequest extends FormRequest
             'poster_file' => ['nullable', 'file', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
             'seo_title' => ['nullable', 'string', 'max:255'],
             'seo_description' => ['nullable', 'string', 'max:500'],
+            // Управление индексацией страницы (аудит P-23).
+            //
+            // Поле читалось рендером страницы с самого начала, но записать его
+            // через API было НЕЧЕМ: правила для `robots` не существовало, а
+            // `validated()` собирает результат по списку правил, поэтому
+            // значение не доходило до модели. Теперь поле управляемо — и
+            // именно поэтому требует проверки: его содержимое уходит в
+            // `<meta name="robots">` дословно.
+            //
+            // Закрытое правило, а не `in:`: значение — это СПИСОК директив
+            // (`noindex, nofollow`), а `Rule::in` проверяет строку целиком.
+            'robots' => [
+                'nullable',
+                'string',
+                'max:255',
+                static function (string $attribute, mixed $value, \Closure $fail): void {
+                    if (is_string($value) && ! \Nabilet\Modules\Events\Domain\EventRobots::isValid($value)) {
+                        $fail(
+                            'Поле «robots» может содержать только директивы: '
+                            . implode(', ', \Nabilet\Modules\Events\Domain\EventRobots::ALLOWED) . '.'
+                        );
+                    }
+                },
+            ],
             'metadata' => ['nullable'],
         ];
     }
@@ -152,6 +196,8 @@ class StoreEventRequest extends FormRequest
     public function messages(): array
     {
         return [
+            'slug.unique' => 'Такой адрес мероприятия уже занят. Укажите другой — '
+                . 'он входит в публичную ссылку на страницу.',
             'poster_file.image' => 'Файл афиши должен быть изображением.',
             'poster_file.mimes' => 'Файл афиши должен быть в формате jpg, png или webp.',
             'poster_file.max' => 'Файл афиши не должен превышать 5 МБ.',

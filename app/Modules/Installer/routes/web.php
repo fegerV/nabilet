@@ -30,5 +30,16 @@ use Nabilet\Modules\Installer\Http\Controllers\InstallerController;
 // Web routes для установщика (HTML форма + JSON для fetch из мастера)
 Route::middleware(['web'])->group(function () {
     Route::get('/install', [InstallerController::class, 'show'])->name('installer.show');
-    Route::post('/install', [InstallerController::class, 'install'])->name('installer.install');
+
+    // POST-эндпоинты ограничены по частоте: до появления `install.lock` они
+    // открыты без аутентификации и CSRF, и без throttle возможна гонка
+    // «кто первым установит систему на свои креды» — бот против владельца
+    // (аудит установщика W-2).
+    Route::post('/install', [InstallerController::class, 'install'])
+        ->middleware('throttle:5,1')
+        ->name('installer.install');
+
+    Route::post('/install/test-database', [InstallerController::class, 'testDatabase'])
+        ->middleware('throttle:20,1')
+        ->name('installer.test-database');
 });

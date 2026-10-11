@@ -71,10 +71,32 @@ return Application::configure(basePath: dirname(__DIR__))
         // валит весь `schedule:run`, и тогда перестают работать и холды, и
         // очередь — а не только напоминания.
         \Nabilet\Modules\Orders\Console\SendEventRemindersCommand::class,
+        // Резервное копирование по расписанию (ТЗ §72). До этого сервис бэкапов
+        // не вызывался ниоткуда: ни команды, ни задачи в планировщике — отказ
+        // диска означал безвозвратную потерю данных.
+        \Nabilet\Modules\Backups\Console\RunBackupCommand::class,
+        // Сверка зависших платежей с провайдером (аудит R-10). Потерянное
+        // уведомление означало «деньги есть — заказа нет» навсегда: опрос
+        // провайдера не вызывался ниоткуда. По расписанию, поэтому регистрация
+        // обязательна — неизвестная команда в routes/console.php валит весь
+        // `schedule:run`.
+        \Nabilet\Modules\Payments\Console\ReconcilePaymentsCommand::class,
+        // Автоматическое завершение прошедших событий (SEO-аудит P-06). Без него
+        // `completed` ставился только вручную, прошедший концерт оставался
+        // `published`, и разметка обещала Google событие в будущем с билетами в
+        // наличии. По расписанию, поэтому регистрация обязательна.
+        \Nabilet\Modules\Events\Console\SyncEventStatusCommand::class,
     ])
     ->withMiddleware(function (Middleware $middleware): void {
         // ── Global stack, in order ───────────────────────────────────────────
         $middleware->append(\Nabilet\Core\Http\Middleware\AssignRequestId::class);
+        // Постоянные редиректы из таблицы `redirects` (ТЗ §37). Стоит в global
+        // stack, а не в группе `web`, по причине, которую легко упустить:
+        // групповое middleware исполняется только для СОВПАВШЕГО маршрута, а
+        // переименованный адрес — это именно тот случай, когда маршрута нет.
+        // Проверка идёт до tenancy: цель редиректа публична, а лишний запрос за
+        // организацией на каждый переход по старому адресу не нужен.
+        $middleware->append(\Nabilet\Modules\Seo\Http\Middleware\ResolveRedirect::class);
         $middleware->append(\Nabilet\Core\Http\Middleware\ResolveOrganizationContext::class);
         $middleware->append(\Nabilet\Core\Http\Middleware\ApplySecurityHeaders::class);
         // Запрет индексации служебных страниц (`X-Robots-Tag`). Стоит в global

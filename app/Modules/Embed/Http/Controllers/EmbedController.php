@@ -383,12 +383,12 @@ final class EmbedController extends Controller
      * The replay-protection key, from the header the contract names or from the
      * body the storefront sends.
      *
-     * The contract marks `Idempotency-Key` required on the three embed writes; the
-     * application treats it as optional on every write endpoint it has (no route
-     * applies the `idempotent` middleware). It is forwarded rather than enforced,
-     * because only `PaymentService::initiatePayment()` can actually honour it —
-     * enforcing presence where nothing deduplicates would be ceremony. The gap is
-     * recorded in `docs/PRODUCTION-READINESS.md` rather than papered over here.
+     * The contract marks `Idempotency-Key` required on the three embed writes, and
+     * since S-07 it is genuinely enforced: `PaymentService::initiatePayment()`
+     * refuses to create a payment without a key (422), so this endpoint cannot
+     * start a second payment for a double-submitted widget. The header is tried
+     * first because it is the contract's name; the body field is accepted because
+     * the storefront sends it that way.
      */
     private function idempotencyKey(Request $request): ?string
     {

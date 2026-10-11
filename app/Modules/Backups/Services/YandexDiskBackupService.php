@@ -1,14 +1,26 @@
 <?php
 
-namespace App\Modules\Backups\Services;
+declare(strict_types=1);
 
-use Illuminate\Support\Facades\Storage;
-use League\Flysystem\Adapter\Local;
-use League\Flysystem\Filesystem;
+namespace Nabilet\Modules\Backups\Services;
 
+/**
+ * Резервное копирование на Яндекс.Диск (ТЗ §72).
+ *
+ * ПРОСТРАНСТВО ИМЁН. Здесь стояло `App\Modules\Backups\Services` — единственный
+ * такой файл среди модулей. Composer его находил (`"App\\": "app/"`), поэтому
+ * ошибка не проявлялась в рантайме, но `tests/autoload.php` — тот самый
+ * загрузчик, которым `php tests/run.php` (быстрый гейт CI, без Composer) тянет
+ * код, — знает только `Nabilet\Core\`, `Nabilet\Modules\` и `Nabilet\Tests\`.
+ * Класс был недостижим для этого раннера, то есть свойство безопасности,
+ * которое здесь проверяется (пароль БД не попадает в командную строку), нельзя
+ * было закрепить тестом в гейте. Соседний провайдер модуля
+ * (`Nabilet\Modules\Backups\Providers`) назывался правильно с самого начала.
+ */
 class YandexDiskBackupService
 {
     protected $oauthToken;
+
     protected $uploadUrl = 'https://cloud-api.yandex.net/v1/disk/resources/upload';
 
     public function __construct()
@@ -17,33 +29,121 @@ class YandexDiskBackupService
     }
 
     /**
-     * Создание бэкапа базы данных
+     * Команда дампа БД.
+     *
+     * ПАРОЛЬ НЕ ПЕРЕДАЁТСЯ АРГУМЕНТОМ КОМАНДНОЙ СТРОКИ (аудит
+     * FINAL-ACCEPTANCE, B-2). `mysqldump -p<secret>` виден любому пользователю
+     * хоста через `ps auxf` в момент выполнения и оседает в истории shell и
+     * логах оркестраторов. Креденшелы уходят через `--defaults-extra-file`.
+     *
+     * `--single-transaction` — согласованный снимок InnoDB без блокировки
+     * таблиц (иначе дамп остановил бы продажи); `--routines --triggers` — потому
+     * что схема НАМЕРЕННО опирается на триггеры неизменяемости версий схемы
+     * залов: без них восстановление дало бы другую БД.
+     *
+     * Метод статический и чистый (никаких `config()`/`storage_path()`), чтобы
+     * его можно было проверить без файловой системы и без фреймворка — в том
+     * числе в dependency-free наборе тестов.
+     */
+    public static function buildDumpCommand(string $credentialsFile, string $database, string $backupPath): string
+    {
+        return sprintf(
+            'mysqldump --defaults-extra-file=%s --single-transaction --routines --triggers %s > %s',
+            escapeshellarg($credentialsFile),
+            escapeshellarg($database),
+            escapeshellarg($backupPath)
+        );
+    }
+
+    /**
+     * Содержимое временного файла креденшелов для `mysqldump`.
+     *
+     * Пароль ЗДЕСЬ ЕСТЬ — и это правильно: файл читает только `mysqldump`, он
+     * создаётся с правами 0600 и удаляется сразу после дампа. Опасен не файл, а
+     * аргумент командной строки, потому что его видят все.
+     *
+     * Значения квотируются: пароль со `"`, `\` или переводом строки иначе
+     * испортил бы файл (INI-формат), и дамп молча пошёл бы без пароля.
+     */
+    public static function credentialsFileContents(string $host, int $port, string $user, string $password): string
+    {
+        $quote = static fn (string $value): string => '"' . str_replace(['\\', '"'], ['\\\\', '\\"'], $value) . '"';
+
+        return "[client]\n"
+            . 'host=' . $quote($host) . "\n"
+            . 'port=' . $port . "\n"
+            . 'user=' . $quote($user) . "\n"
+            . 'password=' . $quote($password) . "\n";
+    }
+
+    /**
+     * Создание бэкапа базы данных.
      */
     public function createDatabaseBackup()
     {
-        $dbName = config('database.connections.mysql.database');
-        $dbUser = config('database.connections.mysql.username');
-        $dbHost = config('database.connections.mysql.host');
-        
-        $backupPath = storage_path("app/backups/db_{$dbName}_" . date('Y-m-d_H-i-s') . '.sql');
-        
-        // Выполняем mysqldump
-        $command = sprintf(
-            'mysqldump -h%s -u%s -p%s %s > %s',
-            escapeshellarg($dbHost),
-            escapeshellarg($dbUser),
-            escapeshellarg(config('database.connections.mysql.password')),
-            escapeshellarg($dbName),
-            escapeshellarg($backupPath)
-        );
+        $connection = (array) config('database.connections.mysql');
 
-        exec($command, $output, $exitCode);
+        $dbName = (string) ($connection['database'] ?? '');
+        $dbUser = (string) ($connection['username'] ?? '');
+        $dbHost = (string) ($connection['host'] ?? '127.0.0.1');
+        $dbPort = (int) ($connection['port'] ?? 3306);
+        $dbPassword = (string) ($connection['password'] ?? '');
+
+        if ($dbName === '') {
+            throw new \RuntimeException('Database name is not configured; cannot create a backup.');
+        }
+
+        $backupDir = storage_path('app/backups');
+
+        if (! is_dir($backupDir) && ! mkdir($backupDir, 0755, true) && ! is_dir($backupDir)) {
+            throw new \RuntimeException("Cannot create the backup directory: {$backupDir}");
+        }
+
+        $backupPath = $backupDir . "/db_{$dbName}_" . date('Y-m-d_H-i-s') . '.sql';
+
+        $credentialsFile = $this->writeCredentialsFile($dbHost, $dbPort, $dbUser, $dbPassword);
+
+        try {
+            exec(self::buildDumpCommand($credentialsFile, $dbName, $backupPath), $output, $exitCode);
+        } finally {
+            // Файл с паролем живёт ровно столько, сколько идёт дамп.
+            if (is_file($credentialsFile)) {
+                @unlink($credentialsFile);
+            }
+        }
 
         if ($exitCode !== 0) {
-            throw new \RuntimeException('Failed to create database backup');
+            if (is_file($backupPath)) {
+                @unlink($backupPath);
+            }
+
+            throw new \RuntimeException("Failed to create database backup (mysqldump exited with {$exitCode})");
         }
 
         return $backupPath;
+    }
+
+    /**
+     * Временный файл креденшелов для mysqldump.
+     *
+     * Права 0600 обязательны: файл содержит пароль БД. Состав содержимого —
+     * в `credentialsFileContents()` (чистый метод, проверяется тестом).
+     */
+    private function writeCredentialsFile(string $host, int $port, string $user, string $password): string
+    {
+        $path = tempnam(sys_get_temp_dir(), 'nabilet_dump_');
+
+        if ($path === false) {
+            throw new \RuntimeException('Cannot create a temporary credentials file for mysqldump');
+        }
+
+        if (file_put_contents($path, self::credentialsFileContents($host, $port, $user, $password)) === false) {
+            throw new \RuntimeException('Cannot write the temporary credentials file for mysqldump');
+        }
+
+        @chmod($path, 0600);
+
+        return $path;
     }
 
     /**
@@ -56,7 +156,7 @@ class YandexDiskBackupService
         }
 
         $fileName = basename($filePath);
-        $remotePath = $remotePath ?? "/backups/{$fileName}";
+        $remotePath = $remotePath ?? rtrim((string) config('services.yandex_disk.backups_path', '/backups'), '/') . "/{$fileName}";
 
         // Получаем URL для загрузки
         $ch = curl_init();
@@ -131,7 +231,9 @@ class YandexDiskBackupService
         $this->deleteDirectory($backupDir);
 
         // Загружаем на Яндекс.Диск
-        return $this->uploadToYandexDisk($archivePath, "/backups/full_{$timestamp}.zip");
+        $remoteDir = rtrim((string) config('services.yandex_disk.backups_path', '/backups'), '/');
+
+        return $this->uploadToYandexDisk($archivePath, "{$remoteDir}/full_{$timestamp}.zip");
     }
 
     /**

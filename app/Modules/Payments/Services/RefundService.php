@@ -43,6 +43,11 @@ final class RefundService
     public function refund(Payment $payment, ?int $amount = null, ?string $reason = null): Payment
     {
         return DB::transaction(function () use ($payment, $amount, $reason): Payment {
+            // Блокируем строку платежа на время транзакции: без этого два
+            // параллельных полных возврата читали одинаковый `totalRefunded = 0`,
+            // оба проходили проверку остатка и возвращали деньги дважды.
+            $payment = Payment::query()->whereKey($payment->id)->lockForUpdate()->firstOrFail();
+
             if ($payment->status !== PaymentStateMachine::SUCCEEDED) {
                 throw new DomainRuleViolation(
                     'Can only refund succeeded payments',
@@ -109,6 +114,12 @@ final class RefundService
                     'amount' => $refundAmount,
                     'currency' => $payment->currency,
                     'reason' => $reason ?? 'Refund',
+                    // Детерминированный ключ идемпотентности: провайдер обязан
+                    // узнать повторный запрос после сетевого таймаута. Раньше
+                    // провайдер генерировал `uniqid()` на каждый вызов, поэтому
+                    // повтор после неопределённого исхода воспринимался ЮKassa как
+                    // НОВЫЙ возврат — и деньги уходили дважды.
+                    'idempotency_key' => 'refund_' . $refund->public_id,
                 ]);
             } catch (\Throwable $e) {
                 // Провайдер не принял запрос — возврат неудачен, деньги не
@@ -146,17 +157,27 @@ final class RefundService
                 );
 
                 if ($outcome->isAllowed() && $outcome->orderStatus() !== null) {
-                    $order->update(['status' => $outcome->orderStatus()]);
+                    // Переход заказа применяется только если он ЛЕГАЛЕН по графу
+                    // машины состояний. Прямой `update()` раньше переводил в
+                    // `refunded` даже заказ, который никогда не был `paid`
+                    // (например, `expired` + автовозврат): статус терял историю,
+                    // а из `expired`/`cancelled`/`awaiting_payment` такого
+                    // перехода не существует.
+                    $orders = OrderStateMachine::make();
 
-                    // При ПОЛНОМ возврате аннулируем ещё не использованные билеты,
-                    // чтобы их QR не проходил check-in (CheckinEvaluator отвергает REFUNDED).
-                    if ($outcome->orderStatus() === OrderStateMachine::REFUNDED) {
-                        Ticket::where('order_id', $order->id)
-                            ->where('status', TicketStateMachine::ISSUED)
-                            ->update([
-                                'status' => TicketStateMachine::REFUNDED,
-                                'refunded_at' => now(),
-                            ]);
+                    if ($orders->can((string) $order->status, $outcome->orderStatus())) {
+                        $order->update(['status' => $outcome->orderStatus()]);
+
+                        // При ПОЛНОМ возврате аннулируем ещё не использованные билеты,
+                        // чтобы их QR не проходил check-in (CheckinEvaluator отвергает REFUNDED).
+                        if ($outcome->orderStatus() === OrderStateMachine::REFUNDED) {
+                            Ticket::where('order_id', $order->id)
+                                ->where('status', TicketStateMachine::ISSUED)
+                                ->update([
+                                    'status' => TicketStateMachine::REFUNDED,
+                                    'refunded_at' => now(),
+                                ]);
+                        }
                     }
                 }
             }

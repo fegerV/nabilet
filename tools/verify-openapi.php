@@ -373,7 +373,7 @@ check('money is documented as integer minor units', function () use ($raw): void
     );
 });
 
-check('idempotency is documented on the seat-hold and order-creation endpoints', function () use ($raw): void {
+check('idempotency is documented on the seat-hold, order-creation and payment endpoints', function () use ($raw): void {
     // The two endpoints where a network retry would cost real money. In the bundle
     // contract a seat hold IS the act of adding an item to a cart.
     $hold = sliceFrom($raw, "\n  /api/v1/carts/{cart}/items:", 1200);
@@ -386,6 +386,20 @@ check('idempotency is documented on the seat-hold and order-creation endpoints',
     assertTrue(
         str_contains($order, 'IdempotencyKey'),
         'order creation must require an Idempotency-Key'
+    );
+
+    // S-07: payment initiation is the third money endpoint. The key must be
+    // REQUIRED here, not merely accepted, and the replay must be documented as a
+    // distinct outcome: without both, a double submit starts two payments against
+    // one order and the reconciliation sees two charges for one payment.
+    $payment = sliceFrom($raw, "\n  /api/v1/orders/{order}/payment:", 1200);
+    assertTrue(
+        str_contains($payment, 'IdempotencyKey'),
+        'payment initiation must require an Idempotency-Key'
+    );
+    assertTrue(
+        str_contains($payment, "'200'"),
+        'payment initiation must document the replay response (200, existing payment)'
     );
 });
 

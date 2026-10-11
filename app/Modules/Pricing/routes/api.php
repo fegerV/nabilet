@@ -18,7 +18,12 @@ Route::prefix('promo-codes')->group(function (): void {
     // на этой операции — покупатель проверяет код до входа, когда у него есть
     // только анонимная корзина. Операция read-only: счётчики не двигаются
     // (см. PromoCodeService::evaluateForCart).
-    Route::post('/validate', [PromoCodeController::class, 'check']);
+    //
+    // `throttle:promo-validate` обязателен: без него эндпоинт — бесплатный
+    // оракул для перебора словаря кодов и разведки действующих скидок
+    // (аудит S-05). Лимитер объявлен в `RateLimitServiceProvider`.
+    Route::post('/validate', [PromoCodeController::class, 'check'])
+        ->middleware('throttle:promo-validate');
 
     // Остальные пять операций контракта объявлены под bearerAuth; запись
     // дополнительно под `admin` — код напрямую печатает деньги, и право

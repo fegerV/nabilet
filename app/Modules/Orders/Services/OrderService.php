@@ -33,7 +33,25 @@ class OrderService
             $eventId = $data['event_id'] ?? null;
 
             foreach ($data['items'] ?? [] as $itemData) {
-                $item = InventoryItem::findOrFail($itemData['inventory_item_id']);
+                // `lockForUpdate()` — обязательная часть, а не украшение.
+                //
+                // Дальше идёт «check-then-decrement»: читаем
+                // `available_quantity`, сравниваем и лишь в конце транзакции
+                // делаем `decrement`. Без блокировки строки между чтением и
+                // списанием есть окно, в которое вторая параллельная транзакция
+                // прочитает то же число, тоже пройдёт проверку и тоже спишет —
+                // то есть двойная продажа. Сейчас её ловит только CHECK
+                // `ck_inventory_available_qty`, и наружу это выходит как 500
+                // вместо внятного 409 (аудит архитектуры D1).
+                //
+                // Блокировка держится до COMMIT, поэтому второй запрос
+                // дожидается конца первого и перечитывает уже уменьшенный
+                // остаток — и получает корректный отказ.
+                $item = InventoryItem::query()
+                    ->whereKey($itemData['inventory_item_id'])
+                    ->lockForUpdate()
+                    ->firstOrFail();
+
                 $quantity = max(1, (int) ($itemData['quantity'] ?? 1));
 
                 // Доступность проверяем до списания: БД это тоже запрещает

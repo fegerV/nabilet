@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Nabilet\Modules\Venues\Http\Controllers;
 
 use Nabilet\Core\Errors\ValidationError;
+use Nabilet\Core\Support\LikePattern;
 use Nabilet\Modules\Venues\Models\Venue;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -24,7 +25,13 @@ class VenueController extends Controller
         }
         
         if (isset($filters['city'])) {
-            $query->where('city', 'like', '%' . $filters['city'] . '%');
+            // Раньше ввод склеивался в шаблон как есть (`'%' . $city . '%'`):
+            // `city=%` возвращал весь каталог площадок, `city=_` — всё, где в
+            // названии города есть хотя бы один символ. См. `LikePattern`.
+            $query->whereRaw(
+                LikePattern::expression('city'),
+                [LikePattern::contains((string) $filters['city'])]
+            );
         }
         
         $venues = $query->paginate($perPage);

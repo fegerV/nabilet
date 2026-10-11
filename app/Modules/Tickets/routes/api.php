@@ -49,8 +49,13 @@ Route::get('/my-tickets', [TicketController::class, 'mine']);
 // погасить чужой билет через POST /tickets/checkin/scan.
 Route::prefix('tickets')->group(function () {
     Route::middleware(['auth:api', 'admin'])->group(function () {
-        Route::post('/checkin/scan', [CheckinController::class, 'scan']);
-        Route::post('/checkin/verify', [CheckinController::class, 'verify']);
+        // `throttle:checkin-scan`: роль оператора закрывает чужой доступ, но не
+        // перебор `ticketPublicId` (verify отдаёт данные билета) и не поток
+        // транзакционных записей сканов в день мероприятия (аудит S-06).
+        Route::post('/checkin/scan', [CheckinController::class, 'scan'])
+            ->middleware('throttle:checkin-scan');
+        Route::post('/checkin/verify', [CheckinController::class, 'verify'])
+            ->middleware('throttle:checkin-scan');
     });
 
     Route::middleware(['auth:api'])->group(function () {

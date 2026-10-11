@@ -123,6 +123,68 @@ class MediaApiTest extends TestCase
     }
 
     /**
+     * SVG не принимается ни одной из двух дорог создания (S-04).
+     *
+     * ПОЧЕМУ ЭТО НЕ «ЕЩЁ ОДИН ФОРМАТ». SVG — это XML, внутри которого работают
+     * `<script>`, `<foreignObject>` и внешние ссылки. Файл отдаётся с нашего же
+     * домена (`/storage/...`), поэтому «картинка» превращалась в stored-XSS:
+     * загрузил её администратор, а скрипт исполняется в контексте витрины у
+     * покупателя — с доступом к его сессии и к формам оплаты. Для JPEG/PNG/WebP
+     * такого класса файла не существует, поэтому они и остаются в списке.
+     *
+     * ПРОВЕРЯЮТСЯ ОБЕ ДОРОГИ. На загрузке тип определяется по содержимому
+     * (`mimes:`), на регистрации по ссылке — по заявленному клиентом `mime_type`
+     * (`in:`). Это два независимых списка в одном классе, и починка только
+     * одного оставила бы вторую дорогу открытой.
+     */
+    public function test_svg_is_refused_on_both_creation_paths(): void
+    {
+        $this->actingAsAdmin();
+
+        $svg = '<?xml version="1.0" encoding="UTF-8"?>'
+            . '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10">'
+            . '<script>alert(1)</script><rect width="10" height="10"/></svg>';
+
+        // 1. Загрузка файла: содержимое — настоящий SVG, finfo видит image/svg+xml.
+        $upload = $this->post('/api/v1/media', [
+            'file' => $this->uploadedFile('payload.svg', $svg, 'image/svg+xml'),
+        ], ['Accept' => 'application/json']);
+
+        $upload->assertStatus(422);
+
+        // 2. Регистрация по ссылке: тип объявляет клиент, список обязан отсечь.
+        $this->postJson('/api/v1/media', [
+            'filename' => 'payload.svg',
+            'mime_type' => 'image/svg+xml',
+            'path' => 'media/payload.svg',
+        ])->assertStatus(422);
+
+        $this->assertSame(0, MediaAsset::query()->count());
+    }
+
+    /**
+     * Список типов для регистрации по ссылке — не «что угодно, кроме svg».
+     *
+     * Без `in:` поле `mime_type` принимало любую строку, и в галерее появлялся
+     * файл с типом, который витрина не умеет показывать (или, что хуже, с типом,
+     * который браузер исполнит при открытии по прямой ссылке).
+     */
+    public function test_a_registered_file_with_a_type_outside_the_allow_list_is_refused(): void
+    {
+        $this->actingAsAdmin();
+
+        foreach (['text/html', 'application/x-msdownload', 'application/octet-stream'] as $mime) {
+            $this->postJson('/api/v1/media', [
+                'filename' => 'payload.bin',
+                'mime_type' => $mime,
+                'path' => 'media/payload.bin',
+            ])->assertStatus(422, $mime);
+        }
+
+        $this->assertSame(0, MediaAsset::query()->count());
+    }
+
+    /**
      * Вторая дорога создания: файл уже лежит в хранилище, запись только
      * описывает его. Именно её описывает контракт (`MediaAssetCreate` требует
      * `filename`, `mime_type`, `path` и не содержит поля с файлом).

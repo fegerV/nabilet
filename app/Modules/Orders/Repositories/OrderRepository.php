@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Nabilet\Modules\Orders\Repositories;
 
 use Illuminate\Support\Facades\DB;
+use Nabilet\Core\Support\LikePattern;
 use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Orders\Models\OrderItem;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -110,9 +111,16 @@ class OrderRepository
             if (! empty($filters['customer_email'])) {
                 // `ilike` — оператор PostgreSQL; MySQL его не знает и падает с
                 // SQLSTATE[42000] (500). Сравнение и так регистронезависимое:
-                // коллация utf8mb4_unicode_ci. `%`/`_` из ввода экранируем,
-                // иначе поиск по «a_b» совпал бы с «aXb».
-                $query->where('customer_email', 'like', '%' . addcslashes((string) $filters['customer_email'], '%_\\') . '%');
+                // коллация utf8mb4_unicode_ci.
+                //
+                // Экранирование `%`/`_`/`\` вынесено в `LikePattern`: раньше здесь
+                // стоял локальный `addcslashes`, который не сообщал СУБД, какой
+                // символ считать экранирующим. С `ESCAPE` в запросе поведение
+                // больше не зависит от серверного режима `NO_BACKSLASH_ESCAPES`.
+                $query->whereRaw(
+                    LikePattern::expression('customer_email'),
+                    [LikePattern::contains((string) $filters['customer_email'])]
+                );
             }
 
             if (isset($filters['date_from'])) {

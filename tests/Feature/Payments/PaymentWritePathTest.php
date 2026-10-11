@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Nabilet\Core\Errors\DomainRuleViolation;
+use Nabilet\Modules\Core\Users\Models\User;
 use Nabilet\Modules\Orders\Services\OrderService;
 use Nabilet\Modules\Orders\StateMachines\OrderStateMachine;
 use Nabilet\Modules\Payments\Models\Payment;
@@ -124,7 +125,14 @@ class PaymentWritePathTest extends TestCase
 
         $this->payments->processWebhook('yookassa', [
             'event' => 'payment.succeeded',
-            'object' => ['id' => 'yk-paid-1', 'status' => 'succeeded'],
+            'object' => [
+                'id' => 'yk-paid-1',
+                'status' => 'succeeded',
+                // ЮKassa всегда присылает сумму; вебхук сверяет её с заказом
+                // (PaymentSettlement), поэтому «уведомление без суммы» — это
+                // отдельный негативный сценарий, а не норма.
+                'amount' => ['value' => '50000.00', 'currency' => 'RUB'],
+            ],
         ]);
 
         $paymentRow = DB::table('payments')->where('id', $payment->id)->first();
@@ -174,7 +182,11 @@ class PaymentWritePathTest extends TestCase
 
         $payload = [
             'event' => 'payment.succeeded',
-            'object' => ['id' => 'yk-paid-2', 'status' => 'succeeded'],
+            'object' => [
+                'id' => 'yk-paid-2',
+                'status' => 'succeeded',
+                'amount' => ['value' => '50000.00', 'currency' => 'RUB'],
+            ],
         ];
 
         $this->payments->processWebhook('yookassa', $payload);
@@ -304,7 +316,11 @@ class PaymentWritePathTest extends TestCase
 
         $this->payments->processWebhook('yookassa', [
             'event' => 'payment.succeeded',
-            'object' => ['id' => 'yk-refund-1', 'status' => 'succeeded'],
+            'object' => [
+                'id' => 'yk-refund-1',
+                'status' => 'succeeded',
+                'amount' => ['value' => '50000.00', 'currency' => 'RUB'],
+            ],
         ]);
 
         $this->configureYooKassa();
@@ -381,7 +397,11 @@ class PaymentWritePathTest extends TestCase
 
         $response = $this->postJson('/api/v1/webhooks/payment/yookassa', [
             'event' => 'payment.succeeded',
-            'object' => ['id' => 'yk-allow-1', 'status' => 'succeeded'],
+            'object' => [
+                'id' => 'yk-allow-1',
+                'status' => 'succeeded',
+                'amount' => ['value' => '50000.00', 'currency' => 'RUB'],
+            ],
         ]);
 
         $response->assertOk();
@@ -401,6 +421,264 @@ class PaymentWritePathTest extends TestCase
         $this->assertSame(0, $empty->total(), 'payments were listed without an organization scope');
     }
 
+    /**
+     * R-01: уведомление `succeeded` с суммой, НЕ совпадающей с заказом.
+     *
+     * Раньше такое уведомление принималось молча: заказ становился `paid`, а
+     * билет выпускался — то есть система выдавала билет за неоплаченную сумму, а
+     * расхождение с выпиской провайдера всплывало только при ручной сверке.
+     * Теперь решение принимает доменный `PaymentSettlement`: поступление
+     * фиксируется (деньги у провайдера реально взяты), но заказ НЕ оплачивается,
+     * билет НЕ выпускается, а деньги уходят в автовозврат.
+     */
+    public function test_webhook_succeeded_with_a_mismatched_amount_is_refused_and_refunded(): void
+    {
+        $order = $this->pendingOrder(quantity: 1);
+        $payment = $this->payments->createPayment($order->id, [
+            'provider' => 'yookassa',
+            'provider_payment_id' => 'yk-mismatch-1',
+        ]);
+
+        $this->configureYooKassa();
+        Http::fake([
+            '*/refunds' => Http::response([
+                'id' => 'rf-mismatch-1',
+                'status' => 'succeeded',
+                'amount' => ['value' => '1.00', 'currency' => 'RUB'],
+            ], 200),
+        ]);
+
+        $this->payments->processWebhook('yookassa', [
+            'event' => 'payment.succeeded',
+            'object' => [
+                'id' => 'yk-mismatch-1',
+                'status' => 'succeeded',
+                // 1 ₽ вместо 50 000 ₽.
+                'amount' => ['value' => '1.00', 'currency' => 'RUB'],
+            ],
+        ]);
+
+        $this->assertNotSame(
+            OrderStateMachine::PAID,
+            DB::table('orders')->where('id', $order->id)->value('status'),
+            'заказ оплачен по сумме, которая не совпадает с его итогом'
+        );
+
+        $this->assertSame(
+            0,
+            DB::table('tickets')->where('order_id', $order->id)->count(),
+            'билет выпущен за неоплаченную сумму'
+        );
+
+        // Поступление зафиксировано: книги обязаны сходиться с провайдером.
+        $this->assertSame(
+            PaymentStateMachine::SUCCEEDED,
+            DB::table('payments')->where('id', $payment->id)->value('status'),
+        );
+
+        // И деньги возвращаются автоматически, а не «зависают».
+        $this->assertSame(1, DB::table('refunds')->where('payment_id', $payment->id)->count());
+
+        // Уведомление помечено обработанным: провайдер не должен повторять его вечно.
+        $this->assertNotNull(
+            DB::table('webhook_events')->where('event_name', 'payment.succeeded')->value('processed_at'),
+        );
+    }
+
+    /**
+     * R-05: деньги пришли по УЖЕ ТЕРМИНАЛЬНОМУ заказу (места перепроданы).
+     *
+     * Раньше заказ оставался `expired`, платёж — `pending`, билет не выпускался,
+     * и деньги покупателя просто исчезали из поля зрения системы. Теперь это
+     * терминальный исход: поступление фиксируется и сразу возвращается, а
+     * терминальный статус заказа НЕ переписывается (перехода `expired →
+     * refunded` не существует).
+     */
+    public function test_webhook_succeeded_for_a_terminal_order_is_refunded_instead_of_issued(): void
+    {
+        $order = $this->pendingOrder(quantity: 1);
+        $payment = $this->payments->createPayment($order->id, [
+            'provider' => 'yookassa',
+            'provider_payment_id' => 'yk-terminal-1',
+        ]);
+
+        // Заказ протух, пока покупатель платил.
+        DB::table('orders')->where('id', $order->id)->update(['status' => OrderStateMachine::EXPIRED]);
+
+        $this->configureYooKassa();
+        Http::fake([
+            '*/refunds' => Http::response([
+                'id' => 'rf-terminal-1',
+                'status' => 'succeeded',
+                'amount' => ['value' => '50000.00', 'currency' => 'RUB'],
+            ], 200),
+        ]);
+
+        $this->payments->processWebhook('yookassa', [
+            'event' => 'payment.succeeded',
+            'object' => [
+                'id' => 'yk-terminal-1',
+                'status' => 'succeeded',
+                'amount' => ['value' => '50000.00', 'currency' => 'RUB'],
+            ],
+        ]);
+
+        $this->assertSame(
+            OrderStateMachine::EXPIRED,
+            DB::table('orders')->where('id', $order->id)->value('status'),
+            'терминальный заказ не должен воскрешаться'
+        );
+        $this->assertSame(0, DB::table('tickets')->where('order_id', $order->id)->count());
+        $this->assertSame(
+            PaymentStateMachine::SUCCEEDED,
+            DB::table('payments')->where('id', $payment->id)->value('status'),
+        );
+        $this->assertSame(1, DB::table('refunds')->where('payment_id', $payment->id)->count());
+    }
+
+    /**
+     * Уведомление `succeeded` вообще без суммы — сверять нечего, значит отказ
+     * (fail-closed), а не молчаливая оплата «на ноль».
+     */
+    public function test_webhook_succeeded_without_an_amount_is_refused(): void
+    {
+        $order = $this->pendingOrder(quantity: 1);
+        $this->payments->createPayment($order->id, [
+            'provider' => 'yookassa',
+            'provider_payment_id' => 'yk-noamount-1',
+        ]);
+
+        $this->configureYooKassa();
+        Http::fake(['*/refunds' => Http::response([
+            'id' => 'rf-noamount-1',
+            'status' => 'succeeded',
+            'amount' => ['value' => '50000.00', 'currency' => 'RUB'],
+        ], 200)]);
+
+        $this->payments->processWebhook('yookassa', [
+            'event' => 'payment.succeeded',
+            'object' => ['id' => 'yk-noamount-1', 'status' => 'succeeded'],
+        ]);
+
+        $this->assertNotSame(
+            OrderStateMachine::PAID,
+            DB::table('orders')->where('id', $order->id)->value('status')
+        );
+        $this->assertSame(0, DB::table('tickets')->where('order_id', $order->id)->count());
+    }
+
+    /**
+     * R-07: `refund.succeeded` обязан закрыть возврат.
+     *
+     * Раньше `processWebhook` не знал событий `refund.*`: уведомление уходило в
+     * `default` → RuntimeException → 500, claim откатывался, провайдер повторял
+     * доставку бесконечно, а возврат навсегда оставался `processing` без
+     * `completed_at`.
+     */
+    public function test_refund_succeeded_webhook_finalizes_the_refund(): void
+    {
+        $order = $this->pendingOrder(quantity: 1);
+        $payment = $this->payments->createPayment($order->id, [
+            'provider' => 'yookassa',
+            'provider_payment_id' => 'yk-refund-fin-1',
+        ]);
+
+        $this->payments->processWebhook('yookassa', [
+            'event' => 'payment.succeeded',
+            'object' => [
+                'id' => 'yk-refund-fin-1',
+                'status' => 'succeeded',
+                'amount' => ['value' => '50000.00', 'currency' => 'RUB'],
+            ],
+        ]);
+
+        $this->configureYooKassa();
+        Http::fake([
+            '*/refunds' => Http::response([
+                'id' => 'rf-fin-1',
+                'status' => 'succeeded',
+                'amount' => ['value' => '50000.00', 'currency' => 'RUB'],
+            ], 200),
+        ]);
+
+        $this->payments->refundPayment($payment->fresh(), null, 'возврат');
+
+        $refundId = (int) DB::table('refunds')->where('payment_id', $payment->id)->value('id');
+        $this->assertSame(
+            RefundStateMachine::PROCESSING,
+            DB::table('refunds')->where('id', $refundId)->value('status')
+        );
+
+        // Провайдер сообщает исход: object.id — id ВОЗВРАТА, платёж — в object.payment_id.
+        $this->payments->processWebhook('yookassa', [
+            'event' => 'refund.succeeded',
+            'object' => [
+                'id' => 'rf-fin-1',
+                'payment_id' => 'yk-refund-fin-1',
+                'status' => 'succeeded',
+            ],
+        ]);
+
+        $refund = DB::table('refunds')->where('id', $refundId)->first();
+        $this->assertSame(RefundStateMachine::SUCCEEDED, $refund->status);
+        $this->assertNotNull($refund->completed_at, 'completed_at не проставлен — возврат навсегда висит processing');
+    }
+
+    /**
+     * R-06: возврат доступен оператору через HTTP.
+     *
+     * `RefundService` был реализован полностью, но не вызывался ни одним
+     * маршрутом — система физически не умела вернуть деньги, хотя диалог отмены
+     * в админке это обещал.
+     */
+    public function test_refund_endpoint_requires_staff_and_refunds_the_order(): void
+    {
+        $order = $this->pendingOrder(quantity: 1);
+        $payment = $this->payments->createPayment($order->id, [
+            'provider' => 'yookassa',
+            'provider_payment_id' => 'yk-refund-api-1',
+        ]);
+
+        $this->payments->processWebhook('yookassa', [
+            'event' => 'payment.succeeded',
+            'object' => [
+                'id' => 'yk-refund-api-1',
+                'status' => 'succeeded',
+                'amount' => ['value' => '50000.00', 'currency' => 'RUB'],
+            ],
+        ]);
+
+        $this->configureYooKassa();
+        Http::fake([
+            '*/refunds' => Http::response([
+                'id' => 'rf-api-1',
+                'status' => 'succeeded',
+                'amount' => ['value' => '50000.00', 'currency' => 'RUB'],
+            ], 200),
+        ]);
+
+        // Маршрут под `auth:api` + `admin`: анонимный возврат невозможен.
+        $this->postJson("/api/v1/orders/{$order->id}/refund")->assertStatus(401);
+
+        $this->actingAsAdmin((int) $order->organization_id);
+
+        $this->postJson("/api/v1/orders/{$order->id}/refund", [
+            'reason' => 'мероприятие отменено',
+        ])->assertOk();
+
+        $refund = DB::table('refunds')->where('payment_id', $payment->id)->first();
+
+        $this->assertNotNull($refund, 'возврат не создан — RefundService снова недостижим из HTTP');
+        $this->assertSame(self::PRICE, (int) $refund->amount);
+        $this->assertSame(RefundStateMachine::PROCESSING, $refund->status);
+
+        // RefundLedger выводит статус заказа из денег: полный возврат → refunded.
+        $this->assertSame(
+            OrderStateMachine::REFUNDED,
+            DB::table('orders')->where('id', $order->id)->value('status'),
+        );
+    }
+
     private function pendingOrder(int $quantity = 1): \Nabilet\Modules\Orders\Models\Order
     {
         [$organizationId, , , $inventoryId] = $this->seedSellableSeat(available: 10);
@@ -418,5 +696,51 @@ class PaymentWritePathTest extends TestCase
             'nabilet.payment.yookassa.shop_id' => 'test-shop',
             'nabilet.payment.yookassa.secret_key' => 'test-secret',
         ]);
+    }
+
+    /**
+     * Администратор организации — то, что требует middleware `admin`
+     * (`StaffRole::isStaff()` читает `user_roles`, а не колонку в `users`).
+     */
+    private function actingAsAdmin(int $organizationId): User
+    {
+        $now = now();
+
+        $userId = (int) DB::table('users')->insertGetId([
+            'public_id' => (string) Str::ulid()->toBase32(),
+            'status' => 'active',
+            'locale' => 'ru',
+            'timezone' => 'UTC',
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+
+        $roleId = DB::table('roles')->where('slug', 'admin')->value('id');
+
+        if ($roleId === null) {
+            $roleId = (int) DB::table('roles')->insertGetId([
+                'name' => 'Администратор',
+                'slug' => 'admin',
+            ]);
+        }
+
+        DB::table('user_roles')->insert([
+            'user_id' => $userId,
+            'organization_id' => $organizationId,
+            'role_id' => (int) $roleId,
+            'created_at' => $now,
+        ]);
+
+        DB::table('user_organization')->insert([
+            'user_id' => $userId,
+            'organization_id' => $organizationId,
+            'role_id' => (int) $roleId,
+            'created_at' => $now,
+        ]);
+
+        $user = User::query()->findOrFail($userId);
+        $this->actingAs($user, 'api');
+
+        return $user;
     }
 }

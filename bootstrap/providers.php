@@ -29,4 +29,15 @@ return [
     // без префикса /api/v1) — поэтому он безопасен для этого файла, в отличие
     // от провайдеров, о которых предупреждает комментарий выше.
     Nabilet\Modules\Media\Providers\MediaServiceProvider::class,
+
+    // Проверка небезопасных production-настроек (APP_DEBUG, PAYMENT_DEMO_MODE,
+    // TRUSTED_PROXIES=*). Своих маршрутов не грузит — поэтому безопасен для
+    // этого файла (см. предупреждение выше).
+    Nabilet\Modules\System\Providers\ProductionSafetyProvider::class,
+
+    // Лимиты частоты для публичной валидации промокодов и чекина билетов
+    // (`throttle:promo-validate`, `throttle:checkin-scan`). `RateLimiter::for()`
+    // заполняет статический реестр, который читает middleware `throttle`,
+    // поэтому провайдер обязан быть booted. Маршрутов не грузит.
+    Nabilet\Modules\System\Providers\RateLimitServiceProvider::class,
 ];

@@ -21,7 +21,7 @@ import NButton from '@/components/ui/NButton.vue'
 import { useCartStore } from '@/stores/cart'
 import { useUiStore } from '@/stores/ui'
 import { ApiError } from '@/lib/api'
-import { anchorDemoUrl, initiatePayment } from '@/lib/payments'
+import { anchorDemoUrl, initiatePayment, newIdempotencyKey } from '@/lib/payments'
 import { money } from '@/lib/format'
 
 const route = useRoute()
@@ -31,6 +31,21 @@ const ui = useUiStore()
 
 const result = computed(() => String(route.params.result ?? 'success'))
 const retrying = ref(false)
+
+/**
+ * Ключ идемпотентности для повторной оплаты (S-07).
+ *
+ * Это НОВАЯ попытка, а не повтор прежнего запроса, поэтому ключ новый — иначе
+ * сервер вернул бы платёж прошлой попытки вместе с её уже нерабочей ссылкой.
+ * Внутри одной попытки ключ стабилен: двойной клик по «Попробовать снова» не
+ * создаёт второй платёж.
+ */
+const retryKey = ref('')
+
+function idempotencyKey(): string {
+  if (!retryKey.value) retryKey.value = newIdempotencyKey()
+  return retryKey.value
+}
 
 const VIEW = {
   success: {
@@ -81,13 +96,15 @@ async function retryPayment(): Promise<void> {
 
   retrying.value = true
   try {
-    const { confirmation_url } = await initiatePayment(orderId)
+    const { confirmation_url } = await initiatePayment(orderId, idempotencyKey())
     if (!confirmation_url) {
       ui.notify('sun', 'Нет ссылки на оплату', 'Попробуйте ещё раз через минуту.')
       return
     }
     window.location.href = anchorDemoUrl(confirmation_url) ?? confirmation_url
   } catch (error) {
+    // Попытка завершилась ошибкой — следующая должна быть новым запросом.
+    retryKey.value = ''
     ui.notify('rose', 'Оплата не началась', error instanceof ApiError ? error.message : 'Попробуйте ещё раз')
   } finally {
     retrying.value = false

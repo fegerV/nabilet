@@ -29,7 +29,9 @@
         <env name="DB_PASSWORD" value="rootpass" force="true"/>
         <env name="DB_CHARSET" value="utf8mb4" force="true"/>
         <env name="DB_COLLATION" value="utf8mb4_unicode_ci" force="true"/>
-        <env name="CACHE_DRIVER" value="array"/>
+        <!-- config/cache.php читает CACHE_STORE; CACHE_DRIVER здесь был мёртвой
+             переменной, и кеш молча брался из дефолта (database). -->
+        <env name="CACHE_STORE" value="array"/>
         <env name="SESSION_DRIVER" value="array"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
         <!-- The queue's sync driver executes afterCommit jobs during a test. Use

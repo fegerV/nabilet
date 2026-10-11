@@ -42,6 +42,15 @@ class EventResource extends JsonResource
             'cover' => $this->cover,
             'seo_title' => $this->seo_title,
             'seo_description' => $this->seo_description,
+            // Директивы индексации (аудит P-23).
+            //
+            // Поле стало ЗАПИСЫВАЕМЫМ (`StoreEventRequest`/`UpdateEventRequest`
+            // принимают его с проверкой директив), поэтому оно обязано быть и
+            // ЧИТАЕМЫМ: иначе админка не сможет показать текущее значение и
+            // правка стирала бы его на каждом сохранении — «поле есть, но
+            // увидеть его негде» ровно так же ломает управление индексацией,
+            // как отсутствие валидации.
+            'robots' => $this->robots,
             'venue' => $venue ? [
                 'name' => $venue->name,
                 'city' => $venue->city ?? null,

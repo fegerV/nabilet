@@ -29,8 +29,27 @@ use Illuminate\Validation\ValidationException;
  */
 class InstallerController extends Controller
 {
+    /**
+     * Шаблон генерируемого `.env`.
+     *
+     * ВАЖНО (аудит установщика B-3/B-4): этот блок — единственный источник
+     * настроек после установки, и он же определяет, заработает ли система
+     * «из коробки» без ручной правки файла.
+     *
+     *  - `QUEUE_CONNECTION=database`, а НЕ `sync`: письма и вебхуки уходят в
+     *    очередь (`SendOrderNotificationJob`, `SendWebhookDeliveryJob`). При
+     *    `sync` отправка выполняется прямо внутри HTTP-запроса покупателя —
+     *    таймауты и деградация оформления заказа.
+     *  - `CACHE_STORE`, а НЕ устаревший `CACHE_DRIVER`: `config/cache.php`
+     *    читает именно `CACHE_STORE`, поэтому `CACHE_DRIVER` молча игнорировался
+     *    и драйвер брался по умолчанию — конфигурация вводила в заблуждение.
+     *  - `SESSION_DRIVER=database`: сессии переживают перезапуск и не зависят от
+     *    каталога `storage/` на шаред-хостинге.
+     *  - блок `MAIL_*` обязателен: без него билеты и сброс пароля не доставляются.
+     *  - `BROADCAST_CONNECTION` (Laravel 11+), а не `BROADCAST_DRIVER`.
+     */
     private const ENV_TEMPLATE = <<<'ENV'
-APP_NAME="Nabilet Ticketing"
+APP_NAME={APP_NAME}
 APP_ENV={APP_ENV}
 APP_KEY={APP_KEY}
 APP_DEBUG={APP_DEBUG}
@@ -49,12 +68,21 @@ DB_DATABASE={DB_DATABASE}
 DB_USERNAME={DB_USERNAME}
 DB_PASSWORD={DB_PASSWORD}
 
-BROADCAST_DRIVER=log
-CACHE_DRIVER=file
+BROADCAST_CONNECTION=log
+CACHE_STORE={CACHE_STORE}
 FILESYSTEM_DISK={FILESYSTEM_DISK}
-QUEUE_CONNECTION=sync
-SESSION_DRIVER=file
+QUEUE_CONNECTION={QUEUE_CONNECTION}
+SESSION_DRIVER={SESSION_DRIVER}
 SESSION_LIFETIME=120
+
+MAIL_MAILER={MAIL_MAILER}
+MAIL_HOST={MAIL_HOST}
+MAIL_PORT={MAIL_PORT}
+MAIL_USERNAME={MAIL_USERNAME}
+MAIL_PASSWORD={MAIL_PASSWORD}
+MAIL_ENCRYPTION={MAIL_ENCRYPTION}
+MAIL_FROM_ADDRESS={MAIL_FROM_ADDRESS}
+MAIL_FROM_NAME={MAIL_FROM_NAME}
 
 YOOKASSA_SHOP_ID={YOOKASSA_SHOP_ID}
 YOOKASSA_SECRET_KEY={YOOKASSA_SECRET_KEY}
@@ -118,6 +146,16 @@ ENV;
                 'db_password' => ['required', 'string', 'max:255'],
                 'admin_email' => ['required', 'email', 'max:255'],
                 'admin_password' => ['required', 'string', 'min:8', 'max:255'],
+                // Почта (SMTP). Необязательна на шаге установки: если хост не
+                // задан, мастер пишет `MAIL_MAILER=log`, чтобы система работала
+                // без падения на первой же отправке, а SMTP можно включить позже.
+                'mail_host' => ['nullable', 'string', 'max:255'],
+                'mail_port' => ['nullable', 'integer', 'between:1,65535'],
+                'mail_username' => ['nullable', 'string', 'max:255'],
+                'mail_password' => ['nullable', 'string', 'max:255'],
+                'mail_encryption' => ['nullable', 'string', 'max:10'],
+                'mail_from_address' => ['nullable', 'email', 'max:255'],
+                'mail_from_name' => ['nullable', 'string', 'max:255'],
                 'yookassa_shop_id' => ['nullable', 'string', 'max:255'],
                 'yookassa_api_key' => ['nullable', 'string', 'max:255'],
             ]);
@@ -224,6 +262,62 @@ ENV;
     }
 
     /**
+     * Проверить параметры подключения к БД, ничего не записывая на диск.
+     *
+     * Раньше кнопка «Проверить подключение» на шаге 2 была клиентской
+     * имитацией (`setTimeout(…, 700)` + галочка), поэтому пользователь видел
+     * «успех» при заведомо неверных кредах, а реальная проверка выполнялась
+     * только внутри POST /install (аудит установщика §4 / W-3).
+     */
+    public function testDatabase(Request $request): JsonResponse
+    {
+        if ($this->isInstalled()) {
+            return response()->json(['error' => [
+                'code' => 'ALREADY_INSTALLED',
+                'message' => 'Система уже установлена',
+                'details' => [],
+            ]], 403);
+        }
+
+        try {
+            $validated = $request->validate([
+                'db_host' => ['required', 'string', 'max:255'],
+                'db_port' => ['required', 'integer', 'between:1,65535'],
+                'db_database' => ['required', 'string', 'max:255'],
+                'db_username' => ['required', 'string', 'max:255'],
+                'db_password' => ['required', 'string', 'max:255'],
+            ]);
+
+            $this->testDatabaseConnection(
+                $validated['db_host'],
+                $validated['db_port'],
+                $validated['db_database'],
+                $validated['db_username'],
+                $validated['db_password']
+            );
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Подключение установлено',
+            ]);
+        } catch (ValidationException $e) {
+            return response()->json(['error' => [
+                'code' => 'VALIDATION_ERROR',
+                'message' => 'Заполните параметры подключения',
+                'details' => ['fields' => $e->errors()],
+            ]], 422);
+        } catch (\Throwable $e) {
+            // Сообщение PDO раскрывает драйвер и хост, но не учётные данные; на
+            // шаге настройки это полезно. Точный текст остаётся в логе.
+            return response()->json(['error' => [
+                'code' => 'DB_CONNECTION_FAILED',
+                'message' => 'Не удалось подключиться к базе данных. Проверьте хост, порт, имя БД и учётные данные.',
+                'details' => [],
+            ]], 422);
+        }
+    }
+
+    /**
      * Проверить требования сервера
      */
     private function checkRequirements(): array
@@ -231,9 +325,15 @@ ENV;
         $details = [];
         $allPassed = true;
 
-        // Проверка версии PHP
+        // Проверка версии PHP.
+        //
+        // Требуем 8.3, а не 8.1: `composer.json` объявляет `"php": "^8.3"`, и
+        // Composer platform-check в `vendor/` роняет процесс на более старой
+        // версии. Раньше мастер пропускал шаг 1 на PHP 8.1/8.2, а затем падал
+        // уже на `migrate` — получалась полу-установка с записанным `.env`
+        // и базой на середине миграций (аудит установщика B-1).
         $phpVersion = PHP_VERSION;
-        $phpRequired = '8.1';
+        $phpRequired = '8.3';
         $phpPassed = version_compare($phpVersion, $phpRequired, '>=');
         $details['php_version'] = [
             'name' => 'Версия PHP (≥' . $phpRequired . ')',
@@ -260,13 +360,18 @@ ENV;
             }
         }
 
-        // Проверка прав на запись
+        // Проверка прав на запись.
+        //
+        // Корень проекта тоже в списке: именно туда пишется `.env`
+        // (`writeEnvFile()`), и без права записи установка обрывалась бы уже
+        // после успешного PDO-теста — «необъяснимым» 500 (аудит установщика §3).
         $writablePaths = [
             storage_path(),
             storage_path('logs'),
             storage_path('framework/cache'),
             storage_path('framework/views'),
             base_path('bootstrap/cache'),
+            base_path(),
         ];
 
         foreach ($writablePaths as $path) {
@@ -334,48 +439,106 @@ ENV;
      */
     private function writeEnvFile(array $data): string
     {
-        $envContent = self::ENV_TEMPLATE;
         $appKey = 'base64:' . base64_encode(random_bytes(32));
+        $envContent = $this->buildEnvContent($data, $appKey);
+
+        $envPath = base_path('.env');
+
+        if (!File::put($envPath, $envContent)) {
+            throw new \RuntimeException('Не удалось записать файл .env. Проверьте права на запись в корень проекта.');
+        }
+
+        Log::info('Installer: Файл .env успешно создан', [
+            'mail_mailer' => str_contains($envContent, 'MAIL_MAILER=log') ? 'log' : 'smtp',
+        ]);
+
+        return $appKey;
+    }
+
+    /**
+     * Собрать содержимое `.env` из шаблона и данных мастера.
+     *
+     * Вынесено отдельно от записи на диск, чтобы результат можно было
+     * проверить тестом, не трогая реальный `.env` установки.
+     */
+    private function buildEnvContent(array $data, string $appKey): string
+    {
+        $mailHost = trim((string) ($data['mail_host'] ?? ''));
+        $mailUsername = trim((string) ($data['mail_username'] ?? ''));
+        $mailPassword = (string) ($data['mail_password'] ?? '');
+        $mailEncryption = strtolower(trim((string) ($data['mail_encryption'] ?? '')));
+
+        // Пока SMTP не задан, письма пишутся в лог. Это осознанный рабочий
+        // режим, а не «тихий успех»: отправка не бросает исключение и не рвёт
+        // оформление заказа, а SMTP можно включить позже в админке/`.env`.
+        $mailer = $mailHost !== '' ? 'smtp' : 'log';
+
+        $fromAddress = trim((string) ($data['mail_from_address'] ?? '')) ?: (string) $data['admin_email'];
+        $fromName = trim((string) ($data['mail_from_name'] ?? '')) ?: (string) $data['app_name'];
 
         $replacements = [
+            '{APP_NAME}' => $this->envValue((string) $data['app_name']),
             '{APP_ENV}' => 'production',
             '{APP_KEY}' => $appKey,
             '{APP_DEBUG}' => 'false',
-            '{APP_URL}' => $data['app_url'],
+            '{APP_URL}' => $this->envValue((string) $data['app_url']),
             '{APP_LOCALE}' => 'ru',
             '{APP_FALLBACK_LOCALE}' => 'en',
             '{APP_TIMEZONE}' => 'Europe/Moscow',
             '{LOG_CHANNEL}' => 'stack',
             '{LOG_LEVEL}' => 'debug',
             '{DB_CONNECTION}' => 'mysql',
-            '{DB_HOST}' => $data['db_host'],
+            '{DB_HOST}' => $this->envValue((string) $data['db_host']),
             '{DB_PORT}' => (string) $data['db_port'],
-            '{DB_DATABASE}' => $data['db_database'],
-            '{DB_USERNAME}' => $data['db_username'],
-            '{DB_PASSWORD}' => $data['db_password'],
+            '{DB_DATABASE}' => $this->envValue((string) $data['db_database']),
+            '{DB_USERNAME}' => $this->envValue((string) $data['db_username']),
+            '{DB_PASSWORD}' => $this->envValue((string) $data['db_password']),
+            '{CACHE_STORE}' => 'database',
             '{FILESYSTEM_DISK}' => 'public',
-            '{YOOKASSA_SHOP_ID}' => $data['yookassa_shop_id'] ?? '',
-            '{YOOKASSA_SECRET_KEY}' => $data['yookassa_api_key'] ?? '',
+            '{QUEUE_CONNECTION}' => 'database',
+            '{SESSION_DRIVER}' => 'database',
+            '{MAIL_MAILER}' => $mailer,
+            '{MAIL_HOST}' => $this->envValue($mailHost),
+            '{MAIL_PORT}' => ((string) ($data['mail_port'] ?? '')) !== '' ? (string) $data['mail_port'] : '587',
+            '{MAIL_USERNAME}' => $this->envValue($mailUsername),
+            '{MAIL_PASSWORD}' => $this->envValue($mailPassword),
+            '{MAIL_ENCRYPTION}' => $this->envValue($mailEncryption),
+            '{MAIL_FROM_ADDRESS}' => $this->envValue($fromAddress),
+            '{MAIL_FROM_NAME}' => $this->envValue($fromName),
+            '{YOOKASSA_SHOP_ID}' => $this->envValue((string) ($data['yookassa_shop_id'] ?? '')),
+            '{YOOKASSA_SECRET_KEY}' => $this->envValue((string) ($data['yookassa_api_key'] ?? '')),
         ];
 
-        $envContent = str_replace(
-            array_keys($replacements),
-            array_values($replacements),
-            $envContent
-        );
+        // strtr() вместо str_replace(): подстановка по ключам за один проход,
+        // без риска, что значение одного плейсхолдера случайно совпадёт с именем
+        // другого. Раньше APP_NAME подставлялся отдельным str_replace поверх
+        // шаблона — лишняя точка отказа.
+        return strtr(self::ENV_TEMPLATE, $replacements);
+    }
 
-        // Добавляем имя приложения
-        $envContent = str_replace('APP_NAME="Nabilet Ticketing"', 'APP_NAME="' . $data['app_name'] . '"', $envContent);
-
-        $envPath = base_path('.env');
-        
-        if (!File::put($envPath, $envContent)) {
-            throw new \RuntimeException('Не удалось записать файл .env. Проверьте права на запись в корень проекта.');
+    /**
+     * Привести значение к безопасной для `.env` форме.
+     *
+     * Креды БД, YooKassa и почты раньше писались «как есть»: пароль с пробелом,
+     * `#`, кавычкой или переводом строки разрывал файл и ломал установку
+     * (аудит установщика §7). Простые значения оставляем без кавычек — так
+     * `.env` читается привычно, — остальные оборачиваем в двойные кавычки.
+     */
+    private function envValue(string $value): string
+    {
+        if ($value === '') {
+            return '';
         }
 
-        Log::info('Installer: Файл .env успешно создан');
+        if (preg_match('/^[A-Za-z0-9_.:\/@\-]+$/', $value) === 1) {
+            return $value;
+        }
 
-        return $appKey;
+        return '"' . str_replace(
+            ['\\', '"', "\r", "\n"],
+            ['\\\\', '\\"', '', '\\n'],
+            $value
+        ) . '"';
     }
 
     /**

@@ -7,7 +7,10 @@ namespace Nabilet\Modules\Tickets\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Str;
-use Nabilet\Modules\Organizations\Models\Organization;
+// Каноническая модель. Дубликат в `Modules\Organizations\Models\Organization`
+// нёс трейт `SoftDeletes` при отсутствующей колонке `organizations.deleted_at`,
+// из-за чего эта связь падала с `SQLSTATE[42S22]` при первой же загрузке.
+use Nabilet\Modules\Core\Organizations\Models\Organization;
 
 /**
  * Eloquent mapping for `ticket_templates` (005_payments_tickets).

@@ -349,6 +349,64 @@
                                 </div>
                             </details>
 
+                            <!-- Почта (SMTP, опционально) -->
+                            <details class="group rounded-xl border border-slate-200 dark:border-slate-700">
+                                <summary class="flex cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-medium text-slate-700 dark:text-slate-200">
+                                    <span>Почта / SMTP (опционально)</span>
+                                    <svg class="h-4 w-4 text-slate-400 transition group-open:rotate-180 dark:text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 9l6 6 6-6"/></svg>
+                                </summary>
+                                <div class="space-y-4 border-t border-slate-100 px-4 py-4 dark:border-slate-700">
+                                    <p class="text-xs text-slate-500 dark:text-slate-400">
+                                        Если не заполнить — письма (билеты, сброс пароля) будут записываться в журнал вместо отправки.
+                                        SMTP можно включить позже.
+                                    </p>
+                                    <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                                        <div class="sm:col-span-2">
+                                            <label class="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-200">SMTP-хост</label>
+                                            <input name="mail_host" class="field" placeholder="smtp.yandex.ru">
+                                        </div>
+                                        <div>
+                                            <label class="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-200">Порт</label>
+                                            <input name="mail_port" type="number" value="587" class="field">
+                                        </div>
+                                    </div>
+                                    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                        <div>
+                                            <label class="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-200">Логин</label>
+                                            <input name="mail_username" class="field" placeholder="noreply@mysite.ru">
+                                        </div>
+                                        <div>
+                                            <label class="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-200">Пароль</label>
+                                            <div class="relative">
+                                                <input name="mail_password" type="password" class="field pr-10" placeholder="••••••••">
+                                                <button type="button" onclick="toggleVis(this)" class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300" tabindex="-1">
+                                                    <svg class="h-5 w-5 eye-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+                                                    <svg class="h-5 w-5 eye-off hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M3 3l18 18M10.6 10.6a3 3 0 0 0 4.2 4.2M9.9 5.1A9.6 9.6 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3 3.8M6 6.3A17 17 0 0 0 2 12s3.5 7 10 7a9.6 9.6 0 0 0 3.4-.6"/></svg>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                                        <div>
+                                            <label class="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-200">Шифрование</label>
+                                            <select name="mail_encryption" class="field">
+                                                <option value="tls" selected>TLS</option>
+                                                <option value="ssl">SSL</option>
+                                                <option value="">Нет</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label class="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-200">Адрес отправителя</label>
+                                            <input name="mail_from_address" type="email" class="field" placeholder="noreply@mysite.ru">
+                                        </div>
+                                        <div>
+                                            <label class="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-200">Имя отправителя</label>
+                                            <input name="mail_from_name" class="field" placeholder="Nabilet">
+                                        </div>
+                                    </div>
+                                </div>
+                            </details>
+
                             <div id="db-error" class="hidden rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300"></div>
                         </form>
                     </div>
@@ -356,7 +414,7 @@
                     <div class="mt-6 flex items-center justify-between">
                         <button onclick="goToStep(1)" class="btn btn-ghost">← Назад</button>
                         <div class="flex gap-2.5">
-                            <button type="button" onclick="testDatabase()" class="btn btn-ghost">Проверить подключение</button>
+                            <button type="button" onclick="testDatabase(this)" class="btn btn-ghost">Проверить подключение</button>
                             <button type="button" onclick="goToStep(3)" class="btn btn-primary">Далее →</button>
                         </div>
                     </div>
@@ -608,16 +666,45 @@
             return ok;
         }
 
-        function testDatabase() {
+        /* ---------- Шаг 2: реальная проверка подключения к БД ---------- */
+        async function testDatabase(btn) {
             if (!validateDb()) return;
-            state.dbTested = true;
-            const btn = event.target;
+            const f = $('#db-form');
+            const err = $('#db-error');
             const orig = btn.innerHTML;
-            btn.disabled = true; btn.innerHTML = '<svg class="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 0 1 8-8v4a4 4 0 0 0-4 4H4z"/></svg> Проверка…';
-            setTimeout(() => {
-                btn.disabled = false; btn.innerHTML = '✓ Подключение проверено';
+            btn.disabled = true;
+            btn.innerHTML = '<svg class="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 0 1 8-8v4a4 4 0 0 0-4 4H4z"/></svg> Проверка…';
+
+            try {
+                // Проверка идёт на сервере (PDO), а не имитируется в браузере:
+                // раньше здесь был setTimeout, который рисовал «успех» даже при
+                // заведомо неверных кредах (аудит установщика W-3).
+                const res = await fetch('/install/test-database', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    body: JSON.stringify({
+                        db_host: f.elements['db_host'].value,
+                        db_port: parseInt(f.elements['db_port'].value, 10),
+                        db_database: f.elements['db_database'].value,
+                        db_username: f.elements['db_username'].value,
+                        db_password: f.elements['db_password'].value,
+                    })
+                });
+                const data = await res.json();
+                if (!res.ok || !data.success) {
+                    throw new Error(data.error?.message || 'Не удалось подключиться к базе данных.');
+                }
+                state.dbTested = true;
+                btn.innerHTML = '✓ Подключение проверено';
                 btn.classList.remove('btn-ghost'); btn.classList.add('btn-primary');
-            }, 700);
+                err.classList.add('hidden');
+            } catch (e) {
+                btn.innerHTML = orig;
+                err.textContent = e.message;
+                err.classList.remove('hidden');
+            } finally {
+                btn.disabled = false;
+            }
         }
 
         /* ---------- Шаг 3: админ + сила пароля ---------- */
@@ -685,6 +772,13 @@
                 db_database: db.elements['db_database'].value,
                 db_username: db.elements['db_username'].value,
                 db_password: db.elements['db_password'].value,
+                mail_host: db.elements['mail_host'].value || '',
+                mail_port: db.elements['mail_port'].value ? parseInt(db.elements['mail_port'].value, 10) : null,
+                mail_username: db.elements['mail_username'].value || '',
+                mail_password: db.elements['mail_password'].value || '',
+                mail_encryption: db.elements['mail_encryption'].value || '',
+                mail_from_address: db.elements['mail_from_address'].value || '',
+                mail_from_name: db.elements['mail_from_name'].value || '',
                 yookassa_shop_id: db.elements['yookassa_shop_id'].value || '',
                 yookassa_api_key: db.elements['yookassa_api_key'].value || '',
                 admin_email: adm.elements['admin_email'].value,

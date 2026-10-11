@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Events\Services;
 
+use Nabilet\Core\Errors\ConflictError;
 use Nabilet\Modules\Events\Domain\EventStatus;
 use Nabilet\Modules\Events\Models\Event;
 use Nabilet\Modules\Events\Repositories\EventRepository;
+use Nabilet\Modules\Events\StateMachines\EventStateMachine;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 
@@ -51,6 +53,18 @@ class EventService
     public function findBySlug(string $slug): ?Event
     {
         return $this->eventRepository->findBySlug($slug);
+    }
+
+    /**
+     * Удалённое событие по slug — для ответа 410 Gone (аудит P-24).
+     *
+     * Отдельный метод, а не флаг у `findBySlug()`: вызывающий код должен
+     * ВИДЕТЬ, что спрашивает про удалённое, иначе легко перепутать «страницы
+     * нет» с «страница была и удалена» — а это разные коды ответа.
+     */
+    public function findTrashedBySlug(string $slug): ?Event
+    {
+        return $this->eventRepository->findTrashedBySlug($slug);
     }
 
     /**
@@ -125,9 +139,24 @@ class EventService
 
     /**
      * Mark event as completed.
+     *
+     * Переход проверяется по `EventStateMachine`: `completed` достижим только из
+     * `published`. Без проверки вызов на черновике записал бы статус, который
+     * машина запрещает, — а `completed` входит в `EventStatus::publiclyVisible()`,
+     * то есть черновик мгновенно стал бы публичным и попал бы в карту сайта.
+     *
+     * @throws ConflictError если переход запрещён
      */
     public function complete(Event $event): Event
     {
+        if (! EventStateMachine::make()->can((string) $event->status, EventStatus::COMPLETED)) {
+            throw new ConflictError(
+                'This event cannot be marked as completed from its current status.',
+                'EVENT_TRANSITION_NOT_ALLOWED',
+                ['event_id' => $event->public_id, 'status' => (string) $event->status],
+            );
+        }
+
         return $this->eventRepository->update($event, ['status' => EventStatus::COMPLETED]);
     }
 

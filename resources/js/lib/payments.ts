@@ -3,6 +3,7 @@
  *
  * Контракт:
  *   POST /api/v1/payments           → 201 { data: { payment, confirmation_url } }
+ *                                     200 — тот же ключ идемпотентности (повтор)
  *   POST /api/v1/payments/demo-pay  → 200 { data: Payment }
  *
  * Два правила, из-за которых этот модуль существует отдельно от `inventory.ts`:
@@ -40,15 +41,41 @@ export interface InitiatePaymentResult {
 /**
  * Инициировать оплату заказа.
  *
- * Идемпотентность обеспечивает сервер: повторный вызов для заказа с уже
- * активным платежом возвращает ТОТ ЖЕ платёж и ту же ссылку, а не создаёт
- * второй (`PaymentService::initiatePayment()`), поэтому отдельный
- * `Idempotency-Key` на клиенте не нужен.
+ * Ключ идемпотентности обязателен (S-07): сервер по нему распознаёт повторный
+ * запрос. Без него двойной клик по кнопке «Оплатить» или ретрай уровня сети
+ * создавал второй pending-платёж по тому же заказу. Ключ генерируется на одно
+ * «намерение оплатить» (`newIdempotencyKey()`) и переиспользуется при повторах
+ * ЭТОГО ЖЕ запроса.
+ *
+ * Сервер отвечает 201 при создании платежа и 200, когда вернул уже
+ * существующий по тому же ключу, — тело ответа в обоих случаях одинаковое.
  */
-export async function initiatePayment(orderId: string | number): Promise<InitiatePaymentResult> {
-  const res = await send<InitiatePaymentResult>('/payments', 'POST', { order_id: orderId })
+export async function initiatePayment(
+  orderId: string | number,
+  idempotencyKey: string,
+): Promise<InitiatePaymentResult> {
+  const res = await send<InitiatePaymentResult>('/payments', 'POST', {
+    order_id: orderId,
+    idempotency_key: idempotencyKey,
+  })
 
   return res.data
+}
+
+/**
+ * Новый ключ идемпотентности платежа.
+ *
+ * Префикс `pay_` — чтобы ключ нельзя было спутать с ключом другого ресурса в
+ * общем журнале. `crypto.randomUUID()` есть во всех целевых браузерах
+ * (защищённый контекст); запасная ветка нужна только для http-origin на
+ * localhost, где `crypto.randomUUID` может отсутствовать.
+ */
+export function newIdempotencyKey(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return `pay_${crypto.randomUUID()}`
+  }
+
+  return `pay_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 14)}`
 }
 
 /**

@@ -6,6 +6,7 @@ namespace Nabilet\Modules\Payments\Repositories;
 
 use Nabilet\Modules\Payments\Models\Payment;
 use Nabilet\Modules\Payments\Models\PaymentTransaction;
+use Nabilet\Modules\Payments\StateMachines\PaymentStateMachine;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
 
@@ -157,6 +158,22 @@ class PaymentRepository
             'status' => 'failed',
             'metadata_json' => $metadata,
         ]);
+        return $payment;
+    }
+
+    /**
+     * Отметить платёж отменённым провайдером (`payment.canceled`).
+     *
+     * Отдельно от `markAsFailed`: отменённый платёж — не неудачный, и путать их
+     * нельзя (аудит A12). Метод существует, чтобы сервис не писал статус
+     * напрямую мимо репозитория (аудит R-12).
+     */
+    public function markAsCanceled(Payment $payment): Payment
+    {
+        $payment->update([
+            'status' => PaymentStateMachine::CANCELED,
+        ]);
+
         return $payment;
     }
 

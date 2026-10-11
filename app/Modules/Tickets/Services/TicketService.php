@@ -131,21 +131,15 @@ class TicketService
     }
 
     /**
-     * Секрет подписи QR: TICKET_QR_SECRET / NABILET_QR_SECRET, либо APP_KEY.
-     * QrSigner сам отказывается работать с секретом короче 32 байт.
+     * Подписывальщик QR.
+     *
+     * Сборка вынесена в единый `QrSignerFactory`: раньше логика была скопирована
+     * сюда и в `TicketScanService`, и оба экземпляра молча подписывали билеты
+     * `APP_KEY`, если `TICKET_QR_SECRET` не задан (см. комментарий фабрики).
      */
     protected function makeQrSigner(): QrSigner
     {
-        $secret = config('nabilet.ticket.qr_secret')
-            ?: env('NABILET_QR_SECRET')
-            ?: (string) config('app.key');
-
-        // APP_KEY может быть закодирован как base64:...
-        if (str_starts_with($secret, 'base64:')) {
-            $secret = (string) base64_decode(substr($secret, 7), true);
-        }
-
-        return new QrSigner($secret);
+        return QrSignerFactory::make();
     }
 
     public function findTicket(int $ticketId, ?int $organizationId = null): ?Ticket

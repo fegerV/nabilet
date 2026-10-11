@@ -207,6 +207,30 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/EventListResponse' }
 
+  /api/v1/events/by-slug/{slug}:
+    get:
+      tags: [Catalog]
+      summary: Get public event by slug
+      description: >-
+        Публичный адрес мероприятия — `/event/{slug}/{publicId}`; витрина
+        (hash-SPA) обращается к этому эндпоинту по сегменту slug. Объявлен ВЫШЕ
+        `/api/v1/events/{event}` в маршрутах, иначе `by-slug` был бы принят за
+        идентификатор мероприятия.
+      operationId: getEventBySlug
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string, maxLength: 255 }
+      responses:
+        '200':
+          description: Event
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EventResponse' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '410': { $ref: '#/components/responses/Gone' }
+
   /api/v1/events/{event}:
     get:
       tags: [Catalog]
@@ -425,6 +449,11 @@ paths:
                   type: string
                   default: yookassa
       responses:
+        '200':
+          description: Existing payment returned — the Idempotency-Key was already used for this order
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaymentResponse' }
         '201':
           description: Payment created
           content:
@@ -775,13 +804,21 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
     delete:
       tags: [Admin Events]
-      summary: Delete/archive event
+      summary: Soft-delete event
+      description: >-
+        Помечает мероприятие удалённым (`deleted_at`), НЕ удаляя строку.
+        Физическое удаление уносило каскадом сеансы, переводы и промокоды,
+        падало 500 у мероприятия с проданными билетами (внешний ключ
+        `fk_tickets_event` объявлен ON DELETE RESTRICT) и освобождало `slug`,
+        который мог занять другой концерт — тот же URL начинал означать другое
+        событие. После пометки публичный адрес отвечает 410 Gone, а `slug`
+        остаётся занятым.
       operationId: adminDeleteEvent
       security: [{ bearerAuth: [] }]
       parameters:
         - $ref: '#/components/parameters/EventIdPath'
       responses:
-        '204': { description: Archived/deleted }
+        '204': { description: Soft-deleted }
         '409': { $ref: '#/components/responses/Conflict' }
 
   /api/v1/admin/sessions:
@@ -2116,6 +2153,14 @@ components:
       content:
         application/json:
           schema: { $ref: '#/components/schemas/ErrorResponse' }
+    Gone:
+      description: >-
+        Ресурс существовал и удалён навсегда. Отличается от 404 намеренно:
+        поисковик снимает такой URL из индекса, не дожидаясь повторных обходов,
+        а клиент может показать «снято с продажи» вместо «проверьте адрес».
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
     Conflict:
       description: Conflict
       content:
@@ -2256,6 +2301,16 @@ components:
         duration_minutes: { type: integer, nullable: true }
         status: { type: string }
         published_at: { type: string, format: date-time, nullable: true }
+        robots:
+          type: string
+          nullable: true
+          description: >-
+            Директивы `<meta name="robots">` для страницы мероприятия. Значение —
+            список директив через запятую; допустимы all, none, index, noindex,
+            follow, nofollow, noarchive, nosnippet, noimageindex, notranslate,
+            nocache. Взаимоисключающие директивы схлопываются в запрещающую.
+            Запрет по статусу (scheduled, cancelled) неотменяем: index в этом
+            поле его не снимает.
         seo:
           $ref: '#/components/schemas/SeoMeta'
 
@@ -2281,7 +2336,13 @@ components:
         organization_id: { type: string }
         category_id: { type: string, nullable: true }
         title: { type: string, maxLength: 500 }
-        slug: { type: string, maxLength: 255 }
+        slug:
+          type: string
+          maxLength: 255
+          description: >-
+            Публичный адрес мероприятия: `/event/{slug}/{publicId}`. Уникален
+            ГЛОБАЛЬНО, а не внутри организации, потому что URL организации не
+            содержит. Занятый slug отклоняется с 422 (поле slug).
         short_description: { type: string }
         description: { type: string }
         poster: { type: string }
@@ -2292,7 +2353,14 @@ components:
         seo_title: { type: string }
         seo_description: { type: string }
         canonical_url: { type: string, format: uri }
-        robots: { type: string }
+        robots:
+          type: string
+          maxLength: 255
+          description: >-
+            Директивы индексации через запятую. Допустимы all, none, index,
+            noindex, follow, nofollow, noarchive, nosnippet, noimageindex,
+            notranslate, nocache. Директивы с параметрами (max-snippet:160)
+            не поддерживаются. Неизвестная директива — 422 (поле robots).
 
     Venue:
       type: object

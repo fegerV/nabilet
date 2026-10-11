@@ -21,6 +21,13 @@ Route::prefix('payments')->group(function () {
     // `whereNumber`: неявная привязка приводит путь к int, поэтому
     // `/payments/1abc` открывал платёж 1. С ограничением — 404 (fail-closed).
     Route::get('/{payment}', [PaymentController::class, 'show'])->middleware('auth:api')->whereNumber('payment');
+
+    // Возврат денег — финансовая операция, поэтому `admin`. До появления этого
+    // маршрута `RefundService` не вызывался ниоткуда: вернуть деньги покупателю
+    // было физически невозможно (ТЗ §85).
+    Route::post('/{payment}/refund', [PaymentController::class, 'refund'])
+        ->middleware(['auth:api', 'admin'])
+        ->whereNumber('payment');
 });
 
 // Демо-подтверждение оплаты (симулятор ЮKassa, только в demo_mode).

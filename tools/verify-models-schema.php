@@ -25,11 +25,27 @@ declare(strict_types=1);
  * WHAT IT CHECKS
  *   * every model's `$table` exists in the schema;
  *   * every `$fillable` entry is a real column of that table;
- *   * every `$casts` key is a real column of that table.
+ *   * every `$casts` key is a real column of that table;
+ *   * a model that declares the `SoftDeletes` trait has a `deleted_at` column.
  *
  *   It does NOT check types, nullability or casts semantics. A `$casts` entry of
  *   'array' on a TEXT column is wrong in a way this tool cannot see; only a real
  *   database can settle that.
+ *
+ * WHY THE SOFT-DELETE CHECK EXISTS
+ *   `SoftDeletes` is not a hint — it rewrites every query on the model, adding
+ *   `where <table>.deleted_at is null`. A model that declares the trait on a table
+ *   without the column is therefore not "soft delete does not work"; it is a model
+ *   that CANNOT BE QUERIED AT ALL: the first `Organization::query()` raises
+ *   `SQLSTATE[42S22] Column not found: 1054`.
+ *
+ *   That is not hypothetical. `app/Modules/Organizations/Models/Organization.php`
+ *   (a legacy duplicate of the canonical
+ *   `Nabilet\Modules\Core\Organizations\Models\Organization`) carried the trait
+ *   while `organizations` has no `deleted_at` in either the migration or the spec
+ *   bundle. Nothing here noticed, because a trait name is not a `$fillable` entry;
+ *   it surfaced only when a live request hit the model. Checking it here costs one
+ *   regex over text this loop already reads.
  *
  * HOW A GREEN RESULT IS TRUSTED
  *   The DDL parser is asserted against EXPECTED_TABLES / EXPECTED_COLUMNS, taken
@@ -184,10 +200,10 @@ const INVENTED_FIELDS = [
         'used_count' => 'names type/value/max_uses/used_count/expires_at/is_active; promo_codes stores discount_type, value_amount/value_percent, max_redemptions, redemptions_count, valid_until, status',
         'value' => 'names type/value/max_uses/used_count/expires_at/is_active; promo_codes stores discount_type, value_amount/value_percent, max_redemptions, redemptions_count, valid_until, status',
     ],
-    'Redirect' => [
-        'source_path' => 'names source_path/target_path; redirects stores source/destination (REVIEW §3.20)',
-        'target_path' => 'names source_path/target_path; redirects stores source/destination (REVIEW §3.20)',
-    ],
+    // `Redirect` снят с исключений: модель переписана под реальную схему
+    // (`source`/`destination`/`active`), и расхождения больше нет. Запись
+    // удалена, а не оставлена «на всякий случай»: исключение без причины —
+    // это молчаливое разрешение снова разойтись.
     'SeatHold' => [
         'status' => 'names status; seat_holds has NO status column -- the state lives on released_at/converted_at (REVIEW §3.x)',
     ],
@@ -337,6 +353,38 @@ function applyApplicationSchemaExtensions(string $root, array $tables): array
 }
 
 /**
+ * Does the model's own source declare the `SoftDeletes` trait?
+ *
+ * IMPORT LINES MUST NOT COUNT. `use Illuminate\Database\Eloquent\SoftDeletes;`
+ * is a use statement and says nothing about whether the trait is applied. Trait
+ * usage never contains a namespace separator, so a statement containing a
+ * backslash is treated as an import and skipped — which also covers the combined
+ * form `use HasFactory, SoftDeletes;`.
+ *
+ * Only the model's own source is read, not the `extends` chain: every parent in
+ * this tree is another model, and this loop already visits all of them, so a
+ * trait inherited from a parent is reported against the parent.
+ */
+function usesSoftDeletes(string $src): bool
+{
+    if (! preg_match_all('/^\s*use\s+([^;]+);/m', $src, $statements)) {
+        return false;
+    }
+
+    foreach ($statements[1] as $statement) {
+        if (str_contains($statement, '\\')) {
+            continue;
+        }
+
+        if (preg_match('/\bSoftDeletes\b/', $statement)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+/**
  * Every model file under app/Modules.
  *
  * @return list<string>
@@ -461,6 +509,7 @@ printf("  Models: %d\n\n", count($models));
 
 $unknownTables = [];
 $unknownFields = [];
+$softDeleteWithoutColumn = [];
 $noTable = [];
 $checkedFields = 0;
 $applicationExtensionsSeen = [];
@@ -542,6 +591,18 @@ foreach ($models as $path) {
 
         $unknownTables[] = sprintf('%s (%s) -> %s', $rel, $class, $table);
         continue;
+    }
+
+    // `SoftDeletes` переписывает КАЖДЫЙ запрос модели, добавляя
+    // `where <table>.deleted_at is null`, поэтому при отсутствующей колонке
+    // модель непригодна к использованию, а не «мягко не удаляет».
+    if (usesSoftDeletes($src) && ! in_array('deleted_at', $tables[$table], true)) {
+        $softDeleteWithoutColumn[] = sprintf(
+            '%s  %s -> %s has no deleted_at column',
+            str_pad($rel, 52),
+            $class,
+            $table,
+        );
     }
 
     $declared = [];
@@ -662,6 +723,18 @@ if ($unknownFields !== []) {
     echo "\n";
 }
 
+if ($softDeleteWithoutColumn !== []) {
+    $failed = true;
+    echo "  Models with the SoftDeletes trait on a table that has no deleted_at:\n\n";
+    foreach ($softDeleteWithoutColumn as $line) {
+        echo "    $line\n";
+    }
+    echo "\n    This is not a soft-delete bug — it is a model that cannot be queried:\n";
+    echo "    every request through it fails with SQLSTATE[42S22] Column not found.\n";
+    echo "    Either drop the trait from the model, or add the column to the spec\n";
+    echo "    bundle together with the decision that organizations are soft-deleted.\n\n";
+}
+
 if ($reportMode) {
     printf(
         "  %d tables, %d models, %d fields checked, %d unknown, %d known\n\n",
@@ -674,9 +747,9 @@ if ($reportMode) {
 }
 
 if ($failed) {
-    echo "  FAIL — the generated models name things the schema does not have.\n";
-    echo "         Either fix the model, or change the schema in the spec bundle and\n";
-    echo "         record the decision. Do not add to INVENTED_FIELDS to silence it.\n\n";
+    echo "  FAIL — the models do not match the schema. Either fix the model, or change\n";
+    echo "         the schema in the spec bundle and record the decision. Do not add to\n";
+    echo "         INVENTED_FIELDS to silence it.\n\n";
 
     exit(1);
 }
