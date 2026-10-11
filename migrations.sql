@@ -1719,4 +1719,17 @@ CREATE TABLE IF NOT EXISTS order_reminders (
   KEY idx_order_reminders_session (session_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- ============================================================ 013 — users.status dictionary
+-- Mirrors nabilet_core_spec/migrations/013_users_status_check.sql and the applied
+-- Laravel migration 2026_10_12_000100_add_users_status_check.php.
+--
+-- `users.status` had no CHECK and no vocabulary outside one rule inside
+-- `UserController::update()`, so `status = 'banned'` did not stop anyone from
+-- logging in — sessions were revoked and the same password bought a fresh one —
+-- and any other writer could store an arbitrary string. The values below are the
+-- set the API, the admin UI and `UserSessionRevocationTest` already agreed on.
+-- Full reasoning in the split file.
+ALTER TABLE users
+  ADD CONSTRAINT ck_users_status CHECK (status IN ('active','inactive','banned'));
+
 SET FOREIGN_KEY_CHECKS = 1;

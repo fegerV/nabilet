@@ -9,6 +9,7 @@ use Illuminate\Http\JsonResponse;
 use Nabilet\Core\Errors\NotFoundError;
 use Nabilet\Core\Errors\ValidationError;
 use Nabilet\Modules\Auth\Validation\PasswordRules;
+use Nabilet\Modules\Core\Users\Domain\UserStatus;
 use Nabilet\Modules\Core\Users\Models\User;
 use Nabilet\Modules\Core\Users\Services\UserService;
 
@@ -83,7 +84,7 @@ class UserController
             'first_name' => 'nullable|string|max:100',
             'last_name' => 'nullable|string|max:100',
             'phone' => 'nullable|string|max:50',
-            'status' => 'sometimes|in:active,inactive,banned',
+            'status' => 'sometimes|' . UserStatus::validationRule(),
         ]);
 
         $updatedUser = $this->service->updateUser($user, $validated);
