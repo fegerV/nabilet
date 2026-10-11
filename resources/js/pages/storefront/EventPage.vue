@@ -13,6 +13,7 @@ import NBadge from '@/components/ui/NBadge.vue'
 import NStatusBadge from '@/components/ui/NStatusBadge.vue'
 import { get } from '@/lib/api'
 import { trackEvent } from '@/lib/metrika'
+import { useSeo } from '@/lib/seo'
 import { money, dateFull, time, seatsLabel } from '@/lib/format'
 import { cn } from '@/lib/cn'
 import type { EventStatus, SeatState } from '@/lib/types'
@@ -133,6 +134,28 @@ const catName = computed(() => {
 const posterAlt = computed(() =>
   event.value ? `Афиша мероприятия «${event.value.title}»` : '',
 )
+
+/**
+ * E3: SEO-поля события приходили из API и не применялись — заголовок вкладки
+ * и превью ссылки у ВСЕХ событий оставались корневыми из `index.html`.
+ *
+ * Приоритет — серверные `seo_*`: их заполняет организатор, и именно они
+ * совпадают с og-блоком серверной обёртки (`EventPageController`), которую
+ * видят краулеры без JS. Фолбэк — название события и короткое описание.
+ */
+useSeo(() => {
+  const current = event.value
+  if (!current) return null
+  return {
+    title: current.seo_title?.trim() || `${current.title} — билеты`,
+    description:
+      current.seo_description?.trim() ||
+      current.short_description?.trim() ||
+      null,
+    image: current.poster ?? current.cover ?? null,
+    url: window.location.href,
+  }
+})
 
 const startsAtOf = (s: SessionItem): string => s.starts_at ?? s.startsAt ?? ''
 const availableOf = (s: SessionItem): number => s.available_seats ?? s.availableSeats ?? 0
