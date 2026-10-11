@@ -57,13 +57,13 @@ nabilet_core_spec/
 ```
 nabilet/
 ├── app/Core/            ядро: модули, хуки, ошибки, state machines, tenancy, Money, QrSigner
-├── app/Modules/         34 каталога модулей (30 с module.json, 27 включены; отключены abtesting, ai, heatmaps)
+├── app/Modules/         34 каталога модулей (31 с module.json, 28 включены; отключены abtesting, ai, heatmaps)
 ├── bootstrap/           сборка приложения, порядок middleware
 ├── config/              конфигурация ядра
 ├── database/migrations/ миграции сессии 1 — УСТАРЕЛИ, см. README внутри
 ├── nabilet_core_spec/   пакет: источник истины по DDL и контрактам
 ├── docs/                проектная документация
-├── tests/               тесты ядра (без зависимостей)
+├── tests/               ядро (без зависимостей), Feature (PHPUnit), фронтенд (vitest)
 ├── tools/               проверки: lint, модули, схема, OpenAPI
 └── composer.json
 ```
@@ -96,8 +96,8 @@ php artisan serve
 
 ```bash
 php tools/lint.php                  # синтаксис всех PHP-файлов
-php tests/run.php                   # тесты ядра (596 методов, 1216 утверждений)
-php tools/verify-purity.php         # домен не зависит от фреймворка (97 файлов)
+php tests/run.php                   # тесты ядра (700 методов, 1722 утверждения)
+php tools/verify-purity.php         # домен не зависит от фреймворка (117 файлов)
 php tools/modules.php --validate    # граф зависимостей модулей
 php tools/verify-openapi.php        # целостность контракта + инварианты §9/§43
 php tools/verify-openapi.php nabilet_core_spec/openapi.yaml   # то же для копии пакета
@@ -136,12 +136,16 @@ php tools/verify-models-schema.php  # модели Eloquent называют т�
 
 ### CI
 
-[`.github/workflows/ci.yml`](.github/workflows/ci.yml) — два job, оба без `vendor/`:
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) — пять job; только `verify`
+не требует ни `vendor/`, ни Docker:
 
 | Job | Что делает | Зачем |
 | --- | --- | --- |
-| `verify` | lint, тесты, `verify-purity`, граф модулей, `verify-migrations`, `verify-state-machines`, `verify-openapi` и `verify-contract-schema` для обеих копий, `verify-models-schema`, `composer validate` | ловит расхождения кода, контракта и схемы |
+| `verify` | lint, тесты ядра, `verify-purity`, граф модулей, `verify-migrations`, `verify-state-machines`, `verify-openapi` и `verify-contract-schema` для обеих копий, `verify-models-schema`, `verify-autoload`, `verify-module-structure`, `verify-route-ownership`, `composer validate` | ловит расхождения кода, контракта и схемы |
+| `docker` | `docker compose config`, hadolint, сборка образа BuildKit'ом | доказывает, что Dockerfile внутренне согласован, а образ ставится из закоммиченного lock |
 | `schema` | накатывает `migrations.sql` и сплит-сет в два разных database на MySQL 8.4, сверяет счетчики (73 таблицы / 785 колонок / 1 триггер), диффит `information_schema.columns`, проверяет триггер иммутабельности в обе стороны | доказывает, что DDL реально исполняется |
+| `phpunit` | `composer install` по lock, `artisan key:generate`, Feature-суита на MySQL 8.4 | исполняет прикладной слой; статические верификаторы этого не видят |
+| `frontend` | `npm ci`, `vue-tsc`, vitest, `vite build`, контракт оболочки витрины | ловит сломанный prop, неразрешимый динамический импорт и пустую страницу в продакшене |
 
 Смысл разделения: верификаторы — это статическое сравнение, они ничего не говорят о том,
 примет ли MySQL схему. А триггер нельзя выразить CHECK (нельзя сослаться на `OLD`), поэтому
@@ -150,6 +154,13 @@ php tools/verify-models-schema.php  # модели Eloquent называют т�
 
 Ожидаемые счетчики в `schema`-job заданы числами. Если схема растёт — меняйте их в том же
 коммите: именно так потеря таблицы становится падением CI, а не тихим diff.
+
+Оболочка витрины — контракт **между** job'ами `phpunit` и `frontend`. PHP вставляет в
+`dist/index.html` серверный SEO-блок и опирается на четыре вещи в разметке (`<title>`,
+`<meta name="description">`, `</head>`, `<div id="app"></div>`), но собрать витрину не
+может: `dist/` не в git, а собирает его `frontend`. Поэтому PHP-суита работает на фикстуре
+`tests/Fixtures/storefront-shell.html`, а соответствие настоящей сборки этому контракту
+проверяет `frontend` — единственное место, где сборка существует.
 
 ### Проверка схемы пакета (нужен Docker)
 
@@ -266,7 +277,7 @@ add_filter('ticket.price', fn (int $price) => $price + 300, priority: 20);
 | Laravel-миграции | 🟡 пишутся по ходу фич (не полная схема пакета ещё) |
 | Инсталлятор, сервисы, Eloquent-модели | ✅ реализованы |
 | Редактор схем залов (HallEditor на Vue, импорт из Яндекс.Афиши, генерация инвентаря) | ✅ готово; площадки Сургута залиты |
-| Фронтенд-тесты (vitest, `npm run test`) | 🔴 падают: 31 тест `tests/Unit/Components/HallEditor.test.js` — `document is not defined` (нет конфига vitest с `environment: 'jsdom'`; см. ROADMAP, TESTING_GUIDE) |
+| Фронтенд-тесты (vitest, `npm run test`) | ✅ 18 файлов, 233 теста; среда `jsdom` задана в `vitest.config.ts` |
 | Commerce: корзина → заказ → оплата → билеты/QR/check-in | ✅ через API |
 | Публичная часть (витрина на API, SEO по slug, JSON-LD, sitemap) | ✅ готово |
 | Админка | ✅ Vue-админка (Sanctum + роли); Filament удалён полностью |
