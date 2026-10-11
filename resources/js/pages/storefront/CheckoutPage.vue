@@ -35,11 +35,12 @@ import NInput from '@/components/ui/NInput.vue'
 import NCheckbox from '@/components/ui/NCheckbox.vue'
 import NCountdown from '@/components/ui/NCountdown.vue'
 import NEmptyState from '@/components/ui/NEmptyState.vue'
-import { useCartStore, seatLineLabel, seatLineTotal } from '@/stores/cart'
+import { useCartStore, seatLineLabel, seatLineTotal, type CartSeat } from '@/stores/cart'
 import { useUiStore } from '@/stores/ui'
 import { checkoutSession, fetchCart } from '@/lib/inventory'
 import { ApiError } from '@/lib/api'
-import { anchorDemoUrl, initiatePayment, newIdempotencyKey } from '@/lib/payments'
+import { anchorDemoUrl, initiatePayment, newIdempotencyKey, rememberPaymentId } from '@/lib/payments'
+import { trackEvent } from '@/lib/metrika'
 import { money, ticketsLabel } from '@/lib/format'
 import { cn } from '@/lib/cn'
 
@@ -125,25 +126,31 @@ async function restoreCart(): Promise<void> {
     const serverCart = await fetchCart(sid)
     if (!serverCart) return
 
-    const items = (serverCart.items ?? []).flatMap((item) => {
+    const items: CartSeat[] = []
+    // B2: вместе с выбором восстанавливаем карту «id места → cart_item_id».
+    // `CartItemResource` отдаёт настоящий `cart_items.id`, и
+    // `DELETE /cart/items/{id}` требует именно его; без этой карты снятие
+    // восстановленного холда не отпускало серверные места.
+    const cartItemIds: Record<string, string> = {}
+    for (const item of serverCart.items ?? []) {
       const id = String(item.inventory_item?.id ?? '')
-      if (!id) return []
-      return [
-        {
-          id,
-          sector: String(item.inventory_item?.seat?.sector ?? 'Зал'),
-          row: Number(item.inventory_item?.seat?.row ?? 0),
-          number: Number(item.inventory_item?.seat?.number ?? 0),
-          priceMinor: Number(item.unit_price ?? 0),
-          kind: 'standard' as const,
-          // Без количества танцпол qty=3 восстанавливался как один билет:
-          // сводка на оформлении и `totalMinor` занижались втрое.
-          quantity: Math.max(1, Number(item.quantity ?? 1) || 1),
-        },
-      ]
-    })
+      if (!id) continue
+      const cartItemId = String(item.id ?? '')
+      if (cartItemId) cartItemIds[id] = cartItemId
+      items.push({
+        id,
+        sector: String(item.inventory_item?.seat?.sector ?? 'Зал'),
+        row: Number(item.inventory_item?.seat?.row ?? 0),
+        number: Number(item.inventory_item?.seat?.number ?? 0),
+        priceMinor: Number(item.unit_price ?? 0),
+        kind: 'standard' as const,
+        // Без количества танцпол qty=3 восстанавливался как один билет:
+        // сводка на оформлении и `totalMinor` занижались втрое.
+        quantity: Math.max(1, Number(item.quantity ?? 1) || 1),
+      })
+    }
 
-    cart.hydrate(items)
+    cart.hydrate(items, cartItemIds)
     if (serverCart.expires_at) cart.setHoldExpiry(serverCart.expires_at)
   } catch {
     /* корзина недоступна — экран честно покажет «корзина пуста» */
@@ -242,7 +249,16 @@ async function pay(): Promise<void> {
     // 3. Платёж. Гостевой заказ авторизуется заголовком X-Cart-Token,
     //    который подставляет api.ts (`PaymentController::mayPay()`). Ключ
     //    идемпотентности обязателен и стабилен в пределах попытки (S-07).
-    const { confirmation_url } = await initiatePayment(order.order_id, idempotencyKey())
+    // E2: цель `payment_attempt` фиксирует сам факт перехода к оплате —
+    // расхождение между «начал оформление» и «нажал оплатить» и есть тот
+    // шаг воронки, на котором теряются корзины.
+    void trackEvent('payment_attempt', {
+      params: { order_id: String(order.order_id), tickets: cart.count },
+    }).catch(() => {})
+    const { confirmation_url, payment } = await initiatePayment(order.order_id, idempotencyKey())
+    // C2: запоминаем платёж — после ухода на оплату (полная навигация) страница
+    // результата спросит у сервера его настоящий статус, а не поверит роуту.
+    rememberPaymentId(payment?.public_id ?? payment?.id)
 
     if (!confirmation_url) {
       ui.notify('sun', 'Нет ссылки на оплату', 'Заказ создан. Попробуйте оплатить ещё раз.')
@@ -261,6 +277,13 @@ async function pay(): Promise<void> {
 
 onMounted(() => {
   cart.setSession(sessionId.value)
+  // E2: `checkout_started` — начало оформления заказа. Считаем один раз за
+  // заход на экран (F5 на том же заказе — новый заход, это нормально).
+  if (cart.count > 0) {
+    void trackEvent('checkout_started', {
+      params: { session: sessionId.value, tickets: cart.count },
+    }).catch(() => {})
+  }
   void restoreCart()
 })
 </script>

@@ -11,7 +11,7 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUiStore } from '@/stores/ui'
-import { logout, clearCurrentUser } from '@/lib/auth'
+import { logout, clearSession } from '@/lib/auth'
 import { usePersistedRef } from '@/lib/usePersistedRef'
 
 const ui = useUiStore()
@@ -22,7 +22,9 @@ const collapsed = usePersistedRef('admin.sidebar.collapsed', false)
 
 async function doLogout(): Promise<void> {
   await logout()
-  clearCurrentUser()
+  // D2: clearSession стирает и токен, и пользователя — расхождение между
+  // этими двумя ключами и позволяло «полутоку» остаться в localStorage.
+  clearSession()
   router.push('/admin/login')
 }
 

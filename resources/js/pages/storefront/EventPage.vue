@@ -12,6 +12,7 @@ import { useRoute, useRouter } from 'vue-router'
 import NBadge from '@/components/ui/NBadge.vue'
 import NStatusBadge from '@/components/ui/NStatusBadge.vue'
 import { get } from '@/lib/api'
+import { trackEvent } from '@/lib/metrika'
 import { money, dateFull, time, seatsLabel } from '@/lib/format'
 import { cn } from '@/lib/cn'
 import type { EventStatus, SeatState } from '@/lib/types'
@@ -86,6 +87,14 @@ async function loadEvent(): Promise<void> {
     // не присваивался `EventDetail | null`, — `npm run typecheck` падал навсегда.
     const payload = res.data
     event.value = 'data' in payload ? payload.data : payload
+    // E2: цель `event_view` была сконфигурирована в config/metrika.php, но не
+    // имела call-site — воронка в Директе рвалась на первом же шаге.
+    void trackEvent('event_view', {
+      params: {
+        event_id: event.value?.public_id ?? slug,
+        slug: event.value?.slug ?? slug,
+      },
+    }).catch(() => {})
   } catch (e) {
     loadError.value = e instanceof Error ? e.message : String(e)
     event.value = null

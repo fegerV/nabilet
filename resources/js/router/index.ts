@@ -9,6 +9,7 @@ import { createRouter, createWebHashHistory, type RouteRecordRaw } from 'vue-rou
 import StorefrontShell from '@/layouts/StorefrontShell.vue'
 import AdminShell from '@/layouts/AdminShell.vue'
 import { getToken } from '@/lib/api'
+import { isAdminSession, clearSession } from '@/lib/auth'
 
 const routes: RouteRecordRaw[] = [
   {
@@ -109,15 +110,21 @@ export const router = createRouter({
   },
 })
 
-// Guard: админка требует токен. Без него — редирект на логин.
+// Guard: админка требует админскую сессию — токен И роль. Без неё — на логин.
 router.beforeEach((to) => {
   if (to.matched.some((r) => r.meta.requiresAuth)) {
     if (!getToken()) {
       return { name: 'admin-login', query: { redirect: to.fullPath } }
     }
+    // D2: токен без роли admin/manager — не повод пускать в оболочку.
+    // Сессия чистится, иначе чужой токен остаётся в localStorage навсегда.
+    if (!isAdminSession()) {
+      clearSession()
+      return { name: 'admin-login', query: { redirect: to.fullPath, reason: 'forbidden' } }
+    }
   }
   // Уже залогинен на странице входа — не показываем форму повторно.
-  if (to.name === 'admin-login' && getToken()) {
+  if (to.name === 'admin-login' && isAdminSession()) {
     return { name: 'admin' }
   }
 })

@@ -59,8 +59,29 @@ export function clearCurrentUser(): void {
   localStorage.removeItem('nabilet_admin_user')
 }
 
+/** Полностью очистить сессию админки: и токен, и сохранённого пользователя. */
+export function clearSession(): void {
+  setToken(null)
+  clearCurrentUser()
+}
+
 export function isAuthed(): boolean {
   return getToken() !== null
+}
+
+/**
+ * Является ли текущая сессия админской.
+ *
+ * D2: раньше guard маршрутов смотрел только на наличие токена. `login()`
+ * сохранял токен ДО проверки роли, и при отказе (support/клиент) токен
+ * оставался в localStorage — клиентская оболочка открывалась, и пользователь
+ * видел всю навигацию админки (данные при этом защищал серверный middleware,
+ * но сам факт входа в чужой интерфейс — дефект). Теперь сессия админская,
+ * только если токен есть И сохранённый пользователь имеет admin/manager.
+ */
+export function isAdminSession(): boolean {
+  if (!getToken()) return false
+  return canAdmin(currentUser()?.roles)
 }
 
 /** Сериализует ApiError в человеческое сообщение для формы логина. */

@@ -88,3 +88,19 @@ Configured in `config/metrika.php`: `page_view`, `event_view`, `seatmap_open`, `
 - The standalone hall-editor sink is outside the routed Vue SPA. The installer template also uses `innerHTML`, but inspected response fields are constructed from server environment checks; attacker-controlled data flow was not established.
 - No source code changes were made. Working tree currently contains generated changes in `node_modules/.package-lock.json`, `node_modules/.vite/vitest/.../results.json`, `node_modules/.vue-global-types/vue_3.5_0_0_0.d.ts`, and `vendor/autoload.php`; the two latter generated files were already noted as locally modified before this audit. They were not reverted.
 - Remaining verification that would require controlled test data: add/release a hold and confirm DB state, cart restoration after F5, standing-zone quantity totals, checkout/payment transaction, guest ticket retrieval, admin role-denial/token-expiry flows, and a missing-`dist` runtime probe. The audit deliberately did not create these records.
+
+## Статус исправлений (дополнено после аудита)
+
+Исходные находки выше сохранены без изменений. Ниже — что закрыто в коде.
+
+| Пункт | Статус | Что сделано |
+|---|---|---|
+| B2 (hold leak при восстановлении корзины) | ИСПРАВЛЕНО | `SeatSelectionPage.applyServerCart()` и `CheckoutPage.restoreCart()` собирают карту «id места → `cart_items.id`» из ответа `GET /cart` и передают её в `cart.hydrate(items, cartItemIds)`; стор хранит `meta`, поэтому снятие восстановленного холда снова отпускает серверный (`DELETE /cart/items/{id}` получает настоящий cart-item id, а не inventory id). |
+| B3a (количество стоячих мест) | ЗАКРЫТО в main ранее | Текущий `main` решает находку иначе: `CartSeat.quantity` + помощники `seatQuantity()`/`seatLineTotal()`/`seatsTicketCount()` в `stores/cart.ts`. Правка этого коммита не требовалась. |
+| B3b (конверт ошибки 422) | ЗАКРЫТО в main ранее | `lib/api.ts` уже читает канонический `error.details.fields` и плоский `message`. |
+| C2 (результат оплаты) | ИСПРАВЛЕНО | `PaymentResultPage` не доверяет параметру роута: `fetchPayment()` (`GET /payments/{id}`) + `statusToResult()` (succeeded→success, canceled/failed→fail, иначе pending), ограниченный автоопрос (5 с × 12 тиков); корзина чистится и цели Метрики шлются только по подтверждению сервера. Бэкенд: `PaymentController::holdsRequestAccess()` + `assertCanSee()` пускают гостя с `X-Cart-Token` корзины своего заказа (IDOR закрыт — токен capability). |
+| C3 (мои билеты) | ЗАКРЫТО в main ранее | В main есть `lib/tickets.ts` + `fetchMyTickets()` в `TicketsPage.vue`, фикстуры `mock.ts` удалены. |
+| D2 (авторизация админки) | ИСПРАВЛЕНО | `isAdminSession()` в `lib/auth.ts` требует токен И роль admin/manager; guard чистит сессию и уводит на логин при отказе роли; логин стирает токен сразу при отказе (`clearSession()`); демо-пароль убран из UI, сидер читает `NABILET_DEMO_*_PASSWORD` и в production без env аккаунты не создаёт (пароль не печатается в лог). |
+| E2 (мёртвые цели Метрики) | ИСПРАВЛЕНО | Добавлены вызовы: `event_view` (EventPage), `checkout_started` (CheckoutPage onMounted), `payment_attempt` (CheckoutPage.pay), `payment_success`/`payment_fail` (PaymentResultPage — однократно, только по подтверждению сервера, revenue в рублях). `PurchasePayload.params` для доп. параметров. |
+
+**Остаётся открытым:** D1 (заглушки разделов админки и захардкоженные метрики), D3 (innerHTML в `public/hall-editor.html`), E1 (404 `/api/v1/analytics/metrika/config` — маршруты аналитики не подключены), E3 (SEO-метаданные hash-SPA).

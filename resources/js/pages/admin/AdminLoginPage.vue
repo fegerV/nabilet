@@ -13,7 +13,7 @@ import { ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import NButton from '@/components/ui/NButton.vue'
 import NInput from '@/components/ui/NInput.vue'
-import { login, saveCurrentUser, canAdmin, loginErrorMessage } from '@/lib/auth'
+import { login, saveCurrentUser, canAdmin, clearSession, loginErrorMessage } from '@/lib/auth'
 
 const router = useRouter()
 const route = useRoute()
@@ -30,17 +30,25 @@ const PERKS = [
   'Брендированная витрина для каждого события',
 ]
 
+// D2: сюда приводит guard, когда токен есть, но роли admin/manager нет.
+if (route.query.reason === 'forbidden') {
+  error.value = 'У вашей учётной записи нет прав администратора. Войдите под аккаунтом с ролью admin или manager.'
+}
+
 async function submit(): Promise<void> {
   if (loading.value) return
   error.value = null
   loading.value = true
   try {
     const data = await login(email.value.trim(), password.value)
-    saveCurrentUser(data.user)
-    const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/admin'
     if (canAdmin(data.user.roles)) {
+      saveCurrentUser(data.user)
+      const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/admin'
       router.push(redirect)
     } else {
+      // Токен сохранён ДО проверки роли — убираем его сразу, иначе сессия
+      // не-стаффера остаётся в localStorage (ровно тот дефект D2).
+      clearSession()
       error.value = 'У вашей учётной записи нет прав администратора'
     }
   } catch (e) {
@@ -129,7 +137,7 @@ async function submit(): Promise<void> {
               v-model="email"
               type="email"
               label="Email"
-              placeholder="admin@nabilet.local"
+              placeholder="you@company.ru"
               autocomplete="email"
               required
               icon="✉"
@@ -165,10 +173,14 @@ async function submit(): Promise<void> {
           </div>
         </form>
 
-        <p class="mt-6 text-center text-xs text-subtle">
-          Демо: <span class="font-mono text-muted">admin@nabilet.local</span> / <span class="font-mono text-muted">admin123</span>
-        </p>
+        <!--
+          D2: демо-учётки больше не печатаются в UI. Раньше здесь стояло
+          «admin@nabilet.local / admin123» — валидные учётные данные на
+          публичной странице входа. Сидер по-прежнему создаёт демо-аккаунты
+          в dev, но пароль берётся из `NABILET_DEMO_*_PASSWORD` (см.
+          `NabiletAdminSeeder`), а в production без заданного env аккаунты не
+          создаются вовсе.
+        -->
       </div>
-    </div>
   </div>
 </template>

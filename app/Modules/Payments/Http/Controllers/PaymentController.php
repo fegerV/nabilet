@@ -207,11 +207,32 @@ class PaymentController extends Controller
      */
     private function mayPay(Request $request, Order $order): bool
     {
-        $user = $request->user();
-
-        if (StaffRole::isStaff($user)) {
+        if (StaffRole::isStaff($request->user())) {
             return true;
         }
+
+        return $this->holdsRequestAccess($request, $order);
+    }
+
+    /**
+     * Есть ли у запроса право доступа к заказу помимо сотрудника.
+     *
+     *   1. владелец — заказ привязан к аккаунту и совпадает с `$request->user()`;
+     *   2. гость, предъявивший `X-Cart-Token` той корзины, из которой создан заказ.
+     *
+     * Токен — это capability: UUID выдаётся браузеру покупателя при первом
+     * добавлении места и больше нигде не публикуется. Без него чужой заказ
+     * по-прежнему 404, поэтому IDOR остаётся закрытым — `order_id`/`payment_id`
+     * сами по себе не дают ничего. Токен нормализуется (`CartToken::normalize()`:
+     * длина и алфавит), сравнение идёт с `cart_token` в БД, а не с пользовательским вводом.
+     *
+     * Явная проверка `$user !== null` нужна и технически: прежний код обращался
+     * к `$request->user()->id` без неё, и анонимный запрос к заказу с
+     * заполненным `user_id` упал бы фаталом «Call to a member function on null».
+     */
+    private function holdsRequestAccess(Request $request, Order $order): bool
+    {
+        $user = $request->user();
 
         if ($user !== null && $order->user_id !== null && (int) $order->user_id === (int) $user->id) {
             return true;
@@ -263,6 +284,12 @@ class PaymentController extends Controller
 
     /**
      * Fail-closed: чужой платёж неотличим от несуществующего.
+     *
+     * Гость витрины допускается по тому же capability, что и к `POST /payments`
+     * (`X-Cart-Token` корзины, из которой создан заказ). Без этого страница
+     * результата не могла получить авторитетный статус платежа: у гостевого
+     * заказа `user_id = NULL`, и прежняя проверка только по владельцу отвечала
+     * 404 — экран показывал «Билеты готовы», не спросив сервер (C2).
      */
     private function assertCanSee(Request $request, Payment $payment): void
     {
@@ -270,11 +297,13 @@ class PaymentController extends Controller
             return;
         }
 
-        $ownerId = $payment->order?->user_id;
+        $order = $payment->order;
 
-        if ($ownerId === null || (int) $ownerId !== (int) $request->user()->id) {
-            throw new NotFoundError('Payment', (string) $payment->public_id);
+        if ($order !== null && $this->holdsRequestAccess($request, $order)) {
+            return;
         }
+
+        throw new NotFoundError('Payment', (string) $payment->public_id);
     }
 
     /**
