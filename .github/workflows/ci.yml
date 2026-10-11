@@ -216,6 +216,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # `migrations.sql` at the repo root is a byte-for-byte copy of the canonical
+      # `nabilet_core_spec/migrations.sql`, kept there because the image ships it
+      # (`COPY . .`) and it is the file an operator applies by hand. It has no
+      # generator, so it has rotted before: it sat at 64 tables / 684 columns for
+      # four days after nine tables moved into the spec, and nothing noticed because
+      # this job asserted the stale numbers too. Assert the identity here so the
+      # failure names the cause instead of surfacing as a column diff three steps on.
+      #
+      # Regenerate with: cp nabilet_core_spec/migrations.sql migrations.sql
+      - name: The root bundle is an exact copy of the canonical spec
+        run: |
+          if ! cmp migrations.sql nabilet_core_spec/migrations.sql; then
+            echo "::error::migrations.sql is not a copy of nabilet_core_spec/migrations.sql — regenerate with: cp nabilet_core_spec/migrations.sql migrations.sql"
+            exit 1
+          fi
+          echo "migrations.sql == nabilet_core_spec/migrations.sql"
+
       - name: Wait for MySQL to accept connections
         run: |
           for i in $(seq 1 60); do
@@ -244,12 +261,15 @@ jobs:
       # These numbers are the documented shape of the schema (docs/DATABASE.md).
       # If the schema legitimately grows, update them here in the same commit —
       # that is the point: a table silently dropped from the bundle must fail.
+      #
+      # They describe the canonical bundle, NOT the copy at the repo root: the two
+      # are the same file (asserted above), so a number here is a number for both.
       - name: Assert the expected object counts
         run: |
           set -e
           Q() { mysql -h 127.0.0.1 -P 3306 -uroot -prootpass -N -B -e "$1" 2>/dev/null; }
-          EXPECT_TABLES=64
-          EXPECT_COLUMNS=684
+          EXPECT_TABLES=73
+          EXPECT_COLUMNS=785
           EXPECT_TRIGGERS=1
 
           for db in nabilet split; do

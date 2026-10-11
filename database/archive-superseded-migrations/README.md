@@ -3,12 +3,12 @@
 **Источник истины — пакет `nabilet_core_spec/`:**
 
 ```
-nabilet_core_spec/migrations.sql              консолидированный DDL (64 таблицы)
-nabilet_core_spec/migrations/001..010         сплит-миграции в порядке исполнения
+nabilet_core_spec/migrations.sql              консолидированный DDL (73 таблицы)
+nabilet_core_spec/migrations/001..012         сплит-миграции в порядке исполнения
 ```
 
 Файлы в этом каталоге написаны **до** появления пакета и описывают **другую** схему:
-66 таблиц вместо 64, с другими именами (`event_sessions`, `rows`, `tables`, `ab_tests`,
+66 таблиц вместо 73, с другими именами (`event_sessions`, `rows`, `tables`, `ab_tests`,
 `privacy_consents`, `data_requests`, `outbox_messages`) и другой моделью inventory
 (enum состояния вместо `capacity` + `available_quantity`).
 
@@ -43,7 +43,7 @@ nabilet_core_spec/migrations/001..010         сплит-миграции в п�
 
 Раньше эти миграции исполнял `tools/verify-schema.php` — через стабы Laravel Schema и
 20 проверок инвариантов на SQLite. **Файл удалён 2026-09-20:** `database/migrations/`
-теперь содержит актуальные миграции под 64 таблицы пакета, и тот инструмент начал бы
+теперь содержит актуальные миграции под 73 таблицы пакета, и тот инструмент начал бы
 проверять не то, на что рассчитан.
 
 Ему на смену пришёл `tools/verify-migrations.php`: он исполняет актуальные миграции и
@@ -56,9 +56,10 @@ nabilet_core_spec/migrations/001..010         сплит-миграции в п�
 
 ## Что нужно сделать
 
-Laravel-миграции для боевой схемы **ещё не написаны**. Их нужно сгенерировать из
-пакета — с учётом `organization_id` (см. `docs/ARCHITECTURE.md` §6) и решением по
-промокодам, переводам и медиатеке.
+Laravel-миграции для боевой схемы **написаны и сверяются со спекой**: `database/migrations/`
+содержит сгенерированные `tools/gen-migrations.py` миграции базовой схемы плюс ручные
+миграции последующих изменений. `php tools/verify-migrations.php` доказывает, что они
+эквивалентны `nabilet_core_spec/migrations.sql`; `php artisan migrate` на них — рабочий путь.
 
-Пока это не сделано, **не запускайте** `php artisan migrate` на этих файлах: получите
-схему, несовместимую с пакетом и с `docs/openapi.yaml`.
+**Не запускайте** `php artisan migrate` на файлах **этого** каталога: получите схему,
+несовместимую с пакетом и с `docs/openapi.yaml`.

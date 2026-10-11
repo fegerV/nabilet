@@ -1,15 +1,20 @@
 # NABILET Core — Модель данных
 
 > **Источник истины — пакет `nabilet_core_spec/`.**
-> DDL: `migrations.sql` (консолидированный) и `nabilet_core_spec/migrations/001..010` (сплит).
-> Оба представления проверены на идентичность: **684 колонок, 273 ограничения — совпадают побайтово.**
+> DDL: `nabilet_core_spec/migrations.sql` (консолидированный) и
+> `nabilet_core_spec/migrations/001..012` (сплит). Побайтовая копия консолидированного
+> DDL лежит в корне репозитория как `migrations.sql` — она попадает в образ
+> (`COPY . .`) и именно её накатывает оператор вручную; совпадение с каноном проверяет CI.
+> Оба представления проверены на идентичность: **785 колонок, 297 ограничений —
+> совпадают** (сверено по `information_schema`: колонки, индексы, внешние ключи,
+> CHECK-ограничения, триггер, движок и коллация).
 >
 > **Проверено исполнением на MySQL 8.4.11**, а не чтением. Факты в этом документе —
 > результат запросов к `information_schema` работающей базы. Разбор пробелов и их причин:
 > `docs/REVIEW-spec-bundle.md`.
 
-**Схема:** 64 таблицы · 684 колонок · 93 внешних ключа · 81 уникальный ключ ·
-244 индекса · 35 CHECK-ограничений · 1 триггер.
+**Схема:** 73 таблицы · 785 колонок · 101 внешний ключ · 88 уникальных ключей ·
+281 индекс · 35 CHECK-ограничений · 1 триггер.
 
 ---
 
@@ -55,7 +60,7 @@ standing-зона:  capacity = 1000,  available_quantity ∈ [0, 1000]
 
 ---
 
-## 2. Группы таблиц (64)
+## 2. Группы таблиц (73)
 
 ### 2.1 Идентичность и аренда — 10
 `organizations` · `roles` · `permissions` · `role_permissions` · `users` ·
@@ -67,9 +72,19 @@ standing-зона:  capacity = 1000,  available_quantity ∈ [0, 1000]
 несколько ролей — например, менеджер мероприятий и кассир одновременно. Уникальность
 `(user_id, organization_id, role_id)` не даёт выдать одну роль дважды.
 
-### 2.2 Контент и SEO — 10
-`event_categories` · `events` · `event_translations` · `pages` · `seo_meta` · `redirects` ·
-`venue_translations` · `page_translations` · `media_assets` · `media_links`
+### 2.2 Контент и SEO — 16
+`event_categories` · `events` · `event_translations` · `event_dates` · `event_speakers` ·
+`event_sponsors` · `event_faqs` · `event_artists` · `event_schedule_items` · `pages` ·
+`seo_meta` · `redirects` · `venue_translations` · `page_translations` · `media_assets` ·
+`media_links`
+
+Расширения мероприятия пришли из `012_application_domain.sql` и живут в спеке потому, что
+читатель одного `migrations.sql` иначе не узнал бы, что у мероприятия есть даты, спикеры,
+спонсоры, FAQ, артисты и расписание. `event_dates` — якорь расписания (фестиваль идёт
+несколько дней, прогон спектакля — несколько дат), `event_schedule_items` висит на дате, а
+не на мероприятии. `event_speakers`, `event_sponsors`, `event_faqs`, `event_artists` —
+упорядоченные списки (`position`) с `ON DELETE CASCADE`: список без мероприятия смысла
+не имеет.
 
 Переводы вынесены в отдельные таблицы с уникальностью по `(entity_id, locale)`:
 `event_translations`, `venue_translations`, `page_translations`. Локальный `slug` в
@@ -99,9 +114,12 @@ standing-зона:  capacity = 1000,  available_quantity ∈ [0, 1000]
 `sessions` ссылается на **версию** схемы (`schema_version_id`), не на зал. Это и есть
 механизм неизменяемости: сеанс навсегда привязан к той геометрии, что была при публикации.
 
-### 2.5 Продажи — 7
+### 2.5 Продажи — 8
 `carts` · `cart_items` · `seat_holds` · `orders` · `order_items` ·
-`promo_codes` · `promo_code_redemptions`
+`promo_codes` · `promo_code_redemptions` · `order_reminders`
+
+`order_reminders` — журнал отправленных напоминаний «за день до сеанса». Без него повторный
+запуск рассылки дублировал бы письма: запись в журнале и есть признак «уже отправлено».
 
 Одна корзина = один сеанс. `cart_items` уникален по `(cart_id, inventory_item_id)`.
 `order_items` хранит снапшоты (`event_title_snapshot`, `venue_title_snapshot`,
@@ -131,9 +149,13 @@ standing-зона:  capacity = 1000,  available_quantity ∈ [0, 1000]
 `analytics_events` · `ab_experiments` · `ab_variants` · `ab_assignments` · `ab_metrics` ·
 `heatmap_events` · `embed_domains`
 
-### 2.10 Интеграции и система — 8
+### 2.10 Интеграции и система — 10
 `webhooks` · `webhook_deliveries` · `webhook_events` · `idempotency_keys` · `ip_rules` ·
-`modules` · `settings` · `audit_logs`
+`modules` · `settings` · `metrika_settings` · `storefront_settings` · `audit_logs`
+
+`metrika_settings` и `storefront_settings` — тенант-скоупные настройки витрины (счётчик
+Яндекс.Метрики и параметры оформления). Они меняются из админки, поэтому лежат в БД,
+а не в конфиге.
 
 ---
 
@@ -249,9 +271,9 @@ CREATE TRIGGER trg_schema_version_immutable BEFORE UPDATE ON hall_schema_version
 
 ## 5. Политика ON DELETE
 
-73 внешних ключа: **35 CASCADE · 16 SET NULL · 22 RESTRICT**.
+101 внешний ключ: **55 CASCADE · 22 SET NULL · 24 RESTRICT**.
 
-### RESTRICT — 22 (продажи, деньги, билеты)
+### RESTRICT — 24 (продажи, деньги, билеты)
 
 Удаление запрещено для всего, что участвует в денежном или пропускном контуре:
 
@@ -268,12 +290,12 @@ seats         → tickets, inventory_items
 
 Это защита от каскадного удаления проданных билетов — самый дорогой вид потери данных.
 
-### CASCADE — 35 (геометрия и служебное)
+### CASCADE — 55 (геометрия и служебное)
 
 Удаление зала уносит версии схемы, секторы, ряды, места. Удаление события — сеансы и
 inventory. Удаление корзины — позиции и holds. Это структурные вложения.
 
-### SET NULL — 16 (обезличивание)
+### SET NULL — 22 (обезличивание)
 
 `orders.user_id`, `payments.*`, `consents.user_id`, `audit_logs.user_id`,
 `ticket_scans.device_id` и др. Удаление пользователя **не удаляет его заказы** — это
@@ -288,16 +310,17 @@ inventory. Удаление корзины — позиции и holds. Это �
 
 ## 6. Мультитенантность — сильное ограничение схемы
 
-`organization_id` присутствует только у **16 из 64** таблиц:
+`organization_id` присутствует только у **18 из 73** таблиц:
 
 ```
 ab_experiments · api_keys · audit_logs · checkin_devices · embed_domains · events ·
-media_assets · offline_bundles · orders · pages · promo_codes · ticket_templates ·
-user_organization · user_roles · venues · webhooks
+media_assets · offline_bundles · order_reminders · orders · pages · promo_codes ·
+storefront_settings · ticket_templates · user_organization · user_roles · venues · webhooks
 ```
 
 Из добавленных в `010_tz_gaps.sql` тенантность получили `promo_codes`, `media_assets`,
-`offline_bundles` и `user_roles`. У `media_assets.organization_id` допустим NULL —
+`offline_bundles` и `user_roles`; из `012_application_domain.sql` — `order_reminders` и
+`storefront_settings`. У `media_assets.organization_id` допустим NULL —
 актив без организации (глобальная медиатека) не ломает схему.
 
 **Отсутствует** у `tickets`, `payments`, `refunds`, `carts`, `cart_items`, `order_items`,
@@ -350,6 +373,10 @@ MySQL считает NULL-значения в UNIQUE-ключе различны
 ломает защиту молча.
 
 ### 7.3 ~32 таблицы без полевого описания в спеке
+
+> Раздел — снимок `docs/REVIEW-spec-bundle.md`. Числа ниже посчитаны до появления
+> `012_application_domain.sql`, который добавил 9 таблиц **с** прозой в спеке, поэтому
+> «описаны» и «не описаны» сдвинулись; пересчёт — при следующем проходе по ревью.
 
 Пофайлово описаны ~24 таблицы. Остальные (`ab_*`, `analytics_events`, `api_keys`,
 `audit_logs`, `checkin_devices`, `consents`, `embed_domains`, `hall_tables`,

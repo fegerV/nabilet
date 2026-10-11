@@ -22,7 +22,12 @@ CREATE TABLE IF NOT EXISTS venues (
   updated_at DATETIME(6) NOT NULL,
   PRIMARY KEY (id),
   UNIQUE KEY uq_venues_public_id (public_id),
-  UNIQUE KEY uq_venues_org_slug (organization_id, slug),
+  -- Slug площадки глобально уникален: публичный адрес `/venue/{slug}`
+  -- организации не содержит. Код это уже предполагал (`VenueController`
+  -- валидирует `unique:venues,slug` и генерирует адрес циклом по всей таблице),
+  -- а схема — нет. См. database/migrations/
+  -- 2026_10_11_000200_make_venue_slug_globally_unique.php.
+  UNIQUE KEY uq_venues_slug (slug),
   KEY idx_venues_org_city (organization_id, city),
   CONSTRAINT fk_venues_org FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
