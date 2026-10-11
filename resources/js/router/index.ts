@@ -5,25 +5,27 @@
  * внутри чужого <iframe>, где красивые URL невозможны без переписывания на
  * сервере. Хэш работает везде одинаково и не требует настройки nginx.
  */
-import { createRouter, createWebHashHistory, type RouteRecordRaw } from 'vue-router'
+import { createRouter, createWebHashHistory, type RouteLocationNormalized, type RouteRecordRaw } from 'vue-router'
 import StorefrontShell from '@/layouts/StorefrontShell.vue'
 import AdminShell from '@/layouts/AdminShell.vue'
 import { getToken } from '@/lib/api'
 import { isAdminSession, clearSession } from '@/lib/auth'
+import { applySeo } from '@/lib/seo'
 
 const routes: RouteRecordRaw[] = [
   {
     path: '/',
     component: StorefrontShell,
     children: [
-      { path: '', name: 'catalog', component: () => import('@/pages/storefront/CatalogPage.vue') },
-      { path: 'event/:slug', name: 'event', component: () => import('@/pages/storefront/EventPage.vue') },
+      { path: '', name: 'catalog', component: () => import('@/pages/storefront/CatalogPage.vue'), meta: { title: 'Афиша мероприятий' } },
+      { path: 'event/:slug', name: 'event', component: () => import('@/pages/storefront/EventPage.vue'), meta: { title: 'Мероприятие' } },
       {
         path: 'event/:slug/seats',
         name: 'seats',
         component: () => import('@/pages/storefront/SeatSelectionPage.vue'),
+        meta: { title: 'Выбор мест' },
       },
-      { path: 'checkout', name: 'checkout', component: () => import('@/pages/storefront/CheckoutPage.vue') },
+      { path: 'checkout', name: 'checkout', component: () => import('@/pages/storefront/CheckoutPage.vue'), meta: { title: 'Оформление заказа' } },
       {
         // Демо-подтверждение оплаты. Путь совпадает с
         // `YooKassaProvider::DEMO_CONFIRM_PATH` — разъехавшись, они дают 404
@@ -31,24 +33,27 @@ const routes: RouteRecordRaw[] = [
         path: 'checkout/demo-pay',
         name: 'demo-pay',
         component: () => import('@/pages/storefront/DemoPayPage.vue'),
+        meta: { title: 'Подтверждение оплаты' },
       },
       {
         path: 'payment/:result',
         name: 'payment',
         component: () => import('@/pages/storefront/PaymentResultPage.vue'),
+        meta: { title: 'Результат оплаты' },
       },
-      { path: 'tickets', name: 'tickets', component: () => import('@/pages/storefront/TicketsPage.vue') },
+      { path: 'tickets', name: 'tickets', component: () => import('@/pages/storefront/TicketsPage.vue'), meta: { title: 'Мои билеты' } },
     ],
   },
   {
     path: '/admin/login',
     name: 'admin-login',
     component: () => import('@/pages/admin/AdminLoginPage.vue'),
+    meta: { title: 'Вход в админку' },
   },
   {
     path: '/admin',
     component: AdminShell,
-    meta: { requiresAuth: true },
+    meta: { requiresAuth: true, title: 'Админка' },
     children: [
       { path: '', name: 'admin', component: () => import('@/pages/admin/AdminDashboardPage.vue') },
             { path: 'orders', name: 'admin-orders', component: () => import('@/pages/admin/AdminOrdersPage.vue') },
@@ -127,4 +132,28 @@ router.beforeEach((to) => {
   if (to.name === 'admin-login' && isAdminSession()) {
     return { name: 'admin' }
   }
+})
+
+/**
+ * E3: заголовок вкладки и метаданные из `meta.title` маршрута.
+ *
+ * Раньше hash-SPA отдавал на всех адресах один заголовок из `index.html` —
+ * в истории браузера и в закладках все страницы выглядели одинаково.
+ * Берём самый глубокий совпавший маршрут: у детей админки своего заголовка
+ * нет, поэтому им достаётся родительский «Админка», а не пустая строка.
+ *
+ * Страницы с данными переопределяют заголовок ПОЗЖЕ (см. `useSeo` в
+ * `EventPage`): переход срабатывает до загрузки ответа, поэтому здесь всегда
+ * только запасной вариант.
+ */
+function titleFor(to: RouteLocationNormalized): string | null {
+  for (let i = to.matched.length - 1; i >= 0; i -= 1) {
+    const title = to.matched[i]?.meta.title
+    if (typeof title === 'string' && title) return title
+  }
+  return null
+}
+
+router.afterEach((to) => {
+  applySeo({ title: titleFor(to) })
 })
