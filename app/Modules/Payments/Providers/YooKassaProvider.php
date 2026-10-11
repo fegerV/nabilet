@@ -195,7 +195,12 @@ class YooKassaProvider implements PaymentProviderInterface
     {
         $response = Http::withHeaders([
             'Content-Type' => 'application/json',
-            'Idempotence-Key' => uniqid('ykr_', true),
+            // Ключ идемпотентности обязан быть стабильным между повторами одного
+            // и того же возврата. Раньше здесь стоял `uniqid('ykr_', true)` —
+            // уникальный на каждый вызов, поэтому повтор после таймаута сети
+            // ЮKassa воспринимала как НОВЫЙ возврат и списывала деньги дважды.
+            // Ключ выводится из `public_id` возврата вызывающим (RefundService).
+            'Idempotence-Key' => (string) ($refundData['idempotency_key'] ?? ('ykr_' . $refundData['payment_id'] . '_' . $refundData['amount'])),
         ])
         ->withBasicAuth($this->shopId, $this->secretKey)
         ->post("{$this->baseUrl}/refunds", [
@@ -264,17 +269,30 @@ class YooKassaProvider implements PaymentProviderInterface
 
     public function verifySignature(array $payload, string $signature): bool
     {
-        // YooKassa doesn't require signature verification for webhooks by default
-        // If HMAC secret is configured, verify it
-        $hmacSecret = config('payments.yookassa_webhook_secret');
-        
-        if (empty($hmacSecret)) {
-            // No secret configured, skip verification (HTTPS provides transport security)
-            return true;
+        // Ключ — `nabilet.payment.yookassa.webhook_secret`, а не
+        // `payments.yookassa_webhook_secret`: файла `config/payments.php` в
+        // проекте нет, поэтому прежняя строка ВСЕГДА читала `null`, метод всегда
+        // возвращал `true` и подпись не проверялась никогда — fail-open с
+        // ложным чувством защиты (аудит R-04b).
+        $hmacSecret = config('nabilet.payment.yookassa.webhook_secret');
+
+        if (! is_string($hmacSecret) || $hmacSecret === '') {
+            // Fail-closed: если вызывающий явно просит проверить подпись, а
+            // секрета нет — проверить нечем. Возврат `true` означал бы «подпись
+            // верна» без единой проверки.
+            //
+            // Основной путь аутентификации уведомлений ЮKassa — allowlist IP в
+            // `WebhookAuthenticator`; сюда попадают только те, кто спросил
+            // подпись отдельно.
+            return false;
         }
 
-        // Verify HMAC-SHA256 signature
         $payloadBody = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+        if ($payloadBody === false) {
+            return false;
+        }
+
         $expectedSignature = hash_hmac('sha256', $payloadBody, $hmacSecret);
 
         return hash_equals($expectedSignature, $signature);

@@ -54,12 +54,18 @@ export interface MediaAsset {
 export type MediaKind = 'image' | 'video' | 'document' | 'other'
 
 /**
- * Типы, которые принимает сервер (`MediaController::ALLOWED_MIMES`).
+ * Типы, которые принимает сервер (`MediaController::ALLOWED_TYPES`).
  *
  * Список продублирован намеренно: сервер обязан проверять сам, а браузер не
  * должен гонять по сети десятимегабайтный файл, чтобы получить 422. Разъехавшись,
  * эти два списка дают ровно тот дефект, который здесь уже случался: интерфейс
  * предлагал видео, а сервер отвечал «должен быть одного из типов: jpg, jpeg…».
+ *
+ * `image/svg+xml` УБРАН (аудит безопасности S-04). SVG — исполняемый XML, а не
+ * картинка: `<script>`/`onload=` внутри выполняются в origin витрины, потому что
+ * файлы отдаются с того же домена. Сервер такие загрузки теперь отклоняет, и
+ * предлагать их в диалоге выбора значило бы отправлять пользователя в гарантимый
+ * 422. Для афиш и галереи SVG не нужен — см. `MediaController::ALLOWED_TYPES`.
  */
 export const MEDIA_TYPES: readonly string[] = [
   'image/jpeg',
@@ -67,7 +73,6 @@ export const MEDIA_TYPES: readonly string[] = [
   'image/webp',
   'image/avif',
   'image/gif',
-  'image/svg+xml',
   'application/pdf',
   'video/mp4',
   'video/webm',
@@ -77,7 +82,7 @@ export const MEDIA_TYPES: readonly string[] = [
 export const MEDIA_ACCEPT: string = MEDIA_TYPES.join(',')
 
 /** Человекочитаемый перечень типов для подсказки и сообщения об ошибке. */
-export const MEDIA_TYPES_LABEL = 'jpg, png, webp, avif, gif, svg, pdf, mp4, webm'
+export const MEDIA_TYPES_LABEL = 'jpg, png, webp, avif, gif, pdf, mp4, webm'
 
 /** Совпадает с `MAX_SIZE_KB` в `MediaController` (10240 КБ). */
 export const MEDIA_MAX_BYTES = 10 * 1024 * 1024

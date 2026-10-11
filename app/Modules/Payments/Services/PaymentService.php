@@ -4,18 +4,28 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Payments\Services;
 
+use Nabilet\Core\Errors\ConflictError;
 use Nabilet\Core\Errors\DomainRuleViolation;
+use Nabilet\Core\Errors\ValidationError;
 use Nabilet\Core\StateMachine\StateMachine;
 use Nabilet\Core\Support\HoldGrace;
+use Nabilet\Core\Support\Money;
 use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Orders\Models\SeatHold;
 use Nabilet\Modules\Orders\Services\OrderService;
 use Nabilet\Modules\Orders\StateMachines\OrderStateMachine;
+use Nabilet\Modules\Payments\Domain\PaymentSettlement;
+use Nabilet\Modules\Payments\Domain\SettlementDecision;
+use Nabilet\Modules\Payments\Domain\SettlementRequest;
 use Nabilet\Modules\Payments\Models\Payment;
+use Nabilet\Modules\Payments\Models\Refund;
 use Nabilet\Modules\Payments\Repositories\PaymentRepository;
 use Nabilet\Modules\Payments\StateMachines\PaymentStateMachine;
+use Nabilet\Modules\Payments\StateMachines\RefundStateMachine;
 use Nabilet\Modules\Inventory\Services\HoldSweeper;
 use Nabilet\Modules\Inventory\Services\SeatHoldLifecycle;
+use Nabilet\Modules\Inventory\StateMachines\InventoryItemStateMachine;
+use Nabilet\Modules\Tickets\Models\Ticket;
 use Nabilet\Modules\Tickets\Services\TicketService;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
@@ -81,57 +91,100 @@ class PaymentService
 
     /**
      * Создать платёж у провайдера для заказа и сохранить Payment.
-     * Возвращает payment + confirmation_url (редирект на шлюз или demo-pay).
+     * Возвращает payment + confirmation_url (редирект на шлюз или demo-pay)
+     * и признак `created`: `false` — платёж переиспользован (повторный запрос),
+     * `true` — создан этим вызовом. Контроллер по нему выбирает 201 или 200.
+     *
+     * Ключ идемпотентности ОБЯЗАТЕЛЕН (S-07). Без него двойной клик по кнопке
+     * «Оплатить» или ретрай уровня сети создавал второй pending-платёж по тому
+     * же заказу: сверка с провайдером потом видела два зачисления против одной
+     * оплаты, а возврат мог уйти дважды. Проверка стоит здесь, а не только в
+     * контроллере, потому что этот метод — единственная точка, которая реально
+     * дедуплицирует: вызов мимо валидации HTTP (админка, скрипты, embed)
+     * не должен уметь создать платёж без ключа.
      *
      * @param  array{idempotency_key?: string|null}  $data
-     * @return array{payment: Payment, confirmation_url: string|null}
+     * @return array{payment: Payment, confirmation_url: string|null, created: bool}
      */
     public function initiatePayment(int $orderId, array $data = []): array
     {
-        $order = Order::findOrFail($orderId);
         $providerName = PaymentProviderRegistry::defaultProviderName();
+        $idempotencyKey = $this->normalizeIdempotencyKey($data['idempotency_key'] ?? null);
 
-        return DB::transaction(function () use ($orderId, $order, $data, $providerName) {
-            // A7: ключ идемпотентности принадлежит связке (provider, key). Если
-            // такой ключ уже использован для ДРУГОГО заказа — это ошибка клиента
-            // (переиспользование ключа), а не «верни чужой платёж»: молчаливая
-            // выдача payment другого заказа отправляла покупателя платить не за
-            // тот заказ. 409 IDEMPOTENCY_CONFLICT.
-            if (!empty($data['idempotency_key'])) {
-                $byKey = Payment::where('provider', $providerName)
-                    ->where('idempotency_key', $data['idempotency_key'])
-                    ->first();
+        // ФАЗА 1 — только БД, без сети.
+        //
+        // `lockForUpdate()` на строке заказа сериализует параллельные запросы:
+        // второй ждёт коммита первого и видит созданный им платёж. Без блокировки
+        // два одновременных `POST /payments` с РАЗНЫМИ ключами оба проходили
+        // проверку «активного платежа нет» и создавали два pending-платежа на
+        // один заказ — двойное списание, если покупатель успевал оплатить оба
+        // (аудит R-02). UNIQUE на ключе идемпотентности здесь не спасает: ключи
+        // разные.
+        $replay = DB::transaction(function () use ($orderId, $providerName, $idempotencyKey) {
+            $order = Order::whereKey($orderId)->lockForUpdate()->firstOrFail();
 
-                if ($byKey !== null && (int) $byKey->order_id !== $orderId) {
-                    throw new \Nabilet\Core\Errors\ConflictError(
-                        'Idempotency key was already used for another order.',
-                        'IDEMPOTENCY_CONFLICT',
-                        ['used_for_order_id' => (int) $byKey->order_id],
-                    );
-                }
+            // Идемпотентный повтор проверяется ДО проверки оплачиваемости: клиент,
+            // повторивший запрос с тем же ключом по уже оплаченному заказу, должен
+            // получить свой платёж (200), а не 409 «заказ нельзя оплатить».
+            $reusable = $this->reusablePayment($orderId, $providerName, $idempotencyKey);
+
+            if ($reusable !== null) {
+                return $reusable;
             }
 
-            // Идемпотентность: один активный платёж на заказ.
-            $existing = Payment::where('order_id', $orderId)
-                ->whereIn('status', [PaymentStateMachine::PENDING, PaymentStateMachine::WAITING_FOR_CAPTURE])
-                ->first();
+            // Оплатить можно только «живой» заказ (аудит R-05).
+            $this->assertOrderIsPayable($order);
 
-            if ($existing) {
-                return [
-                    'payment' => $existing,
-                    'confirmation_url' => $existing->payment_url,
-                ];
+            return null;
+        });
+
+        if ($replay !== null) {
+            return $replay;
+        }
+
+        // ФАЗА 2 — вызов провайдера ВНЕ транзакции (аудит R-09).
+        //
+        // Раньше `createPayment()` провайдера вызывался внутри
+        // `DB::transaction()`: при сетевом таймауте ЮKassa платёж создавала, а
+        // наша транзакция откатывалась — у провайдера платёж есть, у нас строки
+        // нет, и восстановить связь нечем. Плюс блокировка строки заказа из фазы
+        // 1 держалась бы всё время сетевого вызова, а это исчерпание пула
+        // соединений под нагрузкой.
+        //
+        // От потери при таймауте защищает ключ идемпотентности: он стабилен между
+        // ретраями, поэтому провайдер вернёт тот же платёж, а не создаст второй.
+        $order = Order::findOrFail($orderId);
+
+        $providerResult = $this->providers->make($providerName)->createPayment([
+            'order_id' => (string) $orderId,
+            'amount' => (int) $order->total_amount,
+            'currency' => $order->currency ?? 'RUB',
+            'description' => "Order #{$orderId}",
+            'success_url' => (string) config('nabilet.payment.yookassa.return_url', config('app.url')),
+            'idempotency_key' => $idempotencyKey,
+        ]);
+
+        // ФАЗА 3 — запись, с повторной блокировкой и повторной проверкой.
+        //
+        // Между фазами 1 и 3 параллельный запрос мог успеть создать платёж; тогда
+        // побеждает он, а созданный нами intent у провайдера остаётся
+        // неоплаченным и истекает сам — денег он не двигает, поэтому «лишний»
+        // вызов провайдера безопасен.
+        return DB::transaction(function () use ($orderId, $providerName, $providerResult, $idempotencyKey) {
+            // Заказ читается СВЕЖИМ под блокировкой, а не берётся из фазы 2:
+            // `$order` — это снимок ДО сетевого вызова, и его статус мог
+            // измениться, пока мы разговаривали с провайдером (отмена, истечение
+            // холда). Проверка по устаревшей модели пропускала бы именно ту
+            // гонку, от которой защищает фаза 3.
+            $order = Order::whereKey($orderId)->lockForUpdate()->firstOrFail();
+
+            $raced = $this->reusablePayment($orderId, $providerName, $idempotencyKey);
+
+            if ($raced !== null) {
+                return $raced;
             }
 
-            $provider = $this->providers->make($providerName);
-            $providerResult = $provider->createPayment([
-                'order_id' => (string) $orderId,
-                'amount' => (int) $order->total_amount,
-                'currency' => $order->currency ?? 'RUB',
-                'description' => "Order #{$orderId}",
-                'success_url' => (string) config('nabilet.payment.yookassa.return_url', config('app.url')),
-                'idempotency_key' => $data['idempotency_key'] ?? (string) Str::ulid(),
-            ]);
+            $this->assertOrderIsPayable($order);
 
             $payment = $this->createPayment($orderId, [
                 'provider' => $providerName,
@@ -139,14 +192,132 @@ class PaymentService
                 'amount' => (int) $order->total_amount,
                 'currency' => $order->currency ?? 'RUB',
                 'payment_url' => $providerResult['confirmation_url'],
-                'idempotency_key' => $data['idempotency_key'] ?? null,
+                'idempotency_key' => $idempotencyKey,
             ]);
 
             return [
                 'payment' => $payment,
                 'confirmation_url' => $providerResult['confirmation_url'],
+                'created' => true,
             ];
         });
+    }
+
+    /**
+     * Платёж, который можно вернуть вместо создания нового, или `null`.
+     *
+     * Два правила, в порядке приоритета:
+     *
+     *  1. Тот же ключ идемпотентности → тот же платёж (повтор запроса). Ветка
+     *     идёт ПЕРВОЙ: завершённый платёж (`succeeded`/`canceled`) не попадает
+     *     под «активный», и без этой ветки повтор создавал бы вторую строку с тем
+     *     же ключом → 500 на UNIQUE `uq_payments_idempotency`.
+     *  2. Активный платёж по заказу → он же. Ретрай с ДРУГИМ ключом тоже не
+     *     должен плодить pending-платежи.
+     *
+     * Вызывается внутри транзакции, уже держащей блокировку строки заказа.
+     *
+     * @return array{payment: Payment, confirmation_url: string|null, created: bool}|null
+     */
+    private function reusablePayment(int $orderId, string $providerName, string $idempotencyKey): ?array
+    {
+        $byKey = Payment::where('provider', $providerName)
+            ->where('idempotency_key', $idempotencyKey)
+            ->first();
+
+        if ($byKey !== null) {
+            // Ключ уже использован для ДРУГОГО заказа — ошибка клиента
+            // (переиспользование ключа), а не «верни чужой платёж»: молчаливая
+            // выдача payment другого заказа отправляла покупателя платить не за
+            // тот заказ. 409 IDEMPOTENCY_CONFLICT.
+            if ((int) $byKey->order_id !== $orderId) {
+                throw new ConflictError(
+                    'Idempotency key was already used for another order.',
+                    'IDEMPOTENCY_CONFLICT',
+                    ['used_for_order_id' => (int) $byKey->order_id],
+                );
+            }
+
+            return [
+                'payment' => $byKey,
+                'confirmation_url' => $byKey->payment_url,
+                'created' => false,
+            ];
+        }
+
+        $existing = Payment::where('order_id', $orderId)
+            ->whereIn('status', [PaymentStateMachine::PENDING, PaymentStateMachine::WAITING_FOR_CAPTURE])
+            ->first();
+
+        if ($existing !== null) {
+            return [
+                'payment' => $existing,
+                'confirmation_url' => $existing->payment_url,
+                'created' => false,
+            ];
+        }
+
+        return null;
+    }
+
+    /**
+     * Заказ обязан допускать оплату (аудит R-05).
+     *
+     * Раньше статус заказа при инициации не проверялся вообще: отменённый,
+     * просроченный, уже возвращённый или уже оплаченный заказ всё равно получал
+     * платёжную ссылку. Покупатель платил по отменённому заказу, вебхук затем
+     * уходил в автовозврат — деньги возвращались, но с задержкой и с мусором в
+     * сверке; а по уже оплаченному заказу новая ссылка означала второе списание.
+     *
+     * `payment_failed` разрешён НАМЕРЕННО: покупатель с отклонённой картой должен
+     * иметь возможность заплатить снова (см. OrderStateMachine — `failed` не
+     * терминальный именно для этого).
+     */
+    private function assertOrderIsPayable(Order $order): void
+    {
+        $payable = [
+            OrderStateMachine::PENDING,
+            OrderStateMachine::AWAITING_PAYMENT,
+            OrderStateMachine::PAYMENT_FAILED,
+        ];
+
+        if (! in_array((string) $order->status, $payable, true)) {
+            throw new ConflictError(
+                'This order cannot be paid.',
+                'ORDER_NOT_PAYABLE',
+                [
+                    'order_id' => (int) $order->id,
+                    'status' => (string) $order->status,
+                ],
+            );
+        }
+    }
+
+    /**
+     * Привести ключ идемпотентности к каноническому виду или отказать.
+     *
+     * Пустое значение — не «нет ключа», а невалидный запрос: клиент обязан
+     * прислать ключ (S-07). Длина ограничена 255 — столько же, сколько в
+     * колонке `payments.idempotency_key`; длиннее MySQL молча обрежет, и два
+     * разных ключа с общим префиксом схлопнулись бы в один.
+     */
+    private function normalizeIdempotencyKey(?string $key): string
+    {
+        $key = trim((string) $key);
+
+        if ($key === '') {
+            throw new ValidationError([
+                'idempotency_key' => ['The idempotency key field is required.'],
+            ]);
+        }
+
+        if (strlen($key) > 255) {
+            throw new ValidationError([
+                'idempotency_key' => ['The idempotency key must not be greater than 255 characters.'],
+            ]);
+        }
+
+        return $key;
     }
 
     /**
@@ -180,6 +351,13 @@ class PaymentService
             'object' => [
                 'id' => $payment->provider_payment_id,
                 'created_at' => now()->toIso8601String(),
+                // Сумма обязательна: вебхук сверяет её с заказом (PaymentSettlement).
+                // Без неё демо-подтверждение выглядело бы недоплатой и уходило бы
+                // в автовозврат вместо выпуска билета.
+                'amount' => [
+                    'value' => number_format((int) $payment->amount / 100, 2, '.', ''),
+                    'currency' => (string) ($payment->currency ?? 'RUB'),
+                ],
             ],
             'event_id' => $providerPaymentId . ':demo:confirm:' . Str::ulid(),
         ]);
@@ -247,10 +425,9 @@ class PaymentService
     public function processWebhook(string $provider, array $payload): Payment
     {
         return DB::transaction(function () use ($provider, $payload) {
-            $paymentId = (string) ($payload['object']['id']
-                ?? $payload['payment_id']
-                ?? $payload['id']
-                ?? '');
+            $eventType = (string) ($payload['event'] ?? $payload['event_type'] ?? '');
+
+            $paymentId = $this->resolveWebhookPaymentId($eventType, $payload);
 
             if ($paymentId === '') {
                 throw new DomainRuleViolation(
@@ -275,7 +452,6 @@ class PaymentService
                 );
             }
 
-            $eventType = (string) ($payload['event'] ?? $payload['event_type'] ?? '');
             $eventId = (string) ($payload['event_id'] ?? ($paymentId . ':' . $eventType));
 
             if ($eventId === '') {
@@ -315,6 +491,17 @@ class PaymentService
                     $this->handlePaymentCanceled($payment, $payload);
                     break;
 
+                // Возвраты асинхронны: провайдер принимает запрос, а исход
+                // сообщает уведомлением. Без этих двух ветвей каждое штатное
+                // уведомление ЮKassa о возврате падало в `default` →
+                // RuntimeException → 500, claim откатывался, провайдер повторял
+                // его бесконечно, а возврат навсегда оставался `processing`
+                // (`completed_at` не проставлялся).
+                case 'refund.succeeded':
+                case 'refund.failed':
+                    $this->handleRefundEvent($eventType, $payment, $payload);
+                    break;
+
                 default:
                     // Throwing rolls the claim back with the rest of the
                     // transaction, so an event we cannot handle is not recorded
@@ -333,31 +520,40 @@ class PaymentService
 
     protected function handlePaymentSucceeded(Payment $payment, array $payload): void
     {
-        if (!$this->machine->can($payment->status, PaymentStateMachine::SUCCEEDED)) {
+        $order = $payment->order;
+
+        // Решение принимает доменный PaymentSettlement: сверка суммы и валюты,
+        // запрет воскрешения терминального заказа, идемпотентный replay.
+        // Раньше вебхук не читал из payload ни сумму, ни валюту — заказ
+        // становился `paid`, а билет выпускался по ЛЮБОЙ сумме, включая ноль.
+        $decision = $this->settleSucceeded($payment, $payload);
+
+        if ($decision->isReplay()) {
+            // Уже в целевом состоянии: провайдеру нужен ответ «ок», писать нечего.
             return;
         }
 
-        // CRITICAL: Check if associated holds are still convertible
-        // This prevents race condition where hold expires during payment processing
-        if ($payment->order) {
-            $holdsStillValid = $this->validateHoldsForOrder($payment->order);
+        if ($decision->isRefused()) {
+            $this->recordReceiptAndRefund($payment, $payload, (string) $decision->reason());
 
-            if (!$holdsStillValid) {
-                Log::warning('PaymentService: Holds expired during payment processing', [
-                    'payment_id' => $payment->id,
-                    'order_id' => $payment->order->id,
-                    'provider_payment_id' => $payment->provider_payment_id,
-                ]);
+            return;
+        }
 
-                // Reject payment - holds have expired. Возвращаем структурированную
-                // 409 (SEAT_HOLDS_EXPIRED) вместо «голого» RuntimeException, который
-                // долетал до клиента как 500: транзакция вебхука откатывается, заказ
-                // не переходит в paid, места вернутся sweep-путём.
-                throw new \Nabilet\Core\Errors\ConflictError(
-                    'Seat holds have expired. Payment cannot be completed.',
-                    'SEAT_HOLDS_EXPIRED'
-                );
-            }
+        // CRITICAL: холд истёк, пока деньги были в пути — места уже перепроданы,
+        // выпускать билет не из чего. Раньше здесь бросался ConflictError: он
+        // откатывал claim события, провайдер повторял уведомление бесконечно, а
+        // деньги оставались списанными без билета и без возврата. Теперь это
+        // терминальный исход — фиксируем поступление и возвращаем деньги.
+        if ($order !== null && ! $this->validateHoldsForOrder($order)) {
+            Log::warning('PaymentService: Holds expired during payment processing', [
+                'payment_id' => $payment->id,
+                'order_id' => $order->id,
+                'provider_payment_id' => $payment->provider_payment_id,
+            ]);
+
+            $this->recordReceiptAndRefund($payment, $payload, 'seat_holds_expired');
+
+            return;
         }
 
         $this->repository->markAsSucceeded($payment);
@@ -368,20 +564,21 @@ class PaymentService
             'amount' => $payment->amount,
             'status' => 'succeeded',
             'payload_json' => $payload,
+            'provider_event_id' => $this->providerEventId($payment, $payload),
         ]);
 
         // Notify order service: full payment -> paid.
-        if ($payment->order) {
-            $this->orders->applyPayment($payment->order, $payment);
+        if ($order !== null) {
+            $this->orders->applyPayment($order, $payment);
 
             // Mark holds as converted after successful order completion
-            $this->markHoldsAsConverted($payment->order);
+            $this->markHoldsAsConverted($order);
 
             // A6/A9: 'sold' ставится ТОЛЬКО здесь — на подтверждённой оплате
             // (InventoryItemStateMachine: held → sold happens on payment
             // confirmation). До этого момента места оставались held и при
             // неоплате возвращались в продажу sweep-путём.
-            $freshOrder = $payment->order->fresh();
+            $freshOrder = $order->fresh();
             if ($freshOrder !== null && $freshOrder->status === 'paid') {
                 $this->markInventorySoldForOrder($freshOrder);
 
@@ -399,16 +596,272 @@ class PaymentService
     }
 
     /**
+     * Что разрешено сделать уведомлению `payment.succeeded`.
+     *
+     * Готовый доменный слой `PaymentSettlement`/`SettlementRequest` существовал и
+     * был покрыт unit-тестами, но к пути вебхука подключён НЕ был (ни одного
+     * вызова вне `Domain/`). Именно поэтому подделанное или переупорядоченное
+     * уведомление с любой суммой оплачивало заказ.
+     */
+    private function settleSucceeded(Payment $payment, array $payload): SettlementDecision
+    {
+        $order = $payment->order;
+
+        $orderTotal = Money::of(
+            (int) ($order?->total_amount ?? $payment->amount),
+            (string) ($order?->currency ?? $payment->currency ?? 'RUB'),
+        );
+
+        $reported = $this->reportedAmount($payment, $payload);
+
+        if ($reported === null) {
+            // Суммы в уведомлении нет — сверять нечего. Fail-closed: отказ, а не
+            // молчаливая выдача билета.
+            return SettlementDecision::refused(PaymentSettlement::REASON_AMOUNT_MISMATCH);
+        }
+
+        try {
+            $request = new SettlementRequest(
+                orderStatus: (string) ($order?->status ?? OrderStateMachine::PENDING),
+                paymentStatus: (string) $payment->status,
+                orderTotal: $orderTotal,
+                reportedAmount: $reported,
+                providerEvent: PaymentStateMachine::SUCCEEDED,
+                // Вторая и третья доставка того же уведомления не должны выпустить
+                // второй комплект билетов — оценщик обязан знать, что сайд-эффект
+                // уже произошёл.
+                ticketsAlreadyIssued: $order !== null
+                    && Ticket::where('order_id', $order->id)->exists(),
+            );
+        } catch (DomainRuleViolation $e) {
+            // Валюта заказа и валюта уведомления разошлись — конструктор
+            // `SettlementRequest` это отвергает (CURRENCY_MISMATCH). Тоже
+            // терминальный отказ, а не повод для вечного ретрая.
+            return SettlementDecision::refused($e->errorCode);
+        }
+
+        return (new PaymentSettlement())->settle($request);
+    }
+
+    /**
+     * Сумма из уведомления в минорных единицах.
+     *
+     * ЮKassa шлёт `object.amount = {value: "5000.00", currency: "RUB"}`.
+     * `Money::fromDecimal` разбирает десятичную строку строковой арифметикой —
+     * float здесь недопустим (см. `Money`). `null` означает «суммы нет»,
+     * и вызывающий обязан трактовать это как отказ, а не как ноль.
+     */
+    private function reportedAmount(Payment $payment, array $payload): ?Money
+    {
+        $object = is_array($payload['object'] ?? null) ? $payload['object'] : $payload;
+        $amount = $object['amount'] ?? null;
+
+        $value = is_array($amount) ? ($amount['value'] ?? null) : $amount;
+
+        if ($value === null || $value === '' || ! is_scalar($value)) {
+            return null;
+        }
+
+        $currency = is_array($amount) ? ($amount['currency'] ?? null) : null;
+
+        if (! is_string($currency) || $currency === '') {
+            $currency = $object['currency'] ?? $payment->currency ?? 'RUB';
+        }
+
+        try {
+            return Money::fromDecimal((string) $value, (string) $currency);
+        } catch (DomainRuleViolation) {
+            return null;
+        }
+    }
+
+    /**
+     * Стабильный идентификатор события провайдера для журнала транзакций.
+     *
+     * `payment_transactions.provider_event_id` и UNIQUE (payment_id,
+     * provider_event_id) существуют в схеме, но никогда не заполнялись — защита
+     * от дублей записей журнала была объявлена и мертва (в MySQL NULL не
+     * конфликтует с NULL).
+     */
+    private function providerEventId(Payment $payment, array $payload): string
+    {
+        $explicit = (string) ($payload['event_id'] ?? '');
+
+        if ($explicit !== '') {
+            return $explicit;
+        }
+
+        $type = (string) ($payload['event'] ?? $payload['event_type'] ?? 'event');
+        $objectId = (string) ($payload['object']['id'] ?? $payment->provider_payment_id ?? $payment->id);
+
+        return $objectId . ':' . $type;
+    }
+
+    /**
+     * Деньги у провайдера взяты, но заказ их принять не может.
+     *
+     * Терминальный исход вместо исключения: claim уведомления НЕ откатывается
+     * (иначе провайдер повторял бы доставку вечно), поступление фиксируется в
+     * журнале — наши книги обязаны сходиться с выпиской провайдера, — а деньги
+     * сразу возвращаются тем же путём, что и ручной возврат (`RefundService`:
+     * RefundLedger выводит статус заказа из денег).
+     */
+    private function recordReceiptAndRefund(Payment $payment, array $payload, string $reason): void
+    {
+        Log::critical('PaymentService: settled payment cannot be applied to the order — refunding', [
+            'payment_id' => $payment->id,
+            'order_id' => $payment->order_id,
+            'order_status' => $payment->order?->status,
+            'provider_payment_id' => $payment->provider_payment_id,
+            'reason' => $reason,
+        ]);
+
+        if ($payment->status !== PaymentStateMachine::SUCCEEDED) {
+            $this->repository->markAsSucceeded($payment);
+        }
+
+        $this->repository->addTransaction($payment, [
+            'type' => 'capture',
+            'amount' => $payment->amount,
+            'status' => 'succeeded',
+            'payload_json' => $payload + ['settlement_refusal' => $reason],
+            'provider_event_id' => $this->providerEventId($payment, $payload),
+        ]);
+
+        try {
+            $this->refunds->refund($payment->fresh(), null, 'Автовозврат: ' . $reason);
+        } catch (\Throwable $e) {
+            // Провайдер недоступен или возврат уже оформлен — запись в `refunds`
+            // (requested/failed) остаётся видимой оператору, деньги не теряются.
+            Log::error('PaymentService: automatic refund after a refused settlement failed', [
+                'payment_id' => $payment->id,
+                'reason' => $reason,
+                'exception' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Исход возврата от провайдера (`refund.succeeded` / `refund.failed`).
+     *
+     * Машина: `processing → succeeded | failed`. Успех обязан проставить
+     * `completed_at` — без этого возврат вечно висел в `processing`, а
+     * `RefundService` считал такие зависшие возвраты зачтёнными.
+     */
+    protected function handleRefundEvent(string $eventType, Payment $payment, array $payload): void
+    {
+        $object = is_array($payload['object'] ?? null) ? $payload['object'] : [];
+        $providerRefundId = (string) ($object['id'] ?? '');
+
+        $refund = $providerRefundId !== ''
+            ? Refund::where('payment_id', $payment->id)
+                ->where('provider_refund_id', $providerRefundId)
+                ->first()
+            : null;
+
+        // Фолбэк: id возврата в уведомлении отсутствует — берём последний
+        // незакрытый возврат этого платежа.
+        $refund ??= Refund::where('payment_id', $payment->id)
+            ->whereIn('status', [RefundStateMachine::REQUESTED, RefundStateMachine::PROCESSING])
+            ->latest('id')
+            ->first();
+
+        if ($refund === null) {
+            Log::warning('PaymentService: refund webhook for an unknown refund', [
+                'payment_id' => $payment->id,
+                'provider_refund_id' => $providerRefundId,
+                'event' => $eventType,
+            ]);
+
+            return;
+        }
+
+        $target = $eventType === 'refund.succeeded'
+            ? RefundStateMachine::SUCCEEDED
+            : RefundStateMachine::FAILED;
+
+        if ($refund->status === $target) {
+            return; // Повторная доставка — идемпотентно.
+        }
+
+        if (! RefundStateMachine::make()->can((string) $refund->status, $target)) {
+            Log::warning('PaymentService: illegal refund transition', [
+                'refund_id' => $refund->id,
+                'from' => $refund->status,
+                'to' => $target,
+            ]);
+
+            return;
+        }
+
+        $refund->update([
+            'status' => $target,
+            'completed_at' => $target === RefundStateMachine::SUCCEEDED ? now() : null,
+        ]);
+
+        $this->repository->addTransaction($payment, [
+            'type' => 'refund',
+            'amount' => -((int) $refund->amount),
+            'status' => $target === RefundStateMachine::SUCCEEDED ? 'succeeded' : 'failed',
+            'payload_json' => $payload,
+            'provider_event_id' => $this->providerEventId($payment, $payload),
+        ]);
+    }
+
+    /**
+     * Идентификатор платежа, к которому относится уведомление.
+     *
+     * Уведомление о возврате описывает ОБЪЕКТ ВОЗВРАТА: его `object.id` — это id
+     * возврата, а платёж лежит в `object.payment_id`. Поиск платежа по
+     * `object.id` давал 404 на каждое штатное уведомление ЮKassa о возврате, а
+     * 404 откатывает claim — провайдер повторял бы его бесконечно.
+     */
+    private function resolveWebhookPaymentId(string $eventType, array $payload): string
+    {
+        $object = is_array($payload['object'] ?? null) ? $payload['object'] : [];
+
+        if (str_starts_with($eventType, 'refund.')) {
+            return (string) ($object['payment_id'] ?? '');
+        }
+
+        return (string) ($object['id']
+            ?? $payload['payment_id']
+            ?? $payload['id']
+            ?? '');
+    }
+
+    /**
      * Подтверждённая продажа: места из позиций заказа переходят в 'sold'.
+     *
+     * Переход проверяется по `InventoryItemStateMachine`, а не пишется напрямую
+     * (аудит R-12). Раньше здесь стоял безусловный
+     * `update(['status' => 'sold'])`: место в статусе `disabled` (выключено для
+     * этого сеанса) или `blocked` (служебное) тоже становилось `sold`, то есть в
+     * зале появлялось проданное место, которого в продаже не существовало.
+     * Машина такие переходы запрещает, и запрет обязан соблюдаться здесь.
      */
     private function markInventorySoldForOrder(Order $order): void
     {
+        $machine = InventoryItemStateMachine::make();
+
         foreach ($order->items()->with('inventoryItem')->get() as $item) {
             $inv = $item->inventoryItem;
 
-            if ($inv !== null && $inv->status !== 'sold') {
-                $inv->update(['status' => 'sold']);
+            if ($inv === null || $inv->status === InventoryItemStateMachine::SOLD) {
+                continue;
             }
+
+            if (! $machine->can((string) $inv->status, InventoryItemStateMachine::SOLD)) {
+                Log::warning('PaymentService: inventory item cannot be marked sold', [
+                    'inventory_item_id' => $inv->id,
+                    'order_id' => $order->id,
+                    'status' => $inv->status,
+                ]);
+
+                continue;
+            }
+
+            $inv->update(['status' => InventoryItemStateMachine::SOLD]);
         }
     }
 
@@ -508,6 +961,7 @@ class PaymentService
             'amount' => 0,
             'status' => 'failed',
             'payload_json' => $payload,
+            'provider_event_id' => $this->providerEventId($payment, $payload),
         ]);
 
         // A12: отказ платежа обязан двигать заказ — иначе заказ вечно висит в
@@ -539,7 +993,9 @@ class PaymentService
             return;
         }
 
-        $payment->update(['status' => PaymentStateMachine::CANCELED]);
+        // Переход проверен машиной выше; сама запись — через репозиторий, чтобы
+        // статус платежа менялся в одном месте (аудит R-12).
+        $this->repository->markAsCanceled($payment);
 
         $order = $payment->order;
 

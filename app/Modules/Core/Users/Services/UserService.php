@@ -4,15 +4,18 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Core\Users\Services;
 
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Nabilet\Core\Errors\ValidationError;
+use Nabilet\Modules\Auth\Services\SessionIssuer;
 use Nabilet\Modules\Core\Users\Models\User;
 use Nabilet\Modules\Core\Users\Repositories\UserRepository;
-use Illuminate\Support\Facades\Hash;
 
 class UserService
 {
     public function __construct(
-        protected UserRepository $repository
+        protected UserRepository $repository,
+        protected SessionIssuer $sessions,
     ) {}
 
     /**
@@ -48,6 +51,18 @@ class UserService
         return $this->repository->findByPublicId($publicId);
     }
 
+    /**
+     * Обновить пользователя из админки.
+     *
+     * Отдельно от самого UPDATE решается одно правило: смена пароля и блокировка
+     * ОБЯЗАНЫ обрывать уже выданные токены. Токен — самостоятельная запись в
+     * `user_sessions`, он не перестаёт работать от того, что пароль изменился.
+     * Без явного отзыва украденная сессия продолжает жить после «реагирования на
+     * инцидент», и у оператора остаётся ложное чувство безопасности (аудит S-03).
+     *
+     * Обе записи — в одной транзакции, как в `AccountRecoveryService`: состояние,
+     * где новый пароль уже действует, а старый токен ещё жив, хуже любого из двух.
+     */
     public function updateUser(User $user, array $data): User
     {
         if (isset($data['email']) && $data['email'] !== $user->email) {
@@ -58,7 +73,29 @@ class UserService
             }
         }
 
-        return $this->repository->update($user, $data);
+        // Пустой пароль = «не менять» — нормализуется ДО расчёта `$revokeSessions`.
+        // Правило валидации (`PasswordRules::optional()`) уже убирает такой ключ,
+        // но этот метод вызывается и мимо HTTP (сидеры, скрипты, тесты), а цена
+        // ошибки здесь — обрыв всех сессий пользователя на пустом месте, а на
+        // слое записи — стёртый пароль.
+        if (array_key_exists('password', $data) && ($data['password'] === null || $data['password'] === '')) {
+            unset($data['password']);
+        }
+
+        // `status` в `active` — это разблокировка: отзывать нечего, наоборот,
+        // пользователю снова разрешён вход.
+        $revokeSessions = array_key_exists('password', $data)
+            || (array_key_exists('status', $data) && $data['status'] !== 'active');
+
+        return DB::transaction(function () use ($user, $data, $revokeSessions): User {
+            $updated = $this->repository->update($user, $data);
+
+            if ($revokeSessions) {
+                $this->sessions->revokeAllFor((int) $user->getKey());
+            }
+
+            return $updated;
+        });
     }
 
     public function deleteUser(User $user): bool
@@ -77,9 +114,9 @@ class UserService
         return $user;
     }
 
-    public function assignRoleToUser(User $user, int $roleId): void
+    public function assignRoleToUser(User $user, int $roleId, int $organizationId): void
     {
-        $this->repository->assignRole($user, $roleId);
+        $this->repository->assignRole($user, $roleId, $organizationId);
     }
 
     public function removeRoleFromUser(User $user, int $roleId): void

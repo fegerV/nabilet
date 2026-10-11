@@ -7,8 +7,11 @@ namespace Nabilet\Modules\Tickets\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Str;
+// Каноническая модель. Дубликат в `Modules\Organizations\Models\Organization`
+// нёс трейт `SoftDeletes` при отсутствующей колонке `organizations.deleted_at`,
+// из-за чего эта связь падала с `SQLSTATE[42S22]` при первой же загрузке.
+use Nabilet\Modules\Core\Organizations\Models\Organization;
 use Nabilet\Modules\Events\Models\Event;
-use Nabilet\Modules\Organizations\Models\Organization;
 use Nabilet\Modules\Sessions\Models\Session;
 
 /** Eloquent mapping for the signed, device-bound offline ticket bundle. */

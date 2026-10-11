@@ -4,12 +4,16 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Events\Http\Controllers;
 
+use Nabilet\Core\Support\StaffRole;
+use Nabilet\Modules\Content\Models\Redirect;
+use Nabilet\Modules\Events\Domain\EventStatus;
 use Nabilet\Modules\Events\Http\Requests\StoreEventRequest;
 use Nabilet\Modules\Events\Http\Requests\UpdateEventRequest;
 use Nabilet\Modules\Events\Http\Resources\EventResource;
 use Nabilet\Modules\Events\Models\Event;
 use Nabilet\Modules\Events\Services\EventPublicationService;
 use Nabilet\Modules\Events\Services\EventService;
+use Nabilet\Modules\Seo\Services\RedirectResolver;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -18,12 +22,32 @@ class EventController extends Controller
 {
     public function __construct(
         private readonly EventService $eventService,
-        private readonly EventPublicationService $publication
+        private readonly EventPublicationService $publication,
+        private readonly RedirectResolver $redirects
     ) {}
 
     public function index(Request $request): JsonResponse
     {
         $filters = $request->only(['organization_id', 'category_id', 'status', 'is_featured']);
+
+        // ПУБЛИЧНЫЙ КАТАЛОГ НЕ ОТДАЁТ НЕОПУБЛИКОВАННОЕ.
+        //
+        // Раньше `status` применялся только если его явно прислали, а
+        // `GET /api/v1/events` доступен анонимно — то есть запрос без параметров
+        // возвращал ВСЕ строки таблицы: черновики, отложенные и отменённые.
+        // Витрина их рисует, поисковик индексирует, а JSON-ответ расходится с
+        // sitemap (там только `publiclyVisible()`). Это и утечка неопубликованного
+        // контента, и источник дублей.
+        //
+        // Для сотрудника поведение не меняется: админка ходит с токеном и
+        // запрашивает конкретный статус (например, `?status=draft` для списка
+        // черновиков), и это по-прежнему работает. Ограничение включается ровно
+        // тогда, когда запрос анонимный или от покупателя.
+        if (! $this->maySeeUnpublished($request)) {
+            unset($filters['status']);
+            $filters['statuses'] = EventStatus::publiclyVisible();
+        }
+
         $perPage = (int) $request->get('per_page', 20);
         
         $events = $this->eventService->paginate($filters, $perPage);
@@ -37,6 +61,21 @@ class EventController extends Controller
                 'last_page' => $events->lastPage(),
             ],
         ]);
+    }
+
+    /**
+     * Имеет ли право запрашивающий видеть неопубликованные события.
+     *
+     * Через `StaffRole`, а не через проверку роли вручную: это та же функция,
+     * которой пользуется middleware `admin` и контроллеры заказов, — одна
+     * трактовка «кто такой сотрудник» на весь проект. Список ролей, продублированный
+     * здесь, разошёлся бы с ней при первом же изменении.
+     */
+    private function maySeeUnpublished(Request $request): bool
+    {
+        $user = $request->user();
+
+        return $user !== null && StaffRole::isStaff($user);
     }
 
     public function show(Event $event): JsonResponse
@@ -53,6 +92,18 @@ class EventController extends Controller
                 $event = $this->eventService->findBySlug($slug);
 
                 if ($event === null) {
+                    // Удалённое событие — 410, а не 404 (аудит P-24). Витрина
+                    // различает эти случаи текстом ошибки, а поисковик — снятием
+                    // URL из индекса без повторных обходов.
+                    if ($this->eventService->findTrashedBySlug($slug) !== null) {
+                        return response()->json([
+                            'error' => [
+                                'code' => 'EVENT_GONE',
+                                'message' => sprintf('Мероприятие с адресом «%s» удалено.', $slug),
+                            ],
+                        ], 410);
+                    }
+
                     return response()->json([
                         'error' => [
                             'code' => 'EVENT_NOT_FOUND',
@@ -134,14 +185,65 @@ class EventController extends Controller
     public function update(UpdateEventRequest $request, Event $event): JsonResponse
     {
         $data = $request->validated();
+
+        // Прежний адрес запоминаем ДО записи: после `update()` взять его негде —
+        // `$event` уже перезаписан новым slug.
+        $previousSlug = $event->slug;
+
         $event = $this->eventService->update($event, $data);
-        
+
+        $this->rememberSlugChange($previousSlug, $event);
+
         return response()->json([
             'data' => new EventResource($event->fresh()),
             'meta' => [
                 'ignored_fields' => array_keys($request->droppedFields()),
             ],
         ]);
+    }
+
+    /**
+     * Записать постоянный редирект со старого адреса события на новый.
+     *
+     * БЕЗ ЭТОГО ПЕРЕИМЕНОВАНИЕ = ПОТЕРЯ СТРАНИЦЫ. `slug` — это и есть публичный
+     * адрес (`/event/{slug}/{publicId}`). Меняя его, администратор обрывал все
+     * накопленные внешние ссылки и позиции: старый адрес начинал отдавать 404, и
+     * восстановить трафик было нечем — таблица `redirects` существовала, но
+     * никто в неё не писал.
+     *
+     * Нормализация берётся из `RedirectResolver`, а не повторяется здесь: тот же
+     * метод применяется при ПОИСКЕ редиректа. Две копии правила разошлись бы, и
+     * запись перестала бы находиться (например, при разнице в хвостовом слэше).
+     *
+     * `updateOrCreate`, а не `create`: slug можно вернуть обратно, и повторная
+     * запись обязана перезаписать цель, а не упасть на UNIQUE(source).
+     */
+    private function rememberSlugChange(string $previousSlug, Event $event): void
+    {
+        if ($previousSlug === '' || $previousSlug === $event->slug) {
+            return;
+        }
+
+        $source = $this->redirects->normalize('/event/'.$previousSlug);
+        $destination = $this->redirects->normalize(
+            '/event/'.$event->slug.'/'.$event->public_id
+        );
+
+        // Назначение совпало с источником — запись бессмысленна и опасна
+        // (самопереход). Практически невозможно (slug изменился), но проверка
+        // стоит один `if` и закрывает опечатку в будущей правке.
+        if ($source === $destination) {
+            return;
+        }
+
+        Redirect::query()->updateOrCreate(
+            ['source' => $source],
+            [
+                'destination' => $destination,
+                'status_code' => 301,
+                'active' => true,
+            ]
+        );
     }
 
     public function destroy(Event $event): JsonResponse

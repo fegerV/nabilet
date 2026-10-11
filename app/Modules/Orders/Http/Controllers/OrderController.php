@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Orders\Http\Controllers;
 
+use Nabilet\Core\Errors\DomainRuleViolation;
 use Nabilet\Core\Errors\NotFoundError;
 use Nabilet\Core\Support\StaffRole;
 use Nabilet\Modules\Orders\Http\Requests\StoreOrderRequest;
 use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Orders\Services\OrderService;
+use Nabilet\Modules\Payments\Services\RefundService;
+use Nabilet\Modules\Payments\StateMachines\PaymentStateMachine;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -29,7 +32,8 @@ use Illuminate\Routing\Controller;
 class OrderController extends Controller
 {
     public function __construct(
-        private readonly OrderService $orderService
+        private readonly OrderService $orderService,
+        private readonly RefundService $refundService,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -100,6 +104,52 @@ class OrderController extends Controller
         $order = $this->orderService->cancelOrder($order);
 
         return response()->json(['data' => $order]);
+    }
+
+    /**
+     * Возврат денег по заказу (ТЗ §85).
+     *
+     * Диалог отмены в админке обещал покупателю «если заказ оплачен — будет
+     * инициирован возврат», но бэкенд возвращал только места: `RefundService` не
+     * вызывался ниоткуда. Здесь обещание выполняется — возврат идёт по каждому
+     * успешному платежу заказа (в норме он один; при ретраях разными картами —
+     * по каждому), а `RefundLedger` выводит статус заказа из денег.
+     *
+     * Роут закрыт `admin`: возврат — финансовая операция.
+     */
+    public function refund(Request $request, Order $order): JsonResponse
+    {
+        $this->assertCanSee($request, $order);
+
+        $validated = $request->validate([
+            'reason' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        $payments = $order->payments()
+            ->where('status', PaymentStateMachine::SUCCEEDED)
+            ->orderBy('id')
+            ->get();
+
+        if ($payments->isEmpty()) {
+            throw new DomainRuleViolation(
+                'The order has no succeeded payment to refund.',
+                'ORDER_NOT_PAID',
+                ['order_id' => $order->id, 'status' => $order->status],
+                422,
+            );
+        }
+
+        $reason = (string) ($validated['reason'] ?? 'Возврат по заказу');
+
+        foreach ($payments as $payment) {
+            // `null` = весь остаток платежа: уже возвращённое RefundService
+            // вычитает сам, а повторный возврат отвергает (REFUND_EXCEEDS_BALANCE).
+            $this->refundService->refund($payment, null, $reason);
+        }
+
+        return response()->json([
+            'data' => $order->fresh()->load(['payments.refunds', 'tickets']),
+        ]);
     }
 
     /**

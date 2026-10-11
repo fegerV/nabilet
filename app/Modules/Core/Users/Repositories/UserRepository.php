@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Core\Users\Repositories;
 
-use Nabilet\Modules\Core\Users\Models\User;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\DB;
+use Nabilet\Core\Support\LikePattern;
+use Nabilet\Modules\Core\Users\Models\User;
 
 class UserRepository
 {
@@ -64,6 +66,16 @@ class UserRepository
 
     public function update(User $user, array $data): User
     {
+        // Последний рубеж перед записью: пустое значение означает «пароль не
+        // меняется», а не «поставить пустой». Без этой проверки
+        // `$user->update(['password' => null])` записывал в NOT NULL колонку
+        // пустую строку (MySQL приводит NULL к '' в нестрогом режиме), и
+        // администратор, отправивший форму без нового пароля, стирал пароль
+        // пользователя. См. `PasswordRules::optional()` и `UserService::updateUser()`.
+        if (array_key_exists('password', $data) && ($data['password'] === null || $data['password'] === '')) {
+            unset($data['password']);
+        }
+
         if (isset($data['password'])) {
             $data['password'] = bcrypt($data['password']);
         }
@@ -77,9 +89,41 @@ class UserRepository
         return $user->delete();
     }
 
-    public function assignRole(User $user, int $roleId): void
+    /**
+     * Выдать пользователю роль в организации.
+     *
+     * Раньше это было `$user->roles()->attach($roleId)`, то есть INSERT только
+     * `(user_id, role_id)`. Но `user_roles.organization_id` — NOT NULL, поэтому
+     * на реальной схеме эндпоинт отвечал 500 «Field 'organization_id' doesn't
+     * have a default value»: назначить роль через API было невозможно.
+     *
+     * Пишем в ОБЕ таблицы членства, как это делают установщик
+     * (`InstallerController::bootstrapOrganization`) и сидер
+     * (`NabiletAdminSeeder`): `user_roles` — источник для `StaffRole::isStaff()`,
+     * `user_organization` — каноничная таблица членства, из которой
+     * `User::organizations()` достаёт организацию.
+     *
+     * `insertOrIgnore` вместо `insert`: у `user_roles` есть UNIQUE
+     * (user_id, organization_id, role_id), и повторная выдача той же роли —
+     * идемпотентная операция, а не 500.
+     */
+    public function assignRole(User $user, int $roleId, int $organizationId): void
     {
-        $user->roles()->attach($roleId);
+        $now = now();
+
+        DB::table('user_roles')->insertOrIgnore([
+            'user_id' => $user->getKey(),
+            'organization_id' => $organizationId,
+            'role_id' => $roleId,
+            'created_at' => $now,
+        ]);
+
+        DB::table('user_organization')->insertOrIgnore([
+            'user_id' => $user->getKey(),
+            'organization_id' => $organizationId,
+            'role_id' => $roleId,
+            'created_at' => $now,
+        ]);
     }
 
     public function removeRole(User $user, int $roleId): void
@@ -96,10 +140,17 @@ class UserRepository
 
     public function search(string $query, int $limit = 15): LengthAwarePaginator
     {
-        return $this->model->where(function ($q) use ($query) {
-                $q->where('first_name', 'like', "%{$query}%")
-                  ->orWhere('last_name', 'like', "%{$query}%")
-                  ->orWhere('email', 'like', "%{$query}%");
+        // Экранирование обязательно, и раньше его здесь НЕ БЫЛО: поиск
+        // подставлял ввод прямо в шаблон (`"%{$query}%"`), поэтому `_` совпадал с
+        // любым символом, а `%` — с любым количеством символов. Это не инъекция
+        // (значения биндятся), но пользователь управлял формой запроса и мог
+        // заставить MySQL читать всю таблицу. См. `LikePattern`.
+        $pattern = LikePattern::contains($query);
+
+        return $this->model->where(function ($q) use ($pattern) {
+                $q->whereRaw(LikePattern::expression('first_name'), [$pattern])
+                  ->orWhereRaw(LikePattern::expression('last_name'), [$pattern])
+                  ->orWhereRaw(LikePattern::expression('email'), [$pattern]);
             })
             ->with(['roles'])
             ->paginate($limit);

@@ -38,27 +38,52 @@ use Nabilet\Modules\Media\Services\MediaService;
 class MediaController extends Controller
 {
     /**
-     * Общий список типов для `POST /media`: афиши, галерея, документы, видео.
+     * Разрешённые к загрузке типы: расширение → допустимые MIME.
      *
-     * ЧТО ЗДЕСЬ БЫЛО НЕ ТАК
+     * ЕДИНЫЙ ИСТОЧНИК ПРАВДЫ. Раньше здесь лежала строка
+     * `'jpg,jpeg,png,webp,avif,gif,svg,pdf,mp4,webm'`, и она использовалась
+     * ТОЛЬКО в правиле `mimes:` для multipart-загрузки. Второй путь — регистрация
+     * уже загруженного файла по `path` (`storeRegistered()`) — принимал
+     * `mime_type` как `string|max:150` БЕЗ списка, то есть через API можно было
+     * зарегистрировать файл с произвольным типом. Одна политика, два входа, и
+     * проверка стояла только на одном.
      *
-     * Список не содержал `mp4` и `webm`, хотя раздел «Дополнительные фото и
-     * видео» в карточке мероприятия принимает их у себя в `accept`, пропускает
-     * через свою проверку и рисует на витрине как `<video>`. Покупатель
-     * администратора доходил до сервера и получал 422 «должен быть одного из
-     * типов: jpg, jpeg, …» — то есть интерфейс обещал то, чего сервер не
-     * принимал. Проверено живой загрузкой mp4: 422.
+     * Теперь из этой карты выводятся оба правила: расширения — для `mimes:`,
+     * MIME-значения — для `in:` в `storeRegistered()`.
      *
-     * Комментарий здесь раньше утверждал, что список совпадает с `poster_file`
-     * формы мероприятия. Это неверно и было неверно всегда: `poster_file` —
-     * `image` + `mimes:jpg,jpeg,png,webp` + 5 МБ, потому что афиша обязана быть
-     * картинкой. Здесь же общий список модуля, поэтому он шире и намеренно
-     * включает документы (`pdf`, `svg`) и видео.
+     * ПОЧЕМУ УБРАН `svg` (аудит безопасности S-04).
      *
-     * `GALLERY_TYPES` на фронтенде — осознанное ПОДмножество этого списка: без
-     * `pdf` и `svg`, потому что в галерее мероприятия им не место.
+     * SVG — это не картинка, а XML-документ, который браузер ИСПОЛНЯЕТ: внутри
+     * допустимы `<script>` и обработчики вроде `onload=`. Валидация `mimes:svg`
+     * проверяет расширение и сигнатуру, но не содержимое, а файлы отдаются с
+     * ТОГО ЖЕ домена (`/storage/...`). Значит загруженный «организатором» SVG
+     * выполнился бы в origin витрины и получил доступ к localStorage и cookie
+     * покупателей — это хранимая XSS, а не теоретический риск.
+     *
+     * SVG не нужен ни одному сценарию: афиша (`poster_file`) принимает только
+     * jpg/png/webp, галерея мероприятия исключает svg на фронте
+     * (`GALLERY_TYPES`), а единственный SVG в проекте — статическая заглушка
+     * `public/images/og-default.svg`, написанная разработчиком и загружаемая не
+     * через этот эндпоинт. Проще убрать вектор, чем санитизировать XML: любой
+     * санитайзер — это список известных опасных конструкций, который устаревает.
+     *
+     * Остальные «исполняемые» типы (pdf, mp4, webm) оставлены: они нужны по
+     * функциональности, и их нейтрализует не фильтр загрузки, а заголовки отдачи
+     * (`Content-Disposition: attachment` + `nosniff` — см. `docker/nginx/default.conf`).
+     *
+     * @var array<string, list<string>>
      */
-    private const ALLOWED_MIMES = 'jpg,jpeg,png,webp,avif,gif,svg,pdf,mp4,webm';
+    private const ALLOWED_TYPES = [
+        'jpg' => ['image/jpeg'],
+        'jpeg' => ['image/jpeg'],
+        'png' => ['image/png'],
+        'webp' => ['image/webp'],
+        'avif' => ['image/avif'],
+        'gif' => ['image/gif'],
+        'pdf' => ['application/pdf'],
+        'mp4' => ['video/mp4'],
+        'webm' => ['video/webm'],
+    ];
 
     private const MAX_SIZE_KB = 10240;
 
@@ -262,7 +287,7 @@ class MediaController extends Controller
             'file' => [
                 'required',
                 'file',
-                'mimes:' . self::ALLOWED_MIMES,
+                'mimes:' . self::allowedExtensions(),
                 'max:' . self::MAX_SIZE_KB,
             ],
             'title' => ['sometimes', 'nullable', 'string', 'max:500'],
@@ -278,11 +303,14 @@ class MediaController extends Controller
     }
 
     private function storeRegistered(Request $request, int $organizationId): MediaAsset
-    {
-        $data = $request->validate([
+    {        $data = $request->validate([
             'path' => ['required', 'string', 'max:1024'],
             'filename' => ['required', 'string', 'max:255'],
-            'mime_type' => ['required', 'string', 'max:150'],
+            // `in:` по тому же списку, что и `mimes:` у загрузки. Раньше здесь
+            // стояло `required|string|max:150`, то есть тип объявлял клиент и
+            // никто его не сверял: через API можно было зарегистрировать файл с
+            // любым `mime_type`, включая `image/svg+xml`, и он попадал в галерею.
+            'mime_type' => ['required', 'string', 'max:150', 'in:' . implode(',', self::allowedMimeTypes())],
             'size_bytes' => ['sometimes', 'nullable', 'integer', 'min:0'],
             'width' => ['sometimes', 'nullable', 'integer', 'min:0'],
             'height' => ['sometimes', 'nullable', 'integer', 'min:0'],
@@ -426,5 +454,31 @@ class MediaController extends Controller
         $id = auth('api')->id();
 
         return $id === null ? null : (int) $id;
+    }
+
+    /**
+     * Расширения для правила `mimes:` — ключи `ALLOWED_TYPES`.
+     *
+     * Порядок сохраняется (`array_keys` от константного массива стабилен), чтобы
+     * сообщение об ошибке валидации перечисляло типы в том же порядке, что и
+     * `MEDIA_TYPES_LABEL` на фронте. Иначе администратор видит два разных списка
+     * для одного и того же ограничения.
+     */
+    private static function allowedExtensions(): string
+    {
+        return implode(',', array_keys(self::ALLOWED_TYPES));
+    }
+
+    /**
+     * Плоский список MIME-значений — для правила `in:` у `storeRegistered()`.
+     *
+     * `array_unique` нужен из-за `jpg`/`jpeg`: оба расширения означают
+     * `image/jpeg`, и без дедупликации правило перечисляло бы его дважды.
+     *
+     * @return list<string>
+     */
+    private static function allowedMimeTypes(): array
+    {
+        return array_values(array_unique(array_merge(...array_values(self::ALLOWED_TYPES))));
     }
 }

@@ -622,8 +622,8 @@ final class TicketEmailTemplateTest extends TestCase
             AssetUrl::storage('events/posters/a.jpg')
         );
         self::assertSame(
-            $this->baseUrl() . '/images/og-default.svg',
-            AssetUrl::public('images/og-default.svg')
+            $this->baseUrl() . '/images/og-default.png',
+            AssetUrl::public('images/og-default.png')
         );
 
         // Ведущий слэш не даёт двойного «//» в пути.

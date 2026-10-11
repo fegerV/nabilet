@@ -4,7 +4,39 @@ declare(strict_types=1);
 
 return [
     'version' => '1.0.0',
-    
+
+    /*
+     * Создавать ли демо-данные сидера `NabiletAdminSeeder` (организация
+     * «NABILET Demo» и три учётки с паролями из исходников, включая
+     * admin@nabilet.local/admin123 с полной ролью администратора).
+     *
+     * Роли и права сидируются ВСЕГДА — без них RBAC не работает. А демо-учётки
+     * на боевом стенде означают открытую админку, поэтому установщик
+     * (`db:seed --force`) создаёт их только вне production или при явном
+     * NABILET_SEED_DEMO=true (аудит установщика B-2).
+     */
+    'seed_demo' => env('NABILET_SEED_DEMO', false),
+
+    /*
+     * Пароли пользователей (аудит безопасности S-09).
+     *
+     * `check_breaches` включает проверку пароля по базе утечек HaveIBeenPwned
+     * (`Password::uncompromised()`). ПО УМОЛЧАНИЮ ВЫКЛЮЧЕНА: это внешний HTTP-вызов
+     * внутри валидации, то есть регистрация начинает зависеть от доступности
+     * чужого сервиса, а тесты — от наличия интернета. Laravel при сетевой ошибке
+     * считает пароль «чистым», поэтому включение безопасно, но это решение деплоя:
+     * `NABILET_PASSWORD_BREACH_CHECK=true`.
+     *
+     * Минимальная длина и требования к составу заданы в
+     * `Nabilet\Modules\Auth\Validation\PasswordRules` — одной константой на весь
+     * проект, чтобы политика не разошлась между регистрацией и админкой.
+     */
+    'auth' => [
+        'password' => [
+            'check_breaches' => env('NABILET_PASSWORD_BREACH_CHECK', false),
+        ],
+    ],
+
     'modules' => [
         'core' => \Nabilet\Modules\Core\Providers\CoreServiceProvider::class,
         'events' => \Nabilet\Modules\Events\Providers\EventServiceProvider::class,
@@ -41,7 +73,11 @@ return [
     ],
     
     'ticket' => [
-        'qr_secret' => env('TICKET_QR_SECRET'),
+        // Секрет подписи QR-билетов. Фолбэка на APP_KEY НЕТ намеренно (см.
+        // Modules/Tickets/Services/QrSignerFactory): один утёкший ключ дал бы
+        // возможность подписывать любые билеты, а его ротация обнулила бы все
+        // выпущенные. `NABILET_QR_SECRET` поддержан как историческое имя.
+        'qr_secret' => env('TICKET_QR_SECRET') ?: env('NABILET_QR_SECRET'),
         'qr_ttl' => (int) env('TICKET_QR_TTL', 3600),
     ],
 
@@ -62,6 +98,29 @@ return [
      */
     'media' => [
         'disk' => env('MEDIA_DISK', 'public'),
+    ],
+
+    /*
+     * События: автоматическое завершение прошедших мероприятий.
+     *
+     * `events:sync-status` переводит `published → completed`, когда все сеансы
+     * события уже закончились. Без этого прошедший концерт оставался
+     * «запланированным»: JSON-LD отдавал `eventStatus: EventScheduled` и
+     * `availability: InStock`, то есть разметка обещала Google и Яндексу
+     * событие в будущем с билетами в наличии. Это не косметика — Google
+     * понижает доверие к разметке, которая расходится с реальностью, а
+     * rich-результат начинает показывать прошедшую дату как предстоящую.
+     *
+     * ЗАЧЕМ ПАРАМЕТР, А НЕ ПРОСТО `ends_at`
+     *   `sessions.ends_at` объявлен NULLABLE: администратор вправе указать только
+     *   начало. Сеанс без конца нельзя считать закончившимся в момент начала —
+     *   трёхчасовой концерт объявлялся бы «состоявшимся», пока он ещё идёт.
+     *   Поэтому для сеанса без `ends_at` берётся окно по умолчанию, и оно
+     *   вынесено в конфиг, чтобы это было ЯВНОЕ допущение, видимое в ревью, а не
+     *   магическая константа внутри SQL.
+     */
+    'events' => [
+        'session_default_duration_hours' => (int) env('EVENT_SESSION_DEFAULT_DURATION_HOURS', 3),
     ],
 
     /*

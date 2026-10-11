@@ -461,6 +461,11 @@ paths:
                   type: string
                   default: yookassa
       responses:
+        '200':
+          description: Existing payment returned — the Idempotency-Key was already used for this order
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaymentResponse' }
         '201':
           description: Payment created
           content:

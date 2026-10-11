@@ -59,7 +59,21 @@ class UpdateEventRequest extends FormRequest
                 Rule::exists('ticket_templates', 'id')
                     ->where(fn ($query) => $query->where('organization_id', $this->eventOrganizationId())),
             ],
-            'slug' => ['sometimes', 'string', 'max:255'],
+            // Уникальность ГЛОБАЛЬНАЯ и с исключением самого события
+            // (SEO-аудит P-03). Без `ignore()` сохранение карточки без правки
+            // адреса падало бы на собственном значении: slug — это адрес, а
+            // форма админки отправляет его всегда, даже когда его не меняли.
+            //
+            // Смена адреса при этом законна и сопровождается редиректом 301 со
+            // старого URL (`EventController::rememberSlugChange()`), поэтому
+            // правило `sometimes`, а не `required`: обновление одного описания
+            // не обязано присылать адрес.
+            'slug' => [
+                'sometimes',
+                'string',
+                'max:255',
+                Rule::unique('events', 'slug')->ignore($eventId),
+            ],
             'title' => ['sometimes', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
             'short_description' => ['nullable', 'string', 'max:500'],
@@ -97,7 +111,37 @@ class UpdateEventRequest extends FormRequest
             'poster' => ['nullable', 'url', 'max:2048'],
             'seo_title' => ['nullable', 'string', 'max:255'],
             'seo_description' => ['nullable', 'string', 'max:500'],
+            // Управление индексацией страницы (аудит P-23). См.
+            // `StoreEventRequest` — правило то же, и по той же причине: поле
+            // уходит в `<meta name="robots">` дословно, поэтому список
+            // директив закрыт, а не свободен.
+            //
+            // `index` здесь не отменит автоматический `noindex` для
+            // scheduled/cancelled: запрет по статусу применяется при рендере
+            // страницы (`EventPageController::effectiveRobots()`), а не в
+            // валидации, и поле его только дополняет.
+            'robots' => [
+                'nullable',
+                'string',
+                'max:255',
+                static function (string $attribute, mixed $value, \Closure $fail): void {
+                    if (is_string($value) && ! \Nabilet\Modules\Events\Domain\EventRobots::isValid($value)) {
+                        $fail(
+                            'Поле «robots» может содержать только директивы: '
+                            . implode(', ', \Nabilet\Modules\Events\Domain\EventRobots::ALLOWED) . '.'
+                        );
+                    }
+                },
+            ],
             'metadata' => ['nullable'],
+        ];
+    }
+
+    public function messages(): array
+    {
+        return [
+            'slug.unique' => 'Такой адрес мероприятия уже занят. Укажите другой — '
+                . 'он входит в публичную ссылку на страницу.',
         ];
     }
 

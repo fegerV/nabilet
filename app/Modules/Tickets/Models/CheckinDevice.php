@@ -8,7 +8,10 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Str;
-use Nabilet\Modules\Organizations\Models\Organization;
+// Каноническая модель. Дубликат в `Modules\Organizations\Models\Organization`
+// нёс трейт `SoftDeletes` при отсутствующей колонке `organizations.deleted_at`,
+// из-за чего эта связь падала с `SQLSTATE[42S22]` при первой же загрузке.
+use Nabilet\Modules\Core\Organizations\Models\Organization;
 
 /** Eloquent mapping for `checkin_devices`; the raw device token is never stored. */
 class CheckinDevice extends Model

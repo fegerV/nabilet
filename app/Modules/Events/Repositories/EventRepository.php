@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Events\Repositories;
 
-use Nabilet\Core\Tenancy\OrganizationContext;
-use Nabilet\Modules\Core\Organizations\Models\Organization;
 use Nabilet\Modules\Events\Models\Event;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
@@ -47,85 +45,61 @@ class EventRepository
     }
 
     /**
-     * Найти событие по slug.
+     * Найти событие по slug — ГЛОБАЛЬНО, без привязки к организации.
      *
-     * `slug` уникален НЕ глобально, а внутри организации
-     * (`UNIQUE KEY uq_events_org_slug (organization_id, slug)`). Запрос без
-     * фильтра по организации возвращал `first()` из произвольной строки — при
-     * одной организации это незаметно, при двух означало бы «страница события
-     * может открыть чужое событие с тем же адресом».
+     * ПОЧЕМУ БЕЗ ОРГАНИЗАЦИИ (SEO-аудит P-03). Публичный адрес события —
+     * `/event/{slug}/{publicId}` — организации не содержит. Раньше запрос
+     * дополнительно фильтровался по организации, которую резолвил
+     * `resolveOrganizationId()` с фолбэком «первая по `id`». Пока организация
+     * одна, это было незаметно; с появлением второй страница события просто
+     * перестала бы открываться: slug уникален глобально
+     * (`uq_events_slug`, миграция `2026_10_11_000100`), событие принадлежит
+     * второй организации, а фильтр искал в первой — и отдавал 404 на живой
+     * адрес. Ровно этот 404 и воспроизводится в тесте
+     * `EventBreadcrumbSeoTest`, если создать два события в разных организациях.
      *
-     * КАК РАЗРЕШАЕТСЯ ОРГАНИЗАЦИЯ. Тот же приём, что и в
-     * `StorefrontController::publicOrganizationId()` — единственный
-     * существующий в проекте образец публичного тенант-резолва:
+     * Фильтр был бы нужен, если бы slug оставался уникальным только внутри
+     * организации: тогда `first()` без фильтра вернул бы произвольную строку из
+     * двух. Но именно поэтому slug и сделан глобально уникальным — при таком
+     * индексе совпадение ровно одно, и организация в условии не несёт смысла.
      *
-     *   1. Организация из `OrganizationContext`, если она установлена
-     *      (аутентифицированный запрос, админка, API с токеном).
-     *   2. Иначе — первая организация по `id`. Это осознанный компромисс, а не
-     *      «догадка»: инсталляция обслуживает одного организатора
-     *      («Сургут-Концерт»), и витрина обязана открываться гостю, у которого
-     *      никакого тенанта нет. Без фолбэка `OrganizationContext::id()` бросил
-     *      бы `TenantContextMissingError`, и SEO-страница отдавала бы 500 —
-     *      то есть fail-closed здесь сломал бы не безопасность, а сам продукт.
-     *
-     * ПОЧЕМУ НЕ `OrganizationContext::id()`. Он бросает исключение при
-     * отсутствии контекста. Для служебных путей это правильно, для публичной
-     * страницы — нет: гость по определению не имеет организации. `tryId()`
-     * возвращает `null` вместо исключения, и дальше включается фолбэк.
+     * УБРАТЬ ЭТО УСЛОВИЕ БЫЛО БЕЗОПАСНО, потому что метод публичный по
+     * назначению: его вызывают SEO-страница (`EventPageController`) и витрина
+     * (`EventController::showBySlug`), где никакой границы арендатора нет и быть
+     * не может — гость её не имеет.
      *
      * ЕСЛИ ПОЯВИТСЯ ВТОРАЯ ОРГАНИЗАЦИЯ: публичный маршрут должен получить
-     * префикс организации (`/{orgSlug}/event/...`) или отдельный домен, а
-     * фолбэк «первая по id» надо будет убрать — иначе он начнёт показывать
-     * события не того организатора. Место правки — ровно здесь.
+     * префикс организации (`/{orgSlug}/event/...`) или отдельный домен — тогда
+     * фильтр вернётся, но уже по явному сегменту URL, а не по «первой
+     * организации в базе». Место правки — ровно здесь.
      */
     public function findBySlug(string $slug): ?Event
     {
         return $this->model->newQuery()
             ->where('slug', $slug)
-            ->where('organization_id', $this->resolveOrganizationId())
             ->first();
     }
 
     /**
-     * Организация, в рамках которой искать событие.
+     * Найти УДАЛЁННОЕ событие по slug (аудит P-24).
      *
-     * Фолбэк на первую организацию — ровно та же семантика, что у публичной
-     * витрины (`StorefrontController`).
+     * Отдельный метод, а не флаг у `findBySlug()`, потому что смысл разный:
+     * `findBySlug()` отвечает на вопрос «есть ли такая страница», а этот — «был
+     * ли по этому адресу ресурс». Второй нужен ровно для одного: отдать 410
+     * Gone вместо 404. Поисковик снимает URL с 410 быстрее и не считает его
+     * ошибкой сайта, тогда как 404 на адресе, который ещё вчера отдавал 200,
+     * означает «проверьте ссылку» и требует повторных обходов.
      *
-     * Возвращает `int`, а не строку: колонка `organization_id` объявлена
-     * `BIGINT UNSIGNED`, и передавать сюда строку значило бы полагаться на
-     * неявное приведение MySQL — из-за него в проекте уже ловили
-     * `id = '1abc'` → событие 1 (`VenueController::store()`).
-     *
-     * `?? 0` вместо `null`: `where('organization_id', null)` в Eloquent
-     * превращается в `IS NULL`, то есть вернёт ВСЕ строки с пустой
-     * организацией вместо ни одной. `organization_id` объявлен `NOT NULL`,
-     * поэтому `0` не совпадёт ни с чем — это и есть нужный fail-closed.
+     * `onlyTrashed()`, а не `withTrashed()`: если строка живая, обычный
+     * `findBySlug()` уже её нашёл, и второй вызов здесь означал бы, что
+     * вызывающий код спрашивает не то.
      */
-    private function resolveOrganizationId(): int
+    public function findTrashedBySlug(string $slug): ?Event
     {
-        $contextId = null;
-
-        if (app()->bound(OrganizationContext::class)) {
-            $context = app(OrganizationContext::class);
-
-            if ($context instanceof OrganizationContext) {
-                // `''` возвращается под `withoutScope()` — это «системный
-                // контекст без организации», а не идентификатор. Приравнивать
-                // его к организации нельзя.
-                $candidate = $context->tryId();
-
-                if (is_string($candidate) && $candidate !== '' && ctype_digit($candidate)) {
-                    $contextId = (int) $candidate;
-                }
-            }
-        }
-
-        if ($contextId !== null) {
-            return $contextId;
-        }
-
-        return (int) (Organization::query()->orderBy('id')->value('id') ?? 0);
+        return $this->model->newQuery()
+            ->onlyTrashed()
+            ->where('slug', $slug)
+            ->first();
     }
 
     /**
@@ -145,6 +119,15 @@ class EventRepository
         return $event->fresh();
     }
 
+    /**
+     * Удалить событие — МЯГКО (аудит P-24).
+     *
+     * `$event->delete()` теперь проставляет `deleted_at` (трейт `SoftDeletes`
+     * на модели), а не выполняет `DELETE`. Что именно это меняет — в докблоке
+     * модели `Event`: физическое удаление каскадом уносило сеансы и переводы,
+     * падало 500 при наличии проданных билетов (`fk_tickets_event` объявлен
+     * `ON DELETE RESTRICT`) и освобождало `slug` под другое событие.
+     */
     public function delete(Event $event): bool
     {
         return $event->delete();
@@ -167,6 +150,15 @@ class EventRepository
 
         if (isset($filters['status'])) {
             $query->where('status', $filters['status']);
+        }
+
+        // Список статусов — то, что нужно публичному каталогу: он отдаёт
+        // `publiclyVisible()` (published + completed) ОДНИМ запросом. Отдельный
+        // ключ, а не массив в `status`: `where('status', ['a','b'])` в Eloquent
+        // молча превращается в `= 'a'` (массив приводится к строке) — то есть
+        // фильтр «любой из» тихо становился фильтром «равно первому».
+        if (isset($filters['statuses']) && is_array($filters['statuses']) && $filters['statuses'] !== []) {
+            $query->whereIn('status', $filters['statuses']);
         }
 
         if (isset($filters['is_featured']) && is_bool($filters['is_featured'])) {

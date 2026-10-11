@@ -22,9 +22,7 @@ class SitemapController
      */
     public function index(): Response
     {
-        return response($this->sitemapService->generateSitemapIndex())
-            ->header('Content-Type', 'text/xml')
-            ->header('Cache-Control', 'public, max-age=3600');
+        return $this->xml($this->sitemapService->cachedSitemapIndex());
     }
 
     /**
@@ -39,12 +37,7 @@ class SitemapController
     {
         $page = max(1, (int) $request->query('page', 1));
 
-        $paginator = $this->sitemapService->getEventsSitemap([], $page);
-        $xml = $this->sitemapService->generateEventsSitemap($paginator->getCollection());
-
-        return response($xml)
-            ->header('Content-Type', 'text/xml')
-            ->header('Cache-Control', 'public, max-age=3600');
+        return $this->xml($this->sitemapService->cachedEventsSitemap($page));
     }
 
     /**
@@ -52,9 +45,56 @@ class SitemapController
      */
     public function static(): Response
     {
-        $xml = $this->sitemapService->generateStaticSitemap();
+        return $this->xml($this->sitemapService->cachedStaticSitemap());
+    }
 
-        return response($xml)
+    /**
+     * Карта площадок (аудит P-12) — `/api/v1/sitemap-venues.xml`.
+     */
+    public function venues(): Response
+    {
+        return $this->xml($this->sitemapService->cachedVenuesSitemap());
+    }
+
+    /**
+     * Карта городов (аудит P-12) — `/api/v1/sitemap-cities.xml`.
+     */
+    public function cities(): Response
+    {
+        return $this->xml($this->sitemapService->cachedCitiesSitemap());
+    }
+
+    /**
+     * Карта категорий (аудит P-12) — `/api/v1/sitemap-categories.xml`.
+     */
+    public function categories(): Response
+    {
+        return $this->xml($this->sitemapService->cachedCategoriesSitemap());
+    }
+
+    /**
+     * Карта организаторов (аудит P-12) — `/api/v1/sitemap-organizers.xml`.
+     */
+    public function organizers(): Response
+    {
+        return $this->xml($this->sitemapService->cachedOrganizersSitemap());
+    }
+
+    /**
+     * Единый ответ карты: тип содержимого и часовой HTTP-кеш.
+     *
+     * Одним методом, потому что раньше заголовки повторялись в каждом действии,
+     * и добавление карты означало ещё одну копию. Копия заголовков — это место,
+     * где одна карта однажды получила бы `text/html` или забыла `Cache-Control`,
+     * и заметить это можно было бы только по поведению краулера.
+     *
+     * `text/xml`, а не `application/xml`: первое — исторически ожидаемый
+     * краулерами тип для карт, второе тоже принимается, но менять работающее
+     * значение ради формальной точности здесь незачем.
+     */
+    private function xml(string $body): Response
+    {
+        return response($body)
             ->header('Content-Type', 'text/xml')
             ->header('Cache-Control', 'public, max-age=3600');
     }

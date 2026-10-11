@@ -159,7 +159,13 @@ CREATE TABLE IF NOT EXISTS events (
   deleted_at DATETIME(6) NULL,
   PRIMARY KEY (id),
   UNIQUE KEY uq_events_public_id (public_id),
-  UNIQUE KEY uq_events_org_slug (organization_id, slug),
+  -- Slug глобально уникален, хотя исторически был уникален в паре с
+  -- organization_id. Публичный адрес события — /event/{slug}/{publicId} —
+  -- организации не содержит, поэтому «один slug на две организации» означал бы,
+  -- что один и тот же URL открывает произвольное из двух событий, а canonical
+  -- двух страниц неразличим. См. database/migrations/
+  -- 2026_10_11_000100_make_event_slug_globally_unique.php (SEO-аудит P-03).
+  UNIQUE KEY uq_events_slug (slug),
   KEY idx_events_org_status (organization_id, status),
   KEY idx_events_category (category_id),
   KEY idx_events_published (published_at),
@@ -203,7 +209,12 @@ CREATE TABLE IF NOT EXISTS venues (
   updated_at DATETIME(6) NOT NULL,
   PRIMARY KEY (id),
   UNIQUE KEY uq_venues_public_id (public_id),
-  UNIQUE KEY uq_venues_org_slug (organization_id, slug),
+  -- Slug площадки глобально уникален: публичный адрес `/venue/{slug}`
+  -- организации не содержит. Код это уже предполагал (`VenueController`
+  -- валидирует `unique:venues,slug` и генерирует адрес циклом по всей таблице),
+  -- а схема — нет. См. database/migrations/
+  -- 2026_10_11_000200_make_venue_slug_globally_unique.php.
+  UNIQUE KEY uq_venues_slug (slug),
   KEY idx_venues_org_city (organization_id, city),
   CONSTRAINT fk_venues_org FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

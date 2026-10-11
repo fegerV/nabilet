@@ -139,9 +139,69 @@ class OrderWritePathTest extends TestCase
         );
     }
 
-    public function test_create_order_refuses_more_seats_than_available(): void
+    /**
+     * HTTP-канал не переносит клиентскую цену в сервис (аудит S-12).
+     *
+     * ТЕСТ ВЫШЕ ПРОВЕРЯЕТ СЕРВИС, А НЕ ЭНДПОИНТ. `createOrder()` действительно
+     * берёт цену из `inventory_items.price_amount` — но между HTTP-запросом и
+     * сервисом стоит `$request->validated()`, и он возвращает ТОЛЬКО поля с
+     * объявленным правилом. Пока правило `items.*.price` существовало, значение
+     * попадало в массив, уходящий в сервис, и одного рефакторинга
+     * (`$order->items()->create($itemData)` вместо поштучного переноса полей)
+     * хватило бы, чтобы клиентская цена оказалась рядом с `total_amount` в БД.
+     * Правило убрано — канал закрыт целиком, и здесь это проверяется снаружи.
+     *
+     * Второе утверждение — про то, что поле НЕ обязательное: раньше `price` был
+     * `required`, то есть сервер требовал значение, которое не читает.
+     */
+    public function test_the_http_channel_does_not_carry_a_client_supplied_price(): void
     {
-        [$organizationId, , , $inventoryId] = $this->seedSellableSeat(available: 1);
+        [$organizationId, , , $inventoryId] = $this->seedSellableSeat(available: 3);
+
+        $this->actingAsBuyer();
+
+        // 1. Клиент присылает «свою» цену — она не должна ничего изменить.
+        $withPrice = $this->postJson('/api/v1/orders', [
+            'organization_id' => $organizationId,
+            'items' => [
+                ['inventory_item_id' => $inventoryId, 'quantity' => 1, 'price' => 1],
+            ],
+            'customer_email' => 'attacker@example.com',
+            'customer_name' => 'Иван Петров',
+        ])->assertStatus(201);
+
+        $orderId = (int) $withPrice->json('data.id');
+
+        $this->assertSame(
+            self::PRICE,
+            (int) DB::table('orders')->where('id', $orderId)->value('total_amount'),
+            'клиентская цена повлияла на сумму заказа'
+        );
+        $this->assertSame(
+            self::PRICE,
+            (int) DB::table('order_items')->where('order_id', $orderId)->value('unit_price'),
+            'клиентская цена попала в позицию заказа'
+        );
+
+        // 2. Запрос БЕЗ `price` тоже валиден: поле не объявлено в правилах,
+        //    значит не может просочиться в payload сервиса.
+        $withoutPrice = $this->postJson('/api/v1/orders', [
+            'organization_id' => $organizationId,
+            'items' => [['inventory_item_id' => $inventoryId, 'quantity' => 1]],
+            'customer_email' => 'buyer@example.com',
+            'customer_name' => 'Иван Петров',
+        ]);
+
+        $withoutPrice->assertStatus(201);
+
+        $this->assertSame(
+            self::PRICE,
+            (int) DB::table('orders')->where('id', (int) $withoutPrice->json('data.id'))->value('total_amount')
+        );
+    }
+
+    public function test_create_order_refuses_more_seats_than_available(): void
+    {        [$organizationId, , , $inventoryId] = $this->seedSellableSeat(available: 1);
 
         $this->expectException(DomainRuleViolation::class);
 

@@ -112,6 +112,19 @@ const catName = computed(() => {
   return typeof c === 'string' ? c : (c?.name ?? '')
 })
 
+/**
+ * Alt афиши (SEO-аудит P-19).
+ *
+ * Формулировка совпадает с `og:image:alt` серверной обёртки
+ * (`EventPageController`): превью в мессенджере и картинка на странице должны
+ * описываться одинаково, иначе расхождение читается как два разных
+ * изображения. Название мероприятия в alt обязательно — именно оно и есть
+ * смысл картинки; «афиша» без названия не отвечает ни на один запрос.
+ */
+const posterAlt = computed(() =>
+  event.value ? `Афиша мероприятия «${event.value.title}»` : '',
+)
+
 const startsAtOf = (s: SessionItem): string => s.starts_at ?? s.startsAt ?? ''
 const availableOf = (s: SessionItem): number => s.available_seats ?? s.availableSeats ?? 0
 const hallOf = (s: SessionItem): string => s.hall_name ?? s.hall ?? ''
@@ -190,10 +203,36 @@ function buy(): void {
 <template>
   <div class="pb-28 md:pb-12">
       <!-- Постер -->
-      <div
-        class="relative h-56 overflow-hidden sm:h-72"
-        :style="{ background: event?.poster ? `url(${event.poster}) center/cover` : `linear-gradient(145deg, #7C3AED 0%, #FF5C22 100%)` }"
-      >
+      <!--
+        АФИША — ТЕГОМ <img>, А НЕ CSS background-image (SEO-аудит P-19).
+
+        Было `:style="{ background: url(...) }"`. Для поиска изображений это
+        значит, что афиши мероприятия не существует: Google Images индексирует
+        теги <img> с атрибутом alt, а фоновое изображение для него не картинка
+        страницы, а её оформление. У мероприятия с афишей не было ни одного
+        изображения в разметке — при том что афиша это ровно тот контент, по
+        которому такие страницы и находят.
+
+        Alt берётся тот же, что и в `og:image:alt` на сервере: одна формулировка
+        в превью соцсети и на странице, а не две разные.
+
+        Градиент остался ПОД картинкой и работает как заглушка, когда афиши нет:
+        `v-if` на <img> не оставляет пустого тега без src (это ошибка вёрстки,
+        браузер покажет рамку сломанного изображения).
+      -->
+      <div class="relative h-56 overflow-hidden sm:h-72">
+        <div
+          class="absolute inset-0"
+          :style="{ background: 'linear-gradient(145deg, #7C3AED 0%, #FF5C22 100%)' }"
+          aria-hidden="true"
+        />
+        <img
+          v-if="event?.poster"
+          :src="event.poster"
+          :alt="posterAlt"
+          class="absolute inset-0 h-full w-full object-cover"
+          decoding="async"
+        >
         <span
           class="pointer-events-none absolute -left-10 top-10 h-56 w-56 rounded-full opacity-40 blur-3xl"
           :style="{ background: '#FFC53D' }"

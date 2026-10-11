@@ -121,8 +121,8 @@ class AccountRecoveryTest extends TestCase
         $this->postJson('/api/v1/auth/password/reset', [
             'token' => $token,
             'email' => 'buyer@example.test',
-            'password' => 'a-brand-new-password',
-            'password_confirmation' => 'a-brand-new-password',
+            'password' => 'Brand-New-Pass9!x',
+            'password_confirmation' => 'Brand-New-Pass9!x',
         ])->assertNoContent();
 
         // Обе старые сессии отозваны — это и есть «выйти везде». Проверяем
@@ -133,7 +133,7 @@ class AccountRecoveryTest extends TestCase
         // Новый пароль работает, старый — нет.
         $this->postJson('/api/v1/auth/login', [
             'email' => 'buyer@example.test',
-            'password' => 'a-brand-new-password',
+            'password' => 'Brand-New-Pass9!x',
         ])->assertOk();
 
         $this->postJson('/api/v1/auth/login', [
@@ -150,8 +150,8 @@ class AccountRecoveryTest extends TestCase
         $payload = [
             'token' => $token,
             'email' => 'buyer@example.test',
-            'password' => 'first-new-password',
-            'password_confirmation' => 'first-new-password',
+            'password' => 'First-New-Pass9!x',
+            'password_confirmation' => 'First-New-Pass9!x',
         ];
 
         $this->postJson('/api/v1/auth/password/reset', $payload)->assertNoContent();
@@ -162,26 +162,53 @@ class AccountRecoveryTest extends TestCase
         $this->postJson('/api/v1/auth/password/reset', [
             'token' => $token,
             'email' => 'buyer@example.test',
-            'password' => 'second-new-password',
-            'password_confirmation' => 'second-new-password',
+            'password' => 'Second-New-Pass9!x',
+            'password_confirmation' => 'Second-New-Pass9!x',
         ])->assertStatus(422)->assertJsonPath('error.code', 'PASSWORD_RESET_TOKEN_INVALID');
 
         // Пароль остался от первого сброса.
         $this->postJson('/api/v1/auth/login', [
             'email' => 'buyer@example.test',
-            'password' => 'first-new-password',
+            'password' => 'First-New-Pass9!x',
+        ])->assertOk();
+    }
+
+    /**
+     * Сброс пароля подчиняется общей политике (аудит S-09).
+     *
+     * Здесь стояла четвёртая копия правила — `['required','min:12','confirmed']`,
+     * то есть только длина. Сброс пароля превращался в обход политики: аккаунт,
+     * зарегистрированный со сложным паролем, «восстанавливался» до
+     * `qwertyuiopas`, и дальше политика не значила ничего. Проверка идёт ДО
+     * обращения к токену, поэтому валидный токен не спасает слабый пароль.
+     */
+    public function test_reset_password_enforces_the_shared_password_policy(): void
+    {
+        $user = $this->makeUser('buyer@example.test', 'old-password-value');
+        $token = app(AccountTokenService::class)->issue($user, AccountTokenPurpose::PasswordReset);
+
+        $this->postJson('/api/v1/auth/password/reset', [
+            'token' => $token,
+            'email' => 'buyer@example.test',
+            'password' => 'qwertyuiopas',
+            'password_confirmation' => 'qwertyuiopas',
+        ])->assertStatus(422)->assertJsonPath('error.code', 'VALIDATION_ERROR');
+
+        // Пароль не изменился — старый по-прежнему работает.
+        $this->postJson('/api/v1/auth/login', [
+            'email' => 'buyer@example.test',
+            'password' => 'old-password-value',
         ])->assertOk();
     }
 
     public function test_a_forged_token_is_rejected(): void
-    {
-        $this->makeUser('buyer@example.test');
+    {        $this->makeUser('buyer@example.test');
 
         $this->postJson('/api/v1/auth/password/reset', [
             'token' => 'not-a-real-token',
             'email' => 'buyer@example.test',
-            'password' => 'whatever-password',
-            'password_confirmation' => 'whatever-password',
+            'password' => 'Whatever-Pass9!x',
+            'password_confirmation' => 'Whatever-Pass9!x',
         ])->assertStatus(422)->assertJsonPath('error.code', 'PASSWORD_RESET_TOKEN_INVALID');
     }
 
@@ -199,8 +226,8 @@ class AccountRecoveryTest extends TestCase
         $this->postJson('/api/v1/auth/password/reset', [
             'token' => $token,
             'email' => 'buyer@example.test',
-            'password' => 'whatever-password',
-            'password_confirmation' => 'whatever-password',
+            'password' => 'Whatever-Pass9!x',
+            'password_confirmation' => 'Whatever-Pass9!x',
         ])->assertStatus(422)->assertJsonPath('error.code', 'PASSWORD_RESET_TOKEN_INVALID');
     }
 
@@ -214,8 +241,8 @@ class AccountRecoveryTest extends TestCase
         $this->postJson('/api/v1/auth/password/reset', [
             'token' => $token,
             'email' => 'attacker@example.test',
-            'password' => 'whatever-password',
-            'password_confirmation' => 'whatever-password',
+            'password' => 'Whatever-Pass9!x',
+            'password_confirmation' => 'Whatever-Pass9!x',
         ])->assertStatus(422)->assertJsonPath('error.code', 'PASSWORD_RESET_TOKEN_INVALID');
     }
 
@@ -235,8 +262,8 @@ class AccountRecoveryTest extends TestCase
         $this->postJson('/api/v1/auth/password/reset', [
             'token' => $token,
             'email' => 'buyer@example.test',
-            'password' => 'whatever-password',
-            'password_confirmation' => 'whatever-password',
+            'password' => 'Whatever-Pass9!x',
+            'password_confirmation' => 'Whatever-Pass9!x',
         ])->assertStatus(422)->assertJsonPath('error.code', 'PASSWORD_RESET_TOKEN_INVALID');
 
         $this->postJson('/api/v1/auth/login', [

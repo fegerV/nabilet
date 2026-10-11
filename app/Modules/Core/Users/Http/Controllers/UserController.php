@@ -6,8 +6,9 @@ namespace Nabilet\Modules\Core\Users\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
-use Nabilet\Core\Errors\DomainRuleViolation;
 use Nabilet\Core\Errors\NotFoundError;
+use Nabilet\Core\Errors\ValidationError;
+use Nabilet\Modules\Auth\Validation\PasswordRules;
 use Nabilet\Modules\Core\Users\Models\User;
 use Nabilet\Modules\Core\Users\Services\UserService;
 
@@ -17,7 +18,10 @@ use Nabilet\Modules\Core\Users\Services\UserService;
  * Every failure here used to be `['message' => …]`, which is not the §66 envelope —
  * the contract requires a top-level `error` object, so a body with only `message` has
  * no `code` for the client to branch on and no `request_id`. Those are now
- * `NotFoundError` / `DomainRuleViolation`, rendered by `ApiExceptionRenderer`.
+ * `NotFoundError` / `ValidationError`, rendered by `ApiExceptionRenderer`.
+ *
+ * Every route is admin-only: `auth:api` alone let any authenticated buyer list
+ * users and assign roles (see the module's `routes/api.php`).
  */
 class UserController
 {
@@ -50,7 +54,10 @@ class UserController
     {
         $validated = $request->validate([
             'email' => 'required|email|unique:users,email',
-            'password' => 'required|min:8',
+            // Политика паролей — общая (`PasswordRules`). Здесь стоял `min:8`
+            // без проверки состава: учётную запись администратора — самую ценную
+            // в системе — можно было создать с паролем `qwertyui1`.
+            'password' => PasswordRules::required(),
             // `users.first_name`/`last_name` are VARCHAR(100) — see RegisterRequest.
             'first_name' => 'nullable|string|max:100',
             'last_name' => 'nullable|string|max:100',
@@ -68,7 +75,11 @@ class UserController
 
         $validated = $request->validate([
             'email' => 'sometimes|email|unique:users,email,' . $user->id,
-            'password' => 'sometimes|min:8',
+            // `optional()` (а не `required()`): поле может отсутствовать или быть
+            // пустым — оба случая означают «пароль не меняется». Смена пароля
+            // администратором отзывает сессии пользователя (см. `UserService`),
+            // поэтому «случайно стёр поле» здесь дорого стоило бы.
+            'password' => PasswordRules::optional(),
             'first_name' => 'nullable|string|max:100',
             'last_name' => 'nullable|string|max:100',
             'phone' => 'nullable|string|max:50',
@@ -101,7 +112,19 @@ class UserController
             'role_id' => 'bail|required|integer|exists:roles,id',
         ]);
 
-        $this->service->assignRoleToUser($user, (int) $validated['role_id']);
+        // Роль скоупится организацией: `user_roles.organization_id` — NOT NULL.
+        // Берём организацию ДЕЙСТВУЮЩЕГО администратора, а не цель, — выдать
+        // роль в чужом тенанте нельзя. Тот же приём и тот же fail-closed отказ,
+        // что в `VenueController::store()`.
+        $organizationId = $request->user()?->organizations()->value('organizations.id');
+
+        if (empty($organizationId)) {
+            throw new ValidationError([
+                'role_id' => ['No organization to attach this role to.'],
+            ]);
+        }
+
+        $this->service->assignRoleToUser($user, (int) $validated['role_id'], (int) $organizationId);
 
         return response()->json(['message' => 'Role assigned successfully']);
     }
