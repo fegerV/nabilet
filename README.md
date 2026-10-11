@@ -20,8 +20,8 @@ Redis (опционально) · REST API · PWA · Android Checker
 ```
 nabilet_core_spec/
 ├── NABILET_Core_Technical_Spec_v1.md   обзорная спецификация
-├── migrations.sql                      консолидированный DDL (64 таблицы)
-├── migrations/001..010                 сплит-миграции в порядке исполнения
+├── migrations.sql                      консолидированный DDL (73 таблицы)
+├── migrations/001..012                 сплит-миграции в порядке исполнения
 ├── openapi.yaml                        OpenAPI 3.1 (98 операций)
 └── state-diagrams.md                   машины состояний
 ```
@@ -41,7 +41,7 @@ nabilet_core_spec/
 |---|---|
 | [`docs/PLAN.md`](docs/PLAN.md) | План реализации: 9 этапов, критический путь, риски, DoD |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Архитектура: модули, хуки, слои, мультитенантность, безопасность |
-| [`docs/DATABASE.md`](docs/DATABASE.md) | Модель данных пакета: 64 таблицы, инварианты, политика ON DELETE |
+| [`docs/DATABASE.md`](docs/DATABASE.md) | Модель данных пакета: 73 таблицы, инварианты, политика ON DELETE |
 | [`docs/STATE-MACHINES.md`](docs/STATE-MACHINES.md) | Машины состояний Order / Payment / Ticket / Hold / Event / Session |
 | [`docs/openapi.yaml`](docs/openapi.yaml) | OpenAPI 3.1 — рабочая копия контракта (82 пути, 99 операций, 101 схема; включает операционные надстройки проекта, например `metrikaConfig`) |
 | [`docs/REVIEW-spec-bundle.md`](docs/REVIEW-spec-bundle.md) | Проверка пакета на реальном MySQL: пробелы, расхождения, пробелы ТЗ |
@@ -103,7 +103,7 @@ php tools/verify-openapi.php        # целостность контракта 
 php tools/verify-openapi.php nabilet_core_spec/openapi.yaml   # то же для копии пакета
 php tools/verify-contract-schema.php        # контракт ≡ схема: нет поля, которого нет в БД
 php tools/verify-contract-schema.php nabilet_core_spec/openapi.yaml
-php tools/verify-migrations.php     # миграции ≡ пакет: 64 таблицы, 93 FK, 35 CHECK
+php tools/verify-migrations.php     # миграции ≡ пакет: 73 таблицы, 101 FK, 35 CHECK
 php tools/verify-state-machines.php # статусы в коде ≡ CHECK-ограничениям в БД
 php tools/verify-models-schema.php  # модели Eloquent называют только реальные колонки
 ```
@@ -141,7 +141,7 @@ php tools/verify-models-schema.php  # модели Eloquent называют т�
 | Job | Что делает | Зачем |
 | --- | --- | --- |
 | `verify` | lint, тесты, `verify-purity`, граф модулей, `verify-migrations`, `verify-state-machines`, `verify-openapi` и `verify-contract-schema` для обеих копий, `verify-models-schema`, `composer validate` | ловит расхождения кода, контракта и схемы |
-| `schema` | накатывает `migrations.sql` и сплит-сет в два разных database на MySQL 8.4, сверяет счетчики (64 таблицы / 684 колонок / 1 триггер), диффит `information_schema.columns`, проверяет триггер иммутабельности в обе стороны | доказывает, что DDL реально исполняется |
+| `schema` | накатывает `migrations.sql` и сплит-сет в два разных database на MySQL 8.4, сверяет счетчики (73 таблицы / 785 колонок / 1 триггер), диффит `information_schema.columns`, проверяет триггер иммутабельности в обе стороны | доказывает, что DDL реально исполняется |
 
 Смысл разделения: верификаторы — это статическое сравнение, они ничего не говорят о том,
 примет ли MySQL схему. А триггер нельзя выразить CHECK (нельзя сослаться на `OLD`), поэтому
@@ -223,7 +223,7 @@ CHECK-ограничения (`available_quantity BETWEEN 0 AND capacity`). Пр
 сумма частей равна целому.
 
 **Мультитенантность fail-closed — но схема пакета её ослабляет.** Запрос без контекста
-организации бросает исключение. Однако `organization_id` есть лишь у 16 из 64 таблиц,
+организации бросает исключение. Однако `organization_id` есть лишь у 18 из 73 таблиц,
 поэтому скоуп для билетов и платежей требует JOIN и не подставляется автоматически.
 Это главный открытый риск — см. [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §6.
 
@@ -259,7 +259,7 @@ add_filter('ticket.price', fn (int $price) => $price + 300, priority: 20);
 | Область | Состояние |
 |---|---|
 | Ядро (хуки, модули, ошибки, Money, QR, state machines, tenancy) + домены P2–P7 | ✅ тесты, CI `verify` + `schema` |
-| Схема пакета (64 таблицы, 35 CHECK, 1 триггер) | ✅ проверена на MySQL 8.4.11 |
+| Схема пакета (73 таблицы, 35 CHECK, 1 триггер) | ✅ проверена на MySQL 8.4.11 |
 | Матрица конкурентности ТЗ §26 | ✅ 6 из 6 сценариев |
 | API-контракт пакета (81 путь, 98 операций) | ✅ описан и проверен; реализация ~30 модулей в `app/Modules/` |
 | API-контракт проекта (`docs/openapi.yaml`, +`metrikaConfig`) | ✅ опережает пакет на одну операцию; синхронизация в пакет — при следующем релизе спеки |

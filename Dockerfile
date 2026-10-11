@@ -4,15 +4,22 @@
 # runtime cannot drift from the build (a classic cause of "works in CI, fails in
 # prod": extensions present when the dependencies were resolved, missing after).
 #
-# NOT YET BUILT ANYWHERE. This image has never been assembled: outbound Docker
-# pulls from this machine fail with `x509: certificate has expired or is not yet
-# valid` (the proxy intercepts TLS), so no base image can be fetched locally. CI
-# lints it (hadolint) and validates the compose file; the first real build will
-# happen on a runner, or wherever you have registry access.
+# Built for real by CI: the `Container files` job runs `docker build` on every push,
+# so this file is exercised rather than only linted. It was written on a machine where
+# outbound Docker pulls failed with `x509: certificate has expired or is not yet
+# valid` (the proxy intercepts TLS), so the first assembly happened on a runner.
 #
 # See docker-compose.yml for how the pieces fit together.
 
-FROM php:8.3-fpm-alpine AS base
+# PHP 8.4 is a hard floor here, not a preference: 14 production packages in the
+# committed lock (the whole Symfony 8 line — clock, error-handler, http-kernel,
+# mailer, mime, process, routing, string, translation, uid, var-dumper, …) declare
+# `php >=8.4.1`, and none of the 94 declares a constraint that 8.4.26 fails. On the
+# previous `php:8.3` base the `composer install` below refused the lock outright
+# ("Your lock file does not contain a compatible set of packages", exit code 2) and
+# the image never built. composer.json still says `^8.3` — that is what a bare
+# `composer update` on 8.3 would resolve against; the lock is what pins the floor.
+FROM php:8.4-fpm-alpine AS base
 
 # Runtime libraries first: `lib*` packages are kept, `-dev` ones exist only to
 # compile the extensions and are removed afterwards so the image stays small.
@@ -55,23 +62,19 @@ ENV COMPOSER_ALLOW_SUPERUSER=1 \
 
 WORKDIR /app
 
-# No composer.lock is committed: it cannot be generated without network access to
-# Packagist, so the fallback to `update` is what lets the image build at all
-# today. Committing the lock file is the fix — until then builds are not
-# reproducible, and `install` is preferred the moment it exists.
+# The lock IS committed, so the image is reproducible: `install` resolves the exact
+# tree CI tested. The old `composer update` fallback is gone on purpose — it built an
+# image out of dependencies nobody had tested and hid the fact that the lock was
+# missing. If the lock ever disappears, this fails loudly instead.
 #
-# The tree is copied before resolving rather than copying composer.json first.
-# The usual trick (`COPY composer.json composer.lock ./`) keeps the dependency
-# layer cacheable but FAILS the build outright when the lock is absent — a
-# wildcard COPY with no match is an error, not a no-op. Correctness wins here;
-# the layer can be split once composer.lock is committed.
+# The tree is copied before resolving rather than copying composer.json first. The
+# usual trick (`COPY composer.json composer.lock ./`) keeps the dependency layer
+# cacheable, but it also caches a layer whose inputs are only the two manifests,
+# which is a poor trade while the dependency set is still moving. The layer can be
+# split later; correctness first.
 COPY . .
 
-RUN if [ -f composer.lock ]; then \
-        composer install --no-dev --prefer-dist --no-scripts; \
-    else \
-        composer update --no-dev --prefer-dist --no-scripts; \
-    fi \
+RUN composer install --no-dev --prefer-dist --no-scripts \
     # --no-scripts: `post-autoload-dump` runs `artisan package:discover`, which
     # needs a bootable application and a database connection, and neither exists
     # at build time.
