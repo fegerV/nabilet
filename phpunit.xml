@@ -38,5 +38,17 @@
              Laravel's in-memory mail transport so order lifecycle tests never
              attempt to open a real SMTP connection. -->
         <env name="MAIL_MAILER" value="array" force="true"/>
+        <!--
+            Подпись QR-кодов билетов. `.env.example` оставляет и `TICKET_QR_SECRET`,
+            и историческое `NABILET_QR_SECRET` пустыми, а CI копирует именно его —
+            поэтому без этой строки суита зависела от того, заполнил ли разработчик
+            свой `.env`: на чистом окружении 12 тестов платежей падали с
+            QR_SECRET_NOT_CONFIGURED (PHPUnit выходил с кодом 2). `force="true"`,
+            чтобы локальный `.env` не мог изменить поведение тестов.
+
+            Ключ — тестовый, публичный по определению (файл в репозитории) и ничего
+            не защищает; 32 байта, потому что `QrSigner` отвергает всё короче.
+        -->
+        <env name="TICKET_QR_SECRET" value="base64:bmFiaWxldC10ZXN0LXFyLXNpZ25pbmcta2V5LTAwMDE=" force="true"/>
     </php>
 </phpunit>
