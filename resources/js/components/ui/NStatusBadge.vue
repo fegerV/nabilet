@@ -46,12 +46,21 @@ const TICKET: Record<TicketStatus, { label: string; tone: Tone; dot: boolean }> 
   revoked: { label: 'Отозван', tone: 'rose', dot: false },
 }
 
+/**
+ * Словарь мероприятия — шесть состояний `EventStatus`/`EventStateMachine`.
+ *
+ * Раньше карта шла по типу, где были `sold_out` и `finished` (бэкенд их не
+ * знает) и не было `scheduled`, `completed`, `archived`. Поэтому `completed` и
+ * `archived` события показывали сырую английскую строку вместо подписи, а две
+ * записи здесь были мёртвыми.
+ */
 const EVENT: Record<EventStatus, { label: string; tone: Tone; dot: boolean }> = {
   draft: { label: 'Черновик', tone: 'neutral', dot: false },
+  scheduled: { label: 'Запланирован', tone: 'neutral', dot: true },
   published: { label: 'В продаже', tone: 'mint', dot: true },
-  sold_out: { label: 'Билетов нет', tone: 'accent', dot: false },
-  finished: { label: 'Завершён', tone: 'neutral', dot: false },
+  completed: { label: 'Завершён', tone: 'neutral', dot: false },
   cancelled: { label: 'Отменён', tone: 'rose', dot: false },
+  archived: { label: 'Архив', tone: 'neutral', dot: false },
 }
 
 const SESSION: Record<string, { label: string; tone: Tone; dot: boolean }> = {

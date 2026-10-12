@@ -86,12 +86,30 @@ describe('NStatusBadge', () => {
     expect(wrapper.text()).toBe('Оплачен')
   })
 
-  it('на неизвестном статусе показывает сам код, а не пустую ячейку', async () => {
-    const wrapper = mountBadge('event', 'archived')
+  it('подписывает все шесть состояний мероприятия, а не только два', () => {
+    // Раньше здесь стояло `archived` в ожидании СЫРОГО кода: тип `EventStatus`
+    // содержал `sold_out` и `finished`, которых бэкенд не знает, и не содержал
+    // `scheduled` / `completed` / `archived`. Поэтому три реальных состояния
+    // показывались английским кодом, а две записи словаря были мёртвыми.
+    //
+    // Источник истины — `EventStatus::all()`; тот же список закреплён в схеме
+    // (миграция `015_events_status_check.sql`), и `tools/verify-state-machines.php`
+    // сверяет машину с CHECK на каждом прогоне.
+    expect(mountBadge('event', 'draft').text()).toBe('Черновик')
+    expect(mountBadge('event', 'scheduled').text()).toBe('Запланирован')
+    expect(mountBadge('event', 'published').text()).toBe('В продаже')
+    expect(mountBadge('event', 'completed').text()).toBe('Завершён')
+    expect(mountBadge('event', 'cancelled').text()).toBe('Отменён')
+    expect(mountBadge('event', 'archived').text()).toBe('Архив')
+  })
 
-    // `archived` есть в БД, но отсутствует в словаре EVENT: молчать об этом
-    // хуже, чем показать код.
-    expect(wrapper.text()).toBe('archived')
+  it('на неизвестном статусе показывает сам код, а не пустую ячейку', async () => {
+    // Словарь EVENT теперь закрыт полностью, но запасной вариант обязан
+    // остаться: API может отдать статус, которого эта сборка ещё не знает, а
+    // пустая ячейка в таблице хуже кода — по ней нечего искать в бэкенде.
+    const wrapper = mountBadge('event', 'something_new')
+
+    expect(wrapper.text()).toBe('something_new')
 
     await wrapper.setProps({ status: 'draft' })
     expect(wrapper.text()).toBe('Черновик')

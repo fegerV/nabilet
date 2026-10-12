@@ -21,7 +21,7 @@ Redis (опционально) · REST API · PWA · Android Checker
 nabilet_core_spec/
 ├── NABILET_Core_Technical_Spec_v1.md   обзорная спецификация
 ├── migrations.sql                      консолидированный DDL (73 таблицы)
-├── migrations/001..013                 сплит-миграции в порядке исполнения
+├── migrations/001..015                 сплит-миграции в порядке исполнения
 ├── openapi.yaml                        OpenAPI 3.1 (100 операций)
 └── state-diagrams.md                   машины состояний
 ```
@@ -103,7 +103,7 @@ php tools/verify-openapi.php        # целостность контракта 
 php tools/verify-openapi.php nabilet_core_spec/openapi.yaml   # то же для копии пакета
 php tools/verify-contract-schema.php        # контракт ≡ схема: нет поля, которого нет в БД
 php tools/verify-contract-schema.php nabilet_core_spec/openapi.yaml
-php tools/verify-migrations.php     # миграции ≡ пакет: 73 таблицы, 101 FK, 36 CHECK
+php tools/verify-migrations.php     # миграции ≡ пакет: 73 таблицы, 101 FK, 38 CHECK
 php tools/verify-state-machines.php # статусы в коде ≡ CHECK-ограничениям в БД
 php tools/verify-models-schema.php  # модели Eloquent называют только реальные колонки
 ```
@@ -270,7 +270,7 @@ add_filter('ticket.price', fn (int $price) => $price + 300, priority: 20);
 | Область | Состояние |
 |---|---|
 | Ядро (хуки, модули, ошибки, Money, QR, state machines, tenancy) + домены P2–P7 | ✅ тесты, CI `verify` + `schema` |
-| Схема пакета (73 таблицы, 36 CHECK, 1 триггер) | ✅ проверена на MySQL 8.4.11 |
+| Схема пакета (73 таблицы, 38 CHECK, 1 триггер) | ✅ проверена на MySQL 8.4.11 |
 | Матрица конкурентности ТЗ §26 | ✅ 6 из 6 сценариев |
 | API-контракт пакета (81 путь, 98 операций) | ✅ описан и проверен; реализация ~30 модулей в `app/Modules/` |
 | API-контракт проекта (`docs/openapi.yaml`, +`metrikaConfig`) | ✅ опережает пакет на одну операцию; синхронизация в пакет — при следующем релизе спеки |

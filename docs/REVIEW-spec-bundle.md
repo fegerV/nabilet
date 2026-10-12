@@ -281,7 +281,7 @@ translation_value`; в структуре проекта присутствуе�
 > | `revoked` (§43/§44) | в `tickets.status` + `revoked_at`, `revoked_reason`; `ck_tickets_status` расширен |
 >
 > Проверено исполнением, а не чтением: DDL загружен в MySQL 8.4.11 — **73 таблицы,
-> 785 колонок, 298 ограничений, 36 CHECK, 1 триггер**; консолидированный и сплит-варианты
+> 785 колонок, 300 ограничений, 38 CHECK, 1 триггер**; консолидированный и сплит-варианты
 > совпадают. OpenAPI — 100 операций, 101 схема, валидатор 11/11. Счётчики в `DATABASE.md`
 > и диаграмма в `STATE-MACHINES.md` обновлены.
 
@@ -310,6 +310,16 @@ users.status                 venues.status
 > `tools/verify-state-machines.php` вместо `users.status` стоит `event_dates.status`,
 > которого в перечне выше нет. Это расхождение самого перечня с инструментом, а не
 > следствие правки; перечень оставлен как историческая запись.
+
+> **Обновление 2026-10-12 (второй проход).** Из списка выбыли ещё две колонки —
+> `inventory_items.status` (сплит `014_inventory_status_check.sql`, `ck_inventory_status`)
+> и `events.status` (сплит `015_events_status_check.sql`, `ck_events_status`). Обе закреплены
+> **не выдуманными** значениями, а тем, что машины состояний и продакшн-код уже писали:
+> `EventStateMachine` (6 состояний) и `InventoryItemStateMachine` (6 состояний, включая
+> `sold_out`). Поэтому заголовок выше («19 словарей») и текущий счётчик инструмента
+> (**17 необеспеченных** — машины состояний теперь все семь обеспечены CHECK) описывают
+> разные моменты: перечень — момент обнаружения, инструмент — текущее состояние.
+> Разбор по `inventory_items.status` — в 3.25.7.
 
 Ни одна из них не имеет CHECK. Для `carts.status` это подтверждается и контрактом:
 OpenAPI описывает её как `status: { type: string }` — то есть «любая строка».
@@ -2124,3 +2134,53 @@ tools/repro-role-alias.php       exit 0 (дефект 3.25.3 на месте)
 истечению, `NULL expires_at`, отзыву и мягкому удалению; что открытый токен не лежит в базе; что
 хранится `sha256` длиной 64; что `length(ip_address) = 4`; что `last_seen_at` обновляется. Он
 пишет в живую базу и в `finally` сверяет, что количество строк вернулось к исходному.
+
+### 3.25.8 Словари `inventory_items.status` и `events.status` — и оплата, которая не переводила место в `sold`
+
+Обе колонки стояли в §3.11 как «неограниченные», но состояние оказалось хуже: словари
+существовали в PHP-машинах состояний и в продакшн-коде — и **не совпадали друг с другом**.
+
+**`inventory_items.status`: баг в деньгах, найденный чтением.** `CartItemService` пишет
+`status = 'sold_out'`, когда `available_quantity` дошла до нуля (три места:
+`createHold`, `decrementQuantity`-путь и восстановление корзины), а
+`InventoryItemStateMachine` знал пять состояний — `available, held, sold, blocked,
+disabled` — и потому не знал перехода `sold_out → sold`. Для места (ёмкость 1) это
+означает: купленное через корзину место оплачено, а в схеме навсегда осталось
+`sold_out`. Воспроизведено исполнением (`tests/Feature/Inventory/InventorySoldOnPaymentTest.php`,
+до правки — красный, после — зелёный): существующий тест оплаты готовил место мимо
+корзины, поэтому расхождение было невидимо.
+
+Значения не выдуманы: ровно те же шесть называет и фронтенд
+(`resources/js/lib/seatStatus.ts`), и таблица бейджей. Правка — не в код записи, а в
+машину и схему:
+
+- `InventoryItemStateMachine` получил `SOLD_OUT` и переходы `sold_out → sold`
+  (путь подтверждения оплаты), `sold_out → available` (возврат),
+  `sold_out → held` (перехват);
+- `nabilet_core_spec/migrations/014_inventory_status_check.sql` + зеркало
+  `database/migrations/2026_10_12_000200_add_inventory_items_status_check.php` +
+  `ck_inventory_status` в обоих `migrations.sql`;
+- `purchasable()` = `['available']` — `sold_out` покупать нельзя (остаток ноль),
+  но возвращать в продажу при возврате можно.
+
+**`events.status`: словарь машины и выдуманные значения фронта.** `EventStateMachine`
+описывал шесть состояний (`draft, scheduled, published, cancelled, completed,
+archived`), но в схеме их не было, а фронтенд объявлял другой набор —
+`'draft' | 'published' | 'sold_out' | 'finished' | 'cancelled'`; `sold_out` и
+`finished` бэкенд вообще не понимает. `vue-tsc` поймал это как мёртвое сравнение в
+`EventCard.vue`. Исправлено по направлению «фронт подчиняется бэкенду»: словарь
+приведён к шести состояниям, `archived` получил подпись, а признак «билетов нет» —
+это `sessions[].available_seats` из `EventResource`, а не статус события.
+
+- `nabilet_core_spec/migrations/015_events_status_check.sql` + зеркало
+  `database/migrations/2026_10_12_000300_add_events_status_check.php` +
+  `ck_events_status` в обоих `migrations.sql`;
+- `tests/Feature/Core/StatusCheckConstraintsTest.php` (5) проверяет, что база сама
+  отвергает значения вне словарей — для `users`, `inventory_items` и `events`;
+- `verify-state-machines.php` больше не печатает ни одной пометки о необеспеченной
+  машине: все семь обеспечены CHECK.
+
+**Счётчики после правок** (загрузка обоих DDL в MySQL 8.4.11, не чтение):
+**73 таблицы · 785 колонок · 300 ограничений (73 PK + 88 UNIQUE + 101 FK + 38 CHECK) ·
+1 триггер**, CHECK на 20 таблицах, сплит `001..015`. Неограниченных status-колонок
+в выводе инструмента: 17 (было 19).
