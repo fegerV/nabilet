@@ -8,7 +8,7 @@
  * пустой экран, а не ошибку авторизации.
  */
 import { get } from './api'
-import type { TicketCard, TicketStatus } from './types'
+import type { TicketCard, TicketStatus, TicketTemplateConfig } from './types'
 
 /** Форма ответа GET /my-tickets (совпадает с TicketCardResource на бэкенде). */
 interface RawTicket {
@@ -23,6 +23,9 @@ interface RawTicket {
   priceMinor: number
   status: string
   qrPayload: string | null
+  holder?: string | null
+  orderId?: number | string | null
+  template?: TicketTemplateConfig | null
 }
 
 const KNOWN: TicketStatus[] = ['issued', 'used', 'cancelled', 'refunded', 'expired', 'revoked']
@@ -44,6 +47,9 @@ function normalize(raw: RawTicket): TicketCard {
     priceMinor: Number(raw.priceMinor) || 0,
     status,
     qrPayload: raw.qrPayload ?? '',
+    holder: raw.holder ?? '',
+    orderId: raw.orderId ?? '',
+    template: raw.template ?? null,
   }
 }
 

@@ -52,6 +52,16 @@
         @endif
     </div>
 
+    {{-- Билет-картинка встроен в тело письма через inline-CID: покупатель
+         видит оформленный макет мероприятия сразу, без скачивания вложения.
+         cid известен только если растр сгенерирован (Chrome в окружении); иначе
+         блок не выводится и письмо уходит как раньше. --}}
+    @if(($ticketImageCid ?? '') !== '')
+        <img src="cid:{{ $ticketImageCid }}" alt="Билет: {{ $ticketData['event_name'] }}" width="240"
+             style="display: block; width: 240px; max-width: 100%; height: auto; margin: 0 auto; border-radius: 10px; box-shadow: 0 6px 18px rgba(0,0,0,0.18); border: 0; outline: none;">
+        <p style="margin: 10px 0 0; text-align: center; font-size: 12px; color: #6c757d;">Ваш билет — таким он открывается на входе</p>
+    @endif
+
     <!-- Ticket Body -->
     <div style="padding: 30px;">
         <!-- Customer Info -->

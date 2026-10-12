@@ -67,7 +67,7 @@ class TicketController extends Controller
         }
 
         $tickets = Ticket::query()
-            ->with(['orderItem', 'session.venue', 'seat.row.sector', 'standingZone', 'event'])
+            ->with(['orderItem', 'session.venue', 'seat.row.sector', 'standingZone', 'event.ticketTemplate', 'order'])
             ->whereIn('order_id', $orderIds)
             ->orderByDesc('created_at')
             ->get();
