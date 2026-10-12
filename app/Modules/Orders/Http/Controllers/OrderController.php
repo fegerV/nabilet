@@ -4,14 +4,18 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Orders\Http\Controllers;
 
+use Nabilet\Core\Errors\AppError;
 use Nabilet\Core\Errors\DomainRuleViolation;
 use Nabilet\Core\Errors\NotFoundError;
 use Nabilet\Core\Support\StaffRole;
+use Nabilet\Modules\Cart\Models\Cart;
 use Nabilet\Modules\Cart\Services\CartCheckoutService;
 use Nabilet\Modules\Cart\Support\CartToken;
+use Nabilet\Modules\Notifications\Jobs\SendOrderNotificationJob;
 use Nabilet\Modules\Orders\Http\Requests\StoreOrderRequest;
 use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Orders\Services\OrderService;
+use Nabilet\Modules\Orders\StateMachines\OrderStateMachine;
 use Nabilet\Modules\Payments\Services\RefundService;
 use Nabilet\Modules\Payments\StateMachines\PaymentStateMachine;
 use Illuminate\Http\JsonResponse;
@@ -181,6 +185,112 @@ class OrderController extends Controller
         return response()->json([
             'data' => $order->fresh()->load(['payments.refunds', 'tickets']),
         ]);
+    }
+
+    /**
+     * Повторно отправить письмо с билетом — самопомощь покупателя.
+     *
+     * ПОЧЕМУ ЭТО ВООБЩЕ НУЖНО
+     *   Письмо с билетом уходит на `orders.customer_email`. До этой правки
+     *   покупатель, ошибшийся в адресе хотя бы одной буквой, не получал билет
+     *   НИКОГДА: письмо уходило в никуда, исправить адрес было нечем, повторно
+     *   отправить — тоже. Опечатка в адресе — не гипотетический случай, а самый
+     *   частый способ потерять билет при гостевом чекауте.
+     *
+     * ПОЧЕМУ МАРШРУТ ВНЕ `auth:api`
+     *   Витрина гостевая: корзина ключуется `X-Cart-Token`, у заказа
+     *   `user_id = NULL`. Под `auth:api` гость получал бы 401 и починить адрес
+     *   не смог бы вообще. Право даёт `holdsRequestAccess()` — тот же приём, что
+     *   в `PaymentController` для оплаты гостевого заказа.
+     *
+     * ПОЧЕМУ МОЖНО МЕНЯТЬ АДРЕС
+     *   Смена адреса здесь — не «смена владельца», а исправление опечатки:
+     *   доступ к заказу уже подтверждён capability-токеном корзины, и письмо
+     *   уходит по новому адресу в тот же момент. Аккаунт не затрагивается.
+     *
+     * ПОЧЕМУ 404, А НЕ 403
+     *   Чужой заказ должен быть неотличим от несуществующего, иначе эндпоинт
+     *   превращается в оракул существования заказов (IDOR/BOLA).
+     */
+    public function resendTicket(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            // `bail`/`integer` guard the BIGINT cast — тот же приём, что в index().
+            'order' => ['bail', 'required', 'integer'],
+            'email' => ['nullable', 'email:rfc', 'max:255'],
+        ]);
+
+        $order = Order::query()->find((int) $validated['order']);
+
+        if ($order === null || ! $this->holdsRequestAccess($request, $order)) {
+            throw new NotFoundError('Order', (string) $validated['order']);
+        }
+
+        // Билет выпускается по оплате: у неоплаченного заказа отправлять нечего,
+        // и повторная отправка не должна выглядеть как успех.
+        if ($order->status !== OrderStateMachine::PAID) {
+            throw new AppError(
+                'The ticket e-mail can only be re-sent for a paid order.',
+                'ORDER_NOT_PAID',
+                409,
+                ['status' => (string) $order->status],
+            );
+        }
+
+        $email = $validated['email'] ?? null;
+
+        if ($email !== null && strcasecmp($email, (string) $order->customer_email) !== 0) {
+            // Присваивание свойству, а не `update()`: адрес здесь — предмет
+            // операции, а не произвольный пользовательский ввод.
+            $order->customer_email = $email;
+            $order->save();
+        }
+
+        // Тот же путь, что и при оплате: письмо собирает SendOrderNotificationJob
+        // по текущему статусу заказа.
+        SendOrderNotificationJob::dispatch((int) $order->getKey(), (string) $order->status);
+
+        return response()->json([
+            'data' => [
+                'sent' => true,
+                'email' => (string) $order->customer_email,
+            ],
+        ]);
+    }
+
+    /**
+     * Есть ли у запроса право доступа к заказу помимо сотрудника.
+     *
+     *   1. владелец — заказ привязан к аккаунту и совпадает с `$request->user()`;
+     *   2. гость, предъявивший `X-Cart-Token` той корзины, из которой создан заказ.
+     *
+     * Токен — capability: UUID выдаётся браузеру покупателя при первом добавлении
+     * места и больше нигде не публикуется. Копия `PaymentController` осознанно:
+     * это разные модули, а общий хелпер пришлось бы класть в Core, где он стал бы
+     * зависимостью ядра от доменных моделей Cart/Order.
+     */
+    private function holdsRequestAccess(Request $request, Order $order): bool
+    {
+        if (StaffRole::isStaff($request->user())) {
+            return true;
+        }
+
+        $user = $request->user();
+
+        if ($user !== null && $order->user_id !== null && (int) $order->user_id === (int) $user->id) {
+            return true;
+        }
+
+        $token = CartToken::fromRequest($request);
+
+        if ($token === null || $order->cart_id === null) {
+            return false;
+        }
+
+        return Cart::query()
+            ->where('id', $order->cart_id)
+            ->where('cart_token', $token)
+            ->exists();
     }
 
     /**

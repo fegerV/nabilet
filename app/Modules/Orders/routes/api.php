@@ -30,3 +30,24 @@ Route::prefix('orders')->middleware(['auth:api'])->group(function () {
     // вызывался ни одним маршрутом.
     Route::post('/{order}/refund', [OrderController::class, 'refund'])->middleware('admin')->whereNumber('order');
 });
+
+/*
+ * Самопомощь покупателя: повторная отправка письма с билетом.
+ *
+ * НАМЕРЕННО ВНЕ `auth:api` — по той же причине, что `POST /payments` в модуле
+ * Payments: витрина гостевая, корзина ключуется `X-Cart-Token`, у заказа
+ * `user_id = NULL`. Под `auth:api` покупатель получал бы 401 и исправить
+ * опечатку в адресе не мог бы вовсе — а письмо с билетом уходит именно на
+ * `orders.customer_email`, и одна неверная буква означала потерю билета навсегда.
+ *
+ * Право даёт `OrderController::holdsRequestAccess()` (сотрудник, владелец по
+ * `user_id` либо гость с токеном корзины заказа). Чужой заказ — 404, не 403.
+ * Путь назван по ресурсу покупателя (`GET /my-tickets` в модуле Tickets), хотя
+ * живёт здесь: заказ и постановка письма в очередь — домен Orders, а модуль
+ * Tickets намеренно не зависит от Notifications.
+ *
+ * `throttle:ticket-resend` — эндпоинт шлёт письмо на адрес из тела запроса,
+ * поэтому лимит обязателен, иначе он становится релеем для спама.
+ */
+Route::post('/my-tickets/resend', [OrderController::class, 'resendTicket'])
+    ->middleware('throttle:ticket-resend');

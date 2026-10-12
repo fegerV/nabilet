@@ -45,10 +45,20 @@ class RateLimitServiceProvider extends ServiceProvider
     /** Чекин: выше человеческого темпа, но ниже brute-force по ticketPublicId. */
     private const CHECKIN_PER_MINUTE = 120;
 
+    /**
+     * Повторная отправка билета: эндпоинт шлёт письмо на адрес, который указал
+     * вызывающий. Без лимита он превращается в релей для спама от нашего домена.
+     */
+    private const RESEND_PER_IP = 5;
+
+    /** Тот же потолок, привязанный к корзине: человек жмёт «отправить» 1–2 раза. */
+    private const RESEND_PER_CART = 3;
+
     public function boot(): void
     {
         $this->registerPromoValidate();
         $this->registerCheckinScan();
+        $this->registerTicketResend();
     }
 
     /**
@@ -103,6 +113,36 @@ class RateLimitServiceProvider extends ServiceProvider
                 ?? $request->ip();
 
             return Limit::perMinute(self::CHECKIN_PER_MINUTE)->by('checkin:' . $identity);
+        });
+    }
+
+    /**
+     * `POST /my-tickets/resend` — публичный эндпоинт самопомощи покупателя.
+     *
+     * Он отправляет письмо на адрес, который пришёл в теле запроса, поэтому без
+     * лимита становится релеем: один вызов = одно письмо от нашего домена любому
+     * получателю. Доступ к заказу закрыт capability-токеном корзины, но и с ним
+     * потолок нужен — покупателю достаточно одной повторной отправки.
+     *
+     * Две корзины, как у `promo-validate`: по адресу (сеть за NAT) и по токену
+     * корзины. Вторая добавляется только при непустом токене, иначе все
+     * анонимные запросы делили бы одну корзину и один скрипт исчерпал бы лимит
+     * для всех покупателей сразу.
+     */
+    private function registerTicketResend(): void
+    {
+        RateLimiter::for('ticket-resend', function (Request $request): array {
+            $limits = [
+                Limit::perMinute(self::RESEND_PER_IP)->by('resend-ip:' . $request->ip()),
+            ];
+
+            $cartToken = (string) $request->header('X-Cart-Token', '');
+
+            if ($cartToken !== '') {
+                $limits[] = Limit::perMinute(self::RESEND_PER_CART)->by('resend-cart:' . $cartToken);
+            }
+
+            return $limits;
         });
     }
 }
