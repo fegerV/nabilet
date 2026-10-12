@@ -47,6 +47,11 @@ const selectedId = computed<number | null>(() => {
 
 const selected = computed(() => templates.value.find((t) => t.id === selectedId.value) ?? null)
 
+/** Открыт конструктор НОВОГО шаблона (`?template=new`). */
+const isCreating = computed(() => route.query.template === 'new')
+/** Конструктор открыт — либо новый шаблон, либо выбранный существующий. */
+const builderOpen = computed(() => isCreating.value || selected.value !== null)
+
 async function load(): Promise<void> {
   loading.value = true
   error.value = null
@@ -73,8 +78,19 @@ function closeTemplate(): void {
   router.push({ query })
 }
 
-function onSaved(): void {
+/** Начать новый шаблон: конструктор открывается без `templateId`. */
+function createTemplate(): void {
+  router.push({ query: { ...route.query, template: 'new' } })
+}
+
+function onSaved(saved?: { id?: number } | null): void {
   ui.notify('mint', 'Шаблон сохранён', 'Новый макет применён к билетам этого шаблона.')
+  // После создания переходим на сохранённый шаблон: `?template=new` больше не
+  // нужен, иначе повторное «Сохранить» создало бы второй с тем же именем.
+  const id = saved && typeof saved.id === 'number' ? saved.id : null
+  if (id !== null) {
+    openTemplate(id)
+  }
   load()
 }
 
@@ -107,7 +123,10 @@ async function removeFromList(template: TicketTemplate): Promise<void> {
           — тогда его билеты приходят покупателю в этом виде.
         </p>
       </div>
-      <NButton v-if="selected" variant="secondary" @click="closeTemplate">← К списку</NButton>
+      <div class="flex flex-wrap gap-2">
+        <NButton v-if="builderOpen" variant="secondary" @click="closeTemplate">← К списку</NButton>
+        <NButton v-else variant="accent" @click="createTemplate">+ Создать шаблон</NButton>
+      </div>
     </div>
 
     <div v-if="error" class="surface-card mt-5 border-rose-500/30 px-4 py-3 text-sm text-rose-400">
@@ -115,11 +134,11 @@ async function removeFromList(template: TicketTemplate): Promise<void> {
       <NButton variant="secondary" class="mt-3" @click="load">Повторить</NButton>
     </div>
 
-    <!-- Конструктор открытого шаблона -->
-    <div v-else-if="selected" class="mt-5">
+    <!-- Конструктор: новый шаблон (`template-id=null`) или открытый существующий -->
+    <div v-else-if="builderOpen" class="mt-5">
       <TicketBuilder
-        :key="selected.id"
-        :template-id="selected.id"
+        :key="isCreating ? 'new' : (selected?.id ?? 'new')"
+        :template-id="isCreating ? null : (selected?.id ?? null)"
         @template-saved="onSaved"
         @template-deleted="onDeleted"
       />
@@ -134,9 +153,9 @@ async function removeFromList(template: TicketTemplate): Promise<void> {
         class="surface-card mt-6"
         icon="🎫"
         title="Шаблонов пока нет"
-        description="Создайте первый шаблон: откройте любой и соберите макет билета. Без шаблона билеты уходят в стандартном виде."
-        action-label="Обновить"
-        @action="load"
+        description="Создайте первый шаблон: соберите макет билета на холсте и назначьте его мероприятию. Без шаблона билеты уходят в стандартном виде."
+        action-label="+ Создать шаблон"
+        @action="createTemplate"
       />
 
       <div v-else class="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

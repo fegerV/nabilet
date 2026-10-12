@@ -19,6 +19,11 @@ use Illuminate\Http\Resources\Json\JsonResource;
  *  * `url` — готовый адрес. Клиент мог бы собрать его сам из `disk` и `path`,
  *    но тогда правило «`/storage/...` против корня» размножилось бы по фронтенду
  *    ровно так же, как когда-то размножилось по бэкенду (см. `AssetUrl`).
+ *    Адрес ОТНОСИТЕЛЬНЫЙ (`/storage/...`), а не абсолютный от `APP_URL`:
+ *    админка и API отдаются одним хостом, поэтому относительный путь всегда
+ *    резолвится верно. Раньше абсолютный адрес ломал превью файлов, когда хост
+ *    в `.env` не совпадал с хостом, на котором открыта админка (404 на каждом
+ *    `<img>`). Внешние адреса (если в `path` лежит полный URL) возвращаются как есть.
  *  * `links` — привязки к объектам, и только когда они подгружены. Галерея
  *    мероприятия без них не может показать, к какому объекту относится файл,
  *    а `position` задаёт порядок. Поле не добавляется, если связь не загружена:
@@ -35,7 +40,7 @@ class MediaAssetResource extends JsonResource
             'public_id' => (string) $asset->public_id,
             'disk' => (string) $asset->disk,
             'path' => (string) $asset->path,
-            'url' => $asset->url(),
+            'url' => self::publicUrl((string) $asset->path),
             'filename' => (string) $asset->filename,
             'mime_type' => (string) $asset->mime_type,
             'size_bytes' => (int) $asset->size_bytes,
@@ -63,5 +68,22 @@ class MediaAssetResource extends JsonResource
         }
 
         return $data;
+    }
+
+    /**
+     * Относительный адрес файла из `storage/app/public`.
+     *
+     * Внешний адрес (в `path` хранится полный URL или протокол-относительный
+     * `//cdn…`) возвращаем как есть — приклеивать к нему хост приложения нельзя.
+     */
+    private static function publicUrl(string $path): string
+    {
+        if (str_starts_with($path, 'http://')
+            || str_starts_with($path, 'https://')
+            || str_starts_with($path, '//')) {
+            return $path;
+        }
+
+        return '/storage/' . ltrim($path, '/');
     }
 }

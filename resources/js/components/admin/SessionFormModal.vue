@@ -280,10 +280,16 @@ async function save(): Promise<void> {
         if (messages.length) mapped[key] = messages[0]
       }
       fieldErrors.value = mapped
-      // Серверные сообщения о зале («зал принадлежит другой площадке», «у зала нет
-      // опубликованной схемы») — единственные, которые объясняют отказ по делу,
-      // поэтому показываем их как есть, а не общим «проверьте поля».
-      formError.value = err.message || 'Сохранить сеанс не удалось.'
+      // «The given data was invalid.» — дефолтное сообщение обёртки
+      // ValidationError, само по себе оно бесполезно: реальные причины лежат в
+      // fieldErrors, и они теперь привязаны к каждому полю (включая схему зала и
+      // даты продаж). Серверные сообщения о зале («зал принадлежит другой
+      // площадке», «у зала нет опубликованной схемы») объясняют отказ по делу —
+      // их показываем как есть.
+      const generic = !err.message || err.message === 'The given data was invalid.'
+      formError.value = generic
+        ? 'Сервер отклонил данные. Проверьте отмеченные поля ниже.'
+        : err.message
     } else {
       formError.value = err instanceof Error ? err.message : String(err)
     }
@@ -367,6 +373,7 @@ async function save(): Promise<void> {
           ...schemaVersions.map(v => ({ value: String(v.id), label: `Версия ${v.version}` })),
         ]"
         :disabled="schemaVersionsLoading || !form.hall_id"
+        :error="fieldErrors.schema_version_id"
         hint="Из схемы создаются места. Если опубликованной схемы нет, сеанс создать нельзя."
       />
 
@@ -376,16 +383,16 @@ async function save(): Promise<void> {
       </div>
 
       <div class="grid gap-4 sm:grid-cols-2">
-        <NInput v-model="form.sales_start_at" label="Старт продаж (дата)" type="date" />
+        <NInput v-model="form.sales_start_at" label="Старт продаж (дата)" type="date" :error="fieldErrors.sales_start_at" />
         <NInput v-model="form.sales_start_time" label="Старт продаж (время)" placeholder="00:00" />
       </div>
 
       <div class="grid gap-4 sm:grid-cols-2">
-        <NInput v-model="form.sales_end_at" label="Окончание продаж (дата)" type="date" />
+        <NInput v-model="form.sales_end_at" label="Окончание продаж (дата)" type="date" :error="fieldErrors.sales_end_at" />
         <NInput v-model="form.sales_end_time" label="Окончание продаж (время)" placeholder="23:59" />
       </div>
 
-      <NSelect v-model="form.status" label="Статус" :options="STATUS_OPTIONS" />
+      <NSelect v-model="form.status" label="Статус" :options="STATUS_OPTIONS" :error="fieldErrors.status" />
 
       <div class="flex justify-end gap-2 border-t border-line pt-3">
         <NButton variant="secondary" @click="close">Отмена</NButton>

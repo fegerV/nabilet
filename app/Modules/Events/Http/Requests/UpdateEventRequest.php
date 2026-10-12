@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Events\Http\Requests;
 
+use Nabilet\Modules\Events\Http\Requests\Concerns\HandlesPosterUpload;
 use Nabilet\Modules\Events\Models\Event;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
@@ -11,6 +12,11 @@ use Illuminate\Foundation\Http\FormRequest;
 
 class UpdateEventRequest extends FormRequest
 {
+    // Сохранение файла афиши + перенос legacy `image_url` → `poster`. Раньше
+    // этих методов здесь не было вовсе, и новая афиша при редактировании молча
+    // не сохранялась (жалоба «афиша не сохраняется»). Общий трейт с Store.
+    use HandlesPosterUpload;
+
     /**
      * Что реально было отброшено: поле => значение. См. StoreEventRequest —
      * механизм общий, здесь он нужен по той же причине: молчаливая потеря
@@ -109,6 +115,11 @@ class UpdateEventRequest extends FormRequest
             'cover' => ['nullable', 'url', 'max:2048'],
             'image_url' => ['nullable', 'url', 'max:2048'],
             'poster' => ['nullable', 'url', 'max:2048'],
+            // FIX (афиша не сохраняется при редактировании): правила для файла
+            // афиши здесь не было, поэтому multipart `poster_file` не валидировался
+            // и не сохранялся — новая афиша молча терялась. Правило то же, что в
+            // StoreEventRequest; сохранение делает трейт HandlesPosterUpload.
+            'poster_file' => ['nullable', 'file', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
             'seo_title' => ['nullable', 'string', 'max:255'],
             'seo_description' => ['nullable', 'string', 'max:500'],
             // Управление индексацией страницы (аудит P-23). См.
@@ -142,16 +153,15 @@ class UpdateEventRequest extends FormRequest
         return [
             'slug.unique' => 'Такой адрес мероприятия уже занят. Укажите другой — '
                 . 'он входит в публичную ссылку на страницу.',
+            'poster_file.image' => 'Файл афиши должен быть изображением.',
+            'poster_file.mimes' => 'Файл афиши должен быть в формате jpg, png или webp.',
+            'poster_file.max' => 'Файл афиши не должен превышать 5 МБ.',
         ];
     }
 
-    /**
-     * FIX (posters not saved): map `image_url` (form field) to `poster`
-     * (DB column). See StoreEventRequest::normalizePosterMapping() — same
-     * mechanism, shared via trait-like duplication to keep requests explicit.
-     */
     public function passedValidation(): void
     {
+        $this->storeUploadedPoster();
         $this->normalizePosterMapping();
         $this->stripNonColumnFields();
         $this->stripStatusField();
@@ -162,6 +172,7 @@ class UpdateEventRequest extends FormRequest
      */
     public function validated($key = null, $default = null)
     {
+        $this->storeUploadedPoster();
         $this->normalizePosterMapping();
         $this->stripNonColumnFields();
         $this->stripStatusField();
@@ -236,19 +247,4 @@ class UpdateEventRequest extends FormRequest
         return (int) ($this->user()?->organizations()->first()?->id ?? 0);
     }
 
-    protected function normalizePosterMapping(): void
-    {
-        $url = $this->input('image_url', '__missing__');
-
-        if ($url === '__missing__') {
-            return;
-        }
-
-        $this->request->remove('image_url');
-        $this->getInputSource()->remove('image_url');
-
-        if ($url !== null && $this->input('poster') === null) {
-            $this->merge(['poster' => $url]);
-        }
-    }
 }
