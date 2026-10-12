@@ -6,6 +6,7 @@ namespace Nabilet\Modules\Auth\Services;
 
 use Illuminate\Database\Query\Expression;
 use Nabilet\Core\Support\PackedIp;
+use Nabilet\Modules\Auth\Domain\LoginLogEvent;
 use Nabilet\Modules\Auth\Domain\SessionPolicy;
 use Nabilet\Modules\Auth\Domain\SessionToken;
 use Nabilet\Modules\Auth\Domain\UserSession as SessionRecord;
@@ -213,13 +214,14 @@ final class SessionIssuer
     /**
      * The audit line for an ended session, written BEFORE the DELETE.
      *
-     * OPEN DECISION (docs/REVIEW-spec-bundle.md §3.25): `login_logs` has no event
-     * column, so this row cannot be told apart from a successful login except by
-     * the absence of a `failure_code`. `audit_logs` does have an `action` column
-     * and would be the better home, but `SessionPolicy::revocationDecision()`
-     * names `login_logs`, and the domain rule is followed rather than quietly
-     * overridden. The `identifier` is passed in by the caller because the session
-     * row does not carry it.
+     * `event` distinguishes this from a login row (split
+     * `016_login_logs_event.sql`). Before that column the two events were told
+     * apart only by the presence of `failure_code`, which held exactly until a
+     * writer logged a successful login — see the file header of the split.
+     * `audit_logs` does have an `action` column and would be the better home,
+     * but `SessionPolicy::revocationDecision()` names `login_logs`, and the
+     * domain rule is followed rather than quietly overridden. The `identifier`
+     * is passed in by the caller because the session row does not carry it.
      */
     public function auditLogout(
         UserSessionRow $row,
@@ -232,6 +234,7 @@ final class SessionIssuer
         $log->user_id = $row->user_id;
         $log->identifier = $identifier;
         $log->success = true;
+        $log->event = LoginLogEvent::LOGOUT;
         $log->ip_address = $this->binaryIp($client->ipAddress);
         $log->user_agent = $client->userAgent ?? $row->user_agent;
         $log->failure_code = null;

@@ -4,48 +4,39 @@ declare(strict_types=1);
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Foundation\Auth\User as Authenticatable;
-use Illuminate\Notifications\Notifiable;
+use Nabilet\Modules\Core\Users\Models\User as CanonicalUser;
 
-class User extends Authenticatable
+/**
+ * The legacy name for the user model — a SUBCLASS, not a second model.
+ *
+ * WHAT WAS WRONG
+ *   Two classes over the `users` table. This one had its own `$fillable`
+ *   (13 fields), a `name` accessor, `canAccessAdmin()`, `roles()`,
+ *   `hasRole()` — and none of the other 19 relations; the module one had every
+ *   relation, `extends Authenticatable` with `HasApiTokens`, and neither of
+ *   those three methods. `config/auth.php` pointed the web guard here and the
+ *   api guard there, so the same row came back as different classes depending
+ *   on the entry point — `instanceof`, `roles()` and `userSessions()` were
+ *   missing exactly where they were needed (`docs/REVIEW-spec-bundle.md`
+ *   §3.25, «раздвоение моделей User»).
+ *
+ *   The duplication also cost a real bug: `Order::user()` resolves to the
+ *   module model, so `$order->user?->name` was always null and
+ *   `OrderNotificationData::customerName()` silently fell back to «Покупатель».
+ *
+ * THE DECISION
+ *   One implementation owns the domain: `Nabilet\Modules\Core\Users\Models\User`
+ *   — table, fillable, casts, all relations, `name`, `canAccessAdmin()`,
+ *   `roles()`, `hasRole()`, the `UserStatus`-based checks. Both auth providers
+ *   point at it (config/auth.php). This class stays only so the name keeps
+ *   resolving: `vendor/composer`'s optimized classmap maps it, and
+ *   `AUTH_MODEL` (the framework default) names it. It declares NOTHING of its
+ *   own, so behaviour cannot drift again — an inherited method cannot disagree
+ *   with the canonical one.
+ *
+ *   `tests/Feature/Core/UserModelUnificationTest.php` is the guard: it fails if
+ *   the two providers stop pointing at one class, or if this file grows code.
+ */
+class User extends CanonicalUser
 {
-    use HasFactory, Notifiable;
-
-    protected $table = 'users';
-
-    protected $fillable = ['email', 'email_verified_at', 'password', 'first_name', 'last_name', 'phone', 'phone_verified_at', 'status', 'locale', 'timezone', 'last_login_at'];
-
-    protected $hidden = ['password', 'remember_token'];
-
-    protected static function boot(): void
-    {
-        parent::boot();
-        static::creating(function (self $model): void {
-            if ($model->public_id === null) {
-                $model->public_id = \Illuminate\Support\Str::ulid()->toBase32();
-            }
-        });
-    }
-
-    public function getNameAttribute(): string
-    {
-        return trim(($this->first_name ?? '') . ' ' . ($this->last_name ?? '')) ?: 'User';
-    }
-
-    /** Доступ в админку (Vue SPA): активный аккаунт. Роли проверяет middleware `admin`. */
-    public function canAccessAdmin(): bool
-    {
-        return $this->status === 'active';
-    }
-
-    public function roles()
-    {
-        return $this->belongsToMany(Role::class, 'user_roles', 'user_id', 'role_id');
-    }
-
-    public function hasRole(string $role): bool
-    {
-        return $this->roles()->where('slug', $role)->exists();
-    }
 }

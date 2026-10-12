@@ -21,9 +21,17 @@ class StoreOrderRequest extends FormRequest
             // 1292), so without `bail` the `exists` rule would still run and could
             // report a row for a value `integer` already rejected.
             // See `CartController::addItem()` for the measurements.
-            'organization_id' => ['bail', 'required', 'integer', 'exists:organizations,id'],
+            // `cart_id` — форма спеки (`CreateOrderRequest`): «создать заказ ИЗ
+            // КОРЗИНЫ». Организация и позиции тогда не нужны — они выводится из
+            // корзины (`CartCheckoutService::checkoutByPublicId`), а цента всё
+            // равно берутся с сервера.
+            // `required_without:items` — не «на всякий случай»: так один запрос не
+            // может оказаться одновременно «из корзины» и «прямым» — иначе две
+            // разные книги заказов соревнуются в одном вызове.
+            'cart_id' => ['bail', 'required_without:items', 'string', 'exists:carts,public_id'],
+            'organization_id' => ['bail', 'required_without:cart_id', 'integer', 'exists:organizations,id'],
             'user_id' => ['bail', 'nullable', 'integer', 'exists:users,id'],
-            'items' => ['required', 'array', 'min:1'],
+            'items' => ['required_without:cart_id', 'array', 'min:1'],
             'items.*.inventory_item_id' => ['bail', 'required', 'integer', 'exists:inventory_items,id'],
             'items.*.quantity' => ['required', 'integer', 'min:1', 'max:10'],
             // `items.*.price` ЗДЕСЬ СОЗНАТЕЛЬНО ОТСУТСТВУЕТ.
@@ -46,8 +54,14 @@ class StoreOrderRequest extends FormRequest
             // «цена изменилась»), это делается сравнением с серверной ценой и
             // отказом при расхождении, а не доверием присланному числу.
             'promo_code' => ['nullable', 'string', 'max:64'],
-            'customer_email' => ['required', 'email', 'max:255'],
-            'customer_name' => ['required', 'string', 'max:255'],
+            'customer_phone' => ['nullable', 'string', 'max:32'],
+            // Форма спеки (`CreateOrderRequest`) называет поле `holder_name`;
+            // приложение исторически принимает `customer_name`. Оба — одно и то
+            // же, и оба факультативны в ветке `cart_id` (контакты могли быть
+            // уже сохранены в корзине), но обязательны в прямой форме.
+            'customer_email' => ['required_without:cart_id', 'email', 'max:255'],
+            'customer_name' => ['required_without:cart_id', 'string', 'max:255'],
+            'holder_name' => ['bail', 'nullable', 'string', 'max:255'],
             'metadata' => ['nullable', 'array'],
         ];
     }

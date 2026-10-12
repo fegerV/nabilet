@@ -8,6 +8,7 @@ use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
+use Nabilet\Modules\Checkin\Http\Middleware\AuthenticateChecker;
 
 /**
  * Лимиты частоты для публичных эндпоинтов, которые остались без `throttle`
@@ -81,21 +82,25 @@ class RateLimitServiceProvider extends ServiceProvider
     }
 
     /**
-     * `POST /tickets/checkin/scan` и `/checkin/verify`.
+     * `POST /tickets/checkin/scan` и `/checkin/verify` (сессия сотрудника), а
+     * также `/api/v1/checkin/validate|use|sync` (токен устройства).
      *
-     * Маршруты и так под `['auth:api', 'admin']` — прямой IDOR закрыт, — но
+     * Маршруты и так аутентифицированы — прямой IDOR закрыт, — но
      * скомпрометированная учётка оператора могла перебирать `ticketPublicId`
      * (verify отдаёт данные билета) и заваливать БД транзакционными записями
      * сканов в день мероприятия (аудит S-06).
      *
-     * Ключ — пользователь, а не адрес: сканер на входе может ходить через
-     * меняющийся мобильный IP, и привязка к адресу давала бы свежую корзину
-     * после каждой смены сети, то есть лимит не работал бы вовсе.
+     * Ключ — устройство, затем пользователь, и только потом адрес: сканер на
+     * входе ходит через меняющийся мобильный IP, и привязка к адресу давала бы
+     * свежую корзину после каждой смены сети, то есть лимит не работал бы вовсе.
      */
     private function registerCheckinScan(): void
     {
         RateLimiter::for('checkin-scan', function (Request $request): Limit {
-            $identity = $request->user()?->getAuthIdentifier() ?? $request->ip();
+            $device = $request->attributes->get(AuthenticateChecker::ATTRIBUTE);
+            $identity = $device?->id
+                ?? $request->user()?->getAuthIdentifier()
+                ?? $request->ip();
 
             return Limit::perMinute(self::CHECKIN_PER_MINUTE)->by('checkin:' . $identity);
         });

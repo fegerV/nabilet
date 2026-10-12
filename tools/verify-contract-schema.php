@@ -221,7 +221,7 @@ function parseDdlColumns(string $file): array
  * drift. If the schema legitimately grows, update these in the same commit.
  */
 const EXPECTED_TABLES = 73;
-const EXPECTED_COLUMNS = 785;
+const EXPECTED_COLUMNS = 786;
 
 /**
  * @param array<string, list<string>> $tables

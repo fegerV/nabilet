@@ -69,7 +69,7 @@ $reportMode = in_array('--report', $argv, true);
 
 /** From information_schema on MySQL 8.4. Update in the same commit as the schema. */
 const EXPECTED_TABLES = 73;
-const EXPECTED_COLUMNS = 785;
+const EXPECTED_COLUMNS = 786;
 
 /**
  * Application-owned additions to the Core schema, each tied to its owning migration.

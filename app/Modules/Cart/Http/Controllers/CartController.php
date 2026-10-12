@@ -7,6 +7,7 @@ namespace Nabilet\Modules\Cart\Http\Controllers;
 use Nabilet\Modules\Cart\Http\Resources\CartResource;
 use Nabilet\Modules\Cart\Models\Cart;
 use Nabilet\Modules\Cart\Services\CartCheckoutService;
+use Nabilet\Modules\Cart\Services\CartService;
 use Nabilet\Modules\Cart\Services\CartItemService;
 use Nabilet\Modules\Cart\Support\CartToken;
 use Illuminate\Http\JsonResponse;
@@ -35,6 +36,7 @@ class CartController extends Controller
     public function __construct(
         protected CartItemService $cartItems,
         protected CartCheckoutService $cartCheckout,
+        protected CartService $carts,
     ) {}
 
     /**
@@ -159,6 +161,147 @@ class CartController extends Controller
                 'expires_at' => $cart->expires_at?->toIso8601String(),
             ] : null,
         ], 201), $token, $isNew);
+    }
+
+    /**
+     * POST /api/v1/carts — корзина покупателя для сеанса (спека, `createCart`).
+     *
+     * Спека требует тело `{session_id}` и ответ 201 с `CartResponse`. Приложение
+     * исторически создавало корзину неявно — при первом обращении к `/cart`.
+     * Явное создание нужно, чтобы клиент мог узнать `public_id` корзины и дальше
+     * адресовать её из пути (`/carts/{cart}`), как требует спека.
+     *
+     * Идемпотентно по природе: у покупателя (токену) не может быть двух активных
+     * корзин на один сеанс — `uq_carts_token_session_status` это гарантирует, а
+     * `getOrCreateCart()` возвращает существующую. Повторный вызов отдаёт ту же
+     * корзину с тем же `public_id`.
+     */
+    public function store(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'session_id' => ['bail', 'required', 'integer', 'exists:sessions,id'],
+        ]);
+
+        [$token, $isNew] = $this->resolveToken($request);
+
+        $cart = $this->carts->getOrCreateCart((string) $validated['session_id'], $token);
+
+        return $this->withTokenHeader(response()->json([
+            'data' => new CartResource($cart->load('items.inventoryItem.seat.row.sector')),
+        ], 201), $token, $isNew);
+    }
+
+    /**
+     * GET /api/v1/carts/{cart} — корзина по её `public_id` (спека, `getCart`).
+     *
+     * ПОЧЕМУ 404, А НЕ 403, НА ЧУЖУЮ КОРЗИНУ
+     *   Различать «нет такой» и «не твоя» — значит подтверждать существование
+     *   корзин по их идентификатору. Для спрашивающего это один ответ.
+     *
+     * ПРАВО ВЛАДЕНИЯ
+     *   Гостевой токен (`X-Cart-Token`) совпадает с `carts.cart_token`, либо
+     *   Bearer-пользователь владеет корзиной (`carts.user_id`). Ровно то, что
+     *   спека описывает как `bearerAuth` ИЛИ `checkoutAuth`.
+     */
+    public function showByPublicId(Request $request, string $cart): JsonResponse
+    {
+        [$token, $isNew] = $this->resolveToken($request);
+
+        $cart = Cart::query()
+            ->where('public_id', $cart)
+            ->where('status', 'active')
+            ->where(function ($query) use ($token, $request): void {
+                $query->where('cart_token', $token);
+
+                if (($user = $request->user()) !== null) {
+                    $query->orWhere('user_id', $user->getKey());
+                }
+            })
+            ->with(['items.inventoryItem', 'items.inventoryItem.seat.row.sector'])
+            ->first();
+
+        if ($cart === null) {
+            return $this->withTokenHeader(response()->json([
+                'error' => ['code' => 'not_found', 'message' => 'Cart not found.'],
+            ], 404), $token, $isNew);
+        }
+
+        return $this->withTokenHeader(response()->json([
+            'data' => new CartResource($cart),
+        ], 200), $token, $isNew);
+    }
+
+    /**
+     * POST /api/v1/carts/{cart}/items — холд и позиция (спека, `addCartItem`).
+     *
+     * Сеанс берётся ИЗ КОРЗИНЫ, а не из тела: путь уже назвал корзину, а корзина
+     * знает свой сеанс (`carts.session_id NOT NULL`). Принимать `session_id` в
+     * теле значило бы позволить запросить позицию «в корзину чужого сеанса».
+     */
+    public function addItemTo(Request $request, string $cart): JsonResponse
+    {
+        $validated = $request->validate([
+            'inventory_item_id' => ['bail', 'required', 'integer', 'exists:inventory_items,id'],
+            'quantity' => ['required', 'integer', 'min:1', 'max:' . $this->maxPerOrder()],
+        ]);
+
+        [$token, $isNew] = $this->resolveToken($request);
+
+        $cart = $this->ownedCart($request, $cart, $token);
+
+        $cartItem = $this->cartItems->addItem(
+            (string) $cart->session_id,
+            (int) $validated['inventory_item_id'],
+            (int) $validated['quantity'],
+            $token,
+        );
+
+        $cart = $cartItem->cart()->with('items')->first();
+
+        return $this->withTokenHeader(response()->json([
+            'data' => new CartResource($cart),
+        ], 201), $token, $isNew);
+    }
+
+    /**
+     * DELETE /api/v1/carts/{cart}/items/{item} — снять холд (спека, `deleteCartItem`).
+     */
+    public function removeItemFrom(Request $request, string $cart, int $itemId): JsonResponse
+    {
+        [$token, $isNew] = $this->resolveToken($request);
+
+        $cart = $this->ownedCart($request, $cart, $token);
+
+        $this->cartItems->removeItem((string) $cart->session_id, $itemId, $token);
+
+        return $this->withTokenHeader(response()->json(null, 204), $token, $isNew);
+    }
+
+    /**
+     * Корзина по `public_id`, принадлежащая спрашивающему, или 404.
+     *
+     * Одна точка правды о владении: те же правила, что у `showByPublicId()` и
+     * `CartCheckoutService::checkoutByPublicId()`.
+     */
+    private function ownedCart(Request $request, string $cartPublicId, string $token): ?Cart
+    {
+        return Cart::query()
+            ->where('public_id', $cartPublicId)
+            ->where('status', 'active')
+            ->where(function ($query) use ($token, $request): void {
+                $query->where('cart_token', $token);
+
+                if (($user = $request->user()) !== null) {
+                    $query->orWhere('user_id', $user->getKey());
+                }
+            })
+            ->first();
+    }
+
+    /** Лимит позиций на заказ — из конфига, тот же, что у `addItem()`. */
+    private function maxPerOrder(): int
+    {
+        return max(1, (int) config('nabilet.checkout.max_items_per_order', 10));
     }
 
     public function removeItem(Request $request, int $itemId): JsonResponse

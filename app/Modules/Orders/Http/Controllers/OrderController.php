@@ -7,6 +7,8 @@ namespace Nabilet\Modules\Orders\Http\Controllers;
 use Nabilet\Core\Errors\DomainRuleViolation;
 use Nabilet\Core\Errors\NotFoundError;
 use Nabilet\Core\Support\StaffRole;
+use Nabilet\Modules\Cart\Services\CartCheckoutService;
+use Nabilet\Modules\Cart\Support\CartToken;
 use Nabilet\Modules\Orders\Http\Requests\StoreOrderRequest;
 use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Orders\Services\OrderService;
@@ -34,6 +36,7 @@ class OrderController extends Controller
     public function __construct(
         private readonly OrderService $orderService,
         private readonly RefundService $refundService,
+        private readonly CartCheckoutService $cartCheckout,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -77,6 +80,34 @@ class OrderController extends Controller
     public function store(StoreOrderRequest $request): JsonResponse
     {
         $data = $request->validated();
+
+        // Форма спеки: «создать заказ ИЗ КОРЗИНЫ» (`CreateOrderRequest.cart_id`).
+        // Уходит в `CartCheckoutService::checkoutByPublicId()` — то же тело
+        // оформления, что и у витринного `POST /cart/checkout`, поэтому две
+        // реализации «корзина → заказ» не могут разойтись.
+        //
+        // ГОСТЕВАЯ ВЕТКА `checkoutAuth` (X-Checkout-Token) здесь НЕ закрыта
+        // архитектурой, а middleware: маршрут требует `auth:api`, так что
+        // bearer-ветка спеки работает, а гость оформляет через `POST
+        // /cart/checkout`. Чтобы открыть и её, нужен middleware «или Bearer, или
+        // токен корзины» — записано в §3.25, не построено.
+        if (isset($data['cart_id'])) {
+            $result = $this->cartCheckout->checkoutByPublicId(
+                (string) $data['cart_id'],
+                [
+                    'customer_name' => $data['customer_name'] ?? $data['holder_name'] ?? null,
+                    'customer_email' => $data['customer_email'] ?? null,
+                    'customer_phone' => $data['customer_phone'] ?? null,
+                    'promo_code' => $data['promo_code'] ?? null,
+                ],
+                CartToken::fromRequest($request),
+                $request->user()?->getKey(),
+            );
+
+            return response()->json([
+                'data' => $result,
+            ], 201);
+        }
 
         // `user_id` приходит от клиента и раньше записывался как есть — заказ
         // можно было оформить на другого пользователя. Владельца определяет

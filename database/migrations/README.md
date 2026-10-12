@@ -25,7 +25,7 @@ database/migrations/*.php          ← этот каталог
 |---|---|
 | `001_identity` … `008_integrations_system` | таблицы, колонки, первичные ключи, индексы. **Без внешних ключей** |
 | `000900_add_foreign_keys` | все 101 внешний ключ, отложенно — когда таблицы уже существуют |
-| `001000_add_check_constraints` | 35 CHECK-ограничений, сырым SQL (у Blueprint нет переносимого CHECK). Дальнейшие три — `ck_users_status`, `ck_inventory_status` и `ck_events_status` — добавляют более поздние `2026_10_12_000100/000200/000300_*` (сплиты `013`, `014`, `015`) |
+| `001000_add_check_constraints` | 35 CHECK-ограничений, сырым SQL (у Blueprint нет переносимого CHECK). Дальнейшие — `ck_users_status`/`ck_inventory_status`/`ck_events_status` (сплиты `013`–`015`), `ck_login_logs_event` (сплит `016`) и восемь словарей status-колонок (сплит `017`: `ck_carts_status`, `ck_checkin_devices_status`, `ck_consents_status`, `ck_privacy_requests_status`, `ck_notifications_status`, `ck_organizations_status`, `ck_ab_experiments_status`, `ck_orders_payment_status`) — зеркала `2026_10_12_000100`…`000500_*`. |
 | `001100_add_schema_version_immutability_trigger` | триггер неизменяемости опубликованных версий схемы зала (ТЗ §20/§98) |
 
 `000900` — не избыточная осторожность: объяви ключи внутри `create()`, и порядок
@@ -63,7 +63,7 @@ php tools/verify-migrations.php
 - доменные инварианты: деньги — целые минорные единицы; `tickets.status`
   принимает `revoked`; `ck_tickets_terminal_exclusive` не трогает `revoked_at`.
 
-Текущий результат: **16 проверок, 0 падений** — 73 таблицы, 101 FK, 38 CHECK,
+Текущий результат: **16 проверок, 0 падений** — 73 таблицы, 101 FK, 47 CHECK,
 1 триггер.
 
 ### Чего проверка не доказывает

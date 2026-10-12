@@ -1761,3 +1761,68 @@ ALTER TABLE events
   ADD CONSTRAINT ck_events_status CHECK (status IN ('draft','scheduled','published','completed','cancelled','archived'));
 
 SET FOREIGN_KEY_CHECKS = 1;
+--
+-- `login_logs` was written from exactly one place — `SessionIssuer::auditLogout()`
+-- — i.e. by the logout path. A login row could only be told apart from a logout
+-- row indirectly: a login has `failure_code` set, a logout does not. That holds
+-- exactly until the first writer logs a successful login with `failure_code =
+-- NULL`, after which the two events are indistinguishable. The event column is
+-- storage for what the domain already distinguishes (`login`, `logout`,
+-- `login_failed`), and the CHECK locks the set so a row nobody can classify
+-- cannot be written. Full reasoning in `016_login_logs_event.sql`.
+ALTER TABLE login_logs
+  ADD COLUMN event VARCHAR(32) NOT NULL DEFAULT 'login' AFTER success;
+
+ALTER TABLE login_logs
+  ADD CONSTRAINT ck_login_logs_event CHECK (event IN ('login','logout','login_failed'));
+
+SET FOREIGN_KEY_CHECKS = 1;
+--
+-- §3.11 lists 17 status columns without a CHECK. They cannot be treated as one
+-- list: behind some stands a vocabulary the code already wrote and already
+-- enforces (a domain class, a service constant, a request rule), behind others
+-- there is no vocabulary at all — inventing one here would be inventing an
+-- agreement. This block locks only the first kind. Every value was already an
+-- application rule before it became a database one.
+--
+-- WHAT STAYS FREE-FORM, ON PURPOSE:
+--   `idempotency_keys.response_status` — an HTTP status code (100…599); the
+--     vocabulary belongs to IANA, not to the application.
+--   `payment_transactions.status` — the payment provider's own vocabulary (it
+--     also lands in the raw payload); pinning a third party's vocabulary in the
+--     spec is how you break on a provider switch.
+--   `pages.status`, `promo_codes.status`, `halls.status`, `venues.status`,
+--     `event_categories.status`, `event_dates.status`, `offline_bundles.status` —
+--     values are only ever COMPARED ('active', 'published', 'draft',
+--     'scheduled'); no writer validates them and no class calls itself a
+--     vocabulary. A CHECK here would be a made-up convention, recorded in
+--     §3.11/§3.25 as a product decision instead.
+--   `ab_experiments.status` — the vocabulary is declared in the model docblock
+--     ('draft' | 'running' | 'completed'), but there is no write path at all
+--     (the A/B module has no HTTP layer), so the docblock is the only
+--     declaration the column has.
+ALTER TABLE carts
+  ADD CONSTRAINT ck_carts_status CHECK (status IN ('active','converted','abandoned'));
+
+ALTER TABLE checkin_devices
+  ADD CONSTRAINT ck_checkin_devices_status CHECK (status IN ('active','disabled','revoked'));
+
+ALTER TABLE consents
+  ADD CONSTRAINT ck_consents_status CHECK (status IN ('granted','withdrawn','expired'));
+
+ALTER TABLE privacy_requests
+  ADD CONSTRAINT ck_privacy_requests_status CHECK (status IN ('requested','in_progress','completed','rejected'));
+
+ALTER TABLE notifications
+  ADD CONSTRAINT ck_notifications_status CHECK (status IN ('queued','sent','failed'));
+
+ALTER TABLE organizations
+  ADD CONSTRAINT ck_organizations_status CHECK (status IN ('active','inactive','suspended'));
+
+ALTER TABLE ab_experiments
+  ADD CONSTRAINT ck_ab_experiments_status CHECK (status IN ('draft','running','completed'));
+
+ALTER TABLE orders
+  ADD CONSTRAINT ck_orders_payment_status CHECK (payment_status IN ('pending','succeeded'));
+
+SET FOREIGN_KEY_CHECKS = 1;
