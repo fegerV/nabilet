@@ -7,7 +7,7 @@
  * Без токена (чистый вход) сервер возвращает пустой список — гость видит
  * пустой экран, а не ошибку авторизации.
  */
-import { get } from './api'
+import { get, send } from './api'
 import type { TicketCard, TicketStatus, TicketTemplateConfig } from './types'
 
 /** Форма ответа GET /my-tickets (совпадает с TicketCardResource на бэкенде). */
@@ -58,4 +58,27 @@ export async function fetchMyTickets(): Promise<TicketCard[]> {
   const res = await get<RawTicket[]>('/my-tickets')
   const list = Array.isArray(res?.data) ? res.data : []
   return list.map(normalize)
+}
+
+/**
+ * Повторно отправить письмо с билетом — при необходимости на исправленный адрес.
+ *
+ * Существует потому, что письмо уходит на адрес, введённый при оформлении, и
+ * опечатка в нём означала, что билет не придёт НИКОГДА: повторной отправки не
+ * было, а исправить адрес было нечем. Доступ к заказу подтверждается гостевым
+ * токеном корзины (заголовок `X-Cart-Token`, подставляет `api.ts`) — ровно как
+ * у `GET /my-tickets`. Чужой заказ сервер отдаёт как 404.
+ *
+ * Возвращает адрес, на который письмо ушло, — его показываем покупателю, чтобы
+ * он видел, куда именно отправлено.
+ */
+export async function resendTicket(orderId: number | string, email?: string): Promise<string> {
+  const trimmed = (email ?? '').trim()
+  const res = await send<{ sent: boolean; email: string }>('/my-tickets/resend', 'POST', {
+    order: Number(orderId),
+    // Пустая строка = «адрес не меняем»: сервер сам решит, что слать некуда
+    // не нужно и отправит на сохранённый.
+    ...(trimmed !== '' ? { email: trimmed } : {}),
+  })
+  return res.data.email
 }

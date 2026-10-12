@@ -343,6 +343,15 @@ class CartController extends Controller
             'session_id' => ['bail', 'required', 'integer', 'exists:sessions,id'],
             'customer_name' => ['nullable', 'string', 'max:255'],
             'customer_email' => ['required', 'email:rfc', 'max:255'],
+            // Повтор ввода адреса — защита от опечатки. Письмо с билетом уходит
+            // ровно на `customer_email`, и ошибка в одну букву означает, что
+            // билет не придёт никогда. Правило `same` ловит расхождение на
+            // сервере, а не только в браузере.
+            //
+            // `nullable` — чтобы не ломать контракт: API-клиенты (embed-виджет,
+            // интеграции) поле не шлют, и для них поведение прежнее. Витрина
+            // шлёт его всегда, поэтому там проверка действует.
+            'customer_email_confirmation' => ['nullable', 'string', 'same:customer_email'],
             'customer_phone' => ['nullable', 'string', 'max:32'],
             'promo_code' => ['nullable', 'string', 'max:64'],
         ]);

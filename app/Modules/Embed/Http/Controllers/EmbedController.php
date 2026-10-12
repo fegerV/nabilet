@@ -263,6 +263,9 @@ final class EmbedController extends Controller
         $validated = $request->validate([
             'cart_id' => ['bail', 'required'],
             'customer_email' => ['required', 'email:rfc', 'max:255'],
+            // Повтор ввода адреса — защита от опечатки (см. `CartController::checkout`).
+            // `nullable`: embed-виджет поле не шлёт, для него контракт прежний.
+            'customer_email_confirmation' => ['nullable', 'string', 'same:customer_email'],
             'customer_name' => ['nullable', 'string', 'max:255'],
             'customer_phone' => ['nullable', 'string', 'max:32'],
             'promo_code' => ['nullable', 'string', 'max:64'],

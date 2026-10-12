@@ -190,10 +190,19 @@ export interface CheckoutResult {
  * Оформить заказ: сервер создаёт Order из удержанных мест корзины.
  * Контактные данные (ТЗ §66) обязательны для e-mail с билетом — сервер их
  * валидирует (customer_email required), поэтому шлём то, что ввёл покупатель.
+ *
+ * `customer_email_confirmation` — повтор ввода адреса. Письмо с билетом уходит
+ * ровно на `customer_email`, поэтому сервер сверяет оба поля (`same`): опечатка
+ * в одну букву иначе означала бы билет, который не придёт никогда.
  */
 export async function checkoutSession(
   sessionId: number | string,
-  customer: { customer_name?: string; customer_email: string; customer_phone?: string },
+  customer: {
+    customer_name?: string
+    customer_email: string
+    customer_email_confirmation?: string
+    customer_phone?: string
+  },
 ): Promise<{ data: CheckoutResult }> {
   return send<CheckoutResult>('/cart/checkout', 'POST', { session_id: Number(sessionId), ...customer })
 }

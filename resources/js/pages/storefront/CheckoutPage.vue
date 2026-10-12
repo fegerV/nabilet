@@ -57,6 +57,15 @@ const currentStep = 1
 
 const name = ref('')
 const email = ref('')
+/**
+ * Повтор ввода e-mail.
+ *
+ * Билет уходит ровно на `email`, и ошибка в одну букву означает, что билет не
+ * придёт: письмо вернётся к нам как недоставленное, а покупатель будет ждать.
+ * Повторный ввод ловит опечатку сразу, пока человек ещё помнит, что набирал.
+ * Сервер проверяет то же самое правилом `same:customer_email`.
+ */
+const emailConfirm = ref('')
 const phone = ref('')
 const agree = ref(false)
 const paying = ref(false)
@@ -82,10 +91,18 @@ function idempotencyKey(): string {
   return paymentKey.value
 }
 
+/** Проверка формы адреса. Одна на два места: ошибку поля и подтверждение у кнопки. */
+const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[a-zа-я]{2,}$/i
+
 const localErrors = computed(() => {
   const out: Record<string, string> = {}
   if (name.value.trim().length < 2) out.name = 'Укажите имя, как в документе'
-  if (!/^[^@\s]+@[^@\s]+\.[a-zа-я]{2,}$/i.test(email.value)) out.email = 'Нужен e-mail — на него придёт билет'
+  if (!EMAIL_RE.test(email.value)) out.email = 'Нужен e-mail — на него придёт билет'
+  // Расхождение ловим только когда адрес в принципе введён: иначе пустая пара
+  // «пусто = пусто» давала бы вторую ошибку на пустом поле.
+  if (email.value.trim() !== '' && emailConfirm.value.trim() !== email.value.trim()) {
+    out.emailConfirm = 'Адреса не совпадают — проверьте e-mail'
+  }
   if (phone.value.replace(/\D/g, '').length !== 11) out.phone = 'Телефон — 11 цифр, начиная с 7'
   if (!agree.value) out.agree = 'Без согласия на оферту билет не выпустим'
   return out
@@ -101,6 +118,15 @@ const missingHint = computed(() => {
   return first ?? ''
 })
 
+/**
+ * Адрес корректен и подтверждён повтором.
+ *
+ * Тогда у кнопки оплаты показываем, куда именно уйдёт билет: это последняя
+ * точка, где покупатель ещё может заметить опечатку — после оплаты письмо
+ * уходит автоматически, и вручную исправлять адрес придётся уже на «Моих билетах».
+ */
+const emailOk = computed(() => EMAIL_RE.test(email.value) && emailConfirm.value.trim() === email.value.trim())
+
 /** Итог — сумма позиций. Именно её выставляет сервер (`orders.total_amount`). */
 const totalMinor = computed(() => Math.max(0, cart.subtotalMinor))
 
@@ -108,6 +134,7 @@ const totalMinor = computed(() => Math.max(0, cart.subtotalMinor))
 const SERVER_FIELD_MAP: Record<string, string> = {
   customer_name: 'name',
   customer_email: 'email',
+  customer_email_confirmation: 'emailConfirm',
   customer_phone: 'phone',
 }
 
@@ -240,6 +267,7 @@ async function pay(): Promise<void> {
     const { data: order } = await checkoutSession(sessionId.value, {
       customer_name: name.value.trim(),
       customer_email: email.value.trim(),
+      customer_email_confirmation: emailConfirm.value.trim(),
       customer_phone: phone.value.trim(),
     })
 
@@ -326,7 +354,9 @@ onMounted(() => {
         <!-- Контакты -->
         <section class="surface-card p-4">
           <h2 class="text-sm font-semibold text-content">Покупатель</h2>
-          <p class="mt-0.5 text-xs text-subtle">Билет придёт на этот e-mail и останется в личном кабинете</p>
+          <p class="mt-0.5 text-xs text-subtle">
+            Билет придёт на этот e-mail — проверьте адрес, опечатка задержит его получение
+          </p>
 
           <div class="mt-4 grid gap-3 sm:grid-cols-2">
             <NInput
@@ -357,6 +387,18 @@ onMounted(() => {
               required
               class="sm:col-span-2"
               :error="submitted ? errors.email : ''"
+            />
+            <NInput
+              v-model="emailConfirm"
+              label="E-mail ещё раз"
+              placeholder="ivan@example.com"
+              type="email"
+              inputmode="email"
+              autocomplete="email"
+              required
+              class="sm:col-span-2"
+              hint="Повторите адрес: на него уходит билет, и исправить опечатку потом сложнее"
+              :error="submitted ? errors.emailConfirm : ''"
             />
           </div>
         </section>
@@ -438,6 +480,13 @@ onMounted(() => {
                 <dd class="text-xl font-semibold tabular-nums text-content">{{ money(totalMinor) }}</dd>
               </div>
             </dl>
+
+            <p
+              v-if="emailOk"
+              class="mt-4 rounded-lg border border-line bg-surface-2 px-3 py-2 text-xs text-muted"
+            >
+              Билет придёт на <span class="font-medium text-content">{{ email.trim() }}</span>
+            </p>
 
             <NButton
               variant="accent"
