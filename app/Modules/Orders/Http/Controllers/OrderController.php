@@ -81,6 +81,46 @@ class OrderController extends Controller
         return response()->json(['data' => $order]);
     }
 
+    /**
+     * `listMyOrders` — `GET /api/v1/me/orders`, «мои заказы».
+     *
+     * ЗАЧЕМ ОТДЕЛЬНЫЙ МЕТОД, А НЕ ССЫЛКА НА `index()`
+     *   `index()` ограничивает выборку владельцем только для НЕ-сотрудника: у
+     *   admin/manager фильтр `user_id` остаётся тем, что пришло в query. На
+     *   `/me/orders` это неверно по смыслу — путь обещает «мои», и сотрудник,
+     *   открывший свой кабинет, получил бы все заказы системы. Здесь владелец
+     *   подставляется ВСЕГДА и из query не читается вообще, поэтому подставить
+     *   чужой `user_id` неоткуда.
+     *
+     * Остальные фильтры (`status`, диапазон дат) остаются доступными: они
+     * уточняют выборку внутри «моих», а не расширяют её.
+     */
+    public function mine(Request $request): JsonResponse
+    {
+        $filters = [
+            'user_id' => $request->user()->getKey(),
+        ] + $request->only(['status', 'date_from', 'date_to']);
+
+        $orders = $this->orderService->paginate($filters, $this->perPage($request));
+
+        // `data` — СПИСОК заказов, а не объект пагинатора. Схема
+        // `OrderListResponse` объявляет `data: array<Order>` + `meta`, и это не
+        // придирка к форме: `response()->json(['data' => $paginator])` отдаёт
+        // `{"data":{"current_page":1,"data":[…]}}` — список заказов оказывается
+        // на два уровня глубже, чем обещает контракт, и клиент, читающий
+        // `data[0].id`, получает `undefined`. `index()` выше всё ещё отдаёт
+        // пагинатор целиком; здесь форма взята по спеке.
+        return response()->json([
+            'data' => $orders->items(),
+            'meta' => [
+                'current_page' => $orders->currentPage(),
+                'per_page' => $orders->perPage(),
+                'total' => $orders->total(),
+                'last_page' => $orders->lastPage(),
+            ],
+        ]);
+    }
+
     public function store(StoreOrderRequest $request): JsonResponse
     {
         $data = $request->validated();

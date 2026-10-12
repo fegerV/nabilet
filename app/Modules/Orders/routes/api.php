@@ -51,3 +51,18 @@ Route::prefix('orders')->middleware(['auth:api'])->group(function () {
  */
 Route::post('/my-tickets/resend', [OrderController::class, 'resendTicket'])
     ->middleware('throttle:ticket-resend');
+
+/*
+ * `GET /api/v1/me/orders` — «мои заказы» личного кабинета (`listMyOrders`).
+ *
+ * Путь объявлен в спеке рядом с остальными `/me/*`, но живёт здесь: заказ —
+ * домен Orders, и скоупинг по владельцу (`OrderController::mine`) обязан быть
+ * рядом с `GET /orders`, иначе правило «не-сотрудник видит только своё»
+ * пришлось бы держать в двух местах и они бы разошлись.
+ *
+ * `auth:api` обязателен: без владельца у запроса нет «моих» заказов вообще.
+ * Отдельный метод, а не переиспользование `index()`: у сотрудника `index()`
+ * НЕ ограничивает выборку владельцем (там фильтр `user_id` — из query), и в
+ * кабинете он увидел бы заказы всей системы.
+ */
+Route::get('/me/orders', [OrderController::class, 'mine'])->middleware('auth:api');

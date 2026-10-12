@@ -11,6 +11,7 @@ use Nabilet\Core\Errors\DomainRuleViolation;
 use Nabilet\Core\Errors\ValidationError;
 use Nabilet\Modules\Cart\Models\Cart;
 use Nabilet\Modules\Core\Organizations\Models\Organization;
+use Nabilet\Modules\Core\Users\Services\CustomerAccountService;
 use Nabilet\Modules\Events\Models\Session;
 use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Orders\Models\OrderItem;
@@ -31,6 +32,7 @@ final class CartCheckoutService
     public function __construct(
         private readonly CartItemService $items,
         private readonly PromoCodeService $promos = new PromoCodeService(),
+        private readonly CustomerAccountService $customers = new CustomerAccountService(),
     ) {
     }
 
@@ -156,6 +158,47 @@ final class CartCheckoutService
     }
 
     /**
+     * Кто владелец создаваемого заказа.
+     *
+     * Три источника, в порядке убывания авторитетности:
+     *
+     *   1. Явно переданный `$userId` — вошедший покупатель или сотрудник,
+     *      оформляющий заказ (второй вход, `checkoutByPublicId`).
+     *   2. Уже проставленный владелец корзины (`carts.user_id`) — покупатель,
+     *      вошедший ДО наполнения корзины.
+     *   3. Аккаунт, выведенный из адреса заказа (`CustomerAccountService`) —
+     *      гостевая витрина. Аккаунт создаётся здесь, если адреса ещё нет.
+     *
+     * ПОБОЧНЫЙ ЭФФЕКТ, КОТОРЫЙ И ЕСТЬ СМЫСЛ. Найденная личность записывается
+     * в `carts.user_id`. `PromoCodeService::buildContext()` читает покупателя
+     * ИМЕННО оттуда, а не из аргумента, — без этой записи промокод всё равно
+     * оценился бы как гостевой, и `per_user_limit` (ТЗ §86) не сработал бы.
+     * Запись идёт в той же транзакции, что и заказ: откат оформления
+     * откатывает и владельца.
+     *
+     * `null` возвращается только когда адрес заказа пуст или синтаксически
+     * неверен — тогда заказ остаётся гостевым, ровно как и раньше.
+     */
+    private function resolveBuyerId(Cart $cart, array $customer, ?int $userId): ?int
+    {
+        $buyerId = $userId ?? ($cart->user_id === null ? null : (int) $cart->user_id);
+
+        if ($buyerId === null) {
+            $buyerId = $this->customers->resolveForCheckout(
+                (string) ($customer['customer_email'] ?? ''),
+                $customer['customer_name'] ?? null,
+                $customer['customer_phone'] ?? null,
+            );
+        }
+
+        if ($buyerId !== null && (int) $cart->user_id !== $buyerId) {
+            $cart->update(['user_id' => $buyerId]);
+        }
+
+        return $buyerId;
+    }
+
+    /**
      * Общее тело оформления: всё, что происходит ПОСЛЕ того, как корзина
      * найдена и заблокирована.
      *
@@ -243,6 +286,21 @@ final class CartCheckoutService
             $event = $session?->event()->first();
             $organizationId = $event->organization_id ?? $session?->venue?->organization_id ?? 1;
 
+            // Аккаунт покупателя: заказ получает владельца, а промокод —
+            // личность, по которой считается лимит.
+            //
+            // Раньше владельцем был только аутентифицированный пользователь, а
+            // у гостевого заказа `user_id` оставался NULL. Следствие не
+            // косметическое: `PromoCodeService::buildContext()` берёт личность из
+            // `carts.user_id`, а `userRedemptions()` при `null` возвращает 0 —
+            // значит `per_user_limit` у гостя не действовал ВООБЩЕ, а условие
+            // `first_purchase` проходило бесконечно.
+            //
+            // ПОРЯДОК ВАЖЕН: до оценки промокода, а не после. Проставленная
+            // позже личность не попадёт в контекст оценки, и код снова будет
+            // оценён как гостевой.
+            $buyerId = $this->resolveBuyerId($cart, $customer, $userId);
+
             // Промокод: код проверяется ДО создания заказа — чистая оценка через
             // тот же PromoEvaluator, что и POST /promo-codes/validate (второго
             // источника правды о скидке нет). Отказ бросает исключение внутри
@@ -286,16 +344,11 @@ final class CartCheckoutService
 
             $order = Order::create([
                 'organization_id' => $organizationId,
-                // Владелец заказа: покупатель, если он аутентифицирован
-                // (`checkoutByPublicId` со bearer-токеном), иначе — хозяин
-                // корзины. Гостевой путь (`checkout()`) не передаёт userId, так
-                // что для витрины поведение не меняется.
-                //
-                // Почему это не «улучшение на будущее»: без него покупатель,
-                // вошедший в аккаунт и оформивший заказ формой спеки, получал
-                // заказ с `user_id = NULL` — невидимый в `GET /orders`
-                // (список скоупится по владельцу) и недоступный его поддержке.
-                'user_id' => $userId ?? ($cart->user_id !== null ? (int) $cart->user_id : null),
+                // Владелец заказа — вычислен выше (`resolveBuyerId`): сотрудник,
+                // вошедший покупатель или аккаунт, заведённый по адресу заказа.
+                // Без владельца заказ невидим в `GET /orders` (список скоупится
+                // по владельцу) и недоступен поддержке покупателя.
+                'user_id' => $buyerId,
                 'status' => 'pending',
                 'payment_status' => 'pending',
                 'subtotal_amount' => $subtotalAmount,

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Nabilet\Modules\Tickets\Http\Resources;
 
 use Illuminate\Http\Resources\Json\JsonResource;
+use Nabilet\Modules\Tickets\Models\Ticket;
 
 /**
  * Карточка билета покупателя (витрина «Мои билеты»).
@@ -50,6 +51,15 @@ class TicketCardResource extends JsonResource
      * витрине «Мои билеты». Возвращаем ровно то, что нужно фронтенду для
      * абсолютного позиционирования: размеры, фон (сплошной или градиент) и
      * элементы. `null` — макет не назначен, фронт показывает семантическую карточку.
+     *
+     * ТИП АРГУМЕНТА БЫЛ НЕРАЗРЕШИМ. Здесь стояло `Ticket $ticket` без импорта, а
+     * класс объявлен в пространстве `…\Http\Resources`, где никакого `Ticket` нет.
+     * PHP поэтому ждал `Nabilet\Modules\Tickets\Http\Resources\Ticket` и падал с
+     * `TypeError: … must be of type …Http\Resources\Ticket, …Models\Ticket given`
+     * на КАЖДОМ билете — то есть `GET /api/v1/my-tickets` отвечал 500 всегда,
+     * как только у покупателя появлялся хотя бы один билет. Ни один тест этого не
+     * ловил: единственный файл, трогавший `/my-tickets`, проверял соседний
+     * `POST /my-tickets/resend`.
      */
     private function resolveTemplate(Ticket $ticket): ?array
     {
