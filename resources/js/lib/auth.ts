@@ -7,7 +7,14 @@
 import { send, getToken, setToken, type ApiError } from './api'
 
 export interface AuthUser {
-  id: number
+  /**
+   * Публичный идентификатор (`users.public_id`, ULID base32) — строка.
+   *
+   * Было `number`, потому что сервер отдавал внутренний BIGINT. Схема `User`
+   * контракта объявляет `id` строкой, и все остальные ручки адресуют
+   * пользователя по `public_id`; числовой `id` нельзя было подставить никуда.
+   */
+  id: string
   email: string
   first_name?: string | null
   last_name?: string | null

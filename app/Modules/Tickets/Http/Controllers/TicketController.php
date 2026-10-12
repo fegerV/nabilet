@@ -29,38 +29,63 @@ use Illuminate\Routing\Controller;
 class TicketController extends Controller
 {
     /**
-     * Билеты текущего покупателя-гостя (витрина «Мои билеты»).
+     * Билеты текущего покупателя (витрина «Мои билеты»).
      *
-     * Витрина — гостевая: покупатель не имеет аккаунта, заказ создаётся с
-     * `user_id = NULL` и принадлежит корзине по гостевому токену (`X-Cart-Token`,
-     * контракт D5). Поэтому «мои билеты» — это билеты заказов, чьи корзины несут
-     * токен этого браузера. Чужой токен ничего не вернёт (fail-closed: нет
-     * токена → пустой список, а не 401, чтобы гость видел пустой экран, а не
-     * ошибку авторизации). Маршрут НЕ под auth:api по той же причине.
+     * ДВА СПОСОБА ПОЗВАТЬ ЭТОТ ЭНДПОИНТ, ОДИН ОТВЕТ.
+     *
+     *  1. ПО АККАУНТУ. С появлением аккаунта, заведённого по факту покупки
+     *     (`CustomerAccountService`), у заказа появился владелец
+     *     (`orders.user_id`). Если пришёл Bearer-токен, «мои билеты» — это билеты
+     *     заказов с `user_id` вызывающего. Именно этого не хватало раньше:
+     *     покупатель, потерявший `localStorage` (сменил браузер, почистил
+     *     хранилище), терял билеты навсегда — заказ существовал, а связать с ним
+     *     запрос было нечем.
+     *
+     *  2. ПО ГОСТЕВОМУ ТОКЕНУ. Витрина по-прежнему работает без входа: корзина
+     *     несёт `X-Cart-Token`, и билеты находятся через `carts.cart_token`
+     *     (контракт D5). Эта ветка сохранена без изменений — в том числе её
+     *     требование энтропии: гость не аутентифицирован, поэтому токен — это
+     *     capability, и короткий (`'u'.$id`, который выдаёт корзине вошедшему
+     *     пользователю `CartController::resolveToken`) здесь не принимается.
+     *     Раньше из-за этого вошедший покупатель получал ПУСТОЙ список: его
+     *     токен короткий, а ветки по аккаунту не существовало.
+     *
+     * Маршрут НЕ под `auth:api`: обе ветки необязательны, и гость обязан видеть
+     * пустой список, а не 401. Отсюда `auth('api')->user()`, а не
+     * `$request->user()`: последний читает guard по умолчанию (`web`, сессионная
+     * кука) и на витрине с Bearer-токеном всегда вернул бы `null`.
      */
     public function mine(Request $request): JsonResponse
     {
+        $orderIds = collect();
+
+        $user = auth('api')->user();
+
+        if ($user !== null) {
+            $orderIds = Order::query()->where('user_id', $user->getKey())->pluck('id');
+        }
+
         $token = CartToken::fromRequest($request);
 
         // A guest token is a bearer capability for signed QR payloads. Require
         // UUID-sized entropy here even though other authenticated cart paths
         // accept short account-derived tokens; otherwise a guessed short token
         // could disclose another buyer's tickets.
-        if ($token === null || strlen($token) < 32) {
-            return response()->json(['data' => []]);
+        if ($token !== null && strlen($token) >= 32) {
+            $cartIds = Cart::query()
+                ->where('cart_token', $token)
+                ->pluck('id');
+
+            if ($cartIds->isNotEmpty()) {
+                $orderIds = $orderIds->merge(
+                    Order::query()->whereIn('cart_id', $cartIds)->pluck('id')
+                );
+            }
         }
 
-        $cartIds = Cart::query()
-            ->where('cart_token', $token)
-            ->pluck('id');
-
-        if ($cartIds->isEmpty()) {
-            return response()->json(['data' => []]);
-        }
-
-        $orderIds = Order::query()
-            ->whereIn('cart_id', $cartIds)
-            ->pluck('id');
+        // Один заказ может прийти обеими ветками (вошедший покупатель с тем же
+        // браузером) — `unique()` не даёт билетам задвоиться в ответе.
+        $orderIds = $orderIds->unique()->values();
 
         if ($orderIds->isEmpty()) {
             return response()->json(['data' => []]);

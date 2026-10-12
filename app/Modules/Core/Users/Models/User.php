@@ -6,6 +6,7 @@ namespace Nabilet\Modules\Core\Users\Models;
 
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\HasApiTokens;
@@ -179,14 +180,35 @@ class User extends Authenticatable
         return $this->hasMany(LoginLog::class);
     }
 
+    /**
+     * Заказы покупателя.
+     *
+     * ВНЕШНИЙ КЛЮЧ БЫЛ НЕВЕРНЫМ. Здесь стояло `hasMany(Order::class,
+     * 'customer_id')`, а колонки `customer_id` в схеме НЕТ — ни в `orders`, ни
+     * в одной другой таблице (проверено по `information_schema`). Связь была
+     * нерабочей: `$user->orders` падал с SQLSTATE 42S22 «Unknown column
+     * 'orders.customer_id'». Не замечали потому, что связь не вызывалась
+     * ниоткуда — мёртвый код, который выглядел рабочим.
+     *
+     * Владелец заказа — `orders.user_id` (nullable FK на `users`,
+     * `ON DELETE SET NULL`), и именно по нему скоупит `OrderController`.
+     */
     public function orders(): HasMany
     {
-        return $this->hasMany(Order::class, 'customer_id');
+        return $this->hasMany(Order::class, 'user_id');
     }
 
-    public function tickets(): HasMany
+    /**
+     * Билеты покупателя — через его заказы.
+     *
+     * Прямой связи `tickets.customer_id` не существует: билет принадлежит
+     * заказу (`tickets.order_id`, NOT NULL, FK), а покупателю — через него.
+     * Здесь стояло `hasMany(Ticket::class, 'customer_id')`, то есть та же
+     * несуществующая колонка, что и в `orders()` выше.
+     */
+    public function tickets(): HasManyThrough
     {
-        return $this->hasMany(Ticket::class, 'customer_id');
+        return $this->hasManyThrough(Ticket::class, Order::class, 'user_id', 'order_id');
     }
 
     public function carts(): HasMany
