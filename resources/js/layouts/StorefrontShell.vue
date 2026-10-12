@@ -11,18 +11,38 @@
  * витрины: площадка настраивает брендинг в админке, а не в коде.
  */
 import { computed, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useUiStore } from '@/stores/ui'
 import { useCartStore } from '@/stores/cart'
 import { useStorefrontStore } from '@/stores/storefront'
+import { customerUser, isCustomerSession } from '@/lib/customer'
 
 const ui = useUiStore()
 const cart = useCartStore()
 const storefront = useStorefrontStore()
 const router = useRouter()
+const route = useRoute()
 
 const search = ref('')
 const cartCount = computed(() => cart.ticketsCount)
+
+/*
+ * Кнопка кабинета. Состояние сессии читается из localStorage, поэтому обновляем
+ * его на каждой навигации: вход, регистрация, выход и смена пароля — всё это
+ * переходы, а подписки на `storage` не хватило бы (событие не срабатывает в том
+ * же документе, который его вызвал).
+ */
+const account = ref({ authed: false, label: '' })
+
+function refreshAccount(): void {
+  const authed = isCustomerSession()
+  const user = customerUser()
+  const name = [user?.first_name, user?.last_name].filter(Boolean).join(' ').trim()
+
+  account.value = { authed, label: name || user?.email || '' }
+}
+
+watch(() => route.fullPath, refreshAccount, { immediate: true })
 
 const branding = computed(() => storefront.config.branding)
 const header = computed(() => storefront.config.header)
@@ -102,6 +122,23 @@ watch(
             {{ item.label }}
           </RouterLink>
         </nav>
+
+        <!--
+          Кабинет. Подпись — имя покупателя, а не «Кабинет»: покупатель должен
+          узнавать себя в шапке, иначе непонятно, под чьим аккаунтом он смотрит
+          билеты. Без сессии кнопка ведёт на вход и подписана «Войти» — это
+          единственная точка входа в кабинет с витрины.
+        -->
+        <RouterLink
+          :to="account.authed ? '/account' : '/login'"
+          class="flex h-9 flex-none items-center gap-1.5 rounded-lg border border-line px-2.5 text-sm text-muted transition-colors hover:text-content"
+          :aria-label="account.authed ? 'Личный кабинет' : 'Войти'"
+        >
+          <span aria-hidden="true">☺</span>
+          <span class="hidden max-w-[9rem] truncate sm:block">
+            {{ account.authed ? (account.label || 'Кабинет') : 'Войти' }}
+          </span>
+        </RouterLink>
 
         <!-- Тема -->
         <button
