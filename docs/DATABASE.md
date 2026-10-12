@@ -2,10 +2,10 @@
 
 > **Источник истины — пакет `nabilet_core_spec/`.**
 > DDL: `nabilet_core_spec/migrations.sql` (консолидированный) и
-> `nabilet_core_spec/migrations/001..013` (сплит). Побайтовая копия консолидированного
+> `nabilet_core_spec/migrations/001..015` (сплит). Побайтовая копия консолидированного
 > DDL лежит в корне репозитория как `migrations.sql` — она попадает в образ
 > (`COPY . .`) и именно её накатывает оператор вручную; совпадение с каноном проверяет CI.
-> Оба представления проверены на идентичность: **785 колонок, 298 ограничений —
+> Оба представления проверены на идентичность: **785 колонок, 300 ограничений —
 > совпадают** (сверено по `information_schema`: колонки, индексы, внешние ключи,
 > CHECK-ограничения, триггер, движок и коллация).
 >
@@ -14,7 +14,7 @@
 > `docs/REVIEW-spec-bundle.md`.
 
 **Схема:** 73 таблицы · 785 колонок · 101 внешний ключ · 88 уникальных ключей ·
-281 индекс · 36 CHECK-ограничений · 1 триггер.
+281 индекс · 38 CHECK-ограничений · 1 триггер.
 
 ---
 
@@ -224,6 +224,23 @@ uq_tickets_order_item_index   (order_item_id, ticket_index)
 сверял только хеш пароля, поэтому `status = 'banned'` отзывал сессии и не мешал
 сразу же войти тем же паролем. Словарь теперь один на три места: CHECK здесь,
 `Nabilet\Modules\Core\Users\Domain\UserStatus` в коде и проверка при входе.
+
+`014_inventory_status_check.sql` и `015_events_status_check.sql` закрывают две
+последние status-колонки, за которыми стояла PHP-машина состояний без ограничения
+в схеме — **итого 38 ограничений на 20 таблицах**.
+
+`ck_inventory_status` — это не «ещё один CHECK ради единообразия». Словарь машины
+`InventoryItemStateMachine` не совпадал с тем, что писала корзина: состояния
+`sold_out` в машине не было, а `CartItemService` ставит его с первого добавления
+МЕСТА в корзину (у места `capacity = 1`, поэтому остаток обнуляется сразу).
+`PaymentService::markInventorySoldForOrder()` охраняет запись `→ sold` вызовом
+`can()`, поэтому оплаченная позиция навсегда оставалась `sold_out`. Подробности —
+`docs/STATE-MACHINES.md` §7 и `tests/Feature/Inventory/InventorySoldOnPaymentTest.php`.
+
+`ck_events_status` — здесь дисциплинирован был код, а молчала только база: все
+авторы записей идут через `EventStatus`/`Event::PUBLISHED`. Второй замок нужен
+потому, что `status` СОЗНАТЕЛЬНО отсутствует в `StoreEventRequest`/`UpdateEventRequest`,
+и единственной защитой от публикации в обход политики была деталь фреймворка.
 
 ```sql
 ck_inventory_available_qty  CHECK (available_quantity BETWEEN 0 AND capacity)

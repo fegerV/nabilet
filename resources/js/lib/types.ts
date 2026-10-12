@@ -14,7 +14,17 @@ export type OrderStatus =
 
 export type TicketStatus = 'issued' | 'used' | 'cancelled' | 'refunded' | 'expired' | 'revoked'
 
-export type EventStatus = 'draft' | 'published' | 'sold_out' | 'finished' | 'cancelled'
+/**
+ * Статусы `events.status` — словарь бэкенда.
+ *
+ * Раньше здесь стояло `'draft' | 'published' | 'sold_out' | 'finished' | 'cancelled'`:
+ * `sold_out` и `finished` бэкенд не знает НИКОГДА (это статусы сеанса и выдуманное
+ * «завершено»), а `scheduled`, `completed` и `archived` отсутствовали — поэтому
+ * `NStatusBadge` не умел их подписать и показывал сырую английскую строку.
+ * Источник истины — `EventStatus::all()` и `EventStateMachine`; с миграции
+ * `015_events_status_check.sql` тот же список проверяет и база.
+ */
+export type EventStatus = 'draft' | 'scheduled' | 'published' | 'completed' | 'cancelled' | 'archived'
 
 export type CheckinResult =
   | 'valid'

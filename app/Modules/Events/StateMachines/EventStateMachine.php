@@ -22,8 +22,11 @@ final class EventStateMachine
     public const COMPLETED = 'completed';
     /**
      * `cancelled`, two L — the same convention as orders, sessions and tickets.
-     * events.status has no CHECK constraint to enforce it, which is why this is
-     * pinned by convention (and by tests) rather than by the database.
+     * `events.status` had no CHECK constraint to enforce it, so the spelling was
+     * pinned by convention (and by tests) alone; since split
+     * `015_events_status_check.sql` the database enforces the whole dictionary,
+     * and `tools/verify-state-machines.php` checks the two lists against each
+     * other instead of reporting the machine as unenforced.
      */
     public const CANCELLED = 'cancelled';
     public const ARCHIVED = 'archived';

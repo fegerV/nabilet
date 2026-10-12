@@ -1732,4 +1732,32 @@ CREATE TABLE IF NOT EXISTS order_reminders (
 ALTER TABLE users
   ADD CONSTRAINT ck_users_status CHECK (status IN ('active','inactive','banned'));
 
+-- ============================================================ 014 — inventory_items.status dictionary
+-- Mirrors nabilet_core_spec/migrations/014_inventory_status_check.sql and the applied
+-- Laravel migration 2026_10_12_000200_add_inventory_items_status_check.php.
+--
+-- `inventory_items.status` had no CHECK, and `InventoryItemStateMachine` omitted
+-- `sold_out` while `CartItemService` writes it whenever capacity is exhausted —
+-- which for a seat (capacity = 1) is the ordinary add-to-cart path. Because the
+-- machine had no such state, `PaymentService::markInventorySoldForOrder()` skipped
+-- the `→ sold` write for a PAID position, which then stayed `sold_out` forever.
+-- The six values below are what the writers store and what the storefront already
+-- expects (resources/js/lib/seatStatus.ts). Full reasoning in the split file.
+ALTER TABLE inventory_items
+  ADD CONSTRAINT ck_inventory_status CHECK (status IN ('available','held','sold_out','sold','blocked','disabled'));
+
+-- ============================================================ 015 — events.status dictionary
+-- Mirrors nabilet_core_spec/migrations/015_events_status_check.sql and the applied
+-- Laravel migration 2026_10_12_000300_add_events_status_check.php.
+--
+-- The last column backed by a PHP state machine with no CHECK in the schema:
+-- `tools/verify-state-machines.php` reported "no CHECK on status — machine is
+-- unenforced" on every run. The code was already disciplined (every writer goes
+-- through `EventStatus` constants or `Event::PUBLISHED`), so the database only
+-- had to stop being silent. `EventStateMachine` said as much itself: the
+-- `cancelled` spelling was pinned "by convention (and by tests) rather than by
+-- the database". Full reasoning in the split file.
+ALTER TABLE events
+  ADD CONSTRAINT ck_events_status CHECK (status IN ('draft','scheduled','published','completed','cancelled','archived'));
+
 SET FOREIGN_KEY_CHECKS = 1;

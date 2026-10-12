@@ -28,7 +28,31 @@ const posterStyle = computed(() => {
 })
 
 const nextSession = computed(() => props.event.sessions?.[0])
-const soldOut = computed(() => props.event.status === 'sold_out')
+
+/**
+ * «Нет мест» — по реальному признаку, а не по `status`.
+ *
+ * Здесь стояло `props.event.status === 'sold_out'`, и сравнение было МЁРТВЫМ:
+ * `events.status` такого значения не знает — `sold_out` это статус сеанса и
+ * состояние позиции склада. Пока фронтенд-тип `EventStatus` ошибочно содержал
+ * `sold_out`, TypeScript молчал; когда словарь привели к бэкенду, `vue-tsc`
+ * показал, что ветка недостижима (`TS2367`).
+ *
+ * Настоящий признак отдаёт `EventResource`: у ближайшего сеанса нет ни одной
+ * позиции со `status = 'available'` и положительным остатком. Позиции, ушедшие
+ * в корзины, имеют `sold_out`/`held` и в этот счёт не попадают — то есть
+ * «Нет мест» показывается ровно тогда, когда купить действительно нечего.
+ */
+const soldOut = computed(() => {
+  const session = nextSession.value
+  if (!session) {
+    return false
+  }
+
+  const seats = session.availableSeats ?? session.available_seats
+
+  return seats === 0
+})
 
 /** Нормализация для шаблона: API отдаёт category/venue то строкой, то объектом. */
 const categoryName = computed(() =>
