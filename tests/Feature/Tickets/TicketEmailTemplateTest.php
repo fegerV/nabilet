@@ -572,7 +572,11 @@ final class TicketEmailTemplateTest extends TestCase
             foreach ($matches[1] as $src) {
                 self::assertTrue(
                     str_starts_with($src, 'data:image/png;base64,')
-                        || str_starts_with($src, $this->baseUrl() . '/'),
+                        || str_starts_with($src, $this->baseUrl() . '/')
+                        // inline-CID — ссылка внутри самого письма (билет-картинка),
+                        // подписанный payload за её пределы не уходит, поэтому это
+                        // не «чужой адрес» в смысле утечки.
+                        || str_starts_with($src, 'cid:'),
                     "картинка ведёт на чужой адрес: {$src}"
                 );
             }

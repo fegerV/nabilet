@@ -87,6 +87,14 @@ export interface OrderRow {
   createdAt: string
 }
 
+export interface TicketTemplateConfig {
+  width: number
+  height: number
+  backgroundColor?: string
+  backgroundGradient?: { from: string; to: string; direction?: string } | null
+  elements: Array<Record<string, unknown>>
+}
+
 export interface TicketCard {
   id: string
   code: string
@@ -99,4 +107,7 @@ export interface TicketCard {
   priceMinor: number
   status: TicketStatus
   qrPayload: string
+  holder?: string
+  orderId?: number | string
+  template?: TicketTemplateConfig | null
 }

@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Log;
 use Nabilet\Modules\Tickets\Domain\Qr\QrEncoder;
 use Nabilet\Modules\Tickets\Domain\Qr\QrPngRenderer;
 use Nabilet\Modules\Tickets\Models\Ticket;
+use Nabilet\Modules\Tickets\Models\TicketTemplate;
 
 /**
  * Рендер билета в PDF для вложения в письмо покупателю.
@@ -108,6 +109,31 @@ final class TicketPdfRenderer
     }
 
     /**
+     * Рендер готовой конфигурации холста в PNG (для inline-CID картинки в письме).
+     *
+     * @param  array<string, mixed>  $config
+     * @param  array<string, mixed>  $data
+     */
+    public function renderPng(Ticket $ticket): ?string
+    {
+        $data = $this->generator->generateTicketData($ticket);
+
+        $template = $this->resolver->resolveForTicket($ticket);
+        $config = is_array($template?->template_json) ? $template->template_json : null;
+
+        if (! is_array($config) || ! is_array($config['elements'] ?? null) || $config['elements'] === []) {
+            $config = $this->defaultConfig($data);
+        }
+
+        $html = $this->buildHtml($config, $data);
+        if ($html === '') {
+            return null;
+        }
+
+        return $this->htmlToPng($html, (int) ($config['width'] ?? 400), (int) ($config['height'] ?? 600));
+    }
+
+    /**
      * Строит HTML и конвертирует в PDF через headless-Chrome.
      */
     private function buildPdf(array $config, array $data): ?string
@@ -127,7 +153,7 @@ final class TicketPdfRenderer
     {
         $width = (int) ($config['width'] ?? 400);
         $height = (int) ($config['height'] ?? 600);
-        $bg = $this->safeColor($config['backgroundColor'] ?? null, '#ffffff');
+        $bg = $this->resolveBackground($config);
 
         $elements = '';
         foreach (($config['elements'] ?? []) as $el) {
@@ -150,7 +176,7 @@ final class TicketPdfRenderer
 <meta charset="utf-8">
 <style>
   @page { size: {$width}px {$height}px; margin: 0; }
-  html, body { margin: 0; padding: 0; }
+  html, body { margin: 0; padding: 0; background: transparent; }
   #ticket {
     position: relative;
     width: {$width}px;
@@ -206,14 +232,20 @@ HTML;
         $fs = (float) ($el['fontSize'] ?? 14);
         $weight = ($el['fontWeight'] ?? 'normal') === 'bold' ? 'bold' : 'normal';
         $color = $this->safeColor($el['color'] ?? null, '#111827');
+        $fontFamily = $this->safeFontFamily($el['fontFamily'] ?? null);
         $content = $this->renderText((string) ($el['content'] ?? ''), $data);
 
-        return sprintf(
-            '<div style="position:absolute;left:%1$Fpx;top:%2$Fpx;width:%3$Fpx;min-height:%4$Fpx;'
+        $style = sprintf(
+            'position:absolute;left:%1$Fpx;top:%2$Fpx;width:%3$Fpx;min-height:%4$Fpx;'
             . 'font-size:%5$Fpx;font-weight:%6$s;color:%7$s;line-height:1.2;white-space:pre-wrap;'
-            . 'word-break:break-word;overflow:hidden;">%8$s</div>',
-            $el['x'] ?? 0, $el['y'] ?? 0, $w, $h, $fs, $weight, $color, $content
+            . 'word-break:break-word;overflow:hidden;',
+            $el['x'] ?? 0, $el['y'] ?? 0, $w, $h, $fs, $weight, $color
         );
+        if ($fontFamily !== '') {
+            $style .= 'font-family:' . $fontFamily . ';';
+        }
+
+        return sprintf('<div style="%s">%s</div>', $style, $content);
     }
 
     /**
@@ -367,6 +399,71 @@ HTML;
     }
 
     /**
+     * Фон холста: сплошной цвет либо линейный градиент (текстура из конструктора).
+     *
+     * Если в макете задан `backgroundGradient` (`{from,to,direction}`), собираем
+     * CSS `linear-gradient(...)`. Иначе — сплошной `backgroundColor`. Оба значения
+     * проходят через `safeColor`, поэтому инъекции через атрибут стиля нет.
+     */
+    private function resolveBackground(array $config): string
+    {
+        $gradient = $config['backgroundGradient'] ?? null;
+
+        if (is_array($gradient) && isset($gradient['from'], $gradient['to'])) {
+            $from = $this->safeColor($gradient['from'], '#ffffff');
+            $to = $this->safeColor($gradient['to'], '#ffffff');
+            $direction = is_string($gradient['direction'] ?? null) && $gradient['direction'] !== ''
+                ? $this->safeDirection($gradient['direction'])
+                : 'to bottom';
+
+            return "linear-gradient({$direction}, {$from}, {$to})";
+        }
+
+        return $this->safeColor($config['backgroundColor'] ?? null, '#ffffff');
+    }
+
+    /**
+     * Направление градиента: только `to <сторона>` либо угол в градусах.
+     * Любое другое значение (потенциальная инъекция) сводится к умолчанию.
+     */
+    private function safeDirection(string $value): string
+    {
+        $v = trim($value);
+
+        if (preg_match('/^\d{1,3}deg$/', $v) === 1) {
+            return $v;
+        }
+
+        if (preg_match('/^to\s+(top|bottom|left|right)(?:\s+(top|bottom|left|right))?$/', $v) === 1) {
+            return $v;
+        }
+
+        return 'to bottom';
+    }
+
+    /**
+     * Шрифт текстового элемента: только заранее известный веб-безопасный набор.
+     * Произвольная строка из конструктора не проходит и возвращает '' (шрифт
+     * наследуется от #ticket), что исключает разрыв атрибута style.
+     *
+     * @param  mixed  $value
+     */
+    private function safeFontFamily(mixed $value): string
+    {
+        static $allowed = [
+            'Arial, Helvetica, sans-serif',
+            'Georgia, "Times New Roman", serif',
+            '"Times New Roman", Georgia, serif',
+            'Verdana, Geneva, sans-serif',
+            '"Courier New", Courier, monospace',
+            'Tahoma, Geneva, sans-serif',
+            'Trebuchet MS, sans-serif',
+        ];
+
+        return is_string($value) && in_array($value, $allowed, true) ? $value : '';
+    }
+
+    /**
      * Макет по умолчанию (мероприятию не назначен шаблон). Вертикальный 400×600,
      * с фирменной плашкой из палитры — чтобы у билета был узнаваемый вид даже
      * без конструктора.
@@ -465,6 +562,70 @@ HTML;
         }
 
         return $pdf;
+    }
+
+    /**
+     * HTML → PNG через headless-Chrome (`--screenshot`). Используется для
+     * inline-CID картинки билета в письме: тело письма не умеет `position:absolute`,
+     * поэтому готовый растр билета встраивается прямо в письмо и виден сразу.
+     *
+     * Окно браузера задаётся ровно размером холста, а device-scale-factor=2 даёт
+     * чёткий растр. Возвращает PNG-байты или null (Chrome недоступен / не вернул PNG).
+     */
+    private function htmlToPng(string $html, int $width, int $height): ?string
+    {
+        $chrome = $this->resolveChromeBin();
+        if ($chrome === null) {
+            Log::info('PNG билета: бинарь Chrome не найден, inline-картинка пропущена.');
+
+            return null;
+        }
+
+        $tmp = sys_get_temp_dir();
+        $id = uniqid('ticket_', true);
+        $htmlPath = $tmp . DIRECTORY_SEPARATOR . $id . '.html';
+        $pngPath = $tmp . DIRECTORY_SEPARATOR . $id . '.png';
+        $prof = $tmp . DIRECTORY_SEPARATOR . $id . '_prof';
+
+        if (file_put_contents($htmlPath, $html) === false) {
+            return null;
+        }
+
+        $cmd = sprintf(
+            '"%s" --headless --no-sandbox --disable-gpu --no-first-run --hide-scrollbars '
+            . '--force-device-scale-factor=2 --window-size=%d,%d --user-data-dir="%s" '
+            . '--screenshot="%s" "file:///%s"',
+            $chrome,
+            $width,
+            $height,
+            $prof,
+            str_replace('\\', '/', $pngPath),
+            str_replace('\\', '/', $htmlPath)
+        );
+
+        $exit = 0;
+        $out = [];
+        exec($cmd . ' 2>&1', $out, $exit);
+
+        $png = is_file($pngPath) ? file_get_contents($pngPath) : null;
+
+        foreach ([$htmlPath, $pngPath] as $f) {
+            if (is_file($f)) {
+                @unlink($f);
+            }
+        }
+        if (is_dir($prof)) {
+            @array_map('unlink', glob($prof . '/*') ?: []);
+            @rmdir($prof);
+        }
+
+        if ($png === false || $png === null || str_starts_with($png, "\x89PNG\r\n\x1a\n") === false) {
+            Log::warning('PNG билета: Chrome не вернул PNG.', ['exit' => $exit, 'out' => implode("\n", $out)]);
+
+            return null;
+        }
+
+        return $png;
     }
 
     /**
