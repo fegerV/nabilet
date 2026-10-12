@@ -44,6 +44,86 @@ export function setToken(token: string | null): void {
   else localStorage.removeItem(AUTH_TOKEN_KEY)
 }
 
+/* ── Токен покупателя (витрина) ───────────────────────────────────────────
+ * ПОЧЕМУ ОТДЕЛЬНЫЙ КЛЮЧ, А НЕ ТОТ ЖЕ САМЫЙ
+ *   Токен — один и тот же Bearer (`user_sessions`, guard `api`), но аудиторий
+ *   две: сотрудник (админка) и покупатель (витрина). Пока ключ был один,
+ *   вход покупателя на витрине клал бы свой токен туда, откуда его читает
+ *   guard админки (`getToken()`), и происходили две вещи сразу:
+ *
+ *     1. покупатель, кликнувший «Организаторам» в меню витрины, попадал на
+ *        `/admin`; guard видел токен без роли admin/manager и вызывал
+ *        `clearSession()` — то есть покупателя разлогинивало простым переходом
+ *        по ссылке;
+ *     2. вход в админку затирал бы сессию витрины, и наоборот.
+ *
+ *   Разделение ключей снимает оба: guard админки смотрит только на свой ключ и
+ *   чужого покупателя не видит вовсе. Это тот же раскол «сотрудник /
+ *   покупатель», что и на сервере (`StaffRole::isStaff()`), только на клиенте.
+ */
+export const CUSTOMER_TOKEN_KEY = 'nabilet_customer_token'
+
+export function getCustomerToken(): string | null {
+  try {
+    return localStorage.getItem(CUSTOMER_TOKEN_KEY)
+  } catch {
+    return null // приватный режим — сессия живёт до перезагрузки
+  }
+}
+
+export function setCustomerToken(token: string | null): void {
+  try {
+    if (token) localStorage.setItem(CUSTOMER_TOKEN_KEY, token)
+    else localStorage.removeItem(CUSTOMER_TOKEN_KEY)
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Чья сессия предъявляется запросу. */
+export type TokenAudience = 'staff' | 'customer'
+
+/**
+ * Какой токен уйдёт в `Authorization`.
+ *
+ * По умолчанию — токен сотрудника, если он есть: сотрудник, зашедший в витрину,
+ * остаётся собой (он и есть пользователь), а вот обратный выбор сломал бы
+ * админку — её запросы уходили бы под покупательским токеном и получали 403.
+ *
+ * Явный `preferred` нужен там, где важна именно аудитория: выход из кабинета
+ * (`logoutCustomer()`) обязан отозвать сессию ПОКУПАТЕЛЯ, а не сотрудника,
+ * иначе в браузере, где открыты обе сессии, кнопка «Выйти» в кабинете
+ * выкидывала бы из админки.
+ */
+export function activeToken(preferred?: TokenAudience): { token: string | null; audience: TokenAudience | null } {
+  if (preferred === 'staff') {
+    const token = getToken()
+    return { token, audience: token === null ? null : 'staff' }
+  }
+  if (preferred === 'customer') {
+    const token = getCustomerToken()
+    return { token, audience: token === null ? null : 'customer' }
+  }
+
+  const staff = getToken()
+  if (staff) return { token: staff, audience: 'staff' }
+
+  const customer = getCustomerToken()
+  return { token: customer, audience: customer === null ? null : 'customer' }
+}
+
+/**
+ * Погасить протухшую сессию — ИМЕННО ТУ, которой отвечал сервер.
+ *
+ * Раньше здесь был безусловный `setToken(null)`: с двумя ключами он стирал бы
+ * токен сотрудника в ответ на 401 по запросу с покупательским токеном, то есть
+ * разлогинивал бы вообще другую сессию.
+ */
+function clearTokenFor(audience: TokenAudience | null): void {
+  if (audience === 'staff') setToken(null)
+  else if (audience === 'customer') setCustomerToken(null)
+}
+
 /* ── Гостевой токен корзины (контракт D5: X-Cart-Token) ───────────────────
  * Корзина на сервере ключуется парой (cart_token, session_id). Без заголовка
  * сервер считает каждый запрос нового покупателя «чужой» корзиной и либо
@@ -105,6 +185,12 @@ interface ApiOptions {
   body?: unknown
   /** Бросить ApiError вместо возврата — для «expected» 404 (например страница события по slug). */
   silent?: boolean
+  /**
+   * Чей токен предъявить. По умолчанию — доступный (сотрудник важнее
+   * покупателя). Явно задаётся только там, где аудитория и есть смысл запроса:
+   * см. `logoutCustomer()`.
+   */
+  as?: TokenAudience
 }
 
 export interface PageMeta {
@@ -173,7 +259,7 @@ function extractErrorMeta(payload: unknown, status: number): { message: string; 
 
 /** Универсальная выборка: возвращает объект { data, meta? } уже развёрнутым. */
 export async function request<T = unknown>(path: string, options: ApiOptions = {}): Promise<T> {
-  const token = getToken()
+  const { token, audience } = activeToken(options.as)
   const headers: Record<string, string> = {
     Accept: 'application/json',
     'Content-Type': 'application/json',
@@ -221,9 +307,10 @@ export async function request<T = unknown>(path: string, options: ApiOptions = {
   }
 
   if (!res.ok) {
-    // 401 → протухла сессия админа; даём странице решить (редирект на логин).
+    // 401 → протухла сессия; гасим ИМЕННО ТУ, которой отвечал сервер, и даём
+    // странице решить (редирект на логин).
     const { message, code } = extractErrorMeta(payload, res.status)
-    if (res.status === 401 && code !== 'bad_credentials') setToken(null)
+    if (res.status === 401 && code !== 'bad_credentials') clearTokenFor(audience)
     throw new ApiError(res.status, message, code, extractFieldErrors(payload))
   }
 
@@ -247,7 +334,7 @@ export async function send<D>(path: string, method: 'POST' | 'PUT' | 'PATCH' | '
  * request(): ApiError с details.fields для привязки к конкретным инпутам.
  */
 export async function upload<D>(path: string, formData: FormData, method: 'POST' | 'PATCH' = 'POST'): Promise<{ data: D }> {
-  const token = getToken()
+  const { token, audience } = activeToken()
   const headers: Record<string, string> = { Accept: 'application/json' }
   if (token) headers.Authorization = `Bearer ${token}`
 
@@ -267,7 +354,7 @@ export async function upload<D>(path: string, formData: FormData, method: 'POST'
 
   if (!res.ok) {
     const { message, code } = extractErrorMeta(payload, res.status)
-    if (res.status === 401 && code !== 'bad_credentials') setToken(null)
+    if (res.status === 401 && code !== 'bad_credentials') clearTokenFor(audience)
     throw new ApiError(res.status, message, code, extractFieldErrors(payload))
   }
 

@@ -10,6 +10,7 @@ import StorefrontShell from '@/layouts/StorefrontShell.vue'
 import AdminShell from '@/layouts/AdminShell.vue'
 import { getToken } from '@/lib/api'
 import { isAdminSession, clearSession } from '@/lib/auth'
+import { isCustomerSession } from '@/lib/customer'
 import { applySeo } from '@/lib/seo'
 
 const routes: RouteRecordRaw[] = [
@@ -42,6 +43,35 @@ const routes: RouteRecordRaw[] = [
         meta: { title: 'Результат оплаты' },
       },
       { path: 'tickets', name: 'tickets', component: () => import('@/pages/storefront/TicketsPage.vue'), meta: { title: 'Мои билеты' } },
+
+      /*
+       * Кабинет покупателя. Живёт на витрине, а не в админке: это та же
+       * оболочка с шапкой и корзиной, потому что покупатель приходит сюда за
+       * билетами, а не «работать». Пути намеренно без префикса (`/login`, а не
+       * `/account/login`) — их диктует ссылка из письма о сбросе пароля:
+       * `AccountMailService::actionUrl()` собирает `/#/reset-password?...`, и
+       * переименование маршрута разошлось бы с уже отправленными письмами.
+       */
+      { path: 'login', name: 'login', component: () => import('@/pages/storefront/LoginPage.vue'), meta: { title: 'Вход' } },
+      { path: 'register', name: 'register', component: () => import('@/pages/storefront/RegisterPage.vue'), meta: { title: 'Регистрация' } },
+      {
+        path: 'forgot-password',
+        name: 'forgot-password',
+        component: () => import('@/pages/storefront/ForgotPasswordPage.vue'),
+        meta: { title: 'Восстановление пароля' },
+      },
+      {
+        path: 'reset-password',
+        name: 'reset-password',
+        component: () => import('@/pages/storefront/ResetPasswordPage.vue'),
+        meta: { title: 'Новый пароль' },
+      },
+      {
+        path: 'account',
+        name: 'account',
+        component: () => import('@/pages/storefront/AccountPage.vue'),
+        meta: { title: 'Личный кабинет', requiresCustomer: true },
+      },
     ],
   },
   {
@@ -131,6 +161,23 @@ router.beforeEach((to) => {
   // Уже залогинен на странице входа — не показываем форму повторно.
   if (to.name === 'admin-login' && isAdminSession()) {
     return { name: 'admin' }
+  }
+
+  /*
+   * Кабинет покупателя требует сессию ВИТРИНЫ, и проверяется она отдельным
+   * ключом (`isCustomerSession()` → `nabilet_customer_token`), а не `getToken()`.
+   * Это не дублирование: токены сотрудника и покупателя намеренно разведены
+   * (см. `CUSTOMER_TOKEN_KEY` в `api.ts`), и если бы guard кабинета смотрел на
+   * общий ключ, покупатель с сотрудническим токеном в том же браузере увидел бы
+   * чужой кабинет.
+   */
+  if (to.matched.some((r) => r.meta.requiresCustomer) && !isCustomerSession()) {
+    return { name: 'login', query: { redirect: to.fullPath } }
+  }
+
+  // Уже вошли — формы входа и регистрации показывать повторно незачем.
+  if ((to.name === 'login' || to.name === 'register') && isCustomerSession()) {
+    return { name: 'account' }
   }
 })
 
