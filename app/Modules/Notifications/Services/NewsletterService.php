@@ -2,7 +2,7 @@
 
 namespace App\Modules\Notifications\Services;
 
-use App\Models\User;
+use Nabilet\Modules\Core\Users\Models\User;
 use App\Modules\Notifications\Mail\TicketPurchasedMail;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\DB;

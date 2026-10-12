@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\HasApiTokens;
+use Nabilet\Modules\Core\Users\Domain\UserStatus;
 use Nabilet\Modules\Core\Organizations\Models\Organization;
 use Nabilet\Modules\Core\Models\Role;
 use Nabilet\Modules\Core\Models\UserRole;
@@ -111,6 +112,35 @@ class User extends Authenticatable
         ];
     }
 
+    /**
+     * Display name, as one string.
+     *
+     * MOVED HERE from `App\Models\User` — that class was a *second* model over
+     * the same `users` table with its own `$fillable` and none of the relations
+     * declared below. The duplication was not harmless: `Order::user()` resolves
+     * to THIS model, so `$order->user?->name` was always null and
+     * `OrderNotificationData::customerName()` silently fell back to
+     * «Покупатель». An accessor that only one of two models for one table has is
+     * a bug generator, so it lives with the model now.
+     */
+    public function getNameAttribute(): string
+    {
+        return trim(($this->first_name ?? '') . ' ' . ($this->last_name ?? '')) ?: 'User';
+    }
+
+    /**
+     * Access to the admin panel: an account that is not `active` cannot enter.
+     *
+     * ROLE CHECKS ARE NOT HERE. `isAdminSession()` / the `admin` middleware
+     * decide what a session may do; this answers only whether the account
+     * behind it still exists for that purpose (`banned` = no). Kept from
+     * `App\Models\User`, which was the only place it lived.
+     */
+    public function canAccessAdmin(): bool
+    {
+        return $this->status === UserStatus::ACTIVE;
+    }
+
     public function organizations(): BelongsToMany
         {
             return $this->belongsToMany(Organization::class, 'user_organization')
@@ -120,6 +150,18 @@ class User extends Authenticatable
     public function roles(): BelongsToMany
     {
         return $this->belongsToMany(Role::class, 'user_roles');
+    }
+
+    /**
+     * Role membership by slug — one query, no hydration of the whole relation.
+     *
+     * MOVED HERE from `App\Models\User` (see `getNameAttribute()`): a role check
+     * that only one of two models for one table offers is a check that silently
+     * returns false on the other.
+     */
+    public function hasRole(string $role): bool
+    {
+        return $this->roles()->where('slug', $role)->exists();
     }
 
     public function userRoles(): HasMany

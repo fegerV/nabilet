@@ -113,6 +113,7 @@ class TicketRepository
         string $mode = ScanMode::ONLINE,
         ?string $clientScanId = null,
         ?array $metadata = null,
+        ?\DateTimeImmutable $scannedAt = null,
     ): TicketScan {
         return $ticket->scans()->create([
             'public_id' => (string) Str::ulid(),
@@ -121,7 +122,17 @@ class TicketRepository
             'client_scan_id' => $clientScanId,
             'mode' => $mode,
             'result' => $result,
-            'scanned_at' => now(),
+            // Момент СКАНИРОВАНИЯ, а не записи. Он различается ровно тогда,
+            // когда устройство прислало офлайн-пакет: сканирование было в
+            // 19:02, а запись — в 23:40. Подставлять `now()` молча значило бы
+            // врать в аудите входа о времени прохода.
+            'scanned_at' => $scannedAt === null ? now() : \Carbon\Carbon::instance($scannedAt),
+            // `ticket_scans` по спецификации НЕТ колонки `updated_at` (поэтому у
+            // модели `$timestamps = false`), а `created_at` — NOT NULL без
+            // дефолта. Eloquent его не подставит, поэтому пишем вручную:
+            // это время ВСТАВКИ строки, оно отличается от `scanned_at` ровно у
+            // офлайн-пакетов и не должно совпадать с моментом прохода.
+            'created_at' => now(),
             'metadata_json' => $metadata,
         ]);
     }

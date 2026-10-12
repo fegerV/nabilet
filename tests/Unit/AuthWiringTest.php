@@ -49,9 +49,9 @@ final class AuthWiringTest extends TestCase
 
     public function testTheApiProviderPointsAtTheModuleUser(): void
     {
-        // `App\Models\User` is the web guard's model. The modules use the one
-        // below, and a guard that returned the other would hand controllers a
-        // different class for the same row.
+        // Оба провайдера указывают на каноничную модель: раздвоение
+        // `App\Models\User` / модульной закрыто (§3.25), легаси-имя осталось
+        // подклассом. Страж на всю конструкцию — UserModelUnificationTest.
         $this->assertStringContainsString(
             'Nabilet\Modules\Core\Users\Models\User::class',
             $this->read('config/auth.php')

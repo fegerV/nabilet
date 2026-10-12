@@ -21,7 +21,7 @@ Redis (опционально) · REST API · PWA · Android Checker
 nabilet_core_spec/
 ├── NABILET_Core_Technical_Spec_v1.md   обзорная спецификация
 ├── migrations.sql                      консолидированный DDL (73 таблицы)
-├── migrations/001..015                 сплит-миграции в порядке исполнения
+├── migrations/001..017                 сплит-миграции в порядке исполнения
 ├── openapi.yaml                        OpenAPI 3.1 (100 операций)
 └── state-diagrams.md                   машины состояний
 ```
@@ -103,7 +103,7 @@ php tools/verify-openapi.php        # целостность контракта 
 php tools/verify-openapi.php nabilet_core_spec/openapi.yaml   # то же для копии пакета
 php tools/verify-contract-schema.php        # контракт ≡ схема: нет поля, которого нет в БД
 php tools/verify-contract-schema.php nabilet_core_spec/openapi.yaml
-php tools/verify-migrations.php     # миграции ≡ пакет: 73 таблицы, 101 FK, 38 CHECK
+php tools/verify-migrations.php     # миграции ≡ пакет: 73 таблицы, 101 FK, 47 CHECK
 php tools/verify-state-machines.php # статусы в коде ≡ CHECK-ограничениям в БД
 php tools/verify-models-schema.php  # модели Eloquent называют только реальные колонки
 ```
@@ -143,7 +143,7 @@ php tools/verify-models-schema.php  # модели Eloquent называют т�
 | --- | --- | --- |
 | `verify` | lint, тесты ядра, `verify-purity`, граф модулей, `verify-migrations`, `verify-state-machines`, `verify-openapi` и `verify-contract-schema` для обеих копий, `verify-models-schema`, `verify-autoload`, `verify-module-structure`, `verify-route-ownership`, `composer validate` | ловит расхождения кода, контракта и схемы |
 | `docker` | `docker compose config`, hadolint, сборка образа BuildKit'ом | доказывает, что Dockerfile внутренне согласован, а образ ставится из закоммиченного lock |
-| `schema` | накатывает `migrations.sql` и сплит-сет в два разных database на MySQL 8.4, сверяет счетчики (73 таблицы / 785 колонок / 1 триггер), диффит `information_schema.columns`, проверяет триггер иммутабельности в обе стороны | доказывает, что DDL реально исполняется |
+| `schema` | накатывает `migrations.sql` и сплит-сет в два разных database на MySQL 8.4, сверяет счетчики (73 таблицы / 786 колонок / 1 триггер), диффит `information_schema.columns`, проверяет триггер иммутабельности в обе стороны | доказывает, что DDL реально исполняется |
 | `phpunit` | `composer install` по lock, `artisan key:generate`, Feature-суита на MySQL 8.4 | исполняет прикладной слой; статические верификаторы этого не видят |
 | `frontend` | `npm ci`, `vue-tsc`, vitest, `vite build`, контракт оболочки витрины | ловит сломанный prop, неразрешимый динамический импорт и пустую страницу в продакшене |
 
@@ -270,7 +270,7 @@ add_filter('ticket.price', fn (int $price) => $price + 300, priority: 20);
 | Область | Состояние |
 |---|---|
 | Ядро (хуки, модули, ошибки, Money, QR, state machines, tenancy) + домены P2–P7 | ✅ тесты, CI `verify` + `schema` |
-| Схема пакета (73 таблицы, 38 CHECK, 1 триггер) | ✅ проверена на MySQL 8.4.11 |
+| Схема пакета (73 таблицы, 47 CHECK, 1 триггер) | ✅ проверена на MySQL 8.4.11 |
 | Матрица конкурентности ТЗ §26 | ✅ 6 из 6 сценариев |
 | API-контракт пакета (81 путь, 98 операций) | ✅ описан и проверен; реализация ~30 модулей в `app/Modules/` |
 | API-контракт проекта (`docs/openapi.yaml`, +`metrikaConfig`) | ✅ опережает пакет на одну операцию; синхронизация в пакет — при следующем релизе спеки |

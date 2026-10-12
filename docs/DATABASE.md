@@ -2,10 +2,10 @@
 
 > **Источник истины — пакет `nabilet_core_spec/`.**
 > DDL: `nabilet_core_spec/migrations.sql` (консолидированный) и
-> `nabilet_core_spec/migrations/001..015` (сплит). Побайтовая копия консолидированного
+> `nabilet_core_spec/migrations/001..017` (сплит). Побайтовая копия консолидированного
 > DDL лежит в корне репозитория как `migrations.sql` — она попадает в образ
 > (`COPY . .`) и именно её накатывает оператор вручную; совпадение с каноном проверяет CI.
-> Оба представления проверены на идентичность: **785 колонок, 300 ограничений —
+> Оба представления проверены на идентичность: **786 колонок, 309 ограничений —
 > совпадают** (сверено по `information_schema`: колонки, индексы, внешние ключи,
 > CHECK-ограничения, триггер, движок и коллация).
 >
@@ -13,8 +13,8 @@
 > результат запросов к `information_schema` работающей базы. Разбор пробелов и их причин:
 > `docs/REVIEW-spec-bundle.md`.
 
-**Схема:** 73 таблицы · 785 колонок · 101 внешний ключ · 88 уникальных ключей ·
-281 индекс · 38 CHECK-ограничений · 1 триггер.
+**Схема:** 73 таблицы · 786 колонок · 101 внешний ключ · 88 уникальных ключей ·
+281 индекс · 47 CHECK-ограничений · 1 триггер.
 
 ---
 
@@ -227,7 +227,7 @@ uq_tickets_order_item_index   (order_item_id, ticket_index)
 
 `014_inventory_status_check.sql` и `015_events_status_check.sql` закрывают две
 последние status-колонки, за которыми стояла PHP-машина состояний без ограничения
-в схеме — **итого 38 ограничений на 20 таблицах**.
+в схеме — **итого 47 ограничений на 28 таблицах**.
 
 `ck_inventory_status` — это не «ещё один CHECK ради единообразия». Словарь машины
 `InventoryItemStateMachine` не совпадал с тем, что писала корзина: состояния
@@ -251,11 +251,19 @@ ck_tickets_terminal_exclusive CHECK (NOT (used_at IS NOT NULL
                                       AND (cancelled_at IS NOT NULL OR refunded_at IS NOT NULL)))
 ```
 
-Полный список — 35 ограничений на 18 таблицах: `inventory_items` (5), `tickets` (3),
+Полный список исходных 35 ограничений на 18 таблицах (сплиты 009–010): `inventory_items` (5), `tickets` (3),
 `promo_codes` (6), `orders` (2), `order_items` (2), `payments` (2), `refunds` (2),
 `seats` (2), `offline_bundles` (2), а также по одному — `cart_items`,
 `hall_schema_versions`, `seat_holds`, `sectors`, `sessions`, `standing_zones`,
 `promo_code_redemptions`, `media_assets`, `media_links`.
+
+Позднее добавлены ещё 12 CHECK-ограничений сплитами 013–017 (итого **47 на 28 таблицах**):
+`ck_users_status` (`users`, 013), `ck_inventory_status` (`inventory_items`, 014),
+`ck_events_status` (`events`, 015), `ck_login_logs_event` (`login_logs`, 016), а из
+сплита 017 — `ck_carts_status` (`carts`), `ck_checkin_devices_status` (`checkin_devices`),
+`ck_consents_status` (`consents`), `ck_privacy_requests_status` (`privacy_requests`),
+`ck_notifications_status` (`notifications`), `ck_organizations_status` (`organizations`),
+`ck_ab_experiments_status` (`ab_experiments`), `ck_orders_payment_status` (`orders`).
 
 > Клаузул 21, а не 24, потому что три ограничения используют один и тот же текст
 > `(quantity > 0)`, и два — `(amount >= 0)`. Уникальны именно ограничения (по имени

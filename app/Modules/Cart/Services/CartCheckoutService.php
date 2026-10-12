@@ -45,11 +45,9 @@ final class CartCheckoutService
     public function checkout(string $sessionId, array $customer = [], ?string $token = null): array
     {
         // D5: оформить можно только корзину того же покупателя.
-        $token = trim((string) $token);
+        $token = $this->requireToken($token);
 
-        if ($token === '') {
-            throw new ValidationError(['cart_token' => ['The cart token is required.']], 'Cart token is required.');
-        }
+        $expired = false;
 
         // Флаг «корзина истекла» поднимается ИЗ транзакции наружу, а не бросается
         // внутри неё. Это исправление конкретного дефекта, а не стилистика:
@@ -59,9 +57,7 @@ final class CartCheckoutService
         // оставалась `active`, места — удержанными, а комментарий «освобождает
         // инвентарь немедленно» описывал недостижимую ветку. Воспроизведено
         // тестом CartWritePathTest::test_expired_cart_returns_every_seat_it_reserved.
-        $expired = false;
-
-        $result = DB::transaction(function () use ($sessionId, $customer, $token, &$expired): ?array {
+        $result = DB::transaction(function () use ($sessionId, $token, $customer, &$expired): ?array {
             $cart = Cart::query()
                 ->where('session_id', $sessionId)
                 ->where('status', 'active')
@@ -70,7 +66,107 @@ final class CartCheckoutService
                 ->lockForUpdate()
                 ->firstOrFail();
 
-            // Check cart expiration
+            return $this->convert($cart, $customer, $expired);
+        });
+
+        // Возврат инвентаря уже зафиксирован транзакцией — только теперь можно
+        // отказать, не потеряв очистку.
+        if ($expired) {
+            throw ConflictError::cartExpired();
+        }
+
+        return $result ?? [];
+    }
+
+    /**
+     * Оформить корзину по её `public_id` — форма спеки (`POST /api/v1/orders`,
+     * `CreateOrderRequest.cart_id`).
+     *
+     * ЗАЧЕМ ВТОРОЙ ВХОД. Спека адресует корзину из пути (`/carts/{cart}`) и
+     * создаёт заказ из `cart_id`; приложение адресовало её парой
+     * (`session_id` + `X-Cart-Token`). Оба входа ведут в ОДНУ и ту же
+     * `convert()` — расходиться здесь значило бы получить две реализации
+     * оформления заказа.
+     *
+     * ПРАВО НА КОРЗИНУ. Владелец — тот же, что и у CRUD-путей: гостевой токен
+     * из `X-Cart-Token` совпадает с `carts.cart_token`, либо Bearer-пользователь
+     * владеет корзиной (`carts.user_id`). Чужая корзина — 404, а не 403: существование
+     * или несуществование чужого `public_id` — не информация для спрашивающего.
+     *
+     * @throws ConflictError          корзина истекла или инвентарь исчерпан
+     * @throws DomainRuleViolation    корзина пуста или продажи закрыты
+     */
+    public function checkoutByPublicId(string $publicId, array $customer = [], ?string $token = null, ?int $userId = null): array
+    {
+        $expired = false;
+
+        $result = DB::transaction(function () use ($publicId, $customer, $token, $userId, &$expired): ?array {
+            $cart = $this->lockOwnedByPublicId($publicId, $token, $userId);
+
+            return $this->convert($cart, $customer, $expired, $userId);
+        });
+
+        if ($expired) {
+            throw ConflictError::cartExpired();
+        }
+
+        return $result ?? [];
+    }
+
+    /**
+     * Токен покупателя обязателен: без него корзина не находится, а не
+     * «находится любая». Сообщение то же, что и раньше, — контракт 422.
+     */
+    private function requireToken(?string $token): string
+    {
+        $token = trim((string) $token);
+
+        if ($token === '') {
+            throw new ValidationError(['cart_token' => ['The cart token is required.']], 'Cart token is required.');
+        }
+
+        return $token;
+    }
+
+    /**
+     * Корзина по `public_id`, принадлежащая спрашивающему, — под блокировкой.
+     *
+     * 404 и на «нет такой», и на «не твоя»: различать их — значит подтверждать
+     * существование чужих корзин по их идентификатору.
+     */
+    private function lockOwnedByPublicId(string $publicId, ?string $token, ?int $userId): Cart
+    {
+        $token = trim((string) $token);
+
+        return Cart::query()
+            ->where('public_id', $publicId)
+            ->where('status', 'active')
+            ->where(function ($query) use ($token, $userId): void {
+                if ($userId !== null) {
+                    $query->where('user_id', $userId);
+                }
+
+                if ($token !== '') {
+                    $query->orWhere('cart_token', $token);
+                }
+            })
+            ->with(['items.inventoryItem'])
+            ->lockForUpdate()
+            ->firstOrFail();
+    }
+
+    /**
+     * Общее тело оформления: всё, что происходит ПОСЛЕ того, как корзина
+     * найдена и заблокирована.
+     *
+     * Вынесено из `checkout()`, когда у оформления появился второй вход (по
+     * `public_id`): два публичных метода, одно тело. Расхождение двух тел — это
+     * два разных поведения «создать заказ», то есть баг, который находят в
+     * проде.
+     */
+    private function convert(Cart $cart, array $customer, bool &$expired, ?int $userId = null): ?array
+    {
+        // Check cart expiration
             if ($cart->expires_at < CarbonImmutable::now()) {
                 $cart->update(['status' => 'abandoned']);
 
@@ -93,7 +189,7 @@ final class CartCheckoutService
             // the session is `on_sale` and inside its sales window. Existing holds
             // are kept (the sweeper releases them on TTL), so the buyer can retry
             // if the organizer reopens sales before the hold expires.
-            $session = Session::findOrFailBySessionId($sessionId);
+            $session = Session::findOrFailBySessionId((string) $cart->session_id);
 
             if (! $session->isSellableAt()) {
                 throw DomainRuleViolation::salesClosed(
@@ -190,7 +286,16 @@ final class CartCheckoutService
 
             $order = Order::create([
                 'organization_id' => $organizationId,
-                'user_id' => null,
+                // Владелец заказа: покупатель, если он аутентифицирован
+                // (`checkoutByPublicId` со bearer-токеном), иначе — хозяин
+                // корзины. Гостевой путь (`checkout()`) не передаёт userId, так
+                // что для витрины поведение не меняется.
+                //
+                // Почему это не «улучшение на будущее»: без него покупатель,
+                // вошедший в аккаунт и оформивший заказ формой спеки, получал
+                // заказ с `user_id = NULL` — невидимый в `GET /orders`
+                // (список скоупится по владельцу) и недоступный его поддержке.
+                'user_id' => $userId ?? ($cart->user_id !== null ? (int) $cart->user_id : null),
                 'status' => 'pending',
                 'payment_status' => 'pending',
                 'subtotal_amount' => $subtotalAmount,
@@ -238,7 +343,9 @@ final class CartCheckoutService
             return [
                 'cart_id' => $cart->id,
                 'order_id' => $order->public_id,
-                'session_id' => $sessionId,
+                // `session_id` берётся из корзины, а не из параметра входа:
+                // второй вход (`checkoutByPublicId`) параметра не имеет.
+                'session_id' => (string) $cart->session_id,
                 'items' => $cart->items->map(fn($item) => [
                     'inventory_item_id' => $item->inventory_item_id,
                     'quantity' => $item->quantity,
@@ -250,14 +357,5 @@ final class CartCheckoutService
                 'discount_amount' => $discountAmount,
                 'currency' => $cart->currency,
             ];
-        });
-
-        // Возврат инвентаря уже зафиксирован транзакцией — только теперь можно
-        // отказать, не потеряв очистку.
-        if ($expired) {
-            throw ConflictError::cartExpired();
-        }
-
-        return $result ?? [];
     }
 }
