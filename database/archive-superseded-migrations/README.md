@@ -3,12 +3,12 @@
 **Источник истины — пакет `nabilet_core_spec/`:**
 
 ```
-nabilet_core_spec/migrations.sql              консолидированный DDL (73 таблицы)
-nabilet_core_spec/migrations/001..015         сплит-миграции в порядке исполнения
+nabilet_core_spec/migrations.sql              консолидированный DDL (76 таблиц)
+nabilet_core_spec/migrations/001..018         сплит-миграции в порядке исполнения
 ```
 
 Файлы в этом каталоге написаны **до** появления пакета и описывают **другую** схему:
-66 таблиц вместо 73, с другими именами (`event_sessions`, `rows`, `tables`, `ab_tests`,
+66 таблиц вместо 76, с другими именами (`event_sessions`, `rows`, `tables`, `ab_tests`,
 `privacy_consents`, `data_requests`, `outbox_messages`) и другой моделью inventory
 (enum состояния вместо `capacity` + `available_quantity`).
 
@@ -43,7 +43,7 @@ nabilet_core_spec/migrations/001..015         сплит-миграции в п�
 
 Раньше эти миграции исполнял `tools/verify-schema.php` — через стабы Laravel Schema и
 20 проверок инвариантов на SQLite. **Файл удалён 2026-09-20:** `database/migrations/`
-теперь содержит актуальные миграции под 73 таблицы пакета, и тот инструмент начал бы
+теперь содержит актуальные миграции под 76 таблиц пакета, и тот инструмент начал бы
 проверять не то, на что рассчитан.
 
 Ему на смену пришёл `tools/verify-migrations.php`: он исполняет актуальные миграции и

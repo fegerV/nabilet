@@ -20,9 +20,9 @@ Redis (опционально) · REST API · PWA · Android Checker
 ```
 nabilet_core_spec/
 ├── NABILET_Core_Technical_Spec_v1.md   обзорная спецификация
-├── migrations.sql                      консолидированный DDL (73 таблицы)
-├── migrations/001..017                 сплит-миграции в порядке исполнения
-├── openapi.yaml                        OpenAPI 3.1 (84 пути, 101 операция, 100 схем)
+├── migrations.sql                      консолидированный DDL (76 таблиц)
+├── migrations/001..018                 сплит-миграции в порядке исполнения
+├── openapi.yaml                        OpenAPI 3.1 (86 путей, 103 операции, 101 схема)
 └── state-diagrams.md                   машины состояний
 ```
 
@@ -41,9 +41,9 @@ nabilet_core_spec/
 |---|---|
 | [`docs/PLAN.md`](docs/PLAN.md) | План реализации: 9 этапов, критический путь, риски, DoD |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Архитектура: модули, хуки, слои, мультитенантность, безопасность |
-| [`docs/DATABASE.md`](docs/DATABASE.md) | Модель данных пакета: 73 таблицы, инварианты, политика ON DELETE |
+| [`docs/DATABASE.md`](docs/DATABASE.md) | Модель данных пакета: 76 таблиц, инварианты, политика ON DELETE |
 | [`docs/STATE-MACHINES.md`](docs/STATE-MACHINES.md) | Машины состояний Order / Payment / Ticket / Hold / Event / Session |
-| [`docs/openapi.yaml`](docs/openapi.yaml) | OpenAPI 3.1 — рабочая копия контракта (83 пути, 100 операций, 101 схема; включает операционные надстройки проекта, например `metrikaConfig`) |
+| [`docs/openapi.yaml`](docs/openapi.yaml) | OpenAPI 3.1 — рабочая копия контракта (86 путей, 103 операции, 101 схема; включает операционные надстройки проекта, например `metrikaConfig`) |
 | [`docs/REVIEW-spec-bundle.md`](docs/REVIEW-spec-bundle.md) | Проверка пакета на реальном MySQL: пробелы, расхождения, пробелы ТЗ |
 | [`docs/ROADMAP.md`](docs/ROADMAP.md) | Статусы этапов реализации — источник истины по продвижению |
 | [`docs/LAUNCH-READINESS.md`](docs/LAUNCH-READINESS.md) | Готовность к запуску: что проверено, чего не хватает |
@@ -103,7 +103,7 @@ php tools/verify-openapi.php        # целостность контракта 
 php tools/verify-openapi.php nabilet_core_spec/openapi.yaml   # то же для копии пакета
 php tools/verify-contract-schema.php        # контракт ≡ схема: нет поля, которого нет в БД
 php tools/verify-contract-schema.php nabilet_core_spec/openapi.yaml
-php tools/verify-migrations.php     # миграции ≡ пакет: 73 таблицы, 101 FK, 47 CHECK
+php tools/verify-migrations.php     # миграции ≡ пакет: 76 таблиц, 110 FK, 48 CHECK
 php tools/verify-state-machines.php # статусы в коде ≡ CHECK-ограничениям в БД
 php tools/verify-models-schema.php  # модели Eloquent называют только реальные колонки
 ```
@@ -143,7 +143,7 @@ php tools/verify-models-schema.php  # модели Eloquent называют т�
 | --- | --- | --- |
 | `verify` | lint, тесты ядра, `verify-purity`, граф модулей, `verify-migrations`, `verify-state-machines`, `verify-openapi` и `verify-contract-schema` для обеих копий, `verify-models-schema`, `verify-autoload`, `verify-module-structure`, `verify-route-ownership`, `composer validate` | ловит расхождения кода, контракта и схемы |
 | `docker` | `docker compose config`, hadolint, сборка образа BuildKit'ом | доказывает, что Dockerfile внутренне согласован, а образ ставится из закоммиченного lock |
-| `schema` | накатывает `migrations.sql` и сплит-сет в два разных database на MySQL 8.4, сверяет счетчики (73 таблицы / 786 колонок / 1 триггер), диффит `information_schema.columns`, проверяет триггер иммутабельности в обе стороны | доказывает, что DDL реально исполняется |
+| `schema` | накатывает `migrations.sql` и сплит-сет в два разных database на MySQL 8.4, сверяет счетчики (76 таблиц / 809 колонок / 1 триггер), диффит `information_schema.columns`, проверяет триггер иммутабельности в обе стороны | доказывает, что DDL реально исполняется |
 | `phpunit` | `composer install` по lock, `artisan key:generate`, Feature-суита на MySQL 8.4 | исполняет прикладной слой; статические верификаторы этого не видят |
 | `frontend` | `npm ci`, `vue-tsc`, vitest, `vite build`, контракт оболочки витрины | ловит сломанный prop, неразрешимый динамический импорт и пустую страницу в продакшене |
 
@@ -234,7 +234,7 @@ CHECK-ограничения (`available_quantity BETWEEN 0 AND capacity`). Пр
 сумма частей равна целому.
 
 **Мультитенантность fail-closed — но схема пакета её ослабляет.** Запрос без контекста
-организации бросает исключение. Однако `organization_id` есть лишь у 18 из 73 таблиц,
+организации бросает исключение. Однако `organization_id` есть лишь у 18 из 76 таблиц,
 поэтому скоуп для билетов и платежей требует JOIN и не подставляется автоматически.
 Это главный открытый риск — см. [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §6.
 
@@ -270,7 +270,7 @@ add_filter('ticket.price', fn (int $price) => $price + 300, priority: 20);
 | Область | Состояние |
 |---|---|
 | Ядро (хуки, модули, ошибки, Money, QR, state machines, tenancy) + домены P2–P7 | ✅ тесты, CI `verify` + `schema` |
-| Схема пакета (73 таблицы, 47 CHECK, 1 триггер) | ✅ проверена на MySQL 8.4.11 |
+| Схема пакета (76 таблицы, 48 CHECK, 1 триггер) | ✅ проверена на MySQL 8.4.11 |
 | Матрица конкурентности ТЗ §26 | ✅ 6 из 6 сценариев |
 | API-контракт пакета (81 путь, 98 операций) | ✅ описан и проверен; реализация ~30 модулей в `app/Modules/` |
 | API-контракт проекта (`docs/openapi.yaml`, +`metrikaConfig`) | ✅ опережает пакет на одну операцию; синхронизация в пакет — при следующем релизе спеки |
