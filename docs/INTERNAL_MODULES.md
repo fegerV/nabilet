@@ -42,6 +42,38 @@ The `Analytics` module (`AnalyticsServiceProvider`) exposes one public endpoint:
 |--------|------|------|-------------|
 | GET | `/api/v1/analytics/metrika/config` | none | Yandex Metrika counter ID and goal names for the SPA (Yandex Direct attribution). Serves only non-secret fields (`MetrikaSettings::publicConfig()`); settings come from `config/metrika.php` (env) merged with DB overrides in table `metrika_settings`. See `docs/ROADMAP.md`, stage 5. |
 
+### `Loyalty` — «Клуб зрителей» (`LoyaltyServiceProvider`)
+
+Phase 1 of `docs/LOYALTY-PLAN.md`: favorites and follow-subscriptions of a buyer.
+All six paths live under `auth:api` and take the owner from the Bearer token —
+none of them accepts a foreign user id, so cross-account access is impossible by
+construction. The event in the path is addressed by `public_id` (ULID), not by
+the internal BIGINT (`LoyaltyController::resolveEvent()`); the internal id never
+leaves the API (`DATABASE.md` §9).
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/api/v1/me/favorites` | `auth:api` | Favorites, newest first |
+| POST | `/api/v1/me/events/{event}/favorite` | `auth:api` | Add to favorites — 201 first time, 200 on repeat (`uq_event_favorites_user_event`) |
+| DELETE | `/api/v1/me/events/{event}/favorite` | `auth:api` | Remove — 204 even on repeat |
+| GET | `/api/v1/me/follows` | `auth:api` | Subscriptions to e-mail about new sessions |
+| POST | `/api/v1/me/events/{event}/follow` | `auth:api` | Subscribe — 201/200, same idempotency rule |
+| DELETE | `/api/v1/me/events/{event}/follow` | `auth:api` | Unsubscribe — 204 |
+
+Favorites and follows are deliberately separate tables: a favorite is memory
+(«хочу посмотреть») and produces no mail, a follow is a request for a letter
+(`SessionObserver` → `NotifyFollowersOfNewSessionJob`, journal
+`follow_notifications` guards against a repeat send).
+
+Routes are **not** loaded by the module provider: the single owner of route
+registration is `routes/api.php` (`tools/verify-route-ownership.php`). The
+provider exists to boot the observer — an unregistered provider means a
+`Session` model with no `created` listener and therefore no subscriber e-mails.
+
+Storefront screens: `/favorites` and `/subscriptions`
+(`resources/js/pages/storefront/`, guarded by `meta.requiresCustomer`), plus the
+«♡» on `EventCard` and «♡»/«🔔 Следить» on `EventPage`.
+
 ## Special Cases
 
 | Module | Provider | Notes |
