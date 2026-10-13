@@ -125,8 +125,12 @@ if (preg_match_all('/ALTER\s+TABLE\s+`?(\w+)`?\s+(.*?);/is', $spec, $stmts, PREG
 // 786 → 809: сплит `018_loyalty_foundation.sql` добавил три таблицы «Клуба
 // зрителей» (`event_favorites`, `event_follows`, `follow_notifications`) —
 // фаза 1 `docs/LOYALTY-PLAN.md`. Обновлены все три файла одновременно.
-$expectedTables = 76;
-$expectedColumns = 809;
+//
+// 809 → 825: сплит `019_bonus_ledger.sql` (фаза 2) добавил две таблицы
+// (`bonus_accounts` — 7 колонок, `bonus_transactions` — 8) и одну колонку в
+// существующей (`orders.bonus_amount`). Итого 76 → 78 таблиц, 809 → 825 колонок.
+$expectedTables = 78;
+$expectedColumns = 825;
 if (count($specTables) !== $expectedTables || count($specCols) !== $expectedColumns) {
     fwrite(\STDERR, $line(sprintf(
         '  FAIL  spec parser read %d tables / %d columns, expected %d / %d.'
@@ -187,10 +191,18 @@ $live = [
 // значениях, посчитанных до сплита, и инструмент падал на расхождении, которого
 // нет: спека и живая база сходились, а ожидание — нет.
 //
+// 110 → 113, 94 → 98, 48 → 50: сплит `019_bonus_ledger.sql` (фаза 2). Внешние
+// ключи: `fk_bonus_accounts_user`, `fk_bonus_transactions_user` (CASCADE) и
+// `fk_bonus_transactions_order` (SET NULL). Уникальные: `uq_bonus_accounts_public_id`,
+// `uq_bonus_accounts_user`, `uq_bonus_transactions_public_id`,
+// `uq_bonus_transactions_dedupe`. CHECK — `ck_bonus_accounts_balance` и
+// `ck_bonus_transactions_reason`; переиздание `ck_orders_amounts` счёт НЕ меняет,
+// потому что имя то же (CHECK снимается и создаётся заново под тем же именем).
+//
 // Триггеры в этот цикл НЕ входят: они сравниваются отдельно ниже, потому что
 // их расхождение — отставшая спека, а не дрейф схемы, и оно не должно
 // сбрасываться или подгоняться вместе с остальными счётчиками.
-$expect = ['fk' => 110, 'unique' => 94, 'check' => 48];
+$expect = ['fk' => 113, 'unique' => 98, 'check' => 50];
 foreach ($expect as $k => $want) {
     $got = $live[$k];
     $ok = $got === $want;
