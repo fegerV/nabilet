@@ -802,6 +802,130 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/OrderListResponse' }
 
+  /api/v1/me/favorites:
+    get:
+      tags: [Me]
+      summary: List my favorite events
+      description: >-
+        Личный список «хочу посмотреть». Избранное не порождает писем — для
+        уведомлений есть подписки (`/api/v1/me/follows`). Поэтому два списка
+        разделены, хотя выглядят одинаково.
+      operationId: listMyFavorites
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Favorites, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/EventFavorite' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/v1/me/follows:
+    get:
+      tags: [Me]
+      summary: List my event subscriptions
+      description: >-
+        Мероприятия, о новых сеансах которых покупатель просил прислать письмо.
+        Отписка — `DELETE /api/v1/me/events/{event}/follow`.
+      operationId: listMyFollows
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Subscriptions, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/EventFollow' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/v1/me/events/{event}/favorite:
+    post:
+      tags: [Me]
+      summary: Add an event to favorites
+      description: >-
+        Идемпотентно: первое нажатие отвечает 201, повторное — 200 с той же
+        строкой. Уникальный ключ `uq_event_favorites_user_event` в схеме не
+        даёт отметить одно мероприятие дважды.
+      operationId: addFavorite
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/EventPublicIdPath'
+      responses:
+        '200':
+          description: Already in favorites
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EventFavoriteResponse' }
+        '201':
+          description: Added
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EventFavoriteResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Me]
+      summary: Remove an event from favorites
+      description: >-
+        Идемпотентно: 204 и на повторное нажатие — «отметки нет» и есть
+        запрошенное состояние.
+      operationId: removeFavorite
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/EventPublicIdPath'
+      responses:
+        '204': { description: Removed }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/me/events/{event}/follow:
+    post:
+      tags: [Me]
+      summary: Subscribe to an event
+      description: >-
+        Подписка на письма о новых сеансах (и об открытии продажи). Первое
+        нажатие — 201, повторное — 200 с той же подпиской
+        (`uq_event_follows_user_event`).
+      operationId: followEvent
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/EventPublicIdPath'
+      responses:
+        '200':
+          description: Already subscribed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EventFollowResponse' }
+        '201':
+          description: Subscribed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EventFollowResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Me]
+      summary: Unsubscribe from an event
+      description: 204 и на повторное нажатие: «не подписаны» — запрошенное состояние.
+      operationId: unfollowEvent
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/EventPublicIdPath'
+      responses:
+        '204': { description: Unsubscribed }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
   /api/v1/checkin/validate:
     post:
       tags: [Checkin]
@@ -2139,6 +2263,17 @@ components:
       name: event
       required: true
       schema: { type: string }
+    EventPublicIdPath:
+      in: path
+      name: event
+      required: true
+      schema:
+        type: string
+        pattern: '^[0-9A-Z]{26}$'
+      description: >-
+        `events.public_id` (ULID, 26 символов), а не внутренний BIGINT:
+        идентификаторы в кабинете покупателя публичные. Неизвестный или
+        удалённый public_id отвечает 404.
     SessionIdPath:
       in: path
       name: session
@@ -2482,6 +2617,63 @@ components:
       required: [data]
       properties:
         data: { $ref: '#/components/schemas/Event' }
+    EventSummary:
+      type: object
+      required: [id, title, slug]
+      description: >-
+        Карточка мероприятия внутри «Избранного» и «Подписок» — не полное
+        событие контракта `Event`, а то, чего не хватает строке списка.
+      properties:
+        id:
+          type: string
+          description: events.public_id (ULID)
+        title: { type: string }
+        slug: { type: string }
+        poster: { type: string, nullable: true }
+        age_limit: { type: string, nullable: true }
+        starts_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: >-
+            Ближайший предстоящий сеанс или null, если все сеансы уже прошли.
+            Без даты «Избранное» — список названий без календаря.
+
+    EventFavorite:
+      type: object
+      required: [id, event, created_at]
+      properties:
+        id:
+          type: string
+          description: event_favorites.public_id
+        event: { $ref: '#/components/schemas/EventSummary' }
+        created_at: { type: string, format: date-time }
+
+    EventFollow:
+      type: object
+      required: [id, event, created_at]
+      description: >-
+        Форма совпадает с `EventFavorite` намеренно: экран кабинета показывает
+        два списка рядом, и разные формы заставляли бы фронтенд писать два
+        парсера под одну и ту же строку.
+      properties:
+        id:
+          type: string
+          description: event_follows.public_id
+        event: { $ref: '#/components/schemas/EventSummary' }
+        created_at: { type: string, format: date-time }
+
+    EventFavoriteResponse:
+      type: object
+      required: [data]
+      properties:
+        data: { $ref: '#/components/schemas/EventFavorite' }
+
+    EventFollowResponse:
+      type: object
+      required: [data]
+      properties:
+        data: { $ref: '#/components/schemas/EventFollow' }
 
     EventListResponse:
       type: object

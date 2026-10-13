@@ -31,9 +31,10 @@ use Throwable;
  *
  * Сбой транспорта пишется в лог и в запись `notifications` со статусом
  * `failed`, после чего исключение пробрасывается обратно в очередь. Письмо
- * вызывается только из SendOrderNotificationJob, который уже ушёл
- * `afterCommit()`; поэтому транспортный сбой не отменяет оплаченный заказ,
- * зато Laravel сможет повторить его по настройке `tries`/`backoff`.
+ * вызывается из джоб, которые уже ушли `afterCommit()` (по статусу заказа, по
+ * подписке на мероприятие); поэтому транспортный сбой не отменяет оплаченный
+ * заказ и не трогает подписку, зато Laravel сможет повторить его по настройке
+ * `tries`/`backoff`.
  */
 class TransactionalMailService
 {
@@ -48,6 +49,14 @@ class TransactionalMailService
      * Переменные, доступные в шаблоне. Список показывается администратору в
      * редакторе шаблонов, чтобы не угадывать имена.
      *
+     * Список — ОБЪЕДИНЕНИЕ по всем видам писем (заказы, доступ к аккаунту,
+     * подписки на мероприятия): редактор шаблонов один на все коды, и
+     * плейсхолдер из чужого письма должен быть в нём виден — иначе при
+     * предпросмотре он молча не подставится. Что подставляет конкретный код:
+     * заказы — `OrderNotificationData::build()`, доступ к аккаунту —
+     * `AccountNotificationCodes::variables()`, подписки —
+     * `FollowNotificationCodes::variables()`.
+     *
      * @return list<string>
      */
     public static function availableVariables(): array
@@ -61,19 +70,29 @@ class TransactionalMailService
             'total',
             'tickets_html',
             'tickets_text',
+            'action_url',
+            'expires_in_minutes',
+            'sales_note',
         ];
     }
 
     /**
+     * Отправить письмо по редактируемому шаблону.
+     *
      * @param  string  $code  код шаблона, например `order.paid`
      * @param  array<string, scalar|Htmlable|null>  $variables
+     * @return Notification|null запись из `notifications` — «письмо ушло в
+     *   провайдера». `null` — отправки не было: некуда (пустой адрес) или
+     *   шаблон выключен. Вызывающему это различие нужно, чтобы связать свой
+     *   журнал (`follow_notifications.notification_id`) с конкретной записью
+     *   транспорта, а не искать её заново после отправки.
      */
-    public function send(string $code, string $recipient, array $variables, ?int $userId = null): bool
+    public function send(string $code, string $recipient, array $variables, ?int $userId = null): ?Notification
     {
         if (trim($recipient) === '') {
             // Некуда отправлять — не считаем это ошибкой письма: у заказа может
             // не быть e-mail (оформление без контакта), и это отдельная проблема.
-            return false;
+            return null;
         }
 
         $template = $this->findTemplate($code);
@@ -83,7 +102,7 @@ class TransactionalMailService
                 'code' => $code,
             ]);
 
-            return false;
+            return null;
         }
 
         $body = $this->render($template, $variables);
@@ -109,7 +128,7 @@ class TransactionalMailService
                 'sent_at' => now(),
             ]);
 
-            return true;
+            return $log;
         } catch (Throwable $e) {
             // SMTP-клиент иногда включает адрес получателя в сообщение ошибки.
             // Убираем его и из логов, и из Notification.error_message: адрес уже

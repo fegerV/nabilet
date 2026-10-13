@@ -1,0 +1,11 @@
+{
+  "name": "loyalty",
+  "title": "Клуб зрителей",
+  "version": "1.0.0",
+  "enabled": true,
+  "priority": 140,
+  "requires": ["events", "notifications"],
+  "permissions": [],
+  "provides": ["favorite.added", "favorite.removed", "follow.created", "follow.cancelled"],
+  "description": "«Клуб зрителей»: избранное (❤️) и подписки на мероприятия (🔔) с письмом о новом сеансе. Фаза 1 плана docs/LOYALTY-PLAN.md — механика возврата без денег: ни одна таблица модуля не участвует в расчёте сумм. Бонусный счёт, уровни, реферальная программа и рекомендации — следующие фазы того же плана."
+}
