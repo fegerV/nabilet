@@ -19,6 +19,9 @@ export default defineConfig({
       },
     },
     globals: true,
+    // Заглушки окружения — ДО импорта тестов: `stores/ui` спрашивает системную
+    // тему в момент создания, а jsdom не умеет matchMedia.
+    setupFiles: ['./tests/Unit/setup.ts'],
     include: ['tests/Unit/**/*.{test,spec}.{ts,js}', 'resources/js/**/*.{test,spec}.ts'],
     exclude: ['**/node_modules/**', '**/vendor/**', '**/dist/**'],
   },

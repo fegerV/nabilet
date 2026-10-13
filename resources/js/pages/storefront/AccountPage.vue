@@ -15,6 +15,9 @@
  *        и смена устройства означала потерю билетов навсегда (`/me/orders`).
  *     4. СЕССИИ — потому что «выйти везде» иначе недоступно, а пароль меняют в
  *        том числе тогда, когда подозревают чужой вход (`/me/sessions`).
+ *     5. КЛУБ ЗРИТЕЛЕЙ — ссылки на «Избранное» и «Подписки»: сами списки живут
+ *        на своих маршрутах (`/favorites`, `/subscriptions`), но найти их
+ *        покупатель должен из кабинета.
  *
  * СМЕНА ПАРОЛЯ ОТЗЫВАЕТ ВСЕ СЕССИИ, ВКЛЮЧАЯ ЭТУ. Это правило проекта, а не
  * побочный эффект (`UserService::updateUser()`): пароль меняют, подозревая чужой
@@ -44,12 +47,14 @@ import {
 } from '@/lib/customer'
 import { ApiError } from '@/lib/api'
 import { dateTime, money, plural } from '@/lib/format'
+import { useLoyaltyStore } from '@/stores/loyalty'
 
 const router = useRouter()
 
 const me = ref<CustomerUser | null>(customerUser())
 const loading = ref(true)
 const loadError = ref<string | null>(null)
+const loyalty = useLoyaltyStore()
 
 const displayName = computed(() => {
   const name = [me.value?.first_name, me.value?.last_name].filter(Boolean).join(' ').trim()
@@ -177,6 +182,9 @@ async function load(): Promise<void> {
 
   void loadOrders()
   void loadSessions()
+  // Счётчики «♡»/«🔔» для раздела «Клуб зрителей». Вызов идемпотентен:
+  // оболочка витрины грузит списки при навигации, повторный запрос не уйдёт.
+  void loyalty.load()
 }
 
 async function loadOrders(): Promise<void> {
@@ -385,6 +393,42 @@ onMounted(load)
           <NButton v-if="orders.length" variant="secondary" class="mt-4" @click="router.push('/tickets')">
             Мои билеты
           </NButton>
+        </section>
+
+        <!-- Клуб зрителей: избранное и подписки -->
+        <section class="surface-card p-5">
+          <h2 class="text-sm font-semibold uppercase tracking-wide text-subtle">Клуб зрителей</h2>
+          <p class="mt-1.5 text-xs text-subtle">
+            Отложенные мероприятия и подписки на письма о новых сеансах.
+          </p>
+
+          <div class="mt-4 grid gap-3 sm:grid-cols-2">
+            <RouterLink
+              to="/favorites"
+              class="flex items-center gap-3 rounded-lg border border-line p-3 transition-colors hover:border-brand-500/40 hover:bg-surface-2"
+            >
+              <span class="grid h-10 w-10 flex-none place-items-center rounded-lg bg-surface-3 text-lg text-rose-400" aria-hidden="true">♡</span>
+              <span class="min-w-0">
+                <span class="block text-sm font-medium text-content">Избранное</span>
+                <span class="block text-xs text-subtle">
+                  {{ loyalty.favoritesCount }} {{ plural(loyalty.favoritesCount, 'мероприятие', 'мероприятия', 'мероприятий') }}
+                </span>
+              </span>
+            </RouterLink>
+
+            <RouterLink
+              to="/subscriptions"
+              class="flex items-center gap-3 rounded-lg border border-line p-3 transition-colors hover:border-brand-500/40 hover:bg-surface-2"
+            >
+              <span class="grid h-10 w-10 flex-none place-items-center rounded-lg bg-surface-3 text-lg" aria-hidden="true">🔔</span>
+              <span class="min-w-0">
+                <span class="block text-sm font-medium text-content">Подписки</span>
+                <span class="block text-xs text-subtle">
+                  {{ loyalty.followsCount }} {{ plural(loyalty.followsCount, 'мероприятие', 'мероприятия', 'мероприятий') }}
+                </span>
+              </span>
+            </RouterLink>
+          </div>
         </section>
 
         <!-- Сессии -->
