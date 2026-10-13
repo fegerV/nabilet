@@ -121,8 +121,12 @@ if (preg_match_all('/ALTER\s+TABLE\s+`?(\w+)`?\s+(.*?);/is', $spec, $stmts, PREG
 // положить). Тогда же обновили два других файла — этот остался на 785, то есть
 // ровно тот же сбой повторился второй раз. `017_status_vocabularies.sql`
 // колонок не добавляет (только CHECK), поэтому число не менялось.
-$expectedTables = 73;
-$expectedColumns = 786;
+//
+// 786 → 809: сплит `018_loyalty_foundation.sql` добавил три таблицы «Клуба
+// зрителей» (`event_favorites`, `event_follows`, `follow_notifications`) —
+// фаза 1 `docs/LOYALTY-PLAN.md`. Обновлены все три файла одновременно.
+$expectedTables = 76;
+$expectedColumns = 809;
 if (count($specTables) !== $expectedTables || count($specCols) !== $expectedColumns) {
     fwrite(\STDERR, $line(sprintf(
         '  FAIL  spec parser read %d tables / %d columns, expected %d / %d.'
