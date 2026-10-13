@@ -27,6 +27,7 @@ tags:
   - name: Admin Tickets
   - name: Admin Checkin
   - name: Admin Analytics
+  - name: Analytics
   - name: Webhooks
   - name: Embed
   - name: Telegram
@@ -205,6 +206,30 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/EventListResponse' }
+
+  /api/v1/events/by-slug/{slug}:
+    get:
+      tags: [Catalog]
+      summary: Get public event by slug
+      description: >-
+        Публичный адрес мероприятия — `/event/{slug}/{publicId}`; витрина
+        (hash-SPA) обращается к этому эндпоинту по сегменту slug. Объявлен ВЫШЕ
+        `/api/v1/events/{event}` в маршрутах, иначе `by-slug` был бы принят за
+        идентификатор мероприятия.
+      operationId: getEventBySlug
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string, maxLength: 255 }
+      responses:
+        '200':
+          description: Event
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EventResponse' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '410': { $ref: '#/components/responses/Gone' }
 
   /api/v1/events/{event}:
     get:
@@ -2074,6 +2099,25 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /api/v1/analytics/metrika/config:
+    get:
+      tags: [Analytics]
+      summary: Public Yandex Metrika counter configuration for the SPA
+      description: |
+        Returns the non-secret part of the Yandex Metrika settings used for
+        Yandex Direct conversion attribution. The SPA loads the counter tag
+        lazily and sends `ym(id, 'reachGoal', goal)` for funnel events listed
+        in `goals`. Server-side source: `config/metrika.php` (env) merged with
+        DB overrides from table `metrika_settings` (module Analytics,
+        service `MetrikaSettings`). No secrets are exposed here.
+      operationId: metrikaConfig
+      responses:
+        '200':
+          description: Counter configuration
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MetrikaConfigResponse' }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -2249,6 +2293,14 @@ components:
       content:
         application/json:
           schema: { $ref: '#/components/schemas/ErrorResponse' }
+    Gone:
+      description: >-
+        Ресурс существовал и удалён навсегда. Отличается от 404 намеренно:
+        поисковик снимает такой URL из индекса, не дожидаясь повторных обходов,
+        а клиент может показать «снято с продажи» вместо «проверьте адрес».
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
     NotFound:
       description: Not found
       content:
@@ -2274,6 +2326,34 @@ components:
           schema: { $ref: '#/components/schemas/ErrorResponse' }
 
   schemas:
+    MetrikaConfigResponse:
+      type: object
+      description: >
+        Non-secret Yandex Metrika settings for the SPA. Goals must exist in the
+        counter with exactly these names; purchase goal carries revenue/currency
+        for Yandex Direct auto-bidding strategies.
+      required: [enabled, counter_id, goals]
+      properties:
+        enabled: { type: boolean, description: 'false when counter_id is 0 — integration off' }
+        counter_id: { type: integer, description: 'Yandex Metrika counter ID' }
+        counter_auth: { type: string, nullable: true, description: 'Auth token (&ct=) for cross-domain placement' }
+        counter_type: { type: string, enum: [web, hit], default: web }
+        safe_mode: { type: boolean, description: 'Reduced-data mode (clickBeacon false, WebVisor off)' }
+        ecommerce: { type: boolean, description: 'Send product params with cart/purchase goals' }
+        currency: { type: string, example: RUB }
+        goals:
+          type: object
+          description: 'Funnel event name -> Metrika goal name (reachGoal). payment_success maps to purchase.'
+          additionalProperties: { type: string }
+          example:
+            event_view: event_view
+            seatmap_open: seatmap_open
+            seat_selected: seat_selected
+            checkout_started: checkout_started
+            payment_attempt: payment_attempt
+            payment_success: purchase
+            payment_fail: payment_fail
+
     ErrorResponse:
       type: object
       required: [error]
