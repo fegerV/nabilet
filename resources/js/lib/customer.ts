@@ -54,15 +54,14 @@ export interface CustomerSession {
 /**
  * Заказ покупателя в виде, удобном витрине.
  *
- * НОРМАЛИЗАТОР НУЖЕН, ПОТОМУ ЧТО ФОРМА ОТВЕТА НЕ ОДНА
- *   `GET /me/orders` отдаёт те же строки, что и админский `GET /orders`:
- *   `OrderController` сериализует модель заказа напрямую, поэтому наружу уходят
- *   КОЛОНКИ таблицы (`public_id`, `total_amount`, `customer_email`, …). Схема
- *   `Order` контракта и класс `OrderResource` описывают при этом третий вид
- *   (`id`, `totals.total`, `customer.email`), а `OrderResource` к тому же
- *   ссылается на колонки, которых в таблице нет. Пока это расхождение не сведено
- *   (записано в `docs/REVIEW-spec-bundle.md` §3.27), читаем ОБЕ формы: витрина не
- *   обязана падать от того, что сервер выберет одну из них.
+ * ФОРМА ОТВЕТА ОДНА
+ *   `GET /me/orders` отдаёт схему `Order` контракта (`OrderResource`) — ту же,
+ *   что и админский `GET /orders`. Раньше здесь стоял нормализатор на две формы:
+ *   контроллер сериализовал модель заказа напрямую, поэтому наружу уходили
+ *   КОЛОНКИ таблицы (`public_id`, `total_amount`, `customer_email`), тогда как
+ *   схема и ресурс описывали другие две. Расхождение сведено (§3.28): суммы
+ *   теперь в `totals`, покупатель — плоскими `customer_email` / `customer_name` /
+ *   `customer_phone`, позиции несут `event_title`.
  */
 export interface CustomerOrder {
   id: string
@@ -263,30 +262,27 @@ export async function fetchMyOrders(): Promise<CustomerOrder[]> {
 }
 
 /**
- * Привести строку заказа к `CustomerOrder`.
- *
- * Читает обе формы — колонки таблицы и схему контракта — см. `CustomerOrder`.
+ * Привести строку заказа к `CustomerOrder` (схема `Order` контракта).
  */
 function normalizeOrder(raw: Record<string, unknown>): CustomerOrder {
-  const totals = (raw.totals ?? null) as { total?: unknown } | null
-  const customer = (raw.customer ?? null) as { email?: unknown } | null
+  const totals = (raw.totals ?? {}) as { total_amount?: unknown; currency?: unknown }
   const items = Array.isArray(raw.items) ? (raw.items as Array<Record<string, unknown>>) : []
 
   const titles = items
-    .map((item) => String(item.event_title_snapshot ?? item.event_title ?? ''))
+    .map((item) => String(item.event_title ?? ''))
     .filter((title) => title !== '')
 
   return {
-    id: String(raw.public_id ?? raw.id ?? ''),
+    id: String(raw.id ?? ''),
     number: String(raw.order_number ?? ''),
     status: String(raw.status ?? 'pending'),
     paymentStatus: raw.payment_status === undefined || raw.payment_status === null ? null : String(raw.payment_status),
-    totalMinor: Number(raw.total_amount ?? totals?.total ?? 0) || 0,
-    currency: String(raw.currency ?? 'RUB'),
+    totalMinor: Number(totals.total_amount ?? 0) || 0,
+    currency: String(totals.currency ?? 'RUB'),
     createdAt: String(raw.created_at ?? ''),
     itemsCount: items.length,
     eventTitles: titles,
-    email: String(raw.customer_email ?? customer?.email ?? ''),
+    email: String(raw.customer_email ?? ''),
   }
 }
 

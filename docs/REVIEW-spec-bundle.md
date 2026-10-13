@@ -2526,3 +2526,126 @@ Guard кабинета проверяет `isCustomerSession()`, а не `getTok
 Схема не менялась: **73 таблицы · 786 колонок · 47 CHECK · 101 FK · 88 UNIQUE · 3 триггера**.
 
 **Оговорка о среде.** `phpunit` прогнан с `NABILET_SEED_DEMO=false` (см. 3.26.8).
+
+---
+
+## 3.28 Форма ответа заказов: три формы сведены к схеме `Order`, 2026-10-13
+
+Закрывает находку §3.27.4. До правки один и тот же заказ описывался тремя
+несовпадающими способами, и ни один из них не был «почти верным»:
+
+| Источник | Что описывал |
+|---|---|
+| Схема `Order` контракта | `id` (string), `order_number`, `status`, `payment_status`, `totals` (`MoneyTotals`), `customer_email`, `customer_phone`, `created_at`, `paid_at`, `items[]` |
+| Класс `OrderResource` | `total_amount` плоско, `customer{email,phone,first_name,last_name}` объектом, `items_count`, `expires_at`, `paid_amount`, `payments`, `organization` |
+| Что реально уходило | КОЛОНКИ таблицы: `index()`, `show()`, `mine()` сериализовали модель `Order` напрямую |
+
+### 3.28.1 Что было сломано по-настоящему
+
+**Форма №2 не отличалась от схемы — она ссылалась на колонки, которых нет.**
+`OrderResource` читал `customer_first_name`, `customer_last_name`, `items_count`,
+`expires_at`, `paid_amount`. В `orders` таких колонок НЕТ: реальны `customer_name`
+(добавлен сплитом `011`) и `paid_at`. Ресурс не просто отставал от контракта —
+он отставал от самой таблицы, и любой его вызов отвечал `null` в половине полей.
+Не замечалось потому, что ресурс использовался ровно в одном месте —
+`EmbedController` (`POST /embed/carts`), и форму оттуда никто не проверял.
+
+**Форма №3 утекала внутренними идентификаторами.** `user_id`,
+`organization_id`, `promo_code_id`, `cart_id`, `session_id`, `event_id` — BIGINT,
+уходящие наружу напрямую, вопреки `DATABASE.md` §9 («внутренние идентификаторы не
+публикуются»). `GET /orders/{id}` отдавал заказ вместе с позициями, платежами,
+билетами и PII покупателя — это было записано и раньше (§3.25), но как «много
+данных», а не как «сырые колонки вместо схемы».
+
+**Наблюдаемый симптом был один, но заметный:** админский список заказов показывал
+«—» в колонке «Покупатель» для КАЖДОЙ строки. `AdminOrdersPage.vue` читал
+`o.customer.email` — форму №2, а получал форму №3, где `customer` не существует.
+
+**Побочный эффект правки `mine()` в §3.26:** там форма исправлялась точечно
+(`data.items()` вместо пагинатора), и `/me/orders` стал единственным путём с
+правильным `data`, но с сырыми колонками. То есть три пути отдавали три формы.
+
+### 3.28.2 Что сделано
+
+- **`OrderResource` переписан под схему `Order`.** `id` = `public_id` (строка),
+  суммы вложены в `totals` (`MoneyTotals`: subtotal/discount/fee/total/currency),
+  покупатель — тремя плоскими полями (`customer_email` / `customer_name` /
+  `customer_phone`), потому что в таблице хранится ОДНО `customer_name`, а не имя
+  и фамилия отдельно. `payments` и `organization` убраны: их нет в схеме `Order`,
+  а платежи клиент читает своим ресурсом через `GET /payments`.
+- **`OrderItemResource` переписан под схему `OrderItem`.** Прежняя редакция была
+  сломана по составу сильнее ресурса заказа: `id => $this->public_id` (у
+  `order_items` нет `public_id` — всегда `null`), `total_price` (колонка
+  `total_amount`) и вложенный `inventory_item`, дёргавший связь ленивой
+  загрузкой. Теперь: `id` (строка), `quantity`, деньги, `event_title` /
+  `session_title` / `venue_title` (суффикс `_snapshot` снят — см. ниже),
+  `seat_snapshot`.
+- **`OrderController` переведён на ресурс во всех действиях:** `index()`,
+  `show()`, `mine()`, `cancel()`, `refund()`, `store()` (обе формы создания).
+  `index()` и `mine()` отдают плоский `data` + `meta` — форма `OrderListResponse`.
+- **`OrderRepository::find()` / `findByPublicId()`** — мёртвый код с фатальной
+  связью `with('customer')`: метода `customer()` в модели `Order` нет, поэтому
+  вызов упал бы `RelationNotFoundException`. Связь убрана; сами методы остались
+  (это не правка формы).
+- **Контракт дополнен `Order.customer_name`** в обеих копиях (`nabilet_core_spec`,
+  `docs`): колонка реальная (`011`), админке она нужна, в схеме её не было.
+  `verify-contract-schema.php` остаётся зелёным — он сверяет схему с колонками.
+- **Фронтенд приведён к одной форме:** `AdminOrdersPage` (колонка «Покупатель»),
+  `AdminDashboardPage`, `AdminAnalyticsPage`, `lib/customer.ts`.
+  `normalizeOrder()` упрощён — он больше не читает две формы, потому что вторая
+  (колонки) больше не приходит. Это не потеря гибкости: запасная ветка
+  маскировала расхождение, видимое только в виде «—» в таблице.
+
+### 3.28.3 Суффикс `_snapshot` в позициях заказа
+
+Колонки называются `event_title_snapshot` / `session_title_snapshot` /
+`venue_title_snapshot` — это снимок названия НА МОМЕНТ покупки, и он стоит там
+не случайно: мероприятие могут переименовать, а купленный билет обязан помнить,
+на что покупали. Контракт (`OrderItem.event_title`) суффикса не несёт, и
+`verify-contract-schema.php` держит это расхождение в `ACCEPTED_DRIFT`.
+
+Здесь суффикс снимается на границе ресурса, чтобы клиент не читал `event_title`
+из одного места, а `event_title_snapshot` из другого. Смысл снимка сохранён: в
+ответе те же самые значения, что и раньше, просто под именем контракта.
+
+**Оставшееся расхождение, записанное как исключение:** `OrderItem.id` — строка
+(`(string) $this->id`), потому что у `order_items` нет `public_id`. Инструмент
+печатает по `OrderItem` NOTE «contract exposes `id` on a table with no
+public_id» — как и по `CartItem`, `UserSession`, `UserRole` и двум таблицам
+переводов. Добавление `public_id` в `order_items` — отдельная работа со сменой
+схемы, а не побочный эффект правки формы.
+
+### 3.28.4 Что показала правка: тест, молча закреплявший неверную форму
+
+`OrderWritePathTest::test_a_customer_cannot_read_another_customers_order`
+проверял изоляцию через `assertJsonPath('data.total', 0)`. Этот путь ВСЕГДА был
+неверен: `total` живёт в `meta`, а в `data` он находился случайно — потому что
+`index()` отдавал сам пагинатор (`{"data":{"current_page":1,"data":[…],
+"total":0}}`). То есть тест изоляции проходил, читая поле вложенного пагинатора,
+и одновременно закреплял двойную вложенность `data`. После правки он упал, и
+это правильно: исправлено на `data` = `[]` + `meta.total` = 0.
+
+### 3.28.5 Что проверено исполнением
+
+| Проверка | Команда | Результат |
+|---|---|---|
+| Синтаксис | `php tools/lint.php` | 722 файла, 0 ошибок; неявно nullable параметров: 0 |
+| Ядро (без БД) | `php tests/run.php` | **708 тестов, 1736 утверждений, 0 падений** |
+| Feature-сьют | `php vendor/bin/phpunit` | **675 тестов, 2561 утверждение, 0 падений** |
+| Типы витрины | `node node_modules/vue-tsc/bin/vue-tsc.js --noEmit` | exit 0 |
+| Юнит-тесты фронта | `node node_modules/vitest/vitest.mjs run` | **20 файлов, 251 тест** |
+| Сборка витрины | `node node_modules/vite/bin/vite.js build` | OK |
+| Живое окружение | `php tools/verify-live.php` | exit 0 |
+| Остальные `verify-*` | 14 инструментов | все exit 0 |
+
+Новый `tests/Feature/Orders/OrderResponseContractTest.php` (5 тестов, 137
+утверждений) запирает форму на всех четырёх путях сразу: `GET /orders`,
+`GET /orders/{order}`, `GET /me/orders`, `POST /orders` (обе формы создания). Он
+проверяет и наличие полей схемы, и ОТСУТСТВИЕ внутренних идентификаторов
+(`user_id`, `organization_id`, `promo_code_id`, `cart_id`, `session_id`,
+`event_id`) — вторая половина важнее: «нет `user_id` в ответе» не проверяет
+никто, кроме такого теста.
+
+**Оговорка о среде.** `phpunit` прогнан с `NABILET_SEED_DEMO=false` (см. 3.26.8).
+Схема не менялась: **73 таблицы · 786 колонок · 47 CHECK · 101 FK · 88 UNIQUE ·
+3 триггера**.

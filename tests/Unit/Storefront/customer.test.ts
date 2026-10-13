@@ -138,23 +138,39 @@ describe('сохранённый профиль покупателя', () => {
 })
 
 describe('fetchMyOrders', () => {
-  it('читает колонки таблицы, как их отдаёт GET /me/orders', async () => {
+  /*
+   * ОДНА ФОРМА, А НЕ ДВЕ.
+   *
+   * Раньше здесь было два теста — «читает колонки таблицы» и «читает схему
+   * контракта» — потому что `GET /me/orders`, `GET /orders` и `POST /orders`
+   * сериализовали модель `Order` напрямую и отдавали КОЛОНКИ, тогда как схема
+   * `Order` контракта описывала `totals`, `id` = public_id и
+   * `items[].event_title` (`docs/REVIEW-spec-bundle.md` §3.27.4). Проверять
+   * «клиент читает обе формы» значило закреплять дефект в тестах.
+   *
+   * После правки ответ приводит `OrderResource` ровно к схеме, и запасной
+   * нормализации у `normalizeOrder()` нет намеренно: расхождение видно сразу,
+   * а не через молчаливо неправильную сумму в кабинете покупателя.
+   */
+  it('читает схему Order: id, totals, customer_*, items[].event_title', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async () =>
         jsonResponse({
           data: [
             {
-              id: 42,
-              public_id: '01HZZZZZZZZZZZZZZZZZZZZZZZ',
+              id: '01HZZZZZZZZZZZZZZZZZZZZZZZ',
               order_number: 'NB-20261013-ABCD1234',
               status: 'paid',
               payment_status: 'succeeded',
-              total_amount: 250000,
-              currency: 'RUB',
+              totals: { subtotal_amount: 250000, discount_amount: 0, fee_amount: 0, total_amount: 250000, currency: 'RUB' },
               customer_email: 'buyer@example.test',
+              customer_name: 'Иван Петров',
+              items: [
+                { id: '1', event_title: 'Концерт', quantity: 2, total_amount: 250000 },
+                { id: '2', event_title: 'Концерт', quantity: 2, total_amount: 250000 },
+              ],
               created_at: '2026-10-13T10:00:00+00:00',
-              items: [{ event_title_snapshot: 'Концерт' }, { event_title_snapshot: 'Концерт' }],
             },
           ],
         }),
@@ -168,36 +184,10 @@ describe('fetchMyOrders', () => {
     expect(order!.number).toBe('NB-20261013-ABCD1234')
     expect(order!.status).toBe('paid')
     expect(order!.totalMinor).toBe(250000)
+    expect(order!.currency).toBe('RUB')
     expect(order!.itemsCount).toBe(2)
     expect(order!.eventTitles).toEqual(['Концерт', 'Концерт'])
     expect(order!.email).toBe('buyer@example.test')
-  })
-
-  it('читает и схему контракта (id / totals / customer), если сервер вернёт её', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () =>
-        jsonResponse({
-          data: [
-            {
-              id: '01HZZZZZZZZZZZZZZZZZZZZZZZ',
-              order_number: 'NB-1',
-              status: 'awaiting_payment',
-              payment_status: 'pending',
-              totals: { total: 1000 },
-              customer_email: 'buyer@example.test',
-              items: [{ event_title: 'Спектакль' }],
-            },
-          ],
-        }),
-      ),
-    )
-
-    const [order] = await fetchMyOrders()
-
-    expect(order!.id).toBe('01HZZZZZZZZZZZZZZZZZZZZZZZ')
-    expect(order!.totalMinor).toBe(1000)
-    expect(order!.eventTitles).toEqual(['Спектакль'])
   })
 
   it('на пустом и неожиданном ответе отдаёт пустой список, а не падает', async () => {

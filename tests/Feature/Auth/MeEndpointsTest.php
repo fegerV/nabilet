@@ -82,12 +82,17 @@ class MeEndpointsTest extends TestCase
         return $this->app->make(SessionIssuer::class)->issue($userId);
     }
 
-    private function seedOrder(int $organizationId, ?int $userId, string $email = self::EMAIL, string $status = 'pending'): int
+    /**
+     * Заказ покупателя. Возвращает `public_id` — именно его отдаёт API
+     * (`OrderResource`), поэтому сравнивать с ответом надо этим значением.
+     */
+    private function seedOrder(int $organizationId, ?int $userId, string $email = self::EMAIL, string $status = 'pending'): string
     {
         $now = now()->toDateTimeString();
+        $publicId = (string) Str::ulid()->toBase32();
 
-        return (int) DB::table('orders')->insertGetId([
-            'public_id' => (string) Str::ulid()->toBase32(),
+        DB::table('orders')->insert([
+            'public_id' => $publicId,
             'order_number' => 'NB-20261013-' . strtoupper(Str::random(6)),
             'organization_id' => $organizationId,
             'user_id' => $userId,
@@ -100,6 +105,14 @@ class MeEndpointsTest extends TestCase
             'created_at' => $now,
             'updated_at' => $now,
         ]);
+
+        return $publicId;
+    }
+
+    /** Внутренний BIGINT заказа — только для посева зависимых сущностей. */
+    private function internalOrderId(string $publicId): int
+    {
+        return (int) DB::table('orders')->where('public_id', $publicId)->value('id');
     }
 
     /** Билет на заказ: то, что отдаёт `GET /my-tickets`. */
@@ -493,8 +506,13 @@ class MeEndpointsTest extends TestCase
         $userId = $this->accountWithoutPassword();
         $token = $this->tokenFor($userId);
 
-        $orderId = $this->seedOrder($organizationId, $userId, self::EMAIL, 'paid');
-        $ticketNumber = $this->seedTicket($orderId, $eventId, $sessionId, $inventoryItemId);
+        $orderPublicId = $this->seedOrder($organizationId, $userId, self::EMAIL, 'paid');
+        $ticketNumber = $this->seedTicket(
+            $this->internalOrderId($orderPublicId),
+            $eventId,
+            $sessionId,
+            $inventoryItemId,
+        );
 
         $response = $this->withToken($token)->getJson('/api/v1/my-tickets')->assertStatus(200);
 
@@ -521,8 +539,13 @@ class MeEndpointsTest extends TestCase
         [$organizationId, $eventId, $sessionId, $inventoryItemId] = $this->seedSellableSeat(available: 1);
 
         [, $otherId] = $this->registerAndLogin('other@example.com');
-        $otherOrderId = $this->seedOrder($organizationId, $otherId, 'other@example.com', 'paid');
-        $this->seedTicket($otherOrderId, $eventId, $sessionId, $inventoryItemId);
+        $otherOrderPublicId = $this->seedOrder($organizationId, $otherId, 'other@example.com', 'paid');
+        $this->seedTicket(
+            $this->internalOrderId($otherOrderPublicId),
+            $eventId,
+            $sessionId,
+            $inventoryItemId,
+        );
 
         $mineId = $this->accountWithoutPassword();
         $mineToken = $this->tokenFor($mineId);

@@ -13,6 +13,7 @@ use Nabilet\Modules\Cart\Services\CartCheckoutService;
 use Nabilet\Modules\Cart\Support\CartToken;
 use Nabilet\Modules\Notifications\Jobs\SendOrderNotificationJob;
 use Nabilet\Modules\Orders\Http\Requests\StoreOrderRequest;
+use Nabilet\Modules\Orders\Http\Resources\OrderResource;
 use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Orders\Services\OrderService;
 use Nabilet\Modules\Orders\StateMachines\OrderStateMachine;
@@ -61,8 +62,14 @@ class OrderController extends Controller
 
         $orders = $this->orderService->paginate($filters, $perPage);
 
+        // `data` — СПИСОК заказов, а не объект пагинатора: схема
+        // `OrderListResponse` объявляет `data: array<Order>` + `meta`. До правки
+        // сюда подставлялся сам пагинатор, и список оказывался на два уровня
+        // глубже обещанного (`data.data[]`), а каждый заказ уходил СЫРЫМИ
+        // КОЛОНКАМИ таблицы — с внутренними BIGINT и без полей схемы `Order`.
+        // Тот же приём, что в `mine()` ниже: одна форма списка на два пути.
         return response()->json([
-            'data' => $orders,
+            'data' => OrderResource::collection($orders->items())->resolve($request),
             'meta' => [
                 'current_page' => $orders->currentPage(),
                 'per_page' => $orders->perPage(),
@@ -76,9 +83,13 @@ class OrderController extends Controller
     {
         $this->assertCanSee($request, $order);
 
+        // Связи грузятся для других нужд (права, уведомления), но в ответ идёт
+        // только схема `Order` — `payments`/`tickets`/`user` в неё не входят и
+        // наружу не выносятся: `user` — это PII сотрудника, а `payments` клиент
+        // читает своим ресурсом через `GET /payments`.
         $order->load(['items', 'payments', 'tickets', 'user']);
 
-        return response()->json(['data' => $order]);
+        return response()->json(['data' => new OrderResource($order)]);
     }
 
     /**
@@ -108,10 +119,9 @@ class OrderController extends Controller
         // придирка к форме: `response()->json(['data' => $paginator])` отдаёт
         // `{"data":{"current_page":1,"data":[…]}}` — список заказов оказывается
         // на два уровня глубже, чем обещает контракт, и клиент, читающий
-        // `data[0].id`, получает `undefined`. `index()` выше всё ещё отдаёт
-        // пагинатор целиком; здесь форма взята по спеке.
+        // `data[0].id`, получает `undefined`.
         return response()->json([
-            'data' => $orders->items(),
+            'data' => OrderResource::collection($orders->items())->resolve($request),
             'meta' => [
                 'current_page' => $orders->currentPage(),
                 'per_page' => $orders->perPage(),
@@ -148,9 +158,19 @@ class OrderController extends Controller
                 $request->user()?->getKey(),
             );
 
-            return response()->json([
-                'data' => $result,
-            ], 201);
+            // Контракт `createOrder` отвечает `OrderResponse` (`data: Order`), а
+            // не сводкой оформления. Раньше сюда подставлялся результат
+            // `checkoutByPublicId()` (`{cart_id, order_id, items, …}`) — форму
+            // понимает витринный `POST /cart/checkout`, но не спека: в ней нет
+            // ни `totals`, ни `items[].event_title`, а `order_id` — это тот же
+            // `public_id` под другим именем. Заказ уже создан в транзакции,
+            // поэтому читаем его и отдаём его ресурсом.
+            $order = Order::query()
+                ->with('items')
+                ->where('public_id', (string) $result['order_id'])
+                ->firstOrFail();
+
+            return response()->json(['data' => new OrderResource($order)], 201);
         }
 
         // `user_id` приходит от клиента и раньше записывался как есть — заказ
@@ -166,7 +186,7 @@ class OrderController extends Controller
         $order = $this->orderService->createOrder($data);
 
         return response()->json([
-            'data' => $order->fresh(),
+            'data' => new OrderResource($order->fresh()->load('items')),
         ], 201);
     }
 
@@ -178,7 +198,7 @@ class OrderController extends Controller
 
         $order = $this->orderService->cancelOrder($order);
 
-        return response()->json(['data' => $order]);
+        return response()->json(['data' => new OrderResource($order->load('items'))]);
     }
 
     /**
@@ -223,7 +243,7 @@ class OrderController extends Controller
         }
 
         return response()->json([
-            'data' => $order->fresh()->load(['payments.refunds', 'tickets']),
+            'data' => new OrderResource($order->fresh()->load('items')),
         ]);
     }
 
