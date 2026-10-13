@@ -2694,6 +2694,7 @@ components:
         payment_status: { type: string }
         totals: { $ref: '#/components/schemas/MoneyTotals' }
         customer_email: { type: string, format: email }
+        customer_name: { type: string, nullable: true }
         customer_phone: { type: string, nullable: true }
         created_at: { type: string, format: date-time }
         paid_at: { type: string, format: date-time, nullable: true }

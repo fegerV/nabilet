@@ -92,16 +92,26 @@ class OrderFromCartSpecFormTest extends TestCase
             ])
             ->assertStatus(201);
 
-        $this->assertSame($publicId, $response->json('data.cart_id') !== null ? $publicId : null);
-        $this->assertNotEmpty($response->json('data.order_id'));
+        // Ответ — `OrderResponse` (`data: Order`), а не сводка оформления:
+        // `id` это `public_id` заказа, суммы лежат в `totals`, позиции несут
+        // `event_title`/`quantity`. Раньше здесь уходил результат
+        // `checkoutByPublicId()` (`{cart_id, order_id, items}`) — форму, которой
+        // нет в спеке (см. `OrderController::store()`).
+        $this->assertNotEmpty($response->json('data.id'));
         $this->assertSame(2, (int) $response->json('data.items.0.quantity'));
+        // `totals.total_amount` — две позиции по одной цене места.
+        $this->assertSame(2 * self::PRICE, (int) $response->json('data.totals.total_amount'));
+        // Скидки нет: промокод в теле не передан.
+        $this->assertSame(0, (int) $response->json('data.totals.discount_amount'));
+        $this->assertSame(self::PRICE, (int) $response->json('data.items.0.unit_price'));
+        $this->assertSame('buyer@example.com', $response->json('data.customer_email'));
 
         // Заказ реально появился: заказ из корзины — не только про ответ.
-        $orderId = $response->json('data.order_id');
+        $orderId = $response->json('data.id');
 
         $this->withToken($token)->getJson('/api/v1/orders')
             ->assertStatus(200)
-            ->assertJsonFragment(['public_id' => $orderId]);
+            ->assertJsonFragment(['id' => $orderId]);
     }
 
     public function test_the_spec_form_rejects_a_cart_of_another_buyer(): void
