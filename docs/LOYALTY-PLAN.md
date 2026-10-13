@@ -17,14 +17,18 @@
 | Email-уведомления | ✅ `Notifications`: шаблоны в БД, `SendOrderNotificationJob`, `OrderObserver` |
 | Telegram | ⚠️ модуль `app/Modules/Telegram` — ЗАГЛУШКА (`TelegramServiceProvider` без кода) |
 | Избранное/подписки | ✅ фаза 1: `018_loyalty_foundation.sql`, 6 маршрутов `/me/*`, письма подписчикам, витрина |
-| Бонусы (счёт и журнал) | 🟡 фаза 2a: схема `019_bonus_ledger.sql` есть; сервисы, API и списание — в работе |
+| Бонусы (счёт и журнал) | ✅ фаза 2a: схема `019_bonus_ledger.sql`, начисление (`BonusPolicy`/`BonusService`/`OrderBonusObserver`), API баланса и журнала (`GET /me/bonus`, `GET /me/bonus/transactions`); списание в чекауте — фаза 2b |
 | Рефералка | ❌ таблиц нет — фаза 4 этого плана |
 
 ## Архитектурные факты, на которых держится план
 
 - **Точка выдачи бонусов** — `app/Modules/Orders/Services/OrderService.php:174` `markPaid()`:
   единственное место, где заказ становится `status=paid` (зовётся из
-  `PaymentService::handlePaymentSucceeded()` → `applyPayment()`).
+  `PaymentService::handlePaymentSucceeded()` → `applyPayment()`). Начисление
+  подписано НЕ на `markPaid()`, а на `Order::updated()` (`OrderBonusObserver`):
+  `paid` приходит и из других мест, и вызов из каждого значил бы гарантированно
+  забыть один. Обсервер — это второй наблюдатель на ту же модель
+  (`OrderObserver` модуля Orders остаётся первым).
 - **Точка списания/скидки** — `app/Modules/Cart/Services/CartCheckoutService.php:336-343`:
   единственное место финализации сумм заказа (`OrderTotals::of()`, CHECK
   `ck_orders_amounts`).
@@ -107,8 +111,8 @@
 | Пункт плана | Состояние |
 |---|---|
 | Спека `019_bonus_ledger.sql` + Laravel-зеркало | ✅ `6aa74257` — `bonus_accounts` (+`CHECK balance >= 0`), append-only `bonus_transactions`, `orders.bonus_amount`, переизданный `ck_orders_amounts`; обе сборки применились на MySQL 8.4 побайтово одинаково (78 таблиц / 825 колонок / 113 FK / 98 UNIQUE / 50 CHECK) |
-| Domain: `BonusPolicy` (5%, cap 30%, 12 мес) + идемпотентное начисление | ⏳ |
-| API: баланс и история движений (`/me/*`) + обе копии OpenAPI | ⏳ |
+| Domain: `BonusPolicy` (5%, cap 30%, 12 мес) + идемпотентное начисление | ✅ — `Domain/BonusPolicy` + `Domain/BonusReason` (словарь зеркалит CHECK), `BonusAccount`/`BonusTransaction`, `BonusService::accrueForOrder()` (единственный писатель баланса, идемпотентность по `dedupe_key = accrual:{order_id}`), `AccrueOrderBonusJob` (`afterCommit`, `tries=3`), `OrderBonusObserver` — второй наблюдатель на `Order`, чтобы модуль Orders не знал о бонусах. Юнит `BonusPolicyTest` (20 тестов) + `BonusAccrualTest` (22 теста: момент начисления, повтор, гость, нулевой заказ, от итога, а не от subtotal, инварианты БД) |
+| API: баланс и история движений (`/me/*`) + обе копии OpenAPI | ✅ — `GET /api/v1/me/bonus` (`BonusBalance`: `balance` в минорных единицах + `bonuses` по курсу 100, ноль при отсутствии счёта) и `GET /api/v1/me/bonus/transactions` (append-only журнал, `data`-список + `meta`, `order_id` = `orders.public_id`). Обе копии OpenAPI (111 операций / 110 схем, `verify-spec-parity` PASS), `BonusApiTest` (10 тестов) |
 | Списание в чекауте (`CartCheckoutService`, `OrderTotals::of()`) | ⏳ фаза 2b |
 | Витрина/кабинет: баланс, применение в чекауте, история | ⏳ |
 | Гейты фазы 2 | ⏳ |

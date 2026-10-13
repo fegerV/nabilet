@@ -27,8 +27,8 @@
 |---|---|---|
 | Схема БД | 78 таблиц · 825 колонок · 339 ограничений · 50 CHECK · 1 триггер | Загрузка DDL в MySQL 8.4.11, сверка через `information_schema` |
 | Эквивалентность DDL | консолидированный файл ≡ сплит `001..019` | Обе загрузки дали идентичные счётчики |
-| Контракт API | 90 путей · 109 операций · 106 схем · 29 параметров · 8 ответов — обе копии | `tools/verify-openapi.php` — 11/11, паритет наборов `tools/verify-spec-parity.php` |
-| Ядро `app/Core` | 25 файлов: хуки (73 события), деньги, state machines, тенантность, конверт ошибок §66, QR-подпись | `tests/run.php` — 708 тестов / 1736 утверждений / 0 падений |
+| Контракт API | 92 путей · 111 операций · 110 схем · 29 параметров · 8 ответов — обе копии | `tools/verify-openapi.php` — 11/11, паритет наборов `tools/verify-spec-parity.php` |
+| Ядро `app/Core` | 25 файлов: хуки (73 события), деньги, state machines, тенантность, конверт ошибок §66, QR-подпись | `tests/run.php` — 728 тестов / 1766 утверждений / 0 падений |
 | HTTP-ядро | Все 7 middleware, на которые ссылается `bootstrap/app.php` (request-id, tenancy, security headers, JSON, locale, permission, idempotency), плюс `NabiletServiceProvider` | Классы существуют; ни одна ссылка в `bootstrap/app.php` не висит впустую |
 | Граф модулей | 31 объявлено, 28 включено, зависимости валидны | `tools/modules.php --validate` |
 | `bootstrap/app.php` | Порядок middleware расписан явно: `request-id → tenancy → auth → idempotency` | Чтение файла; порядок обоснован в комментариях |
