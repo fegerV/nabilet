@@ -59,6 +59,17 @@
 - Гейты: unit-тесты на Domain/уведомления, feature-тесты на `/me/*` и идемпотентность,
   сплит + зеркало + knownExtensions, обе копии OpenAPI + `verify-spec-parity`.
 
+**Статус фазы 1** (обновляется по мере выполнения):
+
+| Пункт плана | Состояние |
+|---|---|
+| Модуль `app/Modules/Loyalty` (+ `module.json`) | ✅ `31531aa6` — модели, сервисы, контроллеры, ресурсы, 6 маршрутов |
+| Спека `018_loyalty_foundation.sql` + Laravel-зеркало | ✅ `31531aa6` — обе сборки применились на MySQL 8.4, счётчики в CI и верификаторах |
+| API под `auth:api` (6 путей `/me/*`) | ✅ `31531aa6` — обе копии OpenAPI, `verify-spec-parity` |
+| Письма подписчикам (новый сеанс / открытие продаж) | ✅ `82f9bb61` — `SessionObserver` → `NotifyFollowersOfNewSessionJob`, шаблоны `follow.new_session` / `follow.sales_open`, журнал `follow_notifications` как защита от повтора |
+| Витрина: ❤️ на `EventCard`, «🔔 Следить», экраны кабинета | ⏳ не начато (SPA) |
+| Гейты | ✅ 706 phpunit (2696 утверждений), lint, tests/run.php, верификаторы, live-база |
+
 ### Фаза 2 — «Бонусный счёт» (деньги)
 
 Ядро концепции. Ключевое контрактное решение: добавить в `MoneyTotals` поле
