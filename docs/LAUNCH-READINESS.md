@@ -27,7 +27,7 @@
 |---|---|---|
 | Схема БД | 76 таблиц · 809 колонок · 328 ограничений · 48 CHECK · 1 триггер | Загрузка DDL в MySQL 8.4.11, сверка через `information_schema` |
 | Эквивалентность DDL | консолидированный файл ≡ сплит `001..018` | Обе загрузки дали идентичные счётчики |
-| Контракт API | 86 путей · 103 операции · 101 схема · 28 параметров · 8 ответов — обе копии | `tools/verify-openapi.php` — 11/11, паритет наборов `tools/verify-spec-parity.php` |
+| Контракт API | 90 путей · 109 операций · 106 схем · 29 параметров · 8 ответов — обе копии | `tools/verify-openapi.php` — 11/11, паритет наборов `tools/verify-spec-parity.php` |
 | Ядро `app/Core` | 25 файлов: хуки (73 события), деньги, state machines, тенантность, конверт ошибок §66, QR-подпись | `tests/run.php` — 708 тестов / 1736 утверждений / 0 падений |
 | HTTP-ядро | Все 7 middleware, на которые ссылается `bootstrap/app.php` (request-id, tenancy, security headers, JSON, locale, permission, idempotency), плюс `NabiletServiceProvider` | Классы существуют; ни одна ссылка в `bootstrap/app.php` не висит впустую |
 | Граф модулей | 31 объявлено, 28 включено, зависимости валидны | `tools/modules.php --validate` |

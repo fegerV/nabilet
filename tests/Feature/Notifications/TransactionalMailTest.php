@@ -8,6 +8,7 @@ use App\Models\Notification;
 use App\Models\NotificationTemplate;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
+use Nabilet\Modules\Loyalty\Support\FollowNotificationCodes;
 use Nabilet\Modules\Notifications\Mail\TemplateMail;
 use Nabilet\Modules\Notifications\Services\TransactionalMailService;
 use Nabilet\Modules\Notifications\Support\AccountNotificationCodes;
@@ -42,7 +43,10 @@ class TransactionalMailTest extends TestCase
             ],
         );
 
-        self::assertTrue($sent);
+        // Возвращается запись транспорта, а не `bool`: вызывающий связывает с
+        // ней свой журнал (`follow_notifications.notification_id`).
+        self::assertInstanceOf(Notification::class, $sent);
+        self::assertSame('sent', $sent->status);
 
         Mail::assertSent(TemplateMail::class, function (TemplateMail $mail): bool {
             return $mail->subjectLine === 'Заказ NB-20261007-0001 оплачен'
@@ -73,7 +77,7 @@ class TransactionalMailTest extends TestCase
             'active' => false,
         ]);
 
-        self::assertFalse(app(TransactionalMailService::class)->send(
+        self::assertNull(app(TransactionalMailService::class)->send(
             'order.cancelled',
             'buyer@example.test',
             [],
@@ -88,12 +92,14 @@ class TransactionalMailTest extends TestCase
         $this->seed(\Database\Seeders\NotificationTemplateSeeder::class);
 
         // Считаем не константой, а по списку кодов: сид обязан поставить ровно
-        // один шаблон на каждый код заказа плюс письма о доступе к аккаунту.
+        // один шаблон на каждый код заказа, плюс письма о доступе к аккаунту,
+        // плюс письма подписчикам о сеансах.
         // Число, вбитое руками, приходилось бы править при каждом новом письме
         // (так и случилось при добавлении `order.reminder`), и тест падал бы не
         // на дефекте, а на расхождении счётчика.
         $expected = count(OrderNotificationCodes::all())
-            + count(AccountNotificationCodes::all());
+            + count(AccountNotificationCodes::all())
+            + count(FollowNotificationCodes::all());
 
         self::assertSame($expected, NotificationTemplate::query()->where('channel', 'email')->count());
 

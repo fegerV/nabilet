@@ -90,6 +90,13 @@ $moduleRoutes = [
     // контракта отвечали 404, а колонка под токен устройства не имела ни
     // писателя, ни читателя. Подробности — в шапке файла маршрутов модуля.
     __DIR__ . '/../app/Modules/Checkin/routes/api.php',
+    // Клуб зрителей, фаза 1 (`docs/LOYALTY-PLAN.md`): избранное и подписки
+    // покупателя — `/me/favorites`, `/me/events/{event}/favorite`,
+    // `/me/follows`, `/me/events/{event}/follow`. Весь префикс под `auth:api`:
+    // без аккаунта избранное негде хранить. Файл обязан быть подключён здесь —
+    // `loadRoutesFrom()` из провайдера зарегистрировал бы те же пути в корне,
+    // вне /api/v1 и его middleware.
+    __DIR__ . '/../app/Modules/Loyalty/routes/api.php',
 ];
 
 foreach ($moduleRoutes as $routeFile) {

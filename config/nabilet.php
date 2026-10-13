@@ -60,6 +60,9 @@ return [
         'hall_schemas' => \Nabilet\Modules\HallSchemas\Providers\HallSchemasServiceProvider::class,
         'heatmaps' => \Nabilet\Modules\Heatmaps\Providers\HeatmapsServiceProvider::class,
         'installer' => \Nabilet\Modules\Installer\Providers\InstallerServiceProvider::class,
+        // Клуб зрителей: избранное и подписки покупателя (docs/LOYALTY-PLAN.md,
+        // фаза 1). Между installer и localization по приоритету модуля (140).
+        'loyalty' => \Nabilet\Modules\Loyalty\Providers\LoyaltyServiceProvider::class,
         'localization' => \Nabilet\Modules\Localization\Providers\LocalizationServiceProvider::class,
         'media' => \Nabilet\Modules\Media\Providers\MediaServiceProvider::class,
         'notifications' => \Nabilet\Modules\Notifications\Providers\NotificationsServiceProvider::class,

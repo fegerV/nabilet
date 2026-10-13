@@ -6,6 +6,7 @@ namespace Database\Seeders;
 
 use App\Models\NotificationTemplate;
 use Illuminate\Database\Seeder;
+use Nabilet\Modules\Loyalty\Support\FollowNotificationCodes;
 use Nabilet\Modules\Notifications\Support\AccountNotificationCodes;
 use Nabilet\Modules\Notifications\Support\OrderNotificationCodes;
 use RuntimeException;
@@ -41,9 +42,13 @@ final class NotificationTemplateSeeder extends Seeder
      */
     public function run(): void
     {
-        $templates = array_merge($this->orderTemplates(), $this->accountTemplates());
+        $templates = array_merge(
+            $this->orderTemplates(),
+            $this->accountTemplates(),
+            $this->followTemplates(),
+        );
 
-        // Сид и обсервер обязаны знать один и тот же набор кодов ЗАКАЗА. Если
+        // Сид и рассылка обязаны знать один и тот же набор кодов ЗАКАЗА. Если
         // здесь появится шаблон заказа, которого нет в OrderNotificationCodes
         // (или наоборот), сид падает — расхождение должно быть видно сразу, а не
         // по отсутствию писем на проде.
@@ -51,22 +56,11 @@ final class NotificationTemplateSeeder extends Seeder
         // Сверяются только коды `order.*`: письма о доступе к аккаунту не
         // приходят от обсервера заказа, у них свой список
         // (`AccountNotificationCodes`), и добавлять их в проверку значило бы
-        // сравнивать два разных набора.
-        $seededOrders = array_values(array_filter(
-            array_column($templates, 'code'),
-            static fn (string $code): bool => str_starts_with($code, 'order.'),
-        ));
-        $expected = OrderNotificationCodes::all();
-        sort($seededOrders);
-        sort($expected);
-
-        if ($seededOrders !== $expected) {
-            throw new RuntimeException(sprintf(
-                'Расхождение кодов шаблонов заказов: в сиде [%s], в OrderNotificationCodes [%s].',
-                implode(', ', $seededOrders),
-                implode(', ', $expected),
-            ));
-        }
+        // сравнивать два разных набора. Теперь наборов три, и проверка крутится
+        // по каждому: `follow.*` сверяется с `FollowNotificationCodes` — оттуда
+        // их берёт `SessionObserver`.
+        $this->assertCodesMatch('order.', $templates, OrderNotificationCodes::all());
+        $this->assertCodesMatch('follow.', $templates, FollowNotificationCodes::all());
 
         foreach ($templates as $template) {
             $existing = NotificationTemplate::query()
@@ -90,6 +84,37 @@ final class NotificationTemplateSeeder extends Seeder
             $this->command?->getOutput()->writeln(
                 sprintf('  Шаблон %s уже существует — оставлен без изменений.', $template['code'])
             );
+        }
+    }
+
+    /**
+     * Набор кодов одного вида писем в сиде и в том списке, которым пользуется
+     * рассылка, обязан совпадать.
+     *
+     * Именно набор кодов, а не их число: пропущенный код («шаблона нет») и лишний
+     * («письмо не уйдёт никогда») — разные поломки, и обе должны быть видны в
+     * одном сообщении.
+     *
+     * @param  list<array{code: string, ...}>  $templates
+     * @param  list<string>  $expected
+     */
+    private function assertCodesMatch(string $prefix, array $templates, array $expected): void
+    {
+        $seeded = array_values(array_filter(
+            array_column($templates, 'code'),
+            static fn (string $code): bool => str_starts_with($code, $prefix),
+        ));
+        sort($seeded);
+        $codes = $expected;
+        sort($codes);
+
+        if ($seeded !== $codes) {
+            throw new RuntimeException(sprintf(
+                'Расхождение кодов шаблонов "%s*": в сиде [%s], в рассылке [%s].',
+                rtrim($prefix, '.'),
+                implode(', ', $seeded),
+                implode(', ', $codes),
+            ));
         }
     }
 
@@ -269,6 +294,104 @@ final class NotificationTemplateSeeder extends Seeder
                     . "Ссылка действует {{expires_in_minutes}} минут.\n"
                     . "Если вы не регистрировались, проигнорируйте это письмо.\n",
             ),
+        ];
+    }
+
+    /**
+     * Письма подписчикам о сеансах («клуб зрителей», фаза 1).
+     *
+     * Поводов два и коды берутся из `FollowNotificationCodes` — того же списка,
+     * которым пользуется `SessionObserver`. Переменные общие для обоих писем:
+     * `sales_note` — готовая фраза о состоянии продаж, поэтому шаблону не
+     * нужны условия.
+     *
+     * Вёрстка нарочно проще заказной: ни билетов, ни сумм, ни кнопки-ссылки —
+     * «не пропусти» письмо должно открываться на любом клиенте и не требовать
+     * от читателя ничего, кроме даты.
+     *
+     * @return list<array{code: string, subject: string, body_html: string, body_text: string}>
+     */
+    private function followTemplates(): array
+    {
+        return [
+            $this->followTemplate(
+                code: FollowNotificationCodes::NEW_SESSION,
+                subject: 'Новый сеанс: {{event_name}}',
+                intro: 'Здравствуйте, {{customer_name}}!',
+                body: 'На мероприятие <b>{{event_name}}</b>, которое вы отслеживаете,'
+                    . ' добавлен новый сеанс.',
+                text: "Здравствуйте, {{customer_name}}!\n\n"
+                    . "На мероприятие {{event_name}}, которое вы отслеживаете, добавлен новый сеанс.\n\n"
+                    . "Дата: {{event_date}}\n"
+                    . "Место проведения: {{venue_name}}\n"
+                    . "{{sales_note}}\n\n"
+                    . "Страница мероприятия: {{action_url}}\n\n"
+                    . "Это письмо пришло по вашей подписке на мероприятие. Отключить уведомления"
+                    . " можно на странице мероприятия, кнопкой «Следить».\n",
+            ),
+            $this->followTemplate(
+                code: FollowNotificationCodes::SALES_OPEN,
+                subject: 'Продажи открыты: {{event_name}}',
+                intro: 'Здравствуйте, {{customer_name}}!',
+                body: 'На сеанс <b>{{event_name}}</b> — {{event_date}} — открылась'
+                    . ' продажа билетов.',
+                text: "Здравствуйте, {{customer_name}}!\n\n"
+                    . "На сеанс {{event_name}} — {{event_date}} — открылась продажа билетов.\n\n"
+                    . "Место проведения: {{venue_name}}\n"
+                    . "{{sales_note}}\n\n"
+                    . "Страница мероприятия: {{action_url}}\n\n"
+                    . "Это письмо пришло по вашей подписке на мероприятие. Отключить уведомления"
+                    . " можно на странице мероприятия, кнопкой «Следить».\n",
+            ),
+        ];
+    }
+
+    /**
+     * Собрать запись шаблона письма подписчику.
+     *
+     * Ссылка на мероприятие идёт обычным текстом, а не кнопкой: у письма нет
+     * секрета, ради которого нужна большая кнопка, зато `action_url` может
+     * оказаться пустым (мероприятие без слага), а пустой `href` — это кнопка,
+     * ведущая в текущую страницу. Видимый адрес в этом случае честно показывает,
+     * что ссылки нет.
+     *
+     * @return array{code: string, subject: string, body_html: string, body_text: string}
+     */
+    private function followTemplate(
+        string $code,
+        string $subject,
+        string $intro,
+        string $body,
+        string $text,
+    ): array {
+        $details = '<table role="presentation" cellpadding="0" cellspacing="0" border="0"'
+            . ' style="width:100%;margin:16px 0;font-size:14px;color:#374151;">'
+            . '<tr><td style="padding:4px 0;color:#6b7280;">Мероприятие</td>'
+            . '<td style="padding:4px 0;text-align:right;font-weight:600;">{{event_name}}</td></tr>'
+            . '<tr><td style="padding:4px 0;color:#6b7280;">Дата</td>'
+            . '<td style="padding:4px 0;text-align:right;">{{event_date}}</td></tr>'
+            . '<tr><td style="padding:4px 0;color:#6b7280;">Место проведения</td>'
+            . '<td style="padding:4px 0;text-align:right;">{{venue_name}}</td></tr>'
+            . '</table>';
+
+        $link = '<p style="margin:0 0 16px;font-size:14px;line-height:1.5;word-break:break-all;">'
+            . '<a href="{{action_url}}" target="_blank" rel="noopener"'
+            . ' style="color:#4f46e5;">{{action_url}}</a></p>';
+
+        $html = '<div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,'
+            . 'sans-serif;max-width:600px;margin:0 auto;color:#111827;">'
+            . '<p style="margin:0 0 12px;">' . $intro . '</p>'
+            . '<p style="margin:0 0 16px;line-height:1.5;">' . $body . '</p>'
+            . $details
+            . '<p style="margin:0 0 16px;font-size:14px;line-height:1.5;color:#4b5563;">{{sales_note}}</p>'
+            . $link
+            . '</div>';
+
+        return [
+            'code' => $code,
+            'subject' => $subject,
+            'body_html' => $html,
+            'body_text' => $text,
         ];
     }
 
