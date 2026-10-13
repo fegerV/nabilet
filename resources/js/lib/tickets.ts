@@ -75,7 +75,10 @@ export async function fetchMyTickets(): Promise<TicketCard[]> {
 export async function resendTicket(orderId: number | string, email?: string): Promise<string> {
   const trimmed = (email ?? '').trim()
   const res = await send<{ sent: boolean; email: string }>('/my-tickets/resend', 'POST', {
-    order: Number(orderId),
+    // Заказ адресуется публичным `public_id` из `orderId`, а не внутренним id.
+    // Витрина всегда передаёт строку (`String(t.orderId)` в TicketsPage), поэтому
+    // отправляем как есть — иначе `Number(public_id)` дал бы NaN.
+    order: String(orderId),
     // Пустая строка = «адрес не меняем»: сервер сам решит, что слать некуда
     // не нужно и отправит на сохранённый.
     ...(trimmed !== '' ? { email: trimmed } : {}),

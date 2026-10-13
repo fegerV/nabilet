@@ -275,12 +275,14 @@ class OrderController extends Controller
     public function resendTicket(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            // `bail`/`integer` guard the BIGINT cast — тот же приём, что в index().
-            'order' => ['bail', 'required', 'integer'],
+            // Заказ адресуется публичным `public_id` (строка), не внутренним
+            // BIGINT: витрина берёт его из `orderId` в `GET /my-tickets` и
+            // отправляет обратно (§3.26.7 переносим оба на `public_id`).
+            'order' => ['bail', 'required', 'string'],
             'email' => ['nullable', 'email:rfc', 'max:255'],
         ]);
 
-        $order = Order::query()->find((int) $validated['order']);
+        $order = Order::query()->where('public_id', (string) $validated['order'])->first();
 
         if ($order === null || ! $this->holdsRequestAccess($request, $order)) {
             throw new NotFoundError('Order', (string) $validated['order']);
