@@ -2089,6 +2089,43 @@ paths:
         '422': { $ref: '#/components/responses/ValidationError' }
         '429': { $ref: '#/components/responses/RateLimited' }
 
+  /api/v1/cart/extend:
+    post:
+      tags: [Cart]
+      summary: Extend the active guest-cart hold
+      description: >-
+        Extends an unexpired, non-empty cart and its active seat holds by the
+        configured checkout hold duration. A cart that has expired cannot be
+        revived, because its inventory may already have been released.
+      operationId: extendGuestCartHold
+      parameters:
+        - $ref: '#/components/parameters/CartToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [session_id]
+              properties:
+                session_id: { type: integer, minimum: 1 }
+      responses:
+        '200':
+          description: Hold extended
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [expires_at]
+                    properties:
+                      expires_at: { type: string, format: date-time }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -2236,6 +2273,12 @@ components:
       required: true
       schema: { type: string }
 
+    CartToken:
+      in: header
+      name: X-Cart-Token
+      required: true
+      description: High-entropy guest cart capability issued to this browser.
+      schema: { type: string, minLength: 32, maxLength: 64 }
     CartTokenOptional:
       in: header
       name: X-Cart-Token
