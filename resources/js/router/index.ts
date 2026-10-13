@@ -45,6 +45,27 @@ const routes: RouteRecordRaw[] = [
       { path: 'tickets', name: 'tickets', component: () => import('@/pages/storefront/TicketsPage.vue'), meta: { title: 'Мои билеты' } },
 
       /*
+       * «Клуб зрителей», фаза 1: избранное и подписки.
+       *
+       * Отдельные маршруты, а не разделы кабинета: избранное открывают «просто
+       * посмотреть», мимо профиля и пароля. Оба экрана доступны только с
+       * аккаунтом — `/me/*` иначе ответит 401, а guard уведёт на вход с
+       * возвратом сюда (`?redirect=/favorites`).
+       */
+      {
+        path: 'favorites',
+        name: 'favorites',
+        component: () => import('@/pages/storefront/FavoritesPage.vue'),
+        meta: { title: 'Избранное', requiresCustomer: true },
+      },
+      {
+        path: 'subscriptions',
+        name: 'subscriptions',
+        component: () => import('@/pages/storefront/SubscriptionsPage.vue'),
+        meta: { title: 'Подписки', requiresCustomer: true },
+      },
+
+      /*
        * Кабинет покупателя. Живёт на витрине, а не в админке: это та же
        * оболочка с шапкой и корзиной, потому что покупатель приходит сюда за
        * билетами, а не «работать». Пути намеренно без префикса (`/login`, а не

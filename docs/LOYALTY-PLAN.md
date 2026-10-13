@@ -67,8 +67,8 @@
 | Спека `018_loyalty_foundation.sql` + Laravel-зеркало | ✅ `31531aa6` — обе сборки применились на MySQL 8.4, счётчики в CI и верификаторах |
 | API под `auth:api` (6 путей `/me/*`) | ✅ `31531aa6` — обе копии OpenAPI, `verify-spec-parity` |
 | Письма подписчикам (новый сеанс / открытие продаж) | ✅ `82f9bb61` — `SessionObserver` → `NotifyFollowersOfNewSessionJob`, шаблоны `follow.new_session` / `follow.sales_open`, журнал `follow_notifications` как защита от повтора |
-| Витрина: ❤️ на `EventCard`, «🔔 Следить», экраны кабинета | ⏳ не начато (SPA) |
-| Гейты | ✅ 706 phpunit (2696 утверждений), lint, tests/run.php, верификаторы, live-база |
+| Витрина: ❤️ на `EventCard`, «🔔 Следить», экраны кабинета | ✅ SPA — `lib/loyalty.ts` + `stores/loyalty.ts`, ♡ на карточке афиши, «♡»/«🔔 Следить» на странице мероприятия, маршруты `/favorites` и `/subscriptions`, раздел «Клуб зрителей» в кабинете |
+| Гейты | ✅ 706 phpunit (2696 утверждений), 279 vitest (22 файла), lint, tests/run.php, 13 верификаторов, live-база |
 
 ### Фаза 2 — «Бонусный счёт» (деньги)
 

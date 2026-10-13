@@ -43,6 +43,13 @@ export type Tone = 'neutral' | 'brand' | 'accent' | 'sun' | 'mint' | 'rose' | 's
 
 export interface EventCard {
   id: string
+  /**
+   * `events.public_id` (ULID) — адрес мероприятия в `/me/*` («♡ Избранное»,
+   * «🔔 Подписки»). Внутренний `id` сервер тоже отдаёт, но
+   * `LoyaltyController::resolveEvent()` ищет событие только по `public_id`,
+   * поэтому все обращения к API лояльности идут по нему.
+   */
+  public_id?: string
   slug?: string
   title: string
   subtitle?: string

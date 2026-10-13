@@ -16,6 +16,7 @@ import { useUiStore } from '@/stores/ui'
 import { useCartStore } from '@/stores/cart'
 import { useStorefrontStore } from '@/stores/storefront'
 import { customerUser, isCustomerSession } from '@/lib/customer'
+import { useLoyaltyStore } from '@/stores/loyalty'
 
 const ui = useUiStore()
 const cart = useCartStore()
@@ -34,12 +35,28 @@ const cartCount = computed(() => cart.ticketsCount)
  */
 const account = ref({ authed: false, label: '' })
 
+/**
+ * «Клуб зрителей»: отметки «♡»/«🔔» на витрине.
+ *
+ * Грузятся здесь, а не в компонентах: сердце на карточке афиши и кнопка на
+ * странице события спрашивают одно и то же состояние, и десять карточек не
+ * должны делать десять запросов к `/me/favorites`. `load()` сам не ходит в
+ * сеть без аккаунта и не повторяется при навигации.
+ *
+ * Выход гасит отметки: иначе после смены аккаунта в том же браузере чужой
+ * список ещё мигал бы «♥» до первой перезагрузки.
+ */
+const loyalty = useLoyaltyStore()
+
 function refreshAccount(): void {
   const authed = isCustomerSession()
   const user = customerUser()
   const name = [user?.first_name, user?.last_name].filter(Boolean).join(' ').trim()
 
   account.value = { authed, label: name || user?.email || '' }
+
+  if (authed) void loyalty.load()
+  else loyalty.reset()
 }
 
 watch(() => route.fullPath, refreshAccount, { immediate: true })
