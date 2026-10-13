@@ -41,7 +41,7 @@ class TicketCardResource extends JsonResource
             'status' => $ticket->status,
             'qrPayload' => $ticket->status === 'issued' ? $ticket->qr_payload : null,
             'holder' => $ticket->order?->customer_name ?? null,
-            'orderId' => $ticket->order?->id,
+            'orderId' => $ticket->order?->public_id,
             'template' => $this->resolveTemplate($ticket),
         ];
     }

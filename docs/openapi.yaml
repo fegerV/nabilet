@@ -1985,6 +1985,110 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /api/v1/my-tickets:
+    get:
+      tags: [Tickets]
+      summary: List tickets belonging to the current guest browser
+      description: >-
+        Guest storefront endpoint. The high-entropy X-Cart-Token capability
+        scopes the response to orders created from carts belonging to that
+        browser. Without a valid token, returns an empty list. No bearer token
+        is required; do not expose tickets from other cart tokens.
+      operationId: listGuestTickets
+      parameters:
+        - $ref: '#/components/parameters/CartTokenOptional'
+      responses:
+        '200':
+          description: Guest tickets
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, code, eventTitle, venue, sessionAt, sector, row, seat, priceMinor, status, qrPayload]
+                      properties:
+                        id: { type: string, description: Ticket public_id }
+                        code: { type: string }
+                        eventTitle: { type: string }
+                        venue: { type: string }
+                        sessionAt: { type: string, format: date-time, nullable: true }
+                        sector: { type: string }
+                        row: { type: integer }
+                        seat: { type: integer }
+                        priceMinor: { type: integer, minimum: 0 }
+                        status: { type: string, enum: [issued, used, cancelled, refunded, expired, revoked] }
+                        qrPayload: { type: string, nullable: true, description: Signed payload; only active issued tickets should be presented for entry; also exposed as `orderId` on each item (order public_id) }
+
+  /api/v1/my-tickets/resend:
+    post:
+      tags: [Tickets]
+      summary: Re-send the ticket e-mail, optionally to a corrected address
+      description: >-
+        Guest storefront self-service. The ticket e-mail goes to
+        `orders.customer_email`, so a single mistyped letter means the buyer
+        never receives the ticket and has no way to notice. This endpoint queues
+        the message again and, when `email` is supplied, replaces the stored
+        address first — the buyer can correct a typo without contacting support.
+        Access is the same capability as `GET /api/v1/my-tickets`: the
+        high-entropy X-Cart-Token of the order's cart, or a bearer token that
+        owns the order. A foreign or unknown order answers 404, never 403: 403
+        would confirm that the order exists, and would turn the endpoint into an
+        e-mail relay aimed at someone else's address.
+      operationId: resendTicketEmail
+      parameters:
+        - $ref: '#/components/parameters/CartTokenOptional'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [order]
+              properties:
+                order:
+                  type: string
+                  description: >-
+                    `orders.public_id`, as returned by `GET /api/v1/my-tickets`
+                    in `orderId`. The internal BIGINT never leaves the API
+                    (DATABASE.md 9); the buyer passes this public id back.
+                email:
+                  type: string
+                  format: email
+                  nullable: true
+                  description: >-
+                    Corrected address. The stored `customer_email` is kept when
+                    this is omitted — that is the plain "send it again" case.
+      responses:
+        '200':
+          description: Message queued
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [sent, email]
+                    properties:
+                      sent: { type: boolean }
+                      email: { type: string, format: email, description: Address the message was queued to }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: >-
+            The order is not paid, so no ticket has been issued yet
+            (`error.code` = ORDER_NOT_PAID). The address is NOT changed.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -2131,6 +2235,13 @@ components:
       name: role
       required: true
       schema: { type: string }
+
+    CartTokenOptional:
+      in: header
+      name: X-Cart-Token
+      required: false
+      description: Guest cart capability. If omitted, the endpoint returns an empty ticket list.
+      schema: { type: string, minLength: 32, maxLength: 64 }
 
   responses:
     ValidationError:

@@ -578,13 +578,11 @@ paths:
               required: [order]
               properties:
                 order:
-                  type: integer
+                  type: string
                   description: >-
-                    Numeric `orders.id`, as returned by `GET /api/v1/my-tickets`
-                    in `orderId`. NOTE: the internal identifier is exposed here
-                    and on the guest ticket list; DATABASE.md 9 says internal ids
-                    never leave the API. Both move to `orders.public_id` together,
-                    since the client passes this value straight back.
+                    `orders.public_id`, as returned by `GET /api/v1/my-tickets`
+                    in `orderId`. The internal BIGINT never leaves the API
+                    (DATABASE.md 9); the buyer passes this public id back.
                 email:
                   type: string
                   format: email

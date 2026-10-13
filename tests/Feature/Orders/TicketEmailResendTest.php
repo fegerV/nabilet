@@ -190,7 +190,7 @@ class TicketEmailResendTest extends TestCase
         $before = Queue::pushed(SendOrderNotificationJob::class)->count();
 
         $this->postJson('/api/v1/my-tickets/resend', [
-            'order' => $orderId,
+            'order' => $publicId,
             'email' => 'buyer@example.com',
         ], $this->cartHeaders())
             ->assertStatus(200)
@@ -215,9 +215,9 @@ class TicketEmailResendTest extends TestCase
     /** Без адреса в теле письмо уходит на сохранённый — «отправить ещё раз». */
     public function test_resending_without_an_address_keeps_the_stored_one(): void
     {
-        [$orderId] = $this->placeOrder(email: 'buyer@example.com');
+        [$orderId, $publicId] = $this->placeOrder(email: 'buyer@example.com');
 
-        $this->postJson('/api/v1/my-tickets/resend', ['order' => $orderId], $this->cartHeaders())
+        $this->postJson('/api/v1/my-tickets/resend', ['order' => $publicId], $this->cartHeaders())
             ->assertStatus(200)
             ->assertJsonPath('data.email', 'buyer@example.com');
 
@@ -227,7 +227,7 @@ class TicketEmailResendTest extends TestCase
     /** Письмо шлётся только по оплаченному заказу: у остальных билета нет. */
     public function test_resending_is_refused_for_an_unpaid_order(): void
     {
-        [$orderId] = $this->placeOrder(email: 'buyer@example.com', pay: false);
+        [$orderId, $publicId] = $this->placeOrder(email: 'buyer@example.com', pay: false);
 
         // `CartCheckoutService` создаёт заказ в `pending`; `awaiting_payment`
         // наступает позже — при инициализации платежа. Тесту важно, что статус
@@ -239,7 +239,7 @@ class TicketEmailResendTest extends TestCase
         );
 
         $this->postJson('/api/v1/my-tickets/resend', [
-            'order' => $orderId,
+            'order' => $publicId,
             'email' => 'attacker@example.com',
         ], $this->cartHeaders())
             ->assertStatus(409)
@@ -257,10 +257,10 @@ class TicketEmailResendTest extends TestCase
     /** Чужой токен корзины — 404: заказ неотличим от несуществующего. */
     public function test_a_foreign_cart_token_cannot_resend_someone_elses_ticket(): void
     {
-        [$orderId] = $this->placeOrder();
+        [$orderId, $publicId] = $this->placeOrder();
 
         $this->postJson('/api/v1/my-tickets/resend', [
-            'order' => $orderId,
+            'order' => $publicId,
             'email' => 'attacker@example.com',
         ], $this->cartHeaders(self::FOREIGN_TOKEN))
             ->assertStatus(404);
@@ -275,9 +275,9 @@ class TicketEmailResendTest extends TestCase
     /** Без токена — тоже 404: capability не предъявлена. */
     public function test_resending_without_a_cart_token_is_refused(): void
     {
-        [$orderId] = $this->placeOrder();
+        [$orderId, $publicId] = $this->placeOrder();
 
-        $this->postJson('/api/v1/my-tickets/resend', ['order' => $orderId])
+        $this->postJson('/api/v1/my-tickets/resend', ['order' => $publicId])
             ->assertStatus(404);
 
         $this->assertSame('buyer@example.com', $this->emailOf($orderId));
@@ -286,9 +286,9 @@ class TicketEmailResendTest extends TestCase
     /** Короткий токен отвергается так же: энтропия — часть проверки. */
     public function test_a_short_cart_token_is_refused(): void
     {
-        [$orderId] = $this->placeOrder();
+        [$orderId, $publicId] = $this->placeOrder();
 
-        $this->postJson('/api/v1/my-tickets/resend', ['order' => $orderId], $this->cartHeaders('short-token'))
+        $this->postJson('/api/v1/my-tickets/resend', ['order' => $publicId], $this->cartHeaders('short-token'))
             ->assertStatus(404);
 
         $this->assertSame('buyer@example.com', $this->emailOf($orderId));
