@@ -44,8 +44,9 @@ The `Analytics` module (`AnalyticsServiceProvider`) exposes one public endpoint:
 
 ### `Loyalty` — «Клуб зрителей» (`LoyaltyServiceProvider`)
 
-Phase 1 of `docs/LOYALTY-PLAN.md`: favorites and follow-subscriptions of a buyer.
-All six paths live under `auth:api` and take the owner from the Bearer token —
+Phases 1 and 2a of `docs/LOYALTY-PLAN.md`: favorites and follow-subscriptions of a
+buyer, plus the bonus account (cashback balance and its journal).
+All eight paths live under `auth:api` and take the owner from the Bearer token —
 none of them accepts a foreign user id, so cross-account access is impossible by
 construction. The event in the path is addressed by `public_id` (ULID), not by
 the internal BIGINT (`LoyaltyController::resolveEvent()`); the internal id never
@@ -59,16 +60,29 @@ leaves the API (`DATABASE.md` §9).
 | GET | `/api/v1/me/follows` | `auth:api` | Subscriptions to e-mail about new sessions |
 | POST | `/api/v1/me/events/{event}/follow` | `auth:api` | Subscribe — 201/200, same idempotency rule |
 | DELETE | `/api/v1/me/events/{event}/follow` | `auth:api` | Unsubscribe — 204 |
+| GET | `/api/v1/me/bonus` | `auth:api` | Bonus balance — `balance` in minor units, `bonuses` at the display rate (100); zero for a buyer with no orders |
+| GET | `/api/v1/me/bonus/transactions` | `auth:api` | Append-only bonus journal, newest first, paginated (`data` list + `meta`) |
 
 Favorites and follows are deliberately separate tables: a favorite is memory
 («хочу посмотреть») and produces no mail, a follow is a request for a letter
 (`SessionObserver` → `NotifyFollowersOfNewSessionJob`, journal
 `follow_notifications` guards against a repeat send).
 
+Bonus accrual (phase 2a) hangs off the **same** `Order` model, not off
+`OrderService`: `OrderBonusObserver::updated()` fires on any transition into
+`paid` and queues `AccrueOrderBonusJob` `afterCommit()`. A second observer on one
+model is supported — Laravel appends to the model's observer list, so the Orders
+module keeps its own `OrderObserver` (mail + webhooks) and never learns about the
+bonus account. `BonusService::accrueForOrder()` is the only writer of
+`bonus_accounts.balance`, and idempotency is granted by the unique key
+`uq_bonus_transactions_dedupe` (`dedupe_key = accrual:{order_id}`) rather than by
+a `SELECT`-then-`INSERT`, which a second worker could slip between.
+
 Routes are **not** loaded by the module provider: the single owner of route
 registration is `routes/api.php` (`tools/verify-route-ownership.php`). The
-provider exists to boot the observer — an unregistered provider means a
-`Session` model with no `created` listener and therefore no subscriber e-mails.
+provider exists to boot the observers — an unregistered provider means a
+`Session` model with no `created` listener (no subscriber e-mails) and an `Order`
+model with no bonus accrual, both silently.
 
 Storefront screens: `/favorites` and `/subscriptions`
 (`resources/js/pages/storefront/`, guarded by `meta.requiresCustomer`), plus the

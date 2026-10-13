@@ -708,6 +708,48 @@ paths:
                     items: { $ref: '#/components/schemas/EventFollow' }
         '401': { $ref: '#/components/responses/Unauthorized' }
 
+  /api/v1/me/bonus:
+    get:
+      tags: [Me]
+      summary: My bonus balance
+      description: >-
+        Баланс бонусного счёта. Счёт заводится лениво, поэтому у покупателя без
+        оплаченных заказов ответ — ноль бонусов, а не 404. Суммы — в минорных
+        единицах (как везде в API); `bonuses` — тот же баланс в «бонусах»
+        витрины по курсу 1 бонус = 1 ₽ = 100 минорных единиц, посчитанный
+        сервером, чтобы курс не переезжал в клиента.
+      operationId: getMyBonusBalance
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Balance (zero when the buyer has no account yet)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BonusBalanceResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/v1/me/bonus/transactions:
+    get:
+      tags: [Me]
+      summary: My bonus journal
+      description: >-
+        Append-only журнал движений, свежие сверху. `delta` знаковый и в минорных
+        единицах: плюс — начисление, минус — списание, возврат или сгорание по
+        сроку. `reason` называет причину из словаря; `order_id` — `orders.public_id`
+        или `null`, если движение не связано с заказом.
+      operationId: listMyBonusTransactions
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          description: Transactions, newest first
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BonusTransactionListResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
   /api/v1/me/events/{event}/favorite:
     post:
       tags: [Me]
@@ -2665,6 +2707,56 @@ components:
       required: [data]
       properties:
         data: { $ref: '#/components/schemas/EventFollow' }
+
+    BonusBalance:
+      type: object
+      required: [balance, bonuses, currency]
+      description: >-
+        Баланс бонусного счёта. `balance` — минорные единицы, как и все деньги в
+        API. `bonuses` — производное от `balance`: тот же баланс в «бонусах»
+        витрины (курс `BonusPolicy::MINOR_UNITS_PER_BONUS`, 1 бонус = 1 ₽ = 100
+        минорных единиц). Курс применяет сервер, чтобы клиент показывал готовое
+        число и не зашивал сотню в вёрстку.
+      properties:
+        balance: { type: integer, description: Integer minor units (kopecks) }
+        bonuses: { type: integer, description: 'balance / 100 — the storefront display rate' }
+        currency: { type: string, description: ISO 4217 code, e.g. RUB }
+
+    BonusBalanceResponse:
+      type: object
+      required: [data]
+      properties:
+        data: { $ref: '#/components/schemas/BonusBalance' }
+
+    BonusTransaction:
+      type: object
+      required: [id, delta, reason, created_at]
+      properties:
+        id:
+          type: string
+          description: bonus_transactions.public_id
+        order_id:
+          type: string
+          nullable: true
+          description: orders.public_id; null for gifts and expiry (no order)
+        delta:
+          type: integer
+          description: >-
+            Signed integer minor units: positive — accrued, negative — spent,
+            refunded or expired.
+        reason:
+          type: string
+          enum: [accrual, registration, first_purchase, spend, refund, expiry]
+        created_at: { type: string, format: date-time }
+
+    BonusTransactionListResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/BonusTransaction' }
+        meta: { $ref: '#/components/schemas/PaginationMeta' }
 
     EventListResponse:
       type: object

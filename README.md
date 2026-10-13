@@ -22,7 +22,7 @@ nabilet_core_spec/
 ├── NABILET_Core_Technical_Spec_v1.md   обзорная спецификация
 ├── migrations.sql                      консолидированный DDL (78 таблиц)
 ├── migrations/001..019                 сплит-миграции в порядке исполнения
-├── openapi.yaml                        OpenAPI 3.1 (90 путей, 109 операций, 106 схем)
+├── openapi.yaml                        OpenAPI 3.1 (92 путей, 111 операций, 110 схем)
 └── state-diagrams.md                   машины состояний
 ```
 
@@ -43,7 +43,7 @@ nabilet_core_spec/
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Архитектура: модули, хуки, слои, мультитенантность, безопасность |
 | [`docs/DATABASE.md`](docs/DATABASE.md) | Модель данных пакета: 78 таблиц, инварианты, политика ON DELETE |
 | [`docs/STATE-MACHINES.md`](docs/STATE-MACHINES.md) | Машины состояний Order / Payment / Ticket / Hold / Event / Session |
-| [`docs/openapi.yaml`](docs/openapi.yaml) | OpenAPI 3.1 — рабочая копия контракта (90 путей, 109 операций, 106 схем; включает операционные надстройки проекта, например `metrikaConfig`) |
+| [`docs/openapi.yaml`](docs/openapi.yaml) | OpenAPI 3.1 — рабочая копия контракта (92 путей, 111 операций, 110 схем; включает операционные надстройки проекта, например `metrikaConfig`) |
 | [`docs/REVIEW-spec-bundle.md`](docs/REVIEW-spec-bundle.md) | Проверка пакета на реальном MySQL: пробелы, расхождения, пробелы ТЗ |
 | [`docs/ROADMAP.md`](docs/ROADMAP.md) | Статусы этапов реализации — источник истины по продвижению |
 | [`docs/LAUNCH-READINESS.md`](docs/LAUNCH-READINESS.md) | Готовность к запуску: что проверено, чего не хватает |

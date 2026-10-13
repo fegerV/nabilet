@@ -3,12 +3,13 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Facades\Route;
+use Nabilet\Modules\Loyalty\Http\Controllers\BonusController;
 use Nabilet\Modules\Loyalty\Http\Controllers\FavoriteController;
 use Nabilet\Modules\Loyalty\Http\Controllers\FollowController;
 
-// Личный кабинет покупателя: «❤️ Избранное» и «🔔 Подписки».
+// Личный кабинет покупателя: «❤️ Избранное», «🔔 Подписки» и бонусный счёт.
 //
-// Модуль Loyalty, фаза 1 `docs/LOYALTY-PLAN.md`. Весь префикс `me` закрыт
+// Модуль Loyalty, фазы 1 и 2a `docs/LOYALTY-PLAN.md`. Весь префикс `me` закрыт
 // `auth:api`: без аккаунта негде хранить избранное, и гость обязан получить
 // 401, а не тихо потерять отметку. Ни один метод не принимает чужой
 // идентификатор пользователя — владелец всегда из Bearer-токена.
@@ -30,4 +31,9 @@ Route::prefix('me')->middleware('auth:api')->group(function (): void {
     Route::get('/follows', [FollowController::class, 'index']);
     Route::post('/events/{event}/follow', [FollowController::class, 'store']);
     Route::delete('/events/{event}/follow', [FollowController::class, 'destroy']);
+
+    // Бонусный счёт, фаза 2a. Баланс отдаётся и при отсутствии счёта — нулём,
+    // а не 404: счёт заводится лениво, и «бонусов ещё нет» — это ноль бонусов.
+    Route::get('/bonus', [BonusController::class, 'balance']);
+    Route::get('/bonus/transactions', [BonusController::class, 'transactions']);
 });

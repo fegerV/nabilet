@@ -5,10 +5,13 @@ declare(strict_types=1);
 namespace Nabilet\Modules\Loyalty\Providers;
 
 use Illuminate\Support\ServiceProvider;
+use Nabilet\Modules\Loyalty\Observers\OrderBonusObserver;
 use Nabilet\Modules\Loyalty\Observers\SessionObserver;
+use Nabilet\Modules\Loyalty\Services\BonusService;
 use Nabilet\Modules\Loyalty\Services\FavoriteService;
 use Nabilet\Modules\Loyalty\Services\FollowNotificationData;
 use Nabilet\Modules\Loyalty\Services\FollowService;
+use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Sessions\Models\Session;
 
 class LoyaltyServiceProvider extends ServiceProvider
@@ -24,6 +27,10 @@ class LoyaltyServiceProvider extends ServiceProvider
         // Данные для писем подписчикам. Собираются из сеанса и подписчика, а
         // не из конфига, поэтому биндинг — обычный синглтон.
         $this->app->singleton(FollowNotificationData::class);
+        // Бонусный счёт. Резолвится и из джобы начисления, и из контроллера
+        // баланса — один экземпляр на запрос/джобу, как и у остальных сервисов
+        // модуля.
+        $this->app->singleton(BonusService::class);
     }
 
     public function boot(): void
@@ -39,5 +46,15 @@ class LoyaltyServiceProvider extends ServiceProvider
         // бутятся скопом (см. `bootstrap/providers.php`), и без регистрации
         // обсервер не вешается — письма просто не уходят.
         Session::observe(SessionObserver::class);
+
+        // Обсервер заказов — второй наблюдатель на ту же модель (первый,
+        // `OrderObserver` модуля Orders, рассылает письма и вебхуки). Laravel
+        // вызывает оба: `observe()` добавляет класс в список наблюдателей
+        // модели, а не заменяет его. Здесь ловится оплата — единственный момент,
+        // когда покупателю начисляется кэшбэк. Регистрация живёт в этом
+        // провайдере, а не в `OrderServiceProvider`, потому что начисление —
+        // знание клуба зрителей, а не заказов: модуль Orders не должен знать о
+        // бонусном счёте.
+        Order::observe(OrderBonusObserver::class);
     }
 }
