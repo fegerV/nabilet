@@ -26,13 +26,13 @@ NABILET CORE
 │   ├── Support/         Money, QrSigner, helpers (do_action / apply_filters)
 │   └── Http/Middleware/ request-id, tenancy, CSP, permission, idempotency
 │
-├── app/Modules/       ← 30 модулей с манифестом (27 включены по умолчанию; отключены abtesting, ai, heatmaps)
+├── app/Modules/       ← 32 модуля с манифестом (29 включены по умолчанию; отключены abtesting, ai, heatmaps)
 │   ├── Organizations/  Auth/  Users/  Localization/
 │   ├── Venues/  HallSchemas/  Events/  Sessions/
 │   ├── Inventory/  Pricing/  Cart/  Orders/
 │   ├── Payments/  Tickets/  Checkin/  Notifications/
-│   ├── Webhooks/  Media/  Seo/  Analytics/  Embed/  Telegram/
-│   ├── Security/  Privacy/  Backups/  Admin/  Ai/  AbTesting/  Heatmaps/
+│   ├── Loyalty/  Webhooks/  Media/  Seo/  Analytics/  Embed/  Telegram/
+│   ├── Storefront/  Security/  Privacy/  Backups/  Admin/  Ai/  AbTesting/  Heatmaps/
 │   └── <module>/
 │       ├── module.json          манифест: зависимости, permissions, события
 │       ├── StateMachines/       машины состояний домена
@@ -363,17 +363,18 @@ Payload: `NB1.<ticketId>.<randomToken>.<HMAC-SHA256>`
 
 | Что | Как | Результат |
 |---|---|---|
-| Синтаксис PHP | `php tools/lint.php` | **681 файл, 0 ошибок** (+ второй гейт: 0 неявно nullable параметров) |
+| Синтаксис PHP | `php tools/lint.php` | **745 файлов, 0 ошибок** (+ второй гейт: 0 неявно nullable параметров) |
 | Ядро (хуки, деньги, state machines, модули, tenancy, ошибки, QR) + домены P2–P7 | `php tests/run.php` | **708 тестов, 1736 утверждений, 0 падений** |
-| Граф модулей | `php tools/modules.php --validate` | **31 модуль, 28 включены, граф валиден, 73 события** |
-| Чистота домена | `php tools/verify-purity.php` | **117 файлов загружаются без vendor/, 0 нарушений** |
-| DDL пакета | `migrations.sql` → реальный MySQL 8.4.11 | **76 таблиц, 110 FK, 94 UNIQUE, 298 индексов, 48 CHECK, 1 триггер** |
-| Эквивалентность DDL | консолидированный файл vs сплит 001–018 | **809 колонок и 328 ограничений совпадают** |
+| Граф модулей | `php tools/modules.php --validate` | **32 модуля, 29 включены, граф валиден, 77 событий** |
+| Чистота домена | `php tools/verify-purity.php` | **118 файлов загружаются без vendor/, 0 нарушений** |
+| DDL пакета | `migrations.sql` → реальный MySQL 8.4.11 | **78 таблиц, 113 FK, 98 UNIQUE, 306 индексов, 50 CHECK, 1 триггер** |
+| Эквивалентность DDL | консолидированный файл vs сплит 001–019 | **825 колонок и 339 ограничений совпадают** |
 | Матрица конкурентности ТЗ §26 | параллельные клиенты против MySQL | **6 из 6 сценариев PASS** |
 | Усиление инвариантов | 37 проб на нарушение | **все пробелы закрыты, легитимные сценарии не сломаны** |
 | Контракт OpenAPI | `php tools/verify-openapi.php` | **все проверки PASS (109 операций, 106 схем, 29 параметров, 8 ответов — 11/11 на обеих копиях)** |
-| Контракт ≡ схема | `php tools/verify-contract-schema.php` | **28 сущностных схем, 0 нового дрейфа, 4 известных с причиной** |
-| Модели ≡ схема | `php tools/verify-models-schema.php` | **64 модели, 471 поле, 54 известных выдуманных колонки (храповик), 0 новых** |
+| Контракт ≡ схема | `php tools/verify-contract-schema.php` | **30 сущностных схем, 0 нового дрейфа, 4 известных с причиной** |
+| Модели ≡ схема | `php tools/verify-models-schema.php` | **67 моделей, 490 полей, 54 известных выдуманных колонки (храповик), 0 новых** |
+| Юнит-тесты фронта | `node node_modules/vitest/vitest.mjs run` | **22 файла, 279 тестов, 0 падений** (среда jsdom, заглушка `matchMedia` — `tests/Unit/setup.ts`) |
 
 Матрица §26 в цифрах: 40 одновременных покупателей на одно место → ровно один hold;
 60 покупателей на standing-зону 200 → 60 hold и остаток 140; 30 покупателей на
@@ -395,7 +396,7 @@ Payload: `NB1.<ticketId>.<randomToken>.<HMAC-SHA256>`
 
 ### Границы, которые нужно уважать при работе со схемой
 
-- Пакет несёт `organization_id` только у 18 из 76 таблиц — см. §6. Это не деталь, а
+- Пакет несёт `organization_id` только у 18 из 78 таблиц — см. §6. Это не деталь, а
   главный риск изоляции арендаторов.
 - MySQL считает NULL в UNIQUE-ключе различным. Два уникальных ключа `inventory_items`
   работают только потому, что ровно одно из `seat_id` / `standing_zone_id` заполнено;
