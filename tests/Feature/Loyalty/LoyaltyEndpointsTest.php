@@ -101,6 +101,10 @@ class LoyaltyEndpointsTest extends TestCase
         $this->deleteJson('/api/v1/me/events/01JZZZZZZZZZZZZZZZZZZZZZZZ/favorite')->assertStatus(401);
         $this->postJson('/api/v1/me/events/01JZZZZZZZZZZZZZZZZZZZZZZZ/follow')->assertStatus(401);
         $this->deleteJson('/api/v1/me/events/01JZZZZZZZZZZZZZZZZZZZZZZZ/follow')->assertStatus(401);
+        // Фаза 2a: бонусный счёт. Баланс чужому не отдаём — владелец всегда из
+        // токена, поэтому гостю здесь 401, а не «ноль бонусов».
+        $this->getJson('/api/v1/me/bonus')->assertStatus(401);
+        $this->getJson('/api/v1/me/bonus/transactions')->assertStatus(401);
     }
 
     public function test_unknown_event_is_404_not_500(): void

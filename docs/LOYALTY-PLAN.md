@@ -17,7 +17,7 @@
 | Email-уведомления | ✅ `Notifications`: шаблоны в БД, `SendOrderNotificationJob`, `OrderObserver` |
 | Telegram | ⚠️ модуль `app/Modules/Telegram` — ЗАГЛУШКА (`TelegramServiceProvider` без кода) |
 | Избранное/подписки | ✅ фаза 1: `018_loyalty_foundation.sql`, 6 маршрутов `/me/*`, письма подписчикам, витрина |
-| Бонусы (счёт и журнал) | ✅ фаза 2a: схема `019_bonus_ledger.sql`, начисление (`BonusPolicy`/`BonusService`/`OrderBonusObserver`), API баланса и журнала (`GET /me/bonus`, `GET /me/bonus/transactions`); списание в чекауте — фаза 2b |
+| Бонусы (счёт и журнал) | ✅ фаза 2a: схема `019_bonus_ledger.sql`, начисление (`BonusPolicy`/`BonusService`/`OrderBonusObserver`), API баланса и журнала (`GET /me/bonus`, `GET /me/bonus/transactions`), витрина (чип «✦ N» в шапке, плитка в кабинете, экран `/bonus` с историей); списание в чекауте — фаза 2b |
 | Рефералка | ❌ таблиц нет — фаза 4 этого плана |
 
 ## Архитектурные факты, на которых держится план
@@ -114,8 +114,9 @@
 | Domain: `BonusPolicy` (5%, cap 30%, 12 мес) + идемпотентное начисление | ✅ — `Domain/BonusPolicy` + `Domain/BonusReason` (словарь зеркалит CHECK), `BonusAccount`/`BonusTransaction`, `BonusService::accrueForOrder()` (единственный писатель баланса, идемпотентность по `dedupe_key = accrual:{order_id}`), `AccrueOrderBonusJob` (`afterCommit`, `tries=3`), `OrderBonusObserver` — второй наблюдатель на `Order`, чтобы модуль Orders не знал о бонусах. Юнит `BonusPolicyTest` (20 тестов) + `BonusAccrualTest` (22 теста: момент начисления, повтор, гость, нулевой заказ, от итога, а не от subtotal, инварианты БД) |
 | API: баланс и история движений (`/me/*`) + обе копии OpenAPI | ✅ — `GET /api/v1/me/bonus` (`BonusBalance`: `balance` в минорных единицах + `bonuses` по курсу 100, ноль при отсутствии счёта) и `GET /api/v1/me/bonus/transactions` (append-only журнал, `data`-список + `meta`, `order_id` = `orders.public_id`). Обе копии OpenAPI (111 операций / 110 схем, `verify-spec-parity` PASS), `BonusApiTest` (10 тестов) |
 | Списание в чекауте (`CartCheckoutService`, `OrderTotals::of()`) | ⏳ фаза 2b |
-| Витрина/кабинет: баланс, применение в чекауте, история | ⏳ |
-| Гейты фазы 2 | ⏳ |
+| Витрина: баланс (шапка + кабинет) и история движений | ✅ — `lib/loyalty.ts` (`fetchBonusBalance`/`fetchBonusTransactions`, подписи словаря причин), баланс в `stores/loyalty.ts` (грузится тем же `load()`, что и списки — один источник правды для чипа в шапке, плитки кабинета и экрана), страница `/bonus` (баланс + журнал с догрузкой), чип «✦ N» в `StorefrontShell`, плитка «Бонусный счёт» в кабинете. Тесты: `bonus.test.ts` (12), `bonusPage.test.ts` (11) |
+| Витрина: применение бонусов в чекауте | ⏳ фаза 2b (кнопки «оплатить бонусами» в корзине нет намеренно — обещать её текстом было бы враньём) |
+| Гейты фазы 2 | ⏳ (2a закрыта: гейты зелёные, CI 5/5) |
 
 **Единица измерения — уточнение к таблице правил ниже.** `bonus_accounts.balance`,
 `bonus_transactions.delta` и `orders.bonus_amount` хранятся в МИНОРНЫХ единицах

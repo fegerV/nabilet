@@ -84,9 +84,13 @@ provider exists to boot the observers — an unregistered provider means a
 `Session` model with no `created` listener (no subscriber e-mails) and an `Order`
 model with no bonus accrual, both silently.
 
-Storefront screens: `/favorites` and `/subscriptions`
+Storefront screens: `/favorites`, `/subscriptions` and `/bonus`
 (`resources/js/pages/storefront/`, guarded by `meta.requiresCustomer`), plus the
-«♡» on `EventCard` and «♡»/«🔔 Следить» on `EventPage`.
+«♡» on `EventCard` and «♡»/«🔔 Следить» on `EventPage`. The bonus balance is part
+of `stores/loyalty.ts` (loaded together with both lists by the storefront shell),
+so the header chip, the account tile and the `/bonus` screen all read one number
+and cannot disagree. Spending bonuses at checkout is phase 2b and is deliberately
+**not** offered anywhere in the UI yet.
 
 ## Special Cases
 

@@ -173,12 +173,12 @@ describe('stores/loyalty: отметки', () => {
     expect(localStorage.getItem(AUTH_TOKEN_KEY)).toBe('staff-token')
   })
 
-  it('load() читает оба списка и наполняет отметки', async () => {
-    const fetchMock = vi.fn(async (url: string) =>
-      url.includes('/me/favorites')
-        ? jsonResponse({ data: [entry('01FAV', '01EV', 'Концерт')] })
-        : jsonResponse({ data: [entry('01FOL', '01EV2', 'Спектакль')] }),
-    )
+  it('load() читает оба списка и баланс, наполняет отметки', async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.includes('/me/favorites')) return jsonResponse({ data: [entry('01FAV', '01EV', 'Концерт')] })
+      if (url.includes('/me/bonus')) return jsonResponse({ data: { balance: 25000, bonuses: 250, currency: 'RUB' } })
+      return jsonResponse({ data: [entry('01FOL', '01EV2', 'Спектакль')] })
+    })
     vi.stubGlobal('fetch', fetchMock)
     setCustomerToken('customer-token')
 
@@ -190,16 +190,21 @@ describe('stores/loyalty: отметки', () => {
     expect(loyalty.isFavorite('01EV2')).toBe(false)
     expect(loyalty.favoritesCount).toBe(1)
     expect(loyalty.followsCount).toBe(1)
+    // Баланс грузится тем же `load()`: чип в шапке и плитка в кабинете
+    // спрашивают одно число, и второй запрос к `/me/bonus` был бы третьим
+    // ответом на один вопрос.
+    expect(loyalty.bonusesCount).toBe(250)
+    expect(loyalty.bonus?.balance).toBe(25000)
 
     // Повторный load() без force не ходит в сеть: навигация по витрине не
-    // должна перезапрашивать списки на каждом переходе.
+    // должна перезапрашивать личные данные на каждом переходе.
     fetchMock.mockClear()
     await loyalty.load()
     expect(fetchMock).not.toHaveBeenCalled()
 
-    // force перечитывает.
+    // force перечитывает — по одному запросу на список и один на баланс.
     await loyalty.load(true)
-    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(fetchMock).toHaveBeenCalledTimes(3)
   })
 
   it('ошибка загрузки не пробрасывается и не оставляет мусора', async () => {
@@ -211,6 +216,9 @@ describe('stores/loyalty: отметки', () => {
 
     expect(loyalty.favorites).toEqual([])
     expect(loyalty.follows).toEqual([])
+    // Баланс тоже не «ноль», а «не загружен»: иначе чип в шапке показал бы
+    // «✦ 0» человеку, у которого бонусы есть.
+    expect(loyalty.bonus).toBeNull()
     expect(loyalty.loaded).toBe(false)
   })
 
@@ -288,24 +296,29 @@ describe('stores/loyalty: отметки', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('reset() забывает оба списка — выход и смена аккаунта', async () => {
-    const fetchMock = vi.fn(async (url: string) =>
-      url.includes('/me/favorites')
-        ? jsonResponse({ data: [entry('01FAV', '01EV')] })
-        : jsonResponse({ data: [entry('01FOL', '01EV')] }),
-    )
+  it('reset() забывает оба списка и баланс — выход и смена аккаунта', async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.includes('/me/favorites')) return jsonResponse({ data: [entry('01FAV', '01EV')] })
+      if (url.includes('/me/bonus')) return jsonResponse({ data: { balance: 5000, bonuses: 50, currency: 'RUB' } })
+      return jsonResponse({ data: [entry('01FOL', '01EV')] })
+    })
     vi.stubGlobal('fetch', fetchMock)
     setCustomerToken('customer-token')
 
     const loyalty = useLoyaltyStore()
     await loyalty.load()
     expect(loyalty.isFavorite('01EV')).toBe(true)
+    expect(loyalty.bonusesCount).toBe(50)
 
     loyalty.reset()
 
     expect(loyalty.isFavorite('01EV')).toBe(false)
     expect(loyalty.isFollowing('01EV')).toBe(false)
     expect(loyalty.favorites).toEqual([])
+    // Чужой счёт в шапке после смены аккаунта — та же утечка, что и чужой
+    // список избранного, поэтому гасится вместе с ним.
+    expect(loyalty.bonus).toBeNull()
+    expect(loyalty.bonusesCount).toBe(0)
     expect(loyalty.loaded).toBe(false)
   })
 })

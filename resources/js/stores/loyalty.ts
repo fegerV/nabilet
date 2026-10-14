@@ -1,5 +1,5 @@
 /**
- * Состояние «Клуба зрителей»: списки «♡» и «🔔» + отметки для витрины.
+ * Состояние «Клуба зрителей»: списки «♡»/«🔔», баланс бонусов и отметки витрины.
  *
  * ЗАЧЕМ ОТДЕЛЬНЫЙ СТОР, А НЕ ЗАГРУЗКА В КАЖДОМ КОМПОНЕНТЕ
  *   «Заполнено ли сердце» — вопрос про ОДНО и то же состояние, заданный в
@@ -7,6 +7,13 @@
  *   Если бы каждый спрашивал сам, витрина делала бы по два запроса на карточку
  *   и мигала сердцами при переходах. Поэтому списки грузятся один раз и лежат
  *   здесь, а компоненты спрашивают `isFavorite()` — синхронно.
+ *
+ * БАЛАНС ЖИВЁТ ЗДЕСЬ ЖЕ, А НЕ НА СТРАНИЦЕ БОНУСОВ
+ *   Его показывает не только `/bonus`: чип в шапке и плитка в кабинете
+ *   спрашивают то же число. Отдельная загрузка на каждый экран означала бы три
+ *   запроса к `/me/bonus` за один переход — и три разных ответа на один вопрос,
+ *   если покупка случилась между ними. Поэтому баланс — часть того же `load()`,
+ *   что и списки.
  *
  * ОДИН ИСТОЧНИК ПРАВДЫ — СПИСОК
  *   Отметки ВЫВОДЯТСЯ из списков, а не хранятся рядом. Два поля с одним
@@ -16,11 +23,12 @@
  *   самолечащийся: покупатель нажимает «♡», сервер отвечает 200 «уже в
  *   избранном» и строка возвращается в список.
  *
- * ГОСТЬ НЕ ГРУЗИТ СПИСКИ
+ * ГОСТЬ НЕ ГРУЗИТ ЛИЧНОЕ
  *   `/me/*` без аккаунта отвечает 401. Запрос «на всякий случай» не просто
  *   бесполезен — он заставил бы `request()` гасить токен в ответ на 401. Так
- *   что гость живёт с пустыми списками: сердца у него контурные, а нажатие
- *   уводит на вход (это решают компоненты — они владеют навигацией).
+ *   что гость живёт с пустыми списками и без баланса: сердца у него контурные,
+ *   нажатие уводит на вход, а чип бонусов не показывается вовсе (это решают
+ *   компоненты — они владеют навигацией).
  *
  * ОТМЕТКА ПОЯВЛЯЕТСЯ ТОЛЬКО ПОСЛЕ ОТВЕТА СЕРВЕРА
  *   Оптимистичное «сразу закрасим» красивее в демо, но врёт при отказе: сеть
@@ -33,17 +41,25 @@ import { computed, ref } from 'vue'
 import { isCustomerSession } from '@/lib/customer'
 import {
   addFavorite,
+  fetchBonusBalance,
   fetchFavorites,
   fetchFollows,
   followEvent,
   removeFavorite,
   unfollowEvent,
+  type BonusBalance,
   type LoyaltyEntry,
 } from '@/lib/loyalty'
 
 export const useLoyaltyStore = defineStore('loyalty', () => {
   const favorites = ref<LoyaltyEntry[]>([])
   const follows = ref<LoyaltyEntry[]>([])
+  /**
+   * Баланс бонусного счёта. `null` — не загружен: гость, ошибка запроса или
+   * счёт ещё не приходил. Именно `null`, а не `0`: ноль — это «счёт есть и он
+   * пуст», и показывать его гостю значило бы обещать бонусы, которых нет.
+   */
+  const bonus = ref<BonusBalance | null>(null)
 
   /*
    * Множества `public_id` мероприятий из списков — derived, а не состояние.
@@ -80,11 +96,16 @@ export const useLoyaltyStore = defineStore('loyalty', () => {
   }
 
   /**
-   * Загрузить оба списка. Гостю — no-op, повторный вызов — тоже.
+   * Загрузить списки и баланс. Гостю — no-op, повторный вызов — тоже.
    *
    * Ошибку не пробрасываем: витрина не должна падать из-за сбойного запроса
    * отметок, которых, может, и нет. Списки остаются пустыми, сердца —
    * контурными; следующая навигация попробует снова.
+   *
+   * Три запроса идут ПАРАЛЛЕЛЬНО и разделяют одну судьбу: если упал любой,
+   * `loaded` остаётся `false`, и следующий переход попробует все три снова.
+   * Разводить их по отдельным `try` значило бы показывать половину клуба
+   * («сердца есть, баланса нет») и не иметь момента, когда всё уже загружено.
    */
   async function load(force = false): Promise<void> {
     if (!isCustomerSession()) return
@@ -93,13 +114,19 @@ export const useLoyaltyStore = defineStore('loyalty', () => {
 
     loading.value = true
     try {
-      const [nextFavorites, nextFollows] = await Promise.all([fetchFavorites(), fetchFollows()])
+      const [nextFavorites, nextFollows, nextBonus] = await Promise.all([
+        fetchFavorites(),
+        fetchFollows(),
+        fetchBonusBalance(),
+      ])
       favorites.value = nextFavorites
       follows.value = nextFollows
+      bonus.value = nextBonus
       loaded.value = true
     } catch {
       favorites.value = []
       follows.value = []
+      bonus.value = null
     } finally {
       loading.value = false
     }
@@ -159,18 +186,23 @@ export const useLoyaltyStore = defineStore('loyalty', () => {
   function reset(): void {
     favorites.value = []
     follows.value = []
+    bonus.value = null
     pending.value = new Set()
     loaded.value = false
   }
 
   const favoritesCount = computed(() => favorites.value.length)
   const followsCount = computed(() => follows.value.length)
+  /** Баланс в бонусах по курсу сервера; 0 — если счёта нет или он пуст. */
+  const bonusesCount = computed(() => bonus.value?.bonuses ?? 0)
 
   return {
     favorites,
     follows,
+    bonus,
     favoritesCount,
     followsCount,
+    bonusesCount,
     loading,
     loaded,
     isFavorite,

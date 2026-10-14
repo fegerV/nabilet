@@ -2631,9 +2631,9 @@ public_id» — как и по `CartItem`, `UserSession`, `UserRole` и двум
 |---|---|---|
 | Синтаксис | `php tools/lint.php` | 753 файла, 0 ошибок; неявно nullable параметров: 0 |
 | Ядро (без БД) | `php tests/run.php` | **728 тестов, 1766 утверждений, 0 падений** |
-| Feature-сьют | `php vendor/bin/phpunit` | **738 тестов, 2800 утверждений, 0 падений** |
+| Feature-сьют | `php vendor/bin/phpunit` | **738 тестов, 2802 утверждения, 0 падений** |
 | Типы витрины | `node node_modules/vue-tsc/bin/vue-tsc.js --noEmit` | exit 0 |
-| Юнит-тесты фронта | `node node_modules/vitest/vitest.mjs run` | **22 файла, 279 тестов** |
+| Юнит-тесты фронта | `node node_modules/vitest/vitest.mjs run` | **24 файла, 302 теста** |
 | Сборка витрины | `node node_modules/vite/bin/vite.js build` | OK |
 | Живое окружение | `php tools/verify-live.php` | exit 0 |
 | Остальные `verify-*` | 14 инструментов | все exit 0 |
