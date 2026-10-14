@@ -25,6 +25,7 @@ use Nabilet\Modules\Tickets\Models\Ticket;
  * @property int|null $event_id     событие заказа (резолвится из сеанса)
  * @property int $subtotal_amount   integer minor units
  * @property int $discount_amount
+ * @property int $bonus_amount      списано бонусами, integer minor units (фаза 2b)
  * @property int $fee_amount
  * @property int $total_amount
  * @property string $currency
@@ -53,6 +54,7 @@ class Order extends Model
         'event_id',
         'subtotal_amount',
         'discount_amount',
+        'bonus_amount',
         'fee_amount',
         'total_amount',
         'currency',
@@ -70,6 +72,7 @@ class Order extends Model
     protected $casts = [
         'subtotal_amount' => 'integer',
         'discount_amount' => 'integer',
+        'bonus_amount' => 'integer',
         'fee_amount' => 'integer',
         'total_amount' => 'integer',
         'session_id' => 'integer',

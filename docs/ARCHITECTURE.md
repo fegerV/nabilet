@@ -374,7 +374,7 @@ Payload: `NB1.<ticketId>.<randomToken>.<HMAC-SHA256>`
 | Контракт OpenAPI | `php tools/verify-openapi.php` | **все проверки PASS (111 операций, 110 схем, 29 параметров, 8 ответов — 11/11 на обеих копиях)** |
 | Контракт ≡ схема | `php tools/verify-contract-schema.php` | **30 сущностных схем, 0 нового дрейфа, 4 известных с причиной** |
 | Модели ≡ схема | `php tools/verify-models-schema.php` | **69 моделей, 500 полей, 54 известных выдуманных колонки (храповик), 0 новых** |
-| Юнит-тесты фронта | `node node_modules/vitest/vitest.mjs run` | **24 файла, 302 теста, 0 падений** (среда jsdom, заглушка `matchMedia` — `tests/Unit/setup.ts`) |
+| Юнит-тесты фронта | `node node_modules/vitest/vitest.mjs run` | **25 файлов, 317 тестов, 0 падений** (среда jsdom, заглушка `matchMedia` — `tests/Unit/setup.ts`) |
 
 Матрица §26 в цифрах: 40 одновременных покупателей на одно место → ровно один hold;
 60 покупателей на standing-зону 200 → 60 hold и остаток 140; 30 покупателей на

@@ -27,6 +27,13 @@
  * discount = fee = total = сумма позиций, а `promo_code` отвечает 422
  * `PROMO_CODE_NOT_SUPPORTED`). Покупатель видел сумму, которую с него не
  * списывали, — расхождение между экраном и чеком.
+ *
+ * Бонусы (фаза 2b) — единственная величина, которую экран считает сам, и это
+ * не возврат к прежней ошибке: клиентское число здесь только предпросмотр
+ * лимита, а списание считает сервер в той же транзакции, что и заказ
+ * (`CartCheckoutService::convert()`). Экран показывает ровно ту сумму, которую
+ * подтвердит сервер, а на превышение получает 422 `BONUS_LIMIT_EXCEEDED` и
+ * снимает галочку — молчаливой подмены итога не происходит ни на одной стороне.
  */
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -36,17 +43,20 @@ import NCheckbox from '@/components/ui/NCheckbox.vue'
 import NCountdown from '@/components/ui/NCountdown.vue'
 import NEmptyState from '@/components/ui/NEmptyState.vue'
 import { useCartStore, seatLineLabel, seatLineTotal, type CartSeat } from '@/stores/cart'
+import { useLoyaltyStore } from '@/stores/loyalty'
 import { useUiStore } from '@/stores/ui'
 import { checkoutSession, fetchCart } from '@/lib/inventory'
 import { ApiError } from '@/lib/api'
 import { anchorDemoUrl, initiatePayment, newIdempotencyKey, rememberPaymentId } from '@/lib/payments'
 import { trackEvent } from '@/lib/metrika'
-import { money, ticketsLabel } from '@/lib/format'
+import { money, plural, ticketsLabel } from '@/lib/format'
+import { MINOR_UNITS_PER_BONUS, spendCapMinor } from '@/lib/loyalty'
 import { cn } from '@/lib/cn'
 
 const route = useRoute()
 const router = useRouter()
 const cart = useCartStore()
+const loyalty = useLoyaltyStore()
 const ui = useUiStore()
 
 /** Сеанс, к которому относится корзина. Передаётся из выбора мест. */
@@ -127,8 +137,61 @@ const missingHint = computed(() => {
  */
 const emailOk = computed(() => EMAIL_RE.test(email.value) && emailConfirm.value.trim() === email.value.trim())
 
-/** Итог — сумма позиций. Именно её выставляет сервер (`orders.total_amount`). */
-const totalMinor = computed(() => Math.max(0, cart.subtotalMinor))
+/* ── Бонусы в чекауте (фаза 2b) ───────────────────────────────────────────
+ * ЛИМИТ СЧИТАЕТ ВИТРИНА, НО РЕШАЕТ СЕРВЕР
+ *   `spendCapMinor()` — зеркало `BonusPolicy::maxSpendable` (см. `lib/loyalty.ts`),
+ *   и оно здесь только для того, чтобы показать покупателю доступную сумму и не
+ *   дать отметить больше. Чекаут пересчитывает тот же лимит заново и отвечает
+ *   422 `BONUS_LIMIT_EXCEEDED` на превышение. Молчаливого урезания нет ни на
+ *   одной из сторон: покупатель подтверждает конкретную цену, и она не должна
+ *   измениться без его ведома.
+ *
+ * ГОСТЬ БЛОКА НЕ ВИДИТ
+ *   `loyalty.bonus === null` — гость, ошибка запроса или счёт ещё не приходил.
+ *   Отличать ноль от «не знаю» здесь обязательно: ноль означает «счёт есть и он
+ *   пуст», и показывать «спишите 0 бонусов» значило бы обещать то, чего нет.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+/** Сколько можно списать в этом заказе (минорные единицы). */
+const bonusCapMinor = computed(() =>
+  spendCapMinor(cart.subtotalMinor, cart.discountMinor, loyalty.bonus?.balance ?? 0),
+)
+
+/** Покупатель решил платить бонусами. По умолчанию — нет: списание должно быть осознанным. */
+const useBonuses = ref(false)
+
+/**
+ * Сколько реально спишем, в минорных единицах.
+ *
+ * Лимит уже ограничен остатком после скидки, то есть ровно тем, что покупатель
+ * платит (`cart.totalMinor`), поэтому отдельного «не больше заказа» здесь не
+ * нужно — это свойство `spendCapMinor`, а не дополнительная проверка.
+ */
+const bonusMinor = computed(() => (useBonuses.value ? bonusCapMinor.value : 0))
+
+/** Итог — сумма позиций минус бонусы. Именно её выставляет сервер (`orders.total_amount`). */
+const totalMinor = computed(() => Math.max(0, cart.totalMinor - bonusMinor.value))
+
+/** Тот же лимит в бонусах — то число, которое видит и называет покупатель. */
+const bonusCapUnits = computed(() => Math.floor(bonusCapMinor.value / MINOR_UNITS_PER_BONUS))
+
+/** Блок вообще показывается: счёт загружен и на нём что-то есть. */
+const canUseBonuses = computed(
+  () => loyalty.bonus !== null && loyalty.bonusesCount > 0 && bonusCapMinor.value > 0,
+)
+
+/**
+ * Сколько бонусов останется, если галочку поставить.
+ *
+ * Считается от ЛИМИТА, а не от применённой суммы, и это не мелочь: подпись
+ * рядом с галочкой описывает предложение, а не текущее состояние. «−300 ₽ ·
+ * останется 500 бонусов» на снятой галочке было бы правдой буквально (ничего не
+ * списали) и бесполезно по смыслу — покупатель читает эту строку, чтобы решить,
+ * ставить галочку или нет, и ему нужно знать, что будет ПОСЛЕ.
+ */
+const bonusLeftUnits = computed(() =>
+  Math.floor(Math.max(0, (loyalty.bonus?.balance ?? 0) - bonusCapMinor.value) / MINOR_UNITS_PER_BONUS),
+)
 
 /** Имена полей §66 → имена полей формы. */
 const SERVER_FIELD_MAP: Record<string, string> = {
@@ -240,6 +303,17 @@ function handlePayError(error: unknown): void {
     return
   }
 
+  if (error.code === 'BONUS_LIMIT_EXCEEDED') {
+    // Лимит изменился между отрисовкой экрана и оформлением (баланс потратили
+    // в другой вкладке, подытог изменился). Галочку снимаем, а не «поправляем
+    // молча»: покупатель подтверждал конкретную цену, и подмена суммы под ним
+    // была бы хуже отказа. Баланс перечитываем — лимит на экране станет верным.
+    useBonuses.value = false
+    void loyalty.load(true)
+    ui.notify('sun', 'Бонусы не списаны', `${error.message} Оформите заказ без бонусов или повторите попытку.`)
+    return
+  }
+
   if (error.code === 'DEMO_DISABLED' || error.status === 403) {
     ui.notify('rose', 'Оплата недоступна', 'Платёжный провайдер не настроен — обратитесь к организатору.')
     return
@@ -264,11 +338,15 @@ async function pay(): Promise<void> {
   paying.value = true
   try {
     // 1. Заказ из удержанных мест. Контакты обязательны — на e-mail уходит билет.
+    //    Бонусы уходят тем же запросом: списание — часть оформления заказа, и
+    //    считать его отдельным вызовом после создания заказа значило бы получить
+    //    заказ с одной суммой, а списание — с другой.
     const { data: order } = await checkoutSession(sessionId.value, {
       customer_name: name.value.trim(),
       customer_email: email.value.trim(),
       customer_email_confirmation: emailConfirm.value.trim(),
       customer_phone: phone.value.trim(),
+      bonus_amount: bonusMinor.value,
     })
 
     // 2. Итог — из ответа сервера, он источник истины о цене.
@@ -475,11 +553,29 @@ onMounted(() => {
                 <dt class="text-muted">{{ ticketsLabel(cart.ticketsCount) }}</dt>
                 <dd class="tabular-nums text-content">{{ money(cart.subtotalMinor) }}</dd>
               </div>
+              <!-- Бонусы — отдельной строкой, как и скидка по промокоду: покупатель
+                   должен видеть, чем именно закрыта часть заказа, а не «итог
+                   меньше, чем сумма позиций» без объяснения. -->
+              <div v-if="bonusMinor > 0" class="flex justify-between">
+                <dt class="text-mint-400">Бонусами</dt>
+                <dd class="tabular-nums text-mint-400">−{{ money(bonusMinor) }}</dd>
+              </div>
               <div class="flex items-baseline justify-between border-t border-line pt-2">
                 <dt class="font-medium text-content">Итого</dt>
                 <dd class="text-xl font-semibold tabular-nums text-content">{{ money(totalMinor) }}</dd>
               </div>
             </dl>
+
+            <!-- Списание бонусов. Блок появляется только когда счёт загружен и на
+                 нём есть что списать: гость (`loyalty.bonus === null`) не видит его
+                 вовсе, а покупателю с нулевым балансом нечего предлагать. -->
+            <NCheckbox
+              v-if="canUseBonuses"
+              v-model="useBonuses"
+              class="mt-4"
+              :label="`Списать ${bonusCapUnits} ${plural(bonusCapUnits, 'бонус', 'бонуса', 'бонусов')}`"
+              :description="`−${money(bonusCapMinor)} · после покупки останется ${bonusLeftUnits} ${plural(bonusLeftUnits, 'бонус', 'бонуса', 'бонусов')}`"
+            />
 
             <p
               v-if="emailOk"

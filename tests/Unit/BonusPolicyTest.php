@@ -110,6 +110,55 @@ final class BonusPolicyTest extends TestCase
         $this->assertSame('EUR', $spendable->currency());
     }
 
+    // ── потолок «после скидки» (фаза 2b) ─────────────────────────────────────
+
+    public function testSpendCapIsUnchangedByAnAbsentDiscount(): void
+    {
+        // Третий параметр необязателен: без промокода лимит считается ровно так
+        // же, как считался до фазы 2b.
+        $this->assertSame(
+            BonusPolicy::maxSpendable(Money::of(100000), Money::of(500000))->minorUnits(),
+            BonusPolicy::maxSpendable(Money::of(100000), Money::of(500000), Money::zero())->minorUnits(),
+        );
+    }
+
+    public function testSpendCapIsNotReducedByASmallDiscount(): void
+    {
+        // Скидка 10% не мешает: доля считается от подытога, а остаток (90%) всё
+        // ещё больше 30%, поэтому лимит остаётся 300,00 ₽.
+        $spendable = BonusPolicy::maxSpendable(Money::of(100000), Money::of(500000), Money::of(10000));
+
+        $this->assertSame(30000, $spendable->minorUnits());
+    }
+
+    public function testSpendCapIsClippedByTheRemainderAfterADeepDiscount(): void
+    {
+        // Промокод на 90% оставляет 100,00 ₽. Бонусы не могут увести итог в
+        // минус, поэтому лимит — 100,00 ₽, а не 300,00 ₽.
+        $spendable = BonusPolicy::maxSpendable(Money::of(100000), Money::of(500000), Money::of(90000));
+
+        $this->assertSame(10000, $spendable->minorUnits());
+    }
+
+    public function testSpendCapIsZeroWhenTheDiscountWipesTheCart(): void
+    {
+        // 100%-й промокод: списывать нечего. Без этого потолка журнал записал бы
+        // списание, которое OrderTotals тут же урезал бы клампом до нуля, — и
+        // баланс покупателя ушёл бы без следа в заказе.
+        $spendable = BonusPolicy::maxSpendable(Money::of(100000), Money::of(500000), Money::of(100000));
+
+        $this->assertTrue($spendable->isZero());
+    }
+
+    public function testSpendCapIsZeroWhenTheDiscountExceedsTheSubtotal(): void
+    {
+        // Скидку режет OrderTotals, но если вызывающий передал её сюда сырой —
+        // потолок обязан остаться нулём, а не уйти в минус.
+        $spendable = BonusPolicy::maxSpendable(Money::of(100000), Money::of(500000), Money::of(150000));
+
+        $this->assertTrue($spendable->isZero());
+    }
+
     // ── срок жизни ───────────────────────────────────────────────────────────
 
     public function testLifetimeIsTwelveCalendarMonths(): void
