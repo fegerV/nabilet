@@ -22,6 +22,7 @@ tags:
   - name: Checkin
   - name: Me
   - name: Admin Events
+  - name: Admin Raffles
   - name: Admin Venues
   - name: Admin Orders
   - name: Admin Tickets
@@ -36,6 +37,7 @@ tags:
   - name: Media
   - name: Translations
   - name: Admin Users
+  - name: Raffles
 
 paths:
   /api/v1/auth/register:
@@ -793,6 +795,45 @@ paths:
               schema: { $ref: '#/components/schemas/ReferralInfoResponse' }
         '401': { $ref: '#/components/responses/Unauthorized' }
 
+  /api/v1/me/raffles:
+    get:
+      tags: [Me]
+      summary: My raffle participations
+      description: >-
+        Розыгрыши «счастливый билет» (фаза 5), в которых у покупателя есть
+        билеты. Черновики и отменённые не показываются: первые ещё не существуют
+        для покупателя, вторые закончились без призов. Пустой список — 200 с
+        `data: []`, а не 404.
+      operationId: getMyRaffles
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Raffles where the buyer holds at least one entry
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RaffleParticipationListResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/v1/raffles/{public_id}:
+    get:
+      tags: [Raffles]
+      summary: Public raffle results
+      description: >-
+        Публичная страница результатов тиража. Доступна без авторизации; наружу
+        уходит только маска победителя (`display`), полные имя и адрес видны
+        только организатору в админке. Черновик, отменённый и несуществующий
+        розыгрыш отвечают 404.
+      operationId: getRaffleResults
+      parameters:
+        - $ref: '#/components/parameters/RafflePublicIdPath'
+      responses:
+        '200':
+          description: Raffle results with masked winners
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RaffleResultsResponse' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   /api/v1/me/events/{event}/favorite:
     post:
       tags: [Me]
@@ -1029,6 +1070,155 @@ paths:
       responses:
         '204': { description: Soft-deleted }
         '409': { $ref: '#/components/responses/Conflict' }
+
+  /api/v1/admin/raffles:
+    get:
+      tags: [Admin Raffles]
+      summary: List raffles
+      operationId: adminListRaffles
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Raffle list with entry, prize and winner counts
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RaffleListResponse' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Admin Raffles]
+      summary: Create a raffle draft
+      operationId: adminCreateRaffle
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RaffleWriteRequest' }
+      responses:
+        '201':
+          description: Created draft
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RaffleResponse' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /api/v1/admin/raffles/{raffle}:
+    get:
+      tags: [Admin Raffles]
+      summary: Get a raffle
+      operationId: adminGetRaffle
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/RaffleIdPath'
+      responses:
+        '200':
+          description: Raffle with prizes and winners
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RaffleResponse' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [Admin Raffles]
+      summary: Update a raffle
+      operationId: adminUpdateRaffle
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/RaffleIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RaffleWriteRequest' }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RaffleResponse' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /api/v1/admin/raffles/{raffle}/activate:
+    post:
+      tags: [Admin Raffles]
+      summary: Activate a raffle (backfill entries)
+      description: >-
+        Переводит `draft → active` и ставит в очередь backfill оплаченных
+        заказов окна. Сама активация возвращает обновлённый розыгрыш; письма
+        победителям уходят только после тиража.
+      operationId: adminActivateRaffle
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/RaffleIdPath'
+      responses:
+        '200':
+          description: Activated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RaffleResponse' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/admin/raffles/{raffle}/cancel:
+    post:
+      tags: [Admin Raffles]
+      summary: Cancel a raffle
+      operationId: adminCancelRaffle
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/RaffleIdPath'
+      responses:
+        '200':
+          description: Cancelled
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RaffleResponse' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/admin/raffles/{raffle}/draw:
+    post:
+      tags: [Admin Raffles]
+      summary: Draw the raffle
+      description: >-
+        Распределяет билеты по призовым местам и ставит письма победителям в
+        очередь. Отказы (все 422): `RAFFLE_ALREADY_DRAWN`, `RAFFLE_NOT_ACTIVE`,
+        `RAFFLE_NO_PRIZES`, `RAFFLE_NOT_ENOUGH_ENTRIES`.
+      operationId: adminDrawRaffle
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/RaffleIdPath'
+      responses:
+        '200':
+          description: Winners by place
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RaffleWinnersResponse' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /api/v1/admin/raffles/{raffle}/notify:
+    post:
+      tags: [Admin Raffles]
+      summary: Resend winner notifications
+      description: >-
+        Повторная рассылка писем победителям, которым письмо ещё не ушло
+        (повторно отправляет только неуведомлённым).
+      operationId: adminNotifyRaffle
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/RaffleIdPath'
+      responses:
+        '200':
+          description: Notify job enqueued
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RaffleNotifyResponse' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
 
   /api/v1/admin/sessions:
     post:
@@ -2367,6 +2557,27 @@ components:
         `events.public_id` (ULID, 26 символов), а не внутренний BIGINT:
         идентификаторы в кабинете покупателя публичные. Неизвестный или
         удалённый public_id отвечает 404.
+    RafflePublicIdPath:
+      in: path
+      name: public_id
+      required: true
+      schema:
+        type: string
+        pattern: '^[0-9A-Z]{26}$'
+      description: >-
+        `raffles.public_id` (26 символов), а не внутренний BIGINT: публичная
+        ссылка результатов розыгрыша. Неизвестный или скрытый (черновик/отменённый)
+        public_id отвечает 404.
+    RaffleIdPath:
+      in: path
+      name: raffle
+      required: true
+      schema:
+        type: string
+        pattern: '^[0-9A-Z]{26}$'
+      description: >-
+        `raffles.public_id` (26 символов) в адресах админки; внутренний BIGINT не
+        покидает API. Неизвестный public_id отвечает 404.
     SessionIdPath:
       in: path
       name: session
@@ -2876,6 +3087,195 @@ components:
             invited: { type: integer, description: Friends who ordered through the link }
             rewarded: { type: integer, description: Friends who paid their first order (reward paid) }
             earned: { type: integer, description: Bonus earned by the inviter, minor units }
+
+    RaffleListItem:
+      type: object
+      required: [public_id, title, status, prizes_count, entries_count, winners_count, created_at]
+      properties:
+        public_id: { type: string, pattern: '^[0-9A-Z]{26}$', description: raffles.public_id }
+        title: { type: string }
+        status: { type: string, enum: [draft, active, drawn, cancelled] }
+        starts_at: { type: string, format: date-time, nullable: true }
+        ends_at: { type: string, format: date-time, nullable: true }
+        drawn_at: { type: string, format: date-time, nullable: true }
+        prizes_count: { type: integer, description: Number of prize places }
+        entries_count: { type: integer, description: Number of entries (tickets) }
+        winners_count: { type: integer, description: Number of drawn winners }
+        created_at: { type: string, format: date-time }
+
+    RafflePrize:
+      type: object
+      required: [public_id, place, title]
+      properties:
+        public_id: { type: string, pattern: '^[0-9A-Z]{26}$' }
+        place: { type: integer, minimum: 1, maximum: 255 }
+        title: { type: string }
+        description: { type: string, nullable: true }
+
+    RaffleWinner:
+      type: object
+      required: [public_id, place, prize_title, order_number, customer_email, notified]
+      properties:
+        public_id: { type: string, pattern: '^[0-9A-Z]{26}$' }
+        place: { type: integer }
+        prize_title: { type: string }
+        order_number: { type: string, description: Order number of the winning entry }
+        customer_email: { type: string, description: Winner customer email (admin only) }
+        notified: { type: boolean, description: Whether the winner notification was sent }
+
+    RaffleDetail:
+      type: object
+      required: [public_id, title, status, created_at, updated_at, entries_count, prizes, winners]
+      properties:
+        public_id: { type: string, pattern: '^[0-9A-Z]{26}$' }
+        title: { type: string }
+        description: { type: string, nullable: true }
+        status: { type: string, enum: [draft, active, drawn, cancelled] }
+        starts_at: { type: string, format: date-time, nullable: true }
+        ends_at: { type: string, format: date-time, nullable: true }
+        drawn_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        entries_count: { type: integer }
+        prizes:
+          type: array
+          items: { $ref: '#/components/schemas/RafflePrize' }
+        winners:
+          type: array
+          items: { $ref: '#/components/schemas/RaffleWinner' }
+
+    RaffleParticipation:
+      type: object
+      required: [public_id, title, status, entries_count, prizes, won]
+      properties:
+        public_id: { type: string, pattern: '^[0-9A-Z]{26}$' }
+        title: { type: string }
+        description: { type: string, nullable: true }
+        status: { type: string, enum: [draft, active, drawn, cancelled] }
+        starts_at: { type: string, format: date-time, nullable: true }
+        ends_at: { type: string, format: date-time, nullable: true }
+        drawn_at: { type: string, format: date-time, nullable: true }
+        entries_count: { type: integer }
+        prizes:
+          type: array
+          items:
+            type: object
+            required: [place, title]
+            properties:
+              place: { type: integer }
+              title: { type: string }
+        won:
+          type: array
+          description: Winning places of this buyer (empty if not a winner)
+          items:
+            type: object
+            required: [place, prize_title, notified]
+            properties:
+              place: { type: integer }
+              prize_title: { type: string }
+              notified: { type: boolean }
+
+    PublicWinner:
+      type: object
+      required: [display, notified]
+      properties:
+        display: { type: string, description: Masked winner identity (name initial or email mask) }
+        notified: { type: boolean }
+
+    PublicPrize:
+      type: object
+      required: [place, title, winner]
+      properties:
+        place: { type: integer }
+        title: { type: string }
+        description: { type: string, nullable: true }
+        winner: { $ref: '#/components/schemas/PublicWinner', nullable: true }
+
+    RaffleResults:
+      type: object
+      required: [public_id, title, status, entries_count, prizes]
+      properties:
+        public_id: { type: string, pattern: '^[0-9A-Z]{26}$' }
+        title: { type: string }
+        description: { type: string, nullable: true }
+        status: { type: string, enum: [draft, active, drawn, cancelled] }
+        starts_at: { type: string, format: date-time, nullable: true }
+        ends_at: { type: string, format: date-time, nullable: true }
+        drawn_at: { type: string, format: date-time, nullable: true }
+        entries_count: { type: integer, description: Total entries (proof of fairness, public) }
+        prizes:
+          type: array
+          items: { $ref: '#/components/schemas/PublicPrize' }
+
+    RaffleListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/RaffleListItem' }
+
+    RaffleResponse:
+      type: object
+      required: [data]
+      properties:
+        data: { $ref: '#/components/schemas/RaffleDetail' }
+
+    RaffleWinnersResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/RaffleWinner' }
+
+    RaffleParticipationListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/RaffleParticipation' }
+
+    RaffleResultsResponse:
+      type: object
+      required: [data]
+      properties:
+        data: { $ref: '#/components/schemas/RaffleResults' }
+
+    RaffleNotifyResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [raffle, pending]
+          properties:
+            raffle: { type: string, pattern: '^[0-9A-Z]{26}$' }
+            pending: { type: integer, description: Winners still pending notification }
+
+    RaffleWriteRequest:
+      type: object
+      required: [title, prizes]
+      description: >-
+        Тело создания и правки розыгрыша. При правке поля необязательны
+        (`sometimes`), но при создании `title` и `prizes` обязательны. Призовые
+        места должны быть уникальны в пределах розыгрыша.
+      properties:
+        title: { type: string, maxLength: 255 }
+        description: { type: string, maxLength: 2000, nullable: true }
+        starts_at: { type: string, format: date-time, nullable: true }
+        ends_at: { type: string, format: date-time, nullable: true }
+        prizes:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [place, title]
+            properties:
+              place: { type: integer, minimum: 1, maximum: 255 }
+              title: { type: string, maxLength: 255 }
+              description: { type: string, maxLength: 2000, nullable: true }
 
     EventListResponse:
       type: object

@@ -3,11 +3,13 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Facades\Route;
+use Nabilet\Modules\Loyalty\Http\Controllers\AdminRaffleController;
 use Nabilet\Modules\Loyalty\Http\Controllers\BonusController;
 use Nabilet\Modules\Loyalty\Http\Controllers\FavoriteController;
 use Nabilet\Modules\Loyalty\Http\Controllers\FollowController;
 use Nabilet\Modules\Loyalty\Http\Controllers\LoyaltyLevelController;
 use Nabilet\Modules\Loyalty\Http\Controllers\LoyaltySettingsController;
+use Nabilet\Modules\Loyalty\Http\Controllers\RaffleController;
 use Nabilet\Modules\Loyalty\Http\Controllers\ReferralController;
 
 // Личный кабинет покупателя: «❤️ Избранное», «🔔 Подписки» и бонусный счёт.
@@ -49,6 +51,38 @@ Route::prefix('me')->middleware('auth:api')->group(function (): void {
     // Код выдаётся лениво — первое обращение заводит строку в
     // `referral_codes`, поэтому ответ всегда содержит ссылку, а не 404.
     Route::get('/referral', [ReferralController::class, 'show']);
+
+    // «Счастливый билет» (фаза 5): в каких розыгрышах есть мои билеты и
+    // выигрывал ли я. Участие — строка `raffle_entries`, и без аккаунта её
+    // не найти: путь целиком под `auth:api`, гость получает 401.
+    Route::get('/raffles', [RaffleController::class, 'index']);
+});
+
+//
+// РОЗЫГРЫШИ «СЧАСТЛИВЫЙ БИЛЕТ» (фаза 5). Три зоны доступа:
+//
+//   /me/raffles            — кабинет покупателя (выше, под `auth:api`);
+//   /raffles/{public_id}   — витрина: страница результатов БЕЗ авторизации.
+//     Публичный путь намеренно: победителя нужно показать всем — «смотрите,
+//     кто выиграл» — иначе страница результатов бесполезна. Наружу уходит
+//     только маскированное имя победителя (`RaffleResultsResource`);
+//   /admin/raffles/*       — управление организатором (`admin` поверх
+//     `auth:api`): тираж двигает призы, поэтому он админский.
+//
+// Розыгрыш идентифицируется `public_id` (26 символов), не `id`: соглашение
+// проекта — внутренний BIGINT не покидает API (`DATABASE.md` §9).
+Route::get('/raffles/{public_id}', [RaffleController::class, 'results']);
+
+Route::prefix('admin/raffles')->middleware(['auth:api', 'admin'])->group(function (): void {
+    Route::get('/', [AdminRaffleController::class, 'index']);
+    Route::post('/', [AdminRaffleController::class, 'store']);
+    Route::get('/{raffle}', [AdminRaffleController::class, 'show']);
+    Route::put('/{raffle}', [AdminRaffleController::class, 'update']);
+    // Действия, а не правка полей: у каждой свои побочные эффекты.
+    Route::post('/{raffle}/activate', [AdminRaffleController::class, 'activate']);
+    Route::post('/{raffle}/cancel', [AdminRaffleController::class, 'cancel']);
+    Route::post('/{raffle}/draw', [AdminRaffleController::class, 'draw']);
+    Route::post('/{raffle}/notify', [AdminRaffleController::class, 'notify']);
 });
 
 //

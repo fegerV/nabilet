@@ -7,6 +7,7 @@ namespace Database\Seeders;
 use App\Models\NotificationTemplate;
 use Illuminate\Database\Seeder;
 use Nabilet\Modules\Loyalty\Support\FollowNotificationCodes;
+use Nabilet\Modules\Loyalty\Support\RaffleNotificationCodes;
 use Nabilet\Modules\Notifications\Support\AccountNotificationCodes;
 use Nabilet\Modules\Notifications\Support\OrderNotificationCodes;
 use RuntimeException;
@@ -46,6 +47,7 @@ final class NotificationTemplateSeeder extends Seeder
             $this->orderTemplates(),
             $this->accountTemplates(),
             $this->followTemplates(),
+            $this->raffleTemplates(),
         );
 
         // Сид и рассылка обязаны знать один и тот же набор кодов ЗАКАЗА. Если
@@ -56,11 +58,13 @@ final class NotificationTemplateSeeder extends Seeder
         // Сверяются только коды `order.*`: письма о доступе к аккаунту не
         // приходят от обсервера заказа, у них свой список
         // (`AccountNotificationCodes`), и добавлять их в проверку значило бы
-        // сравнивать два разных набора. Теперь наборов три, и проверка крутится
+        // сравнивать два разных набора. Теперь наборов четыре, и проверка крутится
         // по каждому: `follow.*` сверяется с `FollowNotificationCodes` — оттуда
-        // их берёт `SessionObserver`.
+        // их берёт `SessionObserver`, `raffle.*` — с `RaffleNotificationCodes`,
+        // оттуда их берёт `NotifyRaffleWinnersJob`.
         $this->assertCodesMatch('order.', $templates, OrderNotificationCodes::all());
         $this->assertCodesMatch('follow.', $templates, FollowNotificationCodes::all());
+        $this->assertCodesMatch('raffle.', $templates, RaffleNotificationCodes::all());
 
         foreach ($templates as $template) {
             $existing = NotificationTemplate::query()
@@ -425,6 +429,91 @@ final class NotificationTemplateSeeder extends Seeder
             . '<p style="margin:20px 0 0;font-size:13px;line-height:1.5;color:#6b7280;">'
             . 'Ссылка действует {{expires_in_minutes}} минут.</p>'
             . '<p style="margin:12px 0 0;line-height:1.5;color:#4b5563;">' . $action . '</p>'
+            . '</div>';
+
+        return [
+            'code' => $code,
+            'subject' => $subject,
+            'body_html' => $html,
+            'body_text' => $text,
+        ];
+    }
+
+    /**
+     * Письмо победителю розыгрыша (фаза 5, «счастливый билет»).
+     *
+     * Повод ровно один — «вы выиграли», и код берётся из
+     * `RaffleNotificationCodes`: того же списка, которым пользуется
+     * `NotifyRaffleWinnersJob`. Ссылка ведёт на страницу результатов
+     * (`#/raffles/{public_id}` — хэш-путь, тот же инвариант, что у ссылок
+     * сброса пароля и реферальной ссылки), поэтому переменная одна:
+     * `{{action_url}}`.
+     *
+     * Тон — поздравление без деталей заказа: ни номера, ни суммы. Письмо не
+     * должно выглядеть как чек: победителя интересуют место и приз, а не то,
+     * каким заказом он его выиграл.
+     *
+     * @return list<array{code: string, subject: string, body_html: string, body_text: string}>
+     */
+    private function raffleTemplates(): array
+    {
+        return [
+            $this->raffleTemplate(
+                code: RaffleNotificationCodes::WINNER,
+                subject: 'Поздравляем — вы выиграли в розыгрыше «{{raffle_title}}»',
+                intro: 'Здравствуйте, {{customer_name}}!',
+                body: 'Тираж розыгрыша <b>{{raffle_title}}</b> состоялся, и ваш билет'
+                    . ' занял призовое место. Приз — <b>{{prize_title}}</b>.',
+                urlLabel: 'Посмотреть результаты',
+                text: "Здравствуйте, {{customer_name}}!\n\n"
+                    . "Тираж розыгрыша {{raffle_title}} состоялся, и ваш билет занял"
+                    . " призовое место {{prize_place}}.\n\n"
+                    . "Приз: {{prize_title}}\n\n"
+                    . "Результаты розыгрыша: {{action_url}}\n\n"
+                    . "Поздравляем! Чтобы получить приз, покажите это письмо"
+                    . " организатору — контакты для связи есть на странице результатов.\n",
+            ),
+        ];
+    }
+
+    /**
+     * Собрать запись шаблона письма победителю.
+     *
+     * Кнопка-ссылка — тем же приёмом, что у писем о доступе к аккаунту
+     * (`accountTemplate()`): у письма есть одно понятное действие «посмотреть
+     * результаты», и оно заслуживает большой кнопки. Срока действия у ссылки
+     * нет — страница результатов живёт, пока живёт розыгрыш.
+     *
+     * @return array{code: string, subject: string, body_html: string, body_text: string}
+     */
+    private function raffleTemplate(
+        string $code,
+        string $subject,
+        string $intro,
+        string $body,
+        string $urlLabel,
+        string $text,
+    ): array {
+        $details = '<table role="presentation" cellpadding="0" cellspacing="0" border="0"'
+            . ' style="width:100%;margin:16px 0;font-size:14px;color:#374151;">'
+            . '<tr><td style="padding:4px 0;color:#6b7280;">Розыгрыш</td>'
+            . '<td style="padding:4px 0;text-align:right;font-weight:600;">{{raffle_title}}</td></tr>'
+            . '<tr><td style="padding:4px 0;color:#6b7280;">Призовое место</td>'
+            . '<td style="padding:4px 0;text-align:right;">{{prize_place}}</td></tr>'
+            . '<tr><td style="padding:4px 0;color:#6b7280;">Приз</td>'
+            . '<td style="padding:4px 0;text-align:right;font-weight:600;">{{prize_title}}</td></tr>'
+            . '</table>';
+
+        $html = '<div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,'
+            . 'sans-serif;max-width:600px;margin:0 auto;color:#111827;">'
+            . '<p style="margin:0 0 12px;">' . $intro . '</p>'
+            . '<p style="margin:0 0 16px;line-height:1.5;">' . $body . '</p>'
+            . $details
+            . '<table role="presentation" cellpadding="0" cellspacing="0" border="0">'
+            . '<tr><td style="border-radius:6px;background:#4f46e5;">'
+            . '<a href="{{action_url}}" target="_blank" rel="noopener"'
+            . ' style="display:inline-block;padding:12px 20px;font-size:15px;font-weight:600;'
+            . 'color:#ffffff;text-decoration:none;">' . $urlLabel . '</a></td></tr></table>'
             . '</div>';
 
         return [

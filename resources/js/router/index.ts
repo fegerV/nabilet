@@ -103,6 +103,36 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/pages/storefront/ClubPage.vue'),
         meta: { title: 'Клуб зрителей', requiresCustomer: true },
       },
+      {
+        /*
+         * Фаза 5: «Мои розыгрыши» — билеты «счастливого билета».
+         *
+         * Маршрут под `requiresCustomer`, как «Бонусы» и «Клуб»: данные
+         * приходят из `/me/raffles`, а билеты покупателя — не публичная
+         * статистика. Экран показывает участия, а итоги розыгрыша ведут на
+         * публичную страницу (`/raffles/{public_id}` ниже) — она общая для
+         * всех и открывается без аккаунта.
+         */
+        path: 'my-raffles',
+        name: 'my-raffles',
+        component: () => import('@/pages/storefront/MyRafflesPage.vue'),
+        meta: { title: 'Мои розыгрыши', requiresCustomer: true },
+      },
+      {
+        /*
+         * Фаза 5: публичная страница итогов розыгрыша.
+         *
+         * `requiresCustomer` намеренно НЕТ: страницу открывают из писем и
+         * ссылок, а победители на ней показаны маской (`RaffleResultsResource`)
+         * — открывать состав участников аккаунтом незачем. Путь несёт хэш —
+         * тот же механизм, что у приглашения `/r/{code}`: ссылка работает из
+         * письма без правок на сервере.
+         */
+        path: 'raffles/:publicId',
+        name: 'raffle-results',
+        component: () => import('@/pages/storefront/RaffleResultsPage.vue'),
+        meta: { title: 'Итоги розыгрыша' },
+      },
 
       /*
        * Кабинет покупателя. Живёт на витрине, а не в админке: это та же
@@ -192,6 +222,9 @@ const routes: RouteRecordRaw[] = [
       // «Клуб зрителей»: ранний доступ и реферальная программа. Объявлен до
       // :section по той же причине, что и payment-settings.
       { path: 'club-settings', name: 'admin-club-settings', component: () => import('@/pages/admin/AdminClubSettingsPage.vue') },
+      // Розыгрыши «счастливый билет»: состав участников, призовые места и
+      // тираж. Объявлен до :section — иначе catch-all показывал бы заглушку.
+      { path: 'raffles', name: 'admin-raffles', component: () => import('@/pages/admin/AdminRafflesPage.vue') },
       // Catch-all для неизвестных адресов админки. Разделов-заглушек больше нет:
       // все пункты меню ведут на реальные экраны, поэтому единственное, чем может
       // быть этот маршрут, — опечатка в URL. Он отдаёт честный «Раздел не найден»
