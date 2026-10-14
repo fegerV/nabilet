@@ -354,6 +354,16 @@ class CartController extends Controller
             'customer_email_confirmation' => ['nullable', 'string', 'same:customer_email'],
             'customer_phone' => ['nullable', 'string', 'max:32'],
             'promo_code' => ['nullable', 'string', 'max:64'],
+            // Сколько бонусов списать — в МИНОРНЫХ единицах, как и все `*_amount`
+            // в этом API (`MoneyTotals.bonus_amount`, колонка `orders.bonus_amount`).
+            // `max` стоит как грубая защита от мусора в теле запроса; настоящий
+            // лимит (30% от подытога, остаток после скидки, баланс) считает
+            // `BonusPolicy` в чекауте, и превышение — это 422 `BONUS_LIMIT_EXCEEDED`,
+            // а не молчаливое урезание.
+            //
+            // `nullable`: поле необязательное, и клиенты, которые его не шлют
+            // (embed-виджет, интеграции), оформляют заказ ровно как раньше.
+            'bonus_amount' => ['nullable', 'integer', 'min:0', 'max:100000000'],
         ]);
 
         [$token, $isNew] = $this->resolveToken($request);
@@ -363,6 +373,7 @@ class CartController extends Controller
             'customer_email' => $validated['customer_email'],
             'customer_phone' => $validated['customer_phone'] ?? null,
             'promo_code' => $validated['promo_code'] ?? null,
+            'bonus_amount' => (int) ($validated['bonus_amount'] ?? 0),
         ], $token);
 
         return $this->withTokenHeader(response()->json([

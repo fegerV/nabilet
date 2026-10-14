@@ -89,8 +89,9 @@ Storefront screens: `/favorites`, `/subscriptions` and `/bonus`
 «♡» on `EventCard` and «♡»/«🔔 Следить» on `EventPage`. The bonus balance is part
 of `stores/loyalty.ts` (loaded together with both lists by the storefront shell),
 so the header chip, the account tile and the `/bonus` screen all read one number
-and cannot disagree. Spending bonuses at checkout is phase 2b and is deliberately
-**not** offered anywhere in the UI yet.
+and cannot disagree. Spending bonuses at checkout is implemented in phase 2b and is
+offered on the checkout screen (`CheckoutPage` with a «Списать N бонусов» toggle,
+`lib/loyalty.ts::spendCapMinor` mirroring the server-side cap).
 
 ## Special Cases
 

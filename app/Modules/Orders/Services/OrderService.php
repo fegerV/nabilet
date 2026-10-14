@@ -93,6 +93,13 @@ class OrderService
                 'payment_status' => 'pending',
                 'subtotal_amount' => $totalAmount,
                 'discount_amount' => 0,
+                // Прямая форма заказа (`items`, без корзины) бонусов не знает:
+                // списание живёт в оформлении корзины, где есть бонусный счёт и
+                // строка журнала (`BonusService::spendForOrder`). Колонка
+                // заполняется явным нулём, а не оставляется на DEFAULT, чтобы
+                // «здесь бонусов не бывает» было видно в коде, а не выводилось из
+                // схемы. `bonus_amount` в этой форме отвергает валидация.
+                'bonus_amount' => 0,
                 'fee_amount' => 0,
                 'total_amount' => $totalAmount,
                 'currency' => $data['currency'] ?? 'RUB',

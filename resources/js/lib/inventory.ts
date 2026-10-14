@@ -182,6 +182,10 @@ export interface CheckoutResult {
   order_id: string
   session_id: number | string
   total_amount: number
+  subtotal_amount: number
+  discount_amount: number
+  /** Списано бонусами, минорные единицы (фаза 2b). */
+  bonus_amount: number
   currency: string
   items: Array<{ inventory_item_id: number; quantity: number; unit_price: number; total_price: number }>
 }
@@ -194,6 +198,12 @@ export interface CheckoutResult {
  * `customer_email_confirmation` — повтор ввода адреса. Письмо с билетом уходит
  * ровно на `customer_email`, поэтому сервер сверяет оба поля (`same`): опечатка
  * в одну букву иначе означала бы билет, который не придёт никогда.
+ *
+ * `bonus_amount` — сколько минорных единиц заказа закрыть бонусами. Необязателен:
+ * гость и покупатель без бонусов его не шлют, и оформление для них не меняется.
+ * Сумма проходит серверный лимит (`BonusPolicy::maxSpendable`), и превышение —
+ * это 422 `BONUS_LIMIT_EXCEEDED`, а не молчаливое урезание: покупатель
+ * подтвердил цену, и она не должна измениться втихую.
  */
 export async function checkoutSession(
   sessionId: number | string,
@@ -202,6 +212,7 @@ export async function checkoutSession(
     customer_email: string
     customer_email_confirmation?: string
     customer_phone?: string
+    bonus_amount?: number
   },
 ): Promise<{ data: CheckoutResult }> {
   return send<CheckoutResult>('/cart/checkout', 'POST', { session_id: Number(sessionId), ...customer })

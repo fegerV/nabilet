@@ -56,6 +56,10 @@ class OrderResource extends JsonResource
             'totals' => [
                 'subtotal_amount' => (int) $this->subtotal_amount,
                 'discount_amount' => (int) $this->discount_amount,
+                // Списано бонусами — отдельным членом, а не «магической скидкой»:
+                // покупатель должен видеть, сколько заказа закрыто лояльностью,
+                // а разбор заказа — отличать код от бонусов (см. `OrderTotals`).
+                'bonus_amount' => (int) $this->bonus_amount,
                 'fee_amount' => (int) $this->fee_amount,
                 'total_amount' => (int) $this->total_amount,
                 'currency' => (string) ($this->currency ?? 'RUB'),

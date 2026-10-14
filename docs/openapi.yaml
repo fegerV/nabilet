@@ -3037,6 +3037,15 @@ components:
         customer_phone: { type: string }
         holder_name: { type: string }
         promo_code: { type: string }
+        bonus_amount:
+          type: integer
+          minimum: 0
+          description: >-
+            Integer minor units (kopecks) of the order to cover with loyalty
+            bonuses, per MoneyTotals.bonus_amount. Capped by the server at
+            min(30% of the subtotal, subtotal minus discount, bonus balance);
+            a larger request is rejected with 422 BONUS_LIMIT_EXCEEDED rather
+            than silently reduced. Only meaningful together with cart_id.
 
     MoneyTotals:
       type: object
@@ -3047,6 +3056,7 @@ components:
       properties:
         subtotal_amount: { type: integer, description: Integer minor units (kopecks) }
         discount_amount: { type: integer, description: Integer minor units (kopecks) }
+        bonus_amount: { type: integer, description: Integer minor units (kopecks) covered by loyalty bonuses; a separate line, not folded into discount_amount }
         fee_amount: { type: integer, description: Integer minor units (kopecks) }
         total_amount: { type: integer, description: Integer minor units (kopecks) }
         currency: { type: string, description: ISO 4217 code, e.g. RUB }

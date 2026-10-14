@@ -9,13 +9,16 @@ use Illuminate\Support\Facades\DB;
 use Nabilet\Core\Errors\ConflictError;
 use Nabilet\Core\Errors\DomainRuleViolation;
 use Nabilet\Core\Errors\ValidationError;
+use Nabilet\Core\Support\Money;
 use Nabilet\Modules\Cart\Models\Cart;
 use Nabilet\Modules\Core\Organizations\Models\Organization;
 use Nabilet\Modules\Core\Users\Services\CustomerAccountService;
 use Nabilet\Modules\Events\Models\Session;
+use Nabilet\Modules\Loyalty\Services\BonusService;
 use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Orders\Models\OrderItem;
 use Nabilet\Modules\Orders\Models\PromoCode;
+use Nabilet\Modules\Pricing\Domain\OrderTotals;
 use Nabilet\Modules\Pricing\Services\PromoCodeService;
 use Nabilet\Modules\Sessions\Models\Session as SessionsSession;
 
@@ -26,6 +29,14 @@ use Nabilet\Modules\Sessions\Models\Session as SessionsSession;
  * единственная операция, которая пересекает границу модулей (Cart → Orders →
  * Sessions) и создаёт денежный документ. Всё остальное в корзине —
  * подготовительные операции, которые можно откатить, ничего не потеряв.
+ *
+ * ЗАВИСИМОСТЬ ОТ ЛОЯЛЬНОСТИ (фаза 2b)
+ *   Здесь же появилась третья точка пересечения границы — `Loyalty`: оформление
+ *   спрашивает у бонусного счёта, сколько бонусов можно списать, и записывает
+ *   списание. Разделить это на «чекаут решает сам» и «лояльность потом
+ *   поправит» нельзя: `total_amount` — денежный документ, и он обязан быть
+ *   посчитан один раз, вместе со списанием. Поэтому `BonusService` внедрён сюда
+ *   напрямую (как и `PromoCodeService`), а не вызывается событием после факта.
  */
 final class CartCheckoutService
 {
@@ -33,6 +44,7 @@ final class CartCheckoutService
         private readonly CartItemService $items,
         private readonly PromoCodeService $promos = new PromoCodeService(),
         private readonly CustomerAccountService $customers = new CustomerAccountService(),
+        private readonly BonusService $bonus = new BonusService(),
     ) {
     }
 
@@ -340,7 +352,55 @@ final class CartCheckoutService
             // меньше всей корзины, а total_amount когда-нибудь начнёт включать
             // сборы — тогда subtotal и total разойдутся.
             $discountAmount = min($discountAmount, $subtotalAmount);
-            $totalAmount = max(0, $subtotalAmount - $discountAmount);
+
+            // Бонусы. Покупатель называет сумму, лимит считает `BonusPolicy`:
+            // 30% от подытога, не больше остатка после скидки и не больше
+            // баланса. Решение о лимите живёт в модуле лояльности — здесь его
+            // не пересчитывают, иначе «30%» существовало бы в двух местах.
+            $currency = (string) ($cart->currency ?? 'RUB');
+            $requestedBonus = (int) ($customer['bonus_amount'] ?? 0);
+            $bonusCap = $this->bonus->spendableFor(
+                $buyerId,
+                Money::of($subtotalAmount, $currency),
+                Money::of($discountAmount, $currency),
+            );
+
+            // Отказ, а не тихое урезание. Молчаливое урезание изменило бы цену,
+            // которую покупатель подтвердил: он просил списать 600, а заплатил
+            // бы как за 300. Отказ возвращает его к выбору с актуальным лимитом.
+            if ($requestedBonus > $bonusCap->minorUnits()) {
+                throw new DomainRuleViolation(
+                    sprintf(
+                        'Cannot spend %d bonus minor units: the limit for this order is %d.',
+                        $requestedBonus,
+                        $bonusCap->minorUnits()
+                    ),
+                    'BONUS_LIMIT_EXCEEDED',
+                    [
+                        'requested' => $requestedBonus,
+                        'available' => $bonusCap->minorUnits(),
+                        'subtotal_amount' => $subtotalAmount,
+                    ],
+                );
+            }
+
+            // Итог считает `OrderTotals`, а не арифметика на месте. Это не
+            // косметика: `total = subtotal - discount - bonus + fee` — инвариант,
+            // продублированный CHECK'ом `ck_orders_amounts`, и до фазы 2b он был
+            // записан здесь ТРЕТЬИМ способом (после `OrderPricing` и `OrderTotals`).
+            // Клампы живут в объекте, поэтому «бонусов больше, чем заказ» здесь
+            // не может дать отрицательный итог.
+            $totals = OrderTotals::of(
+                Money::of($subtotalAmount, $currency),
+                Money::of($discountAmount, $currency),
+                Money::zero($currency),
+                $promoEvaluation,
+                Money::of($requestedBonus, $currency),
+            );
+
+            $discountAmount = $totals->discount()->minorUnits();
+            $bonusAmount = $totals->bonus()->minorUnits();
+            $totalAmount = $totals->total()->minorUnits();
 
             $order = Order::create([
                 'organization_id' => $organizationId,
@@ -353,6 +413,10 @@ final class CartCheckoutService
                 'payment_status' => 'pending',
                 'subtotal_amount' => $subtotalAmount,
                 'discount_amount' => $discountAmount,
+                // Списано бонусами — отдельной колонкой, а не внутри скидки:
+                // покупатель видит строку, а разбор заказа отличает код от
+                // лояльности (см. `OrderTotals`).
+                'bonus_amount' => $bonusAmount,
                 'fee_amount' => 0,
                 'total_amount' => $totalAmount,
                 'currency' => $cart->currency ?? 'RUB',
@@ -383,6 +447,28 @@ final class CartCheckoutService
                 ]);
             }
 
+            // Списание — ПОСЛЕ создания заказа, потому что строка журнала
+            // ссылается на `order_id` (FK `fk_bonus_transactions_order`), и в ЭТОЙ
+            // ЖЕ транзакции. Отсюда два свойства, которые и нужны: откат
+            // оформления откатывает списание («заказ не создался, а бонусы
+            // ушли» невозможно), а заказ без списания невозможен наоборот,
+            // потому что `bonus_amount` уже записан выше из того же расчёта.
+            //
+            // Баланс уменьшается СЕЙЧАС, а не при оплате. Так баланс остаётся
+            // единственным источником правды: он же показывается в шапке, и по
+            // нему же считается лимит следующего заказа. Если бы списание
+            // откладывалось до `markPaid`, один и тот же баланс обеспечил бы
+            // списание в двух незакрытых заказах. Неоплаченный заказ освобождает
+            // бонусы так же, как места, — `BonusService::refundForOrder()`.
+            if ($bonusAmount > 0) {
+                $this->bonus->spendForOrder(
+                    $order,
+                    Money::of($bonusAmount, $currency),
+                    Money::of($subtotalAmount, $currency),
+                    Money::of($discountAmount, $currency),
+                );
+            }
+
             // Расход кода — ПОСЛЕ создания заказа: redeem() пишет redemption со
             // ссылкой на order_id. Счётчик двигается условным UPDATE (см.
             // PromoCodeService::redeem), и весь блок — в этой же транзакции:
@@ -408,6 +494,7 @@ final class CartCheckoutService
                 'total_amount' => $totalAmount,
                 'subtotal_amount' => $subtotalAmount,
                 'discount_amount' => $discountAmount,
+                'bonus_amount' => $bonusAmount,
                 'currency' => $cart->currency,
             ];
     }

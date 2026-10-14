@@ -153,6 +153,13 @@ class OrderController extends Controller
                     'customer_email' => $data['customer_email'] ?? null,
                     'customer_phone' => $data['customer_phone'] ?? null,
                     'promo_code' => $data['promo_code'] ?? null,
+                    // Списание бонусов — та же ветка, что и промокод: сумма
+                    // проходит через `BonusPolicy` и записывается в журнал внутри
+                    // транзакции оформления (см. `CartCheckoutService::convert`).
+                    // Правило `prohibited_without:cart_id` в `StoreOrderRequest`
+                    // гарантирует, что поле не приходит в прямую форму заказа,
+                    // где бонусного счёта нет.
+                    'bonus_amount' => (int) ($data['bonus_amount'] ?? 0),
                 ],
                 CartToken::fromRequest($request),
                 $request->user()?->getKey(),
