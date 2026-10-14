@@ -911,6 +911,29 @@ paths:
               schema: { $ref: '#/components/schemas/LoyaltyLevelStatusResponse' }
         '401': { $ref: '#/components/responses/Unauthorized' }
 
+  /api/v1/me/referral:
+    get:
+      tags: [Me]
+      summary: My invitation link and referral stats
+      description: >-
+        Код и готовая ссылка «Пригласите друга» (фаза 4 плана лояльности) плюс
+        статистика. Код выдаётся лениво, при первом открытии кабинета, поэтому
+        у покупателя, ещё не открывавшего раздел, ссылки просто нет — она
+        появится в этом же ответе при следующем запросе. Награды — в минорных
+        единицах, как и все деньги в API. Когда программа выключена в админке,
+        ссылка всё равно выдаётся: приглашение без награды остаётся
+        приглашением, и кабинет не должен показывать «функция недоступна» тому,
+        кто уже разослал ссылки.
+      operationId: getMyReferral
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Invitation code, link and stats
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReferralInfoResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
   /api/v1/me/events/{event}/favorite:
     post:
       tags: [Me]
@@ -2775,7 +2798,7 @@ components:
             refunded or expired.
         reason:
           type: string
-          enum: [accrual, registration, first_purchase, spend, refund, expiry]
+          enum: [accrual, registration, first_purchase, spend, refund, expiry, referral_inviter, referral_invited]
         created_at: { type: string, format: date-time }
 
     BonusTransactionListResponse:
@@ -2817,6 +2840,51 @@ components:
         paid_orders: { type: integer, description: Count of the buyer's paid orders }
         next_level: { $ref: '#/components/schemas/LoyaltyLevel', nullable: true }
         orders_to_next: { type: integer, description: Paid orders until the next tier (0 at the top) }
+
+    ReferralInfoResponse:
+      type: object
+      required: [data]
+      properties:
+        data: { $ref: '#/components/schemas/ReferralInfo' }
+
+    ReferralInfo:
+      type: object
+      required: [code, link, enabled, stats]
+      description: >-
+        Ссылка «Пригласите друга» и её результаты. `code` —
+        `referral_codes.code` (16 символов алфавита без визуально похожих пар),
+        `link` — готовая ссылка `/#/r/{code}` от `config('app.url')`. Размеры
+        наград правятся в админке (scope `loyalty`), поэтому витрина показывает
+        ровно те числа, что начислит сервер, а не свои копии правил.
+      properties:
+        code: { type: string, maxLength: 16, description: Invitation code, referral_codes.code }
+        link: { type: string, description: 'Absolute invitation link: {app.url}/#/r/{code}' }
+        enabled:
+          type: boolean
+          description: Whether the referral program is enabled in admin settings
+        inviter_bonus:
+          type: integer
+          description: >-
+            Reward for the inviter, integer minor units (kopecks), paid once per
+            invited friend after the friend's first paid order.
+        invited_bonus:
+          type: integer
+          description: Reward for the invited friend, integer minor units (kopecks).
+        stats:
+          type: object
+          required: [invited, rewarded, earned]
+          description: >-
+            `invited` — сколько друзей оформило заказ по ссылке (учёт
+            `referrals`), `rewarded` — сколько из них оплатило первый заказ,
+            `earned` — сколько бонусов это принесло приглашающему. `earned`
+            считается по журналу (`bonus_transactions`, причина
+            `referral_inviter`), а не по строкам приглашений: настройка награды
+            могла поменяться между приглашениями, и «₽300 за каждого» перестало
+            бы сходиться с фактом.
+          properties:
+            invited: { type: integer, description: Friends who ordered through the link }
+            rewarded: { type: integer, description: Friends who paid their first order (reward paid) }
+            earned: { type: integer, description: Bonus earned by the inviter, minor units }
 
     EventListResponse:
       type: object
@@ -3093,6 +3161,15 @@ components:
             min(30% of the subtotal, subtotal minus discount, bonus balance);
             a larger request is rejected with 422 BONUS_LIMIT_EXCEEDED rather
             than silently reduced. Only meaningful together with cart_id.
+        referral_code:
+          type: string
+          maxLength: 16
+          description: >-
+            Invitation code the buyer arrived by (storefront `/#/r/{code}` link,
+            phase 4 of the loyalty plan). Optional: the server silently ignores
+            an unknown, foreign, malformed or already-used code — a broken link
+            must never break a purchase. The invitation is created at checkout
+            and rewarded once per invited friend after their first paid order.
 
     MoneyTotals:
       type: object

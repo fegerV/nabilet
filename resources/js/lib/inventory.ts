@@ -204,6 +204,12 @@ export interface CheckoutResult {
  * Сумма проходит серверный лимит (`BonusPolicy::maxSpendable`), и превышение —
  * это 422 `BONUS_LIMIT_EXCEEDED`, а не молчаливое урезание: покупатель
  * подтвердил цену, и она не должна измениться втихую.
+ *
+ * `referral_code` — код приглашения из ссылки `/r/{code}` (фаза 4), сохранённый
+ * в localStorage. Необязателен: его шлют только если друг действительно
+ * переходил по приглашению. Сервер молча игнорирует неизвестный, чужой или
+ * уже использованный код (`ReferralService::attachToOrder()`) — отказ (422)
+ * сломал бы покупку из-за устаревшей ссылки, а награда от этого не росла бы.
  */
 export async function checkoutSession(
   sessionId: number | string,
@@ -213,6 +219,7 @@ export async function checkoutSession(
     customer_email_confirmation?: string
     customer_phone?: string
     bonus_amount?: number
+    referral_code?: string
   },
 ): Promise<{ data: CheckoutResult }> {
   return send<CheckoutResult>('/cart/checkout', 'POST', { session_id: Number(sessionId), ...customer })

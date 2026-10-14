@@ -11,6 +11,7 @@ import AdminShell from '@/layouts/AdminShell.vue'
 import { getToken } from '@/lib/api'
 import { isAdminSession, clearSession } from '@/lib/auth'
 import { isCustomerSession } from '@/lib/customer'
+import { rememberReferralCode } from '@/lib/referral'
 import { applySeo } from '@/lib/seo'
 
 const routes: RouteRecordRaw[] = [
@@ -73,6 +74,24 @@ const routes: RouteRecordRaw[] = [
         name: 'bonus',
         component: () => import('@/pages/storefront/BonusPage.vue'),
         meta: { title: 'Бонусы', requiresCustomer: true },
+      },
+      {
+        /*
+         * Фаза 4: посадочная страница приглашения `#/r/{code}`.
+         *
+         * Объявлена обычным маршрутом, а не `beforeEnter`-редиректом: страница
+         * объясняет, зачем друг прислал ссылку и что даёт первая покупка.
+         * Тот же хост и тот же hash-роутинг, поэтому ссылка работает из
+         * письма и мессенджера без правок на сервере (SPA отдаётся только на
+         * `/`, см. `routes/web.php`).
+         *
+         * `requiresCustomer` намеренно НЕТ: друга приглашают ДО регистрации, и
+         * требовать аккаунт на этом экране — значит потерять приглашение.
+         */
+        path: 'r/:code',
+        name: 'referral',
+        component: () => import('@/pages/storefront/ReferralLandingPage.vue'),
+        meta: { title: 'Приглашение в клуб' },
       },
       {
         // «Клуб зрителей»: экран «Моя коллекция» (ачивки, уровень, бонусы) по
@@ -170,6 +189,9 @@ const routes: RouteRecordRaw[] = [
       // Приём платежей: ключи ЮKassa, demo-режим, провайдер по умолчанию.
       // Объявлен до :section, иначе catch-all показывал бы заглушку.
       { path: 'payment-settings', name: 'admin-payment-settings', component: () => import('@/pages/admin/AdminPaymentSettingsPage.vue') },
+      // «Клуб зрителей»: ранний доступ и реферальная программа. Объявлен до
+      // :section по той же причине, что и payment-settings.
+      { path: 'club-settings', name: 'admin-club-settings', component: () => import('@/pages/admin/AdminClubSettingsPage.vue') },
       // Catch-all для неизвестных адресов админки. Разделов-заглушек больше нет:
       // все пункты меню ведут на реальные экраны, поэтому единственное, чем может
       // быть этот маршрут, — опечатка в URL. Он отдаёт честный «Раздел не найден»
@@ -187,6 +209,23 @@ export const router = createRouter({
     // Возврат по «назад» восстанавливает позицию: в списке заказов это важно.
     return savedPosition ?? { top: 0 }
   },
+})
+
+/*
+ * Фаза 4: атрибуция по `?ref={code}` на ЛЮБОМ адресе.
+ *
+ * Ссылка `/r/{code}` ведёт на свой маршрут, но приглашение рассылают и в
+ * обход него — «перейди по afisha.ru/?ref=CODE» в переписке. Ловим параметр
+ * глобально, до guard'ов: код должен запомниться, даже если дальше человек
+ * уйдёт на вход (`?ref=` при этом теряется вместе с query при переходе, но
+ * код уже в localStorage).
+ *
+ * Запоминает только `rememberReferralCode()` — она не хранит заведомо
+ * битые значения, поэтому мусорный `?ref=` не засоряет localStorage.
+ */
+router.beforeEach((to) => {
+  const ref = to.query.ref
+  if (typeof ref === 'string') rememberReferralCode(ref)
 })
 
 // Guard: админка требует админскую сессию — токен И роль. Без неё — на логин.

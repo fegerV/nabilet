@@ -17,6 +17,7 @@ use Nabilet\Modules\Core\Users\Services\CustomerAccountService;
 use Nabilet\Modules\Events\Models\Session;
 use Nabilet\Modules\Loyalty\Services\BonusService;
 use Nabilet\Modules\Loyalty\Services\LoyaltySettingsService;
+use Nabilet\Modules\Loyalty\Services\ReferralService;
 use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Orders\Models\OrderItem;
 use Nabilet\Modules\Orders\Models\PromoCode;
@@ -39,6 +40,13 @@ use Nabilet\Modules\Sessions\Models\Session as SessionsSession;
  *   поправит» нельзя: `total_amount` — денежный документ, и он обязан быть
  *   посчитан один раз, вместе со списанием. Поэтому `BonusService` внедрён сюда
  *   напрямую (как и `PromoCodeService`), а не вызывается событием после факта.
+ *
+ * РЕФЕРАЛЬНАЯ АТРИБУЦИЯ (фаза 4) — ТОЖЕ ЗДЕСЬ, НО БЕЗ ДЕНЕГ
+ *   `ReferralService::attachToOrder()` заводит приглашение по адресу заказа.
+ *   В отличие от бонусов, это не денежный документ: награда ждёт оплаты
+ *   (`OrderReferralObserver`), и расходиться с чекаутом ей нечем. Причина
+ *   размещения та же — единственное место, где известен и адрес друга, и
+ *   аккаунт, заведённый на чекауте.
  */
 final class CartCheckoutService
 {
@@ -50,6 +58,9 @@ final class CartCheckoutService
         // Ранний доступ клуба (фаза 3b): гейт продаж на чекауте сдвигает окно
         // для клубного покупателя. Значение по умолчанию — как у соседей выше.
         private readonly LoyaltySettingsService $loyaltySettings = new LoyaltySettingsService(),
+        // Реферальная программа (фаза 4): код из тела оформления связывает
+        // заказ с пригласившим. Значение по умолчанию — как у соседей выше.
+        private readonly ReferralService $referrals = new ReferralService(),
     ) {
     }
 
@@ -515,6 +526,20 @@ final class CartCheckoutService
             // считается по аутентифицированным пользователям.
             if ($promoCode !== null && $promoEvaluation !== null) {
                 $this->promos->redeem($promoCode, $order, $promoEvaluation, $cart->user_id === null ? null : (int) $cart->user_id);
+            }
+
+            // Реферальная атрибуция (фаза 4) — ПОСЛЕ создания заказа: строка
+            // приглашения ключуется адресом заказа (`customer_email`) и
+            // уточняется аккаунтом (`resolveBuyerId()` выше). В той же
+            // транзакции, что и заказ: откат оформления откатывает и
+            // приглашение. Награда здесь НЕ выплачивается — она ждёт оплаты
+            // (`OrderReferralObserver` → `RewardReferralJob`), потому что
+            // «первая оплата друга» — денежное событие, а не намерение.
+            //
+            // Неизвестный или устаревший код — молча (см. `ReferralService`):
+            // ссылка не промокод, и ломать из-за неё покупку незачем.
+            if (!empty($customer['referral_code'])) {
+                $this->referrals->attachToOrder($order, (string) $customer['referral_code']);
             }
 
             return [

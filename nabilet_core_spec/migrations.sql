@@ -2135,3 +2135,63 @@ INSERT INTO loyalty_levels (public_id, slug, name, min_paid_orders, sort_order, 
   ('01ARZ3NDEKTSV4RRFFQ69G5FAX', 'vip', 'VIP', 10, 3, NOW(6), NOW(6));
 
 SET FOREIGN_KEY_CHECKS = 1;
+
+SET NAMES utf8mb4;
+SET time_zone = '+00:00';
+SET FOREIGN_KEY_CHECKS = 0;
+
+-- ---------------------------------------------------------- 021: реферальная программа (фаза 4)
+-- Код приглашения — свойство приглашающего (`referral_codes`: одна строка на
+-- человека, `UNIQUE (user_id)`), приглашение — строка на каждого друга
+-- (`referrals`: `UNIQUE (inviter_user_id, invited_email)` — инвариант
+-- идемпотентности). Друг определяется АДРЕСОМ, а не аккаунтом: покупатель по
+-- умолчанию — гость, и ссылку `/r/{code}` открывают до регистрации;
+-- `invited_user_id` — необязательное уточнение на потом (SET NULL). Статус
+-- `pending → registered → rewarded` со словарём в CHECK; `bonus_paid_at`
+-- фиксирует момент награды. Словарь причин журнала расширен `referral_inviter`
+-- и `referral_invited` — CHECK переиздаётся (MySQL 8 не умеет ALTER CHECK, а
+-- снятие безопасно: новое условие — надмножество старого). ЗЕРКАЛО:
+-- database/migrations/2026_10_14_030000_create_referrals.php.
+CREATE TABLE IF NOT EXISTS referral_codes (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  public_id CHAR(26) NOT NULL,
+  user_id BIGINT UNSIGNED NOT NULL,
+  code VARCHAR(16) NOT NULL,
+  created_at DATETIME(6) NOT NULL,
+  updated_at DATETIME(6) NOT NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_referral_codes_public_id (public_id),
+  UNIQUE KEY uq_referral_codes_user (user_id),
+  UNIQUE KEY uq_referral_codes_code (code),
+  CONSTRAINT fk_referral_codes_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS referrals (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  public_id CHAR(26) NOT NULL,
+  inviter_user_id BIGINT UNSIGNED NOT NULL,
+  invited_email VARCHAR(255) NOT NULL,
+  invited_user_id BIGINT UNSIGNED NULL,
+  status VARCHAR(16) NOT NULL DEFAULT 'pending',
+  bonus_paid_at DATETIME(6) NULL,
+  created_at DATETIME(6) NOT NULL,
+  updated_at DATETIME(6) NOT NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_referrals_public_id (public_id),
+  UNIQUE KEY uq_referrals_inviter_email (inviter_user_id, invited_email),
+  KEY idx_referrals_invited_user (invited_user_id),
+  CONSTRAINT fk_referrals_inviter FOREIGN KEY (inviter_user_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_referrals_invited_user FOREIGN KEY (invited_user_id) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+ALTER TABLE referrals
+  ADD CONSTRAINT ck_referrals_status CHECK (status IN ('pending','registered','rewarded'));
+
+ALTER TABLE bonus_transactions DROP CONSTRAINT ck_bonus_transactions_reason;
+
+ALTER TABLE bonus_transactions
+  ADD CONSTRAINT ck_bonus_transactions_reason CHECK (reason IN (
+    'accrual','registration','first_purchase','spend','refund','expiry',
+    'referral_inviter','referral_invited'));
+
+SET FOREIGN_KEY_CHECKS = 1;

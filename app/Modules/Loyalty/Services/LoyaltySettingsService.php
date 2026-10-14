@@ -6,9 +6,12 @@ namespace Nabilet\Modules\Loyalty\Services;
 
 use App\Models\Setting;
 use Nabilet\Modules\Core\Users\Models\User;
+use Nabilet\Modules\Loyalty\Domain\ReferralPolicy;
+use Nabilet\Modules\Loyalty\Domain\ReferralReward;
 
 /**
- * Настройки «раннего доступа» клуба («Клуб зрителей», фаза 3b).
+ * Настройки «Клуба зрителей»: ранний доступ (фаза 3b) и реферальная программа
+ * (фаза 4).
  *
  * ГЛОБАЛЬНЫЙ СДВИГ, А НЕ ПОЛЯ НА СЕАНСЕ
  *   Ранний доступ — одно правило на весь магазин: покупатель, достигший уровня
@@ -40,11 +43,34 @@ final class LoyaltySettingsService
     public const KEY_HOURS = 'early_access_hours';
     public const KEY_MIN_LEVEL_SLUG = 'early_access_min_level_slug';
 
+    public const KEY_REFERRAL_ENABLED = 'referral_enabled';
+    public const KEY_REFERRAL_INVITER_BONUS = 'referral_inviter_bonus';
+    public const KEY_REFERRAL_INVITED_BONUS = 'referral_invited_bonus';
+
     /** Дефолты: выключено, сутки, «друг» — тот же порог, что и у бонусов. */
     public const DEFAULT_HOURS = 24;
     public const DEFAULT_MIN_LEVEL_SLUG = 'friend';
     /** Верхний предел N часов: 30 суток. Дальше — почти «всегда», смысла нет. */
     public const MAX_HOURS = 720;
+
+    /**
+     * Дефолты рефералки (фаза 4): программа включена, ₽300 обеим сторонам.
+     *
+     * ПОЧЕМУ ВКЛЮЧЕНА ПО УМОЛЧАНИЮ
+     *   Ссылка `/r/{code}` не рассылается никуда сама: её даёт кабинет
+     *   приглашающему, и тот решает, кому её отправить. Включённая по
+     *   умолчанию программа — это обещание, которое видит только тот, кто
+     *   получил ссылку, то есть ровно тот, кому оно адресовано.
+     *
+     * ПОЧЕМУ 300 ₽
+     *   ₽300 — визитная карточка «первой покупки» из таблицы правил плана;
+     *   друг получает столько же за первый оплаченный заказ по приглашению,
+     *   а пригласивший — ту же сумму за приведённого друга. Итоговая
+     *   награда в ₽600 на пару — в пределах разумного при среднем чеке.
+     */
+    public const DEFAULT_REFERRAL_ENABLED = true;
+    public const DEFAULT_REFERRAL_INVITER_BONUS = 30000;
+    public const DEFAULT_REFERRAL_INVITED_BONUS = 30000;
 
     public function __construct(
         private readonly LoyaltyLevelService $levels = new LoyaltyLevelService(),
@@ -59,6 +85,9 @@ final class LoyaltySettingsService
      *     enabled: bool,
      *     hours: int,
      *     min_level_slug: string,
+     *     referral_enabled: bool,
+     *     referral_inviter_bonus: int,
+     *     referral_invited_bonus: int,
      *     levels: list<array{slug: string, name: string, min_paid_orders: int}>
      * }
      */
@@ -74,19 +103,55 @@ final class LoyaltySettingsService
                 : false,
             'hours' => max(1, min(self::MAX_HOURS, $hours)),
             'min_level_slug' => (string) ($values[self::KEY_MIN_LEVEL_SLUG] ?? self::DEFAULT_MIN_LEVEL_SLUG),
+            'referral_enabled' => array_key_exists(self::KEY_REFERRAL_ENABLED, $values)
+                ? (bool) $values[self::KEY_REFERRAL_ENABLED]
+                : self::DEFAULT_REFERRAL_ENABLED,
+            'referral_inviter_bonus' => max(0, (int) ($values[self::KEY_REFERRAL_INVITER_BONUS] ?? self::DEFAULT_REFERRAL_INVITER_BONUS)),
+            'referral_invited_bonus' => max(0, (int) ($values[self::KEY_REFERRAL_INVITED_BONUS] ?? self::DEFAULT_REFERRAL_INVITED_BONUS)),
             'levels' => $this->levels->tiers(),
         ];
     }
 
     /**
-     * Сохранить настройки из админки. Валидация — за контроллером; здесь только
-     * нормализация часов в допустимый диапазон.
+     * Сохранить настройки раннего доступа из админки. Валидация — за
+     * контроллером; здесь только нормализация часов в допустимый диапазон.
      */
     public function save(bool $enabled, int $hours, string $minLevelSlug): void
     {
         $this->writeValue(self::KEY_ENABLED, $enabled);
         $this->writeValue(self::KEY_HOURS, max(1, min(self::MAX_HOURS, $hours)));
         $this->writeValue(self::KEY_MIN_LEVEL_SLUG, $minLevelSlug);
+    }
+
+    /**
+     * Сохранить настройки реферальной программы из админки (фаза 4).
+     *
+     * Отдельный метод, а не пятый параметр `save()`: ранний доступ и
+     * рефералка правятся разными формами, и один метод с двумя необязательными
+     * группами параметров позволил бы сохранить половину настроек, забыв
+     * другую.
+     */
+    public function saveReferral(bool $enabled, int $inviterBonus, int $invitedBonus): void
+    {
+        $this->writeValue(self::KEY_REFERRAL_ENABLED, $enabled);
+        $this->writeValue(self::KEY_REFERRAL_INVITER_BONUS, max(0, $inviterBonus));
+        $this->writeValue(self::KEY_REFERRAL_INVITED_BONUS, max(0, $invitedBonus));
+    }
+
+    /**
+     * Награда за приглашение по текущим настройкам — решение принимает
+     * `ReferralPolicy` (потолок, приведение негатива к нулю), а не читающий
+     * настройки код: иначе «максимум награды» существовал бы в двух местах.
+     */
+    public function referralReward(): ReferralReward
+    {
+        $settings = $this->forAdmin();
+
+        return ReferralPolicy::reward(
+            $settings['referral_enabled'],
+            $settings['referral_inviter_bonus'],
+            $settings['referral_invited_bonus'],
+        );
     }
 
     /**

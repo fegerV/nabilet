@@ -18,7 +18,7 @@
 | Telegram | ⚠️ модуль `app/Modules/Telegram` — ЗАГЛУШКА (`TelegramServiceProvider` без кода) |
 | Избранное/подписки | ✅ фаза 1: `018_loyalty_foundation.sql`, 6 маршрутов `/me/*`, письма подписчикам, витрина |
 | Бонусы (счёт и журнал) | ✅ фаза 2a: схема `019_bonus_ledger.sql`, начисление (`BonusPolicy`/`BonusService`/`OrderBonusObserver`), API баланса и журнала (`GET /me/bonus`, `GET /me/bonus/transactions`), витрина (чип «✦ N» в шапке, плитка в кабинете, экран `/bonus` с историей); списание в чекауте — ✅ фаза 2b |
-| Рефералка | ❌ таблиц нет — фаза 4 этого плана |
+| Рефералка | ✅ фаза 4: `021_referrals.sql`, `#/r/{code}` → атрибуция в чекауте → награда обеим сторонам после первой оплаты друга, настройки в админке (`GET/PUT /admin/loyalty/settings`, группа `referral_*`) |
 
 ## Архитектурные факты, на которых держится план
 
@@ -156,6 +156,22 @@ reason)`.** Начисление обязано пройти ровно один
 `referrals(inviter_user_id, invited_email, code, status, bonus_paid_at)`,
 ссылка `/r/{code}` → атрибуция (cookie/localStorage) → бонус обеим сторонам
 после первой оплаты друга (по образцу идемпотентного `PromoCodeService::redeem()`).
+
+**Статус фазы 4: реализовано** (`af648b87`).
+
+| Что | Решение |
+|---|---|
+| Схема | `021_referrals.sql` + Laravel-зеркало: `referral_codes` (одна строка на приглашающего, `UNIQUE (user_id)` / `UNIQUE (code)`, ленивая выдача) и `referrals` (`UNIQUE (inviter_user_id, invited_email)` — инвариант идемпотентности, `pending → registered → rewarded`, `bonus_paid_at`). Словарь причин журнала расширен `referral_inviter` / `referral_invited` (CHECK переиздан — новое условие надмножество старого). Счётчики: 81 таблица / 849 колонок / 117 FK / 105 UNIQUE / 51 CHECK |
+| Код | `Domain\ReferralCode` (фреймворк-фри): 16 символов, алфавит 32 знака без визуально похожих пар (`0`/`O`, `1`/`I` исключены), приведение = trim + верхний регистр |
+| Атрибуция | НА ЧЕКАУТЕ, а не по клику: приглашение рождается из заказа. Витрина (`lib/referral.ts`) держит код в localStorage, экран `#/r/{code}` объясняет награду, `?ref=` ловится на любом адресе, чекаут шлёт `referral_code` |
+| Ссылка | `#/r/{code}` — ХЭШ-путь: SPA отдаётся только на `/` (`routes/web.php`), чистый `/r/{code}` ушёл бы в `Route::fallback()` → 404. Тот же инвариант, что у ссылок в письмах |
+| Друг = адрес | Покупатель по умолчанию — гость, поэтому приглашённый определяется `customer_email`; `invited_user_id` — уточнение, когда аккаунт заведён чекаутом |
+| Награда | После ПЕРВОЙ оплаты друга: `OrderReferralObserver` (4-й наблюдатель на `Order`, только `paid`) → `RewardReferralJob` (`afterCommit`, `tries=3`) → `ReferralService::rewardForOrder()` — журнал + статус в одной транзакции. Идемпотентность двойная: статус `rewarded` и `dedupe_key` (`referral_inviter:{id}` / `referral_invited:{id}`) |
+| Настройки | `GET/PUT /api/v1/admin/loyalty/settings` (группа `referral_*`, частичное обновление не затирает ранний доступ): вкл/выкл, награда обеим сторонам в минорных единицах, дефолт ₽300 обеим, потолок `ReferralPolicy::MAX_BONUS`. Экран «Клуб зрителей» в админке |
+| Молчаливые отказы | Неизвестный, битый, свой и уже использованный код НЕ ломают покупку (201 без приглашения), выключенная программа не начисляет и не помечает приглашение награждённым |
+| Ограничение | Возврат НЕ отзывает награду — то же правило, что у кэшбэка (фаза 2b): бонус уже на счёте. Записано намеренно |
+| Тесты | `ReferralCodeTest` (10 unit, фреймворк-фри), `ReferralTest` (16 feature: атрибуция, битые коды, самоприглашение, выключенная программа, награда обеим сторонам, повтор джобы, возврат), `referral.test.ts` (11 vitest для `lib/referral.ts`) |
+| OpenAPI | `CreateOrderRequest.referral_code`, `GET /api/v1/me/referral` + `ReferralInfo`, словарь причин `BonusTransaction.reason` — обе копии, `verify-openapi`/`verify-spec-parity` PASS |
 
 ### Фаза 5 — «Розыгрыш/счастливый билет», рекомендации, Telegram
 

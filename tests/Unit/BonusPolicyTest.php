@@ -234,7 +234,11 @@ final class BonusPolicyTest extends TestCase
 
         $this->assertFalse(BonusReason::isKnown('teleported'));
         $this->assertSame(
-            ['accrual', 'registration', 'first_purchase', 'spend', 'refund', 'expiry'],
+            [
+                'accrual', 'registration', 'first_purchase', 'spend', 'refund', 'expiry',
+                // Фаза 4: награда обеим сторонам реферальной программы.
+                'referral_inviter', 'referral_invited',
+            ],
             BonusReason::all(),
         );
     }
