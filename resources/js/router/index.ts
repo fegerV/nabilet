@@ -64,6 +64,16 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/pages/storefront/SubscriptionsPage.vue'),
         meta: { title: 'Подписки', requiresCustomer: true },
       },
+      {
+        // Фаза 2a: баланс и история бонусного счёта. Отдельный экран по той же
+        // причине, что «Избранное»: за балансом заходят «посмотреть», мимо
+        // профиля и пароля. `requiresCustomer` — потому что `/me/bonus` иначе
+        // ответит 401.
+        path: 'bonus',
+        name: 'bonus',
+        component: () => import('@/pages/storefront/BonusPage.vue'),
+        meta: { title: 'Бонусы', requiresCustomer: true },
+      },
 
       /*
        * Кабинет покупателя. Живёт на витрине, а не в админке: это та же

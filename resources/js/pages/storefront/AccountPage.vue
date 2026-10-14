@@ -15,9 +15,11 @@
  *        и смена устройства означала потерю билетов навсегда (`/me/orders`).
  *     4. СЕССИИ — потому что «выйти везде» иначе недоступно, а пароль меняют в
  *        том числе тогда, когда подозревают чужой вход (`/me/sessions`).
- *     5. КЛУБ ЗРИТЕЛЕЙ — ссылки на «Избранное» и «Подписки»: сами списки живут
- *        на своих маршрутах (`/favorites`, `/subscriptions`), но найти их
- *        покупатель должен из кабинета.
+ *     5. КЛУБ ЗРИТЕЛЕЙ — бонусный счёт и ссылки на «Избранное» и «Подписки»:
+ *        сами списки и история бонусов живут на своих маршрутах (`/bonus`,
+ *        `/favorites`, `/subscriptions`), но найти их покупатель должен из
+ *        кабинета. Баланс в плитке — из `stores/loyalty.ts`, того же
+ *        состояния, что и чип в шапке.
  *
  * СМЕНА ПАРОЛЯ ОТЗЫВАЕТ ВСЕ СЕССИИ, ВКЛЮЧАЯ ЭТУ. Это правило проекта, а не
  * побочный эффект (`UserService::updateUser()`): пароль меняют, подозревая чужой
@@ -395,14 +397,34 @@ onMounted(load)
           </NButton>
         </section>
 
-        <!-- Клуб зрителей: избранное и подписки -->
+        <!-- Клуб зрителей: бонусный счёт, избранное и подписки -->
         <section class="surface-card p-5">
           <h2 class="text-sm font-semibold uppercase tracking-wide text-subtle">Клуб зрителей</h2>
           <p class="mt-1.5 text-xs text-subtle">
-            Отложенные мероприятия и подписки на письма о новых сеансах.
+            Бонусы за покупки, отложенные мероприятия и подписки на письма о новых сеансах.
           </p>
 
-          <div class="mt-4 grid gap-3 sm:grid-cols-2">
+          <!--
+            Бонусный счёт — во всю ширину, а не третьей плиткой: у него есть
+            число, которое хочется прочитать, и переход «за подробностями».
+            Плитка в общей сетке уравняла бы «250 бонусов» с подписью
+            «0 мероприятий», и баланс перестал бы быть заметным.
+          -->
+          <RouterLink
+            to="/bonus"
+            class="mt-4 flex items-center gap-3 rounded-lg border border-line p-3 transition-colors hover:border-brand-500/40 hover:bg-surface-2"
+          >
+            <span class="grid h-10 w-10 flex-none place-items-center rounded-lg bg-surface-3 text-lg text-brand-400" aria-hidden="true">✦</span>
+            <span class="min-w-0 flex-1">
+              <span class="block text-sm font-medium text-content">Бонусный счёт</span>
+              <span class="block text-xs text-subtle">
+                {{ loyalty.bonusesCount }} {{ plural(loyalty.bonusesCount, 'бонус', 'бонуса', 'бонусов') }} · кэшбэк 5 % с оплаченных заказов
+              </span>
+            </span>
+            <span class="flex-none text-xs text-brand-400">История →</span>
+          </RouterLink>
+
+          <div class="mt-3 grid gap-3 sm:grid-cols-2">
             <RouterLink
               to="/favorites"
               class="flex items-center gap-3 rounded-lg border border-line p-3 transition-colors hover:border-brand-500/40 hover:bg-surface-2"
