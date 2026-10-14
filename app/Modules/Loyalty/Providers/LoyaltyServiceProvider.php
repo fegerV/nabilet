@@ -6,11 +6,13 @@ namespace Nabilet\Modules\Loyalty\Providers;
 
 use Illuminate\Support\ServiceProvider;
 use Nabilet\Modules\Loyalty\Observers\OrderBonusObserver;
+use Nabilet\Modules\Loyalty\Observers\OrderLoyaltyObserver;
 use Nabilet\Modules\Loyalty\Observers\SessionObserver;
 use Nabilet\Modules\Loyalty\Services\BonusService;
 use Nabilet\Modules\Loyalty\Services\FavoriteService;
 use Nabilet\Modules\Loyalty\Services\FollowNotificationData;
 use Nabilet\Modules\Loyalty\Services\FollowService;
+use Nabilet\Modules\Loyalty\Services\LoyaltyLevelService;
 use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Sessions\Models\Session;
 
@@ -31,6 +33,9 @@ class LoyaltyServiceProvider extends ServiceProvider
         // баланса — один экземпляр на запрос/джобу, как и у остальных сервисов
         // модуля.
         $this->app->singleton(BonusService::class);
+        // Уровни клуба. Stateless-сервис, резолвится и из обсервера пересчёта, и
+        // из контроллера статуса — один экземпляр на запрос, как и у прочих.
+        $this->app->singleton(LoyaltyLevelService::class);
     }
 
     public function boot(): void
@@ -56,5 +61,12 @@ class LoyaltyServiceProvider extends ServiceProvider
         // знание клуба зрителей, а не заказов: модуль Orders не должен знать о
         // бонусном счёте.
         Order::observe(OrderBonusObserver::class);
+
+        // Третий наблюдатель на `Order`: пересчёт уровня «Клуба зрителей» при
+        // каждой смене статуса (оплата поднимает, возврат/отмена опускают). Тот же
+        // принцип, что у `OrderBonusObserver`: статус меняется из нескольких мест,
+        // и пересчёт должен ловить их все. Модуль Orders не знает про уровни клуба
+        // — это знание модуля Loyalty, поэтому наблюдатель регистрируется здесь.
+        Order::observe(OrderLoyaltyObserver::class);
     }
 }

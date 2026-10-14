@@ -2106,4 +2106,32 @@ ALTER TABLE bonus_transactions
   ADD CONSTRAINT ck_bonus_transactions_reason CHECK (reason IN (
     'accrual','registration','first_purchase','spend','refund','expiry'));
 
+-- ---------------------------------------------------------- 020: уровни «Клуба зрителей» (фаза 3)
+-- Конфиг уровней: Старт/Friend/VIP по числу оплаченных заказов; текущий уровень
+-- покупателя — колонка на `users`, пересчитываемая обсервером при смене статуса
+-- заказа. ЗЕРКАЛО: database/migrations/2026_10_14_020000_create_loyalty_levels.php.
+CREATE TABLE IF NOT EXISTS loyalty_levels (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  public_id CHAR(26) NOT NULL,
+  slug VARCHAR(32) NOT NULL,
+  name VARCHAR(64) NOT NULL,
+  min_paid_orders INT NOT NULL DEFAULT 0,
+  sort_order INT NOT NULL DEFAULT 0,
+  created_at DATETIME(6) NOT NULL,
+  updated_at DATETIME(6) NOT NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_loyalty_levels_public_id (public_id),
+  UNIQUE KEY uq_loyalty_levels_slug (slug)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+ALTER TABLE users
+  ADD COLUMN loyalty_level_id BIGINT UNSIGNED NULL,
+  ADD CONSTRAINT fk_users_loyalty_level FOREIGN KEY (loyalty_level_id)
+    REFERENCES loyalty_levels(id) ON DELETE SET NULL;
+
+INSERT INTO loyalty_levels (public_id, slug, name, min_paid_orders, sort_order, created_at, updated_at) VALUES
+  ('01ARZ3NDEKTSV4RRFFQ69G5FAV', 'start', 'Старт', 0, 1, NOW(6), NOW(6)),
+  ('01ARZ3NDEKTSV4RRFFQ69G5FAW', 'friend', 'Друг', 3, 2, NOW(6), NOW(6)),
+  ('01ARZ3NDEKTSV4RRFFQ69G5FAX', 'vip', 'VIP', 10, 3, NOW(6), NOW(6));
+
 SET FOREIGN_KEY_CHECKS = 1;

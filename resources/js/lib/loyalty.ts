@@ -254,6 +254,60 @@ export function bonusReasonLabel(reason: string): string {
   return BONUS_REASON_LABELS[reason] ?? reason
 }
 
+/* ── Уровни «Клуба зрителей» (фаза 3 плана) ────────────────────────────────
+ * Один эндпоинт под тем же `auth:api`: текущий уровень и прогресс до следующего.
+ * Уровень — производное от числа ОПЛАЧЕННЫХ заказов, пересчитываемое на сервере
+ * при смене статуса заказа, поэтому фронт только показывает готовый снимок и не
+ * держит пороги (они — в конфиге уровней на сервере, а не в вёрстке).
+ * ────────────────────────────────────────────────────────────────────────── */
+
+/** Схема `LoyaltyLevel` — один уровень из конфига. */
+export interface LoyaltyLevel {
+  slug: string
+  /** Отображаемое имя: «Старт» / «Друг» / «VIP». */
+  name: string
+  /** Порог в оплаченных заказах. */
+  min_paid_orders: number
+}
+
+/** Схема `LoyaltyLevelStatus` — снимок уровня покупателя. */
+export interface LoyaltyLevelStatus {
+  slug: string
+  name: string
+  min_paid_orders: number
+  /** Число оплаченных заказов покупателя. */
+  paid_orders: number
+  /** Следующий уровень или null на самом верхнем. */
+  next_level: LoyaltyLevel | null
+  /** Оплаченных заказов до следующего уровня (0 на вершине). */
+  orders_to_next: number
+}
+
+/** `GET /me/loyalty-level` — текущий уровень и прогресс. Гость сюда не попадает. */
+export async function fetchLoyaltyLevel(): Promise<LoyaltyLevelStatus> {
+  const res = await get<Partial<LoyaltyLevelStatus> | null>('/me/loyalty-level')
+  const data = res.data ?? {}
+
+  const next = data.next_level
+  const nextLevel: LoyaltyLevel | null =
+    next && typeof next === 'object'
+      ? {
+          slug: String(next.slug ?? 'start'),
+          name: String(next.name ?? ''),
+          min_paid_orders: toInt(next.min_paid_orders),
+        }
+      : null
+
+  return {
+    slug: String(data.slug ?? 'start'),
+    name: String(data.name ?? 'Старт'),
+    min_paid_orders: toInt(data.min_paid_orders),
+    paid_orders: toInt(data.paid_orders),
+    next_level: nextLevel,
+    orders_to_next: toInt(data.orders_to_next),
+  }
+}
+
 /* ── Лимит списания в чекауте (фаза 2b) ────────────────────────────────────
  * ЗЕРКАЛО `BonusPolicy`, А НЕ ВТОРОЕ ПРАВИЛО
  *   Числа ниже повторяют `BonusPolicy::SPEND_CAP_PERCENT` и

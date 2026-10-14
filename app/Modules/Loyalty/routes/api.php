@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\Route;
 use Nabilet\Modules\Loyalty\Http\Controllers\BonusController;
 use Nabilet\Modules\Loyalty\Http\Controllers\FavoriteController;
 use Nabilet\Modules\Loyalty\Http\Controllers\FollowController;
+use Nabilet\Modules\Loyalty\Http\Controllers\LoyaltyLevelController;
 
 // Личный кабинет покупателя: «❤️ Избранное», «🔔 Подписки» и бонусный счёт.
 //
@@ -36,4 +37,9 @@ Route::prefix('me')->middleware('auth:api')->group(function (): void {
     // а не 404: счёт заводится лениво, и «бонусов ещё нет» — это ноль бонусов.
     Route::get('/bonus', [BonusController::class, 'balance']);
     Route::get('/bonus/transactions', [BonusController::class, 'transactions']);
+
+    // Уровень «Клуба зрителей» (фаза 3). Производное от числа оплаченных заказов;
+    // пересчитывается обсервером при смене статуса заказа. Гость получает 401,
+    // авторизованный без заказов — Старт с нулём оплаченных, а не 404.
+    Route::get('/loyalty-level', [LoyaltyLevelController::class, 'show']);
 });

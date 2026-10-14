@@ -44,11 +44,13 @@ import {
   fetchBonusBalance,
   fetchFavorites,
   fetchFollows,
+  fetchLoyaltyLevel,
   followEvent,
   removeFavorite,
   unfollowEvent,
   type BonusBalance,
   type LoyaltyEntry,
+  type LoyaltyLevelStatus,
 } from '@/lib/loyalty'
 
 export const useLoyaltyStore = defineStore('loyalty', () => {
@@ -60,6 +62,8 @@ export const useLoyaltyStore = defineStore('loyalty', () => {
    * пуст», и показывать его гостю значило бы обещать бонусы, которых нет.
    */
   const bonus = ref<BonusBalance | null>(null)
+  /** Текущий уровень «Клуба зрителей» (`null` — не загружен или гость). */
+  const loyaltyLevel = ref<LoyaltyLevelStatus | null>(null)
 
   /*
    * Множества `public_id` мероприятий из списков — derived, а не состояние.
@@ -114,19 +118,22 @@ export const useLoyaltyStore = defineStore('loyalty', () => {
 
     loading.value = true
     try {
-      const [nextFavorites, nextFollows, nextBonus] = await Promise.all([
+      const [nextFavorites, nextFollows, nextBonus, nextLevel] = await Promise.all([
         fetchFavorites(),
         fetchFollows(),
         fetchBonusBalance(),
+        fetchLoyaltyLevel(),
       ])
       favorites.value = nextFavorites
       follows.value = nextFollows
       bonus.value = nextBonus
+      loyaltyLevel.value = nextLevel
       loaded.value = true
     } catch {
       favorites.value = []
       follows.value = []
       bonus.value = null
+      loyaltyLevel.value = null
     } finally {
       loading.value = false
     }
@@ -187,6 +194,7 @@ export const useLoyaltyStore = defineStore('loyalty', () => {
     favorites.value = []
     follows.value = []
     bonus.value = null
+    loyaltyLevel.value = null
     pending.value = new Set()
     loaded.value = false
   }
@@ -200,6 +208,7 @@ export const useLoyaltyStore = defineStore('loyalty', () => {
     favorites,
     follows,
     bonus,
+    loyaltyLevel,
     favoritesCount,
     followsCount,
     bonusesCount,
