@@ -167,6 +167,9 @@ const routes: RouteRecordRaw[] = [
       { path: 'notification-templates', name: 'admin-notification-templates', component: () => import('@/pages/admin/AdminNotificationTemplatesPage.vue') },
       { path: 'webhooks', name: 'admin-webhooks', component: () => import('@/pages/admin/AdminWebhooksPage.vue') },
       { path: 'mail', name: 'admin-mail', component: () => import('@/pages/admin/AdminMailSettingsPage.vue') },
+      // Приём платежей: ключи ЮKassa, demo-режим, провайдер по умолчанию.
+      // Объявлен до :section, иначе catch-all показывал бы заглушку.
+      { path: 'payment-settings', name: 'admin-payment-settings', component: () => import('@/pages/admin/AdminPaymentSettingsPage.vue') },
       // Catch-all для неизвестных адресов админки. Разделов-заглушек больше нет:
       // все пункты меню ведут на реальные экраны, поэтому единственное, чем может
       // быть этот маршрут, — опечатка в URL. Он отдаёт честный «Раздел не найден»
