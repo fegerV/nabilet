@@ -7,12 +7,14 @@ namespace Nabilet\Modules\Loyalty\Providers;
 use Illuminate\Support\ServiceProvider;
 use Nabilet\Modules\Loyalty\Observers\OrderBonusObserver;
 use Nabilet\Modules\Loyalty\Observers\OrderLoyaltyObserver;
+use Nabilet\Modules\Loyalty\Observers\OrderReferralObserver;
 use Nabilet\Modules\Loyalty\Observers\SessionObserver;
 use Nabilet\Modules\Loyalty\Services\BonusService;
 use Nabilet\Modules\Loyalty\Services\FavoriteService;
 use Nabilet\Modules\Loyalty\Services\FollowNotificationData;
 use Nabilet\Modules\Loyalty\Services\FollowService;
 use Nabilet\Modules\Loyalty\Services\LoyaltyLevelService;
+use Nabilet\Modules\Loyalty\Services\ReferralService;
 use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Sessions\Models\Session;
 
@@ -36,6 +38,9 @@ class LoyaltyServiceProvider extends ServiceProvider
         // Уровни клуба. Stateless-сервис, резолвится и из обсервера пересчёта, и
         // из контроллера статуса — один экземпляр на запрос, как и у прочих.
         $this->app->singleton(LoyaltyLevelService::class);
+        // Реферальная программа. Резолвится из чекаута (атрибуция), из джобы
+        // награды и из кабинета покупателя — один экземпляр на запрос.
+        $this->app->singleton(ReferralService::class);
     }
 
     public function boot(): void
@@ -68,5 +73,11 @@ class LoyaltyServiceProvider extends ServiceProvider
         // и пересчёт должен ловить их все. Модуль Orders не знает про уровни клуба
         // — это знание модуля Loyalty, поэтому наблюдатель регистрируется здесь.
         Order::observe(OrderLoyaltyObserver::class);
+
+        // Четвёртый наблюдатель на `Order`: реферальная награда по оплате заказа
+        // друга (фаза 4). Тот же принцип и та же причина: «первая оплата друга»
+        // наступает из нескольких мест, и награда должна ловить их все, а не
+        // только тот путь, который помнили при написании.
+        Order::observe(OrderReferralObserver::class);
     }
 }

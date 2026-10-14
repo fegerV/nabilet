@@ -69,6 +69,16 @@ class StoreOrderRequest extends FormRequest
             // `cart_id` пуст». Отдельного `prohibited_without` в этой версии
             // Laravel нет — проверено `ValidatesAttributes`.
             'bonus_amount' => ['nullable', 'integer', 'min:0', 'max:100000000', 'prohibited_if:cart_id,null'],
+            // Реферальный код из ссылки `/r/{code}` (фаза 4). Тот же характер,
+            // что у `bonus_amount`: атрибуция — часть оформления корзины, где
+            // известны адрес и аккаунт друга (`CartCheckoutService::convert`).
+            // Прямая форма (`items`) ссылок не знает, и поле в ней отвергается:
+            // клиент, приславший код, должен узнать, что он ни на что не
+            // повлиял, а не молча лишиться награды.
+            //
+            // `max:32` с запасом: код сейчас 16 символов (`ReferralCode`), и
+            // запас — на расширение алфавита без ломки контракта.
+            'referral_code' => ['nullable', 'string', 'max:32', 'prohibited_if:cart_id,null'],
             'customer_phone' => ['nullable', 'string', 'max:32'],
             // Форма спеки (`CreateOrderRequest`) называет поле `holder_name`;
             // приложение исторически принимает `customer_name`. Оба — одно и то

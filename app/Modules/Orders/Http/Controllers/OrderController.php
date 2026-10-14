@@ -160,6 +160,10 @@ class OrderController extends Controller
                     // гарантирует, что поле не приходит в прямую форму заказа,
                     // где бонусного счёта нет.
                     'bonus_amount' => (int) ($data['bonus_amount'] ?? 0),
+                    // Реферальный код ссылки `/r/{code}` (фаза 4): заводит
+                    // приглашение по адресу заказа. Награда ждёт оплаты, а не
+                    // оформления — см. `CartCheckoutService::convert()`.
+                    'referral_code' => $data['referral_code'] ?? null,
                 ],
                 CartToken::fromRequest($request),
                 $request->user()?->getKey(),

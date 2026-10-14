@@ -94,6 +94,10 @@ const NAV_GROUPS: NavGroup[] = [
       { label: 'Вебхуки', to: '/admin/webhooks', icon: '⌁' },
       { label: 'Шаблоны писем', to: '/admin/notification-templates', icon: '✉' },
       { label: 'Почта (SMTP)', to: '/admin/mail', icon: '⚙' },
+      // «Клуб зрителей»: ранний доступ к продажам и реферальная программа.
+      // Обе настройки двигают деньги, поэтому пункт в «Настройках», а не в
+      // «Витрине», где лежит только брендинг и оформление.
+      { label: 'Клуб зрителей', to: '/admin/club-settings', icon: '★' },
       { label: 'Аналитика', to: '/admin/analytics', icon: '▲' },
     ],
   },

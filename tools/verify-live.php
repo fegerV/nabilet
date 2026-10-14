@@ -133,8 +133,12 @@ if (preg_match_all('/ALTER\s+TABLE\s+`?(\w+)`?\s+(.*?);/is', $spec, $stmts, PREG
 // 825 → 834: сплит `020_loyalty_levels.sql` (фаза 3) добавил таблицу
 // `loyalty_levels` (8 колонок) и одну колонку в существующей
 // (`users.loyalty_level_id`). Итого 78 → 79 таблиц, 825 → 834 колонки.
-$expectedTables = 79;
-$expectedColumns = 834;
+//
+// 834 → 849: сплит `021_referrals.sql` (фаза 4) добавил таблицы
+// `referral_codes` (6 колонок) и `referrals` (9 колонок). Итого 79 → 81
+// таблица, 834 → 849 колонок. Обновлены все три файла одновременно.
+$expectedTables = 81;
+$expectedColumns = 849;
 if (count($specTables) !== $expectedTables || count($specCols) !== $expectedColumns) {
     fwrite(\STDERR, $line(sprintf(
         '  FAIL  spec parser read %d tables / %d columns, expected %d / %d.'
@@ -210,7 +214,13 @@ $live = [
 // Триггеры в этот цикл НЕ входят: они сравниваются отдельно ниже, потому что
 // их расхождение — отставшая спека, а не дрейф схемы, и оно не должно
 // сбрасываться или подгоняться вместе с остальными счётчиками.
-$expect = ['fk' => 114, 'unique' => 100, 'check' => 50];
+// 114 → 117, 100 → 105 и 50 → 51: сплит `021_referrals.sql` (фаза 4). Внешние
+// ключи: `fk_referral_codes_user` (CASCADE), `fk_referrals_inviter` (CASCADE),
+// `fk_referrals_invited_user` (SET NULL). Уникальные: `uq_referral_codes_public_id`,
+// `uq_referral_codes_user`, `uq_referral_codes_code`, `uq_referrals_public_id`,
+// `uq_referrals_inviter_email`. CHECK — `ck_referrals_status`; переиздание
+// `ck_bonus_transactions_reason` счёт НЕ меняет (имя то же).
+$expect = ['fk' => 117, 'unique' => 105, 'check' => 51];
 foreach ($expect as $k => $want) {
     $got = $live[$k];
     $ok = $got === $want;

@@ -51,6 +51,7 @@ import { anchorDemoUrl, initiatePayment, newIdempotencyKey, rememberPaymentId } 
 import { trackEvent } from '@/lib/metrika'
 import { money, plural, ticketsLabel } from '@/lib/format'
 import { MINOR_UNITS_PER_BONUS, spendCapMinor } from '@/lib/loyalty'
+import { clearRememberedReferralCode, rememberedReferralCode } from '@/lib/referral'
 import { cn } from '@/lib/cn'
 
 const route = useRoute()
@@ -61,6 +62,17 @@ const ui = useUiStore()
 
 /** Сеанс, к которому относится корзина. Передаётся из выбора мест. */
 const sessionId = computed(() => String(route.query.session ?? ''))
+
+/**
+ * Код приглашения (фаза 4): друг открыл `#/r/{code}` или `?ref={code}` — код
+ * ждёт в localStorage ровно до этого момента.
+ *
+ * Читается один раз при заходе на экран, а не в каждом обращении: покупка
+ * оформляется один раз, и реактивность здесь была бы ложной — код мог
+ * смениться в другой вкладке, но оформляется заказ всё равно с тем кодом,
+ * с которым покупатель пришёл.
+ */
+const referralCode = ref(rememberedReferralCode())
 
 const STEPS = ['Места', 'Контакты', 'Оплата']
 const currentStep = 1
@@ -347,10 +359,19 @@ async function pay(): Promise<void> {
       customer_email_confirmation: emailConfirm.value.trim(),
       customer_phone: phone.value.trim(),
       bonus_amount: bonusMinor.value,
+      // Фаза 4: приглашение друга. Необязательное поле — `undefined` не попадает
+      // в JSON, и покупка без приглашения идёт ровно тем же запросом.
+      referral_code: referralCode.value ?? undefined,
     })
 
-    // 2. Итог — из ответа сервера, он источник истины о цене.
+    // 2. Итог — из ответа сервера, он источник правды о цене.
     cart.setOrder(order.order_id, Number(order.total_amount))
+
+    // Фаза 4: код приглашения своё отработал (или сервер его молча отклонил).
+    // Забываем, чтобы второй заказ того же браузера не тащил его за собой:
+    // сервер отказал бы всё равно (`uq_referrals_inviter_email` + проверка
+    // «адрес уже награждён»), но мусорный ключ в localStorage живёт годами.
+    if (referralCode.value) clearRememberedReferralCode()
 
     // 3. Платёж. Гостевой заказ авторизуется заголовком X-Cart-Token,
     //    который подставляет api.ts (`PaymentController::mayPay()`). Ключ
@@ -576,6 +597,20 @@ onMounted(() => {
               :label="`Списать ${bonusCapUnits} ${plural(bonusCapUnits, 'бонус', 'бонуса', 'бонусов')}`"
               :description="`−${money(bonusCapMinor)} · после покупки останется ${bonusLeftUnits} ${plural(bonusLeftUnits, 'бонус', 'бонуса', 'бонусов')}`"
             />
+
+            <!--
+              Фаза 4: приглашение друга применено. Показываем ДО оплаты и честно
+              про срок: награда приходит после ПЕРВОЙ оплаты друга, и это решает
+              сервер (`ReferralService::rewardForOrder()`), а не этот экран.
+              Молчаливое начисление «бонусов за приглашение» в итоге выглядело бы
+              обещанием, которого никто не давал.
+            -->
+            <p
+              v-if="referralCode"
+              class="mt-3 rounded-lg border border-mint-500/30 bg-mint-500/8 px-3 py-2 text-xs text-muted"
+            >
+              Вас пригласил друг — бонусы начислим обеим сторонам после оплаты этого заказа.
+            </p>
 
             <p
               v-if="emailOk"

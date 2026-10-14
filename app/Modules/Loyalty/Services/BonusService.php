@@ -17,15 +17,16 @@ use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Orders\StateMachines\OrderStateMachine;
 
 /**
- * Бонусный счёт: начисление, списание, компенсация и чтение баланса.
+ * Бонусный счёт: начисление, списание, компенсация, подарки и чтение баланса.
  *
  * ЕДИНСТВЕННОЕ МЕСТО, ГДЕ ДВИГАЕТСЯ БАЛАНС
  *   `bonus_accounts.balance` меняется только отсюда, и меняется вместе со
  *   строкой журнала, в одной транзакции. Это то же решение, что у
  *   `OrderTotals` для сумм заказа: если бы баланс двигали из двух мест,
  *   расхождение «в журнале одно, на счёте другое» появилось бы тихо и всплыло
- *   бы при сверке. Три направления движения — `accrueForOrder()` (плюс),
- *   `spendForOrder()` (минус) и `refundForOrder()` (плюс) — и все три здесь.
+ *   бы при сверке. Четыре направления движения — `accrueForOrder()` (плюс),
+ *   `spendForOrder()` (минус), `refundForOrder()` (плюс) и `credit()` (плюс
+ *   «подарком», фаза 4) — и все здесь.
  *
  * ПОЧЕМУ ИДЕМПОТЕНТНОСТЬ В СХЕМЕ, А НЕ ПРОВЕРКОЙ ЗДЕСЬ
  *   «Уже начислено?» отдельным SELECT не работает: джоба повторилась, и между
@@ -330,6 +331,71 @@ class BonusService
     }
 
     /**
+     * Начислить бонусы «подарком» — не за заказ и не возвратом.
+     *
+     * ЗАЧЕМ ОТДЕЛЬНЫЙ МЕТОД, А НЕ ПЯТЫЙ ВЫЗОВ ИЗ ВЫШЕ
+     *   Награда за приглашение (фаза 4) — не кэшбэк: у неё нет ни заказа
+     *   покупателя (заказ ДРУГА), ни списания, ни компенсации. Писать её
+     *   через `accrueForOrder()` значило бы врать про причину (`accrual` в
+     *   журнале за чужой заказ) и привязать награду к `orders.user_id`.
+     *   Баланс при этом двигается так же — из одной точки записи, вместе со
+     *   строкой журнала, в одной транзакции: иначе «в журнале одно, на счёте
+     *   другое» стало бы возможно ровно для подарков.
+     *
+     * ИДЕМПОТЕНТНОСТЬ — ТА ЖЕ, ЧТО У КЭШБЭКА
+     *   Ключ идемпотентности передаёт вызывающий (`referral_inviter:{id}` /
+     *   `referral_invited:{id}`), и уникальный `uq_bonus_transactions_dedupe`
+     *   остаётся единственным разрешением на начисление. Повтор джобы даёт
+     *   конфликт вставки и `null` — вторую награду получить нельзя.
+     *
+     * @param string $reason причина из словаря `BonusReason`
+     * @param string $dedupeKey ключ идемпотентности вызова
+     * @return BonusTransaction|null `null`, если начислять нечего или уже начисляли
+     * @throws DomainRuleViolation отрицательная сумма
+     */
+    public function credit(User $user, Money $amount, string $reason, string $dedupeKey, ?Order $order = null): ?BonusTransaction
+    {
+        // Ноль — не ошибка: настройка «бонус другу = 0» выключает половину
+        // награды, и строка «+0» в истории покупателя была бы шумом.
+        if ($amount->isZero()) {
+            return null;
+        }
+
+        if ($amount->isNegative()) {
+            throw new DomainRuleViolation(
+                sprintf('A bonus credit cannot be negative (%d minor units).', $amount->minorUnits()),
+                'INVALID_CREDIT',
+            );
+        }
+
+        return DB::transaction(function () use ($user, $amount, $reason, $dedupeKey, $order): ?BonusTransaction {
+            // Сначала строка журнала — она же разрешение на начисление. Порядок
+            // тот же, что у `accrueForOrder()`: счёт, заведённый первым,
+            // пережил бы отказ вставки журнала.
+            try {
+                $transaction = BonusTransaction::create([
+                    'user_id' => $user->getKey(),
+                    'order_id' => $order?->getKey(),
+                    'delta' => $amount->minorUnits(),
+                    'reason' => $reason,
+                    'dedupe_key' => $dedupeKey,
+                ]);
+            } catch (UniqueConstraintViolationException) {
+                // По этому ключу уже начисляли: и строка, и баланс не двигаются.
+                return null;
+            }
+
+            $account = BonusAccount::forUserOrCreate($user->getKey(), $amount->currency());
+
+            BonusAccount::query()
+                ->whereKey($account->getKey())
+                ->increment('balance', $amount->minorUnits());
+
+            return $transaction;
+        });
+    }
+
+    /**
      * Баланс покупателя. Нет счёта — ноль, а не исключение: счёт заводится
      * лениво, и «у покупателя ещё нет бонусов» — это ноль бонусов.
      */
@@ -369,5 +435,20 @@ class BonusService
     public static function dedupeKeyForRefund(Order $order): string
     {
         return 'refund:' . $order->getKey();
+    }
+
+    /**
+     * Ключи идемпотентности реферальной награды (фаза 4): у приглашения два
+     * получателя, и ключ у каждого свой — иначе вторая награда по тому же
+     * приглашению отменила бы первую на `uq_bonus_transactions_dedupe`.
+     */
+    public static function dedupeKeyForReferralInviter(int|string $referralId): string
+    {
+        return 'referral_inviter:' . $referralId;
+    }
+
+    public static function dedupeKeyForReferralInvited(int|string $referralId): string
+    {
+        return 'referral_invited:' . $referralId;
     }
 }

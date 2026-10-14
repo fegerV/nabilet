@@ -25,8 +25,10 @@ import NButton from '@/components/ui/NButton.vue'
 import NBadge from '@/components/ui/NBadge.vue'
 import NModal from '@/components/ui/NModal.vue'
 import { useLoyaltyStore } from '@/stores/loyalty'
+import { useUiStore } from '@/stores/ui'
 import { customerUser } from '@/lib/customer'
-import { plural } from '@/lib/format'
+import { money, plural } from '@/lib/format'
+import { fetchReferral, type ReferralInfo } from '@/lib/referral'
 import {
   ACHIEVEMENTS,
   CATEGORY_LABEL,
@@ -38,6 +40,7 @@ import {
 
 const router = useRouter()
 const loyalty = useLoyaltyStore()
+const ui = useUiStore()
 const me = customerUser()
 
 const displayName = computed(() => {
@@ -103,6 +106,9 @@ onMounted(() => {
   // Баланс в шапке — из реального стора (idempotent; грузится и оболочкой).
   void loyalty.load()
   maybeCelebrate()
+  // Фаза 4: блок «Пригласите друга». Гость сюда не попадает (маршрут под
+  // `requiresCustomer`), а `/me/referral` под `auth:api` — запрос идёт всегда.
+  void loadReferral()
 })
 
 function goCatalog(): void {
@@ -110,6 +116,53 @@ function goCatalog(): void {
 }
 function goBonus(): void {
   router.push('/bonus')
+}
+
+/* ── «Пригласите друга» (фаза 4) ────────────────────────────────────────────
+ * Всё содержимое блока — из `GET /me/referral`: ссылка, суммы наград и
+ * статистика. Вёрстка не знает ни порогов, ни размеров наград: сервер их
+ * единственный источник (настройки админки живут в `settings`, scope
+ * `loyalty`), и «сколько бонусов» здесь показывается ровно столько, сколько
+ * начислит сервер.
+ *
+ * ЗАЧЕМ СЧЁТЧИКИ, А НЕ ПРОСТО ССЫЛКА
+ *   «Приглашено 3 · награждено 2 · заработано 600 ₽» — доказательство, что
+ *   программа работает (бриф §6: социальный капитал растёт вместе с
+ *   покупками). Без чисел ссылка воспринимается как «ещё одна акция», с
+ *   числами — как история.
+ * ────────────────────────────────────────────────────────────────────────── */
+const referral = ref<ReferralInfo | null>(null)
+const referralError = ref(false)
+const copied = ref(false)
+/** Поле ссылки: выделяем целину по фокусу — копировать проще, чем мышью. */
+const linkInput = ref<HTMLInputElement | null>(null)
+
+async function loadReferral(): Promise<void> {
+  try {
+    referral.value = await fetchReferral()
+  } catch {
+    // Экран клуба не должен падать из-за одного блока: без приглашений клуб
+    // работает. Ссылку выдадут при следующем заходе, ошибка — не фатальна.
+    referralError.value = true
+  }
+}
+
+async function copyLink(): Promise<void> {
+  const link = referral.value?.link
+  if (!link) return
+
+  try {
+    await navigator.clipboard.writeText(link)
+    copied.value = true
+    ui.notify('mint', 'Ссылка скопирована', 'Отправьте её другу — бонусы начислим обеим сторонам.')
+    window.setTimeout(() => {
+      copied.value = false
+    }, 2000)
+  } catch {
+    // Буфер обмена доступен только по жесту и на https: показываем ссылку
+    // как есть — выделить и скопировать руками пользователь сможет всегда.
+    ui.notify('sun', 'Не удалось скопировать', 'Скопируйте ссылку вручную — она ниже.')
+  }
 }
 </script>
 
@@ -246,6 +299,67 @@ function goBonus(): void {
       </div>
       <NButton variant="accent" icon="→" @click="goCatalog">Найти событие</NButton>
     </section>
+
+    <!-- Пригласите друга (фаза 4): ссылка, награды, статистика -->
+    <section v-if="referral" class="mt-8" aria-label="Пригласите друга">
+      <div class="flex items-end justify-between gap-3">
+        <div>
+          <h2 class="font-display text-xl font-bold tracking-tight text-content">Пригласите друга</h2>
+          <p class="mt-1 text-sm text-muted">
+            Друг получает {{ money(referral.invited_bonus) }} бонусами за первый оплаченный заказ,
+            вы — {{ money(referral.inviter_bonus) }} за приведённого друга.
+          </p>
+        </div>
+        <NBadge v-if="!referral.enabled" tone="sun" size="md">программа выключена</NBadge>
+      </div>
+
+      <div class="surface-card mt-4 p-4 sm:p-5">
+        <label class="block text-2xs font-medium text-subtle" for="referral-link">Ваша ссылка</label>
+        <div class="mt-1.5 flex flex-col gap-2 sm:flex-row">
+          <input
+            id="referral-link"
+            ref="linkInput"
+            :value="referral.link"
+            readonly
+            class="h-11 flex-1 rounded-lg border border-line bg-surface-2 px-3 font-mono text-sm text-content focus:outline-none"
+            @focus="linkInput?.select()"
+          />
+          <NButton variant="primary" icon="⧉" @click="copyLink">
+            {{ copied ? 'Скопировано' : 'Скопировать' }}
+          </NButton>
+        </div>
+
+        <dl class="mt-4 grid gap-3 sm:grid-cols-3">
+          <div class="rounded-lg bg-surface-2 px-3 py-2.5">
+            <dt class="text-2xs text-subtle">приглашено друзей</dt>
+            <dd class="mt-0.5 text-lg font-bold tabular-nums text-content">{{ referral.stats.invited }}</dd>
+          </div>
+          <div class="rounded-lg bg-surface-2 px-3 py-2.5">
+            <dt class="text-2xs text-subtle">оплатили первый заказ</dt>
+            <dd class="mt-0.5 text-lg font-bold tabular-nums text-content">{{ referral.stats.rewarded }}</dd>
+          </div>
+          <div class="rounded-lg bg-surface-2 px-3 py-2.5">
+            <dt class="text-2xs text-subtle">заработано бонусами</dt>
+            <dd class="mt-0.5 text-lg font-bold tabular-nums text-mint-400">{{ money(referral.stats.earned) }}</dd>
+          </div>
+        </dl>
+
+        <p class="mt-3 text-xs text-subtle">
+          Награда приходит после первой оплаты друга — бонусами на счёт, по тем же правилам, что и
+          кэшбэк. Один друг приносит награду один раз.
+        </p>
+        <p v-if="!referral.enabled" class="mt-1.5 text-xs text-sun-400">
+          Программа выключена в настройках клуба: по новым приглашениям награда не начислится, пока
+          её не включат снова. Уже начисленные бонусы остаются на счету.
+        </p>
+      </div>
+    </section>
+
+    <!-- Блок приглашений не загрузился: клуб работает и без него, но молчать
+         нельзя — иначе ссылка «пропала» без объяснения. -->
+    <p v-else-if="referralError" class="mt-8 text-xs text-subtle">
+      Не удалось загрузить приглашения — обновите страницу.
+    </p>
 
     <!-- Детальная карточка ачивки -->
     <NModal :open="selected !== null" :title="selected?.name ?? ''" @update:open="(v: boolean) => (selected = v ? selected : null)">

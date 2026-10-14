@@ -375,6 +375,13 @@ class CartController extends Controller
             // `nullable`: поле необязательное, и клиенты, которые его не шлют
             // (embed-виджет, интеграции), оформляют заказ ровно как раньше.
             'bonus_amount' => ['nullable', 'integer', 'min:0', 'max:100000000'],
+            // Реферальный код из ссылки `/r/{code}` (фаза 4): витрина помнит
+            // его в localStorage и шлёт на чекауте. Неизвестный или устаревший
+            // код молча не даёт награды — покупку он не ломает (см.
+            // `ReferralService::attachToOrder()`), поэтому здесь нет ни
+            // `exists`, ни другого подтверждения: проверять код на чекауте
+            // значит ломать оплату из-за опечатки в ссылке.
+            'referral_code' => ['nullable', 'string', 'max:32'],
         ]);
 
         [$token, $isNew] = $this->resolveToken($request);
@@ -385,6 +392,9 @@ class CartController extends Controller
             'customer_phone' => $validated['customer_phone'] ?? null,
             'promo_code' => $validated['promo_code'] ?? null,
             'bonus_amount' => (int) ($validated['bonus_amount'] ?? 0),
+            // Реферальный код (фаза 4): атрибуция — в `CartCheckoutService`,
+            // награда — на оплате (`OrderReferralObserver`).
+            'referral_code' => $validated['referral_code'] ?? null,
         ], $token, $request->user('api'));
 
         return $this->withTokenHeader(response()->json([
