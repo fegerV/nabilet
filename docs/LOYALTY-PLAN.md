@@ -179,6 +179,31 @@ reason)`.** Начисление обязано пройти ровно один
 рекомендации — аналитики (`events.view` + жанры); Telegram — реальный бот
 вместо заглушки.
 
+## Статус реализации (фаза 5 — розыгрыши «счастливый билет»)
+
+Сплит `022_raffles.sql` (+ зеркало миграции) добавляет таблицы `raffles`,
+`raffle_prizes`, `raffle_entries`, `raffle_winners` (все четыре с `public_id`,
+CHECK `ck_raffles_status`, UNIQUE на составные ключи участия и победы). Каждая
+подсистема закрыта отдельным коммитом со всеми гейтами зелёными.
+
+| Подсистема | Что сделано | Гейты |
+|---|---|---|
+| Домен | `Domain\RaffleDraw`, `Domain\RaffleWindow`; машина состояний `RaffleStateMachine` (`draft→active→drawn`, `cancelled`) | `verify-state-machines` PASS |
+| Сервис | `RaffleService`: набор участников (обсервер оплаты + backfill активации), `draw()` с `lockForUpdate`, рассылка писем победителям через очередь | phpunit `RaffleTest` OK (11 тестов, 32 проверки) |
+| Задания | `EnterRafflesJob`, `BackfillRaffleEntriesJob`, `NotifyRaffleWinnersJob`, `OrderRaffleObserver` (5-й наблюдатель `Order`, только `paid`) | — |
+| API | `AdminRaffleController` (`index/show/store/update/activate/cancel/draw/notify`), `RaffleController` (`me/raffles`, публичные `raffles/{public_id}`) | `verify-openapi` / `verify-spec-parity` PASS (обе копии) |
+| Уведомления | `RaffleNotificationCodes` (Winner) + шаблон в `NotificationTemplateSeeder` | phpunit `TransactionalMailTest` OK |
+| Админка (SPA) | `AdminRafflesPage.vue` (список, тираж, статус отправки писем), пункт в `AdminShell`, роут | `vue-tsc`, `vite build` PASS |
+| Витрина (SPA) | `MyRafflesPage.vue` («Мои розыгрыши»), `RaffleResultsPage.vue` (публичные результаты с маской победителя), блок в `ClubPage`, `lib/raffles.ts` | vitest 342 PASS (28 файлов) |
+| OpenAPI | 10 путей + 16 схем в обеих копиях (`docs/openapi.yaml`, `nabilet_core_spec/openapi.yaml`) | `verify-contract-schema` / `verify-openapi` PASS |
+
+Известный внесистемный дрейф (не по фазе 5): `tools/verify-live.php` против
+демо-БД `nabilet_demo` показывает расхождение консолидации спеки и живой БД
+(`web_sessions` и ещё ряд ограничений есть в БД, но не в `migrations.sql`).
+Это предшествующий фазе 5 дрейф консолидации миграций; рафл-таблицы (022)
+присутствуют и в спеске, и в БД, поэтому к фазе 5 отношения не имеют. CI этот
+гейт не запускает (он применяет `migrations.sql` к чистой БД).
+
 ## Правила бонусов (предлагаемые значения по умолчанию)
 
 | Правило | Значение |

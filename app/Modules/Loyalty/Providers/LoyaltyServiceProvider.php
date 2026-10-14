@@ -7,6 +7,7 @@ namespace Nabilet\Modules\Loyalty\Providers;
 use Illuminate\Support\ServiceProvider;
 use Nabilet\Modules\Loyalty\Observers\OrderBonusObserver;
 use Nabilet\Modules\Loyalty\Observers\OrderLoyaltyObserver;
+use Nabilet\Modules\Loyalty\Observers\OrderRaffleObserver;
 use Nabilet\Modules\Loyalty\Observers\OrderReferralObserver;
 use Nabilet\Modules\Loyalty\Observers\SessionObserver;
 use Nabilet\Modules\Loyalty\Services\BonusService;
@@ -14,6 +15,7 @@ use Nabilet\Modules\Loyalty\Services\FavoriteService;
 use Nabilet\Modules\Loyalty\Services\FollowNotificationData;
 use Nabilet\Modules\Loyalty\Services\FollowService;
 use Nabilet\Modules\Loyalty\Services\LoyaltyLevelService;
+use Nabilet\Modules\Loyalty\Services\RaffleService;
 use Nabilet\Modules\Loyalty\Services\ReferralService;
 use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Sessions\Models\Session;
@@ -41,6 +43,10 @@ class LoyaltyServiceProvider extends ServiceProvider
         // Реферальная программа. Резолвится из чекаута (атрибуция), из джобы
         // награды и из кабинета покупателя — один экземпляр на запрос.
         $this->app->singleton(ReferralService::class);
+        // Розыгрыши «счастливый билет». Резолвится из обсервера оплаты
+        // (через `EnterRafflesJob`), из джоб backfill и рассылки, из
+        // контроллеров кабинета и админки — один экземпляр на запрос/джобу.
+        $this->app->singleton(RaffleService::class);
     }
 
     public function boot(): void
@@ -79,5 +85,12 @@ class LoyaltyServiceProvider extends ServiceProvider
         // наступает из нескольких мест, и награда должна ловить их все, а не
         // только тот путь, который помнили при написании.
         Order::observe(OrderReferralObserver::class);
+
+        // Пятый наблюдатель на `Order`: билеты розыгрышей по оплате заказа
+        // (фаза 5). Причина та же — статус `paid` приходит из нескольких мест,
+        // и розыгрыш должен ловить их все. Регистрация здесь, а не в
+        // `OrderServiceProvider`, потому что розыгрыш — знание клуба зрителей,
+        // а не заказов: модуль Orders не должен знать о `raffle_entries`.
+        Order::observe(OrderRaffleObserver::class);
     }
 }

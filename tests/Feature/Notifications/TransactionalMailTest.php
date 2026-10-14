@@ -9,6 +9,7 @@ use App\Models\NotificationTemplate;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
 use Nabilet\Modules\Loyalty\Support\FollowNotificationCodes;
+use Nabilet\Modules\Loyalty\Support\RaffleNotificationCodes;
 use Nabilet\Modules\Notifications\Mail\TemplateMail;
 use Nabilet\Modules\Notifications\Services\TransactionalMailService;
 use Nabilet\Modules\Notifications\Support\AccountNotificationCodes;
@@ -93,13 +94,14 @@ class TransactionalMailTest extends TestCase
 
         // Считаем не константой, а по списку кодов: сид обязан поставить ровно
         // один шаблон на каждый код заказа, плюс письма о доступе к аккаунту,
-        // плюс письма подписчикам о сеансах.
-        // Число, вбитое руками, приходилось бы править при каждом новом письме
-        // (так и случилось при добавлении `order.reminder`), и тест падал бы не
-        // на дефекте, а на расхождении счётчика.
+        // плюс письма подписчикам о сеансах, плюс письма победителям розыгрыша
+        // (фаза 5). Число, вбитое руками, приходилось бы править при каждом
+        // новом письме (так и случилось при добавлении `order.reminder`), и тест
+        // падал бы не на дефекте, а на расхождении счётчика.
         $expected = count(OrderNotificationCodes::all())
             + count(AccountNotificationCodes::all())
-            + count(FollowNotificationCodes::all());
+            + count(FollowNotificationCodes::all())
+            + count(RaffleNotificationCodes::all());
 
         self::assertSame($expected, NotificationTemplate::query()->where('channel', 'email')->count());
 

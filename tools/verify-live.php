@@ -137,8 +137,14 @@ if (preg_match_all('/ALTER\s+TABLE\s+`?(\w+)`?\s+(.*?);/is', $spec, $stmts, PREG
 // 834 → 849: сплит `021_referrals.sql` (фаза 4) добавил таблицы
 // `referral_codes` (6 колонок) и `referrals` (9 колонок). Итого 79 → 81
 // таблица, 834 → 849 колонок. Обновлены все три файла одновременно.
-$expectedTables = 81;
-$expectedColumns = 849;
+//
+// 849 → 881: сплит `022_raffles.sql` (фаза 5) добавил таблицы `raffles` (10
+// колонок), `raffle_prizes` (8), `raffle_entries` (6) и `raffle_winners` (8).
+// Итого 81 → 85 таблиц, 849 → 881 колонка. Обновлены все четыре файла
+// одновременно (ci.yml, verify-models-schema, verify-contract-schema,
+// verify-live) плюс `docs/DATABASE.md`.
+$expectedTables = 85;
+$expectedColumns = 881;
 if (count($specTables) !== $expectedTables || count($specCols) !== $expectedColumns) {
     fwrite(\STDERR, $line(sprintf(
         '  FAIL  spec parser read %d tables / %d columns, expected %d / %d.'

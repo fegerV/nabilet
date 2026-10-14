@@ -117,6 +117,9 @@ function goCatalog(): void {
 function goBonus(): void {
   router.push('/bonus')
 }
+function goRaffles(): void {
+  router.push('/my-raffles')
+}
 
 /* ── «Пригласите друга» (фаза 4) ────────────────────────────────────────────
  * Всё содержимое блока — из `GET /me/referral`: ссылка, суммы наград и
@@ -360,6 +363,25 @@ async function copyLink(): Promise<void> {
     <p v-else-if="referralError" class="mt-8 text-xs text-subtle">
       Не удалось загрузить приглашения — обновите страницу.
     </p>
+
+    <!-- Розыгрыши «счастливый билет» (фаза 5) -->
+    <section v-if="me" class="mt-8" aria-label="Розыгрыши">
+      <div class="flex items-end justify-between gap-3">
+        <div>
+          <h2 class="font-display text-xl font-bold tracking-tight text-content">Розыгрыши</h2>
+          <p class="mt-1 text-sm text-muted">
+            Каждый оплаченный заказ из окна розыгрыша стал билетом — призы разыгрывает организатор.
+          </p>
+        </div>
+      </div>
+
+      <div class="surface-card mt-4 flex flex-col items-start gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
+        <p class="text-sm text-muted">
+          Посмотрите, в каких розыгрышах участвуют ваши заказы и не стал ли один из них счастливым.
+        </p>
+        <NButton variant="secondary" @click="goRaffles">Мои розыгрыши</NButton>
+      </div>
+    </section>
 
     <!-- Детальная карточка ачивки -->
     <NModal :open="selected !== null" :title="selected?.name ?? ''" @update:open="(v: boolean) => (selected = v ? selected : null)">
