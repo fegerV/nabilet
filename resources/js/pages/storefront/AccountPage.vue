@@ -399,7 +399,10 @@ onMounted(load)
 
         <!-- Клуб зрителей: бонусный счёт, избранное и подписки -->
         <section class="surface-card p-5">
-          <h2 class="text-sm font-semibold uppercase tracking-wide text-subtle">Клуб зрителей</h2>
+          <div class="flex items-center justify-between gap-3">
+            <h2 class="text-sm font-semibold uppercase tracking-wide text-subtle">Клуб зрителей</h2>
+            <RouterLink to="/club" class="text-xs font-medium text-brand-400 transition-colors hover:text-brand-300">Открыть клуб →</RouterLink>
+          </div>
           <p class="mt-1.5 text-xs text-subtle">
             Бонусы за покупки, отложенные мероприятия и подписки на письма о новых сеансах.
           </p>
