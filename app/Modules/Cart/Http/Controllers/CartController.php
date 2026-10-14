@@ -142,11 +142,18 @@ class CartController extends Controller
         // `strict_types=1`, so an integer `session_id` in the JSON body would be a
         // TypeError rather than a cast. The spec types `session_id` as a string, but a
         // client that sends a number must not get a 500.
+        //
+        // `$request->user()` — вошедший покупатель: без него клубный уровень не с
+        // чем сопоставить, и ранний доступ (фаза 3b) не открылся бы никогда.
+        // Гвард назван ЯВНО: гейт стоит на публичных путях без `auth:api`, а
+        // дефолтный гвард приложения — `web` (сессия), и `$request->user()` без
+        // аргумента вернул бы null для Bearer-покупателя витрины.
         $cartItem = $this->cartItems->addItem(
             (string) $validated['session_id'],
             (int) $validated['inventory_item_id'],
             (int) $validated['quantity'],
             $token,
+            $request->user('api'),
         );
 
         $cart = $cartItem->cart()->with('items')->first();
@@ -184,7 +191,10 @@ class CartController extends Controller
 
         [$token, $isNew] = $this->resolveToken($request);
 
-        $cart = $this->carts->getOrCreateCart((string) $validated['session_id'], $token);
+        // `$request->user('api')` — вошедший покупатель для раннего доступа клуба
+        // (3b). Гвард явный: дефолтный — `web` (сессия), и без аргумента
+        // `$request->user()` не увидел бы Bearer-токен витрины.
+        $cart = $this->carts->getOrCreateCart((string) $validated['session_id'], $token, $request->user('api'));
 
         return $this->withTokenHeader(response()->json([
             'data' => new CartResource($cart->load('items.inventoryItem.seat.row.sector')),
@@ -254,6 +264,7 @@ class CartController extends Controller
             (int) $validated['inventory_item_id'],
             (int) $validated['quantity'],
             $token,
+            $request->user('api'),
         );
 
         $cart = $cartItem->cart()->with('items')->first();
@@ -374,7 +385,7 @@ class CartController extends Controller
             'customer_phone' => $validated['customer_phone'] ?? null,
             'promo_code' => $validated['promo_code'] ?? null,
             'bonus_amount' => (int) ($validated['bonus_amount'] ?? 0),
-        ], $token);
+        ], $token, $request->user('api'));
 
         return $this->withTokenHeader(response()->json([
             'message' => 'Checkout successful',

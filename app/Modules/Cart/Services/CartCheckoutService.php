@@ -12,9 +12,11 @@ use Nabilet\Core\Errors\ValidationError;
 use Nabilet\Core\Support\Money;
 use Nabilet\Modules\Cart\Models\Cart;
 use Nabilet\Modules\Core\Organizations\Models\Organization;
+use Nabilet\Modules\Core\Users\Models\User;
 use Nabilet\Modules\Core\Users\Services\CustomerAccountService;
 use Nabilet\Modules\Events\Models\Session;
 use Nabilet\Modules\Loyalty\Services\BonusService;
+use Nabilet\Modules\Loyalty\Services\LoyaltySettingsService;
 use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Orders\Models\OrderItem;
 use Nabilet\Modules\Orders\Models\PromoCode;
@@ -45,18 +47,22 @@ final class CartCheckoutService
         private readonly PromoCodeService $promos = new PromoCodeService(),
         private readonly CustomerAccountService $customers = new CustomerAccountService(),
         private readonly BonusService $bonus = new BonusService(),
+        // Ранний доступ клуба (фаза 3b): гейт продаж на чекауте сдвигает окно
+        // для клубного покупателя. Значение по умолчанию — как у соседей выше.
+        private readonly LoyaltySettingsService $loyaltySettings = new LoyaltySettingsService(),
     ) {
     }
 
     /**
      * Оформить корзину — создать заказ и его позиции.
      *
+     * @param \Nabilet\Modules\Core\Users\Models\User|null $buyer вошедший покупатель (ранний доступ клуба, фаза 3b)
      * @return array результат оформления с данными заказа
      * @throws ConflictError          корзина истекла или инвентарь исчерпан
      * @throws DomainRuleViolation    корзина пуста или продажи закрыты
      * @throws \Illuminate\Database\Eloquent\ModelNotFoundException корзина не найдена
      */
-    public function checkout(string $sessionId, array $customer = [], ?string $token = null): array
+    public function checkout(string $sessionId, array $customer = [], ?string $token = null, ?User $buyer = null): array
     {
         // D5: оформить можно только корзину того же покупателя.
         $token = $this->requireToken($token);
@@ -71,7 +77,7 @@ final class CartCheckoutService
         // оставалась `active`, места — удержанными, а комментарий «освобождает
         // инвентарь немедленно» описывал недостижимую ветку. Воспроизведено
         // тестом CartWritePathTest::test_expired_cart_returns_every_seat_it_reserved.
-        $result = DB::transaction(function () use ($sessionId, $token, $customer, &$expired): ?array {
+        $result = DB::transaction(function () use ($sessionId, $token, $customer, $buyer, &$expired): ?array {
             $cart = Cart::query()
                 ->where('session_id', $sessionId)
                 ->where('status', 'active')
@@ -80,7 +86,7 @@ final class CartCheckoutService
                 ->lockForUpdate()
                 ->firstOrFail();
 
-            return $this->convert($cart, $customer, $expired);
+            return $this->convert($cart, $customer, $expired, null, $buyer);
         });
 
         // Возврат инвентаря уже зафиксирован транзакцией — только теперь можно
@@ -107,17 +113,18 @@ final class CartCheckoutService
      * владеет корзиной (`carts.user_id`). Чужая корзина — 404, а не 403: существование
      * или несуществование чужого `public_id` — не информация для спрашивающего.
      *
+     * @param \Nabilet\Modules\Core\Users\Models\User|null $buyer вошедший покупатель (ранний доступ клуба, фаза 3b)
      * @throws ConflictError          корзина истекла или инвентарь исчерпан
      * @throws DomainRuleViolation    корзина пуста или продажи закрыты
      */
-    public function checkoutByPublicId(string $publicId, array $customer = [], ?string $token = null, ?int $userId = null): array
+    public function checkoutByPublicId(string $publicId, array $customer = [], ?string $token = null, ?int $userId = null, ?User $buyer = null): array
     {
         $expired = false;
 
-        $result = DB::transaction(function () use ($publicId, $customer, $token, $userId, &$expired): ?array {
+        $result = DB::transaction(function () use ($publicId, $customer, $token, $userId, $buyer, &$expired): ?array {
             $cart = $this->lockOwnedByPublicId($publicId, $token, $userId);
 
-            return $this->convert($cart, $customer, $expired, $userId);
+            return $this->convert($cart, $customer, $expired, $userId, $buyer);
         });
 
         if ($expired) {
@@ -170,6 +177,29 @@ final class CartCheckoutService
     }
 
     /**
+     * Кто покупатель для раннего доступа (фаза 3b).
+     *
+     * Три источника, от самого авторитетного:
+     *   1. Явно переданный покупатель — контроллер отдал `$request->user()`.
+     *   2. `$userId` (второй вход, спека `POST /orders`) — грузим пользователя.
+     *   3. Владелец корзины (`carts.user_id`) — корзина уже принадлежала
+     *      покупателю до оформления.
+     * Все NULL — гость: ранний доступ не положен (0 часов).
+     */
+    private function earlyAccessBuyer(Cart $cart, ?int $userId, ?User $buyer): ?User
+    {
+        if ($buyer !== null) {
+            return $buyer;
+        }
+
+        if ($userId !== null) {
+            return User::query()->find($userId);
+        }
+
+        return $cart->user;
+    }
+
+    /**
      * Кто владелец создаваемого заказа.
      *
      * Три источника, в порядке убывания авторитетности:
@@ -219,7 +249,7 @@ final class CartCheckoutService
      * два разных поведения «создать заказ», то есть баг, который находят в
      * проде.
      */
-    private function convert(Cart $cart, array $customer, bool &$expired, ?int $userId = null): ?array
+    private function convert(Cart $cart, array $customer, bool &$expired, ?int $userId = null, ?User $buyer = null): ?array
     {
         // Check cart expiration
             if ($cart->expires_at < CarbonImmutable::now()) {
@@ -244,12 +274,20 @@ final class CartCheckoutService
             // the session is `on_sale` and inside its sales window. Existing holds
             // are kept (the sweeper releases them on TTL), so the buyer can retry
             // if the organizer reopens sales before the hold expires.
+            //
+            // Фаза 3b: клубный покупатель проверяется тем же сдвигом окна, что и
+            // на создании корзины — иначе «ранний доступ» открывался бы только на
+            // корзину, а оплатить место раньше времени было нельзя.
             $session = Session::findOrFailBySessionId((string) $cart->session_id);
 
-            if (! $session->isSellableAt()) {
+            $earlyAccessHours = $this->loyaltySettings->earlyAccessHoursForUser(
+                $this->earlyAccessBuyer($cart, $userId, $buyer)
+            );
+
+            if (! $session->isSellableAt(null, $earlyAccessHours)) {
                 throw DomainRuleViolation::salesClosed(
                     (string) ($session->public_id ?? $session->id),
-                    ['reason' => $session->salesBlockReason()]
+                    ['reason' => $session->salesBlockReason(null, $earlyAccessHours)]
                 );
             }
 

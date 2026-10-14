@@ -10,6 +10,8 @@ use Nabilet\Core\Errors\DomainRuleViolation;
 use Nabilet\Modules\Cart\Models\Cart;
 use Nabilet\Modules\Cart\Models\CartItem;
 use Nabilet\Modules\Cart\Support\CartToken;
+use Nabilet\Modules\Core\Users\Models\User;
+use Nabilet\Modules\Loyalty\Services\LoyaltySettingsService;
 use Nabilet\Modules\Sessions\Models\Session;
 
 /**
@@ -42,12 +44,26 @@ use Nabilet\Modules\Sessions\Models\Session;
 class CartService
 {
     /**
+     * Ранний доступ клуба (фаза 3b): сервис настроек лояльности — с значением
+     * по умолчанию, как `PromoCodeService` у `CartCheckoutService`. Контейнер
+     * подставит свой синглон, прямой `new CartService()` продолжает работать.
+     */
+    public function __construct(
+        private readonly LoyaltySettingsService $loyaltySettings = new LoyaltySettingsService(),
+    ) {
+    }
+
+    /**
      * Получить или создать корзину покупателя для сеанса (D5).
      *
      * `$token` обязателен: корзина без владельца была бы достижима из любого
      * браузера, разделяющего сеанс — ровно тот дефект, ради которого вводили D5.
+     *
+     * `$buyer` — вошедший покупатель (Bearer), если есть. Нужен гейту продаж:
+     * клубный покупатель входит в продажу раньше общего старта (ранний доступ,
+     * `Session::isSellableAt($now, $earlyAccessHours)`).
      */
-    public function getOrCreateCart(string $sessionId, string $token): Cart
+    public function getOrCreateCart(string $sessionId, string $token, ?User $buyer = null): Cart
     {
         $cart = Cart::query()
             ->where('session_id', $sessionId)
@@ -63,10 +79,16 @@ class CartService
             // продаж. Без этого места можно было увести из оборота (создав холд)
             // до старта продаж или после их закрытия, полностью обойдя контроль
             // организатора.
-            if (! $session->isSellableAt()) {
+            //
+            // Фаза 3b: клубный покупатель (уровень не ниже порога из настроек)
+            // входит в продажу на N часов раньше общего старта — «ранний доступ».
+            // Гость и уровень ниже порога получают 0 часов, то есть прежнее окно.
+            $earlyAccessHours = $this->loyaltySettings->earlyAccessHoursForUser($buyer);
+
+            if (! $session->isSellableAt(null, $earlyAccessHours)) {
                 throw DomainRuleViolation::salesClosed(
                     (string) ($session->public_id ?? $session->id),
-                    ['reason' => $session->salesBlockReason()]
+                    ['reason' => $session->salesBlockReason(null, $earlyAccessHours)]
                 );
             }
 

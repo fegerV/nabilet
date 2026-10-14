@@ -7,6 +7,7 @@ use Nabilet\Modules\Loyalty\Http\Controllers\BonusController;
 use Nabilet\Modules\Loyalty\Http\Controllers\FavoriteController;
 use Nabilet\Modules\Loyalty\Http\Controllers\FollowController;
 use Nabilet\Modules\Loyalty\Http\Controllers\LoyaltyLevelController;
+use Nabilet\Modules\Loyalty\Http\Controllers\LoyaltySettingsController;
 
 // Личный кабинет покупателя: «❤️ Избранное», «🔔 Подписки» и бонусный счёт.
 //
@@ -42,4 +43,16 @@ Route::prefix('me')->middleware('auth:api')->group(function (): void {
     // пересчитывается обсервером при смене статуса заказа. Гость получает 401,
     // авторизованный без заказов — Старт с нулём оплаченных, а не 404.
     Route::get('/loyalty-level', [LoyaltyLevelController::class, 'show']);
+});
+
+//
+// РАННИЙ ДОСТУП КЛУБА (фаза 3b). Настройка — админская: она открывает продажу
+// раньше общего старта, поэтому `admin` поверх `auth:api`. Правило читает и
+// магазин (через `LoyaltySettingsService`), но ПИШЕТ только админка.
+//
+// Один экран настроек по образцу `admin/mail`: GET отдаёт значения и список
+// уровней для выпадающего списка порога, PUT сохраняет.
+Route::prefix('admin/loyalty')->middleware(['auth:api', 'admin'])->group(function (): void {
+    Route::get('/settings', [LoyaltySettingsController::class, 'show']);
+    Route::put('/settings', [LoyaltySettingsController::class, 'update']);
 });

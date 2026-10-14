@@ -7,6 +7,7 @@ namespace Nabilet\Modules\Sessions\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Nabilet\Modules\Sessions\Domain\SalesWindow;
 
 /**
  * Session Model (Event Session)
@@ -90,46 +91,44 @@ class Session extends Model
      * `on_sale` is the organizer's emergency stop. A session in any other status
      * (draft, scheduled, sold_out, closed, completed, cancelled) never sells —
      * see SessionStateMachine::sellable().
+     *
+     * РАННИЙ ДОСТУП КЛУБА (фаза 3b). `$earlyAccessHours > 0` сдвигает НАЧАЛО
+     * окна назад на указанное число часов — «клубная» очередь продажи впереди
+     * общей. Насколько конкретный покупатель «клубный», здесь не решается:
+     * число часов приносит вызывающий (`LoyaltySettingsService::
+     * earlyAccessHoursForUser()`), а само правило живёт в фреймворк-фри
+     * `Domain\SalesWindow` — его можно проверить без базы (`tests/run.php`).
+     *
+     * Оперативный переключатель при этом НЕ ослабляется намеренно: ранний доступ
+     * открывает окно раньше, но не продаёт сеанс, который организатор снял с
+     * продажи, и не оживляет завершённые/отменённые.
      */
-    public function isSellableAt(?\DateTimeInterface $now = null): bool
+    public function isSellableAt(?\DateTimeInterface $now = null, int $earlyAccessHours = 0): bool
     {
-        $now ??= new \DateTimeImmutable('now');
+        return $this->salesWindow()->isSellableAt($now, $earlyAccessHours);
+    }
 
-        if (!in_array($this->status, \Nabilet\Modules\Sessions\StateMachines\SessionStateMachine::sellable(), true)) {
-            return false;
-        }
-
-        if ($this->sales_start_at !== null && $now < $this->sales_start_at) {
-            return false;
-        }
-
-        if ($this->sales_end_at !== null && $now > $this->sales_end_at) {
-            return false;
-        }
-
-        return true;
+    /** Факты окна продаж для фреймворк-фри решения `Domain\SalesWindow`. */
+    private function salesWindow(): SalesWindow
+    {
+        return new SalesWindow(
+            (string) $this->status,
+            $this->sales_start_at,
+            $this->sales_end_at,
+        );
     }
 
     /**
      * Human-readable reason why the session is not sellable, for error messages.
+     *
+     * `$earlyAccessHours` — тот же сдвиг окна, что у `isSellableAt()`: для
+     * клубного покупателя текст называет не публичный старт, а когда откроется
+     * «клубная» очередь, иначе отказ читается как «продаж не будет» хоть они и
+     * открылись для него на сутки раньше общей.
      */
-    public function salesBlockReason(?\DateTimeInterface $now = null): string
+    public function salesBlockReason(?\DateTimeInterface $now = null, int $earlyAccessHours = 0): string
     {
-        $now ??= new \DateTimeImmutable('now');
-
-        if (!in_array($this->status, \Nabilet\Modules\Sessions\StateMachines\SessionStateMachine::sellable(), true)) {
-            return sprintf('session status is "%s"; tickets are sold only while the session is "on_sale".', $this->status);
-        }
-
-        if ($this->sales_start_at !== null && $now < $this->sales_start_at) {
-            return sprintf('sales open at %s.', $this->sales_start_at->format(\DateTimeInterface::ATOM));
-        }
-
-        if ($this->sales_end_at !== null && $now > $this->sales_end_at) {
-            return sprintf('sales closed at %s.', $this->sales_end_at->format(\DateTimeInterface::ATOM));
-        }
-
-        return 'sales are open.';
+        return $this->salesWindow()->blockReason($now, $earlyAccessHours);
     }
 
     public function schemaVersion(): BelongsTo
