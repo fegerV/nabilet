@@ -58,6 +58,9 @@ const NAV_GROUPS: NavGroup[] = [
       { label: 'Заказы', to: '/admin/orders', icon: '◫' },
       { label: 'Билеты', to: '/admin/tickets', icon: '◨' },
       { label: 'Платежи', to: '/admin/payments', icon: '◊' },
+      // Приём платежей: ключи ЮKassa и demo-режим. Отдельный пункт от
+      // «Платежей»: там журнал операций, здесь — настройка шлюза.
+      { label: 'Приём платежей', to: '/admin/payment-settings', icon: '₽' },
     ],
   },
   {
