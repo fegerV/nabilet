@@ -74,6 +74,16 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/pages/storefront/BonusPage.vue'),
         meta: { title: 'Бонусы', requiresCustomer: true },
       },
+      {
+        // «Клуб зрителей»: экран «Моя коллекция» (ачивки, уровень, бонусы) по
+        // брифу геймификации. Отдельный маршрут, как и /bonus: кабинет — лишь
+        // точка входа, а сам клуб смотрят «посмотреть». `requiresCustomer` —
+        // данные клуба уходят в `/me/*`.
+        path: 'club',
+        name: 'club',
+        component: () => import('@/pages/storefront/ClubPage.vue'),
+        meta: { title: 'Клуб зрителей', requiresCustomer: true },
+      },
 
       /*
        * Кабинет покупателя. Живёт на витрине, а не в админке: это та же
