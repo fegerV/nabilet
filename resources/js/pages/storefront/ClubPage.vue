@@ -45,23 +45,21 @@ const displayName = computed(() => {
   return name === '' ? me?.email ?? 'Зритель' : name
 })
 
-/* ── Демо-прогресс клуба (бриф §4: «Уровень 2 · 450 бонусов») ───────────── */
-const demoVisits = 7
-function levelFor(v: number): number {
-  if (v >= 25) return 4
-  if (v >= 10) return 3
-  if (v >= 5) return 2
-  return 1
-}
-const LEVEL_NEXT: Record<number, number> = { 1: 5, 2: 10, 3: 25, 4: Infinity }
-const level = computed(() => levelFor(demoVisits))
-const levelNext = computed(() => LEVEL_NEXT[level.value])
-const levelPct = computed(() =>
-  levelNext.value === Infinity ? 100 : Math.min(100, Math.round((demoVisits / levelNext.value) * 100)),
-)
-const levelRemaining = computed(() =>
-  levelNext.value === Infinity ? 0 : Math.max(0, levelNext.value - demoVisits),
-)
+/* ── Уровень клуба: РЕАЛЬНЫЙ, из `/me/loyalty-level` (фаза 3 плана) ─────────
+ * Демо-арифметика (бриф §4) заменена на данные сервера: уровень — производное
+ * от числа оплаченных заказов, пересчитываемое обсервером при смене статуса
+ * заказа. До загрузки показываем «Старт» и 100% заполнения, чтобы прогресс-бар
+ * не дёргался на пустом состоянии. */
+const level = computed(() => loyalty.loyaltyLevel)
+const levelName = computed(() => level.value?.name ?? 'Старт')
+const paidOrders = computed(() => level.value?.paid_orders ?? 0)
+const levelNext = computed(() => level.value?.next_level ?? null)
+const levelPct = computed(() => {
+  const lv = level.value
+  if (!lv || !lv.next_level) return 100
+  return Math.min(100, Math.round((lv.paid_orders / lv.next_level.min_paid_orders) * 100))
+})
+const levelRemaining = computed(() => level.value?.orders_to_next ?? 0)
 
 const earnedCount = computed(() => ACHIEVEMENTS.filter((a) => a.status === 'earned').length)
 const totalCount = ACHIEVEMENTS.length
@@ -133,14 +131,15 @@ function goBonus(): void {
         <div class="mt-5 flex flex-wrap items-center gap-3">
           <span class="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1.5 text-sm font-semibold backdrop-blur">
             <span class="grid h-5 w-5 place-items-center rounded-full bg-white/25 text-2xs">★</span>
-            Уровень {{ level }}
+            {{ levelName }}
           </span>
           <span class="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1.5 text-sm font-semibold backdrop-blur">
             <span class="text-base leading-none">✦</span>
             {{ loyalty.bonusesCount }} {{ plural(loyalty.bonusesCount, 'бонус', 'бонуса', 'бонусов') }}
           </span>
           <span class="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1.5 text-sm font-semibold backdrop-blur">
-            {{ demoVisits }} {{ plural(demoVisits, 'посещение', 'посещения', 'посещений') }}
+            <span class="text-base leading-none">🎟</span>
+            {{ paidOrders }} {{ plural(paidOrders, 'оплаченный заказ', 'оплаченных заказа', 'оплаченных заказов') }}
           </span>
         </div>
 
@@ -150,7 +149,7 @@ function goBonus(): void {
           </div>
           <p class="mt-1.5 text-2xs text-white/75">
             <template v-if="levelRemaining > 0">
-              Ещё {{ levelRemaining }} {{ plural(levelRemaining, 'посещение', 'посещения', 'посещений') }} — и вы на Уровень {{ level + 1 }}
+              Ещё {{ levelRemaining }} {{ plural(levelRemaining, 'оплаченный заказ', 'оплаченных заказа', 'оплаченных заказов') }} — и вы на уровень «{{ levelNext?.name }}»
             </template>
             <template v-else>Максимальный уровень — вы легенда зала.</template>
           </p>
@@ -163,8 +162,8 @@ function goBonus(): void {
       <div class="surface-card flex items-center gap-3 p-4">
         <span class="grid h-10 w-10 flex-none place-items-center rounded-lg bg-brand-500/10 text-lg text-brand-400">★</span>
         <div>
-          <p class="text-lg font-bold tabular-nums text-content">{{ level }}</p>
-          <p class="text-2xs text-subtle">уровень зрителя</p>
+          <p class="text-lg font-bold tabular-nums text-content">{{ levelName }}</p>
+          <p class="text-2xs text-subtle">уровень клуба</p>
         </div>
       </div>
       <div class="surface-card flex items-center gap-3 p-4">

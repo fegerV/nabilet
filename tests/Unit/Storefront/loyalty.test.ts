@@ -173,10 +173,21 @@ describe('stores/loyalty: отметки', () => {
     expect(localStorage.getItem(AUTH_TOKEN_KEY)).toBe('staff-token')
   })
 
-  it('load() читает оба списка и баланс, наполняет отметки', async () => {
+  it('load() читает оба списка, баланс и уровень клуба, наполняет отметки', async () => {
     const fetchMock = vi.fn(async (url: string) => {
       if (url.includes('/me/favorites')) return jsonResponse({ data: [entry('01FAV', '01EV', 'Концерт')] })
       if (url.includes('/me/bonus')) return jsonResponse({ data: { balance: 25000, bonuses: 250, currency: 'RUB' } })
+      if (url.includes('/me/loyalty-level'))
+        return jsonResponse({
+          data: {
+            slug: 'start',
+            name: 'Старт',
+            min_paid_orders: 0,
+            paid_orders: 0,
+            next_level: { slug: 'friend', name: 'Друг', min_paid_orders: 3 },
+            orders_to_next: 3,
+          },
+        })
       return jsonResponse({ data: [entry('01FOL', '01EV2', 'Спектакль')] })
     })
     vi.stubGlobal('fetch', fetchMock)
@@ -191,10 +202,13 @@ describe('stores/loyalty: отметки', () => {
     expect(loyalty.favoritesCount).toBe(1)
     expect(loyalty.followsCount).toBe(1)
     // Баланс грузится тем же `load()`: чип в шапке и плитка в кабинете
-    // спрашивают одно число, и второй запрос к `/me/bonus` был бы третьим
+    // спрашивают одно число, и второй запрос к `/me/bonus` был бы лишним
     // ответом на один вопрос.
     expect(loyalty.bonusesCount).toBe(250)
     expect(loyalty.bonus?.balance).toBe(25000)
+    // Уровень клуба — тоже часть `load()`: плитка и прогресс-бар кабинета
+    // спрашивают его вместе с отметками.
+    expect(loyalty.loyaltyLevel?.slug).toBe('start')
 
     // Повторный load() без force не ходит в сеть: навигация по витрине не
     // должна перезапрашивать личные данные на каждом переходе.
@@ -202,9 +216,10 @@ describe('stores/loyalty: отметки', () => {
     await loyalty.load()
     expect(fetchMock).not.toHaveBeenCalled()
 
-    // force перечитывает — по одному запросу на список и один на баланс.
+    // force перечитывает — по одному запросу на каждый из четырёх ресурсов
+    // (избранное, подписки, баланс, уровень клуба).
     await loyalty.load(true)
-    expect(fetchMock).toHaveBeenCalledTimes(3)
+    expect(fetchMock).toHaveBeenCalledTimes(4)
   })
 
   it('ошибка загрузки не пробрасывается и не оставляет мусора', async () => {

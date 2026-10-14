@@ -129,8 +129,12 @@ if (preg_match_all('/ALTER\s+TABLE\s+`?(\w+)`?\s+(.*?);/is', $spec, $stmts, PREG
 // 809 → 825: сплит `019_bonus_ledger.sql` (фаза 2) добавил две таблицы
 // (`bonus_accounts` — 7 колонок, `bonus_transactions` — 8) и одну колонку в
 // существующей (`orders.bonus_amount`). Итого 76 → 78 таблиц, 809 → 825 колонок.
-$expectedTables = 78;
-$expectedColumns = 825;
+//
+// 825 → 834: сплит `020_loyalty_levels.sql` (фаза 3) добавил таблицу
+// `loyalty_levels` (8 колонок) и одну колонку в существующей
+// (`users.loyalty_level_id`). Итого 78 → 79 таблиц, 825 → 834 колонки.
+$expectedTables = 79;
+$expectedColumns = 834;
 if (count($specTables) !== $expectedTables || count($specCols) !== $expectedColumns) {
     fwrite(\STDERR, $line(sprintf(
         '  FAIL  spec parser read %d tables / %d columns, expected %d / %d.'
@@ -199,10 +203,14 @@ $live = [
 // `ck_bonus_transactions_reason`; переиздание `ck_orders_amounts` счёт НЕ меняет,
 // потому что имя то же (CHECK снимается и создаётся заново под тем же именем).
 //
+// 113 → 114 и 98 → 100: сплит `020_loyalty_levels.sql` (фаза 3). Внешний ключ:
+// `fk_users_loyalty_level` (SET NULL). Уникальные: `uq_loyalty_levels_public_id`,
+// `uq_loyalty_levels_slug`. CHECK — без изменений (50).
+//
 // Триггеры в этот цикл НЕ входят: они сравниваются отдельно ниже, потому что
 // их расхождение — отставшая спека, а не дрейф схемы, и оно не должно
 // сбрасываться или подгоняться вместе с остальными счётчиками.
-$expect = ['fk' => 113, 'unique' => 98, 'check' => 50];
+$expect = ['fk' => 114, 'unique' => 100, 'check' => 50];
 foreach ($expect as $k => $want) {
     $got = $live[$k];
     $ok = $got === $want;
