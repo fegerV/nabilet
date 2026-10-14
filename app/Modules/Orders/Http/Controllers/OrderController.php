@@ -163,6 +163,9 @@ class OrderController extends Controller
                 ],
                 CartToken::fromRequest($request),
                 $request->user()?->getKey(),
+                // Вошедший покупатель — для раннего доступа клуба (фаза 3b):
+                // гейт продаж на чекауте сдвигает окно для уровня не ниже порога.
+                $request->user(),
             );
 
             // Контракт `createOrder` отвечает `OrderResponse` (`data: Order`), а

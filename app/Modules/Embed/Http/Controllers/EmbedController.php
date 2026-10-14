@@ -198,7 +198,10 @@ final class EmbedController extends Controller
 
         $token = $this->checkoutToken($request) ?? CartToken::generate();
 
-        $cart = $this->carts->getOrCreateCart((string) $session->id, $token);
+        // `$request->user('api')` — вошедший покупатель, если виджет открыт под
+        // Bearer-токеном: ранний доступ клуба (фаза 3b) работает и здесь.
+        // Гвард явный — пути embed публичные, дефолтный гвард `web` (сессия).
+        $cart = $this->carts->getOrCreateCart((string) $session->id, $token, $request->user('api'));
         $cart->load('items.inventoryItem');
 
         return response()
@@ -239,6 +242,7 @@ final class EmbedController extends Controller
             (int) $validated['inventory_item_id'],
             (int) $validated['quantity'],
             $token,
+            $request->user('api'),
         );
 
         $fresh = Cart::query()->with('items.inventoryItem')->find($model->id);
