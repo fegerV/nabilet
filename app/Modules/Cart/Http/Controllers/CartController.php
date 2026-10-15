@@ -7,6 +7,7 @@ namespace Nabilet\Modules\Cart\Http\Controllers;
 use Nabilet\Modules\Cart\Http\Resources\CartResource;
 use Nabilet\Modules\Cart\Models\Cart;
 use Nabilet\Modules\Cart\Services\CartCheckoutService;
+use Nabilet\Modules\Cart\Services\CartService;
 use Nabilet\Modules\Cart\Services\CartItemService;
 use Nabilet\Modules\Cart\Support\CartToken;
 use Illuminate\Http\JsonResponse;
@@ -35,6 +36,7 @@ class CartController extends Controller
     public function __construct(
         protected CartItemService $cartItems,
         protected CartCheckoutService $cartCheckout,
+        protected CartService $carts,
     ) {}
 
     /**
@@ -140,11 +142,18 @@ class CartController extends Controller
         // `strict_types=1`, so an integer `session_id` in the JSON body would be a
         // TypeError rather than a cast. The spec types `session_id` as a string, but a
         // client that sends a number must not get a 500.
+        //
+        // `$request->user()` — вошедший покупатель: без него клубный уровень не с
+        // чем сопоставить, и ранний доступ (фаза 3b) не открылся бы никогда.
+        // Гвард назван ЯВНО: гейт стоит на публичных путях без `auth:api`, а
+        // дефолтный гвард приложения — `web` (сессия), и `$request->user()` без
+        // аргумента вернул бы null для Bearer-покупателя витрины.
         $cartItem = $this->cartItems->addItem(
             (string) $validated['session_id'],
             (int) $validated['inventory_item_id'],
             (int) $validated['quantity'],
             $token,
+            $request->user('api'),
         );
 
         $cart = $cartItem->cart()->with('items')->first();
@@ -159,6 +168,151 @@ class CartController extends Controller
                 'expires_at' => $cart->expires_at?->toIso8601String(),
             ] : null,
         ], 201), $token, $isNew);
+    }
+
+    /**
+     * POST /api/v1/carts — корзина покупателя для сеанса (спека, `createCart`).
+     *
+     * Спека требует тело `{session_id}` и ответ 201 с `CartResponse`. Приложение
+     * исторически создавало корзину неявно — при первом обращении к `/cart`.
+     * Явное создание нужно, чтобы клиент мог узнать `public_id` корзины и дальше
+     * адресовать её из пути (`/carts/{cart}`), как требует спека.
+     *
+     * Идемпотентно по природе: у покупателя (токену) не может быть двух активных
+     * корзин на один сеанс — `uq_carts_token_session_status` это гарантирует, а
+     * `getOrCreateCart()` возвращает существующую. Повторный вызов отдаёт ту же
+     * корзину с тем же `public_id`.
+     */
+    public function store(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'session_id' => ['bail', 'required', 'integer', 'exists:sessions,id'],
+        ]);
+
+        [$token, $isNew] = $this->resolveToken($request);
+
+        // `$request->user('api')` — вошедший покупатель для раннего доступа клуба
+        // (3b). Гвард явный: дефолтный — `web` (сессия), и без аргумента
+        // `$request->user()` не увидел бы Bearer-токен витрины.
+        $cart = $this->carts->getOrCreateCart((string) $validated['session_id'], $token, $request->user('api'));
+
+        return $this->withTokenHeader(response()->json([
+            'data' => new CartResource($cart->load('items.inventoryItem.seat.row.sector')),
+        ], 201), $token, $isNew);
+    }
+
+    /**
+     * GET /api/v1/carts/{cart} — корзина по её `public_id` (спека, `getCart`).
+     *
+     * ПОЧЕМУ 404, А НЕ 403, НА ЧУЖУЮ КОРЗИНУ
+     *   Различать «нет такой» и «не твоя» — значит подтверждать существование
+     *   корзин по их идентификатору. Для спрашивающего это один ответ.
+     *
+     * ПРАВО ВЛАДЕНИЯ
+     *   Гостевой токен (`X-Cart-Token`) совпадает с `carts.cart_token`, либо
+     *   Bearer-пользователь владеет корзиной (`carts.user_id`). Ровно то, что
+     *   спека описывает как `bearerAuth` ИЛИ `checkoutAuth`.
+     */
+    public function showByPublicId(Request $request, string $cart): JsonResponse
+    {
+        [$token, $isNew] = $this->resolveToken($request);
+
+        $cart = Cart::query()
+            ->where('public_id', $cart)
+            ->where('status', 'active')
+            ->where(function ($query) use ($token, $request): void {
+                $query->where('cart_token', $token);
+
+                if (($user = $request->user()) !== null) {
+                    $query->orWhere('user_id', $user->getKey());
+                }
+            })
+            ->with(['items.inventoryItem', 'items.inventoryItem.seat.row.sector'])
+            ->first();
+
+        if ($cart === null) {
+            return $this->withTokenHeader(response()->json([
+                'error' => ['code' => 'not_found', 'message' => 'Cart not found.'],
+            ], 404), $token, $isNew);
+        }
+
+        return $this->withTokenHeader(response()->json([
+            'data' => new CartResource($cart),
+        ], 200), $token, $isNew);
+    }
+
+    /**
+     * POST /api/v1/carts/{cart}/items — холд и позиция (спека, `addCartItem`).
+     *
+     * Сеанс берётся ИЗ КОРЗИНЫ, а не из тела: путь уже назвал корзину, а корзина
+     * знает свой сеанс (`carts.session_id NOT NULL`). Принимать `session_id` в
+     * теле значило бы позволить запросить позицию «в корзину чужого сеанса».
+     */
+    public function addItemTo(Request $request, string $cart): JsonResponse
+    {
+        $validated = $request->validate([
+            'inventory_item_id' => ['bail', 'required', 'integer', 'exists:inventory_items,id'],
+            'quantity' => ['required', 'integer', 'min:1', 'max:' . $this->maxPerOrder()],
+        ]);
+
+        [$token, $isNew] = $this->resolveToken($request);
+
+        $cart = $this->ownedCart($request, $cart, $token);
+
+        $cartItem = $this->cartItems->addItem(
+            (string) $cart->session_id,
+            (int) $validated['inventory_item_id'],
+            (int) $validated['quantity'],
+            $token,
+            $request->user('api'),
+        );
+
+        $cart = $cartItem->cart()->with('items')->first();
+
+        return $this->withTokenHeader(response()->json([
+            'data' => new CartResource($cart),
+        ], 201), $token, $isNew);
+    }
+
+    /**
+     * DELETE /api/v1/carts/{cart}/items/{item} — снять холд (спека, `deleteCartItem`).
+     */
+    public function removeItemFrom(Request $request, string $cart, int $itemId): JsonResponse
+    {
+        [$token, $isNew] = $this->resolveToken($request);
+
+        $cart = $this->ownedCart($request, $cart, $token);
+
+        $this->cartItems->removeItem((string) $cart->session_id, $itemId, $token);
+
+        return $this->withTokenHeader(response()->json(null, 204), $token, $isNew);
+    }
+
+    /**
+     * Корзина по `public_id`, принадлежащая спрашивающему, или 404.
+     *
+     * Одна точка правды о владении: те же правила, что у `showByPublicId()` и
+     * `CartCheckoutService::checkoutByPublicId()`.
+     */
+    private function ownedCart(Request $request, string $cartPublicId, string $token): ?Cart
+    {
+        return Cart::query()
+            ->where('public_id', $cartPublicId)
+            ->where('status', 'active')
+            ->where(function ($query) use ($token, $request): void {
+                $query->where('cart_token', $token);
+
+                if (($user = $request->user()) !== null) {
+                    $query->orWhere('user_id', $user->getKey());
+                }
+            })
+            ->first();
+    }
+
+    /** Лимит позиций на заказ — из конфига, тот же, что у `addItem()`. */
+    private function maxPerOrder(): int
+    {
+        return max(1, (int) config('nabilet.checkout.max_items_per_order', 10));
     }
 
     public function removeItem(Request $request, int $itemId): JsonResponse
@@ -200,8 +354,34 @@ class CartController extends Controller
             'session_id' => ['bail', 'required', 'integer', 'exists:sessions,id'],
             'customer_name' => ['nullable', 'string', 'max:255'],
             'customer_email' => ['required', 'email:rfc', 'max:255'],
+            // Повтор ввода адреса — защита от опечатки. Письмо с билетом уходит
+            // ровно на `customer_email`, и ошибка в одну букву означает, что
+            // билет не придёт никогда. Правило `same` ловит расхождение на
+            // сервере, а не только в браузере.
+            //
+            // `nullable` — чтобы не ломать контракт: API-клиенты (embed-виджет,
+            // интеграции) поле не шлют, и для них поведение прежнее. Витрина
+            // шлёт его всегда, поэтому там проверка действует.
+            'customer_email_confirmation' => ['nullable', 'string', 'same:customer_email'],
             'customer_phone' => ['nullable', 'string', 'max:32'],
             'promo_code' => ['nullable', 'string', 'max:64'],
+            // Сколько бонусов списать — в МИНОРНЫХ единицах, как и все `*_amount`
+            // в этом API (`MoneyTotals.bonus_amount`, колонка `orders.bonus_amount`).
+            // `max` стоит как грубая защита от мусора в теле запроса; настоящий
+            // лимит (30% от подытога, остаток после скидки, баланс) считает
+            // `BonusPolicy` в чекауте, и превышение — это 422 `BONUS_LIMIT_EXCEEDED`,
+            // а не молчаливое урезание.
+            //
+            // `nullable`: поле необязательное, и клиенты, которые его не шлют
+            // (embed-виджет, интеграции), оформляют заказ ровно как раньше.
+            'bonus_amount' => ['nullable', 'integer', 'min:0', 'max:100000000'],
+            // Реферальный код из ссылки `/r/{code}` (фаза 4): витрина помнит
+            // его в localStorage и шлёт на чекауте. Неизвестный или устаревший
+            // код молча не даёт награды — покупку он не ломает (см.
+            // `ReferralService::attachToOrder()`), поэтому здесь нет ни
+            // `exists`, ни другого подтверждения: проверять код на чекауте
+            // значит ломать оплату из-за опечатки в ссылке.
+            'referral_code' => ['nullable', 'string', 'max:32'],
         ]);
 
         [$token, $isNew] = $this->resolveToken($request);
@@ -211,7 +391,11 @@ class CartController extends Controller
             'customer_email' => $validated['customer_email'],
             'customer_phone' => $validated['customer_phone'] ?? null,
             'promo_code' => $validated['promo_code'] ?? null,
-        ], $token);
+            'bonus_amount' => (int) ($validated['bonus_amount'] ?? 0),
+            // Реферальный код (фаза 4): атрибуция — в `CartCheckoutService`,
+            // награда — на оплате (`OrderReferralObserver`).
+            'referral_code' => $validated['referral_code'] ?? null,
+        ], $token, $request->user('api'));
 
         return $this->withTokenHeader(response()->json([
             'message' => 'Checkout successful',

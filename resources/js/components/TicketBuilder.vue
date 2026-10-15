@@ -113,6 +113,26 @@ const mediaImages = computed(() =>
     mediaItems.value.filter((asset) => kindOf(asset?.mime_type) === 'image')
 );
 
+// Фон холста: сплошной цвет и/или линейный градиент («текстура»).
+// Раньше `saveTemplate()` жёстко подставлял `backgroundColor: '#ffffff'`,
+// затирая реальный фон макета. Теперь фон — это состояние редактора.
+const useGradient = ref(false);
+const gradientFrom = ref('#0f766e');
+const gradientTo = ref('#1e293b');
+const gradientDir = ref('to bottom');
+
+const canvasBackgroundStyle = computed(() =>
+  useGradient.value
+    ? `linear-gradient(${gradientDir.value}, ${gradientFrom.value}, ${gradientTo.value})`
+    : canvasBackground.value,
+);
+
+const canvasGradientConfig = computed(() =>
+  useGradient.value
+    ? { from: gradientFrom.value, to: gradientTo.value, direction: gradientDir.value }
+    : null,
+);
+
 // Элементы на холсте
 const elements = ref([]);
 
@@ -482,6 +502,20 @@ function applyTemplate(template) {
     }
 }
 
+// Фон для миниатюры шаблона в сетке: реальный цвет либо линейный градиент
+// из `backgroundGradient`. Раньше превью брало `elements[0].fill` — то есть
+// показывало только заливку первого прямоугольника, а для макетов на градиенте
+// вообще рисовало белый квадрат. Теперь фон миниатюры совпадает с фоном макета.
+function templateBackground(source) {
+    const config = source?.template_json ?? source?.config ?? {};
+    const parsed = typeof config === 'string' ? JSON.parse(config) : config;
+    if (parsed?.backgroundGradient?.from) {
+        const g = parsed.backgroundGradient;
+        return `linear-gradient(${g.direction || 'to bottom'}, ${g.from}, ${g.to || '#1e293b'})`;
+    }
+    return parsed?.backgroundColor || '#ffffff';
+}
+
 // Применить стартовую заготовку (BUILT_IN_LAYOUTS).
 //
 // Заготовки нарисованы под холст 600×400, поэтому применение возвращает и
@@ -507,6 +541,25 @@ function resetCanvas() {
     selectedTemplate.value = null;
     templateName.value = '';
     currentTemplateName.value = '';
+}
+
+// Сборка `template_json` из состояния редактора.
+//
+// Раньше `saveTemplate()` жёстко подставлял `backgroundColor: '#ffffff'`,
+// затирая реальный фон макета. Теперь фон берётся из `canvasBackground` (либо
+// из `canvasGradientConfig`, если включён градиент). `backgroundGradient`
+// попадает в payload только когда он задан — при обычном сплошном фоне лишнего
+// ключа в `template_json` нет.
+function buildCanvasConfig() {
+    const config = {
+        backgroundColor: canvasBackground.value,
+        elements: elements.value,
+    };
+    const gradient = canvasGradientConfig.value;
+    if (gradient) {
+        config.backgroundGradient = gradient;
+    }
+    return config;
 }
 
 // Открытие модального окна сохранения
@@ -539,9 +592,7 @@ async function saveTemplate() {
             name,
             canvasWidth: canvasWidth.value,
             canvasHeight: canvasHeight.value,
-            // Раньше фон всегда уезжал '#ffffff', поэтому смена фона холста
-            // молча терялась при сохранении. Шлём текущий.
-            config: { backgroundColor: canvasBackground.value, elements: elements.value },
+            config: buildCanvasConfig(),
         });
 
         const isUpdate = internalId.value !== null && internalId.value !== undefined && internalId.value !== '';
@@ -596,6 +647,24 @@ async function loadTemplate() {
         elements.value = (config.elements || []).map((el) => ensureElementDefaults(cloneElement(el)));
         internalId.value = template.id ?? props.templateId;
         currentTemplateName.value = template.name || '';
+
+        // Восстановить фон холста: сплошной цвет либо линейный градиент.
+        // Раньше фон при загрузке сбрасывался на белый, поэтому сохранённый
+        // тёмный/градиентный макет открывался на белом фоне с «потерянными»
+        // элементами-подложками.
+        const bg = config.backgroundColor || '#ffffff';
+        canvasBackground.value = bg;
+        if (config.backgroundGradient?.from) {
+            useGradient.value = true;
+            gradientFrom.value = config.backgroundGradient.from;
+            gradientTo.value = config.backgroundGradient.to || '#1e293b';
+            gradientDir.value = config.backgroundGradient.direction || 'to bottom';
+        } else {
+            useGradient.value = false;
+            gradientFrom.value = '#0f766e';
+            gradientTo.value = '#1e293b';
+            gradientDir.value = 'to bottom';
+        }
     } catch (e) {
         loadError.value = e instanceof Error ? e.message : String(e);
     } finally {
@@ -913,7 +982,7 @@ onMounted(() => {
                             class="template-card"
                             :class="{ selected: selectedTemplate?.id === template.id }"
                         >
-                            <div class="template-preview" :style="{ background: elementsOf(template)[0]?.fill || '#ffffff' }">
+                            <div class="template-preview" :style="{ background: templateBackground(template) }">
                                 <div v-for="el in elementsOf(template).slice(0, 8)" :key="el.id" class="preview-element">
                                     <span v-if="el.type === 'text'" :style="{
                                         fontSize: `${(el.fontSize || 14) / 3}px`,
@@ -939,7 +1008,7 @@ onMounted(() => {
                             @click="applyLayout(layout)"
                             class="template-card"
                         >
-                            <div class="template-preview" :style="{ background: layout.config.backgroundColor }">
+                            <div class="template-preview" :style="{ background: templateBackground(layout) }">
                                 <div v-for="el in layout.config.elements" :key="el.id" class="preview-element">
                                     <span v-if="el.type === 'text'" :style="{
                                         fontSize: `${(el.fontSize || 14) / 3}px`,
@@ -1012,7 +1081,7 @@ onMounted(() => {
                             height: `${canvasHeight}px`,
                             transform: `scale(${zoom / 100})`,
                             transformOrigin: 'top left',
-                            backgroundColor: canvasBackground
+                            background: canvasBackgroundStyle
                         }"
                     >
                         <!-- Rendered Elements -->
@@ -1037,7 +1106,7 @@ onMounted(() => {
                                 :style="{
                                     fontSize: `${element.fontSize}px`,
                                     fontWeight: element.fontWeight,
-                                    fontFamily: element.fontFamily || 'inherit',
+                                    fontFamily: element.fontFamily || undefined,
                                     color: element.color,
                                     width: 'auto'
                                 }"
@@ -1154,7 +1223,47 @@ onMounted(() => {
             <!-- Right Sidebar - Properties -->
             <div v-if="!previewMode && selectedElement" class="sidebar sidebar-right">
                 <h3 class="properties-title">Свойства</h3>
+
+                <!-- Фон холста: сплошной цвет и/или линейный градиент («текстура»).
+                     Панель видна всегда — фон редактируется независимо от выбранного
+                     элемента, иначе поменять тёмный фон можно было бы только по
+                     случайному попаданию ни на один элемент. -->
+                <div class="property-group">
+                    <h4>Фон холста</h4>
+
+                    <label class="property-label">Цвет фона:</label>
+                    <input
+                        type="color"
+                        v-model="canvasBackground"
+                        :disabled="useGradient"
+                        class="property-color"
+                    />
+
+                    <label class="property-label">Градиент (текстура):</label>
+                    <label class="property-inline">
+                        <input type="checkbox" v-model="useGradient" /> Использовать градиент
+                    </label>
+
+                    <template v-if="useGradient">
+                        <label class="property-label">От:</label>
+                        <input type="color" v-model="gradientFrom" class="property-color" />
+
+                        <label class="property-label">До:</label>
+                        <input type="color" v-model="gradientTo" class="property-color" />
+
+                        <label class="property-label">Направление:</label>
+                        <select v-model="gradientDir" class="property-select">
+                            <option value="to bottom">Сверху вниз</option>
+                            <option value="to right">Слева направо</option>
+                            <option value="to top right">По диагонали ↗</option>
+                            <option value="135deg">135°</option>
+                            <option value="45deg">45°</option>
+                        </select>
+                    </template>
+                </div>
                 
+                <!-- Свойства элемента — только когда выбран конкретный элемент. -->
+                <template v-if="selectedElement">
                 <!-- Text Properties -->
                 <div v-if="selectedElement.type === 'text'" class="property-group">
                     <label class="property-label">Текст:</label>
@@ -1364,6 +1473,7 @@ onMounted(() => {
                         />
                     </div>
                 </div>
+                </template>
             </div>
 
             <!-- Canvas Properties: когда ничего не выбрано — настройки холста,
@@ -2050,6 +2160,23 @@ onMounted(() => {
     color: #aab3d8;
     margin-bottom: 6px;
     margin-top: 10px;
+}
+
+/* Чекбокс «Использовать градиент» в одну строку с подписью. */
+.property-inline {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: #475569;
+    margin-top: 4px;
+    cursor: pointer;
+}
+
+.property-inline input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
 }
 
 .property-input, .property-select, .property-textarea {

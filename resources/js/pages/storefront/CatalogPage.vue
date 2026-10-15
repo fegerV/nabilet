@@ -17,6 +17,7 @@ import { isFlushWidget, widgetComponent } from '@/components/storefront/widgets/
 import { useStorefrontStore } from '@/stores/storefront'
 import { useCatalogStore } from '@/stores/catalog'
 import { createSection, setting, type StorefrontSection } from '@/lib/storefront'
+import { useSeo } from '@/lib/seo'
 
 const storefront = useStorefrontStore()
 const catalog = useCatalogStore()
@@ -38,23 +39,33 @@ const sections = computed<StorefrontSection[]>(() => {
   return list.length ? list : [createSection('hero'), createSection('posters', 'Афиша')]
 })
 
-/** Иконка сайта и заголовок вкладки — из брендинга площадки. */
+/** Иконка сайта — из брендинга площадки. */
 watch(
-  () => [storefront.config.branding.name, storefront.config.branding.faviconUrl] as const,
-  ([name, favicon]) => {
-    if (name) document.title = `${name} — афиша мероприятий`
-    if (favicon) {
-      let link = document.querySelector<HTMLLinkElement>('link[rel="icon"]')
-      if (!link) {
-        link = document.createElement('link')
-        link.rel = 'icon'
-        document.head.appendChild(link)
-      }
-      link.href = favicon
+  () => storefront.config.branding.faviconUrl,
+  (favicon) => {
+    if (!favicon) return
+    let link = document.querySelector<HTMLLinkElement>('link[rel="icon"]')
+    if (!link) {
+      link = document.createElement('link')
+      link.rel = 'icon'
+      document.head.appendChild(link)
     }
+    link.href = favicon
   },
   { immediate: true },
 )
+
+/**
+ * Заголовок вкладки — из брендинга площадки.
+ *
+ * Пока брендинг не загружен, возвращаем `null` и не трогаем документ: заголовок
+ * маршрута («Афиша мероприятий») уже выставлен роутером, и мигать дефолтом
+ * на каждой загрузке незачем.
+ */
+useSeo(() => {
+  const name = storefront.config.branding.name
+  return name ? { title: `${name} — афиша мероприятий` } : null
+})
 </script>
 
 <template>

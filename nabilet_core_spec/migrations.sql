@@ -1775,4 +1775,683 @@ CREATE TABLE IF NOT EXISTS artist_event (
   CONSTRAINT artist_event_event_id_foreign FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- ============================================================ 013 — users.status dictionary
+-- Mirrors nabilet_core_spec/migrations/013_users_status_check.sql and the applied
+-- Laravel migration 2026_10_12_000100_add_users_status_check.php.
+--
+-- `users.status` had no CHECK and no vocabulary outside one rule inside
+-- `UserController::update()`, so `status = 'banned'` did not stop anyone from
+-- logging in — sessions were revoked and the same password bought a fresh one —
+-- and any other writer could store an arbitrary string. The values below are the
+-- set the API, the admin UI and `UserSessionRevocationTest` already agreed on.
+-- Full reasoning in the split file.
+ALTER TABLE users
+  ADD CONSTRAINT ck_users_status CHECK (status IN ('active','inactive','banned'));
+
+-- ============================================================ 014 — inventory_items.status dictionary
+-- Mirrors nabilet_core_spec/migrations/014_inventory_status_check.sql and the applied
+-- Laravel migration 2026_10_12_000200_add_inventory_items_status_check.php.
+--
+-- `inventory_items.status` had no CHECK, and `InventoryItemStateMachine` omitted
+-- `sold_out` while `CartItemService` writes it whenever capacity is exhausted —
+-- which for a seat (capacity = 1) is the ordinary add-to-cart path. Because the
+-- machine had no such state, `PaymentService::markInventorySoldForOrder()` skipped
+-- the `→ sold` write for a PAID position, which then stayed `sold_out` forever.
+-- The six values below are what the writers store and what the storefront already
+-- expects (resources/js/lib/seatStatus.ts). Full reasoning in the split file.
+ALTER TABLE inventory_items
+  ADD CONSTRAINT ck_inventory_status CHECK (status IN ('available','held','sold_out','sold','blocked','disabled'));
+
+-- ============================================================ 015 — events.status dictionary
+-- Mirrors nabilet_core_spec/migrations/015_events_status_check.sql and the applied
+-- Laravel migration 2026_10_12_000300_add_events_status_check.php.
+--
+-- The last column backed by a PHP state machine with no CHECK in the schema:
+-- `tools/verify-state-machines.php` reported "no CHECK on status — machine is
+-- unenforced" on every run. The code was already disciplined (every writer goes
+-- through `EventStatus` constants or `Event::PUBLISHED`), so the database only
+-- had to stop being silent. `EventStateMachine` said as much itself: the
+-- `cancelled` spelling was pinned "by convention (and by tests) rather than by
+-- the database". Full reasoning in the split file.
+ALTER TABLE events
+  ADD CONSTRAINT ck_events_status CHECK (status IN ('draft','scheduled','published','completed','cancelled','archived'));
+
+SET FOREIGN_KEY_CHECKS = 1;
+--
+-- `login_logs` was written from exactly one place — `SessionIssuer::auditLogout()`
+-- — i.e. by the logout path. A login row could only be told apart from a logout
+-- row indirectly: a login has `failure_code` set, a logout does not. That holds
+-- exactly until the first writer logs a successful login with `failure_code =
+-- NULL`, after which the two events are indistinguishable. The event column is
+-- storage for what the domain already distinguishes (`login`, `logout`,
+-- `login_failed`), and the CHECK locks the set so a row nobody can classify
+-- cannot be written. Full reasoning in `016_login_logs_event.sql`.
+ALTER TABLE login_logs
+  ADD COLUMN event VARCHAR(32) NOT NULL DEFAULT 'login' AFTER success;
+
+ALTER TABLE login_logs
+  ADD CONSTRAINT ck_login_logs_event CHECK (event IN ('login','logout','login_failed'));
+
+SET FOREIGN_KEY_CHECKS = 1;
+--
+-- §3.11 lists 17 status columns without a CHECK. They cannot be treated as one
+-- list: behind some stands a vocabulary the code already wrote and already
+-- enforces (a domain class, a service constant, a request rule), behind others
+-- there is no vocabulary at all — inventing one here would be inventing an
+-- agreement. This block locks only the first kind. Every value was already an
+-- application rule before it became a database one.
+--
+-- WHAT STAYS FREE-FORM, ON PURPOSE:
+--   `idempotency_keys.response_status` — an HTTP status code (100…599); the
+--     vocabulary belongs to IANA, not to the application.
+--   `payment_transactions.status` — the payment provider's own vocabulary (it
+--     also lands in the raw payload); pinning a third party's vocabulary in the
+--     spec is how you break on a provider switch.
+--   `pages.status`, `promo_codes.status`, `halls.status`, `venues.status`,
+--     `event_categories.status`, `event_dates.status`, `offline_bundles.status` —
+--     values are only ever COMPARED ('active', 'published', 'draft',
+--     'scheduled'); no writer validates them and no class calls itself a
+--     vocabulary. A CHECK here would be a made-up convention, recorded in
+--     §3.11/§3.25 as a product decision instead.
+--   `ab_experiments.status` — the vocabulary is declared in the model docblock
+--     ('draft' | 'running' | 'completed'), but there is no write path at all
+--     (the A/B module has no HTTP layer), so the docblock is the only
+--     declaration the column has.
+ALTER TABLE carts
+  ADD CONSTRAINT ck_carts_status CHECK (status IN ('active','converted','abandoned'));
+
+ALTER TABLE checkin_devices
+  ADD CONSTRAINT ck_checkin_devices_status CHECK (status IN ('active','disabled','revoked'));
+
+ALTER TABLE consents
+  ADD CONSTRAINT ck_consents_status CHECK (status IN ('granted','withdrawn','expired'));
+
+ALTER TABLE privacy_requests
+  ADD CONSTRAINT ck_privacy_requests_status CHECK (status IN ('requested','in_progress','completed','rejected'));
+
+ALTER TABLE notifications
+  ADD CONSTRAINT ck_notifications_status CHECK (status IN ('queued','sent','failed'));
+
+ALTER TABLE organizations
+  ADD CONSTRAINT ck_organizations_status CHECK (status IN ('active','inactive','suspended'));
+
+ALTER TABLE ab_experiments
+  ADD CONSTRAINT ck_ab_experiments_status CHECK (status IN ('draft','running','completed'));
+
+ALTER TABLE orders
+  ADD CONSTRAINT ck_orders_payment_status CHECK (payment_status IN ('pending','succeeded'));
+
+SET FOREIGN_KEY_CHECKS = 1;
+
+-- ============================================================ 018 — loyalty foundation (favorites, follows, follow log)
+-- 018: фундамент «Клуба зрителей» — избранное и подписки на мероприятия.
+--
+-- ЗАЧЕМ ЭТОТ ФАЙЛ
+--   Фаза 1 плана `docs/LOYALTY-PLAN.md`: механика возврата, в которой нет денег.
+--   Покупатель помечает мероприятие («❤️ — Избранное») или подписывается на него
+--   («🔔 Следить»), и сайт сам присылает письмо, когда у артиста появляется
+--   новый сеанс или открывается продажа. Ни одна таблица этого файла не участвует
+--   в расчёте сумм: favourites/follows не знают ни о корзине, ни о заказе, ни о
+--   ценах, поэтому фаза выкатывается независимо от чекаута и не может сдвинуть
+--   `ck_orders_amounts`.
+--
+-- ПОЧЕМУ ДВЕ ТАБЛИЦЫ, А НЕ ОДНА С ФЛАГОМ
+--   `event_favorites` и `event_follows` выглядят одинаково и намеренно разделены.
+--   Избранное — личный список «хочу посмотреть»: писем не порождает. Подписка —
+--   запрос на уведомления: порождает. Слить их в одну таблицу с флагом значило бы
+--   отвечать на вопрос «получает ли человек письма?» чтением флага, который
+--   никто не проверяет, и любая будущая рассылка по «избранному» начала бы
+--   присылать письма тем, кто их не просил. Разделение делает намерение видимым
+--   в схеме, а не в приложении.
+--
+--   `follow_notifications` — журнал идемпотентности отправки. Сеансы у
+--   мероприятия появляются регулярно, и одно и то же письмо не должно уйти
+--   дважды: уникальный ключ (follow_id, session_id, template_code) превращает
+--   «отправить повторно» в конфликт вставки, который обрабатывается, а не в
+--   дубликат в чужом почтовом ящике. SELECT-then-INSERT здесь недостаточно —
+--   между ним и вставкой влезает второй процесс (та же защита, что
+--   `uq_order_reminders_order` у напоминаний, `012_application_domain.sql`).
+--
+-- ЗНАЧЕНИЯ НЕ ВЫДУМАНЫ
+--   `follow_notifications.status` — словарь `queued|sent|failed` взят у
+--   `notifications.status` (`ck_notifications_status`, сплит 017): колонка
+--   состояния отправки не заслуживает нового словаря, а расхождение со
+--   словарём соседней таблицы — расхождение, которое кто-то будет ловить
+--   в проде.
+--
+-- ПОЧЕМУ НОВЫЙ ФАЙЛ, А НЕ ПРАВКА 002/004
+--   Те сплиты уже прошли на развёрнутых базах: дописанная туда таблица
+--   существовала бы в пакете и больше нигде. Новый сплит плюс зеркало
+--   `2026_10_13_000100_create_loyalty_foundation.php` достают и существующие,
+--   и свежие установки — по той же причине, по которой существуют 011, 013–017.
+--
+-- Зеркало: database/migrations/2026_10_13_000100_create_loyalty_foundation.php.
+
+SET NAMES utf8mb4;
+SET time_zone = '+00:00';
+SET FOREIGN_KEY_CHECKS = 0;
+
+-- ---------------------------------------------------------- 1. избранное
+-- Личный список «хочу посмотреть». Писем не порождает, состояний и каналов не
+-- имеет — только факт отметки и момент, когда она сделана.
+CREATE TABLE IF NOT EXISTS event_favorites (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  public_id CHAR(26) NOT NULL,
+  user_id BIGINT UNSIGNED NOT NULL,
+  event_id BIGINT UNSIGNED NOT NULL,
+  created_at DATETIME(6) NOT NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_event_favorites_public_id (public_id),
+  -- Повторное «❤️» на том же мероприятии — не вторая запись, а тот же факт: без
+  -- уникального ключа список распухает от повторных нажатий, а счётчик «в
+  -- избранном у N человек» начинает врать.
+  UNIQUE KEY uq_event_favorites_user_event (user_id, event_id),
+  -- «Моё избранное» — всегда список одного пользователя по времени добавления.
+  KEY idx_event_favorites_user_created (user_id, created_at),
+  CONSTRAINT fk_event_favorites_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_event_favorites_event FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------------- 2. подписки
+-- Запрос на уведомления о мероприятии. Отличается от избранного только
+-- назначением (см. заголовок файла), поэтому и структура та же.
+CREATE TABLE IF NOT EXISTS event_follows (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  public_id CHAR(26) NOT NULL,
+  user_id BIGINT UNSIGNED NOT NULL,
+  event_id BIGINT UNSIGNED NOT NULL,
+  created_at DATETIME(6) NOT NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_event_follows_public_id (public_id),
+  UNIQUE KEY uq_event_follows_user_event (user_id, event_id),
+  -- «Кому писать о новом сеансе этого мероприятия» — главный запрос фазы.
+  KEY idx_event_follows_event (event_id, created_at),
+  CONSTRAINT fk_event_follows_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_event_follows_event FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------------- 3. журнал отправок
+-- Идемпотентность подписных писем. Строка создаётся ДО постановки письма в
+-- очередь; `sent_at` остаётся NULL, пока транспорт не подтвердил отправку, —
+-- «запланировано, но не подтверждено» видно в разборе и не мешает повторной
+-- попытке.
+CREATE TABLE IF NOT EXISTS follow_notifications (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  public_id CHAR(26) NOT NULL,
+  follow_id BIGINT UNSIGNED NOT NULL,
+  user_id BIGINT UNSIGNED NOT NULL,
+  event_id BIGINT UNSIGNED NOT NULL,
+  session_id BIGINT UNSIGNED NOT NULL,
+  -- Код шаблона из `notification_templates.code` (не FK: у одного кода есть
+  -- строки на каждый канал и локаль, и шаблон переживает редактуру).
+  template_code VARCHAR(100) NOT NULL,
+  status VARCHAR(32) NOT NULL DEFAULT 'queued',
+  -- Строка в `notifications`, которая уже несла письмо. SET NULL: удаление
+  -- записи транспорта не отменяет факта отправки подписчику.
+  notification_id BIGINT UNSIGNED NULL,
+  sent_at DATETIME(6) NULL,
+  error_message TEXT NULL,
+  created_at DATETIME(6) NOT NULL,
+  updated_at DATETIME(6) NOT NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_follow_notifications_public_id (public_id),
+  -- Ключ идемпотентности: на подписку × сеанс × шаблон — одно письмо.
+  UNIQUE KEY uq_follow_notifications_dedupe (follow_id, session_id, template_code),
+  -- «Что уже ушло этому человеку» — разбор жалоб «письмо пришло дважды».
+  KEY idx_follow_notifications_user_created (user_id, created_at),
+  KEY idx_follow_notifications_status (status),
+  CONSTRAINT fk_follow_notifications_follow FOREIGN KEY (follow_id) REFERENCES event_follows(id) ON DELETE CASCADE,
+  CONSTRAINT fk_follow_notifications_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_follow_notifications_event FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE,
+  CONSTRAINT fk_follow_notifications_session FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE,
+  CONSTRAINT fk_follow_notifications_notification FOREIGN KEY (notification_id) REFERENCES notifications(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+ALTER TABLE follow_notifications
+  ADD CONSTRAINT ck_follow_notifications_status CHECK (status IN ('queued','sent','failed'));
+
+SET FOREIGN_KEY_CHECKS = 1;
+
+-- ============================================================ 019 — bonus ledger (accounts, transactions, orders.bonus_amount)
+-- 019: бонусный счёт «Клуба зрителей» — баланс, журнал движений, списание в заказе.
+--
+-- ЗАЧЕМ ЭТОТ ФАЙЛ
+--   Фаза 2 плана `docs/LOYALTY-PLAN.md`. Фаза 1 (сплит 018) дала механику возврата
+--   без денег: избранное и подписки. Эта фаза — единственная, которая трогает
+--   суммы заказа, поэтому она и разбита на два независимых куска: начисление
+--   (аддитивно, денег не двигает) и списание (двигает `total_amount`). Схема ниже
+--   обслуживает оба, но ни одна существующая таблица не переписана: `orders`
+--   получает одну колонку, а её CHECK переиздаётся. Новый сплит, а не правка 004,
+--   потому что 004 давно прошёл на развёрнутых базах — колонка, дописанная туда,
+--   существовала бы в бандле и больше нигде.
+--
+-- ПОЧЕМУ БАЛАНС И ЖУРНАЛ РАЗДЕЛЕНЫ
+--   `bonus_accounts.balance` — текущее состояние, ровно одна строка на человека.
+--   `bonus_transactions` — append-only журнал: строки не правятся и не удаляются,
+--   потому что «почему у меня 340 бонусов» — вопрос, на который должен отвечать
+--   набор строк, а не догадка. Баланс пересчитывается из журнала; журнал из
+--   баланса — нет.
+--
+--   Отсюда требование к знаку: `delta` знаковый (плюс — начислили, минус —
+--   списали, вернули, списали по сроку), а `reason` называет ПРИЧИНУ, а не
+--   направление. Слить их в одну колонку значило бы потерять одно из двух:
+--   `reason` без знака не отличает начисление от отката, знак без `reason` не
+--   отличает кэшбэк от подарка за регистрацию.
+--
+-- ЕДИНИЦА ИЗМЕРЕНИЯ
+--   `balance` и `delta` — в МИНОРНЫХ единицах, как и все деньги в этой схеме
+--   (`Money`: int minor units, без float). Это не деталь: `orders.bonus_amount`
+--   стоит в одном CHECK с `subtotal_amount` и `total_amount`, и колонка в рублях
+--   рядом с колонками в копейках сделала бы этот CHECK бессмысленным.
+--   Курс отображения («1 бонус = 1 ₽», `docs/LOYALTY-PLAN.md`) — правило витрины,
+--   а не схемы: 1 ₽ = 100 минорных единиц, и делит их представление, не база.
+--
+-- ИДЕМПОТЕНТНОСТЬ: `dedupe_key`, А НЕ `UNIQUE (order_id, reason)`
+--   Начисление обязано пройти ровно один раз на заказ, и проверка не может быть
+--   «SELECT, потом INSERT» — между ними влезает второй воркер (та же защита, что
+--   `uq_follow_notifications_dedupe` в 018). Но `UNIQUE (order_id, reason)`
+--   закрыл бы и то, что закрывать нельзя: частичный возврат — законная ВТОРАЯ
+--   компенсация по тому же заказу, и такой ключ сделал бы её невозможной.
+--   Поэтому ключ идемпотентности — отдельная НЕОБЯЗАТЕЛЬНАЯ колонка: писатель
+--   сам объявляет строку идемпотентной (`accrual:{order_id}`), а строки без
+--   ключа (частичные возвраты) друг другу не мешают — MySQL допускает сколько
+--   угодно NULL в UNIQUE. Тот же приём уже есть в схеме: `refunds.provider_refund_id`
+--   и `payments.provider_payment_id` — необязательные уникальные колонки.
+--
+-- СЛОВАРЬ `reason` — СЛОВАРЬ ФАЗЫ 2, А НЕ ТОГО, ЧТО ПИШЕТСЯ СЕГОДНЯ
+--   `accrual` — кэшбэк 5% от оплаченного заказа; `registration` (+100) и
+--   `first_purchase` (+300) — правила из таблицы бонусов плана; `spend` — списание
+--   в чекауте; `refund` — компенсация при возврате или отмене; `expiry` — истечение
+--   через 12 месяцев. Расширение словаря — это ровно та правка CHECK, от которой
+--   план предостерегает, поэтому словарь объявлен целиком и сразу, а не по мере
+--   появления писателей.
+--
+-- ЗНАЧЕНИЯ НЕ ВЫДУМАНЫ
+--   `currency` и `DEFAULT 'RUB'` — как у `orders`, `payments`, `refunds`: колонка
+--   валюты без словаря, но с тем же дефолтом, что у соседей по деньгам.
+--
+-- Зеркало: database/migrations/2026_10_14_000100_create_bonus_ledger.php.
+
+SET NAMES utf8mb4;
+SET time_zone = '+00:00';
+SET FOREIGN_KEY_CHECKS = 0;
+
+-- ---------------------------------------------------------- 1. счёт
+-- Текущий баланс: одна строка на человека. `UNIQUE (user_id)` — не оптимизация,
+-- а инвариант: две строки на одного пользователя означали бы два баланса и
+-- вопрос «какой из них настоящий», который решается не в пользу покупателя.
+CREATE TABLE IF NOT EXISTS bonus_accounts (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  public_id CHAR(26) NOT NULL,
+  user_id BIGINT UNSIGNED NOT NULL,
+  -- Минорные единицы. BIGINT, а не INT: баланс живёт годами и не должен
+  -- упираться в потолок, который никто не считал.
+  balance BIGINT NOT NULL DEFAULT 0,
+  currency CHAR(3) NOT NULL DEFAULT 'RUB',
+  created_at DATETIME(6) NOT NULL,
+  updated_at DATETIME(6) NOT NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_bonus_accounts_public_id (public_id),
+  UNIQUE KEY uq_bonus_accounts_user (user_id),
+  CONSTRAINT fk_bonus_accounts_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------------- 2. журнал
+-- Append-only. Ни `updated_at`, ни `deleted_at`: строка журнала не меняется
+-- никогда — компенсация это НОВАЯ строка с обратным знаком, а не правка старой.
+CREATE TABLE IF NOT EXISTS bonus_transactions (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  public_id CHAR(26) NOT NULL,
+  user_id BIGINT UNSIGNED NOT NULL,
+  -- Заказ, из-за которого появилось движение. NULL для подарков
+  -- (`registration`, `first_purchase`) и истечения: они не привязаны к заказу.
+  -- SET NULL — удаление заказа не должно стирать историю бонусов покупателя.
+  order_id BIGINT UNSIGNED NULL,
+  -- Знаковое число в минорных единицах: плюс — начислили, минус — списали.
+  delta BIGINT NOT NULL,
+  reason VARCHAR(32) NOT NULL,
+  -- Ключ идемпотентности. NULL — движение повторяемо (частичные возвраты);
+  -- `accrual:{order_id}` — ровно одно на заказ. Необязательная уникальная
+  -- колонка, как `refunds.provider_refund_id`. 191, а не 255: значение
+  -- синтезируется кодом (`причина:id`), вводить его некому, и одному UNIQUE
+  -- незачем занимать 255 символов utf8mb4.
+  dedupe_key VARCHAR(191) NULL,
+  created_at DATETIME(6) NOT NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_bonus_transactions_public_id (public_id),
+  UNIQUE KEY uq_bonus_transactions_dedupe (dedupe_key),
+  -- «История движений» — всегда список одного человека по времени.
+  KEY idx_bonus_transactions_user_created (user_id, created_at),
+  -- «Что журнал знает про этот заказ» — разбор начисления и его компенсации.
+  KEY idx_bonus_transactions_order (order_id),
+  CONSTRAINT fk_bonus_transactions_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_bonus_transactions_order FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------------- 3. списание в заказе
+-- Отдельная колонка, а не «магическая скидка»: покупатель должен видеть строку
+-- «списано бонусами», а разбор заказа — отличать скидку промокода от бонусов.
+-- `AFTER discount_amount` держит суммы рядом. `DEFAULT 0` делает колонку
+-- безопасной для всех уже существующих заказов — они получают ровно ноль.
+ALTER TABLE orders
+  ADD COLUMN bonus_amount BIGINT NOT NULL DEFAULT 0 AFTER discount_amount;
+
+-- `ck_orders_amounts` переиздаётся, а не дописывается: CHECK в MySQL 8 нельзя
+-- изменить, только снять и создать заново. Снятие и повторная установка
+-- безопасны для существующих строк — у всех уже `bonus_amount = 0` (DEFAULT
+-- выше), а условие `>= 0` для нуля истинно, поэтому проверка не может
+-- забраковать ни одну строку, которую пропускала прежняя.
+ALTER TABLE orders DROP CONSTRAINT ck_orders_amounts;
+
+ALTER TABLE orders
+  ADD CONSTRAINT ck_orders_amounts CHECK (
+    subtotal_amount >= 0 AND discount_amount >= 0 AND fee_amount >= 0
+    AND bonus_amount >= 0 AND total_amount >= 0);
+
+-- ---------------------------------------------------------- 4. инварианты счёта
+-- Баланс не уходит в минус. Это не «проверка на всякий случай»: минус означает
+-- списание бонусов, которых у покупателя не было, — то есть подарок за счёт
+-- организатора, который никто не заметит до сверки.
+ALTER TABLE bonus_accounts
+  ADD CONSTRAINT ck_bonus_accounts_balance CHECK (balance >= 0);
+
+-- Причина движения — из закрытого словаря. Строка с причиной вне словаря
+-- нечитаема: по ней нельзя ни построить отчёт, ни объяснить покупателю,
+-- откуда взялись бонусы.
+ALTER TABLE bonus_transactions
+  ADD CONSTRAINT ck_bonus_transactions_reason CHECK (reason IN (
+    'accrual','registration','first_purchase','spend','refund','expiry'));
+
+-- ---------------------------------------------------------- 020: уровни «Клуба зрителей» (фаза 3)
+-- Конфиг уровней: Старт/Friend/VIP по числу оплаченных заказов; текущий уровень
+-- покупателя — колонка на `users`, пересчитываемая обсервером при смене статуса
+-- заказа. ЗЕРКАЛО: database/migrations/2026_10_14_020000_create_loyalty_levels.php.
+CREATE TABLE IF NOT EXISTS loyalty_levels (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  public_id CHAR(26) NOT NULL,
+  slug VARCHAR(32) NOT NULL,
+  name VARCHAR(64) NOT NULL,
+  min_paid_orders INT NOT NULL DEFAULT 0,
+  sort_order INT NOT NULL DEFAULT 0,
+  created_at DATETIME(6) NOT NULL,
+  updated_at DATETIME(6) NOT NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_loyalty_levels_public_id (public_id),
+  UNIQUE KEY uq_loyalty_levels_slug (slug)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+ALTER TABLE users
+  ADD COLUMN loyalty_level_id BIGINT UNSIGNED NULL,
+  ADD CONSTRAINT fk_users_loyalty_level FOREIGN KEY (loyalty_level_id)
+    REFERENCES loyalty_levels(id) ON DELETE SET NULL;
+
+INSERT INTO loyalty_levels (public_id, slug, name, min_paid_orders, sort_order, created_at, updated_at) VALUES
+  ('01ARZ3NDEKTSV4RRFFQ69G5FAV', 'start', 'Старт', 0, 1, NOW(6), NOW(6)),
+  ('01ARZ3NDEKTSV4RRFFQ69G5FAW', 'friend', 'Друг', 3, 2, NOW(6), NOW(6)),
+  ('01ARZ3NDEKTSV4RRFFQ69G5FAX', 'vip', 'VIP', 10, 3, NOW(6), NOW(6));
+
+SET FOREIGN_KEY_CHECKS = 1;
+
+SET NAMES utf8mb4;
+SET time_zone = '+00:00';
+SET FOREIGN_KEY_CHECKS = 0;
+
+-- ---------------------------------------------------------- 021: реферальная программа (фаза 4)
+-- Код приглашения — свойство приглашающего (`referral_codes`: одна строка на
+-- человека, `UNIQUE (user_id)`), приглашение — строка на каждого друга
+-- (`referrals`: `UNIQUE (inviter_user_id, invited_email)` — инвариант
+-- идемпотентности). Друг определяется АДРЕСОМ, а не аккаунтом: покупатель по
+-- умолчанию — гость, и ссылку `/r/{code}` открывают до регистрации;
+-- `invited_user_id` — необязательное уточнение на потом (SET NULL). Статус
+-- `pending → registered → rewarded` со словарём в CHECK; `bonus_paid_at`
+-- фиксирует момент награды. Словарь причин журнала расширен `referral_inviter`
+-- и `referral_invited` — CHECK переиздаётся (MySQL 8 не умеет ALTER CHECK, а
+-- снятие безопасно: новое условие — надмножество старого). ЗЕРКАЛО:
+-- database/migrations/2026_10_14_030000_create_referrals.php.
+CREATE TABLE IF NOT EXISTS referral_codes (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  public_id CHAR(26) NOT NULL,
+  user_id BIGINT UNSIGNED NOT NULL,
+  code VARCHAR(16) NOT NULL,
+  created_at DATETIME(6) NOT NULL,
+  updated_at DATETIME(6) NOT NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_referral_codes_public_id (public_id),
+  UNIQUE KEY uq_referral_codes_user (user_id),
+  UNIQUE KEY uq_referral_codes_code (code),
+  CONSTRAINT fk_referral_codes_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS referrals (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  public_id CHAR(26) NOT NULL,
+  inviter_user_id BIGINT UNSIGNED NOT NULL,
+  invited_email VARCHAR(255) NOT NULL,
+  invited_user_id BIGINT UNSIGNED NULL,
+  status VARCHAR(16) NOT NULL DEFAULT 'pending',
+  bonus_paid_at DATETIME(6) NULL,
+  created_at DATETIME(6) NOT NULL,
+  updated_at DATETIME(6) NOT NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_referrals_public_id (public_id),
+  UNIQUE KEY uq_referrals_inviter_email (inviter_user_id, invited_email),
+  KEY idx_referrals_invited_user (invited_user_id),
+  CONSTRAINT fk_referrals_inviter FOREIGN KEY (inviter_user_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_referrals_invited_user FOREIGN KEY (invited_user_id) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+ALTER TABLE referrals
+  ADD CONSTRAINT ck_referrals_status CHECK (status IN ('pending','registered','rewarded'));
+
+ALTER TABLE bonus_transactions DROP CONSTRAINT ck_bonus_transactions_reason;
+
+ALTER TABLE bonus_transactions
+  ADD CONSTRAINT ck_bonus_transactions_reason CHECK (reason IN (
+    'accrual','registration','first_purchase','spend','refund','expiry',
+    'referral_inviter','referral_invited'));
+
+SET FOREIGN_KEY_CHECKS = 1;
+
+-- 022: розыгрыши «счастливый билет» (фаза 5 плана `docs/LOYALTY-PLAN.md`).
+--
+-- ЗАЧЕМ ЭТОТ ФАЙЛ
+--   План фазы 5 открывается розыгрышем: приз за покупку, которую организатор
+--   разыгрывает среди покупателей. Решения заказчика: участником становится
+--   КАЖДЫЙ оплаченный заказ из окна розыгрыша (без галочки в чекауте), тираж
+--   проводит организатор кнопкой в админке (без планировщика), призовых мест
+--   несколько, у каждого свой приз. Ниже — ровно эта модель.
+--
+-- ЗАЧЕМ БИЛЕТ — ЭТО ЗАКАЗ, А НЕ ЧЕЛОВЕК
+--   Покупатель по умолчанию — гость без аккаунта (`customer_email` NOT NULL,
+--   аккаунт заводится на чекауте, см. фазу 4): «одна строка на человека»
+--   потеряла бы всех, кто так и не завёл аккаунт. Заказ есть у обоих, и
+--   заказ — та единица, за которую организатор готов отдать приз: в заказе
+--   лежит адрес, по которому победителя находят, даже если `user_id` так и
+--   не появился. Поэтому UNIQUE (raffle_id, order_id), а не (raffle_id,
+--   user_id).
+--
+-- ПОЧЕМУ ОКНО — ДВЕ ДАТЫ, А НЕ СТАТУС ЗАКАЗА
+--   Условие входа «заказ оплачен в период розыгрыша» проверяется в момент
+--   ОПЛАТЫ (`orders.paid_at`), а не в момент тиража: иначе розыгрыш пришлось
+--   бы пересчитывать на каждое изменение статуса заказа. Обе даты nullable —
+--   «с начала времён» и «до отмены» это отсутствие границы, а не 1970-01-01:
+--   заказ, оплаченный до создания розыгрыша, легально участвует в розыгрыше
+--   «за всё время», и NULL выражает это без магических значений.
+--
+-- ПОЧЕМУ ПРИЗЫ — ОТДЕЛЬНАЯ ТАБЛИЦА С МЕСТОМ
+--   Призовых мест несколько, и каждое со своим призом: place = 1, 2, 3...
+--   UNIQUE (raffle_id, place) — словарь мест закрыт на уровне розыгрыша, и
+--   «два первых места» невозможны. Место, а не порядковый номер строки:
+--   порядок сортировки меняется от запроса к запросу, а место — свойство
+--   приза.
+--
+-- ПОЧЕМУ ТИРАЖ РУЧНОЙ, А НЕ ПО ПЛАНИРОВЩИКУ
+--   Статус `drawn` + `drawn_at` фиксируют факт: `draft` — розыгрыш ещё
+--   готовится, `active` — принимает участников, `drawn` — разыгран;
+--   `cancelled` — организатор закрыл розыгрыш без тиража. Решение
+--   о тираже принимает человек, и в схеме для этого достаточно одной колонки
+--   со словарём: планировщик, когда появится, будет только менять `status`,
+--   а не жить в отдельном флаге «запущено по расписанию».
+--
+-- ПОЧЕМУ ПОБЕДИТЕЛИ — ОТДЕЛЬНАЯ ТАБЛИЦА, А НЕ СТАТУС НА ЗАПИСИ
+--   Запись (`raffle_entries`) — факт участия, её создаёт оплата. Победитель
+--   (`raffle_winners`) — результат тиража, его создаёт человек кнопкой.
+--   Разные авторы, разное время, разные жизненные циклы: отметка «этот
+--   участник победил» на записи означала бы, что оплата (или её повтор)
+--   когда-нибудь пишет в колонку победителя. Плюс у одного участника может
+--   быть несколько призовых мест в разных розыгрышах, и «победитель» —
+--   отношение, а не атрибут.
+--
+-- ИДЕМПОТЕНТНОСТЬ В СХЕМЕ
+--   Три уникальных ключа держат инварианты на уровне базы, а не приложения:
+--   `uq_raffle_entries_order` — один заказ даёт один билет в одном розыгрыше,
+--   сколько бы раз ни сработал обсервер оплаты или повтор джобы;
+--   `uq_raffle_winners_prize` — на призовое место ровно один победитель;
+--   `uq_raffle_winners_entry` — один билет не забирает двух мест в одном
+--   розыгрыше (тираж идёт без возврата, см. `Domain\RaffleDraw`).
+--
+-- ЧЕГО В СХЕМЕ НЕТ НАМЕРЕННО
+--   Выплаты: приз описывают словами (`title`, `description`), его вручает
+--   организатор — это не `bonus_transactions`. Бонус за участие тоже не
+--   начисляется: участие — не повод для движения по счёту, иначе «крутить
+--   барабан» дешевле, чем покупать.
+--   `customer_email` на записи: адрес живёт в заказе (`orders.customer_email`),
+--   и копия в `raffle_entries` расходилась бы с ним при правке заказа.
+--   Отзыва entry при возврате: возврат НЕ удаляет билет — тот же принцип,
+--   что у кэшбэка (фаза 2b) и реферальной награды (фаза 4): факт участия
+--   уже зафиксирован, а удаление строк после тиража сделало бы результаты
+--   невоспроизводимыми. Ограничение записано в `docs/LOYALTY-PLAN.md`.
+--
+-- ЗЕРКАЛО: database/migrations/2026_10_14_040000_create_raffles.php.
+
+SET NAMES utf8mb4;
+SET time_zone = '+00:00';
+SET FOREIGN_KEY_CHECKS = 0;
+
+-- ------------------------------------------------------------- 1. розыгрыши
+-- Строка на розыгрыш: название для покупателя, окно входа и жизненный цикл.
+-- `draft` — розыгрыш готовится (призы можно править, участники не
+-- набираются); `active` — оплаченные заказы из окна становятся билетами;
+-- `drawn` — тираж проведён, `drawn_at` фиксирует когда; `cancelled` —
+-- розыгрыш закрыт без тиража. Словарь закрыт CHECK ниже.
+CREATE TABLE IF NOT EXISTS raffles (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  public_id CHAR(26) NOT NULL,
+  title VARCHAR(255) NOT NULL,
+  -- Описание для страницы результатов: что за приз и по каким правилам
+  -- разыгрывается. NULL — организатор ничего не написал, и страница
+  -- показывает только факты.
+  description TEXT NULL,
+  status VARCHAR(16) NOT NULL DEFAULT 'draft',
+  -- Начало окна: заказы, оплаченные с этого момента, становятся билетами.
+  -- NULL — окно открыто с начала времён.
+  starts_at DATETIME(6) NULL,
+  -- Конец окна: NULL — окно закрывается только тиражем. Концы окна
+  -- проверяются в момент оплаты (`Order::paid_at`), а не в момент тиража:
+  -- см. заголовок.
+  ends_at DATETIME(6) NULL,
+  -- Момент тиража. NOT NULL-колонка не нужна: статус `drawn` сам говорит,
+  -- что тираж был, а дата — когда именно.
+  drawn_at DATETIME(6) NULL,
+  created_at DATETIME(6) NOT NULL,
+  updated_at DATETIME(6) NOT NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_raffles_public_id (public_id),
+  -- «Розыгрыши, принимающие участников»: читается на КАЖДОЙ оплате заказа
+  -- (обсервер `OrderRaffleObserver`), поэтому условие отбора — по статусу.
+  KEY idx_raffles_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ------------------------------------------------------------- 2. призы
+-- Строка на призовое место одного розыгрыша. `place` — 1, 2, 3...: место
+-- в схеме, а не в сортировке (см. заголовок). Каскад по розыгрышу: призы
+-- без розыгрыша не существуют.
+CREATE TABLE IF NOT EXISTS raffle_prizes (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  public_id CHAR(26) NOT NULL,
+  raffle_id BIGINT UNSIGNED NOT NULL,
+  place SMALLINT UNSIGNED NOT NULL,
+  title VARCHAR(255) NOT NULL,
+  -- Условия получения: «билет на любое мероприятие сезона», «мерч набором»
+  -- и т.п. NULL — название приза говорит само за себя.
+  description TEXT NULL,
+  created_at DATETIME(6) NOT NULL,
+  updated_at DATETIME(6) NOT NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_raffle_prizes_public_id (public_id),
+  -- Одно призовое место — один приз: два первых места сделали бы тираж
+  -- неопределённым (какому из них достаётся победитель места 1).
+  UNIQUE KEY uq_raffle_prizes_place (raffle_id, place),
+  CONSTRAINT fk_raffle_prizes_raffle FOREIGN KEY (raffle_id) REFERENCES raffles(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Место нумеруется с единицы: `place = 0` не имеет смысла ни в одном
+-- розыгрыше, и SMALLINT UNSIGNED сам по себе нуль допускает.
+ALTER TABLE raffle_prizes
+  ADD CONSTRAINT ck_raffle_prizes_place CHECK (place >= 1);
+
+-- ------------------------------------------------------------- 3. билеты
+-- Строка на «оплаченный заказ в розыгрыше». Создаётся один раз на заказ
+-- (`OrderRaffleObserver` → `EnterRafflesJob`), правится только при создании:
+-- `updated_at` не нужен, поэтому здесь единственная временная колонка.
+-- Жизненный цикл записи — это её отсутствие или наличие, и отдельного
+-- статуса у неё нет намеренно: «аннулированный билет» (возврат заказа) не
+-- отзывается, см. заголовок.
+--
+-- `user_id` — снимок покупателя на момент входа: «мои участия» в кабинете
+-- ищут по нему. SET NULL, а не CASCADE: заказ остаётся билетом даже после
+-- удаления аккаунта (факт участия не должен исчезать вместе с профилем).
+CREATE TABLE IF NOT EXISTS raffle_entries (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  public_id CHAR(26) NOT NULL,
+  raffle_id BIGINT UNSIGNED NOT NULL,
+  order_id BIGINT UNSIGNED NOT NULL,
+  user_id BIGINT UNSIGNED NULL,
+  created_at DATETIME(6) NOT NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_raffle_entries_public_id (public_id),
+  -- Инвариант идемпотентности: повтор джобы, повторная запись статуса
+  -- `paid` и гонка двух параллельных оплат дают одну строку, а не три.
+  UNIQUE KEY uq_raffle_entries_order (raffle_id, order_id),
+  -- «Мои участия»: кабинет покупателя (`GET /me/raffles`).
+  KEY idx_raffle_entries_user (user_id),
+  CONSTRAINT fk_raffle_entries_raffle FOREIGN KEY (raffle_id) REFERENCES raffles(id) ON DELETE CASCADE,
+  -- Заказ удалён — билета нет: участие производно от заказа, а не наоборот.
+  CONSTRAINT fk_raffle_entries_order FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
+  CONSTRAINT fk_raffle_entries_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Статус розыгрыша — из закрытого словаря (см. заголовок).
+ALTER TABLE raffles
+  ADD CONSTRAINT ck_raffles_status CHECK (status IN ('draft','active','drawn','cancelled'));
+
+-- ------------------------------------------------------------- 4. победители
+-- Строка на «победитель призового места». Создаётся тиражом (одна транзакция
+-- на все места) и после этого не правится: `updated_at` нет по той же
+-- причине, что у `raffle_entries`. `user_id` — снимок на момент тиража
+-- (аккаунт победителя к тому моменту мог исчезнуть), `notified_at` —
+-- письмо победителю ушло (идемпотентность уведомления и признак «можно
+-- отправить повторно» в админке).
+CREATE TABLE IF NOT EXISTS raffle_winners (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  public_id CHAR(26) NOT NULL,
+  raffle_id BIGINT UNSIGNED NOT NULL,
+  raffle_prize_id BIGINT UNSIGNED NOT NULL,
+  entry_id BIGINT UNSIGNED NOT NULL,
+  user_id BIGINT UNSIGNED NULL,
+  notified_at DATETIME(6) NULL,
+  created_at DATETIME(6) NOT NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_raffle_winners_public_id (public_id),
+  -- На место — один победитель: повторный тираж не должен назначать второго.
+  UNIQUE KEY uq_raffle_winners_prize (raffle_id, raffle_prize_id),
+  -- Один билет — одно место в розыгрыше: тираж идёт без возврата
+  -- (`Domain\RaffleDraw`), и ключ держит это инвариантом схемы.
+  UNIQUE KEY uq_raffle_winners_entry (raffle_id, entry_id),
+  CONSTRAINT fk_raffle_winners_raffle FOREIGN KEY (raffle_id) REFERENCES raffles(id) ON DELETE CASCADE,
+  CONSTRAINT fk_raffle_winners_prize FOREIGN KEY (raffle_prize_id) REFERENCES raffle_prizes(id) ON DELETE CASCADE,
+  CONSTRAINT fk_raffle_winners_entry FOREIGN KEY (entry_id) REFERENCES raffle_entries(id) ON DELETE CASCADE,
+  CONSTRAINT fk_raffle_winners_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 SET FOREIGN_KEY_CHECKS = 1;

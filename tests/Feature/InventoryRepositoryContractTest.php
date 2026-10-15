@@ -28,7 +28,7 @@ use Nabilet\Modules\Sessions\Models\Session;
 use Nabilet\Modules\Venues\Models\Seat;
 use Nabilet\Modules\Venues\Models\HallRow;
 use Nabilet\Modules\Venues\Models\Venue;
-use App\Models\User;
+use Nabilet\Modules\Core\Users\Models\User;
 use Tests\TestCase;
 
 final class InventoryRepositoryContractTest extends TestCase

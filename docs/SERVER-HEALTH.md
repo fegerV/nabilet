@@ -568,6 +568,12 @@ started. The repro scripts are `tools/repro-binary-ip.php` (#15) and `tools/repr
   the module is still a facade. `registerCustomer`, `sendPasswordResetLink`, `resetPassword` and
   `verifyEmail` do not exist, and `AuthController` still returns the flat
   `{"error":"Invalid credentials"}` — the last `E1` ratchet exception.
+  **Обновление 2026-10-12:** плоского тела больше нет — `AuthController::login()` бросает
+  `AuthError('Invalid email or password.', 'bad_credentials', 401)`, то есть конверт §66 с кодом,
+  который читает клиент (`resources/js/lib/api.ts` на 401 чистит токен, кроме `bad_credentials`).
+  Запись `#E1` из ратчета `tools/verify-error-envelope.php` снята; поведение зафиксировано тестом
+  `tests/Feature/Auth/LoginErrorEnvelopeTest.php`. Восстановление пароля и подтверждение e-mail
+  закрыты иначе — через `AccountRecoveryService` с подписанным stateless-токеном (см. ниже).
 - **Password reset and email verification are implemented with a signed stateless token.**
   `password_reset_tokens` does not exist in the live database (0 columns) although `config/auth.php`
   names it. `AccountTokenService` issues a `Crypt`-encrypted payload (user public id + e-mail +

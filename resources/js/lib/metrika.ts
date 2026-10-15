@@ -47,6 +47,8 @@ export interface PurchasePayload {
   revenue?: number
   orderId?: string
   items?: number
+  /** Дополнительные параметры цели (E2: event_id/slug карточки, order_id и т.п.). */
+  params?: Record<string, string | number>
 }
 
 async function loadConfig(): Promise<MetrikaConfig> {
@@ -146,7 +148,7 @@ export async function trackEvent(event: string, payload: PurchasePayload = {}): 
   injectCounterScript(c)
 
   const goal = c.goals[event]
-  const params: Record<string, unknown> = { ...collectUtm(), ep_page: event }
+  const params: Record<string, unknown> = { ...collectUtm(), ep_page: event, ...payload.params }
 
   if (event === 'payment_success' && payload.revenue !== undefined) {
     // Главная цель для Директа: доход по конверсии + идентификатор заказа

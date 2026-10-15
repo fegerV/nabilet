@@ -57,6 +57,14 @@ final class SessionTokenGuard implements Guard
     /** Whether a token lookup has already been attempted for this request. */
     private bool $attempted = false;
 
+    /**
+     * Получен ли `$user` разбором bearer-токена (в отличие от явного `setUser()`).
+     *
+     * Различие нужно ровно для одного: `setRequest()` обесценивает токен-производное
+     * состояние, но не трогает пользователя, поставленного вызывающим.
+     */
+    private bool $resolvedFromToken = false;
+
     public function __construct(
         UserProvider $provider,
         private readonly SessionIssuer $issuer,
@@ -64,9 +72,67 @@ final class SessionTokenGuard implements Guard
         $this->provider = $provider;
     }
 
+    /**
+     * Привязать guard к запросу — и обесценить то, что выведено из ТОКЕНА.
+     *
+     * ЧТО ОБЕСЦЕНИВАЕТСЯ И ЧТО НЕТ. Сбрасываются только `attempted` и `user`,
+     * если пользователь был ПОЛУЧЕН РАЗБОРОМ токена. Пользователь, поставленный
+     * явно (`setUser()`, а через него `actingAs()` в тестах и `Auth::login()` в
+     * приложении), сбросом не затрагивается: это решение вызывающего, а не кеш,
+     * и стирать его значило бы отменить `actingAs()` на первом же запросе.
+     *
+     * ПОЧЕМУ СБРОС ВООБЩЕ НУЖЕН. Guard кешируется менеджером аутентификации
+     * (`AuthManager::$guards`), а сам кеширует результат в `$user` и `$attempted`
+     * — намеренно, чтобы `check()`, `guest()` и `id()` не делали по запросу к
+     * базе. В PHP-FPM это безопасно: процесс умирает вместе с запросом. В
+     * ДОЛГОЖИВУЮЩЕМ воркере (Octane) — нет: тот же экземпляр guard'а обслуживает
+     * следующий запрос, и без сброса второй запрос с ДРУГИМ Bearer-токеном
+     * получил бы пользователя первого. То есть чужую личность: `/me`,
+     * `/me/orders` и `/my-tickets` вернули бы данные не того человека.
+     *
+     * Почему это всплыло только сейчас: сброса не было с самого начала, но и
+     * проверить его было нечем — каждый тест жил в одном запросе. Как только
+     * появился тест, делающий ДВА запроса подряд (смена пароля, затем проверка,
+     * что старый токен мёртв), стало видно, что второй запрос отвечает `200` по
+     * сессии, которой уже нет.
+     *
+     * `refresh('request', …)` в `AuthServiceProvider` вызывает этот метод именно
+     * при подмене `request`, поэтому сброс происходит ровно тогда, когда нужен.
+     */
     public function setRequest(Request $request): static
     {
         $this->request = $request;
+
+        if ($this->resolvedFromToken) {
+            $this->user = null;
+            $this->resolvedFromToken = false;
+        }
+
+        $this->attempted = false;
+
+        return $this;
+    }
+
+    /**
+     * Пользователь поставлен ЯВНО — это не кеш токена, и сброс его не касается.
+     *
+     * Переопределение нужно, чтобы снять `resolvedFromToken`: иначе явно
+     * поставленный пользователь, пришедший на место разобранного из токена,
+     * считался бы токен-производным и был бы стёрт на следующем запросе.
+     */
+    public function setUser(Authenticatable $user): static
+    {
+        $this->user = $user;
+        $this->resolvedFromToken = false;
+
+        return $this;
+    }
+
+    /** Забыть пользователя — вместе с признаком «получен из токена». */
+    public function forgetUser(): static
+    {
+        $this->user = null;
+        $this->resolvedFromToken = false;
 
         return $this;
     }
@@ -115,6 +181,8 @@ final class SessionTokenGuard implements Guard
         if ($user === null || self::isDeleted($user)) {
             return null;
         }
+
+        $this->resolvedFromToken = true;
 
         return $this->user = $user;
     }

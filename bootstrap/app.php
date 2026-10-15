@@ -47,6 +47,19 @@ return Application::configure(basePath: dirname(__DIR__))
         // Маршруты модуля тоже подключены централизованно, так что префикс не
         // теряется.
         \Nabilet\Modules\Notifications\Providers\NotificationsServiceProvider::class,
+        // Провайдер клуба зрителей бутится явно по той же причине, что и
+        // заказов: он вешает `SessionObserver` — единственную точку, откуда
+        // подписчикам уходят письма о новом сеансе и открытии продаж
+        // (docs/LOYALTY-PLAN.md, фаза 1). Маршруты модуля он не грузит (они
+        // подключены централизованно в routes/api.php), так что регистрация
+        // здесь безопасна — префикс /api/v1 никуда не теряется.
+        \Nabilet\Modules\Loyalty\Providers\LoyaltyServiceProvider::class,
+        // Провайдер канала Matrix бутится явно по той же причине: он вешает
+        // `OrderMatrixObserver` — точку, откуда администраторам уходит
+        // уведомление об оплате заказа, и применяет настройки Synapse к
+        // runtime-конфигу. Маршруты модуля подключены централизованно в
+        // routes/api.php, так что префикс /api/v1 не теряется.
+        \Nabilet\Modules\Matrix\Providers\MatrixServiceProvider::class,
     ])
     ->withRouting(
         web: __DIR__ . '/../routes/web.php',

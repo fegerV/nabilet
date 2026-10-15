@@ -51,13 +51,16 @@ const selectedId = computed<number | null>(() => {
   return Number.isFinite(parsed) ? parsed : null
 })
 
+const selected = computed(() => templates.value.find((t) => t.id === selectedId.value) ?? null)
+
 // Режим создания: конструктор с пустым холстом (старт из заготовок,
 // сохранение идёт POST'ом). Раньше в него было не попасть вообще:
 // конструктор монтировался только для существующего id, а при пустом списке
 // открывать было нечего — первый шаблон создать было нельзя.
-const isNew = computed(() => route.query.template === 'new')
-
-const selected = computed(() => templates.value.find((t) => t.id === selectedId.value) ?? null)
+/** Открыт конструктор НОВОГО шаблона (`?template=new`). */
+const isCreating = computed(() => route.query.template === 'new')
+/** Конструктор открыт — либо новый шаблон, либо выбранный существующий. */
+const builderOpen = computed(() => isCreating.value || selected.value !== null)
 
 async function load(): Promise<void> {
   loading.value = true
@@ -79,26 +82,27 @@ function openTemplate(id: number): void {
   router.push({ query: { ...route.query, template: String(id) } })
 }
 
-function openNew(): void {
-  router.push({ query: { ...route.query, template: 'new' } })
-}
-
 function closeTemplate(): void {
   const query = { ...route.query }
   delete query.template
   router.push({ query })
 }
 
+/** Начать новый шаблон: конструктор открывается без `templateId`. */
+function createTemplate(): void {
+  router.push({ query: { ...route.query, template: 'new' } })
+}
+
 function onSaved(saved: unknown): void {
   ui.notify('mint', 'Шаблон сохранён', 'Новый макет применён к билетам этого шаблона.')
   // После создания уходим с `template=new` на реальный id, иначе F5 вернул бы
-  // на пустой холст вместо только что созданного макета.
+  // на пустой холст вместо только что созданного макета, а повторное «Сохранить»
+  // создало бы второй шаблон с тем же именем. Blueprint ответа приходит и как
+  // `{ data: { id } }`, и как `{ id }` — вытаскиваем id из обеих форм.
   const node = (saved as { data?: { id?: unknown } } | null)?.data ?? saved
   const id = Number((node as { id?: unknown } | null)?.id)
-  if (isNew.value && Number.isFinite(id)) {
-    load()
+  if (Number.isFinite(id) && id > 0) {
     openTemplate(id)
-    return
   }
   load()
 }
@@ -156,8 +160,10 @@ async function duplicateFromList(template: TicketTemplate): Promise<void> {
           — тогда его билеты приходят покупателю в этом виде.
         </p>
       </div>
-      <NButton v-if="selected || isNew" variant="secondary" @click="closeTemplate">← К списку</NButton>
-      <NButton v-else variant="primary" @click="openNew">Новый шаблон</NButton>
+      <div class="flex flex-wrap gap-2">
+        <NButton v-if="builderOpen" variant="secondary" @click="closeTemplate">← К списку</NButton>
+        <NButton v-else variant="accent" @click="createTemplate">+ Создать шаблон</NButton>
+      </div>
     </div>
 
     <div v-if="error" class="surface-card mt-5 border-rose-500/30 px-4 py-3 text-sm text-rose-400">
@@ -165,11 +171,11 @@ async function duplicateFromList(template: TicketTemplate): Promise<void> {
       <NButton variant="secondary" class="mt-3" @click="load">Повторить</NButton>
     </div>
 
-    <!-- Конструктор открытого или нового шаблона -->
-    <div v-else-if="selected || isNew" class="mt-5">
+    <!-- Конструктор: новый шаблон (`template-id=null`) или открытый существующий -->
+    <div v-else-if="builderOpen" class="mt-5">
       <TicketBuilder
-        :key="isNew ? 'new' : (selected as TicketTemplate).id"
-        :template-id="isNew ? null : (selected as TicketTemplate).id"
+        :key="isCreating ? 'new' : (selected?.id ?? 'new')"
+        :template-id="isCreating ? null : (selected?.id ?? null)"
         @template-saved="onSaved"
         @template-deleted="onDeleted"
       />
@@ -184,9 +190,9 @@ async function duplicateFromList(template: TicketTemplate): Promise<void> {
         class="surface-card mt-6"
         icon="🎫"
         title="Шаблонов пока нет"
-        description="Создайте первый шаблон: выберите заготовку и соберите макет билета. Без шаблона билеты уходят в стандартном виде."
-        action-label="Создать шаблон"
-        @action="openNew"
+        description="Создайте первый шаблон: соберите макет билета на холсте и назначьте его мероприятию. Без шаблона билеты уходят в стандартном виде."
+        action-label="+ Создать шаблон"
+        @action="createTemplate"
       />
 
       <div v-else class="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

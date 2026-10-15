@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Nabilet\Tests\Unit;
 
 use Nabilet\Core\Errors\InvalidStateTransitionError;
+use Nabilet\Modules\Events\Domain\EventStatus;
 use Nabilet\Modules\Events\StateMachines\EventStateMachine;
 use Nabilet\Modules\Inventory\StateMachines\HoldStateMachine;
 use Nabilet\Modules\Inventory\StateMachines\InventoryItemStateMachine;
@@ -301,6 +302,56 @@ final class DomainStateMachineTest extends TestCase
         $this->assertSame(['available'], InventoryItemStateMachine::purchasable());
     }
 
+    /**
+     * `sold_out` — вместимость исчерпана, и это НЕ `sold`.
+     *
+     * ДЕФЕКТ, который эти три теста фиксируют. Состояния `sold_out` в машине не
+     * было, а `CartItemService::addItem()` пишет его с первого же добавления
+     * МЕСТА в корзину: у места `capacity = 1`, поэтому `available_quantity`
+     * обнуляется сразу и ветка `held` не достигается вовсе (`held` остаётся
+     * только для стоячих зон, где ещё есть свободная вместимость).
+     *
+     * `PaymentService::markInventorySoldForOrder()` охраняет запись `→ sold`
+     * вызовом `can()` (аудит R-12), поэтому `can('sold_out', 'sold')` == false
+     * означал: ОПЛАЧЕННАЯ позиция навсегда остаётся `sold_out` — её нет ни в
+     * отчётности по `sold`, а `OrderService` сбрасывает `sold_out` в `available`
+     * при отмене заказа так же охотно, как `held`.
+     *
+     * Воспроизведение на реальном пути (корзина → checkout → оплата) —
+     * `tests/Feature/Inventory/InventorySoldOnPaymentTest.php`.
+     */
+    public function testSoldOutIsCapacityExhaustedAndDistinctFromSold(): void
+    {
+        $m = InventoryItemStateMachine::make();
+
+        $this->assertTrue(
+            $m->isKnownState(InventoryItemStateMachine::SOLD_OUT),
+            'sold_out отсутствует в словаре машины'
+        );
+        $this->assertNotSame(
+            InventoryItemStateMachine::SOLD_OUT,
+            InventoryItemStateMachine::SOLD,
+            'исчерпанная вместимость и продажа — разные состояния'
+        );
+    }
+
+    /** Исчерпание вместимости и её возврат — оба перехода легальны. */
+    public function testCapacityExhaustionAndReturnAreBothAllowed(): void
+    {
+        $m = InventoryItemStateMachine::make();
+
+        $m->assert('available', 'sold_out');
+        $m->assert('held', 'sold_out');
+        $m->assert('sold_out', 'available');
+        $m->assert('sold_out', 'held');
+    }
+
+    /** Главный переход исправления: оплата доводит исчерпанную позицию до `sold`. */
+    public function testSoldOutConvertsToSoldOnPayment(): void
+    {
+        InventoryItemStateMachine::make()->assert('sold_out', 'sold');
+    }
+
     // ------------------------------------------------------------------- Hold
 
     public function testHoldTerminalStatesAreDistinct(): void
@@ -346,6 +397,41 @@ final class DomainStateMachineTest extends TestCase
         // ТЗ §38: drafts must never reach the sitemap
         $this->assertNotContains('draft', EventStateMachine::publiclyVisible());
         $this->assertContains('published', EventStateMachine::publiclyVisible());
+    }
+
+    /**
+     * Словарь машины, `EventStatus::all()` и CHECK `ck_events_status` — один
+     * список.
+     *
+     * Машина и класс статусов существовали согласованно, а схема молчала:
+     * `events.status` не имел CHECK, и `verify-state-machines.php` на каждом
+     * прогоне писал «machine is unenforced». Теперь список закреплён в сплите
+     * `015_events_status_check.sql`; этот тест держит три копии вместе, чтобы
+     * добавление седьмого состояния не прошло незамеченным.
+     */
+    public function testEventVocabularyMatchesTheStatusCodeAndTheSchema(): void
+    {
+        $expected = [
+            EventStateMachine::DRAFT,
+            EventStateMachine::SCHEDULED,
+            EventStateMachine::PUBLISHED,
+            EventStateMachine::COMPLETED,
+            EventStateMachine::CANCELLED,
+            EventStateMachine::ARCHIVED,
+        ];
+
+        $this->assertSame($expected, EventStatus::all());
+
+        // `states()` не обязан совпадать порядком — сравниваем как множества.
+        // (`assertEqualsCanonicalizing` недоступен: `tests/run.php` работает на
+        // собственном минимальном TestCase, а не на PHPUnit.)
+        $states = EventStateMachine::make()->states();
+        sort($states);
+
+        $sortedExpected = $expected;
+        sort($sortedExpected);
+
+        $this->assertSame($sortedExpected, $states);
     }
 
     // ----------------------------------------------------------------- Session

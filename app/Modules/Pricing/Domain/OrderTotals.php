@@ -8,40 +8,83 @@ use Nabilet\Core\Errors\DomainRuleViolation;
 use Nabilet\Core\Support\Money;
 
 /**
- * The four money columns of an order: subtotal, discount, fee, total.
+ * The five money columns of an order: subtotal, discount, bonus, fee, total.
  *
- * This object is the single place where `total = subtotal - discount + fee` is
- * decided. Everything else — the API response, the DB row, the payment capture,
+ * This object is the single place where `total = subtotal - discount - bonus + fee`
+ * is decided. Everything else — the API response, the DB row, the payment capture,
  * the refund calculation — reads it from here. If the identity were computed in
  * three places, they would eventually disagree, and the disagreement would surface
  * as a payment that does not match the order.
  *
  * The invariants mirror `ck_orders_amounts` in the schema, which is the last line
  * of defence:
- *   subtotal_amount >= 0 AND discount_amount >= 0
- *   AND fee_amount >= 0 AND total_amount >= 0
+ *   subtotal_amount >= 0 AND discount_amount >= 0 AND fee_amount >= 0
+ *   AND bonus_amount >= 0 AND total_amount >= 0
  * A value object that cannot hold an invalid state means the CHECK can only ever
  * fire on a bug, never on data.
+ *
+ * ПОЧЕМУ БОНУС — ОТДЕЛЬНЫЙ ВЫЧИТАЕМЫЙ ЧЛЕН, А НЕ ЧАСТЬ СКИДКИ
+ *   Бонусы вычитаются так же, как скидка, но это не скидка, и складывать их в
+ *   `discount_amount` нельзя. Разница видна в трёх местах: покупатель должен
+ *   видеть строку «списано бонусами» отдельно от кода; бухгалтерия различает
+ *   «уступили по договору» (скидка) и «вернули лояльностью» (бонусы); при
+ *   возврате компенсируется только бонусная часть. Одна колонка на два смысла
+ *   потеряла бы все три.
+ *
+ * ПОЧЕМУ СКИДКА РЕЖЕТСЯ РАНЬШЕ БОНУСА
+ *   Оба вычитаемых члена ограничены остатком подытога, и когда их сумма его
+ *   превышает, решать надо, какой из них «не поместился». Порядок здесь —
+ *   скидка первая, бонус второй. Промокод — обязательство перед покупателем
+ *   (он назвал код, система его приняла), бонусы — perk программы лояльности.
+ *   При конфликте не помещается perk, а не обещание. Обратный порядок означал
+ *   бы, что 100%-й промокод «съедается» бонусами и покупатель теряет скидку,
+ *   на которую имел право.
  */
 final class OrderTotals implements \JsonSerializable
 {
     private function __construct(
         private readonly Money $subtotal,
         private readonly Money $discount,
+        private readonly Money $bonus,
         private readonly Money $fee,
         private readonly Money $total,
         private readonly ?PromoEvaluation $promo,
     ) {
     }
 
-    public static function of(Money $subtotal, Money $discount, Money $fee, ?PromoEvaluation $promo = null): self
-    {
+    /**
+     * @param Money|null $bonus Списано бонусами; `null` — «бонусов в этом заказе
+     *                          нет», а не «ноль рублей». Оставлен необязательным
+     *                          последним параметром, чтобы заказы без бонусов
+     *                          считались ровно как раньше: фаза 2b не имеет
+     *                          права менять цену ни одного существующего пути.
+     */
+    public static function of(
+        Money $subtotal,
+        Money $discount,
+        Money $fee,
+        ?PromoEvaluation $promo = null,
+        ?Money $bonus = null,
+    ): self {
+        $bonus ??= Money::zero($subtotal->currency());
+
         if ($subtotal->isNegative()) {
             throw new DomainRuleViolation('A subtotal cannot be negative.', 'INVALID_TOTALS');
         }
 
         if ($discount->isNegative()) {
             throw new DomainRuleViolation('A discount cannot be negative.', 'INVALID_TOTALS');
+        }
+
+        if ($bonus->isNegative()) {
+            // Как и у сбора: отрицательные бонусы — это начисление, а начисление
+            // приходит строкой журнала (`reason = accrual`), а не минусом в
+            // вычитаемом члене. Иначе `bonus_amount` перестал бы быть «сколько
+            // списали» и один CHECK обслуживал бы два противоположных смысла.
+            throw new DomainRuleViolation(
+                'A bonus deduction cannot be negative. Accrual is a ledger entry, not a negative deduction.',
+                'INVALID_TOTALS'
+            );
         }
 
         if ($fee->isNegative()) {
@@ -53,12 +96,15 @@ final class OrderTotals implements \JsonSerializable
             );
         }
 
-        if ($discount->currency() !== $subtotal->currency() || $fee->currency() !== $subtotal->currency()) {
+        if ($discount->currency() !== $subtotal->currency()
+            || $fee->currency() !== $subtotal->currency()
+            || $bonus->currency() !== $subtotal->currency()) {
             throw new DomainRuleViolation(
                 sprintf(
-                    'Cannot combine totals across currencies (%s / %s / %s).',
+                    'Cannot combine totals across currencies (%s / %s / %s / %s).',
                     $subtotal->currency(),
                     $discount->currency(),
+                    $bonus->currency(),
                     $fee->currency()
                 ),
                 'CURRENCY_MISMATCH'
@@ -70,9 +116,18 @@ final class OrderTotals implements \JsonSerializable
         // never go negative no matter which caller assembled the parts.
         $effectiveDiscount = $discount->greaterThan($subtotal) ? $subtotal : $discount;
 
-        $total = $subtotal->minus($effectiveDiscount)->plus($fee);
+        // Второй кламп — по ОСТАТКУ после скидки, а не по подытогу. Бонусы не
+        // могут увести итог в минус, а «в минус» здесь начинается ровно там, где
+        // заканчивается `subtotal - discount`. Кламп молчаливый, как и у скидки:
+        // объект сообщает в `bonus()` то, что реально применено, и вызывающий,
+        // который хотел списать больше, видит это в результате, а не получает
+        // исключение на середине расчёта.
+        $afterDiscount = $subtotal->minus($effectiveDiscount);
+        $effectiveBonus = $bonus->greaterThan($afterDiscount) ? $afterDiscount : $bonus;
 
-        return new self($subtotal, $effectiveDiscount, $fee, $total, $promo);
+        $total = $afterDiscount->minus($effectiveBonus)->plus($fee);
+
+        return new self($subtotal, $effectiveDiscount, $effectiveBonus, $fee, $total, $promo);
     }
 
     public function subtotal(): Money
@@ -83,6 +138,19 @@ final class OrderTotals implements \JsonSerializable
     public function discount(): Money
     {
         return $this->discount;
+    }
+
+    /**
+     * Сколько бонусов реально списано в этом заказе.
+     *
+     * Это ЭФФЕКТИВНОЕ значение, а не запрошенное: если вызывающий попросил
+     * больше, чем помещается в остаток, здесь будет то, что поместилось. Ровно
+     * это же число обязано попасть в `orders.bonus_amount` и в строку журнала —
+     * иначе «в заказе списано 0, а с баланса ушло 300».
+     */
+    public function bonus(): Money
+    {
+        return $this->bonus;
     }
 
     public function fee(): Money
@@ -117,6 +185,7 @@ final class OrderTotals implements \JsonSerializable
         return [
             'subtotal_amount' => $this->subtotal->minorUnits(),
             'discount_amount' => $this->discount->minorUnits(),
+            'bonus_amount' => $this->bonus->minorUnits(),
             'fee_amount' => $this->fee->minorUnits(),
             'total_amount' => $this->total->minorUnits(),
             'currency' => $this->total->currency(),

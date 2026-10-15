@@ -170,16 +170,21 @@ class OrderWritePathTest extends TestCase
             'customer_name' => 'Иван Петров',
         ])->assertStatus(201);
 
-        $orderId = (int) $withPrice->json('data.id');
+        // `data.id` — это `public_id` (строка): внутренние BIGINT наружу не
+        // уходят (см. `DATABASE.md` §9). Для выборки из таблицы он
+        // переводится в `order_number` — нет, номер другой; ищем по public_id.
+        $publicId = (string) $withPrice->json('data.id');
 
         $this->assertSame(
             self::PRICE,
-            (int) DB::table('orders')->where('id', $orderId)->value('total_amount'),
+            (int) DB::table('orders')->where('public_id', $publicId)->value('total_amount'),
             'клиентская цена повлияла на сумму заказа'
         );
         $this->assertSame(
             self::PRICE,
-            (int) DB::table('order_items')->where('order_id', $orderId)->value('unit_price'),
+            (int) DB::table('order_items')
+                ->where('order_id', DB::table('orders')->where('public_id', $publicId)->value('id'))
+                ->value('unit_price'),
             'клиентская цена попала в позицию заказа'
         );
 
@@ -196,7 +201,9 @@ class OrderWritePathTest extends TestCase
 
         $this->assertSame(
             self::PRICE,
-            (int) DB::table('orders')->where('id', (int) $withoutPrice->json('data.id'))->value('total_amount')
+            (int) DB::table('orders')
+                ->where('public_id', (string) $withoutPrice->json('data.id'))
+                ->value('total_amount')
         );
     }
 
@@ -488,9 +495,16 @@ class OrderWritePathTest extends TestCase
 
         // И в списке чужой заказ не появляется: `user_id` форсируется из сессии,
         // а не берётся из query.
+        //
+        // `meta.total`, а НЕ `data.total`: до правки формы ответа `data` был
+        // объектом пагинатора (`{"data":{"current_page":…,"data":[]}}`), и путь
+        // `data.total` случайно находил `total` внутри него. Это молча
+        // закрепляло неверную форму, поэтому исправлено по контракту:
+        // `OrderListResponse` = `data: array<Order>` + `meta`.
         $this->getJson("/api/v1/orders?user_id={$owner->id}")
             ->assertOk()
-            ->assertJsonPath('data.total', 0);
+            ->assertJsonPath('data', [])
+            ->assertJsonPath('meta.total', 0);
     }
 
     /**

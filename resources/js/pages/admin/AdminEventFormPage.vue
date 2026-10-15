@@ -35,11 +35,13 @@ import NSelect from '@/components/ui/NSelect.vue'
 import NStatusBadge from '@/components/ui/NStatusBadge.vue'
 import SessionFormModal from '@/components/admin/SessionFormModal.vue'
 import EventGallerySection from '@/components/admin/EventGallerySection.vue'
+import MediaPicker from '@/components/admin/MediaPicker.vue'
 import { useUiStore } from '@/stores/ui'
 import { ApiError, get, request, send, upload } from '@/lib/api'
 import { storageSrc } from '@/lib/mediaLibrary'
 import { dateFull, time } from '@/lib/format'
 import type { SessionRecord } from '@/lib/sessionForm'
+import type { MediaAsset } from '@/lib/mediaLibrary'
 
 const route = useRoute()
 const router = useRouter()
@@ -109,6 +111,10 @@ const dragOver = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
 const posterError = ref<string | null>(null)
 
+// Медиатека: выбор афиши из уже загруженных файлов (модалка в стиле WordPress).
+// Раньше афишу вне загрузки с компьютера задавали вставкой URL в текстовое поле.
+const mediaOpen = ref(false)
+
 const POSTER_MAX_BYTES = 5 * 1024 * 1024
 const POSTER_TYPES = ['image/jpeg', 'image/png', 'image/webp']
 
@@ -152,6 +158,23 @@ function clearPoster(): void {
   if (fileInput.value) fileInput.value.value = ''
 }
 
+/**
+ * Афиша выбрана из медиатеки.
+ *
+ * В `events.poster` исторически хранится абсолютный URL (так же поступает
+ * серверная загрузка файла), а правило валидации требует `url`. Поэтому
+ * относительный адрес медиатеки приводим к абсолютному от текущего origin.
+ */
+function onSelectPoster(asset: MediaAsset): void {
+  setPosterFile(null)
+  try {
+    form.value.poster = new URL(asset.url, window.location.origin).href
+  } catch {
+    form.value.poster = asset.url
+  }
+  posterError.value = null
+}
+
 /** Что показывать в превью: выбранный файл важнее сохранённого URL. */
 /** Хранимый URL — абсолютный от APP_URL, а админка может быть открыта с
  * другого хоста (локально): собственный /storage/... показываем same-origin,
@@ -161,11 +184,30 @@ const posterShown = computed(() => posterPreview.value || storageSrc(form.value.
 /* ── Slug-автогенерация ─────────────────────────────────────────────────── */
 const slugTouched = ref(false)
 
+/**
+ * Транслитерация кириллицы в латиницу.
+ *
+ * slug — часть публичного URL, и кириллица в нём превращается в процентную
+ * «кракозябру» (`/%D0%BA%D0%BE%D0%BD…`), ломает читаемость ссылки и внешние
+ * превью. Поэтому переводим буквы ДО очистки от недопустимых символов.
+ */
+const TRANSLIT: Record<string, string> = {
+  а: 'a', б: 'b', в: 'v', г: 'g', д: 'd', е: 'e', ё: 'e', ж: 'zh', з: 'z',
+  и: 'i', й: 'y', к: 'k', л: 'l', м: 'm', н: 'n', о: 'o', п: 'p', р: 'r',
+  с: 's', т: 't', у: 'u', ф: 'f', х: 'h', ц: 'ts', ч: 'ch', ш: 'sh',
+  щ: 'sch', ъ: '', ы: 'y', ь: '', э: 'e', ю: 'yu', я: 'ya',
+}
+
 function makeSlug(title: string): string {
-  return title
+  const translit = title
     .toLowerCase()
+    .split('')
+    .map((ch) => TRANSLIT[ch] ?? ch)
+    .join('')
+
+  return translit
     .trim()
-    .replace(/[^a-z0-9а-яё\s-]/gi, '')
+    .replace(/[^a-z0-9\s-]/g, '')
     .replace(/[\s_]+/g, '-')
     .replace(/-+/g, '-')
     .replace(/^-|-$/g, '')
@@ -410,7 +452,7 @@ function validate(): boolean {
   const errs: Record<string, string> = {}
   if (!form.value.title.trim()) errs.title = 'Укажите название мероприятия.'
   if (!form.value.slug.trim()) errs.slug = 'Slug обязателен — по нему строится адрес страницы.'
-  else if (!/^[a-z0-9а-яё-]+$/.test(form.value.slug.trim())) errs.slug = 'Slug: только буквы, цифры и дефисы.'
+  else if (!/^[a-z0-9-]+$/.test(form.value.slug.trim())) errs.slug = 'Slug: только латиница, цифры и дефисы.'
   if (len(form.value.short_description) > 500) errs.short_description = 'Не больше 500 символов.'
   if (form.value.duration_minutes && (!/^\d+$/.test(form.value.duration_minutes) || Number(form.value.duration_minutes) < 1)) {
     errs.duration_minutes = 'Продолжительность — целое число минут (≥ 1).'
@@ -795,8 +837,11 @@ const publishedAtText = computed<string | null>(() => {
               Выбран файл: <b>{{ posterFile.name }}</b>
               <span class="text-xs text-subtle">({{ (posterFile.size / 1024 / 1024).toFixed(2) }} МБ, будет загружен при сохранении)</span>
             </p>
-            <NInput v-model="form.poster" label="…или ссылка на афишу (URL)" placeholder="https://…/poster.jpg" :error="fieldErrors.poster || posterError || undefined" :disabled="Boolean(posterFile)" />
-            <p v-if="posterFile" class="text-xs text-subtle">Пока выбран файл, ссылка игнорируется — файл имеет приоритет.</p>
+            <div class="flex flex-wrap items-center gap-2">
+              <NButton variant="secondary" size="sm" @click="mediaOpen = true">Выбрать из медиатеки</NButton>
+              <span v-if="!posterFile && form.poster" class="text-xs text-subtle">Афиша выбрана</span>
+            </div>
+            <p v-if="posterError || fieldErrors.poster" class="text-xs text-rose-400">{{ posterError || fieldErrors.poster }}</p>
             <button v-if="posterShown" type="button" class="block text-xs text-rose-400 hover:underline" @click="clearPoster">Убрать афишу</button>
           </div>
         </div>
@@ -811,6 +856,21 @@ const publishedAtText = computed<string | null>(() => {
         можно привязать файл.
       -->
       <EventGallerySection v-if="isEdit && eventId" :event-id="eventId" />
+
+      <!--
+        На создании галерея недоступна: файл привязывается к id мероприятия, а
+        у нового его ещё нет. Раньше секция просто исчезала, и администратор не
+        понимал, куда делись фото и видео. Показываем объяснение и объясняем,
+        что раздел появится сразу после первого сохранения (создание уводит на
+        карточку этого же мероприятия — см. `save()`).
+      -->
+      <section v-else class="rounded-xl border border-dashed border-line p-4">
+        <h2 class="mb-2 text-xs font-semibold uppercase tracking-wide text-subtle">Дополнительные фото и видео</h2>
+        <p class="text-sm text-muted">
+          Галерею можно добавить сразу после создания мероприятия: сохраните карточку — и вы
+          автоматически вернётесь на её страницу, где появится раздел «Дополнительные фото и видео».
+        </p>
+      </section>
 
       <!--
         ── Сеансы: где и когда ──
@@ -1032,5 +1092,8 @@ const publishedAtText = computed<string | null>(() => {
       :lock-event-title="form.title"
       @saved="onSessionSaved"
     />
+
+    <!-- Медиатека: выбор афиши из уже загруженных файлов либо загрузка нового. -->
+    <MediaPicker v-model:open="mediaOpen" title="Афиша" @select="onSelectPoster" />
   </div>
 </template>

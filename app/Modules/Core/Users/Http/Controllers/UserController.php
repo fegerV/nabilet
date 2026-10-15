@@ -6,9 +6,11 @@ namespace Nabilet\Modules\Core\Users\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\DB;
 use Nabilet\Core\Errors\NotFoundError;
 use Nabilet\Core\Errors\ValidationError;
 use Nabilet\Modules\Auth\Validation\PasswordRules;
+use Nabilet\Modules\Core\Users\Domain\UserStatus;
 use Nabilet\Modules\Core\Users\Models\User;
 use Nabilet\Modules\Core\Users\Services\UserService;
 
@@ -83,7 +85,7 @@ class UserController
             'first_name' => 'nullable|string|max:100',
             'last_name' => 'nullable|string|max:100',
             'phone' => 'nullable|string|max:50',
-            'status' => 'sometimes|in:active,inactive,banned',
+            'status' => 'sometimes|' . UserStatus::validationRule(),
         ]);
 
         $updatedUser = $this->service->updateUser($user, $validated);
@@ -96,6 +98,24 @@ class UserController
         $this->service->deleteUser($this->findOrFail($publicId));
 
         return response()->json(['message' => 'User deleted successfully']);
+    }
+
+    /**
+     * Справочник ролей для выбора в админке.
+     *
+     * Раньше списка ролей не было нигде: `assignRole` требовал `role_id`, но
+     * узнать эти id было нечем, поэтому роль нельзя было назначить из UI вовсе
+     * (жалоба «как выбрать роль»). Роли глобальны (таблица `roles`), скоуп по
+     * организации применяется при назначении, а не здесь.
+     */
+    public function roles(): JsonResponse
+    {
+        $roles = DB::table('roles')
+            ->select('id', 'name', 'slug', 'description')
+            ->orderBy('name')
+            ->get();
+
+        return response()->json(['data' => $roles]);
     }
 
     public function assignRole(Request $request, string $publicId): JsonResponse

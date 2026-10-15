@@ -1,0 +1,96 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Nabilet\Modules\Loyalty\Providers;
+
+use Illuminate\Support\ServiceProvider;
+use Nabilet\Modules\Loyalty\Observers\OrderBonusObserver;
+use Nabilet\Modules\Loyalty\Observers\OrderLoyaltyObserver;
+use Nabilet\Modules\Loyalty\Observers\OrderRaffleObserver;
+use Nabilet\Modules\Loyalty\Observers\OrderReferralObserver;
+use Nabilet\Modules\Loyalty\Observers\SessionObserver;
+use Nabilet\Modules\Loyalty\Services\BonusService;
+use Nabilet\Modules\Loyalty\Services\FavoriteService;
+use Nabilet\Modules\Loyalty\Services\FollowNotificationData;
+use Nabilet\Modules\Loyalty\Services\FollowService;
+use Nabilet\Modules\Loyalty\Services\LoyaltyLevelService;
+use Nabilet\Modules\Loyalty\Services\RaffleService;
+use Nabilet\Modules\Loyalty\Services\ReferralService;
+use Nabilet\Modules\Orders\Models\Order;
+use Nabilet\Modules\Sessions\Models\Session;
+
+class LoyaltyServiceProvider extends ServiceProvider
+{
+    public function register(): void
+    {
+        // Оба сервиса stateless (работают через Eloquent), но объявляются
+        // синглтонами по той же причине, что `MailSettings`: контроллеры
+        // получают их из контейнера, и один экземпляр на запрос — это и есть
+        // весь жизненный цикл, который им нужен.
+        $this->app->singleton(FavoriteService::class);
+        $this->app->singleton(FollowService::class);
+        // Данные для писем подписчикам. Собираются из сеанса и подписчика, а
+        // не из конфига, поэтому биндинг — обычный синглтон.
+        $this->app->singleton(FollowNotificationData::class);
+        // Бонусный счёт. Резолвится и из джобы начисления, и из контроллера
+        // баланса — один экземпляр на запрос/джобу, как и у остальных сервисов
+        // модуля.
+        $this->app->singleton(BonusService::class);
+        // Уровни клуба. Stateless-сервис, резолвится и из обсервера пересчёта, и
+        // из контроллера статуса — один экземпляр на запрос, как и у прочих.
+        $this->app->singleton(LoyaltyLevelService::class);
+        // Реферальная программа. Резолвится из чекаута (атрибуция), из джобы
+        // награды и из кабинета покупателя — один экземпляр на запрос.
+        $this->app->singleton(ReferralService::class);
+        // Розыгрыши «счастливый билет». Резолвится из обсервера оплаты
+        // (через `EnterRafflesJob`), из джоб backfill и рассылки, из
+        // контроллеров кабинета и админки — один экземпляр на запрос/джобу.
+        $this->app->singleton(RaffleService::class);
+    }
+
+    public function boot(): void
+    {
+        // Маршруты НЕ грузятся отсюда: единственный владелец регистрации —
+        // `routes/api.php`, из-под которого модули получают префикс `/api/v1`.
+        // `loadRoutesFrom()` здесь зарегистрировал бы те же пути в корне, вне
+        // API-группы middleware (см. `tools/verify-route-ownership.php`).
+        //
+        // Обсервер сеансов — единственная точка, откуда подписчикам уходят
+        // письма о новой дате и открытии продаж. Провайдер обязан быть
+        // зарегистрирован в `bootstrap/app.php` явно: провайдеры модулей не
+        // бутятся скопом (см. `bootstrap/providers.php`), и без регистрации
+        // обсервер не вешается — письма просто не уходят.
+        Session::observe(SessionObserver::class);
+
+        // Обсервер заказов — второй наблюдатель на ту же модель (первый,
+        // `OrderObserver` модуля Orders, рассылает письма и вебхуки). Laravel
+        // вызывает оба: `observe()` добавляет класс в список наблюдателей
+        // модели, а не заменяет его. Здесь ловится оплата — единственный момент,
+        // когда покупателю начисляется кэшбэк. Регистрация живёт в этом
+        // провайдере, а не в `OrderServiceProvider`, потому что начисление —
+        // знание клуба зрителей, а не заказов: модуль Orders не должен знать о
+        // бонусном счёте.
+        Order::observe(OrderBonusObserver::class);
+
+        // Третий наблюдатель на `Order`: пересчёт уровня «Клуба зрителей» при
+        // каждой смене статуса (оплата поднимает, возврат/отмена опускают). Тот же
+        // принцип, что у `OrderBonusObserver`: статус меняется из нескольких мест,
+        // и пересчёт должен ловить их все. Модуль Orders не знает про уровни клуба
+        // — это знание модуля Loyalty, поэтому наблюдатель регистрируется здесь.
+        Order::observe(OrderLoyaltyObserver::class);
+
+        // Четвёртый наблюдатель на `Order`: реферальная награда по оплате заказа
+        // друга (фаза 4). Тот же принцип и та же причина: «первая оплата друга»
+        // наступает из нескольких мест, и награда должна ловить их все, а не
+        // только тот путь, который помнили при написании.
+        Order::observe(OrderReferralObserver::class);
+
+        // Пятый наблюдатель на `Order`: билеты розыгрышей по оплате заказа
+        // (фаза 5). Причина та же — статус `paid` приходит из нескольких мест,
+        // и розыгрыш должен ловить их все. Регистрация здесь, а не в
+        // `OrderServiceProvider`, потому что розыгрыш — знание клуба зрителей,
+        // а не заказов: модуль Orders не должен знать о `raffle_entries`.
+        Order::observe(OrderRaffleObserver::class);
+    }
+}

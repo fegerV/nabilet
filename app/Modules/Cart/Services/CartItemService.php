@@ -13,7 +13,9 @@ use Nabilet\Core\Errors\ValidationError;
 use Nabilet\Modules\Cart\Models\Cart;
 use Nabilet\Modules\Cart\Models\CartItem;
 use Nabilet\Modules\Cart\Support\CartToken;
+use Nabilet\Modules\Core\Users\Models\User;
 use Nabilet\Modules\Inventory\Models\InventoryItem;
+use Nabilet\Modules\Loyalty\Services\LoyaltySettingsService;
 use Nabilet\Modules\Orders\Models\SeatHold;
 use Nabilet\Modules\Sessions\Models\Session;
 
@@ -41,8 +43,16 @@ use Nabilet\Modules\Sessions\Models\Session;
  */
 final class CartItemService
 {
-    public function __construct(private readonly CartService $carts)
-    {
+    /**
+     * `$loyaltySettings` — ранний доступ клуба (фаза 3b): гейт продаж на каждом
+     * добавлении позиции спрашивает, на сколько часов открылось окно для этого
+     * покупателя. Значение по умолчанию — тот же приём, что у `BonusService`
+     * в `CartCheckoutService`: контейнер подставляет свой, `new` работает.
+     */
+    public function __construct(
+        private readonly CartService $carts,
+        private readonly LoyaltySettingsService $loyaltySettings = new LoyaltySettingsService(),
+    ) {
     }
 
     /**
@@ -52,10 +62,12 @@ final class CartItemService
      * исключить гонки: два покупателя не могут зарезервировать одно место
      * одновременно.
      *
+     * @param User|null $buyer вошедший покупатель (для раннего доступа клуба, фаза 3b)
+     * @param string|null $token токен покупателя (X-Cart-Token)
      * @throws ConflictError          корзина истекла или инвентарь исчерпан
      * @throws \Illuminate\Database\Eloquent\ModelNotFoundException сеанс или позиция не найдены
      */
-    public function addItem(string $sessionId, int $inventoryItemId, int $quantity = 1, ?string $token = null): CartItem
+    public function addItem(string $sessionId, int $inventoryItemId, int $quantity = 1, ?string $token = null, ?User $buyer = null): CartItem
     {
         // D5: корзина принадлежит покупателю (токену), а не сеансу.
         // Контроллер гарантирует токен; прямой вызов службы без него —
@@ -66,22 +78,27 @@ final class CartItemService
             throw new ValidationError(['cart_token' => ['The cart token is required.']], 'Cart token is required.');
         }
 
-        return DB::transaction(function () use ($sessionId, $inventoryItemId, $quantity, $token) {
+        return DB::transaction(function () use ($sessionId, $inventoryItemId, $quantity, $token, $buyer) {
             // Sales gate on EVERY add: the session must still be `on_sale` and inside
             // its sales window. Checking only at cart creation is not enough — a cart
             // opened while sales are live must stop accepting new seats the moment the
             // organizer flips the switch off or `sales_end_at` passes.
+            //
+            // Фаза 3b: клубный покупатель в окне раннего доступа добавляет места
+            // ДО публичного старта — тот же сдвиг окна, что и при создании корзины.
+            $earlyAccessHours = $this->loyaltySettings->earlyAccessHoursForUser($buyer);
+
             $session = Session::findOrFailBySessionId($sessionId);
 
-            if (! $session->isSellableAt()) {
+            if (! $session->isSellableAt(null, $earlyAccessHours)) {
                 throw DomainRuleViolation::salesClosed(
                     (string) ($session->public_id ?? $session->id),
-                    ['reason' => $session->salesBlockReason()]
+                    ['reason' => $session->salesBlockReason(null, $earlyAccessHours)]
                 );
             }
 
             // Get or create cart for THIS buyer (D5)
-            $cart = $this->carts->getOrCreateCart($sessionId, $token);
+            $cart = $this->carts->getOrCreateCart($sessionId, $token, $buyer);
 
             // Check cart expiration
             if ($cart->expires_at < CarbonImmutable::now()) {

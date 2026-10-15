@@ -8,11 +8,12 @@
  * переключатель организации стоит на самом видном месте — у мультитенантной
  * системы ошибка «сделал не в той компании» стоит дороже любого другого.
  */
-import { ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUiStore } from '@/stores/ui'
-import { logout, clearCurrentUser } from '@/lib/auth'
+import { logout, clearSession, currentUser } from '@/lib/auth'
 import { usePersistedRef } from '@/lib/usePersistedRef'
+import { get } from '@/lib/api'
 
 const ui = useUiStore()
 const router = useRouter()
@@ -22,18 +23,48 @@ const collapsed = usePersistedRef('admin.sidebar.collapsed', false)
 
 async function doLogout(): Promise<void> {
   await logout()
-  clearCurrentUser()
+  // D2: clearSession стирает и токен, и пользователя — расхождение между
+  // этими двумя ключами и позволяло «полутоку» остаться в localStorage.
+  clearSession()
   router.push('/admin/login')
 }
 
-const GROUPS = [
+/**
+ * Пункт меню. `badge` опционален: его подставляет `groups` из реальных данных,
+ * а не литерал в объявлении (см. ниже).
+ */
+interface NavItem {
+  label: string
+  to: string
+  icon: string
+  badge?: string
+}
+
+interface NavGroup {
+  label: string
+  items: NavItem[]
+}
+
+/**
+ * Меню разделов. Бейдж «Заказы» здесь НЕ задан: раньше он был прибит числом
+ * «12» и жил своей жизнью — админ видел счётчик, не имеющий отношения к его
+ * данным. Теперь число подставляет `groups` из ответа `GET /orders`.
+ */
+const NAV_GROUPS: NavGroup[] = [
   {
     label: 'Продажи',
     items: [
       { label: 'Обзор', to: '/admin', icon: '◧' },
-      { label: 'Заказы', to: '/admin/orders', icon: '◫', badge: '12' },
+      { label: 'Заказы', to: '/admin/orders', icon: '◫' },
       { label: 'Билеты', to: '/admin/tickets', icon: '◨' },
       { label: 'Платежи', to: '/admin/payments', icon: '◊' },
+      // Приём платежей: ключи ЮKassa и demo-режим. Отдельный пункт от
+      // «Платежей»: там журнал операций, здесь — настройка шлюза.
+      { label: 'Приём платежей', to: '/admin/payment-settings', icon: '₽' },
+      // Розыгрыши «счастливый билет» ведут продажи: билетом стал оплаченный
+      // заказ, поэтому пункт рядом с платежами, а не в «Настройках», где
+      // лежит «Клуб зрителей» — он про привилегии, а не про акции.
+      { label: 'Розыгрыши', to: '/admin/raffles', icon: '🎟' },
     ],
   },
   {
@@ -67,13 +98,93 @@ const GROUPS = [
       { label: 'Вебхуки', to: '/admin/webhooks', icon: '⌁' },
       { label: 'Шаблоны писем', to: '/admin/notification-templates', icon: '✉' },
       { label: 'Почта (SMTP)', to: '/admin/mail', icon: '⚙' },
+      // Matrix (Element X): административные уведомления в комнату через
+      // удалённый Synapse. Рядом с почтой — это такой же канал доставки, только
+      // внутренний: сообщения читают сотрудники, а не покупатели.
+      { label: 'Matrix (Element X)', to: '/admin/matrix', icon: '✳' },
+      // «Клуб зрителей»: ранний доступ к продажам и реферальная программа.
+      // Обе настройки двигают деньги, поэтому пункт в «Настройках», а не в
+      // «Витрине», где лежит только брендинг и оформление.
+      { label: 'Клуб зрителей', to: '/admin/club-settings', icon: '★' },
       { label: 'Аналитика', to: '/admin/analytics', icon: '▲' },
     ],
   },
 ]
 
-const ORGANIZATIONS = ['Театр «Кукольный дом»', 'Клуб «Подвал»', 'Филармония']
-const currentOrg = ref(ORGANIZATIONS[0])
+interface OrgRow {
+  id?: number
+  public_id?: string
+  name: string
+}
+
+/**
+ * Организации — из API, а не из списка-заглушки.
+ *
+ * Раньше здесь лежали три выдуманные компании («Театр "Кукольный дом"» и т.п.),
+ * и переключатель выглядел рабочим, ничего не переключая: выбранное значение
+ * никуда не отправлялось. Пока у пользователя нет доступных организаций,
+ * селектор не показываем вовсе — пустой список честнее фальшивого.
+ */
+const organizations = ref<OrgRow[]>([])
+const currentOrg = usePersistedRef('admin.org', '')
+
+/** Заказы, ждущие оплаты: реальный счётчик для бейджа. */
+const awaitingOrders = ref<number | null>(null)
+
+const groups = computed(() =>
+  NAV_GROUPS.map((group) => ({
+    ...group,
+    items: group.items.map((item) =>
+      item.to === '/admin/orders' && awaitingOrders.value
+        ? { ...item, badge: String(awaitingOrders.value) }
+        : item,
+    ),
+  })),
+)
+
+/** Инициалы текущего пользователя для кнопки профиля (было жёстко «АК»). */
+const initials = computed(() => {
+  const user = currentUser()
+  const first = user?.first_name?.trim().charAt(0) ?? ''
+  const last = user?.last_name?.trim().charAt(0) ?? ''
+  const fromName = `${first}${last}`.toUpperCase()
+  return fromName || (user?.email?.trim().charAt(0) ?? 'А').toUpperCase()
+})
+
+/** Ответ может прийти как { data: [...] }, так и уже развёрнутым массивом. */
+function rows<T>(payload: unknown): T[] {
+  if (Array.isArray(payload)) return payload as T[]
+  const inner = (payload as { data?: unknown } | null)?.data
+  return Array.isArray(inner) ? (inner as T[]) : []
+}
+
+async function loadOrganizations(): Promise<void> {
+  try {
+    const res = await get<unknown>('/organizations?limit=50')
+    organizations.value = rows<OrgRow>(res.data)
+  } catch {
+    // 403/сеть — переключатель просто не показываем.
+    organizations.value = []
+  }
+  if (!organizations.value.some((o) => o.name === currentOrg.value)) {
+    currentOrg.value = organizations.value[0]?.name ?? ''
+  }
+}
+
+async function loadAwaitingOrders(): Promise<void> {
+  try {
+    const res = await get<unknown[]>('/orders?status=awaiting_payment&per_page=1')
+    const total = (res.meta as { total?: number } | undefined)?.total
+    awaitingOrders.value = typeof total === 'number' && total > 0 ? total : null
+  } catch {
+    awaitingOrders.value = null
+  }
+}
+
+onMounted(() => {
+  void loadOrganizations()
+  void loadAwaitingOrders()
+})
 </script>
 
 <template>
@@ -95,7 +206,7 @@ const currentOrg = ref(ORGANIZATIONS[0])
       </div>
 
       <nav class="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
-        <div v-for="group in GROUPS" :key="group.label" class="mb-4">
+        <div v-for="group in groups" :key="group.label" class="mb-4">
           <p v-if="!collapsed" class="px-2.5 pb-1.5 pt-2 text-2xs font-semibold uppercase tracking-wider text-subtle">
             {{ group.label }}
           </p>
@@ -143,14 +254,15 @@ const currentOrg = ref(ORGANIZATIONS[0])
           @click="ui.navOpen = !ui.navOpen"
         >☰</button>
 
-        <!-- Переключатель организации: мультитенантность видна всегда -->
-        <div class="relative min-w-0">
+        <!-- Переключатель организации: мультитенантность видна всегда.
+             Список — из API; пока организаций нет, селектор не рендерим. -->
+        <div v-if="organizations.length > 0" class="relative min-w-0">
           <select
             v-model="currentOrg"
             aria-label="Текущая организация"
             class="h-11 w-full max-w-[16rem] cursor-pointer appearance-none rounded-lg border border-line bg-surface-2 pl-3 pr-8 text-sm text-content focus:border-brand-400 focus:outline-none"
           >
-            <option v-for="org in ORGANIZATIONS" :key="org" :value="org">{{ org }}</option>
+            <option v-for="org in organizations" :key="org.id ?? org.public_id ?? org.name" :value="org.name">{{ org.name }}</option>
           </select>
           <span aria-hidden="true" class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-subtle">▾</span>
         </div>
@@ -180,7 +292,7 @@ const currentOrg = ref(ORGANIZATIONS[0])
                   class="grid h-11 w-11 flex-none place-items-center rounded-full bg-surface-3 text-sm text-content"
                   aria-label="Профиль"
                   @click="router.push('/')"
-                >АК</button>
+                >{{ initials }}</button>
 
                 <button
                   type="button"

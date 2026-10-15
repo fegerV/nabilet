@@ -18,7 +18,7 @@
 import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ApiError } from '@/lib/api'
-import { confirmDemoPayment } from '@/lib/payments'
+import { confirmDemoPayment, rememberPaymentId } from '@/lib/payments'
 
 const route = useRoute()
 const router = useRouter()
@@ -35,6 +35,9 @@ onMounted(async () => {
   }
 
   try {
+    // Запоминаем платёж до подтверждения: по возврату на страницу результата
+    // ей нужно знать, у сервера какой платёж спрашивать (C2).
+    rememberPaymentId(paymentId)
     await confirmDemoPayment(paymentId)
     // `replace`, а не `push`: возврат «назад» не должен повторять подтверждение.
     await router.replace({ name: 'payment', params: { result: 'success' } })

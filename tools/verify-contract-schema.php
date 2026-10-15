@@ -77,6 +77,17 @@ const ACCEPTED_DRIFT = [
         'session_title' => 'stored as session_title_snapshot; same suffix concern as event_title.',
         'venue_title' => 'stored as venue_title_snapshot; same suffix concern as event_title.',
     ],
+    // Flattened winner view: the API never returns the raw raffle_winners row.
+    // place/prize_title come from the linked raffle_prizes row, order_number/
+    // customer_email from the winning entry's order, and `notified` is the
+    // raffle_winners.notified_at flag surfaced without the _at suffix.
+    'RaffleWinner' => [
+        'place' => 'derived from raffle_prizes.place via raffle_prize_id; the winner row stores only the foreign key.',
+        'prize_title' => 'derived from raffle_prizes.title (the prize the winner took).',
+        'order_number' => 'derived from orders.order_number via the winning entry’s order.',
+        'customer_email' => 'derived from orders.customer_email via the winning entry’s order (organiser-only).',
+        'notified' => 'stored as raffle_winners.notified_at; the contract drops the _at suffix for the boolean flag.',
+    ],
 ];
 
 /** Schemas whose name does not pluralise mechanically onto their table. */
@@ -222,9 +233,8 @@ function parseDdlColumns(string $file): array
  *
  * 73/785 → 75/805 в B-1: таблицы `artists` (13 колонок) и `artist_event` (7).
  */
-const EXPECTED_TABLES = 75;
-const EXPECTED_COLUMNS = 805;
-
+const EXPECTED_TABLES = 87;
+    const EXPECTED_COLUMNS = 901;
 /**
  * @param array<string, list<string>> $tables
  */

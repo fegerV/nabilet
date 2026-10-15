@@ -15,22 +15,20 @@
  * после отрисовки. `orderTotalMinor` стор намеренно не сбрасывает — и переживает
  * редирект на платёжную страницу через sessionStorage.
  */
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import NButton from '@/components/ui/NButton.vue'
 import { useCartStore } from '@/stores/cart'
 import { useUiStore } from '@/stores/ui'
 import { ApiError } from '@/lib/api'
-import { anchorDemoUrl, initiatePayment, newIdempotencyKey } from '@/lib/payments'
+import { anchorDemoUrl, fetchPayment, initiatePayment, newIdempotencyKey, recallPaymentId, rememberPaymentId } from '@/lib/payments'
+import { trackEvent } from '@/lib/metrika'
 import { money } from '@/lib/format'
 
 const route = useRoute()
 const router = useRouter()
 const cart = useCartStore()
 const ui = useUiStore()
-
-const result = computed(() => String(route.params.result ?? 'success'))
-const retrying = ref(false)
 
 /**
  * Ключ идемпотентности для повторной оплаты (S-07).
@@ -52,7 +50,7 @@ const VIEW = {
     icon: '✓',
     tone: 'bg-mint-500/15 text-mint-400 ring-mint-500/30',
     title: 'Билеты готовы',
-    text: 'Оплата подтверждена. Билеты уже в разделе «Мои билеты» и летят на почту — QR работает и без интернета.',
+    text: 'Оплата подтверждена сервером. Билеты уже в разделе «Мои билеты» и летят на почту — QR работает и без интернета.',
     primary: 'Показать билеты',
     to: '/tickets',
   },
@@ -74,10 +72,123 @@ const VIEW = {
   },
 } as const
 
-const view = computed(() => VIEW[result.value as keyof typeof VIEW] ?? VIEW.success)
+type ResultKey = keyof typeof VIEW
+
+/**
+ * Параметр роута — ПОДСКАЗКА, а не истина (C2).
+ *
+ * Раньше неизвестное значение (`#/payment/unknown-result`) откатывалось к
+ * `VIEW.success`, и покупатель видел «Билеты готовы» без единого запроса к
+ * серверу. Теперь дефолт — `pending`, а решение принимает статус платежа,
+ * полученный с сервера.
+ */
+const routeHint = computed<ResultKey>(() => {
+  const raw = String(route.params.result ?? '').toLowerCase()
+  return raw in VIEW ? (raw as ResultKey) : 'pending'
+})
+
+const result = ref<ResultKey>(routeHint.value)
+const checking = ref(false)
+const retrying = ref(false)
+const view = computed(() => VIEW[result.value])
 
 /** Сумма заказа. `0` только если заказ не создавался в этой вкладке. */
 const paidMinor = computed(() => cart.orderTotalMinor)
+
+/** Статус платежа с сервера → состояние экрана. Больше ниоткуда. */
+function statusToResult(status: string | undefined | null): ResultKey {
+  const normalized = String(status ?? '').toLowerCase()
+  if (normalized === 'succeeded') return 'success'
+  if (normalized === 'canceled' || normalized === 'failed') return 'fail'
+  return 'pending'
+}
+
+/**
+ * Спросить сервер о статусе платежа — единственный источник истины.
+ *
+ * Без запоминаемого payment_id (прямой заход по ссылке, другая вкладка)
+ * остаёмся на подсказке роута: выдумывать статус нечем. Кнопка «Обновить
+ * статус» в режиме ожидания делает ровно этот вызов — раньше она уводила на
+ * `/tickets`, то есть не опрашивала ничего.
+ */
+async function refreshStatus(): Promise<void> {
+  const paymentId = recallPaymentId()
+  if (!paymentId) return
+
+  checking.value = true
+  try {
+    const payment = await fetchPayment(paymentId)
+    result.value = statusToResult(payment.status)
+    // Успех закрывает сценарий только когда его подтвердил сервер.
+    // Метрику опрашиваем ДО clear(): он обнуляет seats/count, а количество
+    // билетов — часть цели `purchase` для Директа.
+    if (result.value === 'success') {
+      reportOutcome('success')
+      cart.clear()
+    } else if (result.value === 'fail') {
+      reportOutcome('fail')
+    }
+  } catch {
+    // 404 — платёж не найден или не наш; сеть/401 — сессия/сбой. В обоих
+    // случаях статус НЕ подтверждён, поэтому экран остаётся в ожидании,
+    // а не переходит к «Билеты готовы».
+    result.value = result.value === 'fail' ? 'pending' : result.value
+  } finally {
+    checking.value = false
+  }
+}
+
+/**
+ * E2: сообщить в Метрику исход оплаты — один раз на страницу.
+ *
+ * Цели `payment_success` (она же `purchase` — главная для автостратегий
+ * Директа) и `payment_fail` существовали в config/metrika.php, но не имели
+ * вызовов. Ограничение «один раз» обязательно: автоопрос дёргает
+ * `refreshStatus()` каждые 5 секунд, и без флага Директ получил бы дюжину
+ * «покупок» на один заказ.
+ */
+let outcomeReported: 'success' | 'fail' | null = null
+function reportOutcome(outcome: 'success' | 'fail'): void {
+  if (outcomeReported) return
+  outcomeReported = outcome
+  if (outcome === 'success') {
+    // revenue — в РУБЛЯХ: `paidMinor` в копейках (контракт money()).
+    void trackEvent('payment_success', {
+      revenue: Math.round(paidMinor.value / 100),
+      orderId: cart.orderId ?? undefined,
+      items: cart.count,
+    }).catch(() => {})
+    return
+  }
+  void trackEvent('payment_fail', { orderId: cart.orderId ?? undefined }).catch(() => {})
+}
+
+/** Ограниченный автоопрос: страница сама проверяет статус, пока платёж в пути. */
+const POLL_INTERVAL_MS = 5000
+const POLL_MAX_TICKS = 12
+let pollTimer: number | null = null
+
+function stopPolling(): void {
+  if (pollTimer !== null) {
+    window.clearInterval(pollTimer)
+    pollTimer = null
+  }
+}
+
+function startPolling(): void {
+  stopPolling()
+  let ticks = 0
+  pollTimer = window.setInterval(() => {
+    ticks += 1
+    if (ticks > POLL_MAX_TICKS) {
+      stopPolling()
+      return
+    }
+    void refreshStatus().then(() => {
+      if (result.value !== 'pending') stopPolling()
+    })
+  }, POLL_INTERVAL_MS)
+}
 
 /**
  * Повторить оплату ТОГО ЖЕ заказа.
@@ -96,7 +207,10 @@ async function retryPayment(): Promise<void> {
 
   retrying.value = true
   try {
-    const { confirmation_url } = await initiatePayment(orderId, idempotencyKey())
+    const { confirmation_url, payment } = await initiatePayment(orderId, idempotencyKey())
+    // C2: запоминаем платёж повторной попытки — иначе после ухода на оплату
+    // страница результата не будет знать, что спрашивать у сервера.
+    rememberPaymentId(payment?.public_id ?? payment?.id)
     if (!confirmation_url) {
       ui.notify('sun', 'Нет ссылки на оплату', 'Попробуйте ещё раз через минуту.')
       return
@@ -116,14 +230,22 @@ function onPrimary(): void {
     void retryPayment()
     return
   }
+  // В ожидании главная кнопка — опрос сервера, а не уход на билеты.
+  if (result.value === 'pending') {
+    void refreshStatus()
+    return
+  }
   router.push(view.value.to)
 }
 
 onMounted(() => {
-  // Успешная оплата закрывает сценарий: удержание больше не нужно.
-  // `orderId`/`orderTotalMinor` при этом сохраняются — они нужны этому экрану.
-  if (result.value === 'success') cart.clear()
+  void refreshStatus().then(() => {
+    // Платёж ещё в пути — продолжается вебхуком/подтверждением: опрашиваем сами.
+    if (result.value === 'pending' && recallPaymentId()) startPolling()
+  })
 })
+
+onUnmounted(stopPolling)
 </script>
 
 <template>
@@ -144,7 +266,7 @@ onMounted(() => {
       </div>
 
       <div class="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-center">
-        <NButton variant="accent" size="lg" :loading="retrying" @click="onPrimary">{{ view.primary }}</NButton>
+        <NButton variant="accent" size="lg" :loading="retrying || checking" @click="onPrimary">{{ view.primary }}</NButton>
         <NButton variant="secondary" size="lg" @click="router.push('/')">На афишу</NButton>
       </div>
 

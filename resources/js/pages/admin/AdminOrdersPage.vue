@@ -4,7 +4,15 @@
  *
  * Реальные данные: GET /api/v1/orders (пагинация). Фильтр по статусу,
  * поиск по номеру/имени/e-mail, деталка заказа (модалка), отмена заказа
- * (POST /{order}/cancel — админский эндпоинт).
+ * (POST /{order}/cancel — админский endpoint).
+ *
+ * ФОРМА ОТВЕТА — СХЕМА `Order` КОНТРАКТА
+ *   `GET /orders` отдаёт `OrderResource`: суммы вложены в `totals`, покупатель —
+ *   плоскими `customer_email` / `customer_name` / `customer_phone`, позиции несут
+ *   `event_title` (без суффикса `_snapshot`). Раньше страница читала
+ *   `o.customer.email`, то есть форму ПРЕЖНЕГО `OrderResource`, которой сервер
+ *   никогда не отдавал, — и колонка «Покупатель» показывала «—» в каждой строке.
+ *   Ошибка была в форме ответа, а не в вёрстке (см. §3.28).
  */
 import { computed, ref, onMounted } from 'vue'
 import NButton from '@/components/ui/NButton.vue'
@@ -21,19 +29,36 @@ import type { Column } from '@/components/ui/NDataTable.vue'
 
 const ui = useUiStore()
 
+/** Денежная часть заказа — схема `MoneyTotals` контракта (минорные единицы). */
+interface ApiTotals {
+  subtotal_amount?: number
+  discount_amount?: number
+  fee_amount?: number
+  total_amount?: number
+  currency?: string
+}
+
+interface ApiOrderItem {
+  id?: string
+  quantity?: number
+  unit_price?: number
+  total_amount?: number
+  event_title?: string | null
+}
+
+/** Строка `GET /orders` — схема `Order` (`OrderResource`). */
 interface ApiOrder {
   id: string
   order_number?: string | null
   status: string
   payment_status?: string | null
-  total_amount?: number | null
-  paid_amount?: number | null
-  currency?: string
-  items_count?: number
-  customer?: { email?: string | null; phone?: string | null; first_name?: string | null; last_name?: string | null }
-  items?: Array<{ id?: number; title?: string; quantity?: number; unit_price?: number }>
+  totals?: ApiTotals | null
+  customer_email?: string | null
+  customer_name?: string | null
+  customer_phone?: string | null
+  items?: ApiOrderItem[]
   created_at?: string | null
-  expires_at?: string | null
+  paid_at?: string | null
 }
 
 const orders = ref<ApiOrder[]>([])
@@ -55,16 +80,17 @@ const detail = ref<ApiOrder | null>(null)
 const detailOpen = ref(false)
 const cancelling = ref(false)
 
+/** Имя покупателя. В таблице ОДНО `customer_name`, а не имя и фамилия отдельно. */
 function customerName(o: ApiOrder): string {
-  const c = o.customer
-  if (!c) return '—'
-  return [c.first_name, c.last_name].filter(Boolean).join(' ') || c.email || c.phone || '—'
+  return o.customer_name || o.customer_email || o.customer_phone || '—'
 }
 
 function customerContact(o: ApiOrder): string {
-  const c = o.customer
-  if (!c) return ''
-  return c.email || c.phone || ''
+  return o.customer_email || o.customer_phone || ''
+}
+
+function totalMinor(o: ApiOrder): number {
+  return o.totals?.total_amount ?? 0
 }
 
 const rows = computed(() => {
@@ -84,7 +110,7 @@ const rows = computed(() => {
       number: o.order_number ?? o.id.slice(0, 8),
       customer: customerName(o),
       contact: customerContact(o),
-      total: o.total_amount ?? 0,
+      total: totalMinor(o),
       status: o.status,
       createdAt: o.created_at ?? '',
       raw: o,
@@ -234,7 +260,7 @@ async function cancelOrder(): Promise<void> {
         <div v-if="detail.items?.length" class="rounded-lg border border-line bg-surface-2 p-3">
           <p class="mb-1 text-2xs uppercase tracking-wide text-subtle">Состав заказа</p>
           <div v-for="(item, i) in detail.items" :key="i" class="flex items-baseline justify-between gap-2 py-1 text-sm">
-            <span class="text-content">{{ item.title ?? `Позиция #${item.id ?? ''}` }}</span>
+            <span class="text-content">{{ item.event_title ?? `Позиция #${item.id ?? ''}` }}</span>
             <span class="tabular-nums text-muted">{{ item.quantity ?? 1 }} × {{ money(item.unit_price ?? 0) }}</span>
           </div>
         </div>
@@ -242,7 +268,7 @@ async function cancelOrder(): Promise<void> {
         <dl class="space-y-2 text-sm">
           <div class="flex justify-between">
             <dt class="font-medium text-content">Итого</dt>
-            <dd class="text-lg font-semibold tabular-nums text-content">{{ money(detail.total_amount ?? 0) }}</dd>
+            <dd class="text-lg font-semibold tabular-nums text-content">{{ money(totalMinor(detail)) }}</dd>
           </div>
         </dl>
       </div>

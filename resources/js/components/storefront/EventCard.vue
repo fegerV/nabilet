@@ -7,12 +7,18 @@
  * постер, он ложится под тот же текст — вёрстка от этого не ломается.
  */
 import { computed } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import NBadge from '@/components/ui/NBadge.vue'
 import NStatusBadge from '@/components/ui/NStatusBadge.vue'
 import { money, dateFull, time } from '@/lib/format'
+import { isCustomerSession } from '@/lib/customer'
+import { useLoyaltyStore } from '@/stores/loyalty'
 import type { EventCard as EventCardType } from '@/lib/types'
 
 const props = defineProps<{ event: EventCardType }>()
+const router = useRouter()
+const route = useRoute()
+const loyalty = useLoyaltyStore()
 
 /* Постер из API (если есть) или дефолтный градиент. */
 const posterStyle = computed(() => {
@@ -28,7 +34,31 @@ const posterStyle = computed(() => {
 })
 
 const nextSession = computed(() => props.event.sessions?.[0])
-const soldOut = computed(() => props.event.status === 'sold_out')
+
+/**
+ * «Нет мест» — по реальному признаку, а не по `status`.
+ *
+ * Здесь стояло `props.event.status === 'sold_out'`, и сравнение было МЁРТВЫМ:
+ * `events.status` такого значения не знает — `sold_out` это статус сеанса и
+ * состояние позиции склада. Пока фронтенд-тип `EventStatus` ошибочно содержал
+ * `sold_out`, TypeScript молчал; когда словарь привели к бэкенду, `vue-tsc`
+ * показал, что ветка недостижима (`TS2367`).
+ *
+ * Настоящий признак отдаёт `EventResource`: у ближайшего сеанса нет ни одной
+ * позиции со `status = 'available'` и положительным остатком. Позиции, ушедшие
+ * в корзины, имеют `sold_out`/`held` и в этот счёт не попадают — то есть
+ * «Нет мест» показывается ровно тогда, когда купить действительно нечего.
+ */
+const soldOut = computed(() => {
+  const session = nextSession.value
+  if (!session) {
+    return false
+  }
+
+  const seats = session.availableSeats ?? session.available_seats
+
+  return seats === 0
+})
 
 /** Нормализация для шаблона: API отдаёт category/venue то строкой, то объектом. */
 const categoryName = computed(() =>
@@ -44,6 +74,35 @@ const venueCity = computed(() =>
 const sessionStartsAt = computed(
   () => nextSession.value?.startsAt ?? nextSession.value?.starts_at ?? ''
 )
+
+/* ── «♡ Избранное» ─────────────────────────────────────────────────────────
+ * Адресуем мероприятие `public_id`: внутри `EventResource` есть и внутренний
+ * `id`, но `/me/events/{event}/favorite` резолвит событие только по `public_id`
+ * (`LoyaltyController::resolveEvent`). Если постер пришёл без него (старая
+ * выдача API), сердце не показываем — лучше отсутствующая кнопка, чем 404.
+ */
+const favoriteOn = computed(() => {
+  const eventId = props.event.public_id ?? ''
+  return eventId !== '' && loyalty.isFavorite(eventId)
+})
+
+async function onFavorite(): Promise<void> {
+  const eventId = props.event.public_id ?? ''
+  if (eventId === '') return
+
+  // Гостю нечего хранить: `/me/*` ответит 401. Отправляем войти и возвращаем
+  // на то же место — иначе «♡» на афише вела бы в кабинет, теряя страницу.
+  if (!isCustomerSession()) {
+    router.push({ path: '/login', query: { redirect: route.fullPath } })
+    return
+  }
+
+  try {
+    await loyalty.toggleFavorite(eventId)
+  } catch {
+    /* вид сердца уже не изменился — состояние двигает только ответ сервера */
+  }
+}
 </script>
 
 <template>
@@ -60,7 +119,25 @@ const sessionStartsAt = computed(
 
       <div class="absolute inset-x-0 top-0 flex items-start justify-between p-3">
               <NBadge tone="brand" class="backdrop-blur">{{ categoryName }}</NBadge>
-              <NStatusBadge kind="event" :status="event.status" />
+              <div class="flex flex-none items-center gap-2">
+                <!--
+                  Сердце лежит ПОВЕРХ ссылки-оверлея карточки (`relative z-10`):
+                  без z-index клик уходил бы в RouterLink и открывал страницу
+                  события вместо того, чтобы ставить отметку.
+                -->
+                <button
+                  v-if="event.public_id"
+                  type="button"
+                  class="relative z-10 grid h-8 w-8 place-items-center rounded-lg bg-overlay/60 text-base backdrop-blur transition-colors"
+                  :class="favoriteOn ? 'text-rose-400' : 'text-white/80 hover:text-white'"
+                  :aria-label="favoriteOn ? 'Убрать из избранного' : 'Добавить в избранное'"
+                  :aria-pressed="favoriteOn"
+                  @click="onFavorite"
+                >
+                  <span aria-hidden="true">{{ favoriteOn ? '♥' : '♡' }}</span>
+                </button>
+                <NStatusBadge kind="event" :status="event.status" />
+              </div>
             </div>
 
       <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-overlay/85 to-transparent p-3 pt-10">

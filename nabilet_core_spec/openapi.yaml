@@ -22,11 +22,13 @@ tags:
   - name: Checkin
   - name: Me
   - name: Admin Events
+  - name: Admin Raffles
   - name: Admin Venues
   - name: Admin Orders
   - name: Admin Tickets
   - name: Admin Checkin
   - name: Admin Analytics
+  - name: Analytics
   - name: Webhooks
   - name: Embed
   - name: Telegram
@@ -35,6 +37,7 @@ tags:
   - name: Media
   - name: Translations
   - name: Admin Users
+  - name: Raffles
 
 paths:
   /api/v1/auth/register:
@@ -205,6 +208,30 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/EventListResponse' }
+
+  /api/v1/events/by-slug/{slug}:
+    get:
+      tags: [Catalog]
+      summary: Get public event by slug
+      description: >-
+        Публичный адрес мероприятия — `/event/{slug}/{publicId}`; витрина
+        (hash-SPA) обращается к этому эндпоинту по сегменту slug. Объявлен ВЫШЕ
+        `/api/v1/events/{event}` в маршрутах, иначе `by-slug` был бы принят за
+        идентификатор мероприятия.
+      operationId: getEventBySlug
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string, maxLength: 255 }
+      responses:
+        '200':
+          description: Event
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EventResponse' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '410': { $ref: '#/components/responses/Gone' }
 
   /api/v1/events/{event}:
     get:
@@ -551,6 +578,71 @@ paths:
                         status: { type: string, enum: [issued, used, cancelled, refunded, expired, revoked] }
                         qrPayload: { type: string, nullable: true, description: Signed payload; only active issued tickets should be presented for entry }
 
+  /api/v1/my-tickets/resend:
+    post:
+      tags: [Tickets]
+      summary: Re-send the ticket e-mail, optionally to a corrected address
+      description: >-
+        Guest storefront self-service. The ticket e-mail goes to
+        `orders.customer_email`, so a single mistyped letter means the buyer
+        never receives the ticket and has no way to notice. This endpoint queues
+        the message again and, when `email` is supplied, replaces the stored
+        address first — the buyer can correct a typo without contacting support.
+        Access is the same capability as `GET /api/v1/my-tickets`: the
+        high-entropy X-Cart-Token of the order's cart, or a bearer token that
+        owns the order. A foreign or unknown order answers 404, never 403: 403
+        would confirm that the order exists, and would turn the endpoint into an
+        e-mail relay aimed at someone else's address.
+      operationId: resendTicketEmail
+      parameters:
+        - $ref: '#/components/parameters/CartTokenOptional'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [order]
+              properties:
+                order:
+                  type: string
+                  description: >-
+                    `orders.public_id`, as returned by `GET /api/v1/my-tickets`
+                    in `orderId`. The internal BIGINT never leaves the API
+                    (DATABASE.md 9); the buyer passes this public id back.
+                email:
+                  type: string
+                  format: email
+                  nullable: true
+                  description: >-
+                    Corrected address. The stored `customer_email` is kept when
+                    this is omitted — that is the plain "send it again" case.
+      responses:
+        '200':
+          description: Message queued
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [sent, email]
+                    properties:
+                      sent: { type: boolean }
+                      email: { type: string, format: email, description: Address the message was queued to }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: >-
+            The order is not paid, so no ticket has been issued yet
+            (`error.code` = ORDER_NOT_PAID). The address is NOT changed.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
   /api/v1/tickets/{ticket}:
     get:
       tags: [Tickets]
@@ -712,6 +804,290 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/OrderListResponse' }
 
+  /api/v1/me/favorites:
+    get:
+      tags: [Me]
+      summary: List my favorite events
+      description: >-
+        Личный список «хочу посмотреть». Избранное не порождает писем — для
+        уведомлений есть подписки (`/api/v1/me/follows`). Поэтому два списка
+        разделены, хотя выглядят одинаково.
+      operationId: listMyFavorites
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Favorites, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/EventFavorite' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/v1/me/follows:
+    get:
+      tags: [Me]
+      summary: List my event subscriptions
+      description: >-
+        Мероприятия, о новых сеансах которых покупатель просил прислать письмо.
+        Отписка — `DELETE /api/v1/me/events/{event}/follow`.
+      operationId: listMyFollows
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Subscriptions, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/EventFollow' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/v1/me/bonus:
+    get:
+      tags: [Me]
+      summary: My bonus balance
+      description: >-
+        Баланс бонусного счёта. Счёт заводится лениво, поэтому у покупателя без
+        оплаченных заказов ответ — ноль бонусов, а не 404. Суммы — в минорных
+        единицах (как везде в API); `bonuses` — тот же баланс в «бонусах»
+        витрины по курсу 1 бонус = 1 ₽ = 100 минорных единиц, посчитанный
+        сервером, чтобы курс не переезжал в клиента.
+      operationId: getMyBonusBalance
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Balance (zero when the buyer has no account yet)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BonusBalanceResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/v1/me/bonus/transactions:
+    get:
+      tags: [Me]
+      summary: My bonus journal
+      description: >-
+        Append-only журнал движений, свежие сверху. `delta` знаковый и в минорных
+        единицах: плюс — начисление, минус — списание, возврат или сгорание по
+        сроку. `reason` называет причину из словаря; `order_id` — `orders.public_id`
+        или `null`, если движение не связано с заказом.
+      operationId: listMyBonusTransactions
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          description: Transactions, newest first
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BonusTransactionListResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/v1/me/loyalty-level:
+    get:
+      tags: [Me]
+      summary: My club tier
+      description: >-
+        Текущий уровень «Клуба зрителей» и прогресс до следующего. Уровень —
+        производное от числа оплаченных заказов и пересчитывается при каждой
+        смене статуса заказа (оплата поднимает, возврат/отмена опускают), поэтому
+        ответ всегда отражает реальное число оплаченных заказов покупателя. У
+        нового аккаунта — Старт с нулём оплаченных, а не 404.
+      operationId: getMyLoyaltyLevel
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Current tier and progress to the next one
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LoyaltyLevelStatusResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/v1/me/referral:
+    get:
+      tags: [Me]
+      summary: My invitation link and referral stats
+      description: >-
+        Код и готовая ссылка «Пригласите друга» (фаза 4 плана лояльности) плюс
+        статистика. Код выдаётся лениво, при первом открытии кабинета, поэтому
+        у покупателя, ещё не открывавшего раздел, ссылки просто нет — она
+        появится в этом же ответе при следующем запросе. Награды — в минорных
+        единицах, как и все деньги в API. Когда программа выключена в админке,
+        ссылка всё равно выдаётся: приглашение без награды остаётся
+        приглашением, и кабинет не должен показывать «функция недоступна» тому,
+        кто уже разослал ссылки.
+      operationId: getMyReferral
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Invitation code, link and stats
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReferralInfoResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/v1/me/raffles:
+    get:
+      tags: [Me]
+      summary: My raffle participations
+      description: >-
+        Розыгрыши «счастливый билет» (фаза 5), в которых у покупателя есть
+        билеты. Черновики и отменённые не показываются: первые ещё не существуют
+        для покупателя, вторые закончились без призов. Пустой список — 200 с
+        `data: []`, а не 404.
+      operationId: getMyRaffles
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Raffles where the buyer holds at least one entry
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RaffleParticipationListResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/v1/me/recommendations:
+    get:
+      tags: [Me]
+      summary: Recommended upcoming events
+      description: >-
+        Персональные рекомендации (фаза 5 плана лояльности): предстоящие
+        опубликованные мероприятия, близкие по категориям к тому, с чем покупатель
+        уже взаимодействовал. Профиль вкуса собирается из избранного, подписок и
+        ОПЛАЧЕННЫХ заказов — без новой таблицы в схеме. Мероприятие, которое
+        покупатель уже отметил или купил, в выдачу не попадает, как и черновики и
+        события без будущих сеансов. Пустой список — 200 с `data: []`, а не 404:
+        у нового аккаунта рекомендаций ещё нет.
+      operationId: getMyRecommendations
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          description: >-
+            Максимум карточек в ответе. Неположительное значение значит «по
+            умолчанию» (8), больше 24 — обрезается потолком.
+          schema: { type: integer, minimum: 1, maximum: 24, default: 8 }
+      responses:
+        '200':
+          description: Recommended upcoming events, most relevant first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/EventSummary' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/v1/raffles/{public_id}:
+    get:
+      tags: [Raffles]
+      summary: Public raffle results
+      description: >-
+        Публичная страница результатов тиража. Доступна без авторизации; наружу
+        уходит только маска победителя (`display`), полные имя и адрес видны
+        только организатору в админке. Черновик, отменённый и несуществующий
+        розыгрыш отвечают 404.
+      operationId: getRaffleResults
+      parameters:
+        - $ref: '#/components/parameters/RafflePublicIdPath'
+      responses:
+        '200':
+          description: Raffle results with masked winners
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RaffleResultsResponse' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/me/events/{event}/favorite:
+    post:
+      tags: [Me]
+      summary: Add an event to favorites
+      description: >-
+        Идемпотентно: первое нажатие отвечает 201, повторное — 200 с той же
+        строкой. Уникальный ключ `uq_event_favorites_user_event` в схеме не
+        даёт отметить одно мероприятие дважды.
+      operationId: addFavorite
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/EventPublicIdPath'
+      responses:
+        '200':
+          description: Already in favorites
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EventFavoriteResponse' }
+        '201':
+          description: Added
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EventFavoriteResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Me]
+      summary: Remove an event from favorites
+      description: >-
+        Идемпотентно: 204 и на повторное нажатие — «отметки нет» и есть
+        запрошенное состояние.
+      operationId: removeFavorite
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/EventPublicIdPath'
+      responses:
+        '204': { description: Removed }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/me/events/{event}/follow:
+    post:
+      tags: [Me]
+      summary: Subscribe to an event
+      description: >-
+        Подписка на письма о новых сеансах (и об открытии продажи). Первое
+        нажатие — 201, повторное — 200 с той же подпиской
+        (`uq_event_follows_user_event`).
+      operationId: followEvent
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/EventPublicIdPath'
+      responses:
+        '200':
+          description: Already subscribed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EventFollowResponse' }
+        '201':
+          description: Subscribed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EventFollowResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Me]
+      summary: Unsubscribe from an event
+      description: 204 и на повторное нажатие: «не подписаны» — запрошенное состояние.
+      operationId: unfollowEvent
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/EventPublicIdPath'
+      responses:
+        '204': { description: Unsubscribed }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
   /api/v1/checkin/validate:
     post:
       tags: [Checkin]
@@ -863,6 +1239,155 @@ paths:
       responses:
         '204': { description: Archived/deleted }
         '409': { $ref: '#/components/responses/Conflict' }
+
+  /api/v1/admin/raffles:
+    get:
+      tags: [Admin Raffles]
+      summary: List raffles
+      operationId: adminListRaffles
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Raffle list with entry, prize and winner counts
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RaffleListResponse' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Admin Raffles]
+      summary: Create a raffle draft
+      operationId: adminCreateRaffle
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RaffleWriteRequest' }
+      responses:
+        '201':
+          description: Created draft
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RaffleResponse' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /api/v1/admin/raffles/{raffle}:
+    get:
+      tags: [Admin Raffles]
+      summary: Get a raffle
+      operationId: adminGetRaffle
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/RaffleIdPath'
+      responses:
+        '200':
+          description: Raffle with prizes and winners
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RaffleResponse' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [Admin Raffles]
+      summary: Update a raffle
+      operationId: adminUpdateRaffle
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/RaffleIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RaffleWriteRequest' }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RaffleResponse' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /api/v1/admin/raffles/{raffle}/activate:
+    post:
+      tags: [Admin Raffles]
+      summary: Activate a raffle (backfill entries)
+      description: >-
+        Переводит `draft → active` и ставит в очередь backfill оплаченных
+        заказов окна. Сама активация возвращает обновлённый розыгрыш; письма
+        победителям уходят только после тиража.
+      operationId: adminActivateRaffle
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/RaffleIdPath'
+      responses:
+        '200':
+          description: Activated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RaffleResponse' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/admin/raffles/{raffle}/cancel:
+    post:
+      tags: [Admin Raffles]
+      summary: Cancel a raffle
+      operationId: adminCancelRaffle
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/RaffleIdPath'
+      responses:
+        '200':
+          description: Cancelled
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RaffleResponse' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/admin/raffles/{raffle}/draw:
+    post:
+      tags: [Admin Raffles]
+      summary: Draw the raffle
+      description: >-
+        Распределяет билеты по призовым местам и ставит письма победителям в
+        очередь. Отказы (все 422): `RAFFLE_ALREADY_DRAWN`, `RAFFLE_NOT_ACTIVE`,
+        `RAFFLE_NO_PRIZES`, `RAFFLE_NOT_ENOUGH_ENTRIES`.
+      operationId: adminDrawRaffle
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/RaffleIdPath'
+      responses:
+        '200':
+          description: Winners by place
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RaffleWinnersResponse' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /api/v1/admin/raffles/{raffle}/notify:
+    post:
+      tags: [Admin Raffles]
+      summary: Resend winner notifications
+      description: >-
+        Повторная рассылка писем победителям, которым письмо ещё не ушло
+        (повторно отправляет только неуведомлённым).
+      operationId: adminNotifyRaffle
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/RaffleIdPath'
+      responses:
+        '200':
+          description: Notify job enqueued
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RaffleNotifyResponse' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
 
   /api/v1/admin/sessions:
     post:
@@ -2009,6 +2534,25 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /api/v1/analytics/metrika/config:
+    get:
+      tags: [Analytics]
+      summary: Public Yandex Metrika counter configuration for the SPA
+      description: |
+        Returns the non-secret part of the Yandex Metrika settings used for
+        Yandex Direct conversion attribution. The SPA loads the counter tag
+        lazily and sends `ym(id, 'reachGoal', goal)` for funnel events listed
+        in `goals`. Server-side source: `config/metrika.php` (env) merged with
+        DB overrides from table `metrika_settings` (module Analytics,
+        service `MetrikaSettings`). No secrets are exposed here.
+      operationId: metrikaConfig
+      responses:
+        '200':
+          description: Counter configuration
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MetrikaConfigResponse' }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -2030,6 +2574,38 @@ components:
       name: event
       required: true
       schema: { type: string }
+    EventPublicIdPath:
+      in: path
+      name: event
+      required: true
+      schema:
+        type: string
+        pattern: '^[0-9A-Z]{26}$'
+      description: >-
+        `events.public_id` (ULID, 26 символов), а не внутренний BIGINT:
+        идентификаторы в кабинете покупателя публичные. Неизвестный или
+        удалённый public_id отвечает 404.
+    RafflePublicIdPath:
+      in: path
+      name: public_id
+      required: true
+      schema:
+        type: string
+        pattern: '^[0-9A-Z]{26}$'
+      description: >-
+        `raffles.public_id` (26 символов), а не внутренний BIGINT: публичная
+        ссылка результатов розыгрыша. Неизвестный или скрытый (черновик/отменённый)
+        public_id отвечает 404.
+    RaffleIdPath:
+      in: path
+      name: raffle
+      required: true
+      schema:
+        type: string
+        pattern: '^[0-9A-Z]{26}$'
+      description: >-
+        `raffles.public_id` (26 символов) в адресах админки; внутренний BIGINT не
+        покидает API. Неизвестный public_id отвечает 404.
     SessionIdPath:
       in: path
       name: session
@@ -2184,6 +2760,14 @@ components:
       content:
         application/json:
           schema: { $ref: '#/components/schemas/ErrorResponse' }
+    Gone:
+      description: >-
+        Ресурс существовал и удалён навсегда. Отличается от 404 намеренно:
+        поисковик снимает такой URL из индекса, не дожидаясь повторных обходов,
+        а клиент может показать «снято с продажи» вместо «проверьте адрес».
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
     NotFound:
       description: Not found
       content:
@@ -2209,6 +2793,34 @@ components:
           schema: { $ref: '#/components/schemas/ErrorResponse' }
 
   schemas:
+    MetrikaConfigResponse:
+      type: object
+      description: >
+        Non-secret Yandex Metrika settings for the SPA. Goals must exist in the
+        counter with exactly these names; purchase goal carries revenue/currency
+        for Yandex Direct auto-bidding strategies.
+      required: [enabled, counter_id, goals]
+      properties:
+        enabled: { type: boolean, description: 'false when counter_id is 0 — integration off' }
+        counter_id: { type: integer, description: 'Yandex Metrika counter ID' }
+        counter_auth: { type: string, nullable: true, description: 'Auth token (&ct=) for cross-domain placement' }
+        counter_type: { type: string, enum: [web, hit], default: web }
+        safe_mode: { type: boolean, description: 'Reduced-data mode (clickBeacon false, WebVisor off)' }
+        ecommerce: { type: boolean, description: 'Send product params with cart/purchase goals' }
+        currency: { type: string, example: RUB }
+        goals:
+          type: object
+          description: 'Funnel event name -> Metrika goal name (reachGoal). payment_success maps to purchase.'
+          additionalProperties: { type: string }
+          example:
+            event_view: event_view
+            seatmap_open: seatmap_open
+            seat_selected: seat_selected
+            checkout_started: checkout_started
+            payment_attempt: payment_attempt
+            payment_success: purchase
+            payment_fail: payment_fail
+
     ErrorResponse:
       type: object
       required: [error]
@@ -2337,6 +2949,378 @@ components:
       required: [data]
       properties:
         data: { $ref: '#/components/schemas/Event' }
+    EventSummary:
+      type: object
+      required: [id, title, slug]
+      description: >-
+        Карточка мероприятия внутри «Избранного» и «Подписок» — не полное
+        событие контракта `Event`, а то, чего не хватает строке списка.
+      properties:
+        id:
+          type: string
+          description: events.public_id (ULID)
+        title: { type: string }
+        slug: { type: string }
+        poster: { type: string, nullable: true }
+        age_limit: { type: string, nullable: true }
+        starts_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: >-
+            Ближайший предстоящий сеанс или null, если все сеансы уже прошли.
+            Без даты «Избранное» — список названий без календаря.
+
+    EventFavorite:
+      type: object
+      required: [id, event, created_at]
+      properties:
+        id:
+          type: string
+          description: event_favorites.public_id
+        event: { $ref: '#/components/schemas/EventSummary' }
+        created_at: { type: string, format: date-time }
+
+    EventFollow:
+      type: object
+      required: [id, event, created_at]
+      description: >-
+        Форма совпадает с `EventFavorite` намеренно: экран кабинета показывает
+        два списка рядом, и разные формы заставляли бы фронтенд писать два
+        парсера под одну и ту же строку.
+      properties:
+        id:
+          type: string
+          description: event_follows.public_id
+        event: { $ref: '#/components/schemas/EventSummary' }
+        created_at: { type: string, format: date-time }
+
+    EventFavoriteResponse:
+      type: object
+      required: [data]
+      properties:
+        data: { $ref: '#/components/schemas/EventFavorite' }
+
+    EventFollowResponse:
+      type: object
+      required: [data]
+      properties:
+        data: { $ref: '#/components/schemas/EventFollow' }
+
+    BonusBalance:
+      type: object
+      required: [balance, bonuses, currency]
+      description: >-
+        Баланс бонусного счёта. `balance` — минорные единицы, как и все деньги в
+        API. `bonuses` — производное от `balance`: тот же баланс в «бонусах»
+        витрины (курс `BonusPolicy::MINOR_UNITS_PER_BONUS`, 1 бонус = 1 ₽ = 100
+        минорных единиц). Курс применяет сервер, чтобы клиент показывал готовое
+        число и не зашивал сотню в вёрстку.
+      properties:
+        balance: { type: integer, description: Integer minor units (kopecks) }
+        bonuses: { type: integer, description: 'balance / 100 — the storefront display rate' }
+        currency: { type: string, description: ISO 4217 code, e.g. RUB }
+
+    BonusBalanceResponse:
+      type: object
+      required: [data]
+      properties:
+        data: { $ref: '#/components/schemas/BonusBalance' }
+
+    BonusTransaction:
+      type: object
+      required: [id, delta, reason, created_at]
+      properties:
+        id:
+          type: string
+          description: bonus_transactions.public_id
+        order_id:
+          type: string
+          nullable: true
+          description: orders.public_id; null for gifts and expiry (no order)
+        delta:
+          type: integer
+          description: >-
+            Signed integer minor units: positive — accrued, negative — spent,
+            refunded or expired.
+        reason:
+          type: string
+          enum: [accrual, registration, first_purchase, spend, refund, expiry, referral_inviter, referral_invited]
+        created_at: { type: string, format: date-time }
+
+    BonusTransactionListResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/BonusTransaction' }
+        meta: { $ref: '#/components/schemas/PaginationMeta' }
+
+    LoyaltyLevel:
+      type: object
+      required: [slug, name, min_paid_orders]
+      description: >-
+        Уровень «Клуба зрителей» из конфига `loyalty_levels`. `slug` — стабильный
+        идентификатор, `min_paid_orders` — порог в оплаченных заказах.
+      properties:
+        slug: { type: string, enum: [start, friend, vip] }
+        name: { type: string, description: Display name of the tier }
+        min_paid_orders: { type: integer, description: Paid orders required to reach this tier }
+
+    LoyaltyLevelStatusResponse:
+      type: object
+      required: [data]
+      properties:
+        data: { $ref: '#/components/schemas/LoyaltyLevelStatus' }
+
+    LoyaltyLevelStatus:
+      type: object
+      required: [slug, name, min_paid_orders, paid_orders, orders_to_next]
+      description: >-
+        Снимок уровня покупателя: текущий уровень, число оплаченных заказов и
+        прогресс до следующего. `next_level` — NULL на самом верхнем уровне.
+      properties:
+        slug: { type: string, enum: [start, friend, vip] }
+        name: { type: string }
+        min_paid_orders: { type: integer }
+        paid_orders: { type: integer, description: Count of the buyer's paid orders }
+        next_level: { $ref: '#/components/schemas/LoyaltyLevel', nullable: true }
+        orders_to_next: { type: integer, description: Paid orders until the next tier (0 at the top) }
+
+    ReferralInfoResponse:
+      type: object
+      required: [data]
+      properties:
+        data: { $ref: '#/components/schemas/ReferralInfo' }
+
+    ReferralInfo:
+      type: object
+      required: [code, link, enabled, stats]
+      description: >-
+        Ссылка «Пригласите друга» и её результаты. `code` —
+        `referral_codes.code` (16 символов алфавита без визуально похожих пар),
+        `link` — готовая ссылка `/#/r/{code}` от `config('app.url')`. Размеры
+        наград правятся в админке (scope `loyalty`), поэтому витрина показывает
+        ровно те числа, что начислит сервер, а не свои копии правил.
+      properties:
+        code: { type: string, maxLength: 16, description: Invitation code, referral_codes.code }
+        link: { type: string, description: 'Absolute invitation link: {app.url}/#/r/{code}' }
+        enabled:
+          type: boolean
+          description: Whether the referral program is enabled in admin settings
+        inviter_bonus:
+          type: integer
+          description: >-
+            Reward for the inviter, integer minor units (kopecks), paid once per
+            invited friend after the friend's first paid order.
+        invited_bonus:
+          type: integer
+          description: Reward for the invited friend, integer minor units (kopecks).
+        stats:
+          type: object
+          required: [invited, rewarded, earned]
+          description: >-
+            `invited` — сколько друзей оформило заказ по ссылке (учёт
+            `referrals`), `rewarded` — сколько из них оплатило первый заказ,
+            `earned` — сколько бонусов это принесло приглашающему. `earned`
+            считается по журналу (`bonus_transactions`, причина
+            `referral_inviter`), а не по строкам приглашений: настройка награды
+            могла поменяться между приглашениями, и «₽300 за каждого» перестало
+            бы сходиться с фактом.
+          properties:
+            invited: { type: integer, description: Friends who ordered through the link }
+            rewarded: { type: integer, description: Friends who paid their first order (reward paid) }
+            earned: { type: integer, description: Bonus earned by the inviter, minor units }
+
+    RaffleListItem:
+      type: object
+      required: [public_id, title, status, prizes_count, entries_count, winners_count, created_at]
+      properties:
+        public_id: { type: string, pattern: '^[0-9A-Z]{26}$', description: raffles.public_id }
+        title: { type: string }
+        status: { type: string, enum: [draft, active, drawn, cancelled] }
+        starts_at: { type: string, format: date-time, nullable: true }
+        ends_at: { type: string, format: date-time, nullable: true }
+        drawn_at: { type: string, format: date-time, nullable: true }
+        prizes_count: { type: integer, description: Number of prize places }
+        entries_count: { type: integer, description: Number of entries (tickets) }
+        winners_count: { type: integer, description: Number of drawn winners }
+        created_at: { type: string, format: date-time }
+
+    RafflePrize:
+      type: object
+      required: [public_id, place, title]
+      properties:
+        public_id: { type: string, pattern: '^[0-9A-Z]{26}$' }
+        place: { type: integer, minimum: 1, maximum: 255 }
+        title: { type: string }
+        description: { type: string, nullable: true }
+
+    RaffleWinner:
+      type: object
+      required: [public_id, place, prize_title, order_number, customer_email, notified]
+      properties:
+        public_id: { type: string, pattern: '^[0-9A-Z]{26}$' }
+        place: { type: integer }
+        prize_title: { type: string }
+        order_number: { type: string, description: Order number of the winning entry }
+        customer_email: { type: string, description: Winner customer email (admin only) }
+        notified: { type: boolean, description: Whether the winner notification was sent }
+
+    RaffleDetail:
+      type: object
+      required: [public_id, title, status, created_at, updated_at, entries_count, prizes, winners]
+      properties:
+        public_id: { type: string, pattern: '^[0-9A-Z]{26}$' }
+        title: { type: string }
+        description: { type: string, nullable: true }
+        status: { type: string, enum: [draft, active, drawn, cancelled] }
+        starts_at: { type: string, format: date-time, nullable: true }
+        ends_at: { type: string, format: date-time, nullable: true }
+        drawn_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        entries_count: { type: integer }
+        prizes:
+          type: array
+          items: { $ref: '#/components/schemas/RafflePrize' }
+        winners:
+          type: array
+          items: { $ref: '#/components/schemas/RaffleWinner' }
+
+    RaffleParticipation:
+      type: object
+      required: [public_id, title, status, entries_count, prizes, won]
+      properties:
+        public_id: { type: string, pattern: '^[0-9A-Z]{26}$' }
+        title: { type: string }
+        description: { type: string, nullable: true }
+        status: { type: string, enum: [draft, active, drawn, cancelled] }
+        starts_at: { type: string, format: date-time, nullable: true }
+        ends_at: { type: string, format: date-time, nullable: true }
+        drawn_at: { type: string, format: date-time, nullable: true }
+        entries_count: { type: integer }
+        prizes:
+          type: array
+          items:
+            type: object
+            required: [place, title]
+            properties:
+              place: { type: integer }
+              title: { type: string }
+        won:
+          type: array
+          description: Winning places of this buyer (empty if not a winner)
+          items:
+            type: object
+            required: [place, prize_title, notified]
+            properties:
+              place: { type: integer }
+              prize_title: { type: string }
+              notified: { type: boolean }
+
+    PublicWinner:
+      type: object
+      required: [display, notified]
+      properties:
+        display: { type: string, description: Masked winner identity (name initial or email mask) }
+        notified: { type: boolean }
+
+    PublicPrize:
+      type: object
+      required: [place, title, winner]
+      properties:
+        place: { type: integer }
+        title: { type: string }
+        description: { type: string, nullable: true }
+        winner: { $ref: '#/components/schemas/PublicWinner', nullable: true }
+
+    RaffleResults:
+      type: object
+      required: [public_id, title, status, entries_count, prizes]
+      properties:
+        public_id: { type: string, pattern: '^[0-9A-Z]{26}$' }
+        title: { type: string }
+        description: { type: string, nullable: true }
+        status: { type: string, enum: [draft, active, drawn, cancelled] }
+        starts_at: { type: string, format: date-time, nullable: true }
+        ends_at: { type: string, format: date-time, nullable: true }
+        drawn_at: { type: string, format: date-time, nullable: true }
+        entries_count: { type: integer, description: Total entries (proof of fairness, public) }
+        prizes:
+          type: array
+          items: { $ref: '#/components/schemas/PublicPrize' }
+
+    RaffleListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/RaffleListItem' }
+
+    RaffleResponse:
+      type: object
+      required: [data]
+      properties:
+        data: { $ref: '#/components/schemas/RaffleDetail' }
+
+    RaffleWinnersResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/RaffleWinner' }
+
+    RaffleParticipationListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/RaffleParticipation' }
+
+    RaffleResultsResponse:
+      type: object
+      required: [data]
+      properties:
+        data: { $ref: '#/components/schemas/RaffleResults' }
+
+    RaffleNotifyResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [raffle, pending]
+          properties:
+            raffle: { type: string, pattern: '^[0-9A-Z]{26}$' }
+            pending: { type: integer, description: Winners still pending notification }
+
+    RaffleWriteRequest:
+      type: object
+      required: [title, prizes]
+      description: >-
+        Тело создания и правки розыгрыша. При правке поля необязательны
+        (`sometimes`), но при создании `title` и `prizes` обязательны. Призовые
+        места должны быть уникальны в пределах розыгрыша.
+      properties:
+        title: { type: string, maxLength: 255 }
+        description: { type: string, maxLength: 2000, nullable: true }
+        starts_at: { type: string, format: date-time, nullable: true }
+        ends_at: { type: string, format: date-time, nullable: true }
+        prizes:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [place, title]
+            properties:
+              place: { type: integer, minimum: 1, maximum: 255 }
+              title: { type: string, maxLength: 255 }
+              description: { type: string, maxLength: 2000, nullable: true }
 
     EventListResponse:
       type: object
@@ -2604,6 +3588,24 @@ components:
         customer_phone: { type: string }
         holder_name: { type: string }
         promo_code: { type: string }
+        bonus_amount:
+          type: integer
+          minimum: 0
+          description: >-
+            Integer minor units (kopecks) of the order to cover with loyalty
+            bonuses, per MoneyTotals.bonus_amount. Capped by the server at
+            min(30% of the subtotal, subtotal minus discount, bonus balance);
+            a larger request is rejected with 422 BONUS_LIMIT_EXCEEDED rather
+            than silently reduced. Only meaningful together with cart_id.
+        referral_code:
+          type: string
+          maxLength: 16
+          description: >-
+            Invitation code the buyer arrived by (storefront `/#/r/{code}` link,
+            phase 4 of the loyalty plan). Optional: the server silently ignores
+            an unknown, foreign, malformed or already-used code — a broken link
+            must never break a purchase. The invitation is created at checkout
+            and rewarded once per invited friend after their first paid order.
 
     MoneyTotals:
       type: object
@@ -2614,6 +3616,7 @@ components:
       properties:
         subtotal_amount: { type: integer, description: Integer minor units (kopecks) }
         discount_amount: { type: integer, description: Integer minor units (kopecks) }
+        bonus_amount: { type: integer, description: Integer minor units (kopecks) covered by loyalty bonuses; a separate line, not folded into discount_amount }
         fee_amount: { type: integer, description: Integer minor units (kopecks) }
         total_amount: { type: integer, description: Integer minor units (kopecks) }
         currency: { type: string, description: ISO 4217 code, e.g. RUB }
@@ -2627,6 +3630,7 @@ components:
         payment_status: { type: string }
         totals: { $ref: '#/components/schemas/MoneyTotals' }
         customer_email: { type: string, format: email }
+        customer_name: { type: string, nullable: true }
         customer_phone: { type: string, nullable: true }
         created_at: { type: string, format: date-time }
         paid_at: { type: string, format: date-time, nullable: true }

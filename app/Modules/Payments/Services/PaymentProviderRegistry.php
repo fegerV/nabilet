@@ -54,6 +54,17 @@ final class PaymentProviderRegistry
     }
 
     /**
+     * Имена всех зарегистрированных провайдеров — для админской формы
+     * «провайдер по умолчанию» (валидация и выпадающий список).
+     *
+     * @return list<string>
+     */
+    public function names(): array
+    {
+        return array_keys($this->factories);
+    }
+
+    /**
      * @throws DomainRuleViolation если провайдер не зарегистрирован.
      */
     public function make(string $name): PaymentProviderInterface

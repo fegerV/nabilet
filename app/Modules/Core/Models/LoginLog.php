@@ -21,6 +21,7 @@ class LoginLog extends Model
         'user_id',
         'identifier',
         'success',
+        'event',
         'ip_address',
         'user_agent',
         'failure_code',

@@ -15,14 +15,25 @@ import NEmptyState from '@/components/ui/NEmptyState.vue'
 import { get } from '@/lib/api'
 import { money, dateLong } from '@/lib/format'
 
+/** Денежная часть заказа — схема `MoneyTotals` контракта (минорные единицы). */
+interface ApiTotals {
+  total_amount?: number
+  currency?: string
+}
+
+/** Строка `GET /orders` — схема `Order` (`OrderResource`). */
 interface ApiOrder {
   id: string
   status: string
   payment_status?: string | null
-  total_amount?: number | null
+  totals?: ApiTotals | null
   created_at?: string | null
   paid_at?: string | null
-  items_count?: number
+}
+
+/** Итог заказа в минорных единицах: суммы вложены в `totals` (схема `Order`). */
+function orderTotal(order: ApiOrder): number {
+  return order.totals?.total_amount ?? 0
 }
 
 interface ApiPayment {
@@ -65,7 +76,7 @@ async function load(): Promise<void> {
 onMounted(load)
 
 const paid = computed(() => orders.value.filter((o) => o.status === 'paid'))
-const revenue = computed(() => paid.value.reduce((sum, o) => sum + (o.total_amount ?? 0), 0))
+const revenue = computed(() => paid.value.reduce((sum, o) => sum + orderTotal(o), 0))
 const avgCheck = computed(() => (paid.value.length ? revenue.value / paid.value.length : 0))
 
 /** Доля успешных оплат: главный индикатор того, что деньги доходят. */
@@ -94,7 +105,7 @@ const series = computed(() => {
     const key = new Date(at).toISOString().slice(0, 10)
     const bucket = days.find((d) => d.date === key)
     if (bucket) {
-      bucket.total += order.total_amount ?? 0
+      bucket.total += orderTotal(order)
       bucket.count += 1
     }
   }

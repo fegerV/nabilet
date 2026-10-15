@@ -26,13 +26,13 @@ NABILET CORE
 │   ├── Support/         Money, QrSigner, helpers (do_action / apply_filters)
 │   └── Http/Middleware/ request-id, tenancy, CSP, permission, idempotency
 │
-├── app/Modules/       ← 30 модулей с манифестом (27 включены по умолчанию; отключены abtesting, ai, heatmaps)
+├── app/Modules/       ← 32 модуля с манифестом (29 включены по умолчанию; отключены abtesting, ai, heatmaps)
 │   ├── Organizations/  Auth/  Users/  Localization/
 │   ├── Venues/  HallSchemas/  Events/  Sessions/
 │   ├── Inventory/  Pricing/  Cart/  Orders/
 │   ├── Payments/  Tickets/  Checkin/  Notifications/
-│   ├── Webhooks/  Media/  Seo/  Analytics/  Embed/  Telegram/
-│   ├── Security/  Privacy/  Backups/  Admin/  Ai/  AbTesting/  Heatmaps/
+│   ├── Loyalty/  Webhooks/  Media/  Seo/  Analytics/  Embed/  Telegram/
+│   ├── Storefront/  Security/  Privacy/  Backups/  Admin/  Ai/  AbTesting/  Heatmaps/
 │   └── <module>/
 │       ├── module.json          манифест: зависимости, permissions, события
 │       ├── StateMachines/       машины состояний домена
@@ -74,7 +74,7 @@ Module  ──→ Module (внутрь) (ЗАПРЕЩЕНО — только ч�
 | AD-9 | **Redis опционален** | ТЗ §3: система не должна становиться неработоспособной из-за отсутствия Redis. Все драйверы имеют fallback на database/file. |
 | AD-10 | **Outbox для побочных эффектов** | Задача, поставленная в очередь внутри транзакции, либо выполнится для несуществующего заказа, либо потеряется. Outbox пишет намерение в ту же транзакцию. |
 | AD-11 | **Остаток — количество, а не состояние** | `inventory_items` хранит `capacity` + `available_quantity`, а не enum. Одна строка inventory продаётся N раз для standing-зоны; количество — единственный источник истины об остатке. Enum этого не выражает. |
-| AD-12 | **Инварианты денег и остатка проверяет БД, а не только код** | Проверка пакета на реальном MySQL показала, что `available_quantity = -1` принимался молча. 35 CHECK-ограничений (24 в `migrations/009_integrity_hardening.sql` плюс 11 в `010_tz_gaps.sql`) и триггер неизменяемости делают нарушение громким. Принцип: если БД может это отклонить — она должна. |
+| AD-12 | **Инварианты денег и остатка проверяет БД, а не только код** | Проверка пакета на реальном MySQL показала, что `available_quantity = -1` принимался молча. 36 CHECK-ограничений (24 в `migrations/009_integrity_hardening.sql`, 11 в `010_tz_gaps.sql`, по 1 в `013_users_status_check.sql`, `014_inventory_status_check.sql` и `015_events_status_check.sql`) и триггер неизменяемости делают нарушение громким. Принцип: если БД может это отклонить — она должна. |
 
 ---
 
@@ -363,17 +363,18 @@ Payload: `NB1.<ticketId>.<randomToken>.<HMAC-SHA256>`
 
 | Что | Как | Результат |
 |---|---|---|
-| Синтаксис PHP | `php tools/lint.php` | **322 файла, 0 ошибок** |
-| Ядро (хуки, деньги, state machines, модули, tenancy, ошибки, QR) + домены P2–P7 | `php tests/run.php` | **596 тестов, 1216 утверждений, 0 падений** |
-| Граф модулей | `php tools/modules.php --validate` | **30 модулей, 27 включены, граф валиден, 72 события** |
-| Чистота домена | `php tools/verify-purity.php` | **97 файлов загружаются без vendor/, 0 нарушений** |
-| DDL пакета | `migrations.sql` → реальный MySQL 8.4.11 | **73 таблицы, 101 FK, 88 UNIQUE, 281 индекс, 35 CHECK, 1 триггер** |
-| Эквивалентность DDL | консолидированный файл vs сплит 001–012 | **785 колонок и 297 ограничений совпадают** |
+| Синтаксис PHP | `php tools/lint.php` | **753 файла, 0 ошибок** (+ второй гейт: 0 неявно nullable параметров) |
+| Ядро (хуки, деньги, state machines, модули, tenancy, ошибки, QR) + домены P2–P7 | `php tests/run.php` | **728 тестов, 1766 утверждений, 0 падений** |
+| Граф модулей | `php tools/modules.php --validate` | **32 модуля, 29 включены, граф валиден, 78 событий** |
+| Чистота домена | `php tools/verify-purity.php` | **120 файлов загружаются без vendor/, 0 нарушений** |
+| DDL пакета | `migrations.sql` → реальный MySQL 8.4.11 | **78 таблиц, 113 FK, 98 UNIQUE, 306 индексов, 50 CHECK, 1 триггер** |
+| Эквивалентность DDL | консолидированный файл vs сплит 001–019 | **825 колонок и 339 ограничений совпадают** |
 | Матрица конкурентности ТЗ §26 | параллельные клиенты против MySQL | **6 из 6 сценариев PASS** |
 | Усиление инвариантов | 37 проб на нарушение | **все пробелы закрыты, легитимные сценарии не сломаны** |
-| Контракт OpenAPI | `php tools/verify-openapi.php` | **все проверки PASS (копия пакета: 98 операций, 100 схем; рабочая копия `docs/openapi.yaml`: 99 операций, 101 схема — добавлена `metrikaConfig`)** |
-| Контракт ≡ схема | `php tools/verify-contract-schema.php` | **28 сущностных схем, 0 нового дрейфа, 4 известных с причиной** |
-| Модели ≡ схема | `php tools/verify-models-schema.php` | **63 модели, 384 поля, 88 известных выдуманных колонок (храповик), 0 новых** |
+| Контракт OpenAPI | `php tools/verify-openapi.php` | **все проверки PASS (111 операций, 110 схем, 29 параметров, 8 ответов — 11/11 на обеих копиях)** |
+| Контракт ≡ схема | `php tools/verify-contract-schema.php` | **30 сущностных схем, 0 нового дрейфа, 4 известных с причиной** |
+| Модели ≡ схема | `php tools/verify-models-schema.php` | **69 моделей, 500 полей, 54 известных выдуманных колонки (храповик), 0 новых** |
+| Юнит-тесты фронта | `node node_modules/vitest/vitest.mjs run` | **25 файлов, 317 тестов, 0 падений** (среда jsdom, заглушка `matchMedia` — `tests/Unit/setup.ts`) |
 
 Матрица §26 в цифрах: 40 одновременных покупателей на одно место → ровно один hold;
 60 покупателей на standing-зону 200 → 60 hold и остаток 140; 30 покупателей на
@@ -395,7 +396,7 @@ Payload: `NB1.<ticketId>.<randomToken>.<HMAC-SHA256>`
 
 ### Границы, которые нужно уважать при работе со схемой
 
-- Пакет несёт `organization_id` только у 18 из 73 таблиц — см. §6. Это не деталь, а
+- Пакет несёт `organization_id` только у 18 из 78 таблиц — см. §6. Это не деталь, а
   главный риск изоляции арендаторов.
 - MySQL считает NULL в UNIQUE-ключе различным. Два уникальных ключа `inventory_items`
   работают только потому, что ровно одно из `seat_id` / `standing_zone_id` заполнено;
