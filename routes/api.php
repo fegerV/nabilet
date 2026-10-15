@@ -97,6 +97,12 @@ $moduleRoutes = [
     // `loadRoutesFrom()` из провайдера зарегистрировал бы те же пути в корне,
     // вне /api/v1 и его middleware.
     __DIR__ . '/../app/Modules/Loyalty/routes/api.php',
+    // Matrix (Element X): административные уведомления в комнату через удалённый
+    // Synapse — `/admin/matrix/settings` (GET/PUT) и `/admin/matrix/test`. Весь
+    // раздел под `auth:api` + `admin`: здесь лежит токен доступа к Synapse.
+    // Файл обязан быть подключён здесь — `loadRoutesFrom()` из провайдера
+    // зарегистрировал бы те же пути в корне, вне /api/v1 и его middleware.
+    __DIR__ . '/../app/Modules/Matrix/routes/api.php',
 ];
 
 foreach ($moduleRoutes as $routeFile) {

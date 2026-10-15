@@ -54,6 +54,12 @@ return Application::configure(basePath: dirname(__DIR__))
         // подключены централизованно в routes/api.php), так что регистрация
         // здесь безопасна — префикс /api/v1 никуда не теряется.
         \Nabilet\Modules\Loyalty\Providers\LoyaltyServiceProvider::class,
+        // Провайдер канала Matrix бутится явно по той же причине: он вешает
+        // `OrderMatrixObserver` — точку, откуда администраторам уходит
+        // уведомление об оплате заказа, и применяет настройки Synapse к
+        // runtime-конфигу. Маршруты модуля подключены централизованно в
+        // routes/api.php, так что префикс /api/v1 не теряется.
+        \Nabilet\Modules\Matrix\Providers\MatrixServiceProvider::class,
     ])
     ->withRouting(
         web: __DIR__ . '/../routes/web.php',

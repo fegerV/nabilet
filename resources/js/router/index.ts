@@ -225,6 +225,10 @@ const routes: RouteRecordRaw[] = [
       // Розыгрыши «счастливый билет»: состав участников, призовые места и
       // тираж. Объявлен до :section — иначе catch-all показывал бы заглушку.
       { path: 'raffles', name: 'admin-raffles', component: () => import('@/pages/admin/AdminRafflesPage.vue') },
+      // Matrix (Element X): административные уведомления в комнату через
+      // удалённый Synapse. Объявлен до :section по той же причине, что и
+      // raffles — иначе catch-all показывал бы «Раздел не найден».
+      { path: 'matrix', name: 'admin-matrix', component: () => import('@/pages/admin/AdminMatrixSettingsPage.vue') },
       // Catch-all для неизвестных адресов админки. Разделов-заглушек больше нет:
       // все пункты меню ведут на реальные экраны, поэтому единственное, чем может
       // быть этот маршрут, — опечатка в URL. Он отдаёт честный «Раздел не найден»
