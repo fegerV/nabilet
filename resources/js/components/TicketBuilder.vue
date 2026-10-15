@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, watch } from 'vue';
+import { computed, ref, onMounted, watch } from 'vue';
 // Раньше здесь был `axios` напрямую: он не несёт Authorization-заголовок
 // (интерсепторов в проекте нет) и обращался к `/api/ticket-templates` без
 // префикса версии, то есть сохранение шаблона уходило в 401/404. Теперь —
@@ -8,13 +8,27 @@ import { get, send, ApiError } from '@/lib/api';
 import {
     CANVAS_PRESETS,
     DEFAULT_TICKET_VARIABLES,
+    FONT_STACKS,
+    applyCornerResize,
     buildTemplatePayload,
     cloneElement,
+    elementLayerLabel,
+    elementTypeLabel,
+    ensureElementDefaults,
+    moveElementInList,
     normalizeNewElement,
+    resizeHandlesFor,
     syncDerivedCoordinates,
     duplicateAsElement,
     renderTextContent as renderVars,
 } from '@/lib/ticketBuilder';
+// Фильтр «только картинки» для пикера из медиатеки — тот же классификатор,
+// что в разделе «Файлы» (см. lib/mediaLibrary.ts).
+import { kindOf, storageSrc } from '@/lib/mediaLibrary';
+// Тема — из общего стора (класс `dark` на <html>): конструктор живёт внутри
+// тёмной админки, поэтому тёмное оформление у него базовое, а светлое —
+// опциональный класс `.builder-light`.
+import { useUiStore } from '@/stores/ui';
 // QR рисуется ЛОКАЛЬНО (@/lib/qr). Раньше здесь стояла ссылка на внешний
 // api.qrserver.com, которая отправляла подписанный `qr_payload` билета третьей
 // стороне вместе с IP покупателя — см. комментарий в начале lib/qr.ts.
@@ -35,6 +49,11 @@ const props = defineProps({
 
 const emit = defineEmits(['template-saved', 'template-deleted']);
 
+// Тема — из общего стора (класс `dark` на <html>): конструктор живёт внутри
+// тёмной админки, поэтому тёмное оформление у него базовое, а светлое —
+// опциональный класс `.builder-light`.
+const ui = useUiStore();
+
 // Состояние редактора
 const activeTab = ref('elements');
 const zoom = ref(100);
@@ -54,9 +73,45 @@ const loadError = ref(null);
 // обновлении не печатать название заново.
 const currentTemplateName = ref('');
 
-// Размеры холста
-const canvasWidth = ref(600);
-const canvasHeight = ref(400);
+// Холст по умолчанию — вертикальный мобильный: payload всегда шлёт
+// `format: 'mobile'`, а билет смотрят с телефона. При открытии сохранённого
+// шаблона размеры и фон подменяются из `template_json` (см. loadTemplate).
+// Заготовки рисовались под 600×400 — их применение размер возвращает.
+const canvasWidth = ref(400);
+const canvasHeight = ref(600);
+const canvasBackground = ref('#ffffff');
+
+// Id открытой записи. НЕ props.templateId напрямую: после создания нового
+// шаблона POST'ом проп остаётся null, и повторное «Сохранить» плодило бы
+// вторую запись вместо обновления только что созданной.
+const internalId = ref(props.templateId ?? null);
+
+// Предпросмотр: прячет панели, показывает билет как его увидит покупатель.
+const previewMode = ref(false);
+// Тестовые данные в предпросмотре: подстановка {{...}} или сырые плейсхолдеры.
+const showSampleData = ref(true);
+
+// Пикер изображений из медиатеки (для элемента-изображения).
+const mediaPickerOpen = ref(false);
+const mediaItems = ref([]);
+const mediaLoading = ref(false);
+const mediaError = ref(null);
+
+// Ключ пресета, совпадающего с текущим размером холста, — для подсветки
+// активного пункта в select. Нестандартный размер даёт ''.
+const presetKey = computed(() => {
+    for (const [key, size] of Object.entries(CANVAS_PRESETS)) {
+        if (size.width === canvasWidth.value && size.height === canvasHeight.value) {
+            return key;
+        }
+    }
+    return '';
+});
+
+// Только картинки из загруженного списка медиатеки.
+const mediaImages = computed(() =>
+    mediaItems.value.filter((asset) => kindOf(asset?.mime_type) === 'image')
+);
 
 // Элементы на холсте
 const elements = ref([]);
@@ -240,6 +295,117 @@ function startDrag(event, element) {
     };
 }
 
+// Тянучка за угол.
+//
+// Снапшот нужен, чтобы считать от начала жеста, а не накапливать округления:
+// каждый mousemove применяет ПОЛНЫЙ сдвиг от старта к замороженной копии.
+// Экранные пиксели делятся на зум — иначе на 50% элемент убегал бы вдвое
+// медленнее курсора, а на 200% вдвое быстрее.
+const resizing = ref(null);
+
+function startResize(event, element, corner) {
+    selectedElement.value = element;
+    resizing.value = {
+        corner,
+        startX: event.clientX,
+        startY: event.clientY,
+        snapshot: cloneElement(element),
+    };
+}
+
+function handleResize(event) {
+    const state = resizing.value;
+    const element = selectedElement.value;
+    if (!state || !element) return;
+
+    const scale = zoom.value / 100;
+    const dx = (event.clientX - state.startX) / scale;
+    const dy = (event.clientY - state.startY) / scale;
+
+    // Откат к снапшоту + полный сдвиг: без дрейфа округлений.
+    Object.assign(element, cloneElement(state.snapshot));
+    applyCornerResize(element, state.corner, dx, dy);
+    clampElementToCanvas(element);
+    syncDerivedCoordinates(element);
+}
+
+// Удержать элемент в границах холста после ресайза.
+function clampElementToCanvas(element) {
+    const maxX = Math.max(10, canvasWidth.value);
+    const maxY = Math.max(10, canvasHeight.value);
+
+    if (typeof element.x === 'number') {
+        element.x = Math.min(Math.max(0, Math.round(element.x)), maxX - 10);
+    }
+    if (typeof element.y === 'number') {
+        element.y = Math.min(Math.max(0, Math.round(element.y)), maxY - 10);
+    }
+    const isImage = element.type === 'image'
+        && typeof element.width === 'number'
+        && typeof element.height === 'number'
+        && element.height > 0;
+    if (isImage) {
+        // Картинка — с сохранением пропорций: габарит, упёршийся в край,
+        // задаёт второй, а не ломает аспект (как в обычных редакторах).
+        const aspect = element.width / element.height;
+        const maxW = maxX - element.x;
+        const maxH = maxY - element.y;
+        let width = Math.min(Math.max(10, Math.round(element.width)), maxW);
+        let height = Math.round(width / aspect);
+        if (height > maxH) {
+            height = Math.max(10, maxH);
+            width = Math.round(height * aspect);
+        }
+        element.width = Math.max(10, width);
+        element.height = Math.max(10, height);
+        return;
+    }
+    if (typeof element.width === 'number') {
+        element.width = Math.min(Math.max(10, Math.round(element.width)), maxX - element.x);
+    }
+    if (typeof element.height === 'number') {
+        element.height = Math.min(Math.max(10, Math.round(element.height)), maxY - element.y);
+    }
+    if (typeof element.size === 'number') {
+        element.size = Math.min(Math.max(20, Math.round(element.size)), Math.min(maxX, maxY));
+        element.width = element.size;
+        element.height = element.size;
+    }
+    if (typeof element.r === 'number') {
+        element.r = Math.min(Math.max(5, Math.round(element.r)), Math.min(maxX, maxY));
+    }
+}
+
+// Слои: порядок в `elements` — снизу вверх (конец массива рисуется верхним).
+// Перестановка splice'ом сохраняет объект элемента — выделение не слетает.
+function moveLayer(id, direction) {
+    moveElementInList(elements.value, id, direction);
+}
+
+// Позиция выбранного снизу (1 — самый нижний) — для строки «Слой i из n».
+function layerPosition(element) {
+    const index = elements.value.findIndex((el) => el.id === element.id);
+    return index === -1 ? null : { fromBottom: index + 1, total: elements.value.length };
+}
+
+// Слои сверху вниз — для вкладки-списка. computed, а не функция: шаблон
+// обращается к списку несколько раз на строку, пересчёт each time ни к чему.
+const layersTop = computed(() => [...elements.value].reverse());
+
+// Иконка типа для строки списка слоёв.
+function layerIcon(type) {
+    switch (type) {
+        case 'text': return '📝';
+        case 'rectangle': return '▭';
+        case 'circle': return '⭕';
+        case 'line': return '➖';
+        case 'qr': return '🔳';
+        case 'image': return '🖼️';
+        case 'barcode': return '📊';
+        default: return '▫️';
+    }
+}
+
 // Перемещение элемента
 function handleDrag(event) {
     if (!isDragging.value || !selectedElement.value) return;
@@ -257,9 +423,19 @@ function handleDrag(event) {
     syncDerivedCoordinates(selectedElement.value);
 }
 
-// Завершение перетаскивания
+// Завершение перетаскивания (и тянучки за угол — жест тот же).
 function stopDrag() {
     isDragging.value = false;
+    resizing.value = null;
+}
+
+// Диспетчер движения по холсту: ресайз за угол или обычное перетаскивание.
+function onCanvasPointerMove(event) {
+    if (resizing.value) {
+        handleResize(event);
+        return;
+    }
+    handleDrag(event);
 }
 
 // Удаление выбранного элемента
@@ -307,8 +483,18 @@ function applyTemplate(template) {
 }
 
 // Применить стартовую заготовку (BUILT_IN_LAYOUTS).
+//
+// Заготовки нарисованы под холст 600×400, поэтому применение возвращает и
+// размер, и фон: иначе макет вылезал бы за вертикальный холст по умолчанию,
+// а фон оставался бы от прошлого макета.
 function applyLayout(layout) {
     applyTemplate(layout);
+    canvasWidth.value = 600;
+    canvasHeight.value = 400;
+    const bg = layout?.config?.backgroundColor;
+    if (typeof bg === 'string' && bg !== '') {
+        canvasBackground.value = bg;
+    }
 }
 
 // Начать новый шаблон с пустого холста.
@@ -336,7 +522,10 @@ function openSaveModal() {
 // Различие принципиально. Раньше всегда шёл POST, поэтому повторное нажатие
 // «Сохранить» создавало ВТОРОЙ шаблон с тем же именем, а `templateId`
 // оставался прежним — администратор правил один макет, а в списке появлялся
-// новый. Теперь при наличии `templateId` идёт PUT.
+// новый. Теперь при наличии `internalId` идёт PUT.
+//
+// Отдельно: `internalId`, а не проп. После создания нового шаблона POST'ом
+// проп остался бы null, и следующее сохранение снова ушло бы в POST — дубль.
 async function saveTemplate() {
     const name = templateName.value.trim();
     if (!name) {
@@ -350,15 +539,21 @@ async function saveTemplate() {
             name,
             canvasWidth: canvasWidth.value,
             canvasHeight: canvasHeight.value,
-            config: { backgroundColor: '#ffffff', elements: elements.value },
+            // Раньше фон всегда уезжал '#ffffff', поэтому смена фона холста
+            // молча терялась при сохранении. Шлём текущий.
+            config: { backgroundColor: canvasBackground.value, elements: elements.value },
         });
 
-        const isUpdate = Boolean(props.templateId);
+        const isUpdate = internalId.value !== null && internalId.value !== undefined && internalId.value !== '';
         const res = isUpdate
-            ? await send(`/ticket-templates/${props.templateId}`, 'PUT', payload)
+            ? await send(`/ticket-templates/${internalId.value}`, 'PUT', payload)
             : await send('/ticket-templates', 'POST', payload);
 
         const saved = res.data;
+        const node = saved?.data ?? saved;
+        if (!isUpdate && node && node.id !== undefined) {
+            internalId.value = node.id;
+        }
         currentTemplateName.value = name;
         showTemplateModal.value = false;
         emit('template-saved', saved);
@@ -373,7 +568,12 @@ async function saveTemplate() {
     }
 }
 
-// Загрузка существующего шаблона
+// Загрузка существующего шаблона.
+//
+// Фон и размеры берём из записи: раньше грузились только элементы, и
+// сохранённый фон (тёмный у всех заготовок) сбрасывался на белый, а холст —
+// на дефолтный. Элементы прогоняем через ensureElementDefaults: старые записи
+// могут не знать полей, которые панель и рендер считают обязательными.
 async function loadTemplate() {
     if (!props.templateId) return;
 
@@ -390,7 +590,11 @@ async function loadTemplate() {
 
         canvasWidth.value = template.width || 600;
         canvasHeight.value = template.height || 400;
-        elements.value = config.elements || [];
+        canvasBackground.value = typeof config.backgroundColor === 'string' && config.backgroundColor !== ''
+            ? config.backgroundColor
+            : '#ffffff';
+        elements.value = (config.elements || []).map((el) => ensureElementDefaults(cloneElement(el)));
+        internalId.value = template.id ?? props.templateId;
         currentTemplateName.value = template.name || '';
     } catch (e) {
         loadError.value = e instanceof Error ? e.message : String(e);
@@ -404,18 +608,71 @@ async function loadTemplate() {
 // Подтверждение обязательно: макет собирается вручную и нигде не дублируется,
 // поэтому удаление необратимо.
 async function deleteTemplate() {
-    if (!props.templateId) return;
+    if (internalId.value === null || internalId.value === undefined || internalId.value === '') return;
     if (!window.confirm('Удалить шаблон? Действие необратимо.')) return;
 
     deleting.value = true;
     try {
-        await send(`/ticket-templates/${props.templateId}`, 'DELETE');
-        emit('template-deleted', props.templateId);
+        await send(`/ticket-templates/${internalId.value}`, 'DELETE');
+        emit('template-deleted', internalId.value);
     } catch (e) {
         alert('Не удалось удалить шаблон: ' + (e instanceof Error ? e.message : String(e)));
     } finally {
         deleting.value = false;
     }
+}
+
+// Текст элемента на холсте: с тестовыми данными или сырым плейсхолдером.
+//
+// Выключатель нужен не для красоты: администратор должен видеть, где в макете
+// переменная, а где статичный текст, — иначе опечатка в {{...}} выглядит как
+// готовое значение и вскрывается только в письме покупателю.
+function displayContent(element) {
+    if (!showSampleData.value) return element.content || '';
+    return renderVars(element.content, ticketVariables);
+}
+
+// Пикер изображений из медиатеки.
+//
+// Картинка выбирается глазами, поэтому список — сеткой превью, а не select.
+// Загрузка идёт лениво, при первом открытии: конструктор не должен ждать
+// медиатеку, если администратор правит только текст.
+async function openMediaPicker() {
+    mediaPickerOpen.value = true;
+    if (mediaItems.value.length > 0) return;
+
+    mediaLoading.value = true;
+    mediaError.value = null;
+    try {
+        const res = await get('/media?per_page=48');
+        const payload = res.data;
+        mediaItems.value = Array.isArray(payload) ? payload : (payload?.data ?? []);
+    } catch (e) {
+        mediaError.value = e instanceof Error ? e.message : String(e);
+        mediaItems.value = [];
+    } finally {
+        mediaLoading.value = false;
+    }
+}
+
+// Поставить картинку в выбранный элемент.
+//
+// Размер подгоняем под исходник (вписанный в холст): афиша обычно и должна
+// занимать билет по ширине, а тянуть углы вручную после каждой вставки —
+// лишний шаг. Вручную размер правится ниже, в секции «Размер».
+function pickMedia(asset) {
+    if (!selectedElement.value) return;
+    selectedElement.value.src = asset.url;
+
+    const naturalWidth = Number(asset.width);
+    const naturalHeight = Number(asset.height);
+    if (Number.isFinite(naturalWidth) && naturalWidth > 0 && Number.isFinite(naturalHeight) && naturalHeight > 0) {
+        const width = Math.min(naturalWidth, canvasWidth.value);
+        selectedElement.value.width = Math.round(width);
+        selectedElement.value.height = Math.round((width * naturalHeight) / naturalWidth);
+    }
+
+    mediaPickerOpen.value = false;
 }
 
 // Отрисовка переменной текста (подстановка {{var}} — в @/lib/ticketBuilder)
@@ -490,12 +747,12 @@ onMounted(() => {
 </script>
 
 <template>
-    <div class="ticket-builder-container">
+    <div class="ticket-builder-container" :class="{ 'builder-light': !ui.isDark }">
         <!-- Toolbar -->
         <div class="builder-toolbar">
             <div class="toolbar-section">
                 <button @click="openSaveModal" :disabled="saving" class="btn btn-primary">
-                    💾 {{ saving ? 'Сохранение…' : (props.templateId ? 'Обновить шаблон' : 'Сохранить шаблон') }}
+                    💾 {{ saving ? 'Сохранение…' : (internalId ? 'Обновить шаблон' : 'Сохранить шаблон') }}
                 </button>
                 <button @click="printPreview" class="btn btn-success">
                     🖨️ Печать / PDF
@@ -506,15 +763,20 @@ onMounted(() => {
                 <button @click="duplicateElement" :disabled="!selectedElement" class="btn btn-secondary">
                     📋 Дублировать
                 </button>
+                <button @click="previewMode = !previewMode" class="btn btn-secondary">
+                    {{ previewMode ? '✏️ Редактировать' : '👁 Предпросмотр' }}
+                </button>
             </div>
             
             <div class="toolbar-section">
                 <label class="toolbar-label">Размер:</label>
-                <select @change="resizeCanvas($event.target.value)" class="toolbar-select">
+                <select :value="presetKey" @change="resizeCanvas($event.target.value)" class="toolbar-select">
                     <option value="mobile">Мобильный (400×600)</option>
-                    <option value="desktop" selected>Десктоп (600×400)</option>
+                    <option value="story">Сторис (450×800)</option>
+                    <option value="desktop">Десктоп (600×400)</option>
                     <option value="square">Квадрат (500×500)</option>
                     <option value="wide">Широкий (800×400)</option>
+                    <option value="" disabled>Свой размер</option>
                 </select>
             </div>
             
@@ -529,20 +791,33 @@ onMounted(() => {
              Раньше ошибка загрузки уходила только в console.error, поэтому
              открытый шаблон молча оставался пустым холстом, и администратор
              начинал рисовать поверх несуществующего макета. -->
-        <div v-if="loading || loadError || currentTemplateName" class="builder-status">
+        <div v-if="loading || loadError || currentTemplateName || !internalId" class="builder-status">
             <span v-if="loading">Загружаем шаблон…</span>
             <span v-else-if="loadError" class="builder-status-error">
                 Не удалось загрузить шаблон: {{ loadError }}
             </span>
+            <span v-else-if="!internalId && !currentTemplateName">
+                Новый шаблон — выберите заготовку на вкладке «Шаблоны» или соберите макет из элементов.
+            </span>
             <span v-else>
                 Открыт шаблон: <b>{{ currentTemplateName }}</b>
-                <template v-if="props.templateId"> · обновление перезапишет его</template>
+                <template v-if="internalId"> · обновление перезапишет его</template>
             </span>
         </div>
 
-        <div class="builder-main">
+        <!-- Полоса предпросмотра: выход и тестовые данные. -->
+        <div v-if="previewMode" class="preview-bar">
+            <span class="preview-bar-title">👁 Предпросмотр — так билет увидит покупатель</span>
+            <label class="preview-bar-toggle">
+                <input type="checkbox" v-model="showSampleData" />
+                Тестовые данные
+            </label>
+            <button @click="previewMode = false" class="btn btn-secondary">✏️ К редактору</button>
+        </div>
+
+        <div class="builder-main" :class="{ 'is-preview': previewMode }">
             <!-- Left Sidebar - Elements -->
-            <div class="sidebar sidebar-left">
+            <div v-if="!previewMode" class="sidebar sidebar-left">
                 <div class="sidebar-tabs">
                     <button 
                         :class="{ active: activeTab === 'elements' }" 
@@ -557,6 +832,13 @@ onMounted(() => {
                         class="tab-btn"
                     >
                         🎨 Шаблоны
+                    </button>
+                    <button
+                        :class="{ active: activeTab === 'layers' }"
+                        @click="activeTab = 'layers'"
+                        class="tab-btn"
+                    >
+                        🗂️ Слои
                     </button>
                 </div>
                 
@@ -578,7 +860,12 @@ onMounted(() => {
                         </div>
                     </div>
                     
-                    <div class="variables-info">
+                    <!-- `v-pre`: ниже — документация синтаксиса {{...}}, а не
+                      выражения Vue. Без него рендер падает с
+                      `Cannot read properties of undefined (reading 'name')`,
+                      и весь конструктор остаётся пустым — именно так впервые
+                      и вскрылось: страница раньше никогда его не монтировала. -->
+                    <div class="variables-info" v-pre>
                         <h4>📋 Доступные переменные:</h4>
                         <ul>
                             <li><code>{{event.name}}</code> - Название события</li>
@@ -599,7 +886,7 @@ onMounted(() => {
                     <div class="templates-actions">
                         <button @click="resetCanvas" class="btn btn-secondary btn-block">＋ Новый пустой</button>
                         <button
-                            v-if="props.templateId"
+                            v-if="internalId"
                             @click="deleteTemplate"
                             :disabled="deleting"
                             class="btn btn-danger btn-block"
@@ -667,6 +954,42 @@ onMounted(() => {
                         </div>
                     </div>
                 </div>
+
+                <!-- Layers Panel: порядок сверху вниз — как лежит на билете.
+                     Верх списка = верхний слой (рисуется последним). -->
+                <div v-if="activeTab === 'layers'" class="panel-content">
+                    <p class="panel-hint" style="margin-bottom: 10px">
+                        {{ elements.length === 0 ? 'Элементов пока нет.' : `Слоёв: ${elements.length}. Верх списка — верхний слой.` }}
+                    </p>
+                    <div v-if="elements.length" class="layers-list">
+                        <div
+                            v-for="layer in layersTop"
+                            :key="layer.id"
+                            class="layer-row"
+                            :class="{ selected: selectedElement && selectedElement.id === layer.id }"
+                            @click="selectElement(layer)"
+                        >
+                            <span class="layer-icon">{{ layerIcon(layer.type) }}</span>
+                            <span class="layer-label">{{ elementLayerLabel(layer) }}</span>
+                            <span class="layer-actions">
+                                <button
+                                    type="button"
+                                    class="layer-btn"
+                                    title="Слой выше"
+                                    :disabled="layersTop.length === 0 || layer.id === layersTop[0].id"
+                                    @click.stop="moveLayer(layer.id, 'up')"
+                                >↑</button>
+                                <button
+                                    type="button"
+                                    class="layer-btn"
+                                    title="Слой ниже"
+                                    :disabled="layersTop.length === 0 || layer.id === layersTop[layersTop.length - 1].id"
+                                    @click.stop="moveLayer(layer.id, 'down')"
+                                >↓</button>
+                            </span>
+                        </div>
+                    </div>
+                </div>
             </div>
             
             <!-- Canvas -->
@@ -678,7 +1001,7 @@ onMounted(() => {
                         width: `${canvasWidth * zoom / 100}px`,
                         height: `${canvasHeight * zoom / 100}px`
                     }"
-                    @mousemove="handleDrag"
+                    @mousemove="onCanvasPointerMove"
                     @mouseup="stopDrag"
                     @mouseleave="stopDrag"
                 >
@@ -688,7 +1011,8 @@ onMounted(() => {
                             width: `${canvasWidth}px`,
                             height: `${canvasHeight}px`,
                             transform: `scale(${zoom / 100})`,
-                            transformOrigin: 'top left'
+                            transformOrigin: 'top left',
+                            backgroundColor: canvasBackground
                         }"
                     >
                         <!-- Rendered Elements -->
@@ -713,11 +1037,12 @@ onMounted(() => {
                                 :style="{
                                     fontSize: `${element.fontSize}px`,
                                     fontWeight: element.fontWeight,
+                                    fontFamily: element.fontFamily || 'inherit',
                                     color: element.color,
                                     width: 'auto'
                                 }"
                             >
-                                {{ renderTextContent(element.content) }}
+                                {{ displayContent(element) }}
                             </div>
                             
                             <!-- Rectangle Element -->
@@ -787,16 +1112,37 @@ onMounted(() => {
                                 </div>
                             </div>
                             
-                            <!-- Image Element -->
+                            <!-- Image Element: афиша или картинка из медиатеки.
+                                 Без src — рамка-заглушка, а не битый <img>. -->
                             <div 
                                 v-if="element.type === 'image'"
                                 class="element-image"
                                 :style="{ width: `${element.width}px`, height: `${element.height}px` }"
                             >
-                                <div class="image-placeholder">
+                                <img
+                                    v-if="element.src"
+                                    :src="storageSrc(element.src)"
+                                    alt=""
+                                    class="element-image-img"
+                                />
+                                <div v-else class="image-placeholder">
                                     IMG
                                 </div>
                             </div>
+
+                            <!-- Ручки ресайза у выбранного элемента. `.stop` —
+                                 чтобы тянучка не начинала перетаскивание самого
+                                 элемента; движение ловит холст (см.
+                                 onCanvasPointerMove). Подпись — какая сторона
+                                 тянется: у кругов/QR/текста/линий ручка одна. -->
+                            <span
+                                v-for="corner in (selectedElement && selectedElement.id === element.id ? resizeHandlesFor(element.type) : [])"
+                                :key="corner"
+                                class="resize-handle"
+                                :class="'resize-' + corner"
+                                title="Потяните, чтобы изменить размер"
+                                @mousedown.stop="startResize($event, element, corner)"
+                            />
                         </div>
                         
                         <!-- Grid overlay for alignment -->
@@ -806,7 +1152,7 @@ onMounted(() => {
             </div>
             
             <!-- Right Sidebar - Properties -->
-            <div v-if="selectedElement" class="sidebar sidebar-right">
+            <div v-if="!previewMode && selectedElement" class="sidebar sidebar-right">
                 <h3 class="properties-title">Свойства</h3>
                 
                 <!-- Text Properties -->
@@ -827,6 +1173,14 @@ onMounted(() => {
                         class="property-range"
                     />
                     <span class="property-value">{{ selectedElement.fontSize }}px</span>
+
+                    <label class="property-label">Шрифт:</label>
+                    <select v-model="selectedElement.fontFamily" class="property-select">
+                        <option value="">По умолчанию</option>
+                        <option v-for="font in FONT_STACKS" :key="font.key" :value="font.css">
+                            {{ font.label }}
+                        </option>
+                    </select>
                     
                     <label class="property-label">Цвет:</label>
                     <input type="color" v-model="selectedElement.color" class="property-color" />
@@ -836,6 +1190,39 @@ onMounted(() => {
                         <option value="normal">Обычный</option>
                         <option value="bold">Жирный</option>
                     </select>
+                </div>
+
+                <!-- Image Properties: афиша из медиатеки или произвольный URL. -->
+                <div v-if="selectedElement.type === 'image'" class="property-group">
+                    <label class="property-label">Изображение:</label>
+                    <button @click="openMediaPicker" class="btn btn-secondary btn-block">
+                        🖼️ Выбрать из медиатеки
+                    </button>
+                    <input
+                        v-model="selectedElement.src"
+                        type="text"
+                        placeholder="…или вставьте URL картинки"
+                        class="property-input property-src"
+                    />
+                    <img
+                        v-if="selectedElement.src"
+                        :src="storageSrc(selectedElement.src)"
+                        alt=""
+                        class="property-thumb"
+                    />
+                </div>
+
+                <!-- QR Properties -->
+                <div v-if="selectedElement.type === 'qr'" class="property-group">
+                    <label class="property-label">Размер кода:</label>
+                    <input
+                        type="range"
+                        v-model.number="selectedElement.size"
+                        min="40"
+                        max="400"
+                        class="property-range"
+                    />
+                    <span class="property-value">{{ selectedElement.size }}px</span>
                 </div>
                 
                 <!-- Shape Properties -->
@@ -866,7 +1253,75 @@ onMounted(() => {
                         class="property-range"
                     />
                 </div>
+
+                <!-- Size Properties: ширина/высота — то, чего не хватало всем
+                     типам, кроме текста (у него размер — это кегль выше). -->
+                <div v-if="['rectangle', 'image', 'barcode'].includes(selectedElement.type)" class="property-group">
+                    <h4>Размер</h4>
+                    <div class="position-row">
+                        <label>Ш:</label>
+                        <input
+                            type="number"
+                            v-model.number="selectedElement.width"
+                            min="10"
+                            class="property-input-small"
+                        />
+                        <label>В:</label>
+                        <input
+                            type="number"
+                            v-model.number="selectedElement.height"
+                            min="10"
+                            class="property-input-small"
+                        />
+                    </div>
+                </div>
+
+                <div v-if="selectedElement.type === 'circle'" class="property-group">
+                    <h4>Размер</h4>
+                    <label class="property-label">Радиус:</label>
+                    <input
+                        type="range"
+                        v-model.number="selectedElement.r"
+                        min="5"
+                        max="300"
+                        class="property-range"
+                    />
+                    <span class="property-value">{{ selectedElement.r }}px</span>
+                </div>
+
+                <div v-if="selectedElement.type === 'line'" class="property-group">
+                    <h4>Размер</h4>
+                    <label class="property-label">Длина (по горизонтали):</label>
+                    <input
+                        type="number"
+                        :value="Math.round((selectedElement.x2 ?? selectedElement.x) - selectedElement.x)"
+                        @input="selectedElement.x2 = selectedElement.x + Math.max(10, Number($event.target.value) || 10); selectedElement.y2 = selectedElement.y"
+                        min="10"
+                        class="property-input"
+                    />
+                    <label class="property-label">Толщина:</label>
+                    <input
+                        type="range"
+                        v-model.number="selectedElement.strokeWidth"
+                        min="1"
+                        max="20"
+                        class="property-range"
+                    />
+                    <span class="property-value">{{ selectedElement.strokeWidth }}px</span>
+                </div>
                 
+                <!-- Layer Order: кто выше/ниже. Тот же порядок, что во вкладке
+                     «Слои»: конец списка elements рисуется верхним. -->
+                <div class="property-group">
+                    <h4>Слой{{ layerPosition(selectedElement) ? ` · ${layerPosition(selectedElement).fromBottom} из ${layerPosition(selectedElement).total} (снизу)` : '' }}</h4>
+                    <div class="layer-buttons">
+                        <button type="button" class="btn btn-secondary btn-block" @click="moveLayer(selectedElement.id, 'top')">⤴ Наверх</button>
+                        <button type="button" class="btn btn-secondary btn-block" @click="moveLayer(selectedElement.id, 'up')">↑ Выше</button>
+                        <button type="button" class="btn btn-secondary btn-block" @click="moveLayer(selectedElement.id, 'down')">↓ Ниже</button>
+                        <button type="button" class="btn btn-secondary btn-block" @click="moveLayer(selectedElement.id, 'bottom')">⤵ Вниз</button>
+                    </div>
+                </div>
+
                 <!-- Common Properties -->
                 <div class="property-group">
                     <label class="property-label">Прозрачность:</label>
@@ -878,7 +1333,7 @@ onMounted(() => {
                         step="0.1"
                         class="property-range"
                     />
-                    <span class="property-value">{{ Math.round(selectedElement.opacity * 100) }}%</span>
+                    <span class="property-value">{{ Math.round((selectedElement.opacity ?? 1) * 100) }}%</span>
                     
                     <label class="property-label">Вращение:</label>
                     <input 
@@ -888,7 +1343,7 @@ onMounted(() => {
                         max="360"
                         class="property-range"
                     />
-                    <span class="property-value">{{ selectedElement.rotation }}°</span>
+                    <span class="property-value">{{ selectedElement.rotation ?? 0 }}°</span>
                 </div>
                 
                 <!-- Position Properties -->
@@ -908,6 +1363,17 @@ onMounted(() => {
                             class="property-input-small"
                         />
                     </div>
+                </div>
+            </div>
+
+            <!-- Canvas Properties: когда ничего не выбрано — настройки холста,
+                 а не пустая панель. Фон здесь же: раньше его было негде поменять. -->
+            <div v-else-if="!previewMode" class="sidebar sidebar-right">
+                <h3 class="properties-title">Холст</h3>
+                <div class="property-group">
+                    <label class="property-label">Фон холста:</label>
+                    <input type="color" v-model="canvasBackground" class="property-color" />
+                    <span class="property-value">{{ canvasWidth }}×{{ canvasHeight }} · кликните элемент, чтобы править его</span>
                 </div>
             </div>
         </div>
@@ -933,15 +1399,50 @@ onMounted(() => {
                 </div>
             </div>
         </div>
+
+        <!-- Media Picker: выбор картинки из медиатеки для элемента-изображения. -->
+        <div v-if="mediaPickerOpen" class="modal-overlay" @click.self="mediaPickerOpen = false">
+            <div class="modal modal-wide">
+                <h3>🖼️ Изображение из медиатеки</h3>
+                <p v-if="mediaLoading" class="panel-hint">Загружаем файлы…</p>
+                <p v-else-if="mediaError" class="panel-hint panel-hint-error">
+                    Не удалось загрузить: {{ mediaError }}
+                </p>
+                <div v-else-if="mediaImages.length" class="media-grid">
+                    <button
+                        v-for="asset in mediaImages"
+                        :key="asset.id"
+                        type="button"
+                        class="media-card"
+                        @click="pickMedia(asset)"
+                    >
+                        <img :src="storageSrc(asset.url)" :alt="asset.title || asset.filename" loading="lazy" />
+                        <span>{{ asset.title || asset.filename }}</span>
+                    </button>
+                </div>
+                <p v-else class="panel-hint">
+                    Картинок в медиатеке нет — загрузите их в разделе «Файлы», затем вернитесь сюда.
+                </p>
+                <div class="modal-actions">
+                    <button @click="mediaPickerOpen = false" class="btn btn-secondary">
+                        Отмена
+                    </button>
+                </div>
+            </div>
+        </div>
     </div>
 </template>
 
 <style scoped>
+/* БАЗОВАЯ ТЕМА — ТЁМНАЯ: конструктор живёт внутри тёмной админки.
+   Светлая включается классом `.builder-light` на контейнере (см. низ файла),
+   когда стор темы говорит `light`. */
 .ticket-builder-container {
     display: flex;
     flex-direction: column;
     height: 100vh;
-    background: #f1f5f9;
+    background: #0b0e1f;
+    color: #e6e9f5;
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
@@ -951,28 +1452,32 @@ onMounted(() => {
     justify-content: space-between;
     align-items: center;
     padding: 12px 20px;
-    background: #1e293b;
+    background: #141832;
     color: white;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+    border-bottom: 1px solid #262b4d;
+    flex-wrap: wrap;
+    gap: 10px;
 }
 
 .toolbar-section {
     display: flex;
     align-items: center;
     gap: 10px;
+    flex-wrap: wrap;
 }
 
 .toolbar-label {
     font-size: 13px;
-    color: #94a3b8;
+    color: #9aa3c7;
 }
 
 .toolbar-select {
     padding: 8px 12px;
     border-radius: 6px;
-    border: 1px solid #475569;
-    background: #334155;
-    color: white;
+    border: 1px solid #2b3160;
+    background: #0f1330;
+    color: #e6e9f5;
     font-size: 13px;
 }
 
@@ -1048,6 +1553,35 @@ onMounted(() => {
     background: #64748b;
 }
 
+/* Полоса предпросмотра */
+.preview-bar {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 8px 20px;
+    background: #141832;
+    border-bottom: 1px solid #262b4d;
+    font-size: 13px;
+}
+
+.preview-bar-title {
+    color: #e6e9f5;
+    font-weight: 600;
+}
+
+.preview-bar-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: #aab3d8;
+    cursor: pointer;
+}
+
+.builder-main.is-preview .canvas-area {
+    padding: 32px;
+}
+
 /* Main Area */
 .builder-main {
     display: flex;
@@ -1058,21 +1592,22 @@ onMounted(() => {
 /* Sidebars */
 .sidebar {
     width: 280px;
-    background: white;
-    border-right: 1px solid #e2e8f0;
+    background: #141832;
+    border-right: 1px solid #262b4d;
     display: flex;
     flex-direction: column;
     overflow-y: auto;
+    flex: none;
 }
 
 .sidebar-right {
     border-right: none;
-    border-left: 1px solid #e2e8f0;
+    border-left: 1px solid #262b4d;
 }
 
 .sidebar-tabs {
     display: flex;
-    border-bottom: 1px solid #e2e8f0;
+    border-bottom: 1px solid #262b4d;
 }
 
 .tab-btn {
@@ -1084,16 +1619,17 @@ onMounted(() => {
     font-size: 13px;
     transition: all 0.2s;
     border-bottom: 2px solid transparent;
+    color: #9aa3c7;
 }
 
 .tab-btn:hover {
-    background: #f1f5f9;
+    background: #1d2350;
 }
 
 .tab-btn.active {
-    background: #eff6ff;
-    border-bottom-color: #3b82f6;
-    color: #3b82f6;
+    background: #1a2456;
+    border-bottom-color: #7ea4ff;
+    color: #7ea4ff;
     font-weight: 600;
 }
 
@@ -1109,7 +1645,7 @@ onMounted(() => {
 .category-title {
     font-size: 14px;
     font-weight: 600;
-    color: #475569;
+    color: #aab3d8;
     margin-bottom: 10px;
     display: flex;
     align-items: center;
@@ -1124,32 +1660,33 @@ onMounted(() => {
 
 .element-item {
     padding: 10px;
-    background: #f1f5f9;
-    border: 1px solid #e2e8f0;
+    background: #1c2250;
+    border: 1px solid #2c3268;
     border-radius: 6px;
     cursor: pointer;
     font-size: 12px;
     text-align: center;
     transition: all 0.2s;
+    color: #e6e9f5;
 }
 
 .element-item:hover {
-    background: #e0f2fe;
-    border-color: #3b82f6;
+    background: #24306e;
+    border-color: #7ea4ff;
     transform: translateY(-2px);
 }
 
 .variables-info {
     margin-top: 20px;
     padding: 12px;
-    background: #fef3c7;
+    background: #2a2113;
     border-radius: 6px;
-    border: 1px solid #fde68a;
+    border: 1px solid #5a4a1f;
 }
 
 .variables-info h4 {
     font-size: 13px;
-    color: #92400e;
+    color: #f5c86e;
     margin-bottom: 8px;
 }
 
@@ -1161,12 +1698,13 @@ onMounted(() => {
 
 .variables-info li {
     font-size: 11px;
-    color: #78350f;
+    color: #d8c08a;
     margin-bottom: 4px;
 }
 
 .variables-info code {
-    background: #fbbf24;
+    background: #6b5518;
+    color: #ffe1a1;
     padding: 2px 4px;
     border-radius: 3px;
     font-family: monospace;
@@ -1189,14 +1727,14 @@ onMounted(() => {
 .builder-status {
     flex: none;
     padding: 8px 20px;
-    background: #e2e8f0;
-    border-bottom: 1px solid #cbd5e1;
+    background: #141832;
+    border-bottom: 1px solid #262b4d;
     font-size: 12px;
-    color: #475569;
+    color: #9aa3c7;
 }
 
 .builder-status-error {
-    color: #dc2626;
+    color: #ff8a8a;
     font-weight: 600;
 }
 
@@ -1204,18 +1742,18 @@ onMounted(() => {
     margin: 6px 0 0;
     font-size: 12px;
     line-height: 1.5;
-    color: #64748b;
+    color: #8f98bd;
 }
 
 .panel-hint-error {
-    color: #dc2626;
+    color: #ff8a8a;
 }
 
 .template-meta {
     margin: 0 0 8px;
     padding: 0 10px;
     font-size: 11px;
-    color: #94a3b8;
+    color: #7c86ad;
 }
 
 .templates-grid {
@@ -1225,22 +1763,23 @@ onMounted(() => {
 }
 
 .template-card {
-    border: 2px solid #e2e8f0;
+    border: 2px solid #2c3268;
     border-radius: 8px;
     overflow: hidden;
     cursor: pointer;
     transition: all 0.2s;
+    background: #1a1f45;
 }
 
 .template-card:hover {
-    border-color: #3b82f6;
+    border-color: #7ea4ff;
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2);
+    box-shadow: 0 4px 12px rgba(126, 164, 255, 0.25);
 }
 
 .template-card.selected {
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+    border-color: #7ea4ff;
+    box-shadow: 0 0 0 3px rgba(126, 164, 255, 0.25);
 }
 
 .template-preview {
@@ -1269,7 +1808,8 @@ onMounted(() => {
     padding: 8px;
     font-size: 12px;
     text-align: center;
-    background: #f8fafc;
+    background: #1a1f45;
+    color: #dfe4fa;
     margin: 0;
 }
 
@@ -1279,16 +1819,17 @@ onMounted(() => {
     display: flex;
     align-items: center;
     justify-content: center;
-    background: #e2e8f0;
+    background: #090c1b;
     overflow: auto;
     padding: 20px;
 }
 
 .ticket-canvas {
     background: white;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55);
     position: relative;
     overflow: hidden;
+    flex: none;
 }
 
 .canvas-inner {
@@ -1327,6 +1868,103 @@ onMounted(() => {
     outline-offset: 2px;
 }
 
+/* Ручки ресайза по углам выбранного элемента.
+   Размер фиксирован в экранных пикселях: внутри зумированного холста их бы
+   масштабировало вместе с билетом. */
+.resize-handle {
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    background: #3b82f6;
+    border: 2px solid #ffffff;
+    border-radius: 3px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+    z-index: 5;
+}
+
+.resize-nw { top: -8px; left: -8px; cursor: nwse-resize; }
+.resize-ne { top: -8px; right: -8px; cursor: nesw-resize; }
+.resize-sw { bottom: -8px; left: -8px; cursor: nesw-resize; }
+.resize-se { bottom: -8px; right: -8px; cursor: nwse-resize; }
+
+/* Слои: список сверху вниз */
+.layers-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.layer-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    background: #1c2250;
+    border: 1px solid #2c3268;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: border-color 0.2s;
+}
+
+.layer-row:hover {
+    border-color: #7ea4ff;
+}
+
+.layer-row.selected {
+    border-color: #7ea4ff;
+    box-shadow: 0 0 0 2px rgba(126, 164, 255, 0.25);
+}
+
+.layer-icon {
+    flex: none;
+    font-size: 14px;
+}
+
+.layer-label {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #e6e9f5;
+}
+
+.layer-actions {
+    flex: none;
+    display: flex;
+    gap: 4px;
+}
+
+.layer-btn {
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    border: 1px solid #2c3268;
+    border-radius: 4px;
+    background: #0f1330;
+    color: #dfe4fa;
+    cursor: pointer;
+    font-size: 13px;
+    line-height: 1;
+}
+
+.layer-btn:hover:not(:disabled) {
+    border-color: #7ea4ff;
+}
+
+.layer-btn:disabled {
+    opacity: 0.35;
+    cursor: default;
+}
+
+/* Кнопки порядка в панели свойств */
+.layer-buttons {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+}
+
 .element-text {
     white-space: nowrap;
     line-height: 1.2;
@@ -1353,12 +1991,12 @@ onMounted(() => {
     justify-content: center;
     background: repeating-linear-gradient(
         45deg,
-        #f1f5f9,
-        #f1f5f9 6px,
-        #e2e8f0 6px,
-        #e2e8f0 12px
+        #1c2250,
+        #1c2250 6px,
+        #141832 6px,
+        #141832 12px
     );
-    color: #64748b;
+    color: #8f98bd;
     font-size: 12px;
     font-weight: 600;
     letter-spacing: 0.08em;
@@ -1368,13 +2006,20 @@ onMounted(() => {
     display: flex;
     align-items: center;
     justify-content: center;
-    background: #f1f5f9;
-    border: 1px dashed #cbd5e1;
+    background: #1c2250;
+    border: 1px dashed #3d457e;
+}
+
+.element-image-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
 }
 
 .barcode-placeholder, .image-placeholder {
     font-size: 10px;
-    color: #94a3b8;
+    color: #7c86ad;
     font-weight: 600;
 }
 
@@ -1384,25 +2029,25 @@ onMounted(() => {
     margin: 0;
     font-size: 14px;
     font-weight: 600;
-    color: #1e293b;
-    border-bottom: 1px solid #e2e8f0;
+    color: #e6e9f5;
+    border-bottom: 1px solid #262b4d;
 }
 
 .property-group {
     padding: 16px;
-    border-bottom: 1px solid #e2e8f0;
+    border-bottom: 1px solid #262b4d;
 }
 
 .property-group h4 {
     font-size: 12px;
-    color: #64748b;
+    color: #8f98bd;
     margin-bottom: 10px;
 }
 
 .property-label {
     display: block;
     font-size: 12px;
-    color: #475569;
+    color: #aab3d8;
     margin-bottom: 6px;
     margin-top: 10px;
 }
@@ -1410,10 +2055,11 @@ onMounted(() => {
 .property-input, .property-select, .property-textarea {
     width: 100%;
     padding: 8px;
-    border: 1px solid #e2e8f0;
+    border: 1px solid #2c3268;
     border-radius: 4px;
     font-size: 13px;
-    background: white;
+    background: #0f1330;
+    color: #e6e9f5;
 }
 
 .property-textarea {
@@ -1424,9 +2070,11 @@ onMounted(() => {
 .property-input-small {
     width: 70px;
     padding: 6px;
-    border: 1px solid #e2e8f0;
+    border: 1px solid #2c3268;
     border-radius: 4px;
     font-size: 12px;
+    background: #0f1330;
+    color: #e6e9f5;
 }
 
 .property-range {
@@ -1436,7 +2084,7 @@ onMounted(() => {
 
 .property-value {
     font-size: 11px;
-    color: #64748b;
+    color: #8f98bd;
     display: block;
     margin-bottom: 8px;
 }
@@ -1444,9 +2092,25 @@ onMounted(() => {
 .property-color {
     width: 100%;
     height: 36px;
-    border: 1px solid #e2e8f0;
+    border: 1px solid #2c3268;
     border-radius: 4px;
     cursor: pointer;
+    background: #0f1330;
+}
+
+.property-src {
+    margin-top: 8px;
+}
+
+.property-thumb {
+    display: block;
+    width: 100%;
+    max-height: 140px;
+    object-fit: contain;
+    margin-top: 8px;
+    border-radius: 6px;
+    border: 1px solid #2c3268;
+    background: #0f1330;
 }
 
 .position-row {
@@ -1457,7 +2121,7 @@ onMounted(() => {
 
 .position-row label {
     font-size: 12px;
-    color: #64748b;
+    color: #8f98bd;
 }
 
 /* Modal */
@@ -1467,7 +2131,7 @@ onMounted(() => {
     left: 0;
     right: 0;
     bottom: 0;
-    background: rgba(0, 0, 0, 0.5);
+    background: rgba(4, 6, 18, 0.7);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1475,32 +2139,84 @@ onMounted(() => {
 }
 
 .modal {
-    background: white;
+    background: #161b3d;
+    color: #e6e9f5;
     padding: 24px;
     border-radius: 12px;
     min-width: 400px;
-    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+    max-width: min(860px, calc(100vw - 48px));
+    max-height: calc(100vh - 96px);
+    overflow-y: auto;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+    border: 1px solid #2c3268;
+}
+
+.modal-wide {
+    width: 760px;
 }
 
 .modal h3 {
     margin-bottom: 16px;
     font-size: 18px;
-    color: #1e293b;
+    color: #eef1ff;
 }
 
 .modal-input {
     width: 100%;
     padding: 12px;
-    border: 1px solid #e2e8f0;
+    border: 1px solid #2c3268;
     border-radius: 6px;
     font-size: 14px;
     margin-bottom: 16px;
+    background: #0f1330;
+    color: #e6e9f5;
 }
 
 .modal-actions {
     display: flex;
     justify-content: flex-end;
     gap: 10px;
+}
+
+/* Media Picker */
+.media-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.media-card {
+    padding: 0;
+    border: 2px solid #2c3268;
+    border-radius: 8px;
+    overflow: hidden;
+    cursor: pointer;
+    background: #0f1330;
+    color: #dfe4fa;
+    transition: border-color 0.2s, transform 0.2s;
+}
+
+.media-card:hover {
+    border-color: #7ea4ff;
+    transform: translateY(-2px);
+}
+
+.media-card img {
+    display: block;
+    width: 100%;
+    height: 110px;
+    object-fit: cover;
+    background: #090c1b;
+}
+
+.media-card span {
+    display: block;
+    padding: 6px 8px;
+    font-size: 11px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 /* Scrollbar */
@@ -1510,15 +2226,262 @@ onMounted(() => {
 }
 
 ::-webkit-scrollbar-track {
-    background: #f1f5f9;
+    background: #0b0e1f;
 }
 
 ::-webkit-scrollbar-thumb {
-    background: #cbd5e1;
+    background: #2c3268;
     border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
+    background: #3d457e;
+}
+
+/* СВЕТЛАЯ ТЕМА — включается классом `.builder-light`, когда стор темы
+   говорит `light` (админка по умолчанию тёмная, поэтому светлая — опция). */
+.builder-light.ticket-builder-container {
+    background: #f1f5f9;
+    color: inherit;
+}
+
+.builder-light .builder-toolbar {
+    background: #1e293b;
+    border-bottom: none;
+}
+
+.builder-light .toolbar-label {
+    color: #94a3b8;
+}
+
+.builder-light .toolbar-select {
+    border-color: #475569;
+    background: #334155;
+    color: white;
+}
+
+.builder-light .preview-bar {
+    background: #e2e8f0;
+    border-bottom-color: #cbd5e1;
+}
+
+.builder-light .preview-bar-title {
+    color: #1e293b;
+}
+
+.builder-light .preview-bar-toggle {
+    color: #475569;
+}
+
+.builder-light .sidebar {
+    background: white;
+    border-right-color: #e2e8f0;
+}
+
+.builder-light .sidebar-right {
+    border-left-color: #e2e8f0;
+}
+
+.builder-light .sidebar-tabs {
+    border-bottom-color: #e2e8f0;
+}
+
+.builder-light .tab-btn {
+    color: inherit;
+}
+
+.builder-light .tab-btn:hover {
+    background: #f1f5f9;
+}
+
+.builder-light .tab-btn.active {
+    background: #eff6ff;
+    border-bottom-color: #3b82f6;
+    color: #3b82f6;
+}
+
+.builder-light .category-title {
+    color: #475569;
+}
+
+.builder-light .element-item {
+    background: #f1f5f9;
+    border-color: #e2e8f0;
+    color: inherit;
+}
+
+.builder-light .element-item:hover {
+    background: #e0f2fe;
+    border-color: #3b82f6;
+}
+
+.builder-light .variables-info {
+    background: #fef3c7;
+    border-color: #fde68a;
+}
+
+.builder-light .variables-info h4 {
+    color: #92400e;
+}
+
+.builder-light .variables-info li {
+    color: #78350f;
+}
+
+.builder-light .variables-info code {
+    background: #fbbf24;
+    color: inherit;
+}
+
+.builder-light .builder-status {
+    background: #e2e8f0;
+    border-bottom-color: #cbd5e1;
+    color: #475569;
+}
+
+.builder-light .panel-hint {
+    color: #64748b;
+}
+
+.builder-light .template-meta {
+    color: #94a3b8;
+}
+
+.builder-light .template-card {
+    border-color: #e2e8f0;
+    background: white;
+}
+
+.builder-light .template-card:hover,
+.builder-light .template-card.selected {
+    border-color: #3b82f6;
+}
+
+.builder-light .template-name {
+    background: #f8fafc;
+    color: inherit;
+}
+
+.builder-light .canvas-area {
+    background: #e2e8f0;
+}
+
+.builder-light .ticket-canvas {
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+}
+
+.builder-light .qr-placeholder {
+    background: repeating-linear-gradient(45deg, #f1f5f9, #f1f5f9 6px, #e2e8f0 6px, #e2e8f0 12px);
+    color: #64748b;
+}
+
+.builder-light .element-barcode,
+.builder-light .element-image {
+    background: #f1f5f9;
+    border-color: #cbd5e1;
+}
+
+.builder-light .barcode-placeholder,
+.builder-light .image-placeholder {
+    color: #94a3b8;
+}
+
+.builder-light .properties-title {
+    color: #1e293b;
+    border-bottom-color: #e2e8f0;
+}
+
+.builder-light .property-group {
+    border-bottom-color: #e2e8f0;
+}
+
+.builder-light .property-group h4,
+.builder-light .property-value,
+.builder-light .position-row label {
+    color: #64748b;
+}
+
+.builder-light .property-label {
+    color: #475569;
+}
+
+.builder-light .property-input,
+.builder-light .property-select,
+.builder-light .property-textarea,
+.builder-light .property-input-small,
+.builder-light .property-color,
+.builder-light .modal-input {
+    border-color: #e2e8f0;
+    background: white;
+    color: inherit;
+}
+
+.builder-light .property-thumb {
+    border-color: #e2e8f0;
+    background: white;
+}
+
+.builder-light .modal-overlay {
+    background: rgba(0, 0, 0, 0.5);
+}
+
+.builder-light .modal {
+    background: white;
+    color: inherit;
+    border: none;
+}
+
+.builder-light .modal h3 {
+    color: #1e293b;
+}
+
+.builder-light .media-card {
+    border-color: #e2e8f0;
+    background: white;
+    color: inherit;
+}
+
+.builder-light .media-card:hover {
+    border-color: #3b82f6;
+}
+
+.builder-light .media-card img {
+    background: #f1f5f9;
+}
+
+.builder-light .layer-row {
+    background: #f1f5f9;
+    border-color: #e2e8f0;
+}
+
+.builder-light .layer-row:hover,
+.builder-light .layer-row.selected {
+    border-color: #3b82f6;
+}
+
+.builder-light .layer-label {
+    color: inherit;
+}
+
+.builder-light .layer-btn {
+    border-color: #e2e8f0;
+    background: white;
+    color: inherit;
+}
+
+.builder-light .layer-btn:hover:not(:disabled) {
+    border-color: #3b82f6;
+}
+
+.builder-light ::-webkit-scrollbar-track {
+    background: #f1f5f9;
+}
+
+.builder-light ::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+}
+
+.builder-light ::-webkit-scrollbar-thumb:hover {
     background: #94a3b8;
 }
 
@@ -1529,6 +2492,8 @@ onMounted(() => {
    билет окажется уменьшенным до текущего масштаба редактора. */
 @media print {
     .builder-toolbar,
+    .preview-bar,
+    .builder-status,
     .sidebar,
     .sidebar-left,
     .sidebar-right,

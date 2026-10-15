@@ -27,11 +27,11 @@ declare(strict_types=1);
  *     `app/Core`, which is the framework-agnostic kernel and a completely
  *     different thing. Two meanings for one word.
  *
- *   `app/Modules/Content/` (6 models) and `app/Modules/System/` (7 models) have no
- *   manifest and are referenced from nowhere outside themselves. That is what dead
- *   code looks like, and it is reported here rather than deleted: this tool cannot
- *   see dynamic loading, and a machine without `vendor/` cannot run the app to
- *   find out. Deleting them is a decision, not a cleanup.
+ *   `app/Modules/System/` (7 models) has no manifest and is referenced from
+ *   nowhere outside itself. That is what dead code looks like, and it is reported
+ *   here rather than deleted: this tool cannot see dynamic loading, and a machine
+ *   without `vendor/` cannot run the app to find out. Deleting it is a decision,
+ *   not a cleanup.
  *
  * WHAT IT CHECKS
  *   1. Every directory under `app/Modules/` has a `module.json`.
@@ -67,8 +67,6 @@ const UNREGISTERED_ALLOWED = [
         . 'manifest. Its name also collides with app/Core, the framework-agnostic kernel. '
         . 'Decide: give it a manifest, rename it, or distribute its models into the '
         . 'registered Organizations/Users/Auth modules.',
-    'Content' => '6 models, referenced from nowhere outside this directory, no manifest, '
-        . 'not in config. Candidate for deletion; needs a dynamic-loading check first.',
     'System' => '7 models, referenced from nowhere outside this directory, no manifest, '
         . 'not in config. Candidate for deletion; needs a dynamic-loading check first.',
 ];

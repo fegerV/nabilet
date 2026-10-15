@@ -1,0 +1,82 @@
+{
+  "source": "https://surgut.kassa-ugra.ru/venues",
+  "city": "Сургут",
+  "collected_at": "2026-10-07",
+  "purpose": "Каталог площадок для последующего создания в NABILET и привязки переиспользуемых шаблонов залов.",
+  "reuse_model": {
+    "hall_is_template": true,
+    "published_schema_is_selected_for_new_session": true,
+    "prices_are_changed_per_session": true,
+    "price_endpoint": "PATCH /api/v1/inventory/sessions/{sessionId}/prices"
+  },
+  "imported_templates": [
+    {
+      "kassa_id": 36,
+      "name": "Дворец искусств Нефтяник",
+      "nabilet_venue_public_id": "01M49JC48R7G3NYGVJAM4NH5FN",
+      "hall_name": "Концертно-театральный зал",
+      "hall_public_id": "01M49JC83RHJQFS2W33C39EWM4",
+      "status": "published",
+      "template_note": "1073 места; Партер, приставные места, бельэтаж, Балкон"
+    },
+    {
+      "kassa_id": 126030,
+      "name": "СурГУ",
+      "nabilet_venue_public_id": "01M49M5RVPTSPW1D6AEX7K33QH",
+      "hall_name": "Основной зал",
+      "hall_public_id": "01M49M5VN09G3JC5Q46HJ6S9A4",
+      "status": "published",
+      "template_note": "512 мест; Партер и Балкон"
+    },
+    {
+      "kassa_id": 116976,
+      "name": "Вавилон",
+      "nabilet_venue_public_id": "01M49NWYJ4XFZHZM5CSW3H955R",
+      "hall_name": "Основной зал",
+      "hall_public_id": "01M49NYJXM9VHPDATQDQTSHZYP",
+      "status": "published",
+      "template_note": "52 стола / 259 мест за столами + танцпол 95 мест; столов на танцполе в шаблоне нет"
+    }
+  ],
+  "venues": [
+    {"kassa_id": 126030, "name": "СурГУ", "address": "просп. Ленина, 1"},
+    {"kassa_id": 116976, "name": "Вавилон", "address": "ул. Профсоюзов, 55"},
+    {"kassa_id": 20871, "name": "ЦКиД «КАМЕРТОН»", "address": "ул. Островского, 16А"},
+    {"kassa_id": 7, "name": "Сургутская филармония", "address": "ул. Энгельса, 18"},
+    {"kassa_id": 116, "name": "МАУ «Ледовый Дворец спорта»", "address": "Югорский тракт, 40"},
+    {"kassa_id": 36, "name": "Дворец искусств Нефтяник", "address": "Югорский тракт, 5"},
+    {"kassa_id": 250166, "name": "Brooklyn Bowl", "address": "Нефтеюганское ш., 1"},
+    {"kassa_id": 202400, "name": "ГРК «Медвежий угол», Gallery club", "address": "ул. Крылова, 23/1"},
+    {"kassa_id": 361264, "name": "Цирк-шапито «Цирк Счастья»", "address": "ул. 30 лет Победы, 74, парковка гипермаркета «Лента»"},
+    {"kassa_id": 334113, "name": "102dB Beer & Rock-n-Roll", "address": "ул. 50 лет ВЛКСМ, 1/1"},
+    {"kassa_id": 352681, "name": "Harat’s Pub", "address": "ул. Республики, 61"},
+    {"kassa_id": 32, "name": "Концертный зал СурГПУ", "address": "ул. Артёма, 9"},
+    {"kassa_id": 312465, "name": "Auditorium Bar", "address": "пр. Мира, 31/1"},
+    {"kassa_id": 210665, "name": "ГРК «Медвежий угол». Dali Hall", "address": "ул. Крылова, 23/1"},
+    {"kassa_id": 33620, "name": "База отдыха Валикас", "address": "территория 10, 1"},
+    {"kassa_id": 203402, "name": "Аквилон", "address": "ул. Маяковского, 33"},
+    {"kassa_id": 165, "name": "Центр экстремальных видов спорта YOLO", "address": "ул. Декабристов, 1-а, корп. 4"},
+    {"kassa_id": 307967, "name": "Усадьба на Семи Ветрах", "address": "Сосновая ул., 74/2"},
+    {"kassa_id": 264625, "name": "Цирк-шапито «Колизеум»", "address": "Нефтеюганское шоссе, 1, площадь ТРЦ «Аура»"},
+    {"kassa_id": 170207, "name": "ТРЦ «Сургут Сити Молл». СРК Малибу", "address": "Югорский тракт, 38"},
+    {"kassa_id": 339038, "name": "Цирк-шапито «Скиф»", "address": "ул. 30 лет Победы, 74, парковка гипермаркета «Лента»"},
+    {"kassa_id": 272816, "name": "Форте & Пьяно", "address": "ул. Профсоюзов, 55"},
+    {"kassa_id": 3949, "name": "Сургутский музыкально-драматический театр", "address": "ул. Грибоедова, 12"},
+    {"kassa_id": 324728, "name": "СОК «Энергетик»", "address": "ул. Энергетиков, 47"},
+    {"kassa_id": 161224, "name": "Ресторан «Волна»", "address": "ул. Маяковского, 47"},
+    {"kassa_id": 255206, "name": "Районный центр культуры (Белый Яр)", "address": "пгт Белый Яр, ул. Лесная, 9/2"},
+    {"kassa_id": 267049, "name": "Невесомость", "address": "просп. Мира, 33/1"},
+    {"kassa_id": 334088, "name": "Компромат", "address": "ул. Ленинградская, 3/1"},
+    {"kassa_id": 337091, "name": "Каспий", "address": "ул. Инженерная, 12/1"},
+    {"kassa_id": 245699, "name": "Исторический парк «Россия — моя история»", "address": "ул. Мелик-Карамова, 4/4"},
+    {"kassa_id": 27639, "name": "Зал СПК", "address": "г. Сургут, ул. 30 лет Победы, 26"},
+    {"kassa_id": 166410, "name": "Детская школа искусств (Белый Яр)", "address": "пгт Белый Яр, ул. Островского, 20/1"},
+    {"kassa_id": 166413, "name": "Детская школа искусств (Барсово)", "address": "пгт Барсово, ул. Мостостроителей, 9"},
+    {"kassa_id": 262276, "name": "Городской культурный центр", "address": "пр-кт Набережный, 56"},
+    {"kassa_id": 347349, "name": "Аквапарк «Аквамарин»", "address": "ул. Профсоюзов, 53/2"},
+    {"kassa_id": 323738, "name": "Автономия Ивент Центр", "address": "ул. Профсоюзов, 53"},
+    {"kassa_id": 350871, "name": "Onyx", "address": "ул. Профсоюзов, 55"},
+    {"kassa_id": 22288, "name": "Fusion", "address": "ул. Маяковского, 33, ТРК Аквилон"},
+    {"kassa_id": 293582, "name": "Banana Park", "address": "ул. 30 лет Победы, 46, ТРЦ «Союз», 3 этаж"}
+  ]
+}

@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Nabilet\Modules\Core\Organizations\Models\Organization;
 use Nabilet\Modules\Events\Domain\EventStatus;
+use Nabilet\Modules\Events\Models\Artist;
 use Nabilet\Modules\Events\Models\Event;
 use Nabilet\Modules\Events\Models\EventCategory;
 use Nabilet\Modules\Sessions\Models\Session;
@@ -181,6 +182,94 @@ class CatalogService
     }
 
     /**
+     * Артист по глобально уникальному slug (стратегия SEO, B-1).
+     *
+     * Slug артиста уникален в масштабе таблицы (`uq_artists_slug`), поэтому
+     * выборка однозначна. `status = 'active'` — часть условия, а не украшение:
+     * страница снятого с публикации артиста не должна открываться, иначе в
+     * индексе остаётся адрес сущности, которую администратор закрыл. То же
+     * правило, что у площадки, категории и организатора.
+     *
+     * СВЯЗЬ С СОБЫТИЯМИ ИДЁТ ЧЕРЕЗ `artist_event`, А НЕ ЧЕРЕЗ `event_artists`.
+     * Имена артистов в `event_artists` хранятся свободным текстом внутри
+     * события, и «Би-2» с «БИ-2» — две разные строки. `artist_event` собирает
+     * все написания в одну запись, и именно поэтому у артиста может быть
+     * страница: без слияния она была бы по одной на каждое написание. Подробнее
+     * — в докблоках `Artist` и `SyncArtistsCommand`.
+     */
+    public function artistBySlug(string $slug): ?Artist
+    {
+        return Artist::query()
+            ->where('slug', $slug)
+            ->where('status', 'active')
+            ->first();
+    }
+
+    /**
+     * Все активные артисты с числом публично видимых событий (стратегия SEO, B-1).
+     *
+     * Список читают двое: перелинковка страницы артиста (соседние артисты) и
+     * карта сайта (какие адреса вообще существуют). Разрешение ОДНОГО slug —
+     * это отдельный `artistBySlug()`; здесь список нужен целиком. Один запрос на
+     * оба чтения — как у городов, категорий и организаторов, потому что
+     * расхождение между «страницей, которая открывается» и «адресом в карте» —
+     * это 404 из sitemap.
+     *
+     * LEFT JOIN ДВАЖДЫ, и оба раза неслучайно. Первый (`artist_event`) —
+     * потому что артист без событий обязан остаться в списке: иначе он не
+     * найдётся по slug, и страница ответит 404 вместо «здесь пока нет
+     * мероприятий», а 404 обесценивает уже проиндексированный адрес. Второй
+     * (`events`) — с фильтром публичности в самом `ON`, а не в `WHERE`: фильтр в
+     * `WHERE` превратил бы LEFT JOIN в INNER и выбросил бы артистов без
+     * видимых событий, то есть вернул бы ровно ту ошибку, которую убирает
+     * первый join.
+     *
+     * `deleted_at` У `events` ФИЛЬТРУЕТСЯ ВРУЧНУЮ. Запрос идёт через
+     * `DB::table()`, а сырой конструктор про трейт `SoftDeletes` не знает, —
+     * без `whereNull` мягко удалённое событие продолжало бы наполнять артиста.
+     * У `artists` такой колонки нет вовсе (как и у `event_categories` и
+     * `organizations`): артиста снимают с публикации статусом, а не удалением.
+     *
+     * @return list<array{name: string, slug: string, count: int, last_change: ?string}>
+     */
+    public function artists(): array
+    {
+        $rows = DB::table('artists')
+            ->leftJoin('artist_event', 'artist_event.artist_id', '=', 'artists.id')
+            ->leftJoin('events', function ($join): void {
+                $join->on('events.id', '=', 'artist_event.event_id')
+                    ->whereIn('events.status', EventStatus::publiclyVisible())
+                    ->whereNull('events.deleted_at');
+            })
+            ->where('artists.status', 'active')
+            ->groupBy(
+                'artists.id',
+                'artists.name',
+                'artists.slug',
+                'artists.updated_at',
+            )
+            ->orderByRaw('COUNT(DISTINCT events.id) DESC')
+            ->orderBy('artists.name')
+            ->get([
+                'artists.name as name',
+                'artists.slug as slug',
+                DB::raw('COUNT(DISTINCT events.id) as event_count'),
+                // `GREATEST` из правки самой карточки артиста и правок его
+                // событий — тем же правилом, что у площадки и организатора:
+                // страница артиста состоит из обоих, поэтому меняется при
+                // изменении любого.
+                DB::raw('GREATEST(artists.updated_at, COALESCE(MAX(events.updated_at), artists.updated_at)) as last_change'),
+            ]);
+
+        return array_map(static fn ($row): array => [
+            'name' => (string) $row->name,
+            'slug' => (string) $row->slug,
+            'count' => (int) $row->event_count,
+            'last_change' => $row->last_change === null ? null : (string) $row->last_change,
+        ], $rows->all());
+    }
+
+    /**
      * Все активные организаторы с числом публично видимых событий.
      *
      * Список читают двое: страница организатора (разрешение slug) и карта сайта
@@ -234,6 +323,36 @@ class CatalogService
             'slug' => (string) $row->slug,
             'count' => (int) $row->event_count,
             'last_change' => $row->last_change === null ? null : (string) $row->last_change,
+        ], $rows->all());
+    }
+
+    /**
+     * Опубликованные редакционные страницы CMS (стратегия SEO, B-2).
+     *
+     * Простой список без агрегации событий: страница CMS — это самостоятельный
+     * документ, а не фасет каталога. `published_at` обязателен и не из
+     * будущего — по той же паре ключей, что `PageService::forSlug()`: расхождение
+     * между картой и страницей — это 404 из sitemap'а.
+     *
+     * `last_change` — `updated_at` самой страницы. У редакционной страницы нет
+     * связанных событий, которые могли бы на неё влиять, поэтому правило
+     * `GREATEST(свой, MAX(events))` (как у площадки или организатора) тут не
+     * работает: `events.updated_at` к странице не имеет отношения.
+     *
+     * @return list<array{slug: string, last_change: ?string}>
+     */
+    public function pages(): array
+    {
+        $rows = DB::table('pages')
+            ->where('status', 'published')
+            ->whereNotNull('published_at')
+            ->where('published_at', '<=', now())
+            ->orderBy('updated_at', 'desc')
+            ->get(['slug', 'updated_at']);
+
+        return array_map(static fn ($row): array => [
+            'slug' => (string) $row->slug,
+            'last_change' => $row->updated_at === null ? null : (string) $row->updated_at,
         ], $rows->all());
     }
 
@@ -550,6 +669,45 @@ class CatalogService
     {
         return $this->paginate(
             $this->publicEvents()->where('events.organization_id', $organizationId),
+            $page,
+            null,
+        );
+    }
+
+    /**
+     * Публично видимые события артиста, страница `$page` (стратегия SEO, B-1).
+     *
+     * АРТИСТ — ФАСЕТ КАТАЛОГА, А НЕ МЕСТО, и отсюда всё остальное — ровно как у
+     * категории и организатора. Сеанс не требуется, события собираются со всех
+     * площадок и городов: страница отвечает на вопрос «где и когда играет этот
+     * артист», и ответ на него не зависит от зала. Публичный каталог
+     * (`GET /api/v1/events`) фильтруется по статусу так же, поэтому оба
+     * представления совпадают. Требование сеанса сделало бы страницу артиста
+     * уже каталога — то есть расхождение между двумя представлениями одних
+     * данных.
+     *
+     * `whereExists`, А НЕ `join`. Связь «артист — событие» лежит в
+     * `artist_event`, и join дал бы по строке на ребро; уникальность
+     * (`uq_artist_event`) сегодня гарантирует одну строку, но `whereExists`
+     * выражает вопрос «есть ли у события этот артист» напрямую и не зависит от
+     * того, что ребро одно. Тем же способом отобран `eventsAtVenue()`.
+     *
+     * Третий аргумент `paginate()` — `null`, как у организатора: у артиста
+     * события могут идти в разных городах, и сужать выражение ближайшего сеанса
+     * до одной площадки значило бы показать дату одного зала для события,
+     * которое играется в другом.
+     *
+     * @return LengthAwarePaginator<int, Event>
+     */
+    public function eventsAtArtist(int $artistId, int $page): LengthAwarePaginator
+    {
+        return $this->paginate(
+            $this->publicEvents()->whereExists(function (QueryBuilder $query) use ($artistId): void {
+                $query->select(DB::raw(1))
+                    ->from('artist_event')
+                    ->whereColumn('artist_event.event_id', 'events.id')
+                    ->where('artist_event.artist_id', $artistId);
+            }),
             $page,
             null,
         );

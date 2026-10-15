@@ -1,0 +1,4178 @@
+{
+  "version": "1.0",
+  "canvas": {
+    "width": 879,
+    "height": 849
+  },
+  "background": null,
+  "backgrounds": [],
+  "sectors": [
+    {
+      "id": "parter",
+      "name": "Партер",
+      "x": 86,
+      "y": 303,
+      "priceMinor": 250000,
+      "type": "seated",
+      "rowPrices": {
+        "1": 570000,
+        "2": 570000,
+        "3": 570000,
+        "4": 430000,
+        "5": 430000,
+        "6": 430000,
+        "7": 350000,
+        "8": 350000,
+        "9": 310000,
+        "10": 310000,
+        "11": 310000,
+        "12": 310000,
+        "13": 310000,
+        "14": 250000,
+        "15": 250000,
+        "16": 250000
+      },
+      "shape": "grid",
+      "arcSpread": 120,
+      "arcBaseR": 200,
+      "arcRowGap": 24,
+      "arcOffsetX": 0,
+      "arcOffsetY": 0,
+      "seats": [
+        {
+          "id": "parter-r11-p1",
+          "row": 11,
+          "number": 1,
+          "kind": "standard",
+          "x": 21,
+          "y": 147
+        },
+        {
+          "id": "parter-r11-p2",
+          "row": 11,
+          "number": 2,
+          "kind": "standard",
+          "x": 43,
+          "y": 147
+        },
+        {
+          "id": "parter-r11-p3",
+          "row": 11,
+          "number": 3,
+          "kind": "standard",
+          "x": 65,
+          "y": 147
+        },
+        {
+          "id": "parter-r11-p4",
+          "row": 11,
+          "number": 4,
+          "kind": "standard",
+          "x": 87,
+          "y": 147
+        },
+        {
+          "id": "parter-r11-p5",
+          "row": 11,
+          "number": 5,
+          "kind": "standard",
+          "x": 109,
+          "y": 147
+        },
+        {
+          "id": "parter-r11-p6",
+          "row": 11,
+          "number": 6,
+          "kind": "standard",
+          "x": 130,
+          "y": 147
+        },
+        {
+          "id": "parter-r11-p7",
+          "row": 11,
+          "number": 7,
+          "kind": "standard",
+          "x": 152,
+          "y": 147
+        },
+        {
+          "id": "parter-r11-p8",
+          "row": 11,
+          "number": 8,
+          "kind": "standard",
+          "x": 174,
+          "y": 147
+        },
+        {
+          "id": "parter-r11-p9",
+          "row": 11,
+          "number": 9,
+          "kind": "standard",
+          "x": 196,
+          "y": 147
+        },
+        {
+          "id": "parter-r11-p10",
+          "row": 11,
+          "number": 10,
+          "kind": "standard",
+          "x": 218,
+          "y": 147
+        },
+        {
+          "id": "parter-r11-p11",
+          "row": 11,
+          "number": 11,
+          "kind": "standard",
+          "x": 240,
+          "y": 147
+        },
+        {
+          "id": "parter-r11-p12",
+          "row": 11,
+          "number": 12,
+          "kind": "standard",
+          "x": 262,
+          "y": 147
+        },
+        {
+          "id": "parter-r11-p13",
+          "row": 11,
+          "number": 13,
+          "kind": "standard",
+          "x": 283,
+          "y": 147
+        },
+        {
+          "id": "parter-r11-p14",
+          "row": 11,
+          "number": 14,
+          "kind": "standard",
+          "x": 305,
+          "y": 147
+        },
+        {
+          "id": "parter-r11-p15",
+          "row": 11,
+          "number": 15,
+          "kind": "standard",
+          "x": 327,
+          "y": 147
+        },
+        {
+          "id": "parter-r11-p16",
+          "row": 11,
+          "number": 16,
+          "kind": "standard",
+          "x": 349,
+          "y": 147
+        },
+        {
+          "id": "parter-r11-p17",
+          "row": 11,
+          "number": 17,
+          "kind": "standard",
+          "x": 371,
+          "y": 147
+        },
+        {
+          "id": "parter-r11-p18",
+          "row": 11,
+          "number": 18,
+          "kind": "standard",
+          "x": 393,
+          "y": 147
+        },
+        {
+          "id": "parter-r11-p19",
+          "row": 11,
+          "number": 19,
+          "kind": "standard",
+          "x": 414,
+          "y": 147
+        },
+        {
+          "id": "parter-r11-p20",
+          "row": 11,
+          "number": 20,
+          "kind": "standard",
+          "x": 436,
+          "y": 147
+        },
+        {
+          "id": "parter-r11-p21",
+          "row": 11,
+          "number": 21,
+          "kind": "standard",
+          "x": 458,
+          "y": 147
+        },
+        {
+          "id": "parter-r11-p22",
+          "row": 11,
+          "number": 22,
+          "kind": "standard",
+          "x": 480,
+          "y": 147
+        },
+        {
+          "id": "parter-r11-p23",
+          "row": 11,
+          "number": 23,
+          "kind": "standard",
+          "x": 502,
+          "y": 147
+        },
+        {
+          "id": "parter-r11-p24",
+          "row": 11,
+          "number": 24,
+          "kind": "standard",
+          "x": 524,
+          "y": 147
+        },
+        {
+          "id": "parter-r11-p25",
+          "row": 11,
+          "number": 25,
+          "kind": "standard",
+          "x": 546,
+          "y": 147
+        },
+        {
+          "id": "parter-r11-p26",
+          "row": 11,
+          "number": 26,
+          "kind": "standard",
+          "x": 567,
+          "y": 147
+        },
+        {
+          "id": "parter-r11-p27",
+          "row": 11,
+          "number": 27,
+          "kind": "standard",
+          "x": 589,
+          "y": 147
+        },
+        {
+          "id": "parter-r11-p28",
+          "row": 11,
+          "number": 28,
+          "kind": "standard",
+          "x": 611,
+          "y": 147
+        },
+        {
+          "id": "parter-r11-p29",
+          "row": 11,
+          "number": 29,
+          "kind": "standard",
+          "x": 633,
+          "y": 147
+        },
+        {
+          "id": "parter-r11-p30",
+          "row": 11,
+          "number": 30,
+          "kind": "standard",
+          "x": 655,
+          "y": 147
+        },
+        {
+          "id": "parter-r11-p31",
+          "row": 11,
+          "number": 31,
+          "kind": "standard",
+          "x": 677,
+          "y": 147
+        },
+        {
+          "id": "parter-r11-p32",
+          "row": 11,
+          "number": 32,
+          "kind": "standard",
+          "x": 699,
+          "y": 147
+        },
+        {
+          "id": "parter-r11-p33",
+          "row": 11,
+          "number": 33,
+          "kind": "standard",
+          "x": 720,
+          "y": 147
+        },
+        {
+          "id": "parter-r12-p1",
+          "row": 12,
+          "number": 1,
+          "kind": "standard",
+          "x": 31,
+          "y": 122
+        },
+        {
+          "id": "parter-r12-p2",
+          "row": 12,
+          "number": 2,
+          "kind": "standard",
+          "x": 53,
+          "y": 122
+        },
+        {
+          "id": "parter-r12-p3",
+          "row": 12,
+          "number": 3,
+          "kind": "standard",
+          "x": 74,
+          "y": 122
+        },
+        {
+          "id": "parter-r12-p4",
+          "row": 12,
+          "number": 4,
+          "kind": "standard",
+          "x": 95,
+          "y": 122
+        },
+        {
+          "id": "parter-r12-p5",
+          "row": 12,
+          "number": 5,
+          "kind": "standard",
+          "x": 117,
+          "y": 122
+        },
+        {
+          "id": "parter-r12-p6",
+          "row": 12,
+          "number": 6,
+          "kind": "standard",
+          "x": 138,
+          "y": 122
+        },
+        {
+          "id": "parter-r12-p7",
+          "row": 12,
+          "number": 7,
+          "kind": "standard",
+          "x": 159,
+          "y": 122
+        },
+        {
+          "id": "parter-r12-p8",
+          "row": 12,
+          "number": 8,
+          "kind": "standard",
+          "x": 180,
+          "y": 122
+        },
+        {
+          "id": "parter-r12-p9",
+          "row": 12,
+          "number": 9,
+          "kind": "standard",
+          "x": 202,
+          "y": 122
+        },
+        {
+          "id": "parter-r12-p10",
+          "row": 12,
+          "number": 10,
+          "kind": "standard",
+          "x": 223,
+          "y": 122
+        },
+        {
+          "id": "parter-r12-p11",
+          "row": 12,
+          "number": 11,
+          "kind": "standard",
+          "x": 244,
+          "y": 122
+        },
+        {
+          "id": "parter-r12-p12",
+          "row": 12,
+          "number": 12,
+          "kind": "standard",
+          "x": 266,
+          "y": 122
+        },
+        {
+          "id": "parter-r12-p13",
+          "row": 12,
+          "number": 13,
+          "kind": "standard",
+          "x": 287,
+          "y": 122
+        },
+        {
+          "id": "parter-r12-p14",
+          "row": 12,
+          "number": 14,
+          "kind": "standard",
+          "x": 308,
+          "y": 122
+        },
+        {
+          "id": "parter-r12-p15",
+          "row": 12,
+          "number": 15,
+          "kind": "standard",
+          "x": 329,
+          "y": 122
+        },
+        {
+          "id": "parter-r12-p16",
+          "row": 12,
+          "number": 16,
+          "kind": "standard",
+          "x": 351,
+          "y": 122
+        },
+        {
+          "id": "parter-r12-p17",
+          "row": 12,
+          "number": 17,
+          "kind": "standard",
+          "x": 372,
+          "y": 122
+        },
+        {
+          "id": "parter-r12-p18",
+          "row": 12,
+          "number": 18,
+          "kind": "standard",
+          "x": 393,
+          "y": 122
+        },
+        {
+          "id": "parter-r12-p19",
+          "row": 12,
+          "number": 19,
+          "kind": "standard",
+          "x": 414,
+          "y": 122
+        },
+        {
+          "id": "parter-r12-p20",
+          "row": 12,
+          "number": 20,
+          "kind": "standard",
+          "x": 436,
+          "y": 122
+        },
+        {
+          "id": "parter-r12-p21",
+          "row": 12,
+          "number": 21,
+          "kind": "standard",
+          "x": 457,
+          "y": 122
+        },
+        {
+          "id": "parter-r12-p22",
+          "row": 12,
+          "number": 22,
+          "kind": "standard",
+          "x": 478,
+          "y": 122
+        },
+        {
+          "id": "parter-r12-p23",
+          "row": 12,
+          "number": 23,
+          "kind": "standard",
+          "x": 500,
+          "y": 122
+        },
+        {
+          "id": "parter-r12-p24",
+          "row": 12,
+          "number": 24,
+          "kind": "standard",
+          "x": 521,
+          "y": 122
+        },
+        {
+          "id": "parter-r12-p25",
+          "row": 12,
+          "number": 25,
+          "kind": "standard",
+          "x": 542,
+          "y": 122
+        },
+        {
+          "id": "parter-r12-p26",
+          "row": 12,
+          "number": 26,
+          "kind": "standard",
+          "x": 563,
+          "y": 122
+        },
+        {
+          "id": "parter-r12-p27",
+          "row": 12,
+          "number": 27,
+          "kind": "standard",
+          "x": 585,
+          "y": 122
+        },
+        {
+          "id": "parter-r12-p28",
+          "row": 12,
+          "number": 28,
+          "kind": "standard",
+          "x": 606,
+          "y": 122
+        },
+        {
+          "id": "parter-r12-p29",
+          "row": 12,
+          "number": 29,
+          "kind": "standard",
+          "x": 627,
+          "y": 122
+        },
+        {
+          "id": "parter-r12-p30",
+          "row": 12,
+          "number": 30,
+          "kind": "standard",
+          "x": 648,
+          "y": 122
+        },
+        {
+          "id": "parter-r12-p31",
+          "row": 12,
+          "number": 31,
+          "kind": "standard",
+          "x": 670,
+          "y": 122
+        },
+        {
+          "id": "parter-r12-p32",
+          "row": 12,
+          "number": 32,
+          "kind": "standard",
+          "x": 691,
+          "y": 122
+        },
+        {
+          "id": "parter-r13-p1",
+          "row": 13,
+          "number": 1,
+          "kind": "standard",
+          "x": 0,
+          "y": 101
+        },
+        {
+          "id": "parter-r13-p2",
+          "row": 13,
+          "number": 2,
+          "kind": "standard",
+          "x": 21,
+          "y": 101
+        },
+        {
+          "id": "parter-r13-p3",
+          "row": 13,
+          "number": 3,
+          "kind": "standard",
+          "x": 42,
+          "y": 101
+        },
+        {
+          "id": "parter-r13-p4",
+          "row": 13,
+          "number": 4,
+          "kind": "standard",
+          "x": 63,
+          "y": 101
+        },
+        {
+          "id": "parter-r13-p5",
+          "row": 13,
+          "number": 5,
+          "kind": "standard",
+          "x": 83,
+          "y": 101
+        },
+        {
+          "id": "parter-r13-p6",
+          "row": 13,
+          "number": 6,
+          "kind": "standard",
+          "x": 104,
+          "y": 101
+        },
+        {
+          "id": "parter-r13-p7",
+          "row": 13,
+          "number": 7,
+          "kind": "standard",
+          "x": 125,
+          "y": 101
+        },
+        {
+          "id": "parter-r13-p8",
+          "row": 13,
+          "number": 8,
+          "kind": "standard",
+          "x": 145,
+          "y": 101
+        },
+        {
+          "id": "parter-r13-p9",
+          "row": 13,
+          "number": 9,
+          "kind": "standard",
+          "x": 166,
+          "y": 101
+        },
+        {
+          "id": "parter-r13-p10",
+          "row": 13,
+          "number": 10,
+          "kind": "standard",
+          "x": 187,
+          "y": 101
+        },
+        {
+          "id": "parter-r13-p11",
+          "row": 13,
+          "number": 11,
+          "kind": "standard",
+          "x": 207,
+          "y": 101
+        },
+        {
+          "id": "parter-r13-p12",
+          "row": 13,
+          "number": 12,
+          "kind": "standard",
+          "x": 228,
+          "y": 101
+        },
+        {
+          "id": "parter-r13-p13",
+          "row": 13,
+          "number": 13,
+          "kind": "standard",
+          "x": 249,
+          "y": 101
+        },
+        {
+          "id": "parter-r13-p14",
+          "row": 13,
+          "number": 14,
+          "kind": "standard",
+          "x": 270,
+          "y": 101
+        },
+        {
+          "id": "parter-r13-p15",
+          "row": 13,
+          "number": 15,
+          "kind": "standard",
+          "x": 290,
+          "y": 101
+        },
+        {
+          "id": "parter-r13-p16",
+          "row": 13,
+          "number": 16,
+          "kind": "standard",
+          "x": 311,
+          "y": 101
+        },
+        {
+          "id": "parter-r13-p17",
+          "row": 13,
+          "number": 17,
+          "kind": "standard",
+          "x": 332,
+          "y": 101
+        },
+        {
+          "id": "parter-r13-p18",
+          "row": 13,
+          "number": 18,
+          "kind": "standard",
+          "x": 352,
+          "y": 101
+        },
+        {
+          "id": "parter-r14-p1",
+          "row": 14,
+          "number": 1,
+          "kind": "standard",
+          "x": 33,
+          "y": 59
+        },
+        {
+          "id": "parter-r14-p2",
+          "row": 14,
+          "number": 2,
+          "kind": "standard",
+          "x": 54,
+          "y": 59
+        },
+        {
+          "id": "parter-r14-p3",
+          "row": 14,
+          "number": 3,
+          "kind": "standard",
+          "x": 75,
+          "y": 59
+        },
+        {
+          "id": "parter-r14-p4",
+          "row": 14,
+          "number": 4,
+          "kind": "standard",
+          "x": 96,
+          "y": 59
+        },
+        {
+          "id": "parter-r14-p5",
+          "row": 14,
+          "number": 5,
+          "kind": "standard",
+          "x": 118,
+          "y": 59
+        },
+        {
+          "id": "parter-r14-p6",
+          "row": 14,
+          "number": 6,
+          "kind": "standard",
+          "x": 139,
+          "y": 59
+        },
+        {
+          "id": "parter-r14-p7",
+          "row": 14,
+          "number": 7,
+          "kind": "standard",
+          "x": 160,
+          "y": 59
+        },
+        {
+          "id": "parter-r14-p8",
+          "row": 14,
+          "number": 8,
+          "kind": "standard",
+          "x": 182,
+          "y": 59
+        },
+        {
+          "id": "parter-r14-p9",
+          "row": 14,
+          "number": 9,
+          "kind": "standard",
+          "x": 203,
+          "y": 59
+        },
+        {
+          "id": "parter-r14-p10",
+          "row": 14,
+          "number": 10,
+          "kind": "standard",
+          "x": 224,
+          "y": 59
+        },
+        {
+          "id": "parter-r14-p11",
+          "row": 14,
+          "number": 11,
+          "kind": "standard",
+          "x": 245,
+          "y": 59
+        },
+        {
+          "id": "parter-r14-p12",
+          "row": 14,
+          "number": 12,
+          "kind": "standard",
+          "x": 267,
+          "y": 59
+        },
+        {
+          "id": "parter-r14-p13",
+          "row": 14,
+          "number": 13,
+          "kind": "standard",
+          "x": 288,
+          "y": 59
+        },
+        {
+          "id": "parter-r14-p14",
+          "row": 14,
+          "number": 14,
+          "kind": "standard",
+          "x": 309,
+          "y": 59
+        },
+        {
+          "id": "parter-r15-p1",
+          "row": 15,
+          "number": 1,
+          "kind": "standard",
+          "x": 33,
+          "y": 32
+        },
+        {
+          "id": "parter-r15-p2",
+          "row": 15,
+          "number": 2,
+          "kind": "standard",
+          "x": 53,
+          "y": 32
+        },
+        {
+          "id": "parter-r15-p3",
+          "row": 15,
+          "number": 3,
+          "kind": "standard",
+          "x": 74,
+          "y": 32
+        },
+        {
+          "id": "parter-r15-p4",
+          "row": 15,
+          "number": 4,
+          "kind": "standard",
+          "x": 95,
+          "y": 32
+        },
+        {
+          "id": "parter-r15-p5",
+          "row": 15,
+          "number": 5,
+          "kind": "standard",
+          "x": 115,
+          "y": 32
+        },
+        {
+          "id": "parter-r15-p6",
+          "row": 15,
+          "number": 6,
+          "kind": "standard",
+          "x": 136,
+          "y": 32
+        },
+        {
+          "id": "parter-r15-p7",
+          "row": 15,
+          "number": 7,
+          "kind": "standard",
+          "x": 157,
+          "y": 32
+        },
+        {
+          "id": "parter-r15-p8",
+          "row": 15,
+          "number": 8,
+          "kind": "standard",
+          "x": 178,
+          "y": 32
+        },
+        {
+          "id": "parter-r15-p9",
+          "row": 15,
+          "number": 9,
+          "kind": "standard",
+          "x": 198,
+          "y": 32
+        },
+        {
+          "id": "parter-r15-p10",
+          "row": 15,
+          "number": 10,
+          "kind": "standard",
+          "x": 219,
+          "y": 32
+        },
+        {
+          "id": "parter-r16-p1",
+          "row": 16,
+          "number": 1,
+          "kind": "standard",
+          "x": 43,
+          "y": 0
+        },
+        {
+          "id": "parter-r16-p2",
+          "row": 16,
+          "number": 2,
+          "kind": "standard",
+          "x": 64,
+          "y": 0
+        },
+        {
+          "id": "parter-r16-p3",
+          "row": 16,
+          "number": 3,
+          "kind": "standard",
+          "x": 85,
+          "y": 0
+        },
+        {
+          "id": "parter-r16-p4",
+          "row": 16,
+          "number": 4,
+          "kind": "standard",
+          "x": 106,
+          "y": 0
+        },
+        {
+          "id": "parter-r16-p5",
+          "row": 16,
+          "number": 5,
+          "kind": "standard",
+          "x": 127,
+          "y": 0
+        },
+        {
+          "id": "parter-r16-p6",
+          "row": 16,
+          "number": 6,
+          "kind": "standard",
+          "x": 148,
+          "y": 0
+        },
+        {
+          "id": "parter-r16-p7",
+          "row": 16,
+          "number": 7,
+          "kind": "standard",
+          "x": 169,
+          "y": 0
+        },
+        {
+          "id": "parter-r16-p8",
+          "row": 16,
+          "number": 8,
+          "kind": "standard",
+          "x": 191,
+          "y": 0
+        },
+        {
+          "id": "parter-r1-p1",
+          "row": 1,
+          "number": 1,
+          "kind": "standard",
+          "x": 250,
+          "y": 330
+        },
+        {
+          "id": "parter-r1-p2",
+          "row": 1,
+          "number": 2,
+          "kind": "standard",
+          "x": 272,
+          "y": 330
+        },
+        {
+          "id": "parter-r1-p3",
+          "row": 1,
+          "number": 3,
+          "kind": "standard",
+          "x": 294,
+          "y": 330
+        },
+        {
+          "id": "parter-r1-p4",
+          "row": 1,
+          "number": 4,
+          "kind": "standard",
+          "x": 316,
+          "y": 330
+        },
+        {
+          "id": "parter-r1-p5",
+          "row": 1,
+          "number": 5,
+          "kind": "standard",
+          "x": 337,
+          "y": 330
+        },
+        {
+          "id": "parter-r1-p6",
+          "row": 1,
+          "number": 6,
+          "kind": "standard",
+          "x": 359,
+          "y": 330
+        },
+        {
+          "id": "parter-r1-p7",
+          "row": 1,
+          "number": 7,
+          "kind": "standard",
+          "x": 381,
+          "y": 330
+        },
+        {
+          "id": "parter-r1-p8",
+          "row": 1,
+          "number": 8,
+          "kind": "standard",
+          "x": 403,
+          "y": 330
+        },
+        {
+          "id": "parter-r1-p9",
+          "row": 1,
+          "number": 9,
+          "kind": "standard",
+          "x": 425,
+          "y": 330
+        },
+        {
+          "id": "parter-r1-p10",
+          "row": 1,
+          "number": 10,
+          "kind": "standard",
+          "x": 447,
+          "y": 330
+        },
+        {
+          "id": "parter-r1-p11",
+          "row": 1,
+          "number": 11,
+          "kind": "standard",
+          "x": 468,
+          "y": 330
+        },
+        {
+          "id": "parter-r2-p1",
+          "row": 2,
+          "number": 1,
+          "kind": "standard",
+          "x": 135,
+          "y": 371
+        },
+        {
+          "id": "parter-r2-p2",
+          "row": 2,
+          "number": 2,
+          "kind": "standard",
+          "x": 156,
+          "y": 371
+        },
+        {
+          "id": "parter-r2-p3",
+          "row": 2,
+          "number": 3,
+          "kind": "standard",
+          "x": 176,
+          "y": 371
+        },
+        {
+          "id": "parter-r2-p4",
+          "row": 2,
+          "number": 4,
+          "kind": "standard",
+          "x": 197,
+          "y": 371
+        },
+        {
+          "id": "parter-r2-p5",
+          "row": 2,
+          "number": 5,
+          "kind": "standard",
+          "x": 218,
+          "y": 371
+        },
+        {
+          "id": "parter-r2-p6",
+          "row": 2,
+          "number": 6,
+          "kind": "standard",
+          "x": 239,
+          "y": 371
+        },
+        {
+          "id": "parter-r2-p7",
+          "row": 2,
+          "number": 7,
+          "kind": "standard",
+          "x": 259,
+          "y": 371
+        },
+        {
+          "id": "parter-r2-p8",
+          "row": 2,
+          "number": 8,
+          "kind": "standard",
+          "x": 280,
+          "y": 371
+        },
+        {
+          "id": "parter-r2-p9",
+          "row": 2,
+          "number": 9,
+          "kind": "standard",
+          "x": 301,
+          "y": 371
+        },
+        {
+          "id": "parter-r2-p10",
+          "row": 2,
+          "number": 10,
+          "kind": "standard",
+          "x": 321,
+          "y": 371
+        },
+        {
+          "id": "parter-r2-p11",
+          "row": 2,
+          "number": 11,
+          "kind": "standard",
+          "x": 342,
+          "y": 371
+        },
+        {
+          "id": "parter-r2-p12",
+          "row": 2,
+          "number": 12,
+          "kind": "standard",
+          "x": 363,
+          "y": 371
+        },
+        {
+          "id": "parter-r2-p13",
+          "row": 2,
+          "number": 13,
+          "kind": "standard",
+          "x": 383,
+          "y": 371
+        },
+        {
+          "id": "parter-r2-p14",
+          "row": 2,
+          "number": 14,
+          "kind": "standard",
+          "x": 404,
+          "y": 371
+        },
+        {
+          "id": "parter-r2-p15",
+          "row": 2,
+          "number": 15,
+          "kind": "standard",
+          "x": 425,
+          "y": 371
+        },
+        {
+          "id": "parter-r2-p16",
+          "row": 2,
+          "number": 16,
+          "kind": "standard",
+          "x": 445,
+          "y": 371
+        },
+        {
+          "id": "parter-r2-p17",
+          "row": 2,
+          "number": 17,
+          "kind": "standard",
+          "x": 466,
+          "y": 371
+        },
+        {
+          "id": "parter-r2-p18",
+          "row": 2,
+          "number": 18,
+          "kind": "standard",
+          "x": 487,
+          "y": 371
+        },
+        {
+          "id": "parter-r2-p19",
+          "row": 2,
+          "number": 19,
+          "kind": "standard",
+          "x": 508,
+          "y": 371
+        },
+        {
+          "id": "parter-r2-p20",
+          "row": 2,
+          "number": 20,
+          "kind": "standard",
+          "x": 528,
+          "y": 371
+        },
+        {
+          "id": "parter-r2-p21",
+          "row": 2,
+          "number": 21,
+          "kind": "standard",
+          "x": 549,
+          "y": 371
+        },
+        {
+          "id": "parter-r2-p22",
+          "row": 2,
+          "number": 22,
+          "kind": "standard",
+          "x": 570,
+          "y": 371
+        },
+        {
+          "id": "parter-r3-p1",
+          "row": 3,
+          "number": 1,
+          "kind": "standard",
+          "x": 103,
+          "y": 350
+        },
+        {
+          "id": "parter-r3-p2",
+          "row": 3,
+          "number": 2,
+          "kind": "standard",
+          "x": 124,
+          "y": 350
+        },
+        {
+          "id": "parter-r3-p3",
+          "row": 3,
+          "number": 3,
+          "kind": "standard",
+          "x": 144,
+          "y": 350
+        },
+        {
+          "id": "parter-r3-p4",
+          "row": 3,
+          "number": 4,
+          "kind": "standard",
+          "x": 165,
+          "y": 350
+        },
+        {
+          "id": "parter-r3-p5",
+          "row": 3,
+          "number": 5,
+          "kind": "standard",
+          "x": 186,
+          "y": 350
+        },
+        {
+          "id": "parter-r3-p6",
+          "row": 3,
+          "number": 6,
+          "kind": "standard",
+          "x": 206,
+          "y": 350
+        },
+        {
+          "id": "parter-r3-p7",
+          "row": 3,
+          "number": 7,
+          "kind": "standard",
+          "x": 227,
+          "y": 350
+        },
+        {
+          "id": "parter-r3-p8",
+          "row": 3,
+          "number": 8,
+          "kind": "standard",
+          "x": 248,
+          "y": 350
+        },
+        {
+          "id": "parter-r3-p9",
+          "row": 3,
+          "number": 9,
+          "kind": "standard",
+          "x": 268,
+          "y": 350
+        },
+        {
+          "id": "parter-r3-p10",
+          "row": 3,
+          "number": 10,
+          "kind": "standard",
+          "x": 289,
+          "y": 350
+        },
+        {
+          "id": "parter-r3-p11",
+          "row": 3,
+          "number": 11,
+          "kind": "standard",
+          "x": 310,
+          "y": 350
+        },
+        {
+          "id": "parter-r3-p12",
+          "row": 3,
+          "number": 12,
+          "kind": "standard",
+          "x": 331,
+          "y": 350
+        },
+        {
+          "id": "parter-r3-p13",
+          "row": 3,
+          "number": 13,
+          "kind": "standard",
+          "x": 351,
+          "y": 350
+        },
+        {
+          "id": "parter-r3-p14",
+          "row": 3,
+          "number": 14,
+          "kind": "standard",
+          "x": 372,
+          "y": 350
+        },
+        {
+          "id": "parter-r3-p15",
+          "row": 3,
+          "number": 15,
+          "kind": "standard",
+          "x": 393,
+          "y": 350
+        },
+        {
+          "id": "parter-r3-p16",
+          "row": 3,
+          "number": 16,
+          "kind": "standard",
+          "x": 413,
+          "y": 350
+        },
+        {
+          "id": "parter-r3-p17",
+          "row": 3,
+          "number": 17,
+          "kind": "standard",
+          "x": 434,
+          "y": 350
+        },
+        {
+          "id": "parter-r3-p18",
+          "row": 3,
+          "number": 18,
+          "kind": "standard",
+          "x": 455,
+          "y": 350
+        },
+        {
+          "id": "parter-r3-p19",
+          "row": 3,
+          "number": 19,
+          "kind": "standard",
+          "x": 475,
+          "y": 350
+        },
+        {
+          "id": "parter-r3-p20",
+          "row": 3,
+          "number": 20,
+          "kind": "standard",
+          "x": 496,
+          "y": 350
+        },
+        {
+          "id": "parter-r3-p21",
+          "row": 3,
+          "number": 21,
+          "kind": "standard",
+          "x": 517,
+          "y": 350
+        },
+        {
+          "id": "parter-r3-p22",
+          "row": 3,
+          "number": 22,
+          "kind": "standard",
+          "x": 538,
+          "y": 350
+        },
+        {
+          "id": "parter-r3-p23",
+          "row": 3,
+          "number": 23,
+          "kind": "standard",
+          "x": 558,
+          "y": 350
+        },
+        {
+          "id": "parter-r3-p24",
+          "row": 3,
+          "number": 24,
+          "kind": "standard",
+          "x": 579,
+          "y": 350
+        },
+        {
+          "id": "parter-r3-p25",
+          "row": 3,
+          "number": 25,
+          "kind": "standard",
+          "x": 600,
+          "y": 350
+        },
+        {
+          "id": "parter-r4-p1",
+          "row": 4,
+          "number": 1,
+          "kind": "standard",
+          "x": 94,
+          "y": 309
+        },
+        {
+          "id": "parter-r4-p2",
+          "row": 4,
+          "number": 2,
+          "kind": "standard",
+          "x": 114,
+          "y": 309
+        },
+        {
+          "id": "parter-r4-p3",
+          "row": 4,
+          "number": 3,
+          "kind": "standard",
+          "x": 135,
+          "y": 309
+        },
+        {
+          "id": "parter-r4-p4",
+          "row": 4,
+          "number": 4,
+          "kind": "standard",
+          "x": 156,
+          "y": 309
+        },
+        {
+          "id": "parter-r4-p5",
+          "row": 4,
+          "number": 5,
+          "kind": "standard",
+          "x": 176,
+          "y": 309
+        },
+        {
+          "id": "parter-r4-p6",
+          "row": 4,
+          "number": 6,
+          "kind": "standard",
+          "x": 197,
+          "y": 309
+        },
+        {
+          "id": "parter-r4-p7",
+          "row": 4,
+          "number": 7,
+          "kind": "standard",
+          "x": 218,
+          "y": 309
+        },
+        {
+          "id": "parter-r4-p8",
+          "row": 4,
+          "number": 8,
+          "kind": "standard",
+          "x": 239,
+          "y": 309
+        },
+        {
+          "id": "parter-r4-p9",
+          "row": 4,
+          "number": 9,
+          "kind": "standard",
+          "x": 259,
+          "y": 309
+        },
+        {
+          "id": "parter-r4-p10",
+          "row": 4,
+          "number": 10,
+          "kind": "standard",
+          "x": 280,
+          "y": 309
+        },
+        {
+          "id": "parter-r4-p11",
+          "row": 4,
+          "number": 11,
+          "kind": "standard",
+          "x": 301,
+          "y": 309
+        },
+        {
+          "id": "parter-r4-p12",
+          "row": 4,
+          "number": 12,
+          "kind": "standard",
+          "x": 321,
+          "y": 309
+        },
+        {
+          "id": "parter-r4-p13",
+          "row": 4,
+          "number": 13,
+          "kind": "standard",
+          "x": 342,
+          "y": 309
+        },
+        {
+          "id": "parter-r4-p14",
+          "row": 4,
+          "number": 14,
+          "kind": "standard",
+          "x": 363,
+          "y": 309
+        },
+        {
+          "id": "parter-r4-p15",
+          "row": 4,
+          "number": 15,
+          "kind": "standard",
+          "x": 383,
+          "y": 309
+        },
+        {
+          "id": "parter-r4-p16",
+          "row": 4,
+          "number": 16,
+          "kind": "standard",
+          "x": 404,
+          "y": 309
+        },
+        {
+          "id": "parter-r4-p17",
+          "row": 4,
+          "number": 17,
+          "kind": "standard",
+          "x": 425,
+          "y": 309
+        },
+        {
+          "id": "parter-r4-p18",
+          "row": 4,
+          "number": 18,
+          "kind": "standard",
+          "x": 445,
+          "y": 309
+        },
+        {
+          "id": "parter-r4-p19",
+          "row": 4,
+          "number": 19,
+          "kind": "standard",
+          "x": 466,
+          "y": 309
+        },
+        {
+          "id": "parter-r4-p20",
+          "row": 4,
+          "number": 20,
+          "kind": "standard",
+          "x": 487,
+          "y": 309
+        },
+        {
+          "id": "parter-r4-p21",
+          "row": 4,
+          "number": 21,
+          "kind": "standard",
+          "x": 508,
+          "y": 309
+        },
+        {
+          "id": "parter-r4-p22",
+          "row": 4,
+          "number": 22,
+          "kind": "standard",
+          "x": 528,
+          "y": 309
+        },
+        {
+          "id": "parter-r4-p23",
+          "row": 4,
+          "number": 23,
+          "kind": "standard",
+          "x": 549,
+          "y": 309
+        },
+        {
+          "id": "parter-r4-p24",
+          "row": 4,
+          "number": 24,
+          "kind": "standard",
+          "x": 570,
+          "y": 309
+        },
+        {
+          "id": "parter-r4-p25",
+          "row": 4,
+          "number": 25,
+          "kind": "standard",
+          "x": 590,
+          "y": 309
+        },
+        {
+          "id": "parter-r4-p26",
+          "row": 4,
+          "number": 26,
+          "kind": "standard",
+          "x": 611,
+          "y": 309
+        },
+        {
+          "id": "parter-r5-p1",
+          "row": 5,
+          "number": 1,
+          "kind": "standard",
+          "x": 83,
+          "y": 286
+        },
+        {
+          "id": "parter-r5-p2",
+          "row": 5,
+          "number": 2,
+          "kind": "standard",
+          "x": 104,
+          "y": 286
+        },
+        {
+          "id": "parter-r5-p3",
+          "row": 5,
+          "number": 3,
+          "kind": "standard",
+          "x": 125,
+          "y": 286
+        },
+        {
+          "id": "parter-r5-p4",
+          "row": 5,
+          "number": 4,
+          "kind": "standard",
+          "x": 145,
+          "y": 286
+        },
+        {
+          "id": "parter-r5-p5",
+          "row": 5,
+          "number": 5,
+          "kind": "standard",
+          "x": 166,
+          "y": 286
+        },
+        {
+          "id": "parter-r5-p6",
+          "row": 5,
+          "number": 6,
+          "kind": "standard",
+          "x": 187,
+          "y": 286
+        },
+        {
+          "id": "parter-r5-p7",
+          "row": 5,
+          "number": 7,
+          "kind": "standard",
+          "x": 207,
+          "y": 286
+        },
+        {
+          "id": "parter-r5-p8",
+          "row": 5,
+          "number": 8,
+          "kind": "standard",
+          "x": 228,
+          "y": 286
+        },
+        {
+          "id": "parter-r5-p9",
+          "row": 5,
+          "number": 9,
+          "kind": "standard",
+          "x": 249,
+          "y": 286
+        },
+        {
+          "id": "parter-r5-p10",
+          "row": 5,
+          "number": 10,
+          "kind": "standard",
+          "x": 270,
+          "y": 286
+        },
+        {
+          "id": "parter-r5-p11",
+          "row": 5,
+          "number": 11,
+          "kind": "standard",
+          "x": 290,
+          "y": 286
+        },
+        {
+          "id": "parter-r5-p12",
+          "row": 5,
+          "number": 12,
+          "kind": "standard",
+          "x": 311,
+          "y": 286
+        },
+        {
+          "id": "parter-r5-p13",
+          "row": 5,
+          "number": 13,
+          "kind": "standard",
+          "x": 332,
+          "y": 286
+        },
+        {
+          "id": "parter-r5-p14",
+          "row": 5,
+          "number": 14,
+          "kind": "standard",
+          "x": 352,
+          "y": 286
+        },
+        {
+          "id": "parter-r5-p15",
+          "row": 5,
+          "number": 15,
+          "kind": "standard",
+          "x": 373,
+          "y": 286
+        },
+        {
+          "id": "parter-r5-p16",
+          "row": 5,
+          "number": 16,
+          "kind": "standard",
+          "x": 394,
+          "y": 286
+        },
+        {
+          "id": "parter-r5-p17",
+          "row": 5,
+          "number": 17,
+          "kind": "standard",
+          "x": 414,
+          "y": 286
+        },
+        {
+          "id": "parter-r5-p18",
+          "row": 5,
+          "number": 18,
+          "kind": "standard",
+          "x": 435,
+          "y": 286
+        },
+        {
+          "id": "parter-r5-p19",
+          "row": 5,
+          "number": 19,
+          "kind": "standard",
+          "x": 456,
+          "y": 286
+        },
+        {
+          "id": "parter-r5-p20",
+          "row": 5,
+          "number": 20,
+          "kind": "standard",
+          "x": 477,
+          "y": 286
+        },
+        {
+          "id": "parter-r5-p21",
+          "row": 5,
+          "number": 21,
+          "kind": "standard",
+          "x": 497,
+          "y": 286
+        },
+        {
+          "id": "parter-r5-p22",
+          "row": 5,
+          "number": 22,
+          "kind": "standard",
+          "x": 518,
+          "y": 286
+        },
+        {
+          "id": "parter-r5-p23",
+          "row": 5,
+          "number": 23,
+          "kind": "standard",
+          "x": 539,
+          "y": 286
+        },
+        {
+          "id": "parter-r5-p24",
+          "row": 5,
+          "number": 24,
+          "kind": "standard",
+          "x": 559,
+          "y": 286
+        },
+        {
+          "id": "parter-r5-p25",
+          "row": 5,
+          "number": 25,
+          "kind": "standard",
+          "x": 580,
+          "y": 286
+        },
+        {
+          "id": "parter-r5-p26",
+          "row": 5,
+          "number": 26,
+          "kind": "standard",
+          "x": 601,
+          "y": 286
+        },
+        {
+          "id": "parter-r5-p27",
+          "row": 5,
+          "number": 27,
+          "kind": "standard",
+          "x": 621,
+          "y": 286
+        },
+        {
+          "id": "parter-r6-p1",
+          "row": 6,
+          "number": 1,
+          "kind": "standard",
+          "x": 94,
+          "y": 254
+        },
+        {
+          "id": "parter-r6-p2",
+          "row": 6,
+          "number": 2,
+          "kind": "standard",
+          "x": 114,
+          "y": 254
+        },
+        {
+          "id": "parter-r6-p3",
+          "row": 6,
+          "number": 3,
+          "kind": "standard",
+          "x": 135,
+          "y": 254
+        },
+        {
+          "id": "parter-r6-p4",
+          "row": 6,
+          "number": 4,
+          "kind": "standard",
+          "x": 156,
+          "y": 254
+        },
+        {
+          "id": "parter-r6-p5",
+          "row": 6,
+          "number": 5,
+          "kind": "standard",
+          "x": 176,
+          "y": 254
+        },
+        {
+          "id": "parter-r6-p6",
+          "row": 6,
+          "number": 6,
+          "kind": "standard",
+          "x": 197,
+          "y": 254
+        },
+        {
+          "id": "parter-r6-p7",
+          "row": 6,
+          "number": 7,
+          "kind": "standard",
+          "x": 218,
+          "y": 254
+        },
+        {
+          "id": "parter-r6-p8",
+          "row": 6,
+          "number": 8,
+          "kind": "standard",
+          "x": 239,
+          "y": 254
+        },
+        {
+          "id": "parter-r6-p9",
+          "row": 6,
+          "number": 9,
+          "kind": "standard",
+          "x": 259,
+          "y": 254
+        },
+        {
+          "id": "parter-r6-p10",
+          "row": 6,
+          "number": 10,
+          "kind": "standard",
+          "x": 280,
+          "y": 254
+        },
+        {
+          "id": "parter-r6-p11",
+          "row": 6,
+          "number": 11,
+          "kind": "standard",
+          "x": 301,
+          "y": 254
+        },
+        {
+          "id": "parter-r6-p12",
+          "row": 6,
+          "number": 12,
+          "kind": "standard",
+          "x": 321,
+          "y": 254
+        },
+        {
+          "id": "parter-r6-p13",
+          "row": 6,
+          "number": 13,
+          "kind": "standard",
+          "x": 342,
+          "y": 254
+        },
+        {
+          "id": "parter-r6-p14",
+          "row": 6,
+          "number": 14,
+          "kind": "standard",
+          "x": 363,
+          "y": 254
+        },
+        {
+          "id": "parter-r6-p15",
+          "row": 6,
+          "number": 15,
+          "kind": "standard",
+          "x": 383,
+          "y": 254
+        },
+        {
+          "id": "parter-r6-p16",
+          "row": 6,
+          "number": 16,
+          "kind": "standard",
+          "x": 404,
+          "y": 254
+        },
+        {
+          "id": "parter-r6-p17",
+          "row": 6,
+          "number": 17,
+          "kind": "standard",
+          "x": 425,
+          "y": 254
+        },
+        {
+          "id": "parter-r6-p18",
+          "row": 6,
+          "number": 18,
+          "kind": "standard",
+          "x": 445,
+          "y": 254
+        },
+        {
+          "id": "parter-r6-p19",
+          "row": 6,
+          "number": 19,
+          "kind": "standard",
+          "x": 466,
+          "y": 254
+        },
+        {
+          "id": "parter-r6-p20",
+          "row": 6,
+          "number": 20,
+          "kind": "standard",
+          "x": 487,
+          "y": 254
+        },
+        {
+          "id": "parter-r6-p21",
+          "row": 6,
+          "number": 21,
+          "kind": "standard",
+          "x": 508,
+          "y": 254
+        },
+        {
+          "id": "parter-r6-p22",
+          "row": 6,
+          "number": 22,
+          "kind": "standard",
+          "x": 528,
+          "y": 254
+        },
+        {
+          "id": "parter-r6-p23",
+          "row": 6,
+          "number": 23,
+          "kind": "standard",
+          "x": 549,
+          "y": 254
+        },
+        {
+          "id": "parter-r6-p24",
+          "row": 6,
+          "number": 24,
+          "kind": "standard",
+          "x": 570,
+          "y": 254
+        },
+        {
+          "id": "parter-r6-p25",
+          "row": 6,
+          "number": 25,
+          "kind": "standard",
+          "x": 590,
+          "y": 254
+        },
+        {
+          "id": "parter-r6-p26",
+          "row": 6,
+          "number": 26,
+          "kind": "standard",
+          "x": 611,
+          "y": 254
+        },
+        {
+          "id": "parter-r7-p1",
+          "row": 7,
+          "number": 1,
+          "kind": "standard",
+          "x": 83,
+          "y": 231
+        },
+        {
+          "id": "parter-r7-p2",
+          "row": 7,
+          "number": 2,
+          "kind": "standard",
+          "x": 104,
+          "y": 231
+        },
+        {
+          "id": "parter-r7-p3",
+          "row": 7,
+          "number": 3,
+          "kind": "standard",
+          "x": 125,
+          "y": 231
+        },
+        {
+          "id": "parter-r7-p4",
+          "row": 7,
+          "number": 4,
+          "kind": "standard",
+          "x": 146,
+          "y": 231
+        },
+        {
+          "id": "parter-r7-p5",
+          "row": 7,
+          "number": 5,
+          "kind": "standard",
+          "x": 167,
+          "y": 231
+        },
+        {
+          "id": "parter-r7-p6",
+          "row": 7,
+          "number": 6,
+          "kind": "standard",
+          "x": 188,
+          "y": 231
+        },
+        {
+          "id": "parter-r7-p7",
+          "row": 7,
+          "number": 7,
+          "kind": "standard",
+          "x": 209,
+          "y": 231
+        },
+        {
+          "id": "parter-r7-p8",
+          "row": 7,
+          "number": 8,
+          "kind": "standard",
+          "x": 230,
+          "y": 231
+        },
+        {
+          "id": "parter-r7-p9",
+          "row": 7,
+          "number": 9,
+          "kind": "standard",
+          "x": 251,
+          "y": 231
+        },
+        {
+          "id": "parter-r7-p10",
+          "row": 7,
+          "number": 10,
+          "kind": "standard",
+          "x": 272,
+          "y": 231
+        },
+        {
+          "id": "parter-r7-p11",
+          "row": 7,
+          "number": 11,
+          "kind": "standard",
+          "x": 293,
+          "y": 231
+        },
+        {
+          "id": "parter-r7-p12",
+          "row": 7,
+          "number": 12,
+          "kind": "standard",
+          "x": 314,
+          "y": 231
+        },
+        {
+          "id": "parter-r7-p13",
+          "row": 7,
+          "number": 13,
+          "kind": "standard",
+          "x": 335,
+          "y": 231
+        },
+        {
+          "id": "parter-r7-p14",
+          "row": 7,
+          "number": 14,
+          "kind": "standard",
+          "x": 356,
+          "y": 231
+        },
+        {
+          "id": "parter-r7-p15",
+          "row": 7,
+          "number": 15,
+          "kind": "standard",
+          "x": 377,
+          "y": 231
+        },
+        {
+          "id": "parter-r7-p16",
+          "row": 7,
+          "number": 16,
+          "kind": "standard",
+          "x": 398,
+          "y": 231
+        },
+        {
+          "id": "parter-r7-p17",
+          "row": 7,
+          "number": 17,
+          "kind": "standard",
+          "x": 419,
+          "y": 231
+        },
+        {
+          "id": "parter-r7-p18",
+          "row": 7,
+          "number": 18,
+          "kind": "standard",
+          "x": 440,
+          "y": 231
+        },
+        {
+          "id": "parter-r7-p19",
+          "row": 7,
+          "number": 19,
+          "kind": "standard",
+          "x": 461,
+          "y": 231
+        },
+        {
+          "id": "parter-r7-p20",
+          "row": 7,
+          "number": 20,
+          "kind": "standard",
+          "x": 482,
+          "y": 231
+        },
+        {
+          "id": "parter-r7-p21",
+          "row": 7,
+          "number": 21,
+          "kind": "standard",
+          "x": 503,
+          "y": 231
+        },
+        {
+          "id": "parter-r7-p22",
+          "row": 7,
+          "number": 22,
+          "kind": "standard",
+          "x": 524,
+          "y": 231
+        },
+        {
+          "id": "parter-r7-p23",
+          "row": 7,
+          "number": 23,
+          "kind": "standard",
+          "x": 545,
+          "y": 231
+        },
+        {
+          "id": "parter-r7-p24",
+          "row": 7,
+          "number": 24,
+          "kind": "standard",
+          "x": 566,
+          "y": 231
+        },
+        {
+          "id": "parter-r7-p25",
+          "row": 7,
+          "number": 25,
+          "kind": "standard",
+          "x": 587,
+          "y": 231
+        },
+        {
+          "id": "parter-r7-p26",
+          "row": 7,
+          "number": 26,
+          "kind": "standard",
+          "x": 608,
+          "y": 231
+        },
+        {
+          "id": "parter-r7-p27",
+          "row": 7,
+          "number": 27,
+          "kind": "standard",
+          "x": 629,
+          "y": 231
+        },
+        {
+          "id": "parter-r8-p1",
+          "row": 8,
+          "number": 1,
+          "kind": "standard",
+          "x": 94,
+          "y": 209
+        },
+        {
+          "id": "parter-r8-p2",
+          "row": 8,
+          "number": 2,
+          "kind": "standard",
+          "x": 114,
+          "y": 209
+        },
+        {
+          "id": "parter-r8-p3",
+          "row": 8,
+          "number": 3,
+          "kind": "standard",
+          "x": 135,
+          "y": 209
+        },
+        {
+          "id": "parter-r8-p4",
+          "row": 8,
+          "number": 4,
+          "kind": "standard",
+          "x": 156,
+          "y": 209
+        },
+        {
+          "id": "parter-r8-p5",
+          "row": 8,
+          "number": 5,
+          "kind": "standard",
+          "x": 176,
+          "y": 209
+        },
+        {
+          "id": "parter-r8-p6",
+          "row": 8,
+          "number": 6,
+          "kind": "standard",
+          "x": 197,
+          "y": 209
+        },
+        {
+          "id": "parter-r8-p7",
+          "row": 8,
+          "number": 7,
+          "kind": "standard",
+          "x": 218,
+          "y": 209
+        },
+        {
+          "id": "parter-r8-p8",
+          "row": 8,
+          "number": 8,
+          "kind": "standard",
+          "x": 239,
+          "y": 209
+        },
+        {
+          "id": "parter-r8-p9",
+          "row": 8,
+          "number": 9,
+          "kind": "standard",
+          "x": 259,
+          "y": 209
+        },
+        {
+          "id": "parter-r8-p10",
+          "row": 8,
+          "number": 10,
+          "kind": "standard",
+          "x": 280,
+          "y": 209
+        },
+        {
+          "id": "parter-r8-p11",
+          "row": 8,
+          "number": 11,
+          "kind": "standard",
+          "x": 301,
+          "y": 209
+        },
+        {
+          "id": "parter-r8-p12",
+          "row": 8,
+          "number": 12,
+          "kind": "standard",
+          "x": 321,
+          "y": 209
+        },
+        {
+          "id": "parter-r8-p13",
+          "row": 8,
+          "number": 13,
+          "kind": "standard",
+          "x": 342,
+          "y": 209
+        },
+        {
+          "id": "parter-r8-p14",
+          "row": 8,
+          "number": 14,
+          "kind": "standard",
+          "x": 363,
+          "y": 209
+        },
+        {
+          "id": "parter-r8-p15",
+          "row": 8,
+          "number": 15,
+          "kind": "standard",
+          "x": 383,
+          "y": 209
+        },
+        {
+          "id": "parter-r8-p16",
+          "row": 8,
+          "number": 16,
+          "kind": "standard",
+          "x": 404,
+          "y": 209
+        },
+        {
+          "id": "parter-r8-p17",
+          "row": 8,
+          "number": 17,
+          "kind": "standard",
+          "x": 425,
+          "y": 209
+        },
+        {
+          "id": "parter-r8-p18",
+          "row": 8,
+          "number": 18,
+          "kind": "standard",
+          "x": 445,
+          "y": 209
+        },
+        {
+          "id": "parter-r8-p19",
+          "row": 8,
+          "number": 19,
+          "kind": "standard",
+          "x": 466,
+          "y": 209
+        },
+        {
+          "id": "parter-r8-p20",
+          "row": 8,
+          "number": 20,
+          "kind": "standard",
+          "x": 487,
+          "y": 209
+        },
+        {
+          "id": "parter-r8-p21",
+          "row": 8,
+          "number": 21,
+          "kind": "standard",
+          "x": 508,
+          "y": 209
+        },
+        {
+          "id": "parter-r8-p22",
+          "row": 8,
+          "number": 22,
+          "kind": "standard",
+          "x": 528,
+          "y": 209
+        },
+        {
+          "id": "parter-r8-p23",
+          "row": 8,
+          "number": 23,
+          "kind": "standard",
+          "x": 549,
+          "y": 209
+        },
+        {
+          "id": "parter-r8-p24",
+          "row": 8,
+          "number": 24,
+          "kind": "standard",
+          "x": 570,
+          "y": 209
+        },
+        {
+          "id": "parter-r8-p25",
+          "row": 8,
+          "number": 25,
+          "kind": "standard",
+          "x": 590,
+          "y": 209
+        },
+        {
+          "id": "parter-r8-p26",
+          "row": 8,
+          "number": 26,
+          "kind": "standard",
+          "x": 611,
+          "y": 209
+        },
+        {
+          "id": "parter-r9-p1",
+          "row": 9,
+          "number": 1,
+          "kind": "standard",
+          "x": 63,
+          "y": 188
+        },
+        {
+          "id": "parter-r9-p2",
+          "row": 9,
+          "number": 2,
+          "kind": "standard",
+          "x": 86,
+          "y": 188
+        },
+        {
+          "id": "parter-r9-p3",
+          "row": 9,
+          "number": 3,
+          "kind": "standard",
+          "x": 109,
+          "y": 188
+        },
+        {
+          "id": "parter-r9-p4",
+          "row": 9,
+          "number": 4,
+          "kind": "standard",
+          "x": 132,
+          "y": 188
+        },
+        {
+          "id": "parter-r9-p5",
+          "row": 9,
+          "number": 5,
+          "kind": "standard",
+          "x": 155,
+          "y": 188
+        },
+        {
+          "id": "parter-r9-p6",
+          "row": 9,
+          "number": 6,
+          "kind": "standard",
+          "x": 178,
+          "y": 188
+        },
+        {
+          "id": "parter-r9-p7",
+          "row": 9,
+          "number": 7,
+          "kind": "standard",
+          "x": 201,
+          "y": 188
+        },
+        {
+          "id": "parter-r9-p8",
+          "row": 9,
+          "number": 8,
+          "kind": "standard",
+          "x": 224,
+          "y": 188
+        },
+        {
+          "id": "parter-r9-p9",
+          "row": 9,
+          "number": 9,
+          "kind": "standard",
+          "x": 247,
+          "y": 188
+        },
+        {
+          "id": "parter-r9-p10",
+          "row": 9,
+          "number": 10,
+          "kind": "standard",
+          "x": 270,
+          "y": 188
+        },
+        {
+          "id": "parter-r9-p11",
+          "row": 9,
+          "number": 11,
+          "kind": "standard",
+          "x": 293,
+          "y": 188
+        },
+        {
+          "id": "parter-r9-p12",
+          "row": 9,
+          "number": 12,
+          "kind": "standard",
+          "x": 316,
+          "y": 188
+        },
+        {
+          "id": "parter-r9-p13",
+          "row": 9,
+          "number": 13,
+          "kind": "standard",
+          "x": 339,
+          "y": 188
+        },
+        {
+          "id": "parter-r9-p14",
+          "row": 9,
+          "number": 14,
+          "kind": "standard",
+          "x": 362,
+          "y": 188
+        },
+        {
+          "id": "parter-r9-p15",
+          "row": 9,
+          "number": 15,
+          "kind": "standard",
+          "x": 385,
+          "y": 188
+        },
+        {
+          "id": "parter-r9-p16",
+          "row": 9,
+          "number": 16,
+          "kind": "standard",
+          "x": 408,
+          "y": 188
+        },
+        {
+          "id": "parter-r9-p17",
+          "row": 9,
+          "number": 17,
+          "kind": "standard",
+          "x": 431,
+          "y": 188
+        },
+        {
+          "id": "parter-r9-p18",
+          "row": 9,
+          "number": 18,
+          "kind": "standard",
+          "x": 454,
+          "y": 188
+        },
+        {
+          "id": "parter-r9-p19",
+          "row": 9,
+          "number": 19,
+          "kind": "standard",
+          "x": 477,
+          "y": 188
+        },
+        {
+          "id": "parter-r9-p20",
+          "row": 9,
+          "number": 20,
+          "kind": "standard",
+          "x": 500,
+          "y": 188
+        },
+        {
+          "id": "parter-r9-p21",
+          "row": 9,
+          "number": 21,
+          "kind": "standard",
+          "x": 523,
+          "y": 188
+        },
+        {
+          "id": "parter-r9-p22",
+          "row": 9,
+          "number": 22,
+          "kind": "standard",
+          "x": 546,
+          "y": 188
+        },
+        {
+          "id": "parter-r9-p23",
+          "row": 9,
+          "number": 23,
+          "kind": "standard",
+          "x": 569,
+          "y": 188
+        },
+        {
+          "id": "parter-r9-p24",
+          "row": 9,
+          "number": 24,
+          "kind": "standard",
+          "x": 592,
+          "y": 188
+        },
+        {
+          "id": "parter-r9-p25",
+          "row": 9,
+          "number": 25,
+          "kind": "standard",
+          "x": 615,
+          "y": 188
+        },
+        {
+          "id": "parter-r9-p26",
+          "row": 9,
+          "number": 26,
+          "kind": "standard",
+          "x": 638,
+          "y": 188
+        },
+        {
+          "id": "parter-r9-p27",
+          "row": 9,
+          "number": 27,
+          "kind": "standard",
+          "x": 661,
+          "y": 188
+        },
+        {
+          "id": "parter-r9-p28",
+          "row": 9,
+          "number": 28,
+          "kind": "standard",
+          "x": 684,
+          "y": 188
+        },
+        {
+          "id": "parter-r9-p29",
+          "row": 9,
+          "number": 29,
+          "kind": "standard",
+          "x": 707,
+          "y": 188
+        },
+        {
+          "id": "parter-r10-p1",
+          "row": 10,
+          "number": 1,
+          "kind": "standard",
+          "x": 52,
+          "y": 168
+        },
+        {
+          "id": "parter-r10-p2",
+          "row": 10,
+          "number": 2,
+          "kind": "standard",
+          "x": 73,
+          "y": 168
+        },
+        {
+          "id": "parter-r10-p3",
+          "row": 10,
+          "number": 3,
+          "kind": "standard",
+          "x": 94,
+          "y": 168
+        },
+        {
+          "id": "parter-r10-p4",
+          "row": 10,
+          "number": 4,
+          "kind": "standard",
+          "x": 114,
+          "y": 168
+        },
+        {
+          "id": "parter-r10-p5",
+          "row": 10,
+          "number": 5,
+          "kind": "standard",
+          "x": 135,
+          "y": 168
+        },
+        {
+          "id": "parter-r10-p6",
+          "row": 10,
+          "number": 6,
+          "kind": "standard",
+          "x": 156,
+          "y": 168
+        },
+        {
+          "id": "parter-r10-p7",
+          "row": 10,
+          "number": 7,
+          "kind": "standard",
+          "x": 176,
+          "y": 168
+        },
+        {
+          "id": "parter-r10-p8",
+          "row": 10,
+          "number": 8,
+          "kind": "standard",
+          "x": 197,
+          "y": 168
+        },
+        {
+          "id": "parter-r10-p9",
+          "row": 10,
+          "number": 9,
+          "kind": "standard",
+          "x": 218,
+          "y": 168
+        },
+        {
+          "id": "parter-r10-p10",
+          "row": 10,
+          "number": 10,
+          "kind": "standard",
+          "x": 239,
+          "y": 168
+        },
+        {
+          "id": "parter-r10-p11",
+          "row": 10,
+          "number": 11,
+          "kind": "standard",
+          "x": 259,
+          "y": 168
+        },
+        {
+          "id": "parter-r10-p12",
+          "row": 10,
+          "number": 12,
+          "kind": "standard",
+          "x": 280,
+          "y": 168
+        },
+        {
+          "id": "parter-r10-p13",
+          "row": 10,
+          "number": 13,
+          "kind": "standard",
+          "x": 301,
+          "y": 168
+        },
+        {
+          "id": "parter-r10-p14",
+          "row": 10,
+          "number": 14,
+          "kind": "standard",
+          "x": 321,
+          "y": 168
+        },
+        {
+          "id": "parter-r10-p15",
+          "row": 10,
+          "number": 15,
+          "kind": "standard",
+          "x": 342,
+          "y": 168
+        },
+        {
+          "id": "parter-r10-p16",
+          "row": 10,
+          "number": 16,
+          "kind": "standard",
+          "x": 363,
+          "y": 168
+        },
+        {
+          "id": "parter-r10-p17",
+          "row": 10,
+          "number": 17,
+          "kind": "standard",
+          "x": 383,
+          "y": 168
+        },
+        {
+          "id": "parter-r10-p18",
+          "row": 10,
+          "number": 18,
+          "kind": "standard",
+          "x": 404,
+          "y": 168
+        },
+        {
+          "id": "parter-r10-p19",
+          "row": 10,
+          "number": 19,
+          "kind": "standard",
+          "x": 425,
+          "y": 168
+        },
+        {
+          "id": "parter-r10-p20",
+          "row": 10,
+          "number": 20,
+          "kind": "standard",
+          "x": 445,
+          "y": 168
+        },
+        {
+          "id": "parter-r10-p21",
+          "row": 10,
+          "number": 21,
+          "kind": "standard",
+          "x": 466,
+          "y": 168
+        },
+        {
+          "id": "parter-r10-p22",
+          "row": 10,
+          "number": 22,
+          "kind": "standard",
+          "x": 487,
+          "y": 168
+        },
+        {
+          "id": "parter-r10-p23",
+          "row": 10,
+          "number": 23,
+          "kind": "standard",
+          "x": 508,
+          "y": 168
+        },
+        {
+          "id": "parter-r10-p24",
+          "row": 10,
+          "number": 24,
+          "kind": "standard",
+          "x": 528,
+          "y": 168
+        },
+        {
+          "id": "parter-r10-p25",
+          "row": 10,
+          "number": 25,
+          "kind": "standard",
+          "x": 549,
+          "y": 168
+        },
+        {
+          "id": "parter-r10-p26",
+          "row": 10,
+          "number": 26,
+          "kind": "standard",
+          "x": 570,
+          "y": 168
+        },
+        {
+          "id": "parter-r10-p27",
+          "row": 10,
+          "number": 27,
+          "kind": "standard",
+          "x": 590,
+          "y": 168
+        },
+        {
+          "id": "parter-r10-p28",
+          "row": 10,
+          "number": 28,
+          "kind": "standard",
+          "x": 611,
+          "y": 168
+        },
+        {
+          "id": "parter-r10-p29",
+          "row": 10,
+          "number": 29,
+          "kind": "standard",
+          "x": 632,
+          "y": 168
+        },
+        {
+          "id": "parter-r10-p30",
+          "row": 10,
+          "number": 30,
+          "kind": "standard",
+          "x": 653,
+          "y": 168
+        }
+      ]
+    },
+    {
+      "id": "balkon",
+      "name": "Балкон",
+      "x": 60,
+      "y": 60,
+      "priceMinor": 190000,
+      "type": "seated",
+      "rowPrices": {
+        "1": 250000,
+        "2": 250000,
+        "3": 190000,
+        "4": 190000,
+        "5": 190000
+      },
+      "shape": "grid",
+      "arcSpread": 120,
+      "arcBaseR": 200,
+      "arcRowGap": 24,
+      "arcOffsetX": 0,
+      "arcOffsetY": 0,
+      "seats": [
+        {
+          "id": "balkon-r1-p1",
+          "row": 1,
+          "number": 1,
+          "kind": "standard",
+          "x": 0,
+          "y": 101
+        },
+        {
+          "id": "balkon-r1-p2",
+          "row": 1,
+          "number": 2,
+          "kind": "standard",
+          "x": 23,
+          "y": 101
+        },
+        {
+          "id": "balkon-r1-p3",
+          "row": 1,
+          "number": 3,
+          "kind": "standard",
+          "x": 46,
+          "y": 101
+        },
+        {
+          "id": "balkon-r1-p4",
+          "row": 1,
+          "number": 4,
+          "kind": "standard",
+          "x": 69,
+          "y": 101
+        },
+        {
+          "id": "balkon-r1-p5",
+          "row": 1,
+          "number": 5,
+          "kind": "standard",
+          "x": 92,
+          "y": 101
+        },
+        {
+          "id": "balkon-r1-p6",
+          "row": 1,
+          "number": 6,
+          "kind": "standard",
+          "x": 115,
+          "y": 101
+        },
+        {
+          "id": "balkon-r1-p7",
+          "row": 1,
+          "number": 7,
+          "kind": "standard",
+          "x": 138,
+          "y": 101
+        },
+        {
+          "id": "balkon-r1-p8",
+          "row": 1,
+          "number": 8,
+          "kind": "standard",
+          "x": 161,
+          "y": 101
+        },
+        {
+          "id": "balkon-r1-p9",
+          "row": 1,
+          "number": 9,
+          "kind": "standard",
+          "x": 184,
+          "y": 101
+        },
+        {
+          "id": "balkon-r1-p10",
+          "row": 1,
+          "number": 10,
+          "kind": "standard",
+          "x": 207,
+          "y": 101
+        },
+        {
+          "id": "balkon-r1-p11",
+          "row": 1,
+          "number": 11,
+          "kind": "standard",
+          "x": 230,
+          "y": 101
+        },
+        {
+          "id": "balkon-r1-p12",
+          "row": 1,
+          "number": 12,
+          "kind": "standard",
+          "x": 253,
+          "y": 101
+        },
+        {
+          "id": "balkon-r1-p13",
+          "row": 1,
+          "number": 13,
+          "kind": "standard",
+          "x": 276,
+          "y": 101
+        },
+        {
+          "id": "balkon-r1-p14",
+          "row": 1,
+          "number": 14,
+          "kind": "standard",
+          "x": 299,
+          "y": 101
+        },
+        {
+          "id": "balkon-r1-p15",
+          "row": 1,
+          "number": 15,
+          "kind": "standard",
+          "x": 322,
+          "y": 101
+        },
+        {
+          "id": "balkon-r1-p16",
+          "row": 1,
+          "number": 16,
+          "kind": "standard",
+          "x": 345,
+          "y": 101
+        },
+        {
+          "id": "balkon-r1-p17",
+          "row": 1,
+          "number": 17,
+          "kind": "standard",
+          "x": 368,
+          "y": 101
+        },
+        {
+          "id": "balkon-r1-p18",
+          "row": 1,
+          "number": 18,
+          "kind": "standard",
+          "x": 391,
+          "y": 101
+        },
+        {
+          "id": "balkon-r1-p19",
+          "row": 1,
+          "number": 19,
+          "kind": "standard",
+          "x": 414,
+          "y": 101
+        },
+        {
+          "id": "balkon-r1-p20",
+          "row": 1,
+          "number": 20,
+          "kind": "standard",
+          "x": 437,
+          "y": 101
+        },
+        {
+          "id": "balkon-r1-p21",
+          "row": 1,
+          "number": 21,
+          "kind": "standard",
+          "x": 460,
+          "y": 101
+        },
+        {
+          "id": "balkon-r1-p22",
+          "row": 1,
+          "number": 22,
+          "kind": "standard",
+          "x": 483,
+          "y": 101
+        },
+        {
+          "id": "balkon-r1-p23",
+          "row": 1,
+          "number": 23,
+          "kind": "standard",
+          "x": 506,
+          "y": 101
+        },
+        {
+          "id": "balkon-r1-p24",
+          "row": 1,
+          "number": 24,
+          "kind": "standard",
+          "x": 529,
+          "y": 101
+        },
+        {
+          "id": "balkon-r1-p25",
+          "row": 1,
+          "number": 25,
+          "kind": "standard",
+          "x": 552,
+          "y": 101
+        },
+        {
+          "id": "balkon-r1-p26",
+          "row": 1,
+          "number": 26,
+          "kind": "standard",
+          "x": 575,
+          "y": 101
+        },
+        {
+          "id": "balkon-r1-p27",
+          "row": 1,
+          "number": 27,
+          "kind": "standard",
+          "x": 598,
+          "y": 101
+        },
+        {
+          "id": "balkon-r1-p28",
+          "row": 1,
+          "number": 28,
+          "kind": "standard",
+          "x": 621,
+          "y": 101
+        },
+        {
+          "id": "balkon-r1-p29",
+          "row": 1,
+          "number": 29,
+          "kind": "standard",
+          "x": 644,
+          "y": 101
+        },
+        {
+          "id": "balkon-r1-p30",
+          "row": 1,
+          "number": 30,
+          "kind": "standard",
+          "x": 667,
+          "y": 101
+        },
+        {
+          "id": "balkon-r1-p31",
+          "row": 1,
+          "number": 31,
+          "kind": "standard",
+          "x": 690,
+          "y": 101
+        },
+        {
+          "id": "balkon-r1-p32",
+          "row": 1,
+          "number": 32,
+          "kind": "standard",
+          "x": 713,
+          "y": 101
+        },
+        {
+          "id": "balkon-r1-p33",
+          "row": 1,
+          "number": 33,
+          "kind": "standard",
+          "x": 736,
+          "y": 101
+        },
+        {
+          "id": "balkon-r1-p34",
+          "row": 1,
+          "number": 34,
+          "kind": "standard",
+          "x": 759,
+          "y": 101
+        },
+        {
+          "id": "balkon-r2-p1",
+          "row": 2,
+          "number": 1,
+          "kind": "standard",
+          "x": 23,
+          "y": 76
+        },
+        {
+          "id": "balkon-r2-p2",
+          "row": 2,
+          "number": 2,
+          "kind": "standard",
+          "x": 46,
+          "y": 76
+        },
+        {
+          "id": "balkon-r2-p3",
+          "row": 2,
+          "number": 3,
+          "kind": "standard",
+          "x": 69,
+          "y": 76
+        },
+        {
+          "id": "balkon-r2-p4",
+          "row": 2,
+          "number": 4,
+          "kind": "standard",
+          "x": 92,
+          "y": 76
+        },
+        {
+          "id": "balkon-r2-p5",
+          "row": 2,
+          "number": 5,
+          "kind": "standard",
+          "x": 115,
+          "y": 76
+        },
+        {
+          "id": "balkon-r2-p6",
+          "row": 2,
+          "number": 6,
+          "kind": "standard",
+          "x": 138,
+          "y": 76
+        },
+        {
+          "id": "balkon-r2-p7",
+          "row": 2,
+          "number": 7,
+          "kind": "standard",
+          "x": 161,
+          "y": 76
+        },
+        {
+          "id": "balkon-r2-p8",
+          "row": 2,
+          "number": 8,
+          "kind": "standard",
+          "x": 184,
+          "y": 76
+        },
+        {
+          "id": "balkon-r2-p9",
+          "row": 2,
+          "number": 9,
+          "kind": "standard",
+          "x": 207,
+          "y": 76
+        },
+        {
+          "id": "balkon-r2-p10",
+          "row": 2,
+          "number": 10,
+          "kind": "standard",
+          "x": 230,
+          "y": 76
+        },
+        {
+          "id": "balkon-r2-p11",
+          "row": 2,
+          "number": 11,
+          "kind": "standard",
+          "x": 253,
+          "y": 76
+        },
+        {
+          "id": "balkon-r2-p12",
+          "row": 2,
+          "number": 12,
+          "kind": "standard",
+          "x": 276,
+          "y": 76
+        },
+        {
+          "id": "balkon-r2-p13",
+          "row": 2,
+          "number": 13,
+          "kind": "standard",
+          "x": 299,
+          "y": 76
+        },
+        {
+          "id": "balkon-r2-p14",
+          "row": 2,
+          "number": 14,
+          "kind": "standard",
+          "x": 322,
+          "y": 76
+        },
+        {
+          "id": "balkon-r2-p15",
+          "row": 2,
+          "number": 15,
+          "kind": "standard",
+          "x": 345,
+          "y": 76
+        },
+        {
+          "id": "balkon-r2-p16",
+          "row": 2,
+          "number": 16,
+          "kind": "standard",
+          "x": 368,
+          "y": 76
+        },
+        {
+          "id": "balkon-r2-p17",
+          "row": 2,
+          "number": 17,
+          "kind": "standard",
+          "x": 391,
+          "y": 76
+        },
+        {
+          "id": "balkon-r2-p18",
+          "row": 2,
+          "number": 18,
+          "kind": "standard",
+          "x": 414,
+          "y": 76
+        },
+        {
+          "id": "balkon-r2-p19",
+          "row": 2,
+          "number": 19,
+          "kind": "standard",
+          "x": 437,
+          "y": 76
+        },
+        {
+          "id": "balkon-r2-p20",
+          "row": 2,
+          "number": 20,
+          "kind": "standard",
+          "x": 460,
+          "y": 76
+        },
+        {
+          "id": "balkon-r2-p21",
+          "row": 2,
+          "number": 21,
+          "kind": "standard",
+          "x": 483,
+          "y": 76
+        },
+        {
+          "id": "balkon-r2-p22",
+          "row": 2,
+          "number": 22,
+          "kind": "standard",
+          "x": 506,
+          "y": 76
+        },
+        {
+          "id": "balkon-r2-p23",
+          "row": 2,
+          "number": 23,
+          "kind": "standard",
+          "x": 529,
+          "y": 76
+        },
+        {
+          "id": "balkon-r2-p24",
+          "row": 2,
+          "number": 24,
+          "kind": "standard",
+          "x": 552,
+          "y": 76
+        },
+        {
+          "id": "balkon-r2-p25",
+          "row": 2,
+          "number": 25,
+          "kind": "standard",
+          "x": 575,
+          "y": 76
+        },
+        {
+          "id": "balkon-r2-p26",
+          "row": 2,
+          "number": 26,
+          "kind": "standard",
+          "x": 598,
+          "y": 76
+        },
+        {
+          "id": "balkon-r2-p27",
+          "row": 2,
+          "number": 27,
+          "kind": "standard",
+          "x": 621,
+          "y": 76
+        },
+        {
+          "id": "balkon-r2-p28",
+          "row": 2,
+          "number": 28,
+          "kind": "standard",
+          "x": 644,
+          "y": 76
+        },
+        {
+          "id": "balkon-r2-p29",
+          "row": 2,
+          "number": 29,
+          "kind": "standard",
+          "x": 667,
+          "y": 76
+        },
+        {
+          "id": "balkon-r2-p30",
+          "row": 2,
+          "number": 30,
+          "kind": "standard",
+          "x": 690,
+          "y": 76
+        },
+        {
+          "id": "balkon-r2-p31",
+          "row": 2,
+          "number": 31,
+          "kind": "standard",
+          "x": 713,
+          "y": 76
+        },
+        {
+          "id": "balkon-r2-p32",
+          "row": 2,
+          "number": 32,
+          "kind": "standard",
+          "x": 736,
+          "y": 76
+        },
+        {
+          "id": "balkon-r2-p33",
+          "row": 2,
+          "number": 33,
+          "kind": "standard",
+          "x": 759,
+          "y": 76
+        },
+        {
+          "id": "balkon-r3-p1",
+          "row": 3,
+          "number": 1,
+          "kind": "standard",
+          "x": 253,
+          "y": 51
+        },
+        {
+          "id": "balkon-r3-p2",
+          "row": 3,
+          "number": 2,
+          "kind": "standard",
+          "x": 276,
+          "y": 51
+        },
+        {
+          "id": "balkon-r3-p3",
+          "row": 3,
+          "number": 3,
+          "kind": "standard",
+          "x": 299,
+          "y": 51
+        },
+        {
+          "id": "balkon-r3-p4",
+          "row": 3,
+          "number": 4,
+          "kind": "standard",
+          "x": 322,
+          "y": 51
+        },
+        {
+          "id": "balkon-r3-p5",
+          "row": 3,
+          "number": 5,
+          "kind": "standard",
+          "x": 345,
+          "y": 51
+        },
+        {
+          "id": "balkon-r3-p6",
+          "row": 3,
+          "number": 6,
+          "kind": "standard",
+          "x": 368,
+          "y": 51
+        },
+        {
+          "id": "balkon-r3-p7",
+          "row": 3,
+          "number": 7,
+          "kind": "standard",
+          "x": 391,
+          "y": 51
+        },
+        {
+          "id": "balkon-r3-p8",
+          "row": 3,
+          "number": 8,
+          "kind": "standard",
+          "x": 414,
+          "y": 51
+        },
+        {
+          "id": "balkon-r3-p9",
+          "row": 3,
+          "number": 9,
+          "kind": "standard",
+          "x": 437,
+          "y": 51
+        },
+        {
+          "id": "balkon-r3-p10",
+          "row": 3,
+          "number": 10,
+          "kind": "standard",
+          "x": 460,
+          "y": 51
+        },
+        {
+          "id": "balkon-r3-p11",
+          "row": 3,
+          "number": 11,
+          "kind": "standard",
+          "x": 483,
+          "y": 51
+        },
+        {
+          "id": "balkon-r3-p12",
+          "row": 3,
+          "number": 12,
+          "kind": "standard",
+          "x": 506,
+          "y": 51
+        },
+        {
+          "id": "balkon-r3-p13",
+          "row": 3,
+          "number": 13,
+          "kind": "standard",
+          "x": 529,
+          "y": 51
+        },
+        {
+          "id": "balkon-r3-p14",
+          "row": 3,
+          "number": 14,
+          "kind": "standard",
+          "x": 552,
+          "y": 51
+        },
+        {
+          "id": "balkon-r3-p15",
+          "row": 3,
+          "number": 15,
+          "kind": "standard",
+          "x": 575,
+          "y": 51
+        },
+        {
+          "id": "balkon-r3-p16",
+          "row": 3,
+          "number": 16,
+          "kind": "standard",
+          "x": 598,
+          "y": 51
+        },
+        {
+          "id": "balkon-r3-p17",
+          "row": 3,
+          "number": 17,
+          "kind": "standard",
+          "x": 621,
+          "y": 51
+        },
+        {
+          "id": "balkon-r3-p18",
+          "row": 3,
+          "number": 18,
+          "kind": "standard",
+          "x": 644,
+          "y": 51
+        },
+        {
+          "id": "balkon-r3-p19",
+          "row": 3,
+          "number": 19,
+          "kind": "standard",
+          "x": 667,
+          "y": 51
+        },
+        {
+          "id": "balkon-r3-p20",
+          "row": 3,
+          "number": 20,
+          "kind": "standard",
+          "x": 690,
+          "y": 51
+        },
+        {
+          "id": "balkon-r3-p21",
+          "row": 3,
+          "number": 21,
+          "kind": "standard",
+          "x": 713,
+          "y": 51
+        },
+        {
+          "id": "balkon-r3-p22",
+          "row": 3,
+          "number": 22,
+          "kind": "standard",
+          "x": 736,
+          "y": 51
+        },
+        {
+          "id": "balkon-r4-p1",
+          "row": 4,
+          "number": 1,
+          "kind": "standard",
+          "x": 23,
+          "y": 25
+        },
+        {
+          "id": "balkon-r4-p2",
+          "row": 4,
+          "number": 2,
+          "kind": "standard",
+          "x": 46,
+          "y": 25
+        },
+        {
+          "id": "balkon-r4-p3",
+          "row": 4,
+          "number": 3,
+          "kind": "standard",
+          "x": 69,
+          "y": 25
+        },
+        {
+          "id": "balkon-r4-p4",
+          "row": 4,
+          "number": 4,
+          "kind": "standard",
+          "x": 92,
+          "y": 25
+        },
+        {
+          "id": "balkon-r4-p5",
+          "row": 4,
+          "number": 5,
+          "kind": "standard",
+          "x": 115,
+          "y": 25
+        },
+        {
+          "id": "balkon-r4-p6",
+          "row": 4,
+          "number": 6,
+          "kind": "standard",
+          "x": 138,
+          "y": 25
+        },
+        {
+          "id": "balkon-r4-p7",
+          "row": 4,
+          "number": 7,
+          "kind": "standard",
+          "x": 161,
+          "y": 25
+        },
+        {
+          "id": "balkon-r4-p8",
+          "row": 4,
+          "number": 8,
+          "kind": "standard",
+          "x": 184,
+          "y": 25
+        },
+        {
+          "id": "balkon-r4-p9",
+          "row": 4,
+          "number": 9,
+          "kind": "standard",
+          "x": 207,
+          "y": 25
+        },
+        {
+          "id": "balkon-r4-p10",
+          "row": 4,
+          "number": 10,
+          "kind": "standard",
+          "x": 230,
+          "y": 25
+        },
+        {
+          "id": "balkon-r4-p11",
+          "row": 4,
+          "number": 11,
+          "kind": "standard",
+          "x": 253,
+          "y": 25
+        },
+        {
+          "id": "balkon-r4-p12",
+          "row": 4,
+          "number": 12,
+          "kind": "standard",
+          "x": 276,
+          "y": 25
+        },
+        {
+          "id": "balkon-r4-p13",
+          "row": 4,
+          "number": 13,
+          "kind": "standard",
+          "x": 299,
+          "y": 25
+        },
+        {
+          "id": "balkon-r4-p14",
+          "row": 4,
+          "number": 14,
+          "kind": "standard",
+          "x": 322,
+          "y": 25
+        },
+        {
+          "id": "balkon-r4-p15",
+          "row": 4,
+          "number": 15,
+          "kind": "standard",
+          "x": 345,
+          "y": 25
+        },
+        {
+          "id": "balkon-r4-p16",
+          "row": 4,
+          "number": 16,
+          "kind": "standard",
+          "x": 368,
+          "y": 25
+        },
+        {
+          "id": "balkon-r4-p17",
+          "row": 4,
+          "number": 17,
+          "kind": "standard",
+          "x": 391,
+          "y": 25
+        },
+        {
+          "id": "balkon-r4-p18",
+          "row": 4,
+          "number": 18,
+          "kind": "standard",
+          "x": 414,
+          "y": 25
+        },
+        {
+          "id": "balkon-r4-p19",
+          "row": 4,
+          "number": 19,
+          "kind": "standard",
+          "x": 437,
+          "y": 25
+        },
+        {
+          "id": "balkon-r4-p20",
+          "row": 4,
+          "number": 20,
+          "kind": "standard",
+          "x": 460,
+          "y": 25
+        },
+        {
+          "id": "balkon-r4-p21",
+          "row": 4,
+          "number": 21,
+          "kind": "standard",
+          "x": 483,
+          "y": 25
+        },
+        {
+          "id": "balkon-r4-p22",
+          "row": 4,
+          "number": 22,
+          "kind": "standard",
+          "x": 506,
+          "y": 25
+        },
+        {
+          "id": "balkon-r4-p23",
+          "row": 4,
+          "number": 23,
+          "kind": "standard",
+          "x": 529,
+          "y": 25
+        },
+        {
+          "id": "balkon-r4-p24",
+          "row": 4,
+          "number": 24,
+          "kind": "standard",
+          "x": 552,
+          "y": 25
+        },
+        {
+          "id": "balkon-r4-p25",
+          "row": 4,
+          "number": 25,
+          "kind": "standard",
+          "x": 575,
+          "y": 25
+        },
+        {
+          "id": "balkon-r4-p26",
+          "row": 4,
+          "number": 26,
+          "kind": "standard",
+          "x": 598,
+          "y": 25
+        },
+        {
+          "id": "balkon-r5-p1",
+          "row": 5,
+          "number": 1,
+          "kind": "standard",
+          "x": 0,
+          "y": 0
+        },
+        {
+          "id": "balkon-r5-p2",
+          "row": 5,
+          "number": 2,
+          "kind": "standard",
+          "x": 23,
+          "y": 0
+        },
+        {
+          "id": "balkon-r5-p3",
+          "row": 5,
+          "number": 3,
+          "kind": "standard",
+          "x": 46,
+          "y": 0
+        },
+        {
+          "id": "balkon-r5-p4",
+          "row": 5,
+          "number": 4,
+          "kind": "standard",
+          "x": 69,
+          "y": 0
+        },
+        {
+          "id": "balkon-r5-p5",
+          "row": 5,
+          "number": 5,
+          "kind": "standard",
+          "x": 92,
+          "y": 0
+        },
+        {
+          "id": "balkon-r5-p6",
+          "row": 5,
+          "number": 6,
+          "kind": "standard",
+          "x": 115,
+          "y": 0
+        },
+        {
+          "id": "balkon-r5-p7",
+          "row": 5,
+          "number": 7,
+          "kind": "standard",
+          "x": 138,
+          "y": 0
+        },
+        {
+          "id": "balkon-r5-p8",
+          "row": 5,
+          "number": 8,
+          "kind": "standard",
+          "x": 161,
+          "y": 0
+        },
+        {
+          "id": "balkon-r5-p9",
+          "row": 5,
+          "number": 9,
+          "kind": "standard",
+          "x": 184,
+          "y": 0
+        },
+        {
+          "id": "balkon-r5-p10",
+          "row": 5,
+          "number": 10,
+          "kind": "standard",
+          "x": 207,
+          "y": 0
+        },
+        {
+          "id": "balkon-r5-p11",
+          "row": 5,
+          "number": 11,
+          "kind": "standard",
+          "x": 230,
+          "y": 0
+        },
+        {
+          "id": "balkon-r5-p12",
+          "row": 5,
+          "number": 12,
+          "kind": "standard",
+          "x": 253,
+          "y": 0
+        },
+        {
+          "id": "balkon-r5-p13",
+          "row": 5,
+          "number": 13,
+          "kind": "standard",
+          "x": 276,
+          "y": 0
+        },
+        {
+          "id": "balkon-r5-p14",
+          "row": 5,
+          "number": 14,
+          "kind": "standard",
+          "x": 299,
+          "y": 0
+        },
+        {
+          "id": "balkon-r5-p15",
+          "row": 5,
+          "number": 15,
+          "kind": "standard",
+          "x": 322,
+          "y": 0
+        },
+        {
+          "id": "balkon-r5-p16",
+          "row": 5,
+          "number": 16,
+          "kind": "standard",
+          "x": 345,
+          "y": 0
+        },
+        {
+          "id": "balkon-r5-p17",
+          "row": 5,
+          "number": 17,
+          "kind": "standard",
+          "x": 368,
+          "y": 0
+        },
+        {
+          "id": "balkon-r5-p18",
+          "row": 5,
+          "number": 18,
+          "kind": "standard",
+          "x": 391,
+          "y": 0
+        },
+        {
+          "id": "balkon-r5-p19",
+          "row": 5,
+          "number": 19,
+          "kind": "standard",
+          "x": 414,
+          "y": 0
+        },
+        {
+          "id": "balkon-r5-p20",
+          "row": 5,
+          "number": 20,
+          "kind": "standard",
+          "x": 437,
+          "y": 0
+        },
+        {
+          "id": "balkon-r5-p21",
+          "row": 5,
+          "number": 21,
+          "kind": "standard",
+          "x": 460,
+          "y": 0
+        },
+        {
+          "id": "balkon-r5-p22",
+          "row": 5,
+          "number": 22,
+          "kind": "standard",
+          "x": 483,
+          "y": 0
+        },
+        {
+          "id": "balkon-r5-p23",
+          "row": 5,
+          "number": 23,
+          "kind": "standard",
+          "x": 506,
+          "y": 0
+        },
+        {
+          "id": "balkon-r5-p24",
+          "row": 5,
+          "number": 24,
+          "kind": "standard",
+          "x": 529,
+          "y": 0
+        },
+        {
+          "id": "balkon-r5-p25",
+          "row": 5,
+          "number": 25,
+          "kind": "standard",
+          "x": 552,
+          "y": 0
+        },
+        {
+          "id": "balkon-r5-p26",
+          "row": 5,
+          "number": 26,
+          "kind": "standard",
+          "x": 575,
+          "y": 0
+        },
+        {
+          "id": "balkon-r5-p27",
+          "row": 5,
+          "number": 27,
+          "kind": "standard",
+          "x": 598,
+          "y": 0
+        },
+        {
+          "id": "balkon-r5-p28",
+          "row": 5,
+          "number": 28,
+          "kind": "standard",
+          "x": 621,
+          "y": 0
+        },
+        {
+          "id": "balkon-r5-p29",
+          "row": 5,
+          "number": 29,
+          "kind": "standard",
+          "x": 644,
+          "y": 0
+        },
+        {
+          "id": "balkon-r5-p30",
+          "row": 5,
+          "number": 30,
+          "kind": "standard",
+          "x": 667,
+          "y": 0
+        },
+        {
+          "id": "balkon-r5-p31",
+          "row": 5,
+          "number": 31,
+          "kind": "standard",
+          "x": 690,
+          "y": 0
+        },
+        {
+          "id": "balkon-r5-p32",
+          "row": 5,
+          "number": 32,
+          "kind": "standard",
+          "x": 713,
+          "y": 0
+        },
+        {
+          "id": "balkon-r5-p33",
+          "row": 5,
+          "number": 33,
+          "kind": "standard",
+          "x": 736,
+          "y": 0
+        }
+      ]
+    }
+  ],
+  "staticObjects": [
+    {
+      "id": "static-stage",
+      "kind": "stage",
+      "x": 255,
+      "y": 719,
+      "width": 369,
+      "height": 70,
+      "rotation": 0,
+      "opacity": 1,
+      "locked": false,
+      "text": "Сцена"
+    }
+  ]
+}

@@ -6,6 +6,7 @@ namespace Nabilet\Tests\Support;
 
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Nabilet\Modules\Events\Models\Artist;
 
 /**
  * Фикстуры для посадочных страниц города и площадки (аудит P-12).
@@ -193,5 +194,120 @@ trait CatalogFixtures
         if ($venueIds !== []) {
             DB::table('venues')->whereIn('id', $venueIds)->update(['organization_id' => $organizationId]);
         }
+    }
+
+    /**
+     * Артист каталога и его связь с событиями (стратегия SEO, B-1).
+     *
+     * ПОЧЕМУ ЗАПИСЬ СТРОИТСЯ ЗДЕСЬ, А НЕ КОМАНДОЙ `artists:sync`. Команда —
+     * это ОДИН из писателей, и её поведение проверяется отдельно, своим тестом
+     * (`SyncArtistsCommandTest`). Если бы фикстуры страницы строились прогоном
+     * команды, тест страницы артиста падал бы при любой правке команды, а
+     * причина падения была бы не в странице. Здесь же создаётся РОВНО то
+     * состояние, которое страница обязана читать: строка `artists` плюс рёбра
+     * `artist_event`. Что это состояние достижимо — доказывает тест команды.
+     *
+     * `normalized_name` не передаётся параметром намеренно: он обязан
+     * совпадать с тем, что выведет `Artist::normalizeName()`, иначе фикстура
+     * построила бы состояние, которого команда не создаёт. Ключ слияния — не
+     * часть теста страницы, а инвариант модели.
+     *
+     * `timestamps` заполняются вручную: `DB::table()` не проходит через
+     * Eloquent, а колонки в схеме объявлены nullable без `DEFAULT
+     * CURRENT_TIMESTAMP`, поэтому `updated_at` из `artists()` (и `GREATEST` в
+     * `CatalogService::artists()`) без этого был бы `null`.
+     *
+     * @param  list<int>  $eventIds  события, которые играет артист
+     * @param  mixed  $socialLinks  список адресов, карта «сеть → адрес» или null
+     */
+    protected function seedArtist(
+        string $name,
+        string $slug,
+        array $eventIds = [],
+        string $status = 'active',
+        ?string $genre = null,
+        ?string $bio = null,
+        ?string $photo = null,
+        mixed $socialLinks = null,
+        ?string $seoTitle = null,
+        ?string $seoDescription = null,
+    ): int {
+        $now = now()->toDateTimeString();
+
+        $artistId = (int) DB::table('artists')->insertGetId([
+            'slug' => $slug,
+            'name' => $name,
+            'normalized_name' => Artist::normalizeName($name),
+            'genre' => $genre,
+            'bio' => $bio,
+            'photo' => $photo,
+            // JSON-колонка: массив уходит строкой, потому что `DB::table()`
+            // приведений модели не применяет.
+            'social_links' => $socialLinks === null
+                ? null
+                : json_encode($socialLinks, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            'seo_title' => $seoTitle,
+            'seo_description' => $seoDescription,
+            'status' => $status,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+
+        $this->linkArtist($artistId, $eventIds);
+
+        return $artistId;
+    }
+
+    /**
+     * Привязать события к артисту через `artist_event`.
+     *
+     * Отдельным методом, потому что им же пользуются тесты, которым нужен
+     * артист БЕЗ событий (проверка порога индексации: страница без событий
+     * отвечает 404, и адрес в карте не появляется). `seedArtist()` со списком
+     * событий такого состояния не построит.
+     *
+     * @param  list<int>  $eventIds
+     */
+    protected function linkArtist(int $artistId, array $eventIds): void
+    {
+        $now = now()->toDateTimeString();
+
+        foreach ($eventIds as $eventId) {
+            DB::table('artist_event')->insert([
+                'artist_id' => $artistId,
+                'event_id' => $eventId,
+                'is_headliner' => false,
+                'sort_order' => 0,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+        }
+    }
+
+    /**
+     * Строка `event_artists` — имя артиста СВОБОДНЫМ ТЕКСТОМ внутри события.
+     *
+     * Нужна только тестам `artists:sync`: страница артиста читает `artists` и
+     * `artist_event`, а `event_artists` — это ИСТОЧНИК, из которого команда
+     * сводит написания. Без неё команду не на чем проверить.
+     */
+    protected function seedEventArtist(
+        int $eventId,
+        string $name,
+        bool $isHeadliner = false,
+        int $sortOrder = 0,
+        ?string $genre = null,
+    ): int {
+        $now = now()->toDateTimeString();
+
+        return (int) DB::table('event_artists')->insertGetId([
+            'event_id' => $eventId,
+            'name' => $name,
+            'genre' => $genre,
+            'is_headliner' => $isHeadliner,
+            'sort_order' => $sortOrder,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
     }
 }

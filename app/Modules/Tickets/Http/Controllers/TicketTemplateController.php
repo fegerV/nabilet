@@ -51,6 +51,11 @@ class TicketTemplateController extends Controller
     {
         $query = TicketTemplate::query()
             ->where('organization_id', $this->organizationId())
+            // Привязки к мероприятиям — для списка `/admin/ticket-templates`:
+            // какой макет чьи билеты оформляет. Колонки ограничены тем, что
+            // рисует карточка (id + title); `ticket_template_id` в выборке
+            // обязателен — иначе связь не сопоставится.
+            ->with(['events' => fn ($q) => $q->select('id', 'title', 'ticket_template_id')])
             ->orderByDesc('active')
             ->orderBy('name');
 
@@ -67,8 +72,11 @@ class TicketTemplateController extends Controller
 
     public function show(int $template): JsonResponse
     {
+        $model = $this->find($template);
+        $model->load(['events' => fn ($q) => $q->select('id', 'title', 'ticket_template_id')]);
+
         return response()->json([
-            'data' => new TicketTemplateResource($this->find($template)),
+            'data' => new TicketTemplateResource($model),
         ]);
     }
 
@@ -99,6 +107,61 @@ class TicketTemplateController extends Controller
         $model->update($data);
 
         return response()->json(['data' => new TicketTemplateResource($model->fresh() ?? $model)]);
+    }
+
+    /**
+     * Дублировать макет — «свой билет для этого мероприятия».
+     *
+     * Сценарий: у мероприятия уже есть макет (по умолчанию или выбранный),
+     * администратор хочет свою типографику и фон, не трогая исходник, которым
+     * пользуются другие мероприятия. Копия наследует `template_json` целиком —
+     * дальше её правят в конструкторе.
+     *
+     * `event_id` сразу назначает копию мероприятию (той же организации, иначе
+     * 422 — чужой бренд в чужие билеты, как в `StoreEventRequest`). Без него —
+     * просто копия в списке.
+     */
+    public function duplicate(Request $request, int $template): JsonResponse
+    {
+        $source = $this->find($template);
+
+        $data = $request->validate([
+            'name' => ['nullable', 'string', 'max:255'],
+            'event_id' => ['bail', 'nullable', 'integer'],
+        ]);
+
+        $name = trim((string) ($data['name'] ?? ''));
+
+        $copy = TicketTemplate::query()->create([
+            'organization_id' => $source->organization_id,
+            'name' => $name !== '' ? $name : $source->name . ' (копия)',
+            'format' => $source->format,
+            'width' => $source->width,
+            'height' => $source->height,
+            // PHP-массивы копируются по значению: правка копии исходник не заденет.
+            'template_json' => $source->template_json,
+            'active' => $source->active,
+        ]);
+
+        if (! empty($data['event_id'])) {
+            $event = \Nabilet\Modules\Events\Models\Event::query()
+                ->whereKey((int) $data['event_id'])
+                ->where('organization_id', $this->organizationId())
+                ->first();
+
+            if ($event === null) {
+                throw new ValidationError(
+                    ['event_id' => ['Мероприятие не найдено в вашей организации.']],
+                    'Некорректное мероприятие.'
+                );
+            }
+
+            $event->update(['ticket_template_id' => $copy->id]);
+        }
+
+        $copy->load(['events' => fn ($q) => $q->select('id', 'title', 'ticket_template_id')]);
+
+        return response()->json(['data' => new TicketTemplateResource($copy)], 201);
     }
 
     /**

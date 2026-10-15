@@ -1,0 +1,11 @@
+{
+  "name": "content",
+  "title": "Редакционные страницы CMS",
+  "version": "1.0.0",
+  "enabled": true,
+  "priority": 140,
+  "requires": ["seo"],
+  "permissions": ["content.manage"],
+  "provides": ["content.page.published"],
+  "description": "Редакционные страницы CMS: FAQ, «О компании», «Как вернуть билет» и т. п. Источник контента для стратегии SEO B-2 — отдаются серверным рендером по адресу `/page/{slug}` и попадают в `sitemap-pages.xml` (стратегия SEO, B-2)."
+}

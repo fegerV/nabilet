@@ -63,6 +63,7 @@ final class LandingPageRenderer
             <meta property="og:title" content="{{title}}" />
             <meta property="og:description" content="{{description}}" />
             <meta property="og:url" content="{{canonical}}" />
+            {{headExtras}}
             <style>
               :root { color-scheme: dark; }
               * { box-sizing: border-box; }
@@ -90,6 +91,8 @@ final class LandingPageRenderer
               a.event-link { color: {{content}}; text-decoration: none; font-size: 18px; font-weight: 600; }
               a.event-link:hover { text-decoration: underline; }
               p.event-meta { margin: 6px 0 0; color: {{muted}}; font-size: 14px; }
+              ul.events--archive li.event { background: transparent; }
+              ul.events--archive a.event-link { font-weight: 500; color: {{muted}}; }
               nav.pages { margin-top: 32px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
               nav.pages a, nav.pages span { font-size: 15px; }
               nav.pages a { color: {{content}}; }
@@ -113,13 +116,13 @@ final class LandingPageRenderer
                 <main>
                   <h1>{{heading}}</h1>
                   <p class="intro">{{intro}}</p>
-                  <h2>Мероприятия</h2>
                   {{items}}
                   {{pagination}}
                   {{related}}
                 </main>
                 <footer>NABILET — билеты на события</footer>
               </div>
+              {{dataLayer}}
             </body>
             </html>
             HTML,
@@ -134,6 +137,13 @@ final class LandingPageRenderer
                 '{{pagination}}' => $this->pagination($page),
                 '{{related}}' => $this->related($page),
                 '{{jsonLd}}' => $this->jsonLd($page),
+                // Дополнительные мета-теги: коды верификации поисковиков и
+                // региональные `geo.*` (стратегия SEO, B-7).
+                '{{headExtras}}' => $this->headExtras($page),
+                // dataLayer.push для GTM/GA4/Яндекс.ТэгМенеджер. Кладётся в
+                // конец body, чтобы не блокировать парсинг `</head>` и не
+                // задерживать отрисовку первой страницы.
+                '{{dataLayer}}' => $this->dataLayerSnippet($page->pageType, $canonical),
                 '{{canvas}}' => BrandPalette::CANVAS,
                 '{{surface}}' => BrandPalette::SURFACE,
                 '{{surface_raised}}' => BrandPalette::SURFACE_RAISED,
@@ -143,6 +153,128 @@ final class LandingPageRenderer
                 '{{brand}}' => BrandPalette::BRAND,
                 '{{accent}}' => BrandPalette::ACCENT,
             ]
+        );
+    }
+
+    /**
+     * Дополнительные `<meta>`-теги для `<head>`: верификация Яндекс/Google и
+     * региональная привязка (`geo.*`, стратегия SEO, B-7).
+     *
+     * ПУСТЫЕ ЗНАЧЕНИЯ НЕ ВЫВОДЯТСЯ. Это не косметика: пустой
+     * `<meta name="yandex-verification" content="">` — это утверждение
+     * «код подтверждения есть, но он пустой», и валидатор Яндекс.Вебмастера
+     * трактует такое поле как ошибку. Поэтому теги собираются только при
+     * наличии данных.
+     *
+     * `geo.position` выводится СТРОГО в формате «lat;lng» (спецификация ICBM);
+     * Яндекс ждёт точку с запятой между координатами. Если хотя бы одной
+     * координаты нет, LandingPage не передаст `geoPosition`, и тег просто не
+     * появится — без полу-валидного `geo.position`.
+     *
+     * Порядок тегов внутри `<head>` детерминирован, потому что так удобнее
+     * сравнивать вывод в тестах: сначала верификация (опционально), потом geo.
+     */
+    private function headExtras(LandingPage $page): string
+    {
+        $tags = [];
+
+        // Коды верификации читаются из `config/nabilet.php` (`SEO_VERIFICATION_*`).
+        // `LandingPageRenderer` НЕ Domain: он ходит в `config()` напрямую,
+        // потому что purity-гейт пропускает `config()` для всех файлов вне
+        // `app/Core/Support` и `*/Domain/` (см. `tools/verify-purity.php`).
+        $yandexVerification = trim((string) (config('nabilet.seo.verification.yandex') ?? ''));
+        $googleVerification = trim((string) (config('nabilet.seo.verification.google') ?? ''));
+
+        if ($yandexVerification !== '') {
+            $tags[] = sprintf(
+                '<meta name="yandex-verification" content="%s" />',
+                htmlspecialchars($yandexVerification, ENT_QUOTES),
+            );
+        }
+
+        if ($googleVerification !== '') {
+            $tags[] = sprintf(
+                '<meta name="google-site-verification" content="%s" />',
+                htmlspecialchars($googleVerification, ENT_QUOTES),
+            );
+        }
+
+        // Геопривязка — через nullable-поля LandingPage: `$page->geoRegion`
+        // и т. д. могут быть `null` (город, категория, артист), и пустую
+        // строку мы здесь НЕ должны подменять выдуманным значением.
+        if ($page->geoRegion !== null && trim($page->geoRegion) !== '') {
+            $tags[] = sprintf(
+                '<meta name="geo.region" content="%s" />',
+                htmlspecialchars(trim($page->geoRegion), ENT_QUOTES),
+            );
+        }
+
+        if ($page->geoPlacename !== null && trim($page->geoPlacename) !== '') {
+            $tags[] = sprintf(
+                '<meta name="geo.placename" content="%s" />',
+                htmlspecialchars(trim($page->geoPlacename), ENT_QUOTES),
+            );
+        }
+
+        if ($page->geoPosition !== null && trim($page->geoPosition) !== '') {
+            $tags[] = sprintf(
+                '<meta name="geo.position" content="%s" />',
+                htmlspecialchars(trim($page->geoPosition), ENT_QUOTES),
+            );
+        }
+
+        return $tags === [] ? '' : implode("\n            ", $tags);
+    }
+
+    /**
+     * Инициализация `dataLayer` для GTM/GA4/Яндекс.ТэгМенеджер (B-7).
+     *
+     * Посадочная страница — серверный HTML без JS-бандла витрины, и у неё нет
+     * своего вызова `ym(...)` или `gtag(...)`. Чтобы аналитика по типу страницы
+     * (`page_view` с `page_type`) работала наравне с событиями SPA, кладём
+     * `dataLayer.push` в конец body: `window.dataLayer` уже должен быть
+     * инициализирован GTM (если он установлен) ДО этого скрипта, иначе наш
+     * `push` создаст массив сам. Идемпотентность: `window.dataLayer || []`.
+     *
+     * `page_location` — полный URL текущей страницы. Браузер знает его лучше
+     * сервера (`canonical` у `/city/moskva?page=2` совпадает с `/city/moskva`,
+     * а человек видит обе версии), поэтому `page_location` собирается на
+     * клиенте из `window.location.href`. Сервер отдаёт `page_path` (только
+     * путь без query-string) и `page_type` — это всё, что нужно для GA4 без
+     * расчёта полного URL.
+     *
+     * `page_type` — `venue|city|category|city_category|organizer|artist` —
+     * берётся из LandingPage, вычислен `LandingPageService`. Для всех типов
+     * страниц, кроме посадочных, в SPA есть свой `trackPageView(to.fullPath)`,
+     * и эти `dataLayer.push` дополняют, а не дублируют его.
+     */
+    private function dataLayerSnippet(string $pageType, string $canonical): string
+    {
+        // `page_path` — путь без query-string. SPA берёт полный путь
+        // (`to.fullPath`), посадочные страницы — относительный путь, и
+        // `canonical` у них уже содержит query-string на страницах пагинации.
+        // Для аналитики «по типу страницы» достаточно `page_path` — это всё,
+        // что нужно для группировки в отчёте.
+        $path = parse_url($canonical, PHP_URL_PATH) ?: '/';
+
+        // Тело пушится КАК JSON-ОБЪЕКТ, а не как голая строка: если аналитика
+        // не загружена, массив остаётся пустым и не выполняется ничего; если
+        // загружена — тег-менеджер сам разберёт объект по правилам GA4. Ключи
+        // camelCase соответствуют соглашениям GA4 (`page_location`,
+        // `page_referrer`).
+        $payload = json_encode([
+            'event' => 'page_view',
+            'page_type' => $pageType,
+            'page_path' => $path,
+        ], JSON_UNESCAPED_UNICODE);
+
+        if (! is_string($payload)) {
+            return '';
+        }
+
+        return sprintf(
+            "<script>(function(w){w.dataLayer=w.dataLayer||[];w.dataLayer.push(%s);})(window);</script>",
+            $payload,
         );
     }
 
@@ -170,11 +302,58 @@ final class LandingPageRenderer
         return '<nav class="crumbs" aria-label="Навигационная цепочка"><ol>' . $items . '</ol></nav>';
     }
 
+    /**
+     * Список записей страницы — с разделением на «ближайшие» и «прошедшие»
+     * (стратегия SEO, пункт 10, снимает B-4 частично).
+     *
+     * ПОЧЕМУ АРХИВ ВЫНОСИТСЯ ОТДЕЛЬНЫМ БЛОКОМ. Событие живёт два месяца, а
+     * страница площадки или артиста — годами. Пока прошедшее и предстоящее
+     * лежат одним списком под заголовком «Мероприятия», страница после
+     * последнего концерта читается как афиша с пустой серединой: даты в прошлом
+     * стоят рядом с будущими и ничем не помечены. Заголовок «Прошедшие
+     * мероприятия» превращает тот же список в архив — то есть в самостоятельную
+     * ценность, за которой приходят запросом «концерт … как прошёл», и ради
+     * которой страница продолжает существовать в индексе. Это и есть частичное
+     * снятие B-4: контент перестаёт жить ровно столько, сколько идёт продажа.
+     *
+     * ОДИН ЗАГОЛОВОК, КОГДА АРХИВА НЕТ. Если все записи предстоящие (обычное
+     * состояние живой афиши), остаётся прежнее «Мероприятия»: называть блок
+     * «Ближайшие» нечего — ближайшие и есть все, а лишний заголовок на странице
+     * без архива читался бы как недоделка. Так страницы, у которых ничего не
+     * изменилось, и выглядят как раньше — правка не трогает то, что работало.
+     *
+     * ПУСТОЙ БЛОК НЕ ВЫВОДИТСЯ. У страницы, где всё уже прошло, «Ближайшие
+     * мероприятия» без единой записи — обещание, которого страница не выполняет;
+     * у страницы, где всё впереди, архива нет вовсе. Оба случая закрыты выше.
+     */
     private function items(LandingPage $page): string
+    {
+        $upcoming = $page->upcomingItems();
+        $past = $page->pastItems();
+
+        if ($past === []) {
+            return '<h2>Мероприятия</h2>' . $this->eventList($upcoming);
+        }
+
+        $html = '';
+
+        if ($upcoming !== []) {
+            $html .= '<h2>Ближайшие мероприятия</h2>' . $this->eventList($upcoming);
+        }
+
+        return $html . '<h2>Прошедшие мероприятия</h2>' . $this->eventList($past, archive: true);
+    }
+
+    /**
+     * Один список записей — карточки с датой, площадкой и ценой.
+     *
+     * @param  list<array{title: string, url: string, date: ?string, venue: ?string, price: ?string, past: bool}>  $items
+     */
+    private function eventList(array $items, bool $archive = false): string
     {
         $rows = '';
 
-        foreach ($page->items as $item) {
+        foreach ($items as $item) {
             $meta = array_filter(
                 [
                     RuText::dateTime($item['date'] ?? null),
@@ -197,7 +376,7 @@ final class LandingPageRenderer
             );
         }
 
-        return '<ul class="events">' . $rows . '</ul>';
+        return sprintf('<ul class="events%s">%s</ul>', $archive ? ' events--archive' : '', $rows);
     }
 
     /**
@@ -277,11 +456,12 @@ final class LandingPageRenderer
      * нет общих полей.
      *
      * ТРЕТИЙ БЛОК ПРИХОДИТ ГОТОВЫМ (`$page->entity`) и рендер не знает, что в
-     * нём: `Place` на странице площадки, `Organization` на странице организатора
-     * или ничего. Знание о том, из каких колонок собирается разметка, осталось в
-     * `StructuredDataService`; здесь только вставка. Иначе шаблон страницы
-     * пришлось бы править при каждом новом типе страницы — а он для того и
-     * вынесен в `strtr()`, чтобы правки текста не трогали логику.
+     * нём: `Place` на странице площадки, `Organization` на странице организатора,
+     * `MusicGroup` на странице артиста или ничего. Знание о том, из каких колонок
+     * собирается разметка, осталось в `StructuredDataService`; здесь только
+     * вставка. Иначе шаблон страницы пришлось бы править при каждом новом типе
+     * страницы — а он для того и вынесен в `strtr()`, чтобы правки текста не
+     * трогали логику.
      *
      * Пустой `ItemList` не выводится: `<script>` без элементов валидатор
      * показывает как ошибку «expected a value», а не как пустой список. Крошки

@@ -1,0 +1,70 @@
+{
+  "database": "nabilet_testing",
+  "hallPublicId": "01M46ZM6A8KQP3N4YYEDMTTHES",
+  "hallId": 12,
+  "schemaVersionId": 13,
+  "query": "SELECT id,hall_id,version,status,CHAR_LENGTH(schema_json) AS schema_bytes,JSON_PRETTY(schema_json) AS schema_json,published_at FROM hall_schema_versions WHERE id=13;",
+  "beforePublish": {
+    "id": 13,
+    "hall_id": 12,
+    "version": 1,
+    "status": "draft",
+    "schema_bytes": 335,
+    "published_at": null,
+    "schema_json": {
+      "canvas": {"width": 900, "height": 600},
+      "sectors": [
+        {
+          "x": 100,
+          "y": 100,
+          "id": "audit-sql-sector",
+          "name": "SQL Snapshot",
+          "type": "seated",
+          "seats": [
+            {"x": 0, "y": 0, "id": "audit-sql-seat", "row": 1, "kind": "standard", "number": 1}
+          ],
+          "shape": "grid",
+          "rowPrices": [],
+          "priceMinor": 250000
+        }
+      ],
+      "version": "1.0",
+      "staticObjects": []
+    }
+  },
+  "publishRequest": {
+    "method": "POST",
+    "path": "/api/v1/halls/01M46ZM6A8KQP3N4YYEDMTTHES/schema-versions/13/publish",
+    "httpStatus": 200,
+    "result": {"id": 13, "version": 1, "status": "published", "published_at": "2026-10-06T00:31:13+03:00"}
+  },
+  "afterPublish": {
+    "id": 13,
+    "hall_id": 12,
+    "version": 1,
+    "status": "published",
+    "schema_bytes": 335,
+    "published_at": "2026-10-06 00:31:13",
+    "schema_json": {
+      "canvas": {"width": 900, "height": 600},
+      "sectors": [
+        {
+          "x": 100,
+          "y": 100,
+          "id": "audit-sql-sector",
+          "name": "SQL Snapshot",
+          "type": "seated",
+          "seats": [
+            {"x": 0, "y": 0, "id": "audit-sql-seat", "row": 1, "kind": "standard", "number": 1}
+          ],
+          "shape": "grid",
+          "rowPrices": [],
+          "priceMinor": 250000
+        }
+      ],
+      "version": "1.0",
+      "staticObjects": []
+    }
+  },
+  "result": "Only status and published_at changed; schema_json remained semantically identical and CHAR_LENGTH remained 335 bytes."
+}

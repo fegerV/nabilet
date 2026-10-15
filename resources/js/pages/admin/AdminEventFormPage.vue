@@ -37,6 +37,7 @@ import SessionFormModal from '@/components/admin/SessionFormModal.vue'
 import EventGallerySection from '@/components/admin/EventGallerySection.vue'
 import { useUiStore } from '@/stores/ui'
 import { ApiError, get, request, send, upload } from '@/lib/api'
+import { storageSrc } from '@/lib/mediaLibrary'
 import { dateFull, time } from '@/lib/format'
 import type { SessionRecord } from '@/lib/sessionForm'
 
@@ -66,7 +67,8 @@ const form = ref({
   duration_minutes: '',
   seo_title: '',
   seo_description: '',
-  // '' — стандартный вид билета (`ticket_template_id = NULL`).
+  // '' — без явного выбора: сервер при создании назначит макет по умолчанию,
+  // при правке сбросит назначение (`ticket_template_id = NULL`, сработает фолбэк резолвера).
   ticket_template_id: '',
 })
 
@@ -86,8 +88,9 @@ const actionNotice = ref<{ tone: 'mint' | 'sun' | 'rose'; text: string } | null>
 
 /* ── Шаблоны билетов ────────────────────────────────────────────────────────
  * `ticket_templates` — модуль Tickets; список нужен, чтобы выбрать макет в
- * форме. Ошибка загрузки НЕ блокирует сохранение карточки: шаблон
- * необязателен (`ticket_template_id` nullable, NULL = стандартный вид).
+ * форме. Ошибка загрузки НЕ блокирует сохранение карточки: сервер при
+ * создании сам назначит макет по умолчанию (`EventController::store`), а
+ * явный выбор здесь — переопределение.
  */
 interface TemplateOption {
   id: number
@@ -150,7 +153,10 @@ function clearPoster(): void {
 }
 
 /** Что показывать в превью: выбранный файл важнее сохранённого URL. */
-const posterShown = computed(() => posterPreview.value || form.value.poster)
+/** Хранимый URL — абсолютный от APP_URL, а админка может быть открыта с
+ * другого хоста (локально): собственный /storage/... показываем same-origin,
+ * иначе превью «сломано» при живом файле (см. storageSrc). */
+const posterShown = computed(() => posterPreview.value || storageSrc(form.value.poster))
 
 /* ── Slug-автогенерация ─────────────────────────────────────────────────── */
 const slugTouched = ref(false)
@@ -230,12 +236,53 @@ async function loadTemplates(): Promise<void> {
   templatesError.value = null
   try {
     const res = await get<TemplateOption[]>('/ticket-templates')
-    templates.value = Array.isArray(res.data) ? res.data : []
+    const payload = (res as unknown as { data?: unknown }).data ?? res
+    const list = Array.isArray(payload) ? payload : ((payload as { data?: TemplateOption[] }).data ?? [])
+    templates.value = list as TemplateOption[]
+    // Новое мероприятие стартует с макета по умолчанию (первый активный) —
+    // сервер сделает то же при сохранении, но администратор должен ВИДЕТЬ,
+    // что будет назначено, а не пустой выбор. Тронутое вручную не перезаписываем.
+    if (!isEdit.value && !form.value.ticket_template_id) {
+      const firstActive = templates.value.find((t) => t.active)
+      if (firstActive) form.value.ticket_template_id = String(firstActive.id)
+    }
   } catch (err) {
     templates.value = []
     templatesError.value = err instanceof Error ? err.message : String(err)
   } finally {
     templatesLoading.value = false
+  }
+}
+
+/* ── Свой макет для мероприятия ───────────────────────────────────────────
+ * Дубликат текущего (или первого активного) макета с привязкой к событию:
+ * дальше его правят в конструкторе (типографика, фон), исходник при этом не
+ * меняется — им продолжают пользоваться другие мероприятия.
+ */
+const duplicatingTemplate = ref(false)
+const duplicateError = ref<string | null>(null)
+
+async function duplicateTemplateForEvent(): Promise<void> {
+  if (!isEdit.value || !eventId.value || duplicatingTemplate.value) return
+  const sourceId = form.value.ticket_template_id || templates.value.find((t) => t.active)?.id
+  if (!sourceId) return
+  duplicatingTemplate.value = true
+  duplicateError.value = null
+  try {
+    const res = await send<{ id: number }>(`/ticket-templates/${sourceId}/duplicate`, 'POST', {
+      name: `${form.value.title.trim() || 'Мероприятие'} — билет`,
+      event_id: eventId.value,
+    })
+    const saved = (res as unknown as { data?: { id: number } }).data ?? res
+    const newId = (saved as { id: number }).id
+    form.value.ticket_template_id = String(newId)
+    await loadTemplates()
+    ui.notify('mint', 'Макет создан', 'Откройте его в конструкторе и настройте оформление.')
+    router.push(`/admin/ticket-templates?template=${newId}`)
+  } catch (err) {
+    duplicateError.value = err instanceof Error ? err.message : String(err)
+  } finally {
+    duplicatingTemplate.value = false
   }
 }
 
@@ -825,8 +872,17 @@ const publishedAtText = computed<string | null>(() => {
           label="Макет"
           :options="templateOptions"
           :disabled="templatesLoading"
-          :hint="templatesLoading ? 'Загружаем список макетов…' : 'Макет попадает в письмо с билетом и на страницу билета. «Стандартный вид» — когда своего макета нет.'"
+          :hint="templatesLoading ? 'Загружаем список макетов…' : 'Макет попадает в письмо с билетом и на страницу билета. Новое мероприятие получает макет по умолчанию автоматически.'"
         />
+        <div v-if="isEdit && !templatesLoading && templates.length > 0" class="mt-2">
+          <NButton variant="ghost" size="sm" :loading="duplicatingTemplate" @click="duplicateTemplateForEvent">
+            Создать макет для этого мероприятия
+          </NButton>
+          <p class="mt-1 text-xs text-subtle">
+            Копия текущего макета с привязкой к событию — дальше настройте типографику и фон в конструкторе.
+          </p>
+          <p v-if="duplicateError" class="mt-1 text-xs text-rose-400">{{ duplicateError }}</p>
+        </div>
         <!--
           Ошибка загрузки справочника НЕ блокирует сохранение: шаблон
           необязателен (NULL = стандартный вид). Поэтому это отдельная строка,

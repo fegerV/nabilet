@@ -6,6 +6,7 @@ namespace Nabilet\Modules\Tickets\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Str;
 // Каноническая модель. Дубликат в `Modules\Organizations\Models\Organization`
 // нёс трейт `SoftDeletes` при отсутствующей колонке `organizations.deleted_at`,
@@ -51,5 +52,17 @@ class TicketTemplate extends Model
     public function organization(): BelongsTo
     {
         return $this->belongsTo(Organization::class);
+    }
+
+    /**
+     * Мероприятия, которым назначен этот макет (`events.ticket_template_id`).
+     *
+     * Связь — то, что показывает `/admin/ticket-templates`: какой макет чьи
+     * билеты оформляет. Удаление макета обнуляет ссылку (`ON DELETE SET NULL`),
+     * поэтому коллекция всегда актуальна без ручной синхронизации.
+     */
+    public function events(): HasMany
+    {
+        return $this->hasMany(\Nabilet\Modules\Events\Models\Event::class, 'ticket_template_id');
     }
 }

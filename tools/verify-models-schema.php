@@ -68,8 +68,11 @@ $listMode = in_array('--list', $argv, true);
 $reportMode = in_array('--report', $argv, true);
 
 /** From information_schema on MySQL 8.4. Update in the same commit as the schema. */
-const EXPECTED_TABLES = 73;
-const EXPECTED_COLUMNS = 785;
+// 75 / 805: +2 таблицы и +20 колонок — сущность «Артист» (стратегия SEO, B-1):
+// `artists` (13 колонок) и связь `artist_event` (7). Обновлено тем же коммитом,
+// что и схема, — этого требует сам комментарий выше.
+const EXPECTED_TABLES = 75;
+const EXPECTED_COLUMNS = 805;
 
 /**
  * Application-owned additions to the Core schema, each tied to its owning migration.
@@ -186,9 +189,11 @@ const INVENTED_FIELDS = [
         'config' => 'names is_active/config; modules stores enabled/config_json',
         'is_active' => 'names is_active/config; modules stores enabled/config_json',
     ],
-    'Page' => [
-        'is_published' => 'names is_published; pages stores status and published_at',
-    ],
+    // `Page` снят с исключений (стратегия SEO, B-2): модель приведена к реальной
+    // схеме (`public_id`/`organization_id`/`title`/`slug`/`content`/`status`/
+    // `published_at`), и расхождения больше нет. Запись удалена, а не оставлена
+    // «на всякий случай»: исключение без причины — это молчаливое разрешение
+    // снова разойтись.
     'PageTranslation' => [
         'meta_description' => 'names meta_description; page_translations stores description/seo_description',
     ],

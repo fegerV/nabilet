@@ -264,7 +264,7 @@ class StructuredDataService
     }
 
     /**
-     * JSON-LD Place для страницы площадки (аудит P-12).
+     * JSON-LD Place для страницы площадки (аудит P-12, B-7).
      *
      * ЗАЧЕМ ОТДЕЛЬНЫЙ БЛОК, ЕСЛИ `Place` УЖЕ ЕСТЬ В РАЗМЕТКЕ СОБЫТИЯ. Там он
      * описывает место, где проходит КОНКРЕТНОЕ событие, и существует в контексте
@@ -294,11 +294,31 @@ class StructuredDataService
      * формальной чистоты: две разметки одного и того же места на двух страницах
      * одного сайта не должны расходиться в стране.
      *
-     * @param  array{name?: ?string, url?: ?string, address?: ?string, city?: ?string, country?: ?string}  $place
+     * `addressRegion` (стратегия SEO, B-7) выводится ТОЛЬКО при наличии
+     * `venues.region`. Яндекс.Вебмастер использует регион для геозависимой
+     * выдачи: запрос «концерты в Москве» в геозависимом режиме опирается на
+     * структурированный адрес, а не на свободный текст. `schema.org` поле
+     * опционально, отсутствие ключа — не ошибка, поэтому `null`-регион просто
+     * отбрасывается `pruneEmpty`-ом.
+     *
+     * `areaServed` (B-7) — `AdministrativeArea` с именем города. Это явная
+     * декларация зоны обслуживания: «страница описывает место, которое работает
+     * для города N». Яндекс и Google читают поле как подтверждение привязки к
+     * региону, и для локальной выдачи это сильнее, чем `addressLocality` внутри
+     * `PostalAddress`. Если города нет — поле не выводится, потому что
+     * «обслуживаем неизвестно где» хуже, чем его отсутствие.
+     *
+     * @param  array{name?: ?string, url?: ?string, address?: ?string, city?: ?string, region?: ?string, country?: ?string}  $place
      * @return array<string, mixed>
      */
     public function generatePlace(array $place): array
     {
+        $city = trim((string) ($place['city'] ?? ''));
+        $areaServed = $city === '' ? null : [
+            '@type' => 'AdministrativeArea',
+            'name' => $city,
+        ];
+
         return $this->pruneEmpty([
             '@context' => 'https://schema.org',
             '@type' => 'Place',
@@ -307,9 +327,11 @@ class StructuredDataService
             'address' => [
                 '@type' => 'PostalAddress',
                 'streetAddress' => trim((string) ($place['address'] ?? '')),
-                'addressLocality' => trim((string) ($place['city'] ?? '')),
+                'addressLocality' => $city,
+                'addressRegion' => trim((string) ($place['region'] ?? '')),
                 'addressCountry' => trim((string) ($place['country'] ?? '')) ?: 'RU',
             ],
+            'areaServed' => $areaServed,
         ]);
     }
 
@@ -347,6 +369,169 @@ class StructuredDataService
             'email' => trim((string) ($organization['email'] ?? '')),
             'phone' => trim((string) ($organization['phone'] ?? '')),
         ]);
+    }
+
+    /**
+     * JSON-LD MusicGroup для страницы артиста (стратегия SEO, B-1).
+     *
+     * ПОЧЕМУ `MusicGroup`, А НЕ `Person`. Артист в каталоге бывает и группой
+     * («Би-2»), и солистом, и в схеме нет колонки, которая бы это различала:
+     * `artists` описывает КАТАЛОЖНУЮ сущность с адресом и списком событий, а не
+     * физическое лицо. `MusicGroup` — это подтип `PerformingGroup`, и Google
+     * принимает его для исполнителя в разметке события (`performer`). Если
+     * когда-нибудь появится признак «солист», тип поменяется здесь одной
+     * строкой; выдумывать его сегодня из имени нельзя — «Анна Нетребко» и
+     * «Ночные снайперы» различаются не по строке, а по данным, которых нет.
+     *
+     * ЧЕМ ОТЛИЧАЕТСЯ ОТ БЛОКА `performer` В РАЗМЕТКЕ СОБЫТИЯ. Тот — ссылка на
+     * исполнителя ИЗ КОНТЕКСТА события: имени достаточно. Здесь артист сам
+     * предмет страницы, поэтому выводятся все поля, которые у него реально есть:
+     * жанр, биография, фотография, ссылки на соцсети.
+     *
+     * `genre` ВЫВОДИТСЯ СТРОКОЙ, А НЕ СПИСКОМ. В схеме это `VARCHAR(255)`, то
+     * есть одно значение, а не набор. `MusicGroup.genre` по спецификации
+     * принимает и строку, и массив; строка здесь — точная форма того, что
+     * лежит в колонке, а не придуманное дробление по запятой (жанр вида
+     * «рок, поп» — это одна строка администратора, а не два жанра).
+     *
+     * `sameAs` — ЕДИНСТВЕННОЕ МЕСТО, ГДЕ ПРИХОДИТ `social_links`. Google
+     * использует `sameAs` для подтверждения, что сущности на разных сайтах —
+     * это одна и та же сущность, поэтому сюда попадают только САМИ АДРЕСА, без
+     * подписей: `{"vk": "https://vk.com/..."}` и `["https://vk.com/..."]`
+     * дают один и тот же список URL. Значение с подписью (`{label, url}`)
+     * тоже разбирается — на случай, если карточку артиста заполняли руками.
+     *
+     * `photo` проходит через `AssetUrl`, как и `logo` у организации: в проекте
+     * два разных корня, и ручная склейка уже однажды дала `og:image` со ссылкой
+     * в 404 (см. докблок `AssetUrl`).
+     *
+     * НИ ОДНО ПОЛЕ НЕ ПОДСТАВЛЯЕТСЯ ПО УМОЛЧАНИЮ, и `pruneEmpty` здесь по той
+     * же причине, что у `generateOrganization()`: пустой `bio` — это
+     * утверждение «биография есть, но пустая», а не «биографии нет». Валидатор
+     * Google считает пустую строку значением и ругается на неполное поле, тогда
+     * как отсутствие ключа ошибкой не является — поле просто опционально.
+     *
+     * @param  array{name?: ?string, url?: ?string, bio?: ?string, photo?: ?string, genre?: ?string, social_links?: mixed}  $artist
+     * @return array<string, mixed>
+     */
+    public function generateArtist(array $artist): array
+    {
+        return $this->pruneEmpty([
+            '@context' => 'https://schema.org',
+            '@type' => 'MusicGroup',
+            'name' => trim((string) ($artist['name'] ?? '')),
+            'url' => trim((string) ($artist['url'] ?? '')),
+            'description' => trim((string) ($artist['bio'] ?? '')),
+            'image' => AssetUrl::storageOrNull($artist['photo'] ?? null),
+            'genre' => trim((string) ($artist['genre'] ?? '')),
+            'sameAs' => $this->socialUrls($artist['social_links'] ?? null),
+        ]);
+    }
+
+    /**
+     * JSON-LD Article для редакционной страницы CMS (стратегия SEO, B-2).
+     *
+     * ЧЕМ ОТЛИЧАЕТСЯ ОТ `Event`. Событие — это краткосрочный объект с
+     * `startDate` и местом проведения, редакционная страница — это ДОКУМЕНТ с
+     * автором и/или издателем, у которого есть дата публикации и правки.
+     * Обе схемы используются на сайте, и `Article` для статей — это то, что
+     * Google показывает в расширенных результатах под запросы «как вернуть
+     * билет», «правила посещения», «о компании».
+     *
+     * `author` И `publisher` НЕ ОБЯЗАТЕЛЬНЫ ПО СПЕЦИФИКАЦИИ — они условные
+     * поля, и `pruneEmpty()` убирает их вместе с подполями, если имени нет.
+     * Для редакционной страницы организации (`organizationName` присутствует)
+     * они заполняются; для общей страницы (`organizationName = null`) — нет.
+     * Не выдумывать издателя «по умолчанию» — это противоречие между разметкой
+     * и реальностью, и валидатор Google его ловит.
+     *
+     * `datePublished` И `dateModified` ВЫВОДЯТСЯ СТРОГО В ИЗО8601. У Content
+     * `pages` нет отдельной колонки «дата публикации черновика» — это и есть
+     * `published_at`, и страница без неё не публикуется (`PageService::forSlug()`).
+     * `dateModified` — `updated_at` модели, и она меняется при любой правке.
+     * Строка даты в `<script>` обязана быть валидным ISO, иначе валидатор
+     * Google считает поле ошибкой типа «expected ISO 8601 date».
+     *
+     * `mainEntityOfPage` — КАНОНИЧЕСКИЙ АДРЕС. Страница одна, других
+     * представлений у неё нет (нет пагинации, нет локалей), и именно
+     * canonical сообщает поисковику «это основной адрес документа».
+     *
+     * `image` НЕ ВЫВОДИТСЯ. У редакционных страниц пока нет поля обложки
+     * (`pages` — `public_id`/`organization_id`/`title`/`slug`/`content`/
+     * `status`/`published_at`), и `og:image` тоже не выводится в рендере.
+     * Выдумывать дефолтную картинку здесь нельзя: для `Event` дефолт
+     * осмыслен (карточка события без картинки — потеря в расширенном
+     * результате), для статьи с заголовком без обложки это просто статья без
+     * картинки, и поле `image` опционально.
+     *
+     * @param  array{headline?: ?string, description?: ?string, url?: ?string, datePublished?: ?string, dateModified?: ?string, publisherName?: ?string, authorName?: ?string}  $article
+     * @return array<string, mixed>
+     */
+    public function generateArticle(array $article): array
+    {
+        $publisherName = trim((string) ($article['publisherName'] ?? ''));
+        $authorName = trim((string) ($article['authorName'] ?? $publisherName));
+
+        return $this->pruneEmpty([
+            '@context' => 'https://schema.org',
+            '@type' => 'Article',
+            'headline' => trim((string) ($article['headline'] ?? '')),
+            'description' => trim((string) ($article['description'] ?? '')),
+            'url' => trim((string) ($article['url'] ?? '')),
+            'mainEntityOfPage' => trim((string) ($article['url'] ?? '')),
+            'datePublished' => trim((string) ($article['datePublished'] ?? '')),
+            'dateModified' => trim((string) ($article['dateModified'] ?? '')),
+            // Издатель и автор — ОДНА ОРГАНИЗАЦИЯ для v1: редакционных
+            // учёток автора в схеме `users` нет, а админ пишет от лица
+            // площадки. Когда появится персональный автор — здесь одна
+            // строка правки: `'author' => $this->pruneEmpty([...])`.
+            'author' => $authorName === '' ? null : [
+                '@type' => 'Organization',
+                'name' => $authorName,
+            ],
+            'publisher' => $publisherName === '' ? null : [
+                '@type' => 'Organization',
+                'name' => $publisherName,
+            ],
+        ]);
+    }
+
+    /**
+     * Список адресов из `social_links` — в любом из двух встречающихся видов.
+     *
+     * Форма колонки не зафиксирована: `social_links` — `JSON NULL`, и заполняет
+     * её либо импорт (списком адресов), либо рука администратора (картой
+     * «сеть → адрес»). Обе формы означают одно и то же, и обе обязаны дать
+     * непустой `sameAs`; иначе разметка молча теряла бы ссылки на соцсети в
+     * зависимости от того, как их ввели.
+     *
+     * Пустые значения отбрасываются здесь, а не в `pruneEmpty`: тот убрал бы
+     * пустой элемент из массива, но НЕ убрал бы сам ключ, если после чистки
+     * массив остался непустым, — а нам нужен именно список URL.
+     *
+     * @return list<string>
+     */
+    private function socialUrls(mixed $links): array
+    {
+        if (! is_array($links)) {
+            return [];
+        }
+
+        $urls = [];
+
+        foreach ($links as $value) {
+            // Карта «сеть → адрес» и просто список адресов различаются только
+            // типом значения: строка — это адрес, массив — запись с подписью.
+            $candidate = is_array($value)
+                ? ($value['url'] ?? null)
+                : $value;
+
+            if (is_string($candidate) && trim($candidate) !== '') {
+                $urls[] = trim($candidate);
+            }
+        }
+
+        return $urls;
     }
 
     /**

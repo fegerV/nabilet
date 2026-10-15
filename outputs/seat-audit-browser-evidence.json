@@ -1,0 +1,1039 @@
+{
+  "url": "http://127.0.0.1:8000/#/event/test-proverka/seats?session=5",
+  "pageReady": false,
+  "desktop": {
+    "title": "NABILET — билеты на события",
+    "text": "Н\nNABILET\n⌕\nАфиша\nМои билеты\nОрганизаторам\n☾\n◷\n←\nК событию\nМероприятие\n\n15 мест в зале\n\n14 мест · танцпол 20 билетов\nсвободно\nваш выбор\nдержит другой\nпродано\nнедоступно\nСЦЕНА\nТанцпол\n800 ₽ · 20 билетов\nклик — выбрать билеты\n\n← ↑ ↓ → — перемещаться по рядам\n\nВаш выбор\n\nВыберите места на схеме зала — они появятся здесь\n\n0 билетов · 0 мест\n0 ₽\nИтого\n0 ₽\nОформить заказ\n\nNABILET — билеты на события\n\nПомощь\nВозврат\nОрганизаторам",
+    "viewport": {
+      "width": 1440,
+      "height": 1000,
+      "scrollWidth": 1440,
+      "scrollHeight": 1000
+    },
+    "circles": [
+      {
+        "label": "Ряд 9, место 1 — свободно, 1 500 ₽",
+        "fill": "rgb(142, 116, 255)"
+      },
+      {
+        "label": "Ряд 9, место 2 — свободно, 1 500 ₽",
+        "fill": "rgb(142, 116, 255)"
+      },
+      {
+        "label": "Ряд 9, место 3 — свободно, 1 500 ₽",
+        "fill": "rgb(142, 116, 255)"
+      },
+      {
+        "label": "Ряд 10, место 1 — свободно, 1 500 ₽",
+        "fill": "rgb(142, 116, 255)"
+      },
+      {
+        "label": "Ряд 10, место 2 — свободно, 1 500 ₽",
+        "fill": "rgb(142, 116, 255)"
+      },
+      {
+        "label": "Ряд 10, место 3 — свободно, 1 500 ₽",
+        "fill": "rgb(142, 116, 255)"
+      },
+      {
+        "label": "Ряд 11, место 1 — свободно, 1 200 ₽",
+        "fill": "rgb(142, 116, 255)"
+      },
+      {
+        "label": "Ряд 11, место 2 — свободно, 1 200 ₽",
+        "fill": "rgb(142, 116, 255)"
+      },
+      {
+        "label": "Ряд 11, место 3 — свободно, 1 200 ₽",
+        "fill": "rgb(142, 116, 255)"
+      },
+      {
+        "label": "Ряд 11, место 4 — свободно, 1 200 ₽",
+        "fill": "rgb(142, 116, 255)"
+      },
+      {
+        "label": "Ряд 11, место 5 — свободно, 1 200 ₽",
+        "fill": "rgb(142, 116, 255)"
+      },
+      {
+        "label": "Ряд 11, место 6 — свободно, 1 200 ₽",
+        "fill": "rgb(142, 116, 255)"
+      },
+      {
+        "label": "Ряд 11, место 7 — свободно, 1 200 ₽",
+        "fill": "rgb(142, 116, 255)"
+      },
+      {
+        "label": "Ряд 11, место 8 — свободно, 1 200 ₽",
+        "fill": "rgb(142, 116, 255)"
+      }
+    ],
+    "buttons": [
+      "Включить светлую тему",
+      "Корзина",
+      "Меню"
+    ]
+  },
+  "mobile": {
+    "viewport": {
+      "width": 360,
+      "height": 800,
+      "scrollWidth": 360,
+      "scrollHeight": 800
+    },
+    "bodyText": "Н\n⌕\n☾\n◷\n☰\n←\nК событию\nМероприятие\n\n15 мест в зале\n\n14 мест · танцпол 20 билетов\nсвободно\nваш выбор\nдержит другой\nпродано\nнедоступно\nСЦЕНА\nТанцпол\n800 ₽ · 20 билетов\nклик — выбрать билеты\n\n← ↑ ↓ → — перемещаться по рядам\n\n▦\nАфиша\n◫\nМои билеты\n◈\nОрганизаторам\nВаш выбор\n\nВыберите места на схеме зала — они появятся здесь\n\n0 билетов · 0 мест\n0 ₽\nИтого\n0 ₽\nОформить заказ",
+    "sheetDialogs": 1
+  },
+  "selectionInteraction": {
+    "selectedSeatClick": {
+      "x": 164.390625,
+      "y": 277.77967834472656,
+      "label": "Ряд 9, место 1 — свободно, 1 500 ₽"
+    },
+    "postSeen": true,
+    "selectedRendered": true,
+    "afterSelect": {
+      "selected": [
+        "Ряд 9, место 1 — выбрано"
+      ],
+      "footer": "Н\nNABILET\n⌕\nАфиша\nМои билеты\nОрганизаторам\n☾\n◷\n1\n←\nК событию\nМероприятие\n\n15 мест в зале\n\n14 мест · танцпол 20 билетов\nсвободно\nваш выбор\nдержит другой\nпродано\nнедоступно\nСЦЕНА\nТанцпол\n800 ₽ · 20 билетов\nклик — выбрать билеты\n\n← ↑ ↓ → — перемещаться по рядам\n\nВаш выбор\nОчистить\n15м\n\nМеста забронированы на 15:00\n\nПока держим, никто другой их не купит\n\n9\n\nЗал, место 1\n\n1 500 ₽\n✕\n1 билет · 1 место\n1 500 ₽\nИтого\n1 500 ₽\nОформить заказ\n\nNABILET — билеты на события\n\nПомощь\nВозврат\nОрганизаторам"
+    },
+    "deselectSeatClick": {
+      "x": 169.21591186523438,
+      "y": 290.0037384033203,
+      "label": "Ряд 9, место 1 — выбрано"
+    },
+    "deleteSeen": true,
+    "cleanupApi": null,
+    "cleanup": {
+      "selected": [],
+      "footer": "Н\nNABILET\n⌕\nАфиша\nМои билеты\nОрганизаторам\n☾\n◷\n←\nК событию\nМероприятие\n\n15 мест в зале\n\n14 мест · танцпол 20 билетов\nсвободно\nваш выбор\nдержит другой\nпродано\nнедоступно\nСЦЕНА\nТанцпол\n800 ₽ · 20 билетов\nклик — выбрать билеты\n\n← ↑ ↓ → — перемещаться по рядам\n\nВаш выбор\n\nВыберите места на схеме зала — они появятся здесь\n\n0 билетов · 0 мест\n0 ₽\nИтого\n0 ₽\nОформить заказ\n\nNABILET — билеты на события\n\nПомощь\nВозврат\nОрганизаторам"
+    }
+  },
+  "network": [
+    {
+      "method": "GET",
+      "url": "http://127.0.0.1:8000/api/v1/analytics/metrika/config",
+      "status": 404,
+      "cartTokenFingerprint": null,
+      "requestBody": null,
+      "response": {
+        "error": {
+          "code": "NOT_FOUND",
+          "message": "The route api/v1/analytics/metrika/config could not be found.",
+          "request_id": "b0a2c12e7d3cac5bb1beeda3acb36067"
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "url": "http://127.0.0.1:8000/api/v1/inventory?session_id=5&per_page=500&page=1",
+      "status": 200,
+      "cartTokenFingerprint": null,
+      "requestBody": null,
+      "response": {
+        "data": {
+          "current_page": 1,
+          "data": [
+            {
+              "id": 11,
+              "public_id": "01M46QHPJ4R69MXYA71S4Q4Z20",
+              "session_id": 5,
+              "type": "standing",
+              "seat_id": null,
+              "standing_zone_id": 1,
+              "price_amount": 80000,
+              "currency": "RUB",
+              "capacity": 20,
+              "available_quantity": 20,
+              "status": "available",
+              "metadata_json": {
+                "row_label": "Танцпол",
+                "seat_number": null,
+                "sector_name": "Танцпол"
+              },
+              "created_at": "2026-10-05T19:09:46.000000Z",
+              "updated_at": "2026-10-05T19:09:46.000000Z",
+              "session": {
+                "id": 5,
+                "public_id": "01M46QHPDMGN70HYPB3QRBCNR0",
+                "event_id": 2,
+                "venue_id": 1,
+                "hall_id": 11,
+                "schema_version_id": 7,
+                "starts_at": "2026-12-01 19:00:00.000000",
+                "ends_at": null,
+                "sales_start_at": null,
+                "sales_end_at": null,
+                "timezone": "Europe/Moscow",
+                "status": "on_sale",
+                "created_at": "2026-10-05 19:09:46.000000",
+                "updated_at": "2026-10-05 19:09:46.000000"
+              },
+              "seat": null,
+              "standing_zone": {
+                "id": 1,
+                "public_id": "01M46QHPHWP75K6PVMMYMQD31X",
+                "sector_id": 10,
+                "name": "Танцпол",
+                "capacity": 20,
+                "price_amount": 80000,
+                "currency": "RUB",
+                "created_at": "2026-10-05 19:09:46.000000",
+                "updated_at": "2026-10-05 19:09:46.000000"
+              }
+            },
+            {
+              "id": 12,
+              "public_id": "01M46QHPHEGHJKAM1WN8EFPNNE",
+              "session_id": 5,
+              "type": "seat",
+              "seat_id": 29,
+              "standing_zone_id": null,
+              "price_amount": 150000,
+              "currency": "RUB",
+              "capacity": 1,
+              "available_quantity": 1,
+              "status": "available",
+              "metadata_json": {
+                "row_label": "Ряд 1",
+                "seat_number": "1",
+                "sector_name": "Партер"
+              },
+              "created_at": "2026-10-05T19:09:46.000000Z",
+              "updated_at": "2026-10-06T14:03:58.000000Z",
+              "session": {
+                "id": 5,
+                "public_id": "01M46QHPDMGN70HYPB3QRBCNR0",
+                "event_id": 2,
+                "venue_id": 1,
+                "hall_id": 11,
+                "schema_version_id": 7,
+                "starts_at": "2026-12-01 19:00:00.000000",
+                "ends_at": null,
+                "sales_start_at": null,
+                "sales_end_at": null,
+                "timezone": "Europe/Moscow",
+                "status": "on_sale",
+                "created_at": "2026-10-05 19:09:46.000000",
+                "updated_at": "2026-10-05 19:09:46.000000"
+              },
+              "seat": {
+                "id": 29,
+                "public_id": "01M46QHPEYZHZKEHV0FT1N3BQN",
+                "row_id": 9,
+                "number": "1",
+                "label": "Ряд 1 Место 1",
+                "x": "0.000",
+                "y": "0.000",
+                "width": null,
+                "height": null,
+                "rotation": "0.000",
+                "type": "standard",
+                "status": "active",
+                "metadata_json": null,
+                "created_at": "2026-10-05 19:09:46.000000",
+                "updated_at": "2026-10-05 19:09:46.000000"
+              },
+              "standing_zone": null
+            },
+            {
+              "id": 13,
+              "public_id": "01M46QHPHEGHJKAM1WN8EFPNNF",
+              "session_id": 5,
+              "type": "seat",
+              "seat_id": 30,
+              "standing_zone_id": null,
+              "price_amount": 150000,
+              "currency": "RUB",
+              "capacity": 1,
+              "available_quantity": 1,
+              "status": "available",
+              "metadata_json": {
+                "row_label": "Ряд 1",
+                "seat_number": "2",
+                "sector_name": "Партер"
+              },
+              "created_at": "2026-10-05T19:09:46.000000Z",
+              "updated_at": "2026-10-05T19:09:46.000000Z",
+              "session": {
+                "id": 5,
+                "public_id": "01M46QHPDMGN70HYPB3QRBCNR0",
+                "event_id": 2,
+                "venue_id": 1,
+                "hall_id": 11,
+                "schema_version_id": 7,
+                "starts_at": "2026-12-01 19:00:00.000000",
+                "ends_at": null,
+                "sales_start_at": null,
+                "sales_end_at": null,
+                "timezone": "Europe/Moscow",
+                "status": "on_sale",
+                "created_at": "2026-10-05 19:09:46.000000",
+                "updated_at": "2026-10-05 19:09:46.000000"
+              },
+              "seat": {
+                "id": 30,
+                "public_id": "01M46QHPF2F7VQEE8Z1C3PNPTN",
+                "row_id": 9,
+                "number": "2",
+                "label": "Ряд 1 Место 2",
+                "x": "1.000",
+                "y": "0.000",
+                "width": null,
+                "height": null,
+                "rotation": "0.000",
+                "type": "standard",
+                "status": "active",
+                "metadata_json": null,
+                "created_at": "2026-10-05 19:09:46.000000",
+                "updated_at": "2026-10-05 19:09:46.000000"
+              },
+              "standing_zone": null
+            },
+            {
+              "id": 14,
+              "public_id": "01M46QHPHEGHJKAM1WN8EFPNNG",
+              "session_id": 5,
+              "type": "seat",
+              "seat_id": 31,
+              "standing_zone_id": null,
+              "price_amount": 150000,
+              "currency": "RUB",
+              "capacity": 1,
+              "available_quantity": 1,
+              "status": "available",
+              "metadata_json": {
+                "row_label": "Ряд 1",
+                "seat_number": "3",
+                "sector_name": "Партер"
+              },
+              "created_at": "2026-10-05T19:09:46.000000Z",
+              "updated_at": "2026-10-05T19:09:46.000000Z",
+              "session": {
+                "id": 5,
+                "public_id": "01M46QHPDMGN70HYPB3QRBCNR0",
+                "event_id": 2,
+                "venue_id": 1,
+                "hall_id": 11,
+                "schema_version_id": 7,
+                "starts_at": "2026-12-01 19:00:00.000000",
+                "ends_at": null,
+                "sales_start_at": null,
+                "sales_end_at": null,
+                "timezone": "Europe/Moscow",
+                "status": "on_sale",
+                "created_at": "2026-10-05 19:09:46.000000",
+                "updated_at": "2026-10-05 19:09:46.000000"
+              },
+              "seat": {
+                "id": 31,
+                "public_id": "01M46QHPF56PBNAACRCV9F4QV3",
+                "row_id": 9,
+                "number": "3",
+                "label": "Ряд 1 Место 3",
+                "x": "3.000",
+                "y": "0.000",
+                "width": null,
+                "height": null,
+                "rotation": "0.000",
+                "type": "standard",
+                "status": "active",
+                "metadata_json": null,
+                "created_at": "2026-10-05 19:09:46.000000",
+                "updated_at": "2026-10-05 19:09:46.000000"
+              },
+              "standing_zone": null
+            },
+            {
+              "id": 15,
+              "public_id": "01M46QHPHH5CV51MH53CP5EPC1",
+              "session_id": 5,
+              "type": "seat",
+              "seat_id": 32,
+              "standing_zone_id": null,
+              "price_amount": 150000,
+              "currency": "RUB",
+              "capacity": 1,
+              "available_quantity": 1,
+              "status": "available",
+              "metadata_json": {
+                "row_label": "Ряд 2",
+                "seat_number": "1",
+                "sector_name": "Партер"
+              },
+              "created_at": "2026-10-05T19:09:46.000000Z",
+              "updated_at": "2026-10-05T19:09:46.000000Z",
+              "session": {
+                "id": 5,
+                "public_id": "01M46QHPDMGN70HYPB3QRBCNR0",
+                "event_id": 2,
+                "venue_id": 1,
+                "hall_id": 11,
+                "schema_version_id": 7,
+                "starts_at": "2026-12-01 19:00:00.000000",
+                "ends_at": null,
+                "sales_start_at": null,
+                "sales_end_at": null,
+                "timezone": "Europe/Moscow",
+                "status": "on_sale",
+                "created_at": "2026-10-05 19:09:46.000000",
+                "updated_at": "2026-10-05 19:09:46.000000"
+              },
+              "seat": {
+                "id": 32,
+                "public_id": "01M46QHPFCX04JW9Z3PM4RSKE7",
+                "row_id": 10,
+                "number": "1",
+                "label": "Ряд 2 Место 1",
+                "x": "0.000",
+                "y": "2.000",
+                "width": null,
+                "height": null,
+                "rotation": "0.000",
+                "type": "standard",
+                "status": "active",
+                "metadata_json": null,
+                "created_at": "2026-10-05 19:09:46.000000",
+                "updated_at": "2026-10-05 19:09:46.000000"
+              },
+              "standing_zone": null
+            },
+            {
+              "id": 16,
+              "public_id": "01M46QHPHJP1B5W01WMMPZBXK1",
+              "session_id": 5,
+              "type": "seat",
+              "seat_id": 33,
+              "standing_zone_id": null,
+              "price_amount": 150000,
+              "currency": "RUB",
+              "capacity": 1,
+              "available_quantity": 1,
+              "status": "available",
+              "metadata_json": {
+                "row_label": "Ряд 2",
+                "seat_number": "2",
+                "sector_name": "Партер"
+              },
+              "created_at": "2026-10-05T19:09:46.000000Z",
+              "updated_at": "2026-10-05T19:09:46.000000Z",
+              "session": {
+                "id": 5,
+                "public_id": "01M46QHPDMGN70HYPB3QRBCNR0",
+                "event_id": 2,
+                "venue_id": 1,
+                "hall_id": 11,
+                "schema_version_id": 7,
+                "starts_at": "2026-12-01 19:00:00.000000",
+                "ends_at": null,
+                "sales_start_at": null,
+                "sales_end_at": null,
+                "timezone": "Europe/Moscow",
+                "status": "on_sale",
+                "created_at": "2026-10-05 19:09:46.000000",
+                "updated_at": "2026-10-05 19:09:46.000000"
+              },
+              "seat": {
+                "id": 33,
+                "public_id": "01M46QHPFF4WFCS1H1RQ78949B",
+                "row_id": 10,
+                "number": "2",
+                "label": "Ряд 2 Место 2",
+                "x": "1.000",
+                "y": "2.000",
+                "width": null,
+                "height": null,
+                "rotation": "0.000",
+                "type": "standard",
+                "status": "active",
+                "metadata_json": null,
+                "created_at": "2026-10-05 19:09:46.000000",
+                "updated_at": "2026-10-05 19:09:46.000000"
+              },
+              "standing_zone": null
+            },
+            {
+              "id": 17,
+              "public_id": "01M46QHPHJP1B5W01WMMPZBXK2",
+              "session_id": 5,
+              "type": "seat",
+              "seat_id": 34,
+              "standing_zone_id": null,
+              "price_amount": 150000,
+              "currency": "RUB",
+              "capacity": 1,
+              "available_quantity": 1,
+              "status": "available",
+              "metadata_json": {
+                "row_label": "Ряд 2",
+                "seat_number": "3",
+                "sector_name": "Партер"
+              },
+              "created_at": "2026-10-05T19:09:46.000000Z",
+              "updated_at": "2026-10-05T19:09:46.000000Z",
+              "session": {
+                "id": 5,
+                "public_id": "01M46QHPDMGN70HYPB3QRBCNR0",
+                "event_id": 2,
+                "venue_id": 1,
+                "hall_id": 11,
+                "schema_version_id": 7,
+                "starts_at": "2026-12-01 19:00:00.000000",
+                "ends_at": null,
+                "sales_start_at": null,
+                "sales_end_at": null,
+                "timezone": "Europe/Moscow",
+                "status": "on_sale",
+                "created_at": "2026-10-05 19:09:46.000000",
+                "updated_at": "2026-10-05 19:09:46.000000"
+              },
+              "seat": {
+                "id": 34,
+                "public_id": "01M46QHPFJK61MCFMYHFZK10J6",
+                "row_id": 10,
+                "number": "3",
+                "label": "Ряд 2 Место 3",
+                "x": "3.000",
+                "y": "2.000",
+                "width": null,
+                "height": null,
+                "rotation": "0.000",
+                "type": "standard",
+                "status": "active",
+                "metadata_json": null,
+                "created_at": "2026-10-05 19:09:46.000000",
+                "updated_at": "2026-10-05 19:09:46.000000"
+              },
+              "standing_zone": null
+            },
+            {
+              "id": 18,
+              "public_id": "01M46QHPHQBE1MT2HZPV4C7F72",
+              "session_id": 5,
+              "type": "seat",
+              "seat_id": 35,
+              "standing_zone_id": null,
+              "price_amount": 120000,
+              "currency": "RUB",
+              "capacity": 1,
+              "available_quantity": 1,
+              "status": "available",
+              "metadata_json": {
+                "row_label": "Ряд 1",
+                "seat_number": "1",
+                "sector_name": "Стол 1"
+              },
+              "created_at": "2026-10-05T19:09:46.000000Z",
+              "updated_at": "2026-10-05T19:09:46.000000Z",
+              "session": {
+                "id": 5,
+                "public_id": "01M46QHPDMGN70HYPB3QRBCNR0",
+                "event_id": 2,
+                "venue_id": 1,
+                "hall_id": 11,
+                "schema_version_id": 7,
+                "starts_at": "2026-12-01 19:00:00.000000",
+                "ends_at": null,
+                "sales_start_at": null,
+                "sales_end_at": null,
+                "timezone": "Europe/Moscow",
+                "status": "on_sale",
+                "created_at": "2026-10-05 19:09:46.000000",
+                "updated_at": "2026-10-05 19:09:46.000000"
+              },
+              "seat": {
+                "id": 35,
+                "public_id": "01M46QHPG13533TYVGXGX4WKV5",
+                "row_id": 11,
+                "number": "1",
+                "label": "Ряд 1 Место 1",
+                "x": "3.000",
+                "y": "0.000",
+                "width": null,
+                "height": null,
+                "rotation": "0.000",
+                "type": "standard",
+                "status": "active",
+                "metadata_json": null,
+                "created_at": "2026-10-05 19:09:46.000000",
+                "updated_at": "2026-10-05 19:09:46.000000"
+              },
+              "standing_zone": null
+            },
+            {
+              "id": 19,
+              "public_id": "01M46QHPHQBE1MT2HZPV4C7F73",
+              "session_id": 5,
+              "type": "seat",
+              "seat_id": 36,
+              "standing_zone_id": null,
+              "price_amount": 120000,
+              "currency": "RUB",
+              "capacity": 1,
+              "available_quantity": 1,
+              "status": "available",
+              "metadata_json": {
+                "row_label": "Ряд 1",
+                "seat_number": "2",
+                "sector_name": "Стол 1"
+              },
+              "created_at": "2026-10-05T19:09:46.000000Z",
+              "updated_at": "2026-10-05T19:09:46.000000Z",
+              "session": {
+                "id": 5,
+                "public_id": "01M46QHPDMGN70HYPB3QRBCNR0",
+                "event_id": 2,
+                "venue_id": 1,
+                "hall_id": 11,
+                "schema_version_id": 7,
+                "starts_at": "2026-12-01 19:00:00.000000",
+                "ends_at": null,
+                "sales_start_at": null,
+                "sales_end_at": null,
+                "timezone": "Europe/Moscow",
+                "status": "on_sale",
+                "created_at": "2026-10-05 19:09:46.000000",
+                "updated_at": "2026-10-05 19:09:46.000000"
+              },
+              "seat": {
+                "id": 36,
+                "public_id": "01M46QHPG5QZA0VC4BTFG729RQ",
+                "row_id": 11,
+                "number": "2",
+                "label": "Ряд 1 Место 2",
+                "x": "6.000",
+                "y": "1.000",
+                "width": null,
+                "height": null,
+                "rotation": "0.000",
+                "type": "standard",
+                "status": "active",
+                "metadata_json": null,
+                "created_at": "2026-10-05 19:09:46.000000",
+                "updated_at": "2026-10-05 19:09:46.000000"
+              },
+              "standing_zone": null
+            },
+            {
+              "id": 20,
+              "public_id": "01M46QHPHQBE1MT2HZPV4C7F74",
+              "session_id": 5,
+              "type": "seat",
+              "seat_id": 37,
+              "standing_zone_id": null,
+              "price_amount": 120000,
+              "currency": "RUB",
+              "capacity": 1,
+              "available_quantity": 1,
+              "status": "available",
+              "metadata_json": {
+                "row_label": "Ряд 1",
+                "seat_number": "3",
+                "sector_name": "Стол 1"
+              },
+              "created_at": "2026-10-05T19:09:46.000000Z",
+              "updated_at": "2026-10-05T19:09:46.000000Z",
+              "session": {
+                "id": 5,
+                "public_id": "01M46QHPDMGN70HYPB3QRBCNR0",
+                "event_id": 2,
+                "venue_id": 1,
+                "hall_id": 11,
+                "schema_version_id": 7,
+                "starts_at": "2026-12-01 19:00:00.000000",
+                "ends_at": null,
+                "sales_start_at": null,
+                "sales_end_at": null,
+                "timezone": "Europe/Moscow",
+                "status": "on_sale",
+                "created_at": "2026-10-05 19:09:46.000000",
+                "updated_at": "2026-10-05 19:09:46.000000"
+              },
+              "seat": {
+                "id": 37,
+                "public_id": "01M46QHPG8HVR1FJPSD1X602HP",
+                "row_id": 11,
+                "number": "3",
+                "label": "Ряд 1 Место 3",
+                "x": "7.000",
+                "y": "4.000",
+                "width": null,
+                "height": null,
+                "rotation": "0.000",
+                "type": "standard",
+                "status": "active",
+                "metadata_json": null,
+                "created_at": "2026-10-05 19:09:46.000000",
+                "updated_at": "2026-10-05 19:09:46.000000"
+              },
+              "standing_zone": null
+            },
+            {
+              "id": 21,
+              "public_id": "01M46QHPHQBE1MT2HZPV4C7F75",
+              "session_id": 5,
+              "type": "seat",
+              "seat_id": 38,
+              "standing_zone_id": null,
+              "price_amount": 120000,
+              "currency": "RUB",
+              "capacity": 1,
+              "available_quantity": 1,
+              "status": "available",
+              "metadata_json": {
+                "row_label": "Ряд 1",
+                "seat_number": "4",
+                "sector_name": "Стол 1"
+              },
+              "created_at": "2026-10-05T19:09:46.000000Z",
+              "updated_at": "2026-10-05T19:09:46.000000Z",
+              "session": {
+                "id": 5,
+                "public_id": "01M46QHPDMGN70HYPB3QRBCNR0",
+                "event_id": 2,
+                "venue_id": 1,
+                "hall_id": 11,
+                "schema_version_id": 7,
+                "starts_at": "2026-12-01 19:00:00.000000",
+                "ends_at": null,
+                "sales_start_at": null,
+                "sales_end_at": null,
+                "timezone": "Europe/Moscow",
+                "status": "on_sale",
+                "created_at": "2026-10-05 19:09:46.000000",
+                "updated_at": "2026-10-05 19:09:46.000000"
+              },
+              "seat": {
+                "id": 38,
+                "public_id": "01M46QHPGB8WABYQ02ZHS5081Y",
+                "row_id": 11,
+                "number": "4",
+                "label": "Ряд 1 Место 4",
+                "x": "6.000",
+                "y": "6.000",
+                "width": null,
+                "height": null,
+                "rotation": "0.000",
+                "type": "standard",
+                "status": "active",
+                "metadata_json": null,
+                "created_at": "2026-10-05 19:09:46.000000",
+                "updated_at": "2026-10-05 19:09:46.000000"
+              },
+              "standing_zone": null
+            },
+            {
+              "id": 22,
+              "public_id": "01M46QHPHQBE1MT2HZPV4C7F76",
+              "session_id": 5,
+              "type": "seat",
+              "seat_id": 39,
+              "standing_zone_id": null,
+              "price_amount": 120000,
+              "currency": "RUB",
+              "capacity": 1,
+              "available_quantity": 1,
+              "status": "available",
+              "metadata_json": {
+                "row_label": "Ряд 1",
+                "seat_number": "5",
+                "sector_name": "Стол 1"
+              },
+              "created_at": "2026-10-05T19:09:46.000000Z",
+              "updated_at": "2026-10-05T19:09:46.000000Z",
+              "session": {
+                "id": 5,
+                "public_id": "01M46QHPDMGN70HYPB3QRBCNR0",
+                "event_id": 2,
+                "venue_id": 1,
+                "hall_id": 11,
+                "schema_version_id": 7,
+                "starts_at": "2026-12-01 19:00:00.000000",
+                "ends_at": null,
+                "sales_start_at": null,
+                "sales_end_at": null,
+                "timezone": "Europe/Moscow",
+                "status": "on_sale",
+                "created_at": "2026-10-05 19:09:46.000000",
+                "updated_at": "2026-10-05 19:09:46.000000"
+              },
+              "seat": {
+                "id": 39,
+                "public_id": "01M46QHPGFXTK559S5187CHYAZ",
+                "row_id": 11,
+                "number": "5",
+                "label": "Ряд 1 Место 5",
+                "x": "3.000",
+                "y": "8.000",
+                "width": null,
+                "height": null,
+                "rotation": "0.000",
+                "type": "standard",
+                "status": "active",
+                "metadata_json": null,
+                "created_at": "2026-10-05 19:09:46.000000",
+                "updated_at": "2026-10-05 19:09:46.000000"
+              },
+              "standing_zone": null
+            },
+            {
+              "id": 23,
+              "public_id": "01M46QHPHQBE1MT2HZPV4C7F77",
+              "session_id": 5,
+              "type": "seat",
+              "seat_id": 40,
+              "standing_zone_id": null,
+              "price_amount": 120000,
+              "currency": "RUB",
+              "capacity": 1,
+              "available_quantity": 1,
+              "status": "available",
+              "metadata_json": {
+                "row_label": "Ряд 1",
+                "seat_number": "6",
+                "sector_name": "Стол 1"
+              },
+              "created_at": "2026-10-05T19:09:46.000000Z",
+              "updated_at": "2026-10-05T19:09:46.000000Z",
+              "session": {
+                "id": 5,
+                "public_id": "01M46QHPDMGN70HYPB3QRBCNR0",
+                "event_id": 2,
+                "venue_id": 1,
+                "hall_id": 11,
+                "schema_version_id": 7,
+                "starts_at": "2026-12-01 19:00:00.000000",
+                "ends_at": null,
+                "sales_start_at": null,
+                "sales_end_at": null,
+                "timezone": "Europe/Moscow",
+                "status": "on_sale",
+                "created_at": "2026-10-05 19:09:46.000000",
+                "updated_at": "2026-10-05 19:09:46.000000"
+              },
+              "seat": {
+                "id": 40,
+                "public_id": "01M46QHPGJDZGRNB6C59WJAQA7",
+                "row_id": 11,
+                "number": "6",
+                "label": "Ряд 1 Место 6",
+                "x": "1.000",
+                "y": "6.000",
+                "width": null,
+                "height": null,
+                "rotation": "0.000",
+                "type": "standard",
+                "status": "active",
+                "metadata_json": null,
+                "created_at": "2026-10-05 19:09:46.000000",
+                "updated_at": "2026-10-05 19:09:46.000000"
+              },
+              "standing_zone": null
+            },
+            {
+              "id": 24,
+              "public_id": "01M46QHPHQBE1MT2HZPV4C7F78",
+              "session_id": 5,
+              "type": "seat",
+              "seat_id": 41,
+              "standing_zone_id": null,
+              "price_amount": 120000,
+              "currency": "RUB",
+              "capacity": 1,
+              "available_quantity": 1,
+              "status": "available",
+              "metadata_json": {
+                "row_label": "Ряд 1",
+                "seat_number": "7",
+                "sector_name": "Стол 1"
+              },
+              "created_at": "2026-10-05T19:09:46.000000Z",
+              "updated_at": "2026-10-05T19:09:46.000000Z",
+              "session": {
+                "id": 5,
+                "public_id": "01M46QHPDMGN70HYPB3QRBCNR0",
+                "event_id": 2,
+                "venue_id": 1,
+                "hall_id": 11,
+                "schema_version_id": 7,
+                "starts_at": "2026-12-01 19:00:00.000000",
+                "ends_at": null,
+                "sales_start_at": null,
+                "sales_end_at": null,
+                "timezone": "Europe/Moscow",
+                "status": "on_sale",
+                "created_at": "2026-10-05 19:09:46.000000",
+                "updated_at": "2026-10-05 19:09:46.000000"
+              },
+              "seat": {
+                "id": 41,
+                "public_id": "01M46QHPGPGJ1NRK15HGW54SMQ",
+                "row_id": 11,
+                "number": "7",
+                "label": "Ряд 1 Место 7",
+                "x": "0.000",
+                "y": "4.000",
+                "width": null,
+                "height": null,
+                "rotation": "0.000",
+                "type": "standard",
+                "status": "active",
+                "metadata_json": null,
+                "created_at": "2026-10-05 19:09:46.000000",
+                "updated_at": "2026-10-05 19:09:46.000000"
+              },
+              "standing_zone": null
+            },
+            {
+              "id": 25,
+              "public_id": "01M46QHPHQBE1MT2HZPV4C7F79",
+              "session_id": 5,
+              "type": "seat",
+              "seat_id": 42,
+              "standing_zone_id": null,
+              "price_amount": 120000,
+              "currency": "RUB",
+              "capacity": 1,
+              "available_quantity": 1,
+              "status": "available",
+              "metadata_json": {
+                "row_label": "Ряд 1",
+                "seat_number": "8",
+                "sector_name": "Стол 1"
+              },
+              "created_at": "2026-10-05T19:09:46.000000Z",
+              "updated_at": "2026-10-05T19:09:46.000000Z",
+              "session": {
+                "id": 5,
+                "public_id": "01M46QHPDMGN70HYPB3QRBCNR0",
+                "event_id": 2,
+                "venue_id": 1,
+                "hall_id": 11,
+                "schema_version_id": 7,
+                "starts_at": "2026-12-01 19:00:00.000000",
+                "ends_at": null,
+                "sales_start_at": null,
+                "sales_end_at": null,
+                "timezone": "Europe/Moscow",
+                "status": "on_sale",
+                "created_at": "2026-10-05 19:09:46.000000",
+                "updated_at": "2026-10-05 19:09:46.000000"
+              },
+              "seat": {
+                "id": 42,
+                "public_id": "01M46QHPGR7B4H243E1DGSH2YM",
+                "row_id": 11,
+                "number": "8",
+                "label": "Ряд 1 Место 8",
+                "x": "1.000",
+                "y": "1.000",
+                "width": null,
+                "height": null,
+                "rotation": "0.000",
+                "type": "standard",
+                "status": "active",
+                "metadata_json": null,
+                "created_at": "2026-10-05 19:09:46.000000",
+                "updated_at": "2026-10-05 19:09:46.000000"
+              },
+              "standing_zone": null
+            }
+          ],
+          "first_page_url": "http://127.0.0.1:8000/api/v1/inventory?page=1",
+          "from": 1,
+          "last_page": 1,
+          "last_page_url": "http://127.0.0.1:8000/api/v1/inventory?page=1",
+          "links": [
+            {
+              "url": null,
+              "label": "&laquo; Назад",
+              "page": null,
+              "active": false
+            },
+            {
+              "url": "http://127.0.0.1:8000/api/v1/inventory?page=1",
+              "label": "1",
+              "page": 1,
+              "active": true
+            },
+            {
+              "url": null,
+              "label": "Вперёд &raquo;",
+              "page": null,
+              "active": false
+            }
+          ],
+          "next_page_url": null,
+          "path": "http://127.0.0.1:8000/api/v1/inventory",
+          "per_page": 500,
+          "prev_page_url": null,
+          "to": 15,
+          "total": 15
+        },
+        "meta": {
+          "current_page": 1,
+          "per_page": 500,
+          "total": 15,
+          "last_page": 1
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "url": "http://127.0.0.1:8000/api/v1/cart?session_id=5",
+      "status": 200,
+      "cartTokenFingerprint": "f80a4dd191f5",
+      "requestBody": null,
+      "response": {
+        "data": null
+      }
+    },
+    {
+      "method": "POST",
+      "url": "http://127.0.0.1:8000/api/v1/cart/items",
+      "status": 201,
+      "cartTokenFingerprint": "f80a4dd191f5",
+      "requestBody": "{\"session_id\":5,\"inventory_item_id\":12,\"quantity\":1}",
+      "response": {
+        "message": "Item added to cart successfully",
+        "data": {
+          "cart_id": 11,
+          "inventory_item_id": 12,
+          "quantity": 1,
+          "unit_price": "150000",
+          "total_price": "150000",
+          "updated_at": "2026-10-06T14:06:53.000000Z",
+          "created_at": "2026-10-06T14:06:53.000000Z",
+          "id": 8
+        },
+        "cart": {
+          "cart_id": 11,
+          "total_amount": "150000",
+          "currency": "RUB",
+          "expires_at": "2026-10-06T17:21:53+03:00"
+        }
+      }
+    },
+    {
+      "method": "DELETE",
+      "url": "http://127.0.0.1:8000/api/v1/cart/items/8",
+      "status": 200,
+      "cartTokenFingerprint": "f80a4dd191f5",
+      "requestBody": "{\"session_id\":\"5\"}",
+      "response": {
+        "message": "Item removed from cart successfully"
+      }
+    }
+  ],
+  "errors": [
+    {
+      "type": "console",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "type": "console",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    }
+  ]
+}

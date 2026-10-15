@@ -246,7 +246,7 @@ final class EventSoftDeleteTest extends TestCase
 
     private function eventsSitemap(): string
     {
-        $response = $this->get('/api/v1/sitemap-events.xml');
+        $response = $this->get('/sitemap-events.xml');
 
         $response->assertStatus(200);
 

@@ -1,0 +1,3099 @@
+{
+  "version": "1.0",
+  "canvas": {
+    "width": 2110,
+    "height": 1438
+  },
+  "background": null,
+  "backgrounds": [],
+  "sectors": [
+    {
+      "id": "table-3-44",
+      "name": "Боковые столы · стол 44",
+      "x": 1767,
+      "y": 782,
+      "priceMinor": 100000,
+      "type": "seated",
+      "rowPrices": {
+        "1": 100000
+      },
+      "shape": "table",
+      "arcSpread": 120,
+      "arcBaseR": 200,
+      "arcRowGap": 24,
+      "arcOffsetX": 0,
+      "arcOffsetY": 0,
+      "seats": [
+        {
+          "id": "table-3-44-seat-1",
+          "row": 1,
+          "number": 1,
+          "kind": "standard",
+          "x": 0,
+          "y": 0
+        },
+        {
+          "id": "table-3-44-seat-2",
+          "row": 1,
+          "number": 2,
+          "kind": "standard",
+          "x": 24,
+          "y": 0
+        },
+        {
+          "id": "table-3-44-seat-3",
+          "row": 1,
+          "number": 3,
+          "kind": "standard",
+          "x": 48,
+          "y": 34
+        },
+        {
+          "id": "table-3-44-seat-4",
+          "row": 1,
+          "number": 4,
+          "kind": "standard",
+          "x": 24,
+          "y": 66
+        },
+        {
+          "id": "table-3-44-seat-5",
+          "row": 1,
+          "number": 5,
+          "kind": "standard",
+          "x": 0,
+          "y": 66
+        }
+      ]
+    },
+    {
+      "id": "table-3-45",
+      "name": "Боковые столы · стол 45",
+      "x": 1767,
+      "y": 886,
+      "priceMinor": 100000,
+      "type": "seated",
+      "rowPrices": {
+        "1": 100000
+      },
+      "shape": "table",
+      "arcSpread": 120,
+      "arcBaseR": 200,
+      "arcRowGap": 24,
+      "arcOffsetX": 0,
+      "arcOffsetY": 0,
+      "seats": [
+        {
+          "id": "table-3-45-seat-1",
+          "row": 1,
+          "number": 1,
+          "kind": "standard",
+          "x": 0,
+          "y": 0
+        },
+        {
+          "id": "table-3-45-seat-2",
+          "row": 1,
+          "number": 2,
+          "kind": "standard",
+          "x": 24,
+          "y": 0
+        },
+        {
+          "id": "table-3-45-seat-3",
+          "row": 1,
+          "number": 3,
+          "kind": "standard",
+          "x": 48,
+          "y": 34
+        },
+        {
+          "id": "table-3-45-seat-4",
+          "row": 1,
+          "number": 4,
+          "kind": "standard",
+          "x": 24,
+          "y": 66
+        },
+        {
+          "id": "table-3-45-seat-5",
+          "row": 1,
+          "number": 5,
+          "kind": "standard",
+          "x": 0,
+          "y": 66
+        }
+      ]
+    },
+    {
+      "id": "table-3-46",
+      "name": "Боковые столы · стол 46",
+      "x": 1767,
+      "y": 988,
+      "priceMinor": 100000,
+      "type": "seated",
+      "rowPrices": {
+        "1": 100000
+      },
+      "shape": "table",
+      "arcSpread": 120,
+      "arcBaseR": 200,
+      "arcRowGap": 24,
+      "arcOffsetX": 0,
+      "arcOffsetY": 0,
+      "seats": [
+        {
+          "id": "table-3-46-seat-1",
+          "row": 1,
+          "number": 1,
+          "kind": "standard",
+          "x": 0,
+          "y": 0
+        },
+        {
+          "id": "table-3-46-seat-2",
+          "row": 1,
+          "number": 2,
+          "kind": "standard",
+          "x": 24,
+          "y": 0
+        },
+        {
+          "id": "table-3-46-seat-3",
+          "row": 1,
+          "number": 3,
+          "kind": "standard",
+          "x": 48,
+          "y": 34
+        },
+        {
+          "id": "table-3-46-seat-4",
+          "row": 1,
+          "number": 4,
+          "kind": "standard",
+          "x": 24,
+          "y": 66
+        },
+        {
+          "id": "table-3-46-seat-5",
+          "row": 1,
+          "number": 5,
+          "kind": "standard",
+          "x": 0,
+          "y": 66
+        }
+      ]
+    },
+    {
+      "id": "table-3-47",
+      "name": "Боковые столы · стол 47",
+      "x": 1767,
+      "y": 1090,
+      "priceMinor": 100000,
+      "type": "seated",
+      "rowPrices": {
+        "1": 100000
+      },
+      "shape": "table",
+      "arcSpread": 120,
+      "arcBaseR": 200,
+      "arcRowGap": 24,
+      "arcOffsetX": 0,
+      "arcOffsetY": 0,
+      "seats": [
+        {
+          "id": "table-3-47-seat-1",
+          "row": 1,
+          "number": 1,
+          "kind": "standard",
+          "x": 0,
+          "y": 0
+        },
+        {
+          "id": "table-3-47-seat-2",
+          "row": 1,
+          "number": 2,
+          "kind": "standard",
+          "x": 24,
+          "y": 0
+        },
+        {
+          "id": "table-3-47-seat-3",
+          "row": 1,
+          "number": 3,
+          "kind": "standard",
+          "x": 48,
+          "y": 34
+        },
+        {
+          "id": "table-3-47-seat-4",
+          "row": 1,
+          "number": 4,
+          "kind": "standard",
+          "x": 24,
+          "y": 66
+        },
+        {
+          "id": "table-3-47-seat-5",
+          "row": 1,
+          "number": 5,
+          "kind": "standard",
+          "x": 0,
+          "y": 66
+        }
+      ]
+    },
+    {
+      "id": "table-3-48",
+      "name": "Боковые столы · стол 48",
+      "x": 1767,
+      "y": 1192,
+      "priceMinor": 100000,
+      "type": "seated",
+      "rowPrices": {
+        "1": 100000
+      },
+      "shape": "table",
+      "arcSpread": 120,
+      "arcBaseR": 200,
+      "arcRowGap": 24,
+      "arcOffsetX": 0,
+      "arcOffsetY": 0,
+      "seats": [
+        {
+          "id": "table-3-48-seat-1",
+          "row": 1,
+          "number": 1,
+          "kind": "standard",
+          "x": 0,
+          "y": 0
+        },
+        {
+          "id": "table-3-48-seat-2",
+          "row": 1,
+          "number": 2,
+          "kind": "standard",
+          "x": 24,
+          "y": 0
+        },
+        {
+          "id": "table-3-48-seat-3",
+          "row": 1,
+          "number": 3,
+          "kind": "standard",
+          "x": 48,
+          "y": 34
+        },
+        {
+          "id": "table-3-48-seat-4",
+          "row": 1,
+          "number": 4,
+          "kind": "standard",
+          "x": 24,
+          "y": 66
+        },
+        {
+          "id": "table-3-48-seat-5",
+          "row": 1,
+          "number": 5,
+          "kind": "standard",
+          "x": 0,
+          "y": 66
+        }
+      ]
+    },
+    {
+      "id": "table-3-39",
+      "name": "Боковые столы · стол 39",
+      "x": 1827,
+      "y": 207,
+      "priceMinor": 100000,
+      "type": "seated",
+      "rowPrices": {
+        "1": 100000
+      },
+      "shape": "table",
+      "arcSpread": 120,
+      "arcBaseR": 200,
+      "arcRowGap": 24,
+      "arcOffsetX": 0,
+      "arcOffsetY": 0,
+      "seats": [
+        {
+          "id": "table-3-39-seat-1",
+          "row": 1,
+          "number": 1,
+          "kind": "standard",
+          "x": 8,
+          "y": 58
+        },
+        {
+          "id": "table-3-39-seat-2",
+          "row": 1,
+          "number": 2,
+          "kind": "standard",
+          "x": 0,
+          "y": 24
+        },
+        {
+          "id": "table-3-39-seat-3",
+          "row": 1,
+          "number": 3,
+          "kind": "standard",
+          "x": 32,
+          "y": 0
+        },
+        {
+          "id": "table-3-39-seat-4",
+          "row": 1,
+          "number": 4,
+          "kind": "standard",
+          "x": 65,
+          "y": 24
+        },
+        {
+          "id": "table-3-39-seat-5",
+          "row": 1,
+          "number": 5,
+          "kind": "standard",
+          "x": 56,
+          "y": 59
+        }
+      ]
+    },
+    {
+      "id": "table-3-1",
+      "name": "Боковые столы · стол 1",
+      "x": 343,
+      "y": 1166,
+      "priceMinor": 100000,
+      "type": "seated",
+      "rowPrices": {
+        "1": 100000
+      },
+      "shape": "table",
+      "arcSpread": 120,
+      "arcBaseR": 200,
+      "arcRowGap": 24,
+      "arcOffsetX": 0,
+      "arcOffsetY": 0,
+      "seats": [
+        {
+          "id": "table-3-1-seat-1",
+          "row": 1,
+          "number": 1,
+          "kind": "standard",
+          "x": 48,
+          "y": 66
+        },
+        {
+          "id": "table-3-1-seat-2",
+          "row": 1,
+          "number": 2,
+          "kind": "standard",
+          "x": 24,
+          "y": 66
+        },
+        {
+          "id": "table-3-1-seat-3",
+          "row": 1,
+          "number": 3,
+          "kind": "standard",
+          "x": 0,
+          "y": 32
+        },
+        {
+          "id": "table-3-1-seat-4",
+          "row": 1,
+          "number": 4,
+          "kind": "standard",
+          "x": 24,
+          "y": 0
+        },
+        {
+          "id": "table-3-1-seat-5",
+          "row": 1,
+          "number": 5,
+          "kind": "standard",
+          "x": 48,
+          "y": 0
+        }
+      ]
+    },
+    {
+      "id": "table-3-2",
+      "name": "Боковые столы · стол 2",
+      "x": 343,
+      "y": 1047,
+      "priceMinor": 100000,
+      "type": "seated",
+      "rowPrices": {
+        "1": 100000
+      },
+      "shape": "table",
+      "arcSpread": 120,
+      "arcBaseR": 200,
+      "arcRowGap": 24,
+      "arcOffsetX": 0,
+      "arcOffsetY": 0,
+      "seats": [
+        {
+          "id": "table-3-2-seat-1",
+          "row": 1,
+          "number": 1,
+          "kind": "standard",
+          "x": 48,
+          "y": 66
+        },
+        {
+          "id": "table-3-2-seat-2",
+          "row": 1,
+          "number": 2,
+          "kind": "standard",
+          "x": 24,
+          "y": 66
+        },
+        {
+          "id": "table-3-2-seat-3",
+          "row": 1,
+          "number": 3,
+          "kind": "standard",
+          "x": 0,
+          "y": 32
+        },
+        {
+          "id": "table-3-2-seat-4",
+          "row": 1,
+          "number": 4,
+          "kind": "standard",
+          "x": 24,
+          "y": 0
+        },
+        {
+          "id": "table-3-2-seat-5",
+          "row": 1,
+          "number": 5,
+          "kind": "standard",
+          "x": 48,
+          "y": 0
+        }
+      ]
+    },
+    {
+      "id": "table-3-3",
+      "name": "Боковые столы · стол 3",
+      "x": 295,
+      "y": 928,
+      "priceMinor": 150000,
+      "type": "seated",
+      "rowPrices": {
+        "1": 150000
+      },
+      "shape": "table",
+      "arcSpread": 120,
+      "arcBaseR": 200,
+      "arcRowGap": 24,
+      "arcOffsetX": 0,
+      "arcOffsetY": 0,
+      "seats": [
+        {
+          "id": "table-3-3-seat-1",
+          "row": 1,
+          "number": 1,
+          "kind": "standard",
+          "x": 96,
+          "y": 66
+        },
+        {
+          "id": "table-3-3-seat-2",
+          "row": 1,
+          "number": 2,
+          "kind": "standard",
+          "x": 72,
+          "y": 66
+        },
+        {
+          "id": "table-3-3-seat-3",
+          "row": 1,
+          "number": 3,
+          "kind": "standard",
+          "x": 48,
+          "y": 66
+        },
+        {
+          "id": "table-3-3-seat-4",
+          "row": 1,
+          "number": 4,
+          "kind": "standard",
+          "x": 24,
+          "y": 66
+        },
+        {
+          "id": "table-3-3-seat-5",
+          "row": 1,
+          "number": 5,
+          "kind": "standard",
+          "x": 0,
+          "y": 32
+        },
+        {
+          "id": "table-3-3-seat-6",
+          "row": 1,
+          "number": 6,
+          "kind": "standard",
+          "x": 24,
+          "y": 0
+        },
+        {
+          "id": "table-3-3-seat-7",
+          "row": 1,
+          "number": 7,
+          "kind": "standard",
+          "x": 48,
+          "y": 0
+        },
+        {
+          "id": "table-3-3-seat-8",
+          "row": 1,
+          "number": 8,
+          "kind": "standard",
+          "x": 72,
+          "y": 0
+        },
+        {
+          "id": "table-3-3-seat-9",
+          "row": 1,
+          "number": 9,
+          "kind": "standard",
+          "x": 96,
+          "y": 0
+        }
+      ]
+    },
+    {
+      "id": "table-3-4",
+      "name": "Боковые столы · стол 4",
+      "x": 295,
+      "y": 810,
+      "priceMinor": 150000,
+      "type": "seated",
+      "rowPrices": {
+        "1": 150000
+      },
+      "shape": "table",
+      "arcSpread": 120,
+      "arcBaseR": 200,
+      "arcRowGap": 24,
+      "arcOffsetX": 0,
+      "arcOffsetY": 0,
+      "seats": [
+        {
+          "id": "table-3-4-seat-1",
+          "row": 1,
+          "number": 1,
+          "kind": "standard",
+          "x": 96,
+          "y": 66
+        },
+        {
+          "id": "table-3-4-seat-2",
+          "row": 1,
+          "number": 2,
+          "kind": "standard",
+          "x": 72,
+          "y": 66
+        },
+        {
+          "id": "table-3-4-seat-3",
+          "row": 1,
+          "number": 3,
+          "kind": "standard",
+          "x": 48,
+          "y": 66
+        },
+        {
+          "id": "table-3-4-seat-4",
+          "row": 1,
+          "number": 4,
+          "kind": "standard",
+          "x": 24,
+          "y": 66
+        },
+        {
+          "id": "table-3-4-seat-5",
+          "row": 1,
+          "number": 5,
+          "kind": "standard",
+          "x": 0,
+          "y": 32
+        },
+        {
+          "id": "table-3-4-seat-6",
+          "row": 1,
+          "number": 6,
+          "kind": "standard",
+          "x": 24,
+          "y": 0
+        },
+        {
+          "id": "table-3-4-seat-7",
+          "row": 1,
+          "number": 7,
+          "kind": "standard",
+          "x": 48,
+          "y": 0
+        },
+        {
+          "id": "table-3-4-seat-8",
+          "row": 1,
+          "number": 8,
+          "kind": "standard",
+          "x": 72,
+          "y": 0
+        },
+        {
+          "id": "table-3-4-seat-9",
+          "row": 1,
+          "number": 9,
+          "kind": "standard",
+          "x": 96,
+          "y": 0
+        }
+      ]
+    },
+    {
+      "id": "table-3-5",
+      "name": "Боковые столы · стол 5",
+      "x": 295,
+      "y": 691,
+      "priceMinor": 150000,
+      "type": "seated",
+      "rowPrices": {
+        "1": 150000
+      },
+      "shape": "table",
+      "arcSpread": 120,
+      "arcBaseR": 200,
+      "arcRowGap": 24,
+      "arcOffsetX": 0,
+      "arcOffsetY": 0,
+      "seats": [
+        {
+          "id": "table-3-5-seat-1",
+          "row": 1,
+          "number": 1,
+          "kind": "standard",
+          "x": 96,
+          "y": 66
+        },
+        {
+          "id": "table-3-5-seat-2",
+          "row": 1,
+          "number": 2,
+          "kind": "standard",
+          "x": 72,
+          "y": 66
+        },
+        {
+          "id": "table-3-5-seat-3",
+          "row": 1,
+          "number": 3,
+          "kind": "standard",
+          "x": 48,
+          "y": 66
+        },
+        {
+          "id": "table-3-5-seat-4",
+          "row": 1,
+          "number": 4,
+          "kind": "standard",
+          "x": 24,
+          "y": 66
+        },
+        {
+          "id": "table-3-5-seat-5",
+          "row": 1,
+          "number": 5,
+          "kind": "standard",
+          "x": 0,
+          "y": 32
+        },
+        {
+          "id": "table-3-5-seat-6",
+          "row": 1,
+          "number": 6,
+          "kind": "standard",
+          "x": 24,
+          "y": 0
+        },
+        {
+          "id": "table-3-5-seat-7",
+          "row": 1,
+          "number": 7,
+          "kind": "standard",
+          "x": 48,
+          "y": 0
+        },
+        {
+          "id": "table-3-5-seat-8",
+          "row": 1,
+          "number": 8,
+          "kind": "standard",
+          "x": 72,
+          "y": 0
+        },
+        {
+          "id": "table-3-5-seat-9",
+          "row": 1,
+          "number": 9,
+          "kind": "standard",
+          "x": 96,
+          "y": 0
+        }
+      ]
+    },
+    {
+      "id": "table-3-6",
+      "name": "Боковые столы · стол 6",
+      "x": 302,
+      "y": 574,
+      "priceMinor": 150000,
+      "type": "seated",
+      "rowPrices": {
+        "1": 150000
+      },
+      "shape": "table",
+      "arcSpread": 120,
+      "arcBaseR": 200,
+      "arcRowGap": 24,
+      "arcOffsetX": 0,
+      "arcOffsetY": 0,
+      "seats": [
+        {
+          "id": "table-3-6-seat-1",
+          "row": 1,
+          "number": 1,
+          "kind": "standard",
+          "x": 64,
+          "y": 47
+        },
+        {
+          "id": "table-3-6-seat-2",
+          "row": 1,
+          "number": 2,
+          "kind": "standard",
+          "x": 47,
+          "y": 64
+        },
+        {
+          "id": "table-3-6-seat-3",
+          "row": 1,
+          "number": 3,
+          "kind": "standard",
+          "x": 6,
+          "y": 58
+        },
+        {
+          "id": "table-3-6-seat-4",
+          "row": 1,
+          "number": 4,
+          "kind": "standard",
+          "x": 0,
+          "y": 18
+        },
+        {
+          "id": "table-3-6-seat-5",
+          "row": 1,
+          "number": 5,
+          "kind": "standard",
+          "x": 17,
+          "y": 0
+        }
+      ]
+    },
+    {
+      "id": "table-3-7",
+      "name": "Боковые столы · стол 7",
+      "x": 218,
+      "y": 490,
+      "priceMinor": 150000,
+      "type": "seated",
+      "rowPrices": {
+        "1": 150000
+      },
+      "shape": "table",
+      "arcSpread": 120,
+      "arcBaseR": 200,
+      "arcRowGap": 24,
+      "arcOffsetX": 0,
+      "arcOffsetY": 0,
+      "seats": [
+        {
+          "id": "table-3-7-seat-1",
+          "row": 1,
+          "number": 1,
+          "kind": "standard",
+          "x": 64,
+          "y": 47
+        },
+        {
+          "id": "table-3-7-seat-2",
+          "row": 1,
+          "number": 2,
+          "kind": "standard",
+          "x": 47,
+          "y": 64
+        },
+        {
+          "id": "table-3-7-seat-3",
+          "row": 1,
+          "number": 3,
+          "kind": "standard",
+          "x": 6,
+          "y": 58
+        },
+        {
+          "id": "table-3-7-seat-4",
+          "row": 1,
+          "number": 4,
+          "kind": "standard",
+          "x": 0,
+          "y": 18
+        },
+        {
+          "id": "table-3-7-seat-5",
+          "row": 1,
+          "number": 5,
+          "kind": "standard",
+          "x": 17,
+          "y": 0
+        }
+      ]
+    },
+    {
+      "id": "table-3-8",
+      "name": "Боковые столы · стол 8",
+      "x": 136,
+      "y": 409,
+      "priceMinor": 100000,
+      "type": "seated",
+      "rowPrices": {
+        "1": 100000
+      },
+      "shape": "table",
+      "arcSpread": 120,
+      "arcBaseR": 200,
+      "arcRowGap": 24,
+      "arcOffsetX": 0,
+      "arcOffsetY": 0,
+      "seats": [
+        {
+          "id": "table-3-8-seat-1",
+          "row": 1,
+          "number": 1,
+          "kind": "standard",
+          "x": 64,
+          "y": 47
+        },
+        {
+          "id": "table-3-8-seat-2",
+          "row": 1,
+          "number": 2,
+          "kind": "standard",
+          "x": 47,
+          "y": 64
+        },
+        {
+          "id": "table-3-8-seat-3",
+          "row": 1,
+          "number": 3,
+          "kind": "standard",
+          "x": 6,
+          "y": 58
+        },
+        {
+          "id": "table-3-8-seat-4",
+          "row": 1,
+          "number": 4,
+          "kind": "standard",
+          "x": 0,
+          "y": 18
+        },
+        {
+          "id": "table-3-8-seat-5",
+          "row": 1,
+          "number": 5,
+          "kind": "standard",
+          "x": 17,
+          "y": 0
+        }
+      ]
+    },
+    {
+      "id": "table-3-40",
+      "name": "Боковые столы · стол 40",
+      "x": 1827,
+      "y": 338,
+      "priceMinor": 100000,
+      "type": "seated",
+      "rowPrices": {
+        "1": 100000
+      },
+      "shape": "table",
+      "arcSpread": 120,
+      "arcBaseR": 200,
+      "arcRowGap": 24,
+      "arcOffsetX": 0,
+      "arcOffsetY": 0,
+      "seats": [
+        {
+          "id": "table-3-40-seat-1",
+          "row": 1,
+          "number": 1,
+          "kind": "standard",
+          "x": 8,
+          "y": 58
+        },
+        {
+          "id": "table-3-40-seat-2",
+          "row": 1,
+          "number": 2,
+          "kind": "standard",
+          "x": 0,
+          "y": 24
+        },
+        {
+          "id": "table-3-40-seat-3",
+          "row": 1,
+          "number": 3,
+          "kind": "standard",
+          "x": 32,
+          "y": 0
+        },
+        {
+          "id": "table-3-40-seat-4",
+          "row": 1,
+          "number": 4,
+          "kind": "standard",
+          "x": 65,
+          "y": 24
+        },
+        {
+          "id": "table-3-40-seat-5",
+          "row": 1,
+          "number": 5,
+          "kind": "standard",
+          "x": 56,
+          "y": 59
+        }
+      ]
+    },
+    {
+      "id": "table-3-41",
+      "name": "Боковые столы · стол 41",
+      "x": 1827,
+      "y": 469,
+      "priceMinor": 100000,
+      "type": "seated",
+      "rowPrices": {
+        "1": 100000
+      },
+      "shape": "table",
+      "arcSpread": 120,
+      "arcBaseR": 200,
+      "arcRowGap": 24,
+      "arcOffsetX": 0,
+      "arcOffsetY": 0,
+      "seats": [
+        {
+          "id": "table-3-41-seat-1",
+          "row": 1,
+          "number": 1,
+          "kind": "standard",
+          "x": 8,
+          "y": 58
+        },
+        {
+          "id": "table-3-41-seat-2",
+          "row": 1,
+          "number": 2,
+          "kind": "standard",
+          "x": 0,
+          "y": 24
+        },
+        {
+          "id": "table-3-41-seat-3",
+          "row": 1,
+          "number": 3,
+          "kind": "standard",
+          "x": 32,
+          "y": 0
+        },
+        {
+          "id": "table-3-41-seat-4",
+          "row": 1,
+          "number": 4,
+          "kind": "standard",
+          "x": 65,
+          "y": 24
+        },
+        {
+          "id": "table-3-41-seat-5",
+          "row": 1,
+          "number": 5,
+          "kind": "standard",
+          "x": 56,
+          "y": 59
+        }
+      ]
+    },
+    {
+      "id": "table-3-42",
+      "name": "Боковые столы · стол 42",
+      "x": 1767,
+      "y": 580,
+      "priceMinor": 100000,
+      "type": "seated",
+      "rowPrices": {
+        "1": 100000
+      },
+      "shape": "table",
+      "arcSpread": 120,
+      "arcBaseR": 200,
+      "arcRowGap": 24,
+      "arcOffsetX": 0,
+      "arcOffsetY": 0,
+      "seats": [
+        {
+          "id": "table-3-42-seat-1",
+          "row": 1,
+          "number": 1,
+          "kind": "standard",
+          "x": 0,
+          "y": 0
+        },
+        {
+          "id": "table-3-42-seat-2",
+          "row": 1,
+          "number": 2,
+          "kind": "standard",
+          "x": 24,
+          "y": 0
+        },
+        {
+          "id": "table-3-42-seat-3",
+          "row": 1,
+          "number": 3,
+          "kind": "standard",
+          "x": 48,
+          "y": 34
+        },
+        {
+          "id": "table-3-42-seat-4",
+          "row": 1,
+          "number": 4,
+          "kind": "standard",
+          "x": 24,
+          "y": 66
+        },
+        {
+          "id": "table-3-42-seat-5",
+          "row": 1,
+          "number": 5,
+          "kind": "standard",
+          "x": 0,
+          "y": 66
+        }
+      ]
+    },
+    {
+      "id": "table-3-43",
+      "name": "Боковые столы · стол 43",
+      "x": 1767,
+      "y": 682,
+      "priceMinor": 100000,
+      "type": "seated",
+      "rowPrices": {
+        "1": 100000
+      },
+      "shape": "table",
+      "arcSpread": 120,
+      "arcBaseR": 200,
+      "arcRowGap": 24,
+      "arcOffsetX": 0,
+      "arcOffsetY": 0,
+      "seats": [
+        {
+          "id": "table-3-43-seat-1",
+          "row": 1,
+          "number": 1,
+          "kind": "standard",
+          "x": 0,
+          "y": 0
+        },
+        {
+          "id": "table-3-43-seat-2",
+          "row": 1,
+          "number": 2,
+          "kind": "standard",
+          "x": 24,
+          "y": 0
+        },
+        {
+          "id": "table-3-43-seat-3",
+          "row": 1,
+          "number": 3,
+          "kind": "standard",
+          "x": 48,
+          "y": 0
+        },
+        {
+          "id": "table-3-43-seat-4",
+          "row": 1,
+          "number": 4,
+          "kind": "standard",
+          "x": 72,
+          "y": 0
+        },
+        {
+          "id": "table-3-43-seat-5",
+          "row": 1,
+          "number": 5,
+          "kind": "standard",
+          "x": 96,
+          "y": 34
+        },
+        {
+          "id": "table-3-43-seat-6",
+          "row": 1,
+          "number": 6,
+          "kind": "standard",
+          "x": 72,
+          "y": 66
+        },
+        {
+          "id": "table-3-43-seat-7",
+          "row": 1,
+          "number": 7,
+          "kind": "standard",
+          "x": 48,
+          "y": 66
+        },
+        {
+          "id": "table-3-43-seat-8",
+          "row": 1,
+          "number": 8,
+          "kind": "standard",
+          "x": 24,
+          "y": 66
+        },
+        {
+          "id": "table-3-43-seat-9",
+          "row": 1,
+          "number": 9,
+          "kind": "standard",
+          "x": 0,
+          "y": 66
+        }
+      ]
+    },
+    {
+      "id": "table-4-11",
+      "name": "Столы с ограниченной видимостью · стол 11",
+      "x": 117,
+      "y": 910,
+      "priceMinor": 100000,
+      "type": "seated",
+      "rowPrices": {
+        "1": 100000
+      },
+      "shape": "table",
+      "arcSpread": 120,
+      "arcBaseR": 200,
+      "arcRowGap": 24,
+      "arcOffsetX": 0,
+      "arcOffsetY": 0,
+      "seats": [
+        {
+          "id": "table-4-11-seat-1",
+          "row": 1,
+          "number": 1,
+          "kind": "standard",
+          "x": 34,
+          "y": 67
+        },
+        {
+          "id": "table-4-11-seat-2",
+          "row": 1,
+          "number": 2,
+          "kind": "standard",
+          "x": 0,
+          "y": 34
+        },
+        {
+          "id": "table-4-11-seat-3",
+          "row": 1,
+          "number": 3,
+          "kind": "standard",
+          "x": 34,
+          "y": 0
+        },
+        {
+          "id": "table-4-11-seat-4",
+          "row": 1,
+          "number": 4,
+          "kind": "standard",
+          "x": 67,
+          "y": 34
+        }
+      ]
+    },
+    {
+      "id": "table-4-55",
+      "name": "Столы с ограниченной видимостью · стол 55",
+      "x": 2000,
+      "y": 994,
+      "priceMinor": 100000,
+      "type": "seated",
+      "rowPrices": {
+        "1": 100000
+      },
+      "shape": "table",
+      "arcSpread": 120,
+      "arcBaseR": 200,
+      "arcRowGap": 24,
+      "arcOffsetX": 0,
+      "arcOffsetY": 0,
+      "seats": [
+        {
+          "id": "table-4-55-seat-1",
+          "row": 1,
+          "number": 1,
+          "kind": "standard",
+          "x": 34,
+          "y": 67
+        },
+        {
+          "id": "table-4-55-seat-2",
+          "row": 1,
+          "number": 2,
+          "kind": "standard",
+          "x": 0,
+          "y": 34
+        },
+        {
+          "id": "table-4-55-seat-3",
+          "row": 1,
+          "number": 3,
+          "kind": "standard",
+          "x": 34,
+          "y": 0
+        },
+        {
+          "id": "table-4-55-seat-4",
+          "row": 1,
+          "number": 4,
+          "kind": "standard",
+          "x": 67,
+          "y": 34
+        }
+      ]
+    },
+    {
+      "id": "table-4-22",
+      "name": "Столы с ограниченной видимостью · стол 22",
+      "x": 381,
+      "y": 224,
+      "priceMinor": 100000,
+      "type": "seated",
+      "rowPrices": {
+        "1": 100000
+      },
+      "shape": "table",
+      "arcSpread": 120,
+      "arcBaseR": 200,
+      "arcRowGap": 24,
+      "arcOffsetX": 0,
+      "arcOffsetY": 0,
+      "seats": [
+        {
+          "id": "table-4-22-seat-1",
+          "row": 1,
+          "number": 1,
+          "kind": "standard",
+          "x": 34,
+          "y": 67
+        },
+        {
+          "id": "table-4-22-seat-2",
+          "row": 1,
+          "number": 2,
+          "kind": "standard",
+          "x": 0,
+          "y": 34
+        },
+        {
+          "id": "table-4-22-seat-3",
+          "row": 1,
+          "number": 3,
+          "kind": "standard",
+          "x": 34,
+          "y": 0
+        },
+        {
+          "id": "table-4-22-seat-4",
+          "row": 1,
+          "number": 4,
+          "kind": "standard",
+          "x": 67,
+          "y": 34
+        }
+      ]
+    },
+    {
+      "id": "table-4-12",
+      "name": "Столы с ограниченной видимостью · стол 12",
+      "x": 117,
+      "y": 783,
+      "priceMinor": 100000,
+      "type": "seated",
+      "rowPrices": {
+        "1": 100000
+      },
+      "shape": "table",
+      "arcSpread": 120,
+      "arcBaseR": 200,
+      "arcRowGap": 24,
+      "arcOffsetX": 0,
+      "arcOffsetY": 0,
+      "seats": [
+        {
+          "id": "table-4-12-seat-1",
+          "row": 1,
+          "number": 1,
+          "kind": "standard",
+          "x": 34,
+          "y": 67
+        },
+        {
+          "id": "table-4-12-seat-2",
+          "row": 1,
+          "number": 2,
+          "kind": "standard",
+          "x": 0,
+          "y": 34
+        },
+        {
+          "id": "table-4-12-seat-3",
+          "row": 1,
+          "number": 3,
+          "kind": "standard",
+          "x": 34,
+          "y": 0
+        },
+        {
+          "id": "table-4-12-seat-4",
+          "row": 1,
+          "number": 4,
+          "kind": "standard",
+          "x": 67,
+          "y": 34
+        }
+      ]
+    },
+    {
+      "id": "table-4-56",
+      "name": "Столы с ограниченной видимостью · стол 56",
+      "x": 2000,
+      "y": 1119,
+      "priceMinor": 100000,
+      "type": "seated",
+      "rowPrices": {
+        "1": 100000
+      },
+      "shape": "table",
+      "arcSpread": 120,
+      "arcBaseR": 200,
+      "arcRowGap": 24,
+      "arcOffsetX": 0,
+      "arcOffsetY": 0,
+      "seats": [
+        {
+          "id": "table-4-56-seat-1",
+          "row": 1,
+          "number": 1,
+          "kind": "standard",
+          "x": 34,
+          "y": 67
+        },
+        {
+          "id": "table-4-56-seat-2",
+          "row": 1,
+          "number": 2,
+          "kind": "standard",
+          "x": 0,
+          "y": 34
+        },
+        {
+          "id": "table-4-56-seat-3",
+          "row": 1,
+          "number": 3,
+          "kind": "standard",
+          "x": 34,
+          "y": 0
+        },
+        {
+          "id": "table-4-56-seat-4",
+          "row": 1,
+          "number": 4,
+          "kind": "standard",
+          "x": 67,
+          "y": 34
+        }
+      ]
+    },
+    {
+      "id": "table-4-23",
+      "name": "Столы с ограниченной видимостью · стол 23",
+      "x": 501,
+      "y": 127,
+      "priceMinor": 100000,
+      "type": "seated",
+      "rowPrices": {
+        "1": 100000
+      },
+      "shape": "table",
+      "arcSpread": 120,
+      "arcBaseR": 200,
+      "arcRowGap": 24,
+      "arcOffsetX": 0,
+      "arcOffsetY": 0,
+      "seats": [
+        {
+          "id": "table-4-23-seat-1",
+          "row": 1,
+          "number": 1,
+          "kind": "standard",
+          "x": 34,
+          "y": 67
+        },
+        {
+          "id": "table-4-23-seat-2",
+          "row": 1,
+          "number": 2,
+          "kind": "standard",
+          "x": 0,
+          "y": 34
+        },
+        {
+          "id": "table-4-23-seat-3",
+          "row": 1,
+          "number": 3,
+          "kind": "standard",
+          "x": 34,
+          "y": 0
+        },
+        {
+          "id": "table-4-23-seat-4",
+          "row": 1,
+          "number": 4,
+          "kind": "standard",
+          "x": 67,
+          "y": 34
+        }
+      ]
+    },
+    {
+      "id": "table-4-13",
+      "name": "Столы с ограниченной видимостью · стол 13",
+      "x": 117,
+      "y": 656,
+      "priceMinor": 100000,
+      "type": "seated",
+      "rowPrices": {
+        "1": 100000
+      },
+      "shape": "table",
+      "arcSpread": 120,
+      "arcBaseR": 200,
+      "arcRowGap": 24,
+      "arcOffsetX": 0,
+      "arcOffsetY": 0,
+      "seats": [
+        {
+          "id": "table-4-13-seat-1",
+          "row": 1,
+          "number": 1,
+          "kind": "standard",
+          "x": 34,
+          "y": 67
+        },
+        {
+          "id": "table-4-13-seat-2",
+          "row": 1,
+          "number": 2,
+          "kind": "standard",
+          "x": 0,
+          "y": 34
+        },
+        {
+          "id": "table-4-13-seat-3",
+          "row": 1,
+          "number": 3,
+          "kind": "standard",
+          "x": 34,
+          "y": 0
+        },
+        {
+          "id": "table-4-13-seat-4",
+          "row": 1,
+          "number": 4,
+          "kind": "standard",
+          "x": 67,
+          "y": 34
+        }
+      ]
+    },
+    {
+      "id": "table-4-24",
+      "name": "Столы с ограниченной видимостью · стол 24",
+      "x": 662,
+      "y": 127,
+      "priceMinor": 100000,
+      "type": "seated",
+      "rowPrices": {
+        "1": 100000
+      },
+      "shape": "table",
+      "arcSpread": 120,
+      "arcBaseR": 200,
+      "arcRowGap": 24,
+      "arcOffsetX": 0,
+      "arcOffsetY": 0,
+      "seats": [
+        {
+          "id": "table-4-24-seat-1",
+          "row": 1,
+          "number": 1,
+          "kind": "standard",
+          "x": 34,
+          "y": 67
+        },
+        {
+          "id": "table-4-24-seat-2",
+          "row": 1,
+          "number": 2,
+          "kind": "standard",
+          "x": 0,
+          "y": 34
+        },
+        {
+          "id": "table-4-24-seat-3",
+          "row": 1,
+          "number": 3,
+          "kind": "standard",
+          "x": 34,
+          "y": 0
+        },
+        {
+          "id": "table-4-24-seat-4",
+          "row": 1,
+          "number": 4,
+          "kind": "standard",
+          "x": 67,
+          "y": 34
+        }
+      ]
+    },
+    {
+      "id": "table-4-49",
+      "name": "Столы с ограниченной видимостью · стол 49",
+      "x": 1945,
+      "y": 226,
+      "priceMinor": 100000,
+      "type": "seated",
+      "rowPrices": {
+        "1": 100000
+      },
+      "shape": "table",
+      "arcSpread": 120,
+      "arcBaseR": 200,
+      "arcRowGap": 24,
+      "arcOffsetX": 0,
+      "arcOffsetY": 0,
+      "seats": [
+        {
+          "id": "table-4-49-seat-1",
+          "row": 1,
+          "number": 1,
+          "kind": "standard",
+          "x": 8,
+          "y": 58
+        },
+        {
+          "id": "table-4-49-seat-2",
+          "row": 1,
+          "number": 2,
+          "kind": "standard",
+          "x": 0,
+          "y": 24
+        },
+        {
+          "id": "table-4-49-seat-3",
+          "row": 1,
+          "number": 3,
+          "kind": "standard",
+          "x": 32,
+          "y": 0
+        },
+        {
+          "id": "table-4-49-seat-4",
+          "row": 1,
+          "number": 4,
+          "kind": "standard",
+          "x": 65,
+          "y": 24
+        },
+        {
+          "id": "table-4-49-seat-5",
+          "row": 1,
+          "number": 5,
+          "kind": "standard",
+          "x": 56,
+          "y": 59
+        }
+      ]
+    },
+    {
+      "id": "table-4-9",
+      "name": "Столы с ограниченной видимостью · стол 9",
+      "x": 117,
+      "y": 1165,
+      "priceMinor": 100000,
+      "type": "seated",
+      "rowPrices": {
+        "1": 100000
+      },
+      "shape": "table",
+      "arcSpread": 120,
+      "arcBaseR": 200,
+      "arcRowGap": 24,
+      "arcOffsetX": 0,
+      "arcOffsetY": 0,
+      "seats": [
+        {
+          "id": "table-4-9-seat-1",
+          "row": 1,
+          "number": 1,
+          "kind": "standard",
+          "x": 34,
+          "y": 67
+        },
+        {
+          "id": "table-4-9-seat-2",
+          "row": 1,
+          "number": 2,
+          "kind": "standard",
+          "x": 0,
+          "y": 34
+        },
+        {
+          "id": "table-4-9-seat-3",
+          "row": 1,
+          "number": 3,
+          "kind": "standard",
+          "x": 34,
+          "y": 0
+        },
+        {
+          "id": "table-4-9-seat-4",
+          "row": 1,
+          "number": 4,
+          "kind": "standard",
+          "x": 67,
+          "y": 34
+        }
+      ]
+    },
+    {
+      "id": "table-4-50",
+      "name": "Столы с ограниченной видимостью · стол 50",
+      "x": 1945,
+      "y": 338,
+      "priceMinor": 100000,
+      "type": "seated",
+      "rowPrices": {
+        "1": 100000
+      },
+      "shape": "table",
+      "arcSpread": 120,
+      "arcBaseR": 200,
+      "arcRowGap": 24,
+      "arcOffsetX": 0,
+      "arcOffsetY": 0,
+      "seats": [
+        {
+          "id": "table-4-50-seat-1",
+          "row": 1,
+          "number": 1,
+          "kind": "standard",
+          "x": 8,
+          "y": 58
+        },
+        {
+          "id": "table-4-50-seat-2",
+          "row": 1,
+          "number": 2,
+          "kind": "standard",
+          "x": 0,
+          "y": 24
+        },
+        {
+          "id": "table-4-50-seat-3",
+          "row": 1,
+          "number": 3,
+          "kind": "standard",
+          "x": 32,
+          "y": 0
+        },
+        {
+          "id": "table-4-50-seat-4",
+          "row": 1,
+          "number": 4,
+          "kind": "standard",
+          "x": 65,
+          "y": 24
+        },
+        {
+          "id": "table-4-50-seat-5",
+          "row": 1,
+          "number": 5,
+          "kind": "standard",
+          "x": 56,
+          "y": 59
+        }
+      ]
+    },
+    {
+      "id": "table-4-51",
+      "name": "Столы с ограниченной видимостью · стол 51",
+      "x": 1945,
+      "y": 450,
+      "priceMinor": 100000,
+      "type": "seated",
+      "rowPrices": {
+        "1": 100000
+      },
+      "shape": "table",
+      "arcSpread": 120,
+      "arcBaseR": 200,
+      "arcRowGap": 24,
+      "arcOffsetX": 0,
+      "arcOffsetY": 0,
+      "seats": [
+        {
+          "id": "table-4-51-seat-1",
+          "row": 1,
+          "number": 1,
+          "kind": "standard",
+          "x": 8,
+          "y": 58
+        },
+        {
+          "id": "table-4-51-seat-2",
+          "row": 1,
+          "number": 2,
+          "kind": "standard",
+          "x": 0,
+          "y": 24
+        },
+        {
+          "id": "table-4-51-seat-3",
+          "row": 1,
+          "number": 3,
+          "kind": "standard",
+          "x": 32,
+          "y": 0
+        },
+        {
+          "id": "table-4-51-seat-4",
+          "row": 1,
+          "number": 4,
+          "kind": "standard",
+          "x": 65,
+          "y": 24
+        },
+        {
+          "id": "table-4-51-seat-5",
+          "row": 1,
+          "number": 5,
+          "kind": "standard",
+          "x": 56,
+          "y": 59
+        }
+      ]
+    },
+    {
+      "id": "table-4-52",
+      "name": "Столы с ограниченной видимостью · стол 52",
+      "x": 2000,
+      "y": 620,
+      "priceMinor": 100000,
+      "type": "seated",
+      "rowPrices": {
+        "1": 100000
+      },
+      "shape": "table",
+      "arcSpread": 120,
+      "arcBaseR": 200,
+      "arcRowGap": 24,
+      "arcOffsetX": 0,
+      "arcOffsetY": 0,
+      "seats": [
+        {
+          "id": "table-4-52-seat-1",
+          "row": 1,
+          "number": 1,
+          "kind": "standard",
+          "x": 34,
+          "y": 67
+        },
+        {
+          "id": "table-4-52-seat-2",
+          "row": 1,
+          "number": 2,
+          "kind": "standard",
+          "x": 0,
+          "y": 34
+        },
+        {
+          "id": "table-4-52-seat-3",
+          "row": 1,
+          "number": 3,
+          "kind": "standard",
+          "x": 34,
+          "y": 0
+        },
+        {
+          "id": "table-4-52-seat-4",
+          "row": 1,
+          "number": 4,
+          "kind": "standard",
+          "x": 67,
+          "y": 34
+        }
+      ]
+    },
+    {
+      "id": "table-4-53",
+      "name": "Столы с ограниченной видимостью · стол 53",
+      "x": 2000,
+      "y": 745,
+      "priceMinor": 100000,
+      "type": "seated",
+      "rowPrices": {
+        "1": 100000
+      },
+      "shape": "table",
+      "arcSpread": 120,
+      "arcBaseR": 200,
+      "arcRowGap": 24,
+      "arcOffsetX": 0,
+      "arcOffsetY": 0,
+      "seats": [
+        {
+          "id": "table-4-53-seat-1",
+          "row": 1,
+          "number": 1,
+          "kind": "standard",
+          "x": 34,
+          "y": 67
+        },
+        {
+          "id": "table-4-53-seat-2",
+          "row": 1,
+          "number": 2,
+          "kind": "standard",
+          "x": 0,
+          "y": 34
+        },
+        {
+          "id": "table-4-53-seat-3",
+          "row": 1,
+          "number": 3,
+          "kind": "standard",
+          "x": 34,
+          "y": 0
+        },
+        {
+          "id": "table-4-53-seat-4",
+          "row": 1,
+          "number": 4,
+          "kind": "standard",
+          "x": 67,
+          "y": 34
+        }
+      ]
+    },
+    {
+      "id": "table-4-10",
+      "name": "Столы с ограниченной видимостью · стол 10",
+      "x": 117,
+      "y": 1038,
+      "priceMinor": 100000,
+      "type": "seated",
+      "rowPrices": {
+        "1": 100000
+      },
+      "shape": "table",
+      "arcSpread": 120,
+      "arcBaseR": 200,
+      "arcRowGap": 24,
+      "arcOffsetX": 0,
+      "arcOffsetY": 0,
+      "seats": [
+        {
+          "id": "table-4-10-seat-1",
+          "row": 1,
+          "number": 1,
+          "kind": "standard",
+          "x": 34,
+          "y": 67
+        },
+        {
+          "id": "table-4-10-seat-2",
+          "row": 1,
+          "number": 2,
+          "kind": "standard",
+          "x": 0,
+          "y": 34
+        },
+        {
+          "id": "table-4-10-seat-3",
+          "row": 1,
+          "number": 3,
+          "kind": "standard",
+          "x": 34,
+          "y": 0
+        },
+        {
+          "id": "table-4-10-seat-4",
+          "row": 1,
+          "number": 4,
+          "kind": "standard",
+          "x": 67,
+          "y": 34
+        }
+      ]
+    },
+    {
+      "id": "table-4-54",
+      "name": "Столы с ограниченной видимостью · стол 54",
+      "x": 2000,
+      "y": 870,
+      "priceMinor": 100000,
+      "type": "seated",
+      "rowPrices": {
+        "1": 100000
+      },
+      "shape": "table",
+      "arcSpread": 120,
+      "arcBaseR": 200,
+      "arcRowGap": 24,
+      "arcOffsetX": 0,
+      "arcOffsetY": 0,
+      "seats": [
+        {
+          "id": "table-4-54-seat-1",
+          "row": 1,
+          "number": 1,
+          "kind": "standard",
+          "x": 34,
+          "y": 67
+        },
+        {
+          "id": "table-4-54-seat-2",
+          "row": 1,
+          "number": 2,
+          "kind": "standard",
+          "x": 0,
+          "y": 34
+        },
+        {
+          "id": "table-4-54-seat-3",
+          "row": 1,
+          "number": 3,
+          "kind": "standard",
+          "x": 34,
+          "y": 0
+        },
+        {
+          "id": "table-4-54-seat-4",
+          "row": 1,
+          "number": 4,
+          "kind": "standard",
+          "x": 67,
+          "y": 34
+        }
+      ]
+    },
+    {
+      "id": "table-5-33",
+      "name": "VIP столы · стол 33",
+      "x": 1420,
+      "y": 356,
+      "priceMinor": 180000,
+      "type": "seated",
+      "rowPrices": {
+        "1": 180000
+      },
+      "shape": "table",
+      "arcSpread": 120,
+      "arcBaseR": 200,
+      "arcRowGap": 24,
+      "arcOffsetX": 0,
+      "arcOffsetY": 0,
+      "seats": [
+        {
+          "id": "table-5-33-seat-1",
+          "row": 1,
+          "number": 1,
+          "kind": "vip",
+          "x": 0,
+          "y": 48
+        },
+        {
+          "id": "table-5-33-seat-2",
+          "row": 1,
+          "number": 2,
+          "kind": "vip",
+          "x": 0,
+          "y": 24
+        },
+        {
+          "id": "table-5-33-seat-3",
+          "row": 1,
+          "number": 3,
+          "kind": "vip",
+          "x": 36,
+          "y": 0
+        },
+        {
+          "id": "table-5-33-seat-4",
+          "row": 1,
+          "number": 4,
+          "kind": "vip",
+          "x": 72,
+          "y": 24
+        },
+        {
+          "id": "table-5-33-seat-5",
+          "row": 1,
+          "number": 5,
+          "kind": "vip",
+          "x": 72,
+          "y": 48
+        }
+      ]
+    },
+    {
+      "id": "table-5-34",
+      "name": "VIP столы · стол 34",
+      "x": 1528,
+      "y": 387,
+      "priceMinor": 180000,
+      "type": "seated",
+      "rowPrices": {
+        "1": 180000
+      },
+      "shape": "table",
+      "arcSpread": 120,
+      "arcBaseR": 200,
+      "arcRowGap": 24,
+      "arcOffsetX": 0,
+      "arcOffsetY": 0,
+      "seats": [
+        {
+          "id": "table-5-34-seat-1",
+          "row": 1,
+          "number": 1,
+          "kind": "vip",
+          "x": 0,
+          "y": 48
+        },
+        {
+          "id": "table-5-34-seat-2",
+          "row": 1,
+          "number": 2,
+          "kind": "vip",
+          "x": 0,
+          "y": 24
+        },
+        {
+          "id": "table-5-34-seat-3",
+          "row": 1,
+          "number": 3,
+          "kind": "vip",
+          "x": 36,
+          "y": 0
+        },
+        {
+          "id": "table-5-34-seat-4",
+          "row": 1,
+          "number": 4,
+          "kind": "vip",
+          "x": 72,
+          "y": 24
+        },
+        {
+          "id": "table-5-34-seat-5",
+          "row": 1,
+          "number": 5,
+          "kind": "vip",
+          "x": 72,
+          "y": 48
+        }
+      ]
+    },
+    {
+      "id": "table-5-14",
+      "name": "VIP столы · стол 14",
+      "x": 127,
+      "y": 268,
+      "priceMinor": 100000,
+      "type": "seated",
+      "rowPrices": {
+        "1": 100000
+      },
+      "shape": "table",
+      "arcSpread": 120,
+      "arcBaseR": 200,
+      "arcRowGap": 24,
+      "arcOffsetX": 0,
+      "arcOffsetY": 0,
+      "seats": [
+        {
+          "id": "table-5-14-seat-1",
+          "row": 1,
+          "number": 1,
+          "kind": "standard",
+          "x": 34,
+          "y": 67
+        },
+        {
+          "id": "table-5-14-seat-2",
+          "row": 1,
+          "number": 2,
+          "kind": "standard",
+          "x": 0,
+          "y": 34
+        },
+        {
+          "id": "table-5-14-seat-3",
+          "row": 1,
+          "number": 3,
+          "kind": "standard",
+          "x": 34,
+          "y": 0
+        },
+        {
+          "id": "table-5-14-seat-4",
+          "row": 1,
+          "number": 4,
+          "kind": "standard",
+          "x": 67,
+          "y": 34
+        }
+      ]
+    },
+    {
+      "id": "table-5-25",
+      "name": "VIP столы · стол 25",
+      "x": 556,
+      "y": 387,
+      "priceMinor": 180000,
+      "type": "seated",
+      "rowPrices": {
+        "1": 180000
+      },
+      "shape": "table",
+      "arcSpread": 120,
+      "arcBaseR": 200,
+      "arcRowGap": 24,
+      "arcOffsetX": 0,
+      "arcOffsetY": 0,
+      "seats": [
+        {
+          "id": "table-5-25-seat-1",
+          "row": 1,
+          "number": 1,
+          "kind": "vip",
+          "x": 0,
+          "y": 48
+        },
+        {
+          "id": "table-5-25-seat-2",
+          "row": 1,
+          "number": 2,
+          "kind": "vip",
+          "x": 0,
+          "y": 24
+        },
+        {
+          "id": "table-5-25-seat-3",
+          "row": 1,
+          "number": 3,
+          "kind": "vip",
+          "x": 36,
+          "y": 0
+        },
+        {
+          "id": "table-5-25-seat-4",
+          "row": 1,
+          "number": 4,
+          "kind": "vip",
+          "x": 72,
+          "y": 24
+        },
+        {
+          "id": "table-5-25-seat-5",
+          "row": 1,
+          "number": 5,
+          "kind": "vip",
+          "x": 72,
+          "y": 48
+        }
+      ]
+    },
+    {
+      "id": "table-5-15",
+      "name": "VIP столы · стол 15",
+      "x": 127,
+      "y": 165,
+      "priceMinor": 100000,
+      "type": "seated",
+      "rowPrices": {
+        "1": 100000
+      },
+      "shape": "table",
+      "arcSpread": 120,
+      "arcBaseR": 200,
+      "arcRowGap": 24,
+      "arcOffsetX": 0,
+      "arcOffsetY": 0,
+      "seats": [
+        {
+          "id": "table-5-15-seat-1",
+          "row": 1,
+          "number": 1,
+          "kind": "standard",
+          "x": 34,
+          "y": 67
+        },
+        {
+          "id": "table-5-15-seat-2",
+          "row": 1,
+          "number": 2,
+          "kind": "standard",
+          "x": 0,
+          "y": 34
+        },
+        {
+          "id": "table-5-15-seat-3",
+          "row": 1,
+          "number": 3,
+          "kind": "standard",
+          "x": 34,
+          "y": 0
+        },
+        {
+          "id": "table-5-15-seat-4",
+          "row": 1,
+          "number": 4,
+          "kind": "standard",
+          "x": 67,
+          "y": 34
+        }
+      ]
+    },
+    {
+      "id": "table-5-26",
+      "name": "VIP столы · стол 26",
+      "x": 664,
+      "y": 356,
+      "priceMinor": 180000,
+      "type": "seated",
+      "rowPrices": {
+        "1": 180000
+      },
+      "shape": "table",
+      "arcSpread": 120,
+      "arcBaseR": 200,
+      "arcRowGap": 24,
+      "arcOffsetX": 0,
+      "arcOffsetY": 0,
+      "seats": [
+        {
+          "id": "table-5-26-seat-1",
+          "row": 1,
+          "number": 1,
+          "kind": "vip",
+          "x": 0,
+          "y": 48
+        },
+        {
+          "id": "table-5-26-seat-2",
+          "row": 1,
+          "number": 2,
+          "kind": "vip",
+          "x": 0,
+          "y": 24
+        },
+        {
+          "id": "table-5-26-seat-3",
+          "row": 1,
+          "number": 3,
+          "kind": "vip",
+          "x": 36,
+          "y": 0
+        },
+        {
+          "id": "table-5-26-seat-4",
+          "row": 1,
+          "number": 4,
+          "kind": "vip",
+          "x": 72,
+          "y": 24
+        },
+        {
+          "id": "table-5-26-seat-5",
+          "row": 1,
+          "number": 5,
+          "kind": "vip",
+          "x": 72,
+          "y": 48
+        }
+      ]
+    },
+    {
+      "id": "table-5-16",
+      "name": "VIP столы · стол 16",
+      "x": 230,
+      "y": 165,
+      "priceMinor": 100000,
+      "type": "seated",
+      "rowPrices": {
+        "1": 100000
+      },
+      "shape": "table",
+      "arcSpread": 120,
+      "arcBaseR": 200,
+      "arcRowGap": 24,
+      "arcOffsetX": 0,
+      "arcOffsetY": 0,
+      "seats": [
+        {
+          "id": "table-5-16-seat-1",
+          "row": 1,
+          "number": 1,
+          "kind": "standard",
+          "x": 34,
+          "y": 67
+        },
+        {
+          "id": "table-5-16-seat-2",
+          "row": 1,
+          "number": 2,
+          "kind": "standard",
+          "x": 0,
+          "y": 34
+        },
+        {
+          "id": "table-5-16-seat-3",
+          "row": 1,
+          "number": 3,
+          "kind": "standard",
+          "x": 34,
+          "y": 0
+        },
+        {
+          "id": "table-5-16-seat-4",
+          "row": 1,
+          "number": 4,
+          "kind": "standard",
+          "x": 67,
+          "y": 34
+        }
+      ]
+    },
+    {
+      "id": "table-5-27",
+      "name": "VIP столы · стол 27",
+      "x": 772,
+      "y": 334,
+      "priceMinor": 180000,
+      "type": "seated",
+      "rowPrices": {
+        "1": 180000
+      },
+      "shape": "table",
+      "arcSpread": 120,
+      "arcBaseR": 200,
+      "arcRowGap": 24,
+      "arcOffsetX": 0,
+      "arcOffsetY": 0,
+      "seats": [
+        {
+          "id": "table-5-27-seat-1",
+          "row": 1,
+          "number": 1,
+          "kind": "vip",
+          "x": 0,
+          "y": 48
+        },
+        {
+          "id": "table-5-27-seat-2",
+          "row": 1,
+          "number": 2,
+          "kind": "vip",
+          "x": 0,
+          "y": 24
+        },
+        {
+          "id": "table-5-27-seat-3",
+          "row": 1,
+          "number": 3,
+          "kind": "vip",
+          "x": 36,
+          "y": 0
+        },
+        {
+          "id": "table-5-27-seat-4",
+          "row": 1,
+          "number": 4,
+          "kind": "vip",
+          "x": 72,
+          "y": 24
+        },
+        {
+          "id": "table-5-27-seat-5",
+          "row": 1,
+          "number": 5,
+          "kind": "vip",
+          "x": 72,
+          "y": 48
+        }
+      ]
+    },
+    {
+      "id": "table-5-17",
+      "name": "VIP столы · стол 17",
+      "x": 230,
+      "y": 268,
+      "priceMinor": 100000,
+      "type": "seated",
+      "rowPrices": {
+        "1": 100000
+      },
+      "shape": "table",
+      "arcSpread": 120,
+      "arcBaseR": 200,
+      "arcRowGap": 24,
+      "arcOffsetX": 0,
+      "arcOffsetY": 0,
+      "seats": [
+        {
+          "id": "table-5-17-seat-1",
+          "row": 1,
+          "number": 1,
+          "kind": "standard",
+          "x": 34,
+          "y": 67
+        },
+        {
+          "id": "table-5-17-seat-2",
+          "row": 1,
+          "number": 2,
+          "kind": "standard",
+          "x": 0,
+          "y": 34
+        },
+        {
+          "id": "table-5-17-seat-3",
+          "row": 1,
+          "number": 3,
+          "kind": "standard",
+          "x": 34,
+          "y": 0
+        },
+        {
+          "id": "table-5-17-seat-4",
+          "row": 1,
+          "number": 4,
+          "kind": "standard",
+          "x": 67,
+          "y": 34
+        }
+      ]
+    },
+    {
+      "id": "table-5-28",
+      "name": "VIP столы · стол 28",
+      "x": 880,
+      "y": 348,
+      "priceMinor": 180000,
+      "type": "seated",
+      "rowPrices": {
+        "1": 180000
+      },
+      "shape": "table",
+      "arcSpread": 120,
+      "arcBaseR": 200,
+      "arcRowGap": 24,
+      "arcOffsetX": 0,
+      "arcOffsetY": 0,
+      "seats": [
+        {
+          "id": "table-5-28-seat-1",
+          "row": 1,
+          "number": 1,
+          "kind": "vip",
+          "x": 0,
+          "y": 24
+        },
+        {
+          "id": "table-5-28-seat-2",
+          "row": 1,
+          "number": 2,
+          "kind": "vip",
+          "x": 0,
+          "y": 0
+        },
+        {
+          "id": "table-5-28-seat-3",
+          "row": 1,
+          "number": 3,
+          "kind": "vip",
+          "x": 24,
+          "y": 0
+        },
+        {
+          "id": "table-5-28-seat-4",
+          "row": 1,
+          "number": 4,
+          "kind": "vip",
+          "x": 72,
+          "y": 0
+        },
+        {
+          "id": "table-5-28-seat-5",
+          "row": 1,
+          "number": 5,
+          "kind": "vip",
+          "x": 48,
+          "y": 12
+        }
+      ]
+    },
+    {
+      "id": "table-5-18",
+      "name": "VIP столы · стол 18",
+      "x": 462,
+      "y": 330,
+      "priceMinor": 180000,
+      "type": "seated",
+      "rowPrices": {
+        "1": 180000
+      },
+      "shape": "table",
+      "arcSpread": 120,
+      "arcBaseR": 200,
+      "arcRowGap": 24,
+      "arcOffsetX": 0,
+      "arcOffsetY": 0,
+      "seats": [
+        {
+          "id": "table-5-18-seat-1",
+          "row": 1,
+          "number": 1,
+          "kind": "vip",
+          "x": 0,
+          "y": 48
+        },
+        {
+          "id": "table-5-18-seat-2",
+          "row": 1,
+          "number": 2,
+          "kind": "vip",
+          "x": 0,
+          "y": 24
+        },
+        {
+          "id": "table-5-18-seat-3",
+          "row": 1,
+          "number": 3,
+          "kind": "vip",
+          "x": 36,
+          "y": 0
+        },
+        {
+          "id": "table-5-18-seat-4",
+          "row": 1,
+          "number": 4,
+          "kind": "vip",
+          "x": 72,
+          "y": 24
+        },
+        {
+          "id": "table-5-18-seat-5",
+          "row": 1,
+          "number": 5,
+          "kind": "vip",
+          "x": 72,
+          "y": 48
+        }
+      ]
+    },
+    {
+      "id": "table-5-29",
+      "name": "VIP столы · стол 29",
+      "x": 988,
+      "y": 340,
+      "priceMinor": 180000,
+      "type": "seated",
+      "rowPrices": {
+        "1": 180000
+      },
+      "shape": "table",
+      "arcSpread": 120,
+      "arcBaseR": 200,
+      "arcRowGap": 24,
+      "arcOffsetX": 0,
+      "arcOffsetY": 0,
+      "seats": [
+        {
+          "id": "table-5-29-seat-1",
+          "row": 1,
+          "number": 1,
+          "kind": "vip",
+          "x": 0,
+          "y": 24
+        },
+        {
+          "id": "table-5-29-seat-2",
+          "row": 1,
+          "number": 2,
+          "kind": "vip",
+          "x": 0,
+          "y": 0
+        },
+        {
+          "id": "table-5-29-seat-3",
+          "row": 1,
+          "number": 3,
+          "kind": "vip",
+          "x": 24,
+          "y": 0
+        },
+        {
+          "id": "table-5-29-seat-4",
+          "row": 1,
+          "number": 4,
+          "kind": "vip",
+          "x": 72,
+          "y": 0
+        },
+        {
+          "id": "table-5-29-seat-5",
+          "row": 1,
+          "number": 5,
+          "kind": "vip",
+          "x": 72,
+          "y": 24
+        }
+      ]
+    },
+    {
+      "id": "table-5-19",
+      "name": "VIP столы · стол 19",
+      "x": 562,
+      "y": 294,
+      "priceMinor": 180000,
+      "type": "seated",
+      "rowPrices": {
+        "1": 180000
+      },
+      "shape": "table",
+      "arcSpread": 120,
+      "arcBaseR": 200,
+      "arcRowGap": 24,
+      "arcOffsetX": 0,
+      "arcOffsetY": 0,
+      "seats": [
+        {
+          "id": "table-5-19-seat-1",
+          "row": 1,
+          "number": 1,
+          "kind": "vip",
+          "x": 0,
+          "y": 48
+        },
+        {
+          "id": "table-5-19-seat-2",
+          "row": 1,
+          "number": 2,
+          "kind": "vip",
+          "x": 0,
+          "y": 24
+        },
+        {
+          "id": "table-5-19-seat-3",
+          "row": 1,
+          "number": 3,
+          "kind": "vip",
+          "x": 36,
+          "y": 0
+        },
+        {
+          "id": "table-5-19-seat-4",
+          "row": 1,
+          "number": 4,
+          "kind": "vip",
+          "x": 72,
+          "y": 24
+        },
+        {
+          "id": "table-5-19-seat-5",
+          "row": 1,
+          "number": 5,
+          "kind": "vip",
+          "x": 72,
+          "y": 48
+        }
+      ]
+    },
+    {
+      "id": "table-5-30",
+      "name": "VIP столы · стол 30",
+      "x": 1096,
+      "y": 340,
+      "priceMinor": 180000,
+      "type": "seated",
+      "rowPrices": {
+        "1": 180000
+      },
+      "shape": "table",
+      "arcSpread": 120,
+      "arcBaseR": 200,
+      "arcRowGap": 24,
+      "arcOffsetX": 0,
+      "arcOffsetY": 0,
+      "seats": [
+        {
+          "id": "table-5-30-seat-1",
+          "row": 1,
+          "number": 1,
+          "kind": "vip",
+          "x": 0,
+          "y": 24
+        },
+        {
+          "id": "table-5-30-seat-2",
+          "row": 1,
+          "number": 2,
+          "kind": "vip",
+          "x": 0,
+          "y": 0
+        },
+        {
+          "id": "table-5-30-seat-3",
+          "row": 1,
+          "number": 3,
+          "kind": "vip",
+          "x": 24,
+          "y": 0
+        },
+        {
+          "id": "table-5-30-seat-4",
+          "row": 1,
+          "number": 4,
+          "kind": "vip",
+          "x": 72,
+          "y": 0
+        },
+        {
+          "id": "table-5-30-seat-5",
+          "row": 1,
+          "number": 5,
+          "kind": "vip",
+          "x": 96,
+          "y": 12
+        }
+      ]
+    },
+    {
+      "id": "table-5-20",
+      "name": "VIP столы · стол 20",
+      "x": 663,
+      "y": 247,
+      "priceMinor": 150000,
+      "type": "seated",
+      "rowPrices": {
+        "1": 150000
+      },
+      "shape": "table",
+      "arcSpread": 120,
+      "arcBaseR": 200,
+      "arcRowGap": 24,
+      "arcOffsetX": 0,
+      "arcOffsetY": 0,
+      "seats": [
+        {
+          "id": "table-5-20-seat-1",
+          "row": 1,
+          "number": 1,
+          "kind": "standard",
+          "x": 32,
+          "y": 59
+        },
+        {
+          "id": "table-5-20-seat-2",
+          "row": 1,
+          "number": 2,
+          "kind": "standard",
+          "x": 0,
+          "y": 35
+        },
+        {
+          "id": "table-5-20-seat-3",
+          "row": 1,
+          "number": 3,
+          "kind": "standard",
+          "x": 8,
+          "y": 1
+        },
+        {
+          "id": "table-5-20-seat-4",
+          "row": 1,
+          "number": 4,
+          "kind": "standard",
+          "x": 56,
+          "y": 0
+        },
+        {
+          "id": "table-5-20-seat-5",
+          "row": 1,
+          "number": 5,
+          "kind": "standard",
+          "x": 65,
+          "y": 35
+        }
+      ]
+    },
+    {
+      "id": "table-5-31",
+      "name": "VIP столы · стол 31",
+      "x": 1204,
+      "y": 348,
+      "priceMinor": 180000,
+      "type": "seated",
+      "rowPrices": {
+        "1": 180000
+      },
+      "shape": "table",
+      "arcSpread": 120,
+      "arcBaseR": 200,
+      "arcRowGap": 24,
+      "arcOffsetX": 0,
+      "arcOffsetY": 0,
+      "seats": [
+        {
+          "id": "table-5-31-seat-1",
+          "row": 1,
+          "number": 1,
+          "kind": "vip",
+          "x": 0,
+          "y": 24
+        },
+        {
+          "id": "table-5-31-seat-2",
+          "row": 1,
+          "number": 2,
+          "kind": "vip",
+          "x": 24,
+          "y": 0
+        },
+        {
+          "id": "table-5-31-seat-3",
+          "row": 1,
+          "number": 3,
+          "kind": "vip",
+          "x": 48,
+          "y": 0
+        },
+        {
+          "id": "table-5-31-seat-4",
+          "row": 1,
+          "number": 4,
+          "kind": "vip",
+          "x": 72,
+          "y": 0
+        },
+        {
+          "id": "table-5-31-seat-5",
+          "row": 1,
+          "number": 5,
+          "kind": "vip",
+          "x": 72,
+          "y": 24
+        }
+      ]
+    },
+    {
+      "id": "table-5-21",
+      "name": "VIP столы · стол 21",
+      "x": 764,
+      "y": 223,
+      "priceMinor": 150000,
+      "type": "seated",
+      "rowPrices": {
+        "1": 150000
+      },
+      "shape": "table",
+      "arcSpread": 120,
+      "arcBaseR": 200,
+      "arcRowGap": 24,
+      "arcOffsetX": 0,
+      "arcOffsetY": 0,
+      "seats": [
+        {
+          "id": "table-5-21-seat-1",
+          "row": 1,
+          "number": 1,
+          "kind": "standard",
+          "x": 32,
+          "y": 59
+        },
+        {
+          "id": "table-5-21-seat-2",
+          "row": 1,
+          "number": 2,
+          "kind": "standard",
+          "x": 0,
+          "y": 35
+        },
+        {
+          "id": "table-5-21-seat-3",
+          "row": 1,
+          "number": 3,
+          "kind": "standard",
+          "x": 8,
+          "y": 1
+        },
+        {
+          "id": "table-5-21-seat-4",
+          "row": 1,
+          "number": 4,
+          "kind": "standard",
+          "x": 56,
+          "y": 0
+        },
+        {
+          "id": "table-5-21-seat-5",
+          "row": 1,
+          "number": 5,
+          "kind": "standard",
+          "x": 65,
+          "y": 35
+        }
+      ]
+    },
+    {
+      "id": "table-5-32",
+      "name": "VIP столы · стол 32",
+      "x": 1312,
+      "y": 334,
+      "priceMinor": 180000,
+      "type": "seated",
+      "rowPrices": {
+        "1": 180000
+      },
+      "shape": "table",
+      "arcSpread": 120,
+      "arcBaseR": 200,
+      "arcRowGap": 24,
+      "arcOffsetX": 0,
+      "arcOffsetY": 0,
+      "seats": [
+        {
+          "id": "table-5-32-seat-1",
+          "row": 1,
+          "number": 1,
+          "kind": "vip",
+          "x": 0,
+          "y": 48
+        },
+        {
+          "id": "table-5-32-seat-2",
+          "row": 1,
+          "number": 2,
+          "kind": "vip",
+          "x": 0,
+          "y": 24
+        },
+        {
+          "id": "table-5-32-seat-3",
+          "row": 1,
+          "number": 3,
+          "kind": "vip",
+          "x": 36,
+          "y": 0
+        },
+        {
+          "id": "table-5-32-seat-4",
+          "row": 1,
+          "number": 4,
+          "kind": "vip",
+          "x": 72,
+          "y": 24
+        },
+        {
+          "id": "table-5-32-seat-5",
+          "row": 1,
+          "number": 5,
+          "kind": "vip",
+          "x": 72,
+          "y": 48
+        }
+      ]
+    }
+  ],
+  "staticObjects": [
+    {
+      "id": "static-dancefloor",
+      "kind": "standing",
+      "x": 795,
+      "y": 693,
+      "width": 520,
+      "height": 300,
+      "rotation": 0,
+      "opacity": 1,
+      "locked": false,
+      "text": "Танцпол",
+      "capacity": 95,
+      "priceMinor": 70000
+    },
+    {
+      "id": "static-stage",
+      "kind": "stage",
+      "x": 845,
+      "y": 1358.3999999999999,
+      "width": 420,
+      "height": 70,
+      "rotation": 0,
+      "opacity": 1,
+      "locked": false,
+      "text": "Сцена"
+    }
+  ]
+}

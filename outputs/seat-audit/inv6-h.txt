@@ -1,0 +1,19 @@
+HTTP/1.1 200 OK
+Host: 127.0.0.1:8899
+Connection: close
+X-Powered-By: PHP/8.4.21
+Cache-Control: no-cache, private
+Date: Tue, 06 Oct 2026 14:23:05 GMT
+Content-Type: application/json
+X-Content-Type-Options: nosniff
+X-XSS-Protection: 0
+Referrer-Policy: strict-origin-when-cross-origin
+Permissions-Policy: geolocation=(), microphone=(), camera=()
+Cross-Origin-Opener-Policy: same-origin
+X-Permitted-Cross-Domain-Policies: none
+X-Frame-Options: SAMEORIGIN
+Content-Security-Policy: default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'self'; form-action 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.bunny.net; img-src 'self' data: blob: https:; font-src 'self' data: https://fonts.bunny.net; connect-src 'self'; upgrade-insecure-requests
+X-Request-Id: 411d9d325e083b2517e39b811306b74e
+Access-Control-Allow-Origin: https://tickets.example.com
+Access-Control-Expose-Headers: X-Request-Id
+

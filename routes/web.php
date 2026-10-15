@@ -112,6 +112,20 @@ if (file_exists(__DIR__ . '/../app/Modules/Seo/routes/web.php')) {
 }
 
 /*
+ * Редакционные страницы CMS (модуль Content, стратегия SEO, B-2): /page/{slug}.
+ *
+ * Подключаются ЗДЕСЬ — до `Route::fallback()` ниже и после посадочных
+ * страниц Seo. `fallback()` перехватывает всё, что не совпало ни с одним
+ * зарегистрированным маршрутом, поэтому маршрут, объявленный после него, не
+ * получит запрос никогда. Порядок относительно группы Seo значения не имеет —
+ * префиксы `/page/`, `/venue/`, `/city/`, `/category/`, `/organizer/`,
+ * `/artist/` не пересекаются.
+ */
+if (file_exists(__DIR__ . '/../app/Modules/Content/routes/web.php')) {
+    require __DIR__ . '/../app/Modules/Content/routes/web.php';
+}
+
+/*
  * Installer (мастер установки, WordPress-стиль): /install
  * Грузится из web-роутов (а не api), чтобы URL был чистым — /install без
  * api/v1-префикса, и маршрут попадал в web-группу (сессии,共享错误), а не в api.

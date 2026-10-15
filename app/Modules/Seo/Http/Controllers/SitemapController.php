@@ -10,6 +10,13 @@ use Illuminate\Http\Response;
 
 /**
  * Sitemap controller (ТЗ §38).
+ *
+ * АДРЕСА. Карты отвечают в корне: `/sitemap.xml` и `/sitemap-{раздел}.xml`
+ * (аудит P-10a). Раньше они жили под `/api/v1/`, из-за чего `robots.txt`
+ * вынужден был запрещать раздел и тут же объявлять в нём карту. Маршруты
+ * зарегистрированы в `app/Modules/Seo/routes/web.php`; старые пути отвечают
+ * 301 через nginx, потому что на api-группу навешан `ForceJsonResponse` и
+ * редирект изнутри `/api/v1` отдал бы JSON вместо перехода.
  */
 class SitemapController
 {
@@ -49,7 +56,7 @@ class SitemapController
     }
 
     /**
-     * Карта площадок (аудит P-12) — `/api/v1/sitemap-venues.xml`.
+     * Карта площадок (аудит P-12) — `/sitemap-venues.xml`.
      */
     public function venues(): Response
     {
@@ -57,7 +64,7 @@ class SitemapController
     }
 
     /**
-     * Карта городов (аудит P-12) — `/api/v1/sitemap-cities.xml`.
+     * Карта городов (аудит P-12) — `/sitemap-cities.xml`.
      */
     public function cities(): Response
     {
@@ -65,7 +72,7 @@ class SitemapController
     }
 
     /**
-     * Карта категорий (аудит P-12) — `/api/v1/sitemap-categories.xml`.
+     * Карта категорий (аудит P-12) — `/sitemap-categories.xml`.
      */
     public function categories(): Response
     {
@@ -73,11 +80,32 @@ class SitemapController
     }
 
     /**
-     * Карта организаторов (аудит P-12) — `/api/v1/sitemap-organizers.xml`.
+     * Карта организаторов (аудит P-12) — `/sitemap-organizers.xml`.
      */
     public function organizers(): Response
     {
         return $this->xml($this->sitemapService->cachedOrganizersSitemap());
+    }
+
+    /**
+     * Карта артистов (стратегия SEO, B-1) — `/sitemap-artists.xml`.
+     */
+    public function artists(): Response
+    {
+        return $this->xml($this->sitemapService->cachedArtistsSitemap());
+    }
+
+    /**
+     * Карта редакционных страниц (стратегия SEO, B-2) — `/sitemap-pages.xml`.
+     *
+     * Сюда попадают только `Page.status = published` с непустым `published_at
+     * <= now()` (см. `CatalogService::pages()`). Черновики и страницы с
+     * отложенной публикацией карта не выдаёт — это решает проблему «случайно
+     * попавший в индекс черновик» системно, без отдельного правила в коде.
+     */
+    public function pages(): Response
+    {
+        return $this->xml($this->sitemapService->cachedPagesSitemap());
     }
 
     /**

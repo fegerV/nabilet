@@ -431,6 +431,16 @@ jobs:
       - name: Generate an application key
         run: php artisan key:generate --ansi
 
+      # The template an operator copies to `.env` must itself be production-safe:
+      # the guard in ProductionSafetyProvider is fail-closed, so an unsafe shipped
+      # default turns a fresh install into an application that refuses to boot.
+      # The command shares its rules with that provider (one owner:
+      # ProductionSafetyAudit), and running it here additionally proves it is
+      # registered in the real console kernel -- the Feature tests boot the test
+      # kernel, so they cannot show that `artisan config:validate` exists at all.
+      - name: The shipped configuration template is production-safe
+        run: php artisan config:validate
+
       # The immutability trigger in migration 2026_10_06_000100 needs SUPER (or
       # this flag) to be created, and MySQL refuses it otherwise with ERROR 1419.
       # The migration is fail-soft, so without this the suite would pass while

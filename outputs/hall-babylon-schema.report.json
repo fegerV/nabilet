@@ -1,0 +1,448 @@
+{
+  "sourceTotal": 360,
+  "sourceAvailable": 360,
+  "tableLevels": [
+    {
+      "name": "Боковые столы",
+      "seats": 104,
+      "tables": 18
+    },
+    {
+      "name": "Столы с ограниченной видимостью",
+      "seats": 67,
+      "tables": 16
+    },
+    {
+      "name": "VIP столы",
+      "seats": 57,
+      "tables": 18
+    }
+  ],
+  "tables": [
+    {
+      "level": "Боковые столы",
+      "table": "44",
+      "seats": 5,
+      "known": 5,
+      "reconstructed": 0,
+      "priceMinor": 100000
+    },
+    {
+      "level": "Боковые столы",
+      "table": "45",
+      "seats": 5,
+      "known": 3,
+      "reconstructed": 2,
+      "priceMinor": 100000
+    },
+    {
+      "level": "Боковые столы",
+      "table": "46",
+      "seats": 5,
+      "known": 5,
+      "reconstructed": 0,
+      "priceMinor": 100000
+    },
+    {
+      "level": "Боковые столы",
+      "table": "47",
+      "seats": 5,
+      "known": 5,
+      "reconstructed": 0,
+      "priceMinor": 100000
+    },
+    {
+      "level": "Боковые столы",
+      "table": "48",
+      "seats": 5,
+      "known": 5,
+      "reconstructed": 0,
+      "priceMinor": 100000
+    },
+    {
+      "level": "Боковые столы",
+      "table": "39",
+      "seats": 5,
+      "known": 5,
+      "reconstructed": 0,
+      "priceMinor": 100000
+    },
+    {
+      "level": "Боковые столы",
+      "table": "1",
+      "seats": 5,
+      "known": 5,
+      "reconstructed": 0,
+      "priceMinor": 100000
+    },
+    {
+      "level": "Боковые столы",
+      "table": "2",
+      "seats": 5,
+      "known": 5,
+      "reconstructed": 0,
+      "priceMinor": 100000
+    },
+    {
+      "level": "Боковые столы",
+      "table": "3",
+      "seats": 9,
+      "known": 9,
+      "reconstructed": 0,
+      "priceMinor": 150000
+    },
+    {
+      "level": "Боковые столы",
+      "table": "4",
+      "seats": 9,
+      "known": 9,
+      "reconstructed": 0,
+      "priceMinor": 150000
+    },
+    {
+      "level": "Боковые столы",
+      "table": "5",
+      "seats": 9,
+      "known": 9,
+      "reconstructed": 0,
+      "priceMinor": 150000
+    },
+    {
+      "level": "Боковые столы",
+      "table": "6",
+      "seats": 5,
+      "known": 5,
+      "reconstructed": 0,
+      "priceMinor": 150000
+    },
+    {
+      "level": "Боковые столы",
+      "table": "7",
+      "seats": 5,
+      "known": 5,
+      "reconstructed": 0,
+      "priceMinor": 150000
+    },
+    {
+      "level": "Боковые столы",
+      "table": "8",
+      "seats": 5,
+      "known": 5,
+      "reconstructed": 0,
+      "priceMinor": 100000
+    },
+    {
+      "level": "Боковые столы",
+      "table": "40",
+      "seats": 5,
+      "known": 5,
+      "reconstructed": 0,
+      "priceMinor": 100000
+    },
+    {
+      "level": "Боковые столы",
+      "table": "41",
+      "seats": 5,
+      "known": 5,
+      "reconstructed": 0,
+      "priceMinor": 100000
+    },
+    {
+      "level": "Боковые столы",
+      "table": "42",
+      "seats": 5,
+      "known": 5,
+      "reconstructed": 0,
+      "priceMinor": 100000
+    },
+    {
+      "level": "Боковые столы",
+      "table": "43",
+      "seats": 9,
+      "known": 9,
+      "reconstructed": 0,
+      "priceMinor": 100000
+    },
+    {
+      "level": "Столы с ограниченной видимостью",
+      "table": "11",
+      "seats": 4,
+      "known": 4,
+      "reconstructed": 0,
+      "priceMinor": 100000
+    },
+    {
+      "level": "Столы с ограниченной видимостью",
+      "table": "55",
+      "seats": 4,
+      "known": 4,
+      "reconstructed": 0,
+      "priceMinor": 100000
+    },
+    {
+      "level": "Столы с ограниченной видимостью",
+      "table": "22",
+      "seats": 4,
+      "known": 4,
+      "reconstructed": 0,
+      "priceMinor": 100000
+    },
+    {
+      "level": "Столы с ограниченной видимостью",
+      "table": "12",
+      "seats": 4,
+      "known": 4,
+      "reconstructed": 0,
+      "priceMinor": 100000
+    },
+    {
+      "level": "Столы с ограниченной видимостью",
+      "table": "56",
+      "seats": 4,
+      "known": 4,
+      "reconstructed": 0,
+      "priceMinor": 100000
+    },
+    {
+      "level": "Столы с ограниченной видимостью",
+      "table": "23",
+      "seats": 4,
+      "known": 4,
+      "reconstructed": 0,
+      "priceMinor": 100000
+    },
+    {
+      "level": "Столы с ограниченной видимостью",
+      "table": "13",
+      "seats": 4,
+      "known": 4,
+      "reconstructed": 0,
+      "priceMinor": 100000
+    },
+    {
+      "level": "Столы с ограниченной видимостью",
+      "table": "24",
+      "seats": 4,
+      "known": 4,
+      "reconstructed": 0,
+      "priceMinor": 100000
+    },
+    {
+      "level": "Столы с ограниченной видимостью",
+      "table": "49",
+      "seats": 5,
+      "known": 5,
+      "reconstructed": 0,
+      "priceMinor": 100000
+    },
+    {
+      "level": "Столы с ограниченной видимостью",
+      "table": "9",
+      "seats": 4,
+      "known": 4,
+      "reconstructed": 0,
+      "priceMinor": 100000
+    },
+    {
+      "level": "Столы с ограниченной видимостью",
+      "table": "50",
+      "seats": 5,
+      "known": 5,
+      "reconstructed": 0,
+      "priceMinor": 100000
+    },
+    {
+      "level": "Столы с ограниченной видимостью",
+      "table": "51",
+      "seats": 5,
+      "known": 5,
+      "reconstructed": 0,
+      "priceMinor": 100000
+    },
+    {
+      "level": "Столы с ограниченной видимостью",
+      "table": "52",
+      "seats": 4,
+      "known": 4,
+      "reconstructed": 0,
+      "priceMinor": 100000
+    },
+    {
+      "level": "Столы с ограниченной видимостью",
+      "table": "53",
+      "seats": 4,
+      "known": 4,
+      "reconstructed": 0,
+      "priceMinor": 100000
+    },
+    {
+      "level": "Столы с ограниченной видимостью",
+      "table": "10",
+      "seats": 4,
+      "known": 4,
+      "reconstructed": 0,
+      "priceMinor": 100000
+    },
+    {
+      "level": "Столы с ограниченной видимостью",
+      "table": "54",
+      "seats": 4,
+      "known": 4,
+      "reconstructed": 0,
+      "priceMinor": 100000
+    },
+    {
+      "level": "VIP столы",
+      "table": "33",
+      "seats": 5,
+      "known": 5,
+      "reconstructed": 0,
+      "priceMinor": 180000
+    },
+    {
+      "level": "VIP столы",
+      "table": "34",
+      "seats": 5,
+      "known": 5,
+      "reconstructed": 0,
+      "priceMinor": 180000
+    },
+    {
+      "level": "VIP столы",
+      "table": "14",
+      "seats": 4,
+      "known": 4,
+      "reconstructed": 0,
+      "priceMinor": 100000
+    },
+    {
+      "level": "VIP столы",
+      "table": "25",
+      "seats": 5,
+      "known": 5,
+      "reconstructed": 0,
+      "priceMinor": 180000
+    },
+    {
+      "level": "VIP столы",
+      "table": "15",
+      "seats": 4,
+      "known": 4,
+      "reconstructed": 0,
+      "priceMinor": 100000
+    },
+    {
+      "level": "VIP столы",
+      "table": "26",
+      "seats": 5,
+      "known": 5,
+      "reconstructed": 0,
+      "priceMinor": 180000
+    },
+    {
+      "level": "VIP столы",
+      "table": "16",
+      "seats": 4,
+      "known": 4,
+      "reconstructed": 0,
+      "priceMinor": 100000
+    },
+    {
+      "level": "VIP столы",
+      "table": "27",
+      "seats": 5,
+      "known": 5,
+      "reconstructed": 0,
+      "priceMinor": 180000
+    },
+    {
+      "level": "VIP столы",
+      "table": "17",
+      "seats": 4,
+      "known": 4,
+      "reconstructed": 0,
+      "priceMinor": 100000
+    },
+    {
+      "level": "VIP столы",
+      "table": "28",
+      "seats": 5,
+      "known": 0,
+      "reconstructed": 5,
+      "priceMinor": 180000
+    },
+    {
+      "level": "VIP столы",
+      "table": "18",
+      "seats": 5,
+      "known": 0,
+      "reconstructed": 5,
+      "priceMinor": 180000
+    },
+    {
+      "level": "VIP столы",
+      "table": "29",
+      "seats": 5,
+      "known": 2,
+      "reconstructed": 3,
+      "priceMinor": 180000
+    },
+    {
+      "level": "VIP столы",
+      "table": "19",
+      "seats": 5,
+      "known": 0,
+      "reconstructed": 5,
+      "priceMinor": 180000
+    },
+    {
+      "level": "VIP столы",
+      "table": "30",
+      "seats": 5,
+      "known": 0,
+      "reconstructed": 5,
+      "priceMinor": 180000
+    },
+    {
+      "level": "VIP столы",
+      "table": "20",
+      "seats": 5,
+      "known": 5,
+      "reconstructed": 0,
+      "priceMinor": 150000
+    },
+    {
+      "level": "VIP столы",
+      "table": "31",
+      "seats": 5,
+      "known": 3,
+      "reconstructed": 2,
+      "priceMinor": 180000
+    },
+    {
+      "level": "VIP столы",
+      "table": "21",
+      "seats": 5,
+      "known": 5,
+      "reconstructed": 0,
+      "priceMinor": 150000
+    },
+    {
+      "level": "VIP столы",
+      "table": "32",
+      "seats": 5,
+      "known": 1,
+      "reconstructed": 4,
+      "priceMinor": 180000
+    }
+  ],
+  "tableCount": 52,
+  "tableSeatCount": 259,
+  "danceCapacity": 95,
+  "outputSeats": 259,
+  "overlapCount": 0,
+  "canvas": {
+    "width": 2110,
+    "height": 1438
+  }
+}

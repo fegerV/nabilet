@@ -8,6 +8,7 @@ use Illuminate\Support\Collection;
 use Nabilet\Core\Support\Money;
 use Nabilet\Core\Support\RuText;
 use Nabilet\Modules\Core\Organizations\Models\Organization;
+use Nabilet\Modules\Events\Models\Artist;
 use Nabilet\Modules\Events\Models\Event;
 use Nabilet\Modules\Events\Models\EventCategory;
 use Nabilet\Modules\Seo\Domain\LandingPage;
@@ -15,7 +16,7 @@ use Nabilet\Modules\Venues\Models\Venue;
 
 /**
  * Сборка посадочной страницы: площадка, город, категория, фасет «город ×
- * категория» и организатор (аудит P-12).
+ * категория», организатор и артист (аудит P-12, артист — стратегия SEO B-1).
  *
  * ЗАЧЕМ ОТДЕЛЬНО ОТ `CatalogService`. Тот отвечает на вопрос «что в базе», этот
  * — «что написано на странице»: заголовок, описание, вводный текст, порядок и
@@ -60,8 +61,19 @@ class LandingPageService
         $baseUrl = route('landing.venue', ['slug' => (string) $venue->slug]);
         $name = (string) $venue->name;
         $city = trim((string) $venue->city);
+        $region = trim((string) $venue->region);
         $address = trim((string) $venue->address);
         $location = trim($city . ($city !== '' && $address !== '' ? ', ' : '') . $address);
+
+        // `geo.position` (стратегия SEO, B-7) — формат «lat;lng» (спецификация
+        // ICBM). `venues.latitude`/`longitude` приходят как `decimal:7`,
+        // поэтому численные сравнения корректны; точка с запятой между
+        // координатами, а не запятая — Яндекс ждёт именно такой разделитель.
+        // Если хотя бы одной координаты нет — позиция не выводится: полу-
+        // валидный `geo.position` хуже отсутствия тега.
+        $lat = $venue->latitude;
+        $lng = $venue->longitude;
+        $geoPosition = ($lat !== null && $lng !== null) ? sprintf('%s;%s', $lat, $lng) : null;
 
         return new LandingPage(
             heading: $this->withPageSuffix(sprintf('Афиша площадки «%s»', $name), $page),
@@ -102,10 +114,19 @@ class LandingPageService
                 'url' => $baseUrl,
                 'address' => (string) $venue->address,
                 'city' => (string) $venue->city,
+                // Стратегия SEO, B-7: регион идёт в JSON-LD как `addressRegion`
+                // и в `areaServed` — Яндекс использует это для геозависимой
+                // выдачи. Если регион не заполнен, `pruneEmpty` убирает поле
+                // и место адресуется только по городу и стране.
+                'region' => (string) $venue->region,
                 'country' => (string) $venue->country,
             ]),
             page: $page,
             lastPage: max(1, $events->lastPage()),
+            pageType: 'venue',
+            geoRegion: $region === '' ? null : $region,
+            geoPlacename: $city === '' ? null : $city,
+            geoPosition: $geoPosition,
         );
     }
 
@@ -147,6 +168,12 @@ class LandingPageService
             related: $this->relatedCities($city['slug']),
             page: $page,
             lastPage: max(1, $events->lastPage()),
+            pageType: 'city',
+            // `venues.city` — свободный текст, у которого нет ISO-кода
+            // региона; для города Яндекс читает `geo.placename` как название
+            // населённого пункта, и этого достаточно. `geo.position` не
+            // выводится — у города как сущности одной координаты нет.
+            geoPlacename: $name,
         );
     }
 
@@ -188,6 +215,10 @@ class LandingPageService
             related: $this->relatedCategories((string) $category->slug),
             page: $page,
             lastPage: max(1, $events->lastPage()),
+            pageType: 'category',
+            // Категория — фасет каталога без геопривязки: «Концерты», «Театр» —
+            // не место, поэтому ни `geo.region`, ни `geo.placename` тут
+            // осмысленны и не выводятся.
         );
     }
 
@@ -262,6 +293,11 @@ class LandingPageService
             related: $this->relatedCategoriesInCity($city, (string) $category->slug),
             page: $page,
             lastPage: max(1, $events->lastPage()),
+            pageType: 'city_category',
+            // Фасет привязан к городу, поэтому `geo.placename` повторяет
+            // `forCity()`: один и тот же город — один и тот же сигнал
+            // региональной выдаче.
+            geoPlacename: $city['name'],
         );
     }
 
@@ -330,6 +366,102 @@ class LandingPageService
             ]),
             page: $page,
             lastPage: max(1, $events->lastPage()),
+            pageType: 'organizer',
+            // `organizations` (Modules/Core/Organizations) не несёт
+            // геопривязки: адрес и регион юрлица — не то же, что адрес и
+            // регион места проведения. Региональные сигналы появятся на
+            // карточках конкретных событий организатора.
+        );
+    }
+
+    /**
+     * Страница артиста — `/artist/{slug}` (стратегия SEO, B-1).
+     *
+     * ЭТО ГЛАВНЫЙ РЫЧАГ ТРАФИКА ИЗ ВСЕЙ СЕРИИ ПОСАДОЧНЫХ СТРАНИЦ, и вот почему.
+     * Спрос на «Би-2 билеты», «афиша Ночных снайперов» формулируется по имени
+     * исполнителя, а не по площадке или городу: имя артиста — это то, что
+     * человек уже знает и вводит в поиск. До этой страницы у сайта не было
+     * адреса под такой запрос вообще, а имя жило свободным текстом внутри
+     * события (`event_artists`) — то есть у одного и того же артиста было
+     * столько «страниц», сколько написаний, и ни одной настоящей.
+     *
+     * АРТИСТ — ФАСЕТ КАТАЛОГА, А НЕ МЕСТО, как категория и организатор: сеанс
+     * не требуется, события собираются со всех площадок и городов. Подробнее —
+     * в `CatalogService::eventsAtArtist()`.
+     *
+     * `seo_title` И `seo_description` УВАЖАЮТСЯ, если заполнены. Эти колонки
+     * есть именно у артиста (у площадки, города и организации их нет), потому
+     * что имя исполнителя — то, ради чего страницу и правят руками: у группы
+     * бывает сценическое имя, отличающееся от «официального», и подпись вида
+     * «Би-2 — билеты на концерты 2026» ставит человек, а не шаблон. Формула
+     * ниже остаётся запасным вариантом для незаполненной карточки. Суффикс
+     * страницы пагинации добавляется и к ручному значению: иначе вторая
+     * страница получила бы тот же `<title>`, что первая, и они стали бы
+     * дублями.
+     *
+     * ПОДПИСЬ БЕЗ ПАДЕЖА — то же правило, что у города, площадки и
+     * организатора: «Афиша артиста «Би-2»», а не «Афиша Би-2». Имя — произвольная
+     * строка от администратора (или импорта), и склонять её нельзя ни по какому
+     * правилу.
+     *
+     * РАЗМЕТКА СУЩНОСТИ — `MusicGroup`: у артиста, в отличие от города, есть свои
+     * поля (жанр, биография, фото, соцсети), и они попадают в разметку. Города
+     * как сущности в схеме нет вовсе (`venues.city` — свободный текст), поэтому
+     * у страницы города разметки сущности не бывает.
+     */
+    public function forArtist(Artist $artist, int $page): LandingPage
+    {
+        $page = max(1, $page);
+
+        $events = $this->catalog->eventsAtArtist((int) $artist->id, $page);
+        $total = $events->total();
+
+        $baseUrl = route('landing.artist', ['slug' => (string) $artist->slug]);
+        $name = (string) $artist->name;
+        $label = sprintf('Афиша артиста «%s»', $name);
+
+        $title = trim((string) $artist->seo_title) !== ''
+            ? (string) $artist->seo_title
+            : sprintf('%s — билеты и расписание', $label);
+
+        $description = trim((string) $artist->seo_description) !== ''
+            ? (string) $artist->seo_description
+            : sprintf(
+                '%s: %d %s, расписание, цены и покупка билетов онлайн.',
+                $label,
+                $total,
+                RuText::plural($total, 'мероприятие', 'мероприятия', 'мероприятий'),
+            );
+
+        return new LandingPage(
+            heading: $this->withPageSuffix($label, $page),
+            title: $this->withPageSuffix($title, $page),
+            description: $this->withPageSuffix($description, $page),
+            intro: sprintf(
+                'В афише артиста «%s» — %d %s: расписание, цены и покупка билетов онлайн.%s',
+                $name,
+                $total,
+                RuText::plural($total, 'мероприятие', 'мероприятия', 'мероприятий'),
+                $page > 1 ? sprintf(' Страница %d.', $page) : '',
+            ),
+            baseUrl: $baseUrl,
+            breadcrumbs: $this->crumbs($label, $baseUrl, $page),
+            items: $this->items($events->getCollection()),
+            related: $this->relatedArtists((string) $artist->slug),
+            entity: $this->structuredData->generateArtist([
+                'name' => $name,
+                'url' => $baseUrl,
+                'bio' => $artist->bio,
+                'photo' => $artist->photo,
+                'genre' => $artist->genre,
+                'social_links' => $artist->social_links,
+            ]),
+            page: $page,
+            lastPage: max(1, $events->lastPage()),
+            pageType: 'artist',
+            // Артист — не место: региональная выдача по нему идёт через
+            // конкретные события, а не через страницу исполнителя. Поэтому
+            // `geo.*` тут не выводится.
         );
     }
 
@@ -383,15 +515,31 @@ class LandingPageService
     }
 
     /**
+     * Записи страницы — с признаком «прошло» (стратегия SEO, пункт 10).
+     *
+     * ПРИЗНАК СЧИТАЕТСЯ ЗДЕСЬ, А НЕ В РЕНДЕРЕ, и по тому же правилу, что
+     * задаёт порядок списка (`CatalogService::paginate()`): «прошедшее» — это
+     * событие, у которого есть сеанс, но НЕТ ни одного предстоящего. Считается
+     * он по тому же `nearestSession()`, что отдаёт дату для подписи, поэтому
+     * видимая дата и отнесение к архиву не могут разойтись: событие с будущим
+     * сеансом показывает будущую дату и остаётся в «ближайших».
+     *
+     * СОБЫТИЕ БЕЗ СЕАНСОВ — НЕ АРХИВ. Даты у него нет вовсе (`nearestSession()`
+     * возвращает `null`), и записывать его в «прошедшие» значило бы утверждать
+     * то, чего не было: оно ещё не состоялось. Поэтому `past` истинно ТОЛЬКО при
+     * наличии даты, и такое событие остаётся в основном блоке без подписи даты.
+     *
      * @param  Collection<int, Event>  $events
-     * @return list<array{title: string, url: string, date: ?string, venue: ?string, price: ?string}>
+     * @return list<array{title: string, url: string, date: ?string, venue: ?string, price: ?string, past: bool}>
      */
     private function items(Collection $events): array
     {
         $items = [];
+        $now = now();
 
         foreach ($events as $event) {
             $session = $this->catalog->nearestSession($event);
+            $startsAt = $session?->starts_at;
 
             $items[] = [
                 'title' => (string) $event->title,
@@ -403,9 +551,10 @@ class LandingPageService
                     'slug' => (string) $event->slug,
                     'publicId' => (string) $event->public_id,
                 ]),
-                'date' => $session?->starts_at?->toIso8601String(),
+                'date' => $startsAt?->toIso8601String(),
                 'venue' => $session?->venue?->name === null ? null : (string) $session->venue->name,
                 'price' => $this->priceFrom($event->min_price ?? null),
+                'past' => $startsAt !== null && $startsAt->lessThan($now),
             ];
         }
 
@@ -596,6 +745,45 @@ class LandingPageService
             $related[] = [
                 'label' => $candidate['name'],
                 'url' => route('landing.organizer', ['slug' => $candidate['slug']]),
+                'count' => $candidate['count'],
+            ];
+
+            if (count($related) === CatalogService::RELATED_LIMIT) {
+                break;
+            }
+        }
+
+        return $related;
+    }
+
+    /**
+     * Соседние артисты страницы артиста — другие артисты каталога (B-1).
+     *
+     * ЧИСЛО У ССЫЛКИ — ОБЩЕЕ ЧИСЛО СОБЫТИЙ артиста, и это честно: ссылка ведёт
+     * на его страницу, а она собирает события всех городов.
+     *
+     * ПОЧЕМУ «ДРУГИЕ АРТИСТЫ», А НЕ «ПОХОЖИЕ ПО ЖАНРУ». Жанр — свободный текст
+     * в карточке (`artists.genre`), заполняемый вручную, и группировать по нему
+     * значило бы построить перелинковку на данных, которых у большинства
+     * артистов ещё нет: соседей не оказалось бы вовсе, и блок ссылок был бы
+     * пустым. Тот же выбор сделан у организаторов и категорий. «Похожесть» по
+     * общим событиям или городам — следующий шаг, и он требует запроса, который
+     * сегодня нечем оправдать: у артиста обычно одно-два события.
+     *
+     * @return list<array{label: string, url: string, count: int}>
+     */
+    private function relatedArtists(string $slug): array
+    {
+        $related = [];
+
+        foreach ($this->catalog->artists() as $candidate) {
+            if ($candidate['slug'] === $slug || $candidate['count'] < 1) {
+                continue;
+            }
+
+            $related[] = [
+                'label' => $candidate['name'],
+                'url' => route('landing.artist', ['slug' => $candidate['slug']]),
                 'count' => $candidate['count'],
             ];
 

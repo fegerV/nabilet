@@ -23,6 +23,22 @@ FROM php:8.4-fpm-alpine AS base
 
 # Runtime libraries first: `lib*` packages are kept, `-dev` ones exist only to
 # compile the extensions and are removed afterwards so the image stays small.
+#
+# Two hadolint findings are accepted here on purpose, and named rather than left
+# implicit so that a genuinely new one stays visible:
+#
+#   SC2086 — `$PHPIZE_DEPS` is a space-separated list that MUST be word-split;
+#            quoting it would make `apk add` look for a single package called
+#            "autoconf dpkg-dev dpkg …". The list is not spelled out literally
+#            because it belongs to the base image and drifts with it — copying it
+#            here would freeze today's contents and silently miss tomorrow's.
+#   DL3018 — pinning apk versions in a base image is a losing trade: Alpine drops
+#            a pinned build from its repositories on the next point release, and
+#            the image then stops building until someone bumps the pins by hand.
+#            `--no-cache` already avoids the stale-index failure this rule exists
+#            to prevent.
+#
+# hadolint ignore=SC2086,DL3018
 RUN apk add --no-cache \
         libzip \
         libpng \
@@ -51,9 +67,10 @@ RUN apk add --no-cache \
 COPY docker/php/opcache.ini /usr/local/etc/php/conf.d/zz-nabilet-opcache.ini
 
 # ── build stage ──────────────────────────────────────────────────────────────
-# Dependencies are resolved here, inside a php:8.3 image, so the platform Composer
-# checks against is the platform that will actually run the code. Resolving in a
-# `composer:2` container instead risks pinning versions against a different PHP.
+# Dependencies are resolved here, inside the same PHP 8.4 base, so the platform
+# Composer checks against is the platform that will actually run the code.
+# Resolving in a `composer:2` container instead risks pinning versions against a
+# different PHP.
 FROM base AS build
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
@@ -92,10 +109,25 @@ COPY --from=build /app ./
 
 # storage/ and bootstrap/cache/ must be writable by the FPM pool user; everything
 # else stays root-owned so a compromised PHP process cannot rewrite the codebase.
-RUN mkdir -p storage/framework/{cache,sessions,views} storage/logs bootstrap/cache \
+#
+# The three framework directories are written out in full instead of as
+# `storage/framework/{cache,sessions,views}`: brace expansion is undefined in POSIX
+# sh (SC3009), and this RUN executes under Alpine's BusyBox `sh`. It happens to
+# work there today, but it is not a guarantee the image can rely on — a base image
+# rebuilt without `ASH_BASH_COMPAT` would create a literal directory named
+# `{cache,sessions,views}` and the application would fail at runtime instead of at
+# build time.
+RUN mkdir -p storage/framework/cache storage/framework/sessions storage/framework/views \
+        storage/logs bootstrap/cache \
     && chown -R www-data:www-data storage bootstrap/cache \
     && chmod -R 775 storage bootstrap/cache
 
+# The user is named, not numeric (DL3066), and that is deliberate: the same name
+# is what `chown -R www-data:www-data` above resolves, so the two cannot drift.
+# A hardcoded `USER 82:82` would keep working only as long as the base image keeps
+# assigning uid 82 to www-data — and the failure mode if it ever changed would be
+# "permission denied" on storage at runtime, not a build error.
+# hadolint ignore=DL3066
 USER www-data
 
 EXPOSE 9000

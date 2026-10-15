@@ -1,0 +1,14 @@
+[
+  {
+    "method": "GET",
+    "url": "http://127.0.0.1:8001/api/v1/analytics/metrika/config",
+    "postData": null,
+    "status": 404
+  },
+  {
+    "method": "GET",
+    "url": "http://127.0.0.1:8001/api/v1/halls/01M46Y8JH0A592YMXG1N9KMNWA/schema-versions",
+    "postData": null,
+    "status": 200
+  }
+]
