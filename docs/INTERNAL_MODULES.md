@@ -93,6 +93,43 @@ and cannot disagree. Spending bonuses at checkout is implemented in phase 2b and
 offered on the checkout screen (`CheckoutPage` with a «Списать N бонусов» toggle,
 `lib/loyalty.ts::spendCapMinor` mirroring the server-side cap).
 
+### `Matrix` — admin notification feed (`MatrixServiceProvider`)
+
+`docs/MATRIX.md` is the full description. The channel posts a plain-text message to
+one Matrix room (Element X) through the Client-Server API of a remote Synapse.
+
+**It is addressed to staff only.** No buyer ever receives a Matrix message: there is
+no user↔Matrix-ID binding in the schema, no direct messages and no inbound bot
+(no webhook from Synapse). This is an internal sales feed, not a customer-service
+channel — buyer e-mail lives in the `Notifications` module.
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/api/v1/admin/matrix/settings` | `auth:api` + `admin` | Settings without secrets. Returns the homeserver, the room id, `access_token_set` (never the token), the toggles, `*_from_env` flags and `configured` |
+| PUT | `/api/v1/admin/matrix/settings` | `auth:api` + `admin` | Save settings. `null` (empty form field) **erases** a non-secret override and falls back to `.env`; for the token `null` means "keep" (the form never sends it) and erasing needs `clear_access_token: true`. Bad homeserver/room format → 422 `error.details.fields` |
+| POST | `/api/v1/admin/matrix/test` | `auth:api` + `admin` | Send a test message. Answers 200 with `{ok, error}` rather than 4xx — a wrong token during setup is an expected outcome and the admin UI needs the text |
+
+The room id must be the opaque `!room:server` identifier, **not** the alias
+`#name:server` (Synapse only resolves an alias through `/directory/room/{alias}`, so
+the send path would 404). The homeserver must be `http`/`https` — `file://` is
+rejected, since it would turn a notification into a local file read (SSRF).
+
+The order-paid notice hangs off `Order` as the **sixth** observer
+(`OrderMatrixObserver`, after `OrderObserver`, `OrderBonusObserver`,
+`OrderLoyaltyObserver`, `OrderReferralObserver` and `OrderRaffleObserver`): Laravel
+appends to the observer list, so the Orders module keeps its own observer and never
+learns about Matrix. It fires on a transition into `paid`, and only when the channel
+is enabled, order notifications are on **and** all three values are filled — so no
+doomed job is ever queued. The network call is not made from the observer but from
+`SendMatrixMessageJob` (`tries = 3`, `backoff = [10, 30, 60]`) dispatched
+`afterCommit()`: a Synapse outage must not roll back a payment. Sending uses `PUT`
+with a per-attempt `txnId`, which makes the call idempotent by construction.
+
+Settings live in the `settings` table (scope=`matrix`) with the same mechanics as
+`MailSettings`/`PaymentSettings`; the access token is written with `encrypted = 1`
+and never leaves the API. **The DB schema does not change** — no migration, no new
+split, counters unchanged.
+
 ## Special Cases
 
 | Module | Provider | Notes |
