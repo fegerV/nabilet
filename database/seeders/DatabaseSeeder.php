@@ -12,5 +12,13 @@ class DatabaseSeeder extends Seeder
     {
         $this->call(NabiletAdminSeeder::class);
         $this->call(NotificationTemplateSeeder::class);
+
+        // Стартовый каталог площадок Сургута — ПОСЛЕ NabiletAdminSeeder.
+        //
+        // Порядок обязателен: `venues.organization_id` NOT NULL, а организацию
+        // создаёт либо установщик (шаг 5, до `db:seed`), либо NabiletAdminSeeder
+        // (демо-организация вне production). Запустив этот сидер первым, мы
+        // получили бы «нет организации» и пустой каталог на свежей установке.
+        $this->call(SurgutVenuesSeeder::class);
     }
 }
