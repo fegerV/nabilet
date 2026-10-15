@@ -10,6 +10,7 @@ use Nabilet\Modules\Loyalty\Http\Controllers\FollowController;
 use Nabilet\Modules\Loyalty\Http\Controllers\LoyaltyLevelController;
 use Nabilet\Modules\Loyalty\Http\Controllers\LoyaltySettingsController;
 use Nabilet\Modules\Loyalty\Http\Controllers\RaffleController;
+use Nabilet\Modules\Loyalty\Http\Controllers\RecommendationController;
 use Nabilet\Modules\Loyalty\Http\Controllers\ReferralController;
 
 // Личный кабинет покупателя: «❤️ Избранное», «🔔 Подписки» и бонусный счёт.
@@ -56,6 +57,13 @@ Route::prefix('me')->middleware('auth:api')->group(function (): void {
     // выигрывал ли я. Участие — строка `raffle_entries`, и без аккаунта её
     // не найти: путь целиком под `auth:api`, гость получает 401.
     Route::get('/raffles', [RaffleController::class, 'index']);
+
+    // «Рекомендуем» (фаза 5): персональная полка предстоящих мероприятий,
+    // близких по категориям к тому, что покупатель уже смотрел (избранное,
+    // подписки, оплаченные заказы). Профиль вкуса — личный, поэтому путь под
+    // `auth:api`: гостю рекомендации построить не из чего, и он получает 401,
+    // а не случайный каталог под видом персонального.
+    Route::get('/recommendations', [RecommendationController::class, 'index']);
 });
 
 //

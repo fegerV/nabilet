@@ -955,6 +955,42 @@ paths:
               schema: { $ref: '#/components/schemas/RaffleParticipationListResponse' }
         '401': { $ref: '#/components/responses/Unauthorized' }
 
+  /api/v1/me/recommendations:
+    get:
+      tags: [Me]
+      summary: Recommended upcoming events
+      description: >-
+        Персональные рекомендации (фаза 5 плана лояльности): предстоящие
+        опубликованные мероприятия, близкие по категориям к тому, с чем покупатель
+        уже взаимодействовал. Профиль вкуса собирается из избранного, подписок и
+        ОПЛАЧЕННЫХ заказов — без новой таблицы в схеме. Мероприятие, которое
+        покупатель уже отметил или купил, в выдачу не попадает, как и черновики и
+        события без будущих сеансов. Пустой список — 200 с `data: []`, а не 404:
+        у нового аккаунта рекомендаций ещё нет.
+      operationId: getMyRecommendations
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          description: >-
+            Максимум карточек в ответе. Неположительное значение значит «по
+            умолчанию» (8), больше 24 — обрезается потолком.
+          schema: { type: integer, minimum: 1, maximum: 24, default: 8 }
+      responses:
+        '200':
+          description: Recommended upcoming events, most relevant first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/EventSummary' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
   /api/v1/raffles/{public_id}:
     get:
       tags: [Raffles]

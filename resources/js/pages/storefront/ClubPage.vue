@@ -27,8 +27,9 @@ import NModal from '@/components/ui/NModal.vue'
 import { useLoyaltyStore } from '@/stores/loyalty'
 import { useUiStore } from '@/stores/ui'
 import { customerUser } from '@/lib/customer'
-import { money, plural } from '@/lib/format'
+import { dateFull, money, plural, time } from '@/lib/format'
 import { fetchReferral, type ReferralInfo } from '@/lib/referral'
+import { fetchRecommendations, type RecommendedEvent } from '@/lib/recommendations'
 import {
   ACHIEVEMENTS,
   CATEGORY_LABEL,
@@ -109,6 +110,9 @@ onMounted(() => {
   // Фаза 4: блок «Пригласите друга». Гость сюда не попадает (маршрут под
   // `requiresCustomer`), а `/me/referral` под `auth:api` — запрос идёт всегда.
   void loadReferral()
+  // Фаза 5: персональная полка «Рекомендуем для вас». Тот же `auth:api`; у
+  // нового аккаунта вернётся пустой список, и блок просто не покажется.
+  void loadRecommendations()
 })
 
 function goCatalog(): void {
@@ -166,6 +170,35 @@ async function copyLink(): Promise<void> {
     // как есть — выделить и скопировать руками пользователь сможет всегда.
     ui.notify('sun', 'Не удалось скопировать', 'Скопируйте ссылку вручную — она ниже.')
   }
+}
+
+/* ── «Рекомендуем для вас» (фаза 5) ────────────────────────────────────────
+ * Персональная полка: сервер считает её из личной истории (избранное,
+ * подписки, оплаченные заказы). Пустой список — это не ошибка, а «пока нечего
+ * предложить»: у нового аккаунта сигналов ещё нет, и блок просто не рисуется.
+ * Ошибка загрузки тоже не роняет клуб — рекомендации необязательны.
+ * ────────────────────────────────────────────────────────────────────────── */
+const recommended = ref<RecommendedEvent[]>([])
+
+async function loadRecommendations(): Promise<void> {
+  try {
+    recommended.value = await fetchRecommendations()
+  } catch {
+    // Клуб работает и без полки: оставляем её пустой, а не показываем
+    // «не удалось загрузить» там, где список и так необязателен.
+    recommended.value = []
+  }
+}
+
+/** Дата ближайшего сеанса или честное «уточняется» — битая дата не «1970». */
+function recommendedStartsAt(iso: string | null): string {
+  if (!iso || Number.isNaN(new Date(iso).getTime())) return 'Расписание уточняется'
+  return `${dateFull(iso)}, ${time(iso)}`
+}
+
+/** Ссылка на витрину: без slug строить нечего (`/event/:slug`). */
+function recommendedHref(event: RecommendedEvent): string | null {
+  return event.slug ? `/event/${event.slug}` : null
 }
 </script>
 
@@ -381,6 +414,62 @@ async function copyLink(): Promise<void> {
         </p>
         <NButton variant="secondary" @click="goRaffles">Мои розыгрыши</NButton>
       </div>
+    </section>
+
+    <!-- «Рекомендуем для вас» (фаза 5): персональная полка. Пусто — не рисуем:
+         у нового аккаунта нет ни одного сигнала, и заголовок с пустотой был бы
+         обещанием, которого нет. -->
+    <section v-if="recommended.length" class="mt-8" aria-label="Рекомендуем для вас">
+      <div class="flex items-end justify-between gap-3">
+        <div>
+          <h2 class="font-display text-xl font-bold tracking-tight text-content">Рекомендуем для вас</h2>
+          <p class="mt-1 text-sm text-muted">
+            Подобрали по тому, что вам уже интересно: избранное, подписки и покупки.
+          </p>
+        </div>
+      </div>
+
+      <ul class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <li
+          v-for="event in recommended"
+          :key="event.id"
+          class="surface-card flex items-center gap-3 p-3"
+        >
+          <RouterLink
+            v-if="recommendedHref(event)"
+            :to="recommendedHref(event)!"
+            class="h-16 w-12 flex-none overflow-hidden rounded-lg"
+            :aria-label="`Открыть ${event.title}`"
+          >
+            <img
+              v-if="event.poster"
+              :src="event.poster"
+              alt=""
+              class="h-full w-full object-cover"
+            />
+            <span
+              v-else
+              class="grid h-full w-full place-items-center bg-brand-gradient text-lg text-brand-on"
+              aria-hidden="true"
+            >{{ event.title.slice(0, 1) }}</span>
+          </RouterLink>
+          <span
+            v-else
+            class="grid h-16 w-12 flex-none place-items-center rounded-lg bg-surface-3 text-lg text-subtle"
+            aria-hidden="true"
+          >♪</span>
+
+          <div class="min-w-0 flex-1">
+            <RouterLink
+              v-if="recommendedHref(event)"
+              :to="recommendedHref(event)!"
+              class="block truncate text-sm font-medium text-content transition-colors hover:text-brand-400"
+            >{{ event.title }}</RouterLink>
+            <span v-else class="block truncate text-sm font-medium text-content">{{ event.title }}</span>
+            <p class="mt-0.5 text-xs text-subtle">{{ recommendedStartsAt(event.starts_at) }}</p>
+          </div>
+        </li>
+      </ul>
     </section>
 
     <!-- Детальная карточка ачивки -->
