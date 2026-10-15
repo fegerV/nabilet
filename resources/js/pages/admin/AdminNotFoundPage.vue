@@ -40,6 +40,7 @@ const SECTIONS: ReadonlyArray<{ path: string; label: string }> = [
   { path: '/admin/webhooks', label: 'Вебхуки' },
   { path: '/admin/notification-templates', label: 'Шаблоны писем' },
   { path: '/admin/mail', label: 'Почта (SMTP)' },
+  { path: '/admin/matrix', label: 'Matrix (Element X)' },
   { path: '/admin/analytics', label: 'Аналитика' },
 ]
 
