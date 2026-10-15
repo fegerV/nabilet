@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Routing\Controller;
 use Illuminate\Validation\ValidationException;
+use Nabilet\Modules\Core\Users\Domain\UserStatus;
 
 /**
  * InstallerController — пошаговый установщик системы для шаред-хостинга.
@@ -548,13 +549,18 @@ ENV;
     {
         $userId = null;
 
-        if (class_exists(\App\Models\User::class)) {
-            $user = \App\Models\User::create([
+        // Каноничная модель — единственная, через которую теперь создаётся
+        // пользователь (`App\Models\User` осталось легаси-именем-подклассом).
+        // Ветка `DB::table()` ниже — не дубль, а запас на случай, когда модель
+        // недоступна (сломанный автолоад): установщик обязан доработать до
+        // админа, иначе инсталляция заканчивается мёртвым сайтом без входа.
+        if (class_exists(\Nabilet\Modules\Core\Users\Models\User::class)) {
+            $user = \Nabilet\Modules\Core\Users\Models\User::create([
                 'first_name' => 'Administrator',
                 'email' => $email,
                 'password' => bcrypt($password),
                 'email_verified_at' => now(),
-                'status' => 'active',
+                'status' => UserStatus::ACTIVE,
             ]);
             $userId = $user->id;
             Log::info('Installer: Администратор создан', ['id' => $userId, 'email' => $email]);
@@ -565,7 +571,7 @@ ENV;
                 'email' => $email,
                 'password' => password_hash($password, PASSWORD_BCRYPT),
                 'first_name' => 'Administrator',
-                'status' => 'active',
+                'status' => UserStatus::ACTIVE,
                 'email_verified_at' => now(),
                 'created_at' => now(),
                 'updated_at' => now(),

@@ -7,6 +7,7 @@ namespace Nabilet\Modules\Payments\Providers;
 use Nabilet\Modules\Payments\Repositories\PaymentRepository;
 use Nabilet\Modules\Payments\Services\PaymentProviderRegistry;
 use Nabilet\Modules\Payments\Services\PaymentService;
+use Nabilet\Modules\Payments\Services\PaymentSettings;
 use Nabilet\Modules\Payments\Services\RefundService;
 use Illuminate\Support\ServiceProvider;
 
@@ -43,6 +44,14 @@ class PaymentServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        // Настройки шлюза из админки применяются к runtime-конфигу на КАЖДОМ
+        // бутстрапе: платежи идут из веб-запроса, из вебхука и из консольной
+        // сверки (`ReconcilePaymentsCommand`), и все обязаны видеть одни ключи.
+        // Ключи из `.env` остаются значениями по умолчанию — пока в таблице
+        // `settings` нет записи, `applyRuntimeConfig()` конфиг не трогает.
+        // (Тот же механизм, что у `MailSettings` в NotificationsServiceProvider.)
+        $this->app->make(PaymentSettings::class)->applyRuntimeConfig();
+
         // Маршруты модуля подключены централизованно в routes/api.php, внутри
         // группы /api/v1. Загрузка отсюда зарегистрировала бы их второй раз —
         // в корне, без префикса и вне API-группы middleware. См.

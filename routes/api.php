@@ -90,6 +90,26 @@ $moduleRoutes = [
     // путей контракта отвечали 404, а checkout отказывал любому коду со
     // стабильным PROMO_CODE_NOT_SUPPORTED.
     __DIR__ . '/../app/Modules/Pricing/routes/api.php',
+    // Check-in: погашение билетов с устройства (контракт: /api/v1/checkin/
+    // validate, /use, /sync под `checkerAuth` — bearer-токен устройства из
+    // `checkin_devices.device_token_hash`) и админская часть: выдача и отзыв
+    // устройств, журнал входов. У модуля не было HTTP-слоя ВООБЩЕ — три пути
+    // контракта отвечали 404, а колонка под токен устройства не имела ни
+    // писателя, ни читателя. Подробности — в шапке файла маршрутов модуля.
+    __DIR__ . '/../app/Modules/Checkin/routes/api.php',
+    // Клуб зрителей, фаза 1 (`docs/LOYALTY-PLAN.md`): избранное и подписки
+    // покупателя — `/me/favorites`, `/me/events/{event}/favorite`,
+    // `/me/follows`, `/me/events/{event}/follow`. Весь префикс под `auth:api`:
+    // без аккаунта избранное негде хранить. Файл обязан быть подключён здесь —
+    // `loadRoutesFrom()` из провайдера зарегистрировал бы те же пути в корне,
+    // вне /api/v1 и его middleware.
+    __DIR__ . '/../app/Modules/Loyalty/routes/api.php',
+    // Matrix (Element X): административные уведомления в комнату через удалённый
+    // Synapse — `/admin/matrix/settings` (GET/PUT) и `/admin/matrix/test`. Весь
+    // раздел под `auth:api` + `admin`: здесь лежит токен доступа к Synapse.
+    // Файл обязан быть подключён здесь — `loadRoutesFrom()` из провайдера
+    // зарегистрировал бы те же пути в корне, вне /api/v1 и его middleware.
+    __DIR__ . '/../app/Modules/Matrix/routes/api.php',
 ];
 
 foreach ($moduleRoutes as $routeFile) {

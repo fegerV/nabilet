@@ -26,15 +26,34 @@ import type { Column } from '@/components/ui/NDataTable.vue'
 
 const router = useRouter()
 
+/** Денежная часть заказа — схема `MoneyTotals` контракта (минорные единицы). */
+interface ApiTotals {
+  total_amount?: number
+  currency?: string
+}
+
+interface ApiOrderItem {
+  quantity?: number
+  /** Схема `OrderItem` отдаёт `event_title` (без суффикса `_snapshot`). */
+  event_title?: string | null
+  total_amount?: number | null
+}
+
+/** Строка `GET /orders` — схема `Order` (`OrderResource`). */
 interface ApiOrder {
   id: string
   order_number?: string | null
   status: string
-  total_amount?: number | null
+  totals?: ApiTotals | null
   customer_name?: string | null
   customer_email?: string | null
   created_at?: string | null
-  items?: Array<{ quantity?: number; event_title_snapshot?: string | null; total_amount?: number | null }>
+  items?: ApiOrderItem[]
+}
+
+/** Итог заказа в минорных единицах: суммы вложены в `totals` (схема `Order`). */
+function orderTotal(order: ApiOrder): number {
+  return order.totals?.total_amount ?? 0
 }
 
 interface ApiPayment {
@@ -109,7 +128,7 @@ function inWindow(order: ApiOrder, fromDaysAgo: number, toDaysAgo: number): bool
 function sumWindow(fromDaysAgo: number, toDaysAgo: number): number {
   return orders.value
     .filter((o) => isPaid(o) && inWindow(o, fromDaysAgo, toDaysAgo))
-    .reduce((sum, o) => sum + (o.total_amount ?? 0), 0)
+    .reduce((sum, o) => sum + orderTotal(o), 0)
 }
 
 function countWindow(fromDaysAgo: number, toDaysAgo: number): number {
@@ -145,7 +164,7 @@ const avgCheck = computed(() => (paid7.value ? revenue7.value / paid7.value : 0)
 const refunds = computed(() =>
   orders.value
     .filter((o) => o.status === 'refunded' || o.status === 'partially_refunded')
-    .reduce((sum, o) => sum + (o.total_amount ?? 0), 0),
+    .reduce((sum, o) => sum + orderTotal(o), 0),
 )
 
 const KPIS = computed(() => [
@@ -189,7 +208,7 @@ const series = computed(() => {
     const at = new Date(order.created_at ?? '').getTime()
     if (Number.isNaN(at)) continue
     const index = bounds.findIndex((b) => at >= b.from && at < b.to)
-    if (index >= 0) days[index]!.total += order.total_amount ?? 0
+    if (index >= 0) days[index]!.total += orderTotal(order)
   }
   return days
 })
@@ -218,9 +237,9 @@ const recent = computed(() =>
       number: o.order_number ?? o.id.slice(0, 8),
       customer: o.customer_name || o.customer_email || '—',
       email: o.customer_email ?? '',
-      eventTitle: o.items?.[0]?.event_title_snapshot ?? '—',
+      eventTitle: o.items?.[0]?.event_title ?? '—',
       seats: (o.items ?? []).reduce((sum, item) => sum + (item.quantity ?? 1), 0),
-      totalMinor: o.total_amount ?? 0,
+      totalMinor: orderTotal(o),
       status: o.status,
       createdAt: o.created_at ?? '',
     })),
@@ -297,7 +316,7 @@ const topEvents = computed(() => {
   for (const order of orders.value) {
     if (!isPaid(order)) continue
     for (const item of order.items ?? []) {
-      const title = item.event_title_snapshot ?? 'Без названия'
+      const title = item.event_title ?? 'Без названия'
       map.set(title, (map.get(title) ?? 0) + (item.total_amount ?? 0))
     }
   }

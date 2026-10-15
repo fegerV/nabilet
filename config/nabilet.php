@@ -75,7 +75,14 @@ return [
         'hall_schemas' => \Nabilet\Modules\HallSchemas\Providers\HallSchemasServiceProvider::class,
         'heatmaps' => \Nabilet\Modules\Heatmaps\Providers\HeatmapsServiceProvider::class,
         'installer' => \Nabilet\Modules\Installer\Providers\InstallerServiceProvider::class,
+        // Клуб зрителей: избранное и подписки покупателя (docs/LOYALTY-PLAN.md,
+        // фаза 1). Между installer и localization по приоритету модуля (140).
+        'loyalty' => \Nabilet\Modules\Loyalty\Providers\LoyaltyServiceProvider::class,
         'localization' => \Nabilet\Modules\Localization\Providers\LocalizationServiceProvider::class,
+        // Matrix (Element X): административные уведомления в комнату через
+        // удалённый Synapse. Провайдер бутится явно в bootstrap/app.php —
+        // только там вешается наблюдатель оплаты заказа.
+        'matrix' => \Nabilet\Modules\Matrix\Providers\MatrixServiceProvider::class,
         'media' => \Nabilet\Modules\Media\Providers\MediaServiceProvider::class,
         'notifications' => \Nabilet\Modules\Notifications\Providers\NotificationsServiceProvider::class,
         'pricing' => \Nabilet\Modules\Pricing\Providers\PricingServiceProvider::class,
@@ -139,6 +146,34 @@ return [
      */
     'media' => [
         'disk' => env('MEDIA_DISK', 'public'),
+    ],
+
+    /*
+     * Matrix (Element X): административные уведомления в комнату Synapse.
+     *
+     * ЗАЧЕМ ЭТОТ БЛОК, ЕСЛИ НАСТРОЙКИ ЖИВУТ В АДМИНКЕ
+     *   Ключи ниже — значения СВЕЖЕЙ УСТАНОВКИ. Реальные настройки хранятся в
+     *   таблице `settings` (scope=`matrix`) и правятся в админке без доступа к
+     *   серверу; значения из БД перекрывают этот блок, а отсутствующий в БД
+     *   ключ его не трогает (`MatrixSettings::applyRuntimeConfig`). Блок нужен,
+     *   чтобы развёртывание могло задать канал одним `.env` до первого входа в
+     *   админку и чтобы `artisan config:show nabilet.matrix` показывал
+     *   фактическое состояние.
+     *
+     * `access_token` — полный доступ к аккаунту бота Synapse. В `.env` он
+     * попадает только у установок, которые сознательно держат секреты там; в
+     * админке он хранится зашифрованным и наружу не отдаётся.
+     *
+     * `enabled` по умолчанию false: канал включается осознанно, а не самим
+     * фактом заполнения трёх полей. Иначе тестовая настройка на боевой базе
+     * начала бы писать в комнату, как только админ сохранил токен.
+     */
+    'matrix' => [
+        'homeserver_url' => env('NABILET_MATRIX_HOMESERVER_URL'),
+        'room_id' => env('NABILET_MATRIX_ROOM_ID'),
+        'access_token' => env('NABILET_MATRIX_ACCESS_TOKEN'),
+        'enabled' => filter_var(env('NABILET_MATRIX_ENABLED', false), FILTER_VALIDATE_BOOL),
+        'notify_orders' => filter_var(env('NABILET_MATRIX_NOTIFY_ORDERS', true), FILTER_VALIDATE_BOOL),
     ],
 
     /*

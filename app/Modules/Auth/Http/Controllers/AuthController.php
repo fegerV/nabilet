@@ -4,8 +4,12 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Auth\Http\Controllers;
 
+use Illuminate\Database\Query\Expression;
 use Illuminate\Routing\Controller;
+use Nabilet\Core\Errors\AuthError;
+use Nabilet\Core\Support\PackedIp;
 use Nabilet\Core\Errors\ValidationError;
+use Nabilet\Modules\Auth\Domain\LoginLogEvent;
 use Nabilet\Modules\Auth\Http\Requests\ForgotPasswordRequest;
 use Nabilet\Modules\Auth\Http\Requests\RegisterRequest;
 use Nabilet\Modules\Auth\Http\Requests\LoginRequest;
@@ -15,6 +19,7 @@ use Nabilet\Modules\Auth\Http\Resources\AuthResource;
 use Nabilet\Modules\Auth\Services\AccountRecoveryService;
 use Nabilet\Modules\Auth\Services\ClientContext;
 use Nabilet\Modules\Auth\Services\SessionIssuer;
+use Nabilet\Modules\Core\Models\LoginLog;
 use Nabilet\Modules\Core\Users\Services\UserService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -76,13 +81,31 @@ class AuthController extends Controller
         );
 
         if (!$user) {
-            return response()->json([
-                'error' => 'Invalid credentials'
-            ], 401);
+            // §66: плоский `{"error": "Invalid credentials"}` был последним
+            // исключением из контракта. Ратчет `tools/verify-error-envelope.php`
+            // держал его с пометкой «заблокировано перестройкой аутентификации»;
+            // перестройка выполнена (bearer-guard на `user_sessions`), поэтому
+            // причина перестала быть верной и запись снята.
+            //
+            // Код `bad_credentials` — не украшение. `resources/js/lib/api.ts`
+            // на любой 401 стирает сохранённый токен, КРОМЕ этого кода: иначе
+            // неудачная попытка входа выкидывала бы уже открытую сессию. До
+            // этой правки сервер не отдавал код вообще, и исключение на клиенте
+            // было недостижимым.
+            //
+            // Отказ пишется в `login_logs` (событие `login_failed`) ДО выброса:
+            // таблицаaudit'ила только выход, и подбор пароля не оставлял следа.
+            // Запись идёт по присланному адресу, а не по найденному пользователю
+            // — их может не быть вовсе, и в этом случае строка аудита тем ценнее.
+            $this->auditLoginAttempt($request, null, $request->validated('email'), false, 'bad_credentials');
+
+            throw new AuthError('Invalid email or password.', 'bad_credentials', 401);
         }
 
         $user->load('roles');
         $token = $this->sessions->issue((int) $user->getKey(), ClientContext::fromRequest($request));
+
+        $this->auditLoginAttempt($request, (int) $user->getKey(), $user->email, true, null);
 
         return response()->json([
             'data' => [
@@ -91,6 +114,54 @@ class AuthController extends Controller
                 'token_type' => 'Bearer',
             ]
         ]);
+    }
+
+    /**
+     * Строка аудита входа (`login_logs`, событие `login` / `login_failed`).
+     *
+     * ПОЧЕМУ ЗДЕСЬ, А НЕ В `UserService::authenticate()`
+     *   Сервис возвращает `null` и для «нет такого адреса», и для «неверный
+     *   пароль», и для «статус не active» — намеренно, чтобы не давать оракул
+     *   перечисления аккаунтов. В контроллере же известен `ClientContext`
+     *   запроса (IP, User-Agent) — ровно то, что таблица и должна хранить.
+     *
+     * ПОЧЕМУ ЭТО НЕ ЛОМАЕТ НЕВОЗМУТИМОСТЬ ОТВЕТА
+     *   Ответ всё равно одинаков для всех отказов (см. `LoginErrorEnvelopeTest`);
+     *   строка аудита уходит в базу, а не в тело ответа.
+     */
+    private function auditLoginAttempt(
+        Request $request,
+        ?int $userId,
+        ?string $identifier,
+        bool $success,
+        ?string $failureCode,
+    ): void {
+        $client = ClientContext::fromRequest($request);
+
+        $log = new LoginLog();
+        $log->user_id = $userId;
+        $log->identifier = $identifier;
+        $log->success = $success;
+        $log->event = $success ? LoginLogEvent::LOGIN : LoginLogEvent::LOGIN_FAILED;
+        $log->ip_address = $this->packedIp($client->ipAddress);
+        $log->user_agent = $client->userAgent;
+        $log->failure_code = $failureCode;
+        $log->created_at = now();
+
+        $log->save();
+    }
+
+    /**
+     * Упакованный IPv4/IPv6 как SQL-литерал — см. `PackedIp::toSqlLiteral()`.
+     *
+     * Литералом, а не связанным параметром: путь записи не должен зависеть от
+     * режима prepare соединения или правил экранирования.
+     */
+    private function packedIp(?string $ipAddress): ?Expression
+    {
+        $literal = PackedIp::toSqlLiteral($ipAddress);
+
+        return $literal === null ? null : new Expression($literal);
     }
 
     /**

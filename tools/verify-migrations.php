@@ -595,6 +595,9 @@ echo "\n[4] Migrations vs spec\n";
  *   - `personal_access_tokens` (2026_09_24_083529) — Sanctum's own table;
  *   - `jobs` / `failed_jobs` (2026_10_07_000500) — the Laravel database queue
  *     that transactional mail and outbound webhooks are dispatched onto;
+ *   - `web_sessions` (2026_10_12_000600) — Laravel's HTTP session store. The
+ *     schema's `sessions` table is the domain event-sessions table, so the session
+ *     driver uses this dedicated table instead;
  *   - `users.remember_token` (2026_09_22_001300) — Laravel auth.
  * These are owned by the framework, which may migrate them itself; promising a
  * stable Core contract for them would be a promise this project cannot keep.
@@ -604,6 +607,8 @@ $knownExtensions = [
         'personal_access_tokens', // Laravel Sanctum (create_personal_access_tokens_table)
         'failed_jobs',            // очередь Laravel (create_queue_tables)
         'jobs',                   // очередь Laravel: транзакционная почта и исходящие вебхуки
+        'web_sessions',           // HTTP-сессии Laravel (storefront/admin SPA); config/session.php
+                                  // шёл в `sessions`, но это доменная таблица сеансов событий
     ],
     'columns' => [
         'users' => ['remember_token'],

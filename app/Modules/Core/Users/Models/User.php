@@ -6,9 +6,11 @@ namespace Nabilet\Modules\Core\Users\Models;
 
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\HasApiTokens;
+use Nabilet\Modules\Core\Users\Domain\UserStatus;
 use Nabilet\Modules\Core\Organizations\Models\Organization;
 use Nabilet\Modules\Core\Models\Role;
 use Nabilet\Modules\Core\Models\UserRole;
@@ -111,6 +113,35 @@ class User extends Authenticatable
         ];
     }
 
+    /**
+     * Display name, as one string.
+     *
+     * MOVED HERE from `App\Models\User` — that class was a *second* model over
+     * the same `users` table with its own `$fillable` and none of the relations
+     * declared below. The duplication was not harmless: `Order::user()` resolves
+     * to THIS model, so `$order->user?->name` was always null and
+     * `OrderNotificationData::customerName()` silently fell back to
+     * «Покупатель». An accessor that only one of two models for one table has is
+     * a bug generator, so it lives with the model now.
+     */
+    public function getNameAttribute(): string
+    {
+        return trim(($this->first_name ?? '') . ' ' . ($this->last_name ?? '')) ?: 'User';
+    }
+
+    /**
+     * Access to the admin panel: an account that is not `active` cannot enter.
+     *
+     * ROLE CHECKS ARE NOT HERE. `isAdminSession()` / the `admin` middleware
+     * decide what a session may do; this answers only whether the account
+     * behind it still exists for that purpose (`banned` = no). Kept from
+     * `App\Models\User`, which was the only place it lived.
+     */
+    public function canAccessAdmin(): bool
+    {
+        return $this->status === UserStatus::ACTIVE;
+    }
+
     public function organizations(): BelongsToMany
         {
             return $this->belongsToMany(Organization::class, 'user_organization')
@@ -120,6 +151,18 @@ class User extends Authenticatable
     public function roles(): BelongsToMany
     {
         return $this->belongsToMany(Role::class, 'user_roles');
+    }
+
+    /**
+     * Role membership by slug — one query, no hydration of the whole relation.
+     *
+     * MOVED HERE from `App\Models\User` (see `getNameAttribute()`): a role check
+     * that only one of two models for one table offers is a check that silently
+     * returns false on the other.
+     */
+    public function hasRole(string $role): bool
+    {
+        return $this->roles()->where('slug', $role)->exists();
     }
 
     public function userRoles(): HasMany
@@ -137,14 +180,35 @@ class User extends Authenticatable
         return $this->hasMany(LoginLog::class);
     }
 
+    /**
+     * Заказы покупателя.
+     *
+     * ВНЕШНИЙ КЛЮЧ БЫЛ НЕВЕРНЫМ. Здесь стояло `hasMany(Order::class,
+     * 'customer_id')`, а колонки `customer_id` в схеме НЕТ — ни в `orders`, ни
+     * в одной другой таблице (проверено по `information_schema`). Связь была
+     * нерабочей: `$user->orders` падал с SQLSTATE 42S22 «Unknown column
+     * 'orders.customer_id'». Не замечали потому, что связь не вызывалась
+     * ниоткуда — мёртвый код, который выглядел рабочим.
+     *
+     * Владелец заказа — `orders.user_id` (nullable FK на `users`,
+     * `ON DELETE SET NULL`), и именно по нему скоупит `OrderController`.
+     */
     public function orders(): HasMany
     {
-        return $this->hasMany(Order::class, 'customer_id');
+        return $this->hasMany(Order::class, 'user_id');
     }
 
-    public function tickets(): HasMany
+    /**
+     * Билеты покупателя — через его заказы.
+     *
+     * Прямой связи `tickets.customer_id` не существует: билет принадлежит
+     * заказу (`tickets.order_id`, NOT NULL, FK), а покупателю — через него.
+     * Здесь стояло `hasMany(Ticket::class, 'customer_id')`, то есть та же
+     * несуществующая колонка, что и в `orders()` выше.
+     */
+    public function tickets(): HasManyThrough
     {
-        return $this->hasMany(Ticket::class, 'customer_id');
+        return $this->hasManyThrough(Ticket::class, Order::class, 'user_id', 'order_id');
     }
 
     public function carts(): HasMany

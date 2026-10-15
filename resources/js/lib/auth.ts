@@ -7,7 +7,14 @@
 import { send, getToken, setToken, type ApiError } from './api'
 
 export interface AuthUser {
-  id: number
+  /**
+   * Публичный идентификатор (`users.public_id`, ULID base32) — строка.
+   *
+   * Было `number`, потому что сервер отдавал внутренний BIGINT. Схема `User`
+   * контракта объявляет `id` строкой, и все остальные ручки адресуют
+   * пользователя по `public_id`; числовой `id` нельзя было подставить никуда.
+   */
+  id: string
   email: string
   first_name?: string | null
   last_name?: string | null
@@ -59,8 +66,29 @@ export function clearCurrentUser(): void {
   localStorage.removeItem('nabilet_admin_user')
 }
 
+/** Полностью очистить сессию админки: и токен, и сохранённого пользователя. */
+export function clearSession(): void {
+  setToken(null)
+  clearCurrentUser()
+}
+
 export function isAuthed(): boolean {
   return getToken() !== null
+}
+
+/**
+ * Является ли текущая сессия админской.
+ *
+ * D2: раньше guard маршрутов смотрел только на наличие токена. `login()`
+ * сохранял токен ДО проверки роли, и при отказе (support/клиент) токен
+ * оставался в localStorage — клиентская оболочка открывалась, и пользователь
+ * видел всю навигацию админки (данные при этом защищал серверный middleware,
+ * но сам факт входа в чужой интерфейс — дефект). Теперь сессия админская,
+ * только если токен есть И сохранённый пользователь имеет admin/manager.
+ */
+export function isAdminSession(): boolean {
+  if (!getToken()) return false
+  return canAdmin(currentUser()?.roles)
 }
 
 /** Сериализует ApiError в человеческое сообщение для формы логина. */

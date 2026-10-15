@@ -49,13 +49,6 @@ $appDir = $root . '/app';
  * file is refactored and the reason stops being true, the entry must be removed.
  */
 const ACCEPTED = [
-    // Blocked on the authentication rebuild: `AuthController` must be rewritten onto
-    // `user_sessions` before its error body can be corrected, because the token it
-    // issues is not a Sanctum token (see docs/REVIEW-spec-bundle.md §3.24.8). Fixing
-    // the string first would mean touching the file twice.
-    'Modules/Auth/Http/Controllers/AuthController.php#E1' =>
-        'Blocked on the auth rebuild (user_sessions guard) — see REVIEW-spec-bundle.md §3.24.8.',
-
     // `HoldSweeper` runs as a console/queue job. These `'error' =>` keys are log
     // context for `Log::error()` and the fields of a summary array returned to the
     // console command — neither is ever serialised as an HTTP response body.

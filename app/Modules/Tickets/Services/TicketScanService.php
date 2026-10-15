@@ -41,11 +41,57 @@ class TicketScanService
      * классическая подделка входа. Если `qr_payload` не передан (внутренний вызов,
      * например TicketService::checkInTicket), используется прежний путь по id.
      *
-     * @return array{success: bool, message: string, result?: string, ticket?: Ticket, scan?: TicketScan, reason?: string}
+     * ИДЕМПОТНОСТЬ (`$clientScanId`)
+     *   `POST /api/v1/checkin/use` обязан быть идемпотентным: оператор дважды
+     *   нажимает «погасить», сеть переотправляет пакет. Ключ — UUID, который
+     *   генерирует УСТРОЙСТВО (`client_scan_id`), а схема обеспечивает
+     *   уникальность парой `uq_ticket_scans_client (device_id, client_scan_id)`.
+     *   При повторе возвращается ЗАПИСАННЫЙ исход, а не новый: иначе «нажал
+     *   дважды» выглядело бы как «вошло два человека», а «повтор after already_used»
+     *   стирал бы первую отметку времени — ту самую, по которой §32 требует
+     *   показать оператору, когда билет вошёл в первый раз.
+     *
+     *   Поверх этого `EnsureIdempotency` (заголовок `Idempotency-Key`) защищает
+     *   от повтора на уровне HTTP-транспорта. Это разные уровни: client_scan_id
+     *   живёт в приложении устройства и переживает перезапуск, ключ заголовка —
+     *  нет. Оба нужны, и ни один не заменяет другой.
+     *
+     * @param string|null $clientScanId UUID устройства; null — внутренний вызов
+     * @param \DateTimeImmutable|null $scannedAt момент сканирования для офлайн-пакета
+     * @return array{success: bool, message: string, result?: string, ticket?: Ticket, scan?: TicketScan, reason?: string, replay?: bool}
      */
-    public function scan(int $ticketId, int $sessionId, ?int $deviceId = null, ?string $qrPayload = null): array
-    {
-        return DB::transaction(function () use ($ticketId, $sessionId, $deviceId, $qrPayload) {
+    public function scan(
+        int $ticketId,
+        int $sessionId,
+        ?int $deviceId = null,
+        ?string $qrPayload = null,
+        ?string $clientScanId = null,
+        ?\DateTimeImmutable $scannedAt = null,
+    ): array {
+        return DB::transaction(function () use ($ticketId, $sessionId, $deviceId, $qrPayload, $clientScanId, $scannedAt) {
+            // Идемпотентный повтор приходит ДО любых изменений: билет уже
+            // погашен этим же самым сканом, и второй раз его гасить нечем.
+            if ($clientScanId !== null && $deviceId !== null) {
+                $existing = TicketScan::query()
+                    ->where('device_id', $deviceId)
+                    ->where('client_scan_id', $clientScanId)
+                    ->first();
+
+                if ($existing !== null) {
+                    $ticket = Ticket::query()->whereKey($existing->ticket_id)->first();
+
+                    return [
+                        'success' => in_array($existing->result, [ScanOutcome::ADMITTED, ScanOutcome::CONFLICT_REVOKED], true),
+                        'message' => 'Scan already recorded (idempotent replay)',
+                        'result' => $existing->result,
+                        'reason' => strtoupper($existing->result),
+                        'ticket' => $ticket,
+                        'scan' => $existing,
+                        'replay' => true,
+                    ];
+                }
+            }
+
             // A11.2: вход по QR — проверяем подпись, иначе отклоняем.
             if ($qrPayload !== null) {
                 $verified = $this->makeQrSigner()->verify($qrPayload);
@@ -113,6 +159,8 @@ class TicketScanService
                     sessionId: $sessionId,
                     mode: ScanMode::ONLINE,
                     deviceId: $deviceId,
+                    clientScanId: $clientScanId,
+                    scannedAt: $scannedAt,
                 ),
                 $this->snapshot($ticket),
             );
@@ -122,6 +170,8 @@ class TicketScanService
                 $deviceId,
                 result: $outcome->result,
                 mode: ScanMode::ONLINE,
+                clientScanId: $clientScanId,
+                scannedAt: $scannedAt,
             );
 
             if (!$outcome->admits) {
@@ -163,7 +213,11 @@ class TicketScanService
     public function canCheckin(Ticket $ticket, int $sessionId, ?int $deviceId = null): array
     {
         if ((int) $ticket->session_id !== $sessionId) {
-            return ['valid' => false, 'reason' => 'WRONG_SESSION'];
+            // Ключ `result` обязан быть: контроллер читает именно его
+            // (`$decision['result']`), и без него вердикт скатывается в
+            // `unknown_ticket` вместо `wrong_session`/`wrong_event`. Различие
+            // session/event дальше берётся из сравнения event_id в контроллере.
+            return ['valid' => false, 'result' => ScanOutcome::WRONG_SESSION, 'reason' => 'WRONG_SESSION'];
         }
 
         $outcome = $this->checkinEvaluator->evaluate(
@@ -215,10 +269,16 @@ class TicketScanService
      *
      * The device already made its decision at the door; the server records what
      * happened and resolves conflicts by revocation — it cannot un-admit anyone.
+     *
+     * `$bundleHash === null` — вызов из `POST /api/v1/checkin/sync`, где контракт
+     * хеша бандла не предусматривает. Тогда проверка ослабляется ровно на одну
+     * ступень и не молча: устройство обязано иметь НЕИСТЁКШИЙ бандл на этот
+     * сеанс (`offline_bundles`), иначе офлайн-скан неотличим от выдуманного.
+     * Точный хеш остаётся для путей, которые его передают.
      */
     public function scanFromBundle(
         string $ticketPublicId,
-        string $bundleHash,
+        ?string $bundleHash,
         int $deviceId,
         ?string $clientScanId = null,
         bool $deviceAdmitted = true,
@@ -245,7 +305,6 @@ class TicketScanService
                     'reason' => 'INVALID_BUNDLE',
                 ];
             }
-
             // De-duplicate retried uploads via uq_ticket_scans_client
             // (device_id, client_scan_id): the same upload applied twice must
             // not become two admissions.
@@ -262,6 +321,11 @@ class TicketScanService
                         'result' => $existing->result,
                         'ticket' => $ticket,
                         'scan' => $existing,
+                        // Признак повтора: `sync` считает его отдельным счётчиком
+                        // (`duplicates`). Без флага повторная загрузка выглядела
+                        // бы новым допуском — то есть одним человеком, вошедшим
+                        // дважды.
+                        'replay' => true,
                     ];
                 }
             }
@@ -285,7 +349,10 @@ class TicketScanService
                 result: $outcome->result,
                 mode: ScanMode::OFFLINE_SYNC,
                 clientScanId: $clientScanId,
-                metadata: ['bundle_hash' => $bundleHash],
+                // Хеш бандла попадает в метаданные только когда он был: null
+                // превратился бы в JSON-null и сделал бы «сканов без бандла»
+                // неотличимыми от «сканов с бандлом неизвестного хеша».
+                metadata: $bundleHash === null ? null : ['bundle_hash' => $bundleHash],
             );
 
             if ($outcome->result === ScanOutcome::CONFLICT_REVOKED) {
@@ -312,19 +379,25 @@ class TicketScanService
     /**
      * Verify that a bundle hash is valid for a specific device and session.
      */
-    private function verifyBundleForDevice(string $bundleHash, int $deviceId, int $sessionId): bool
+    private function verifyBundleForDevice(?string $bundleHash, int $deviceId, int $sessionId): bool
     {
         // offline_bundles keys the device column as `checkin_device_id`, and
         // `expires_at` is DATETIME(6) — comparing against a raw integer or
         // inventing a `device_id` column failed silently/with SQL errors.
-        $bundle = DB::table('offline_bundles')
-            ->where('bundle_hash', $bundleHash)
+        $query = DB::table('offline_bundles')
             ->where('checkin_device_id', $deviceId)
             ->where('session_id', $sessionId)
-            ->where('expires_at', '>', now())
-            ->first();
+            ->where('expires_at', '>', now());
 
-        return $bundle !== null;
+        // Без хеша (sync по контракту) проверка идёт «у устройства есть живой
+        // бандл на этот сеанс» — это слабее точного совпадения, но ровно так же
+        // проверяемо и не даёт выдумать скан для сеанса, которого устройство
+        // никогда не загружало.
+        if ($bundleHash !== null) {
+            $query->where('bundle_hash', $bundleHash);
+        }
+
+        return $query->first() !== null;
     }
 
     /**

@@ -57,6 +57,30 @@ const ENDPOINTS = computed(() => [
   { label: 'Карта сайта', url: `${origin.value}/sitemap.xml`, hint: 'Отдаётся в Яндекс.Вебмастер и Google Search Console' },
 ])
 
+/**
+ * Что означает каждая цель, которую отправляет витрина.
+ *
+ * Ключ — внутреннее имя события (`config/metrika.php` → `goals`), значение —
+ * человеческое описание. Список совпадает с вызовами `trackEvent(...)` в
+ * `resources/js` (main.ts, EventPage, useSeatInventory, useSeatHolds,
+ * CheckoutPage, PaymentResultPage) — раньше цели показывались сырыми чипами
+ * «ключ → имя» без единого слова о том, что за ними стоит.
+ */
+const GOAL_DESCRIPTIONS: Record<string, string> = {
+  page_view: 'Просмотр любой страницы сайта — отправляется на каждой смене маршрута.',
+  event_view: 'Открытие страницы мероприятия: покупатель проявил интерес к событию.',
+  seatmap_open: 'Открытие схемы зала при выборе мест.',
+  seat_selected: 'Выбор конкретного места в зале.',
+  checkout_started: 'Начало оформления заказа — переход к оплате.',
+  payment_attempt: 'Попытка оплаты: покупатель отправил платёж провайдеру.',
+  payment_success: 'Успешная покупка — ключевая цель для рекламы, несёт выручку заказа.',
+  payment_fail: 'Неудачная оплата: отказ или ошибка платёжного шлюза.',
+}
+
+function goalDescription(key: string): string {
+  return GOAL_DESCRIPTIONS[key] ?? 'Внутреннее событие витрины.'
+}
+
 async function load(): Promise<void> {
   loading.value = true
   error.value = null
@@ -98,6 +122,9 @@ async function save(): Promise<void> {
       accurate_track: form.value.accurate_track,
       ecommerce: form.value.ecommerce,
       currency: form.value.currency,
+      // Карта целей сохраняется вместе с остальными настройками: раньше она не
+      // уходила в PUT, поэтому цели можно было менять только правкой конфига.
+      goals: form.value.goals,
     })
     const payload = res.data as unknown as { data?: MetrikaSettings } | MetrikaSettings
     const data = (payload as { data?: MetrikaSettings }).data ?? (payload as MetrikaSettings)
@@ -189,15 +216,25 @@ async function copy(url: string): Promise<void> {
     </NCard>
 
     <!-- Цели -->
-    <NCard v-if="form.goals && Object.keys(form.goals).length" class="mt-5" title="Цели, которые отправляет витрина">
-      <div class="flex flex-wrap gap-2">
-        <span
+    <NCard
+      v-if="form.goals && Object.keys(form.goals).length"
+      class="mt-5"
+      title="Цели, которые отправляет витрина"
+      description="События витрины, которые уходят в Метрику как цели. Ключ — внутреннее событие, значение — имя цели в счётчике."
+    >
+      <div class="space-y-2">
+        <div
           v-for="(goal, key) in form.goals"
           :key="key"
-          class="rounded-full border border-line bg-surface-2 px-3 py-1 text-xs text-muted"
+          class="rounded-lg border border-line bg-surface-2 p-3"
         >
-          {{ key }} → {{ goal }}
-        </span>
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="font-mono text-xs text-brand-400">{{ key }}</span>
+            <span class="text-subtle">→</span>
+            <span class="rounded-full border border-line bg-surface px-2 py-0.5 font-mono text-xs text-content">{{ goal }}</span>
+          </div>
+          <p class="mt-1 text-xs leading-relaxed text-subtle">{{ goalDescription(String(key)) }}</p>
+        </div>
       </div>
     </NCard>
   </div>

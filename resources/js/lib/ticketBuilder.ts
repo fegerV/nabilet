@@ -17,9 +17,16 @@ export interface BuilderElement {
   [key: string]: unknown
 }
 
+export interface CanvasGradientConfig {
+  from: string
+  to: string
+  direction?: string
+}
+
 export interface CanvasConfig {
   backgroundColor: string
   elements: BuilderElement[]
+  backgroundGradient?: CanvasGradientConfig | null
 }
 
 export interface TicketVariables {

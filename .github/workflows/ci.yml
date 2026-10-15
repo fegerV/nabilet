@@ -69,6 +69,16 @@ jobs:
       - name: OpenAPI contract (spec bundle copy)
         run: php tools/verify-openapi.php nabilet_core_spec/openapi.yaml
 
+      # `verify-openapi.php` checks each copy SEPARATELY and never compares them,
+      # which is how they drifted apart silently: the source-of-truth copy had no
+      # `getEventBySlug` or `metrikaConfig` (both shipped endpoints), and the docs
+      # copy had no `extendGuestCartHold`. Each copy was internally valid, so both
+      # checks passed while the two documented different APIs. This compares the
+      # SETS of operations and components -- the copies are not byte-identical
+      # copies by design, but their coverage must match.
+      - name: Both OpenAPI copies document the same API
+        run: php tools/verify-spec-parity.php
+
       # The contract and the DDL describe the same world and are maintained
       # separately. Where they disagree, the API promises a field the table
       # cannot store. Known drift is listed in the tool with a reason; anything
@@ -268,8 +278,8 @@ jobs:
         run: |
           set -e
           Q() { mysql -h 127.0.0.1 -P 3306 -uroot -prootpass -N -B -e "$1" 2>/dev/null; }
-          EXPECT_TABLES=73
-          EXPECT_COLUMNS=785
+          EXPECT_TABLES=85
+          EXPECT_COLUMNS=881
           EXPECT_TRIGGERS=1
 
           for db in nabilet split; do

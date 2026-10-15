@@ -458,6 +458,159 @@ final class OrderPricingTest extends TestCase
         );
     }
 
+    // ── bonus deduction (фаза 2b) ────────────────────────────────────────────
+
+    public function testBonusIsSubtractedFromTheTotal(): void
+    {
+        // 1000.00 cart, 300.00 paid with bonuses -> 700.00 due in cash.
+        $totals = OrderTotals::of(
+            Money::of(100000),
+            Money::zero(),
+            Money::zero(),
+            null,
+            Money::of(30000)
+        );
+
+        $this->assertSame(100000, $totals->subtotal()->minorUnits());
+        $this->assertSame(30000, $totals->bonus()->minorUnits());
+        $this->assertSame(70000, $totals->total()->minorUnits());
+    }
+
+    public function testBonusAndDiscountAreIndependentTerms(): void
+    {
+        // 1000.00 cart, 100.00 promo code, 300.00 bonuses, 50.00 fee:
+        // 1000 - 100 - 300 + 50 = 650. A single "discount" column would have to
+        // store 400 and the two would become indistinguishable in reporting.
+        $totals = OrderTotals::of(
+            Money::of(100000),
+            Money::of(10000),
+            Money::of(5000),
+            null,
+            Money::of(30000)
+        );
+
+        $this->assertSame(10000, $totals->discount()->minorUnits());
+        $this->assertSame(30000, $totals->bonus()->minorUnits());
+        $this->assertSame(65000, $totals->total()->minorUnits());
+    }
+
+    public function testBonusCannotPushTheTotalBelowZero(): void
+    {
+        // A caller hands over more bonuses than the order is worth. The clamp
+        // reports what was actually applied instead of letting the total go
+        // negative — which ck_orders_amounts would reject at the database.
+        $totals = OrderTotals::of(
+            Money::of(100000),
+            Money::zero(),
+            Money::zero(),
+            null,
+            Money::of(999999)
+        );
+
+        $this->assertSame(100000, $totals->bonus()->minorUnits());
+        $this->assertSame(0, $totals->total()->minorUnits());
+        $this->assertFalse($totals->total()->isNegative());
+    }
+
+    public function testDiscountIsClippedBeforeTheBonus(): void
+    {
+        // Both reductions exceed the cart. The promo code is a promise to the
+        // customer and survives intact; the loyalty perk is what does not fit.
+        $promo = PromoCodeDefinition::fromPercentString('100', 'FREE');
+
+        $evaluation = (new OrderPricing())->evaluatePromo($promo, $this->context([$this->line(100000)]));
+
+        $totals = OrderTotals::of(
+            Money::of(100000),
+            $evaluation->discount,
+            Money::zero(),
+            $evaluation,
+            Money::of(30000)
+        );
+
+        $this->assertSame(100000, $totals->discount()->minorUnits());
+        $this->assertSame(0, $totals->bonus()->minorUnits());
+        $this->assertSame(0, $totals->total()->minorUnits());
+    }
+
+    public function testFeeSurvivesAFullBonusDeduction(): void
+    {
+        // Bonuses cover the whole cart; the fee is still owed. 1000 - 1000 + 50.
+        $totals = OrderTotals::of(
+            Money::of(100000),
+            Money::zero(),
+            Money::of(5000),
+            null,
+            Money::of(100000)
+        );
+
+        $this->assertSame(5000, $totals->total()->minorUnits());
+    }
+
+    public function testAbsentBonusIsZeroNotAnError(): void
+    {
+        // The fifth argument is optional so that every path without bonuses
+        // prices exactly as it did before phase 2b.
+        $totals = OrderTotals::of(Money::of(100000), Money::zero(), Money::zero());
+
+        $this->assertSame(0, $totals->bonus()->minorUnits());
+        $this->assertSame(100000, $totals->total()->minorUnits());
+        $this->assertSame('RUB', $totals->bonus()->currency());
+    }
+
+    public function testNegativeBonusIsRejected(): void
+    {
+        // Accrual is a ledger entry with a reason, not a negative deduction:
+        // letting it in would make `bonus_amount` mean two opposite things.
+        $this->assertThrows(
+            DomainRuleViolation::class,
+            fn () => OrderTotals::of(
+                Money::of(100000),
+                Money::zero(),
+                Money::zero(),
+                null,
+                Money::of(-100)
+            )
+        );
+    }
+
+    public function testBonusInAnotherCurrencyIsRejected(): void
+    {
+        $this->assertThrows(
+            DomainRuleViolation::class,
+            fn () => OrderTotals::of(
+                Money::of(100000),
+                Money::zero(),
+                Money::zero(),
+                null,
+                Money::of(30000, 'USD')
+            )
+        );
+    }
+
+    public function testSerializesBonusAmountForTheContract(): void
+    {
+        $totals = OrderTotals::of(
+            Money::of(100000),
+            Money::of(10000),
+            Money::of(5000),
+            null,
+            Money::of(30000)
+        );
+
+        $this->assertSame(
+            [
+                'subtotal_amount' => 100000,
+                'discount_amount' => 10000,
+                'bonus_amount' => 30000,
+                'fee_amount' => 5000,
+                'total_amount' => 65000,
+                'currency' => 'RUB',
+            ],
+            $totals->jsonSerialize()
+        );
+    }
+
     // ── the API shape ────────────────────────────────────────────────────────
 
     public function testSerializesToTheMoneyTotalsContract(): void
@@ -473,6 +626,7 @@ final class OrderPricingTest extends TestCase
 
         $this->assertSame(100000, $json['subtotal_amount']);
         $this->assertSame(10000, $json['discount_amount']);
+        $this->assertSame(0, $json['bonus_amount']);
         $this->assertSame(5000, $json['fee_amount']);
         $this->assertSame(95000, $json['total_amount']);
         $this->assertSame('RUB', $json['currency']);

@@ -68,12 +68,8 @@ $listMode = in_array('--list', $argv, true);
 $reportMode = in_array('--report', $argv, true);
 
 /** From information_schema on MySQL 8.4. Update in the same commit as the schema. */
-// 75 / 805: +2 таблицы и +20 колонок — сущность «Артист» (стратегия SEO, B-1):
-// `artists` (13 колонок) и связь `artist_event` (7). Обновлено тем же коммитом,
-// что и схема, — этого требует сам комментарий выше.
-const EXPECTED_TABLES = 75;
-const EXPECTED_COLUMNS = 805;
-
+const EXPECTED_TABLES = 87;
+    const EXPECTED_COLUMNS = 901;
 /**
  * Application-owned additions to the Core schema, each tied to its owning migration.
  * These are included only after the migration's exact declaration is verified. Keep

@@ -60,6 +60,19 @@ describe('AdminNotFoundPage', () => {
     })
   })
 
+  it('сохраняет Matrix в списке существующих разделов', () => {
+    const wrapper = mountAt('matrx')
+
+    expect(wrapper.text()).toContain('Matrix (Element X)')
+
+    const suggestion = wrapper.findAll('button').find((b) => b.text() === 'Matrix (Element X)')
+    expect(suggestion).toBeTruthy()
+
+    return suggestion!.trigger('click').then(() => {
+      expect(push).toHaveBeenCalledWith('/admin/matrix')
+    })
+  })
+
   it('на постороннем мусоре не выдумывает подсказку', () => {
     const wrapper = mountAt('xyz-nothing')
 

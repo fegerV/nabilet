@@ -115,8 +115,36 @@ if (preg_match_all('/ALTER\s+TABLE\s+`?(\w+)`?\s+(.*?);/is', $spec, $stmts, PREG
 // как в спеку переехали 9 таблиц домена (64→73 таблицы, 678→785 колонок),
 // обновили два файла из трёх, и этот начал падать с «Fix the parser before
 // trusting its verdict». Меняйте все три сразу.
-$expectedTables = 73;
-$expectedColumns = 785;
+//
+// 785 → 786: сплит `016_login_logs_event.sql` добавил `login_logs.event`
+// (аудит подбора пароля писал событие `login_failed` без колонки, куда его
+// положить). Тогда же обновили два других файла — этот остался на 785, то есть
+// ровно тот же сбой повторился второй раз. `017_status_vocabularies.sql`
+// колонок не добавляет (только CHECK), поэтому число не менялось.
+//
+// 786 → 809: сплит `018_loyalty_foundation.sql` добавил три таблицы «Клуба
+// зрителей» (`event_favorites`, `event_follows`, `follow_notifications`) —
+// фаза 1 `docs/LOYALTY-PLAN.md`. Обновлены все три файла одновременно.
+//
+// 809 → 825: сплит `019_bonus_ledger.sql` (фаза 2) добавил две таблицы
+// (`bonus_accounts` — 7 колонок, `bonus_transactions` — 8) и одну колонку в
+// существующей (`orders.bonus_amount`). Итого 76 → 78 таблиц, 809 → 825 колонок.
+//
+// 825 → 834: сплит `020_loyalty_levels.sql` (фаза 3) добавил таблицу
+// `loyalty_levels` (8 колонок) и одну колонку в существующей
+// (`users.loyalty_level_id`). Итого 78 → 79 таблиц, 825 → 834 колонки.
+//
+// 834 → 849: сплит `021_referrals.sql` (фаза 4) добавил таблицы
+// `referral_codes` (6 колонок) и `referrals` (9 колонок). Итого 79 → 81
+// таблица, 834 → 849 колонок. Обновлены все три файла одновременно.
+//
+// 849 → 881: сплит `022_raffles.sql` (фаза 5) добавил таблицы `raffles` (10
+// колонок), `raffle_prizes` (8), `raffle_entries` (6) и `raffle_winners` (8).
+// Итого 81 → 85 таблиц, 849 → 881 колонка. Обновлены все четыре файла
+// одновременно (ci.yml, verify-models-schema, verify-contract-schema,
+// verify-live) плюс `docs/DATABASE.md`.
+$expectedTables = 85;
+$expectedColumns = 881;
 if (count($specTables) !== $expectedTables || count($specCols) !== $expectedColumns) {
     fwrite(\STDERR, $line(sprintf(
         '  FAIL  spec parser read %d tables / %d columns, expected %d / %d.'
@@ -162,16 +190,43 @@ $live = [
         WHERE trigger_schema=DATABASE()")->c,
 ];
 
-// Числа сверены с самой спекой, а не подобраны: `grep -c 'FOREIGN KEY'` по
-// `nabilet_core_spec/migrations.sql` даёт 101, уникальных ключей — 88 (88 в
-// спеке + 2 у app-only таблиц = 90 живых). CHECK — 35: тридцать шестое
-// вхождение `CHECK (` в спеке находится не в описании таблицы, а в теле
-// триггера, поэтому констрейнтом не становится.
+// Числа сверены с самой спекой, а не подобраны: консолидированный бандл
+// (`nabilet_core_spec/migrations.sql`) загружен в чистую базу `nbl_cnt` и
+// посчитан по `information_schema` — 110 внешних ключей, 94 уникальных, 48
+// CHECK. Живая `nabilet_demo` после применения всех сплитов даёт те же числа
+// (app-only таблицы `jobs`, `failed_jobs`, `personal_access_tokens` из счёта
+// исключены выше, и их в бандле нет).
+//
+// 101 → 110 и 88 → 94 и 47 → 48: сплит `018_loyalty_foundation.sql` добавил
+// три таблицы «Клуба зрителей» (`event_favorites`, `event_follows`,
+// `follow_notifications`) — 9 внешних ключей (шесть CASCADE на users/events/
+// sessions, один SET NULL на notifications, два внутри журнала), 6 уникальных
+// ключей и один CHECK `ck_follow_notifications_status`. Константы остались на
+// значениях, посчитанных до сплита, и инструмент падал на расхождении, которого
+// нет: спека и живая база сходились, а ожидание — нет.
+//
+// 110 → 113, 94 → 98, 48 → 50: сплит `019_bonus_ledger.sql` (фаза 2). Внешние
+// ключи: `fk_bonus_accounts_user`, `fk_bonus_transactions_user` (CASCADE) и
+// `fk_bonus_transactions_order` (SET NULL). Уникальные: `uq_bonus_accounts_public_id`,
+// `uq_bonus_accounts_user`, `uq_bonus_transactions_public_id`,
+// `uq_bonus_transactions_dedupe`. CHECK — `ck_bonus_accounts_balance` и
+// `ck_bonus_transactions_reason`; переиздание `ck_orders_amounts` счёт НЕ меняет,
+// потому что имя то же (CHECK снимается и создаётся заново под тем же именем).
+//
+// 113 → 114 и 98 → 100: сплит `020_loyalty_levels.sql` (фаза 3). Внешний ключ:
+// `fk_users_loyalty_level` (SET NULL). Уникальные: `uq_loyalty_levels_public_id`,
+// `uq_loyalty_levels_slug`. CHECK — без изменений (50).
 //
 // Триггеры в этот цикл НЕ входят: они сравниваются отдельно ниже, потому что
 // их расхождение — отставшая спека, а не дрейф схемы, и оно не должно
 // сбрасываться или подгоняться вместе с остальными счётчиками.
-$expect = ['fk' => 101, 'unique' => 88, 'check' => 35];
+// 114 → 117, 100 → 105 и 50 → 51: сплит `021_referrals.sql` (фаза 4). Внешние
+// ключи: `fk_referral_codes_user` (CASCADE), `fk_referrals_inviter` (CASCADE),
+// `fk_referrals_invited_user` (SET NULL). Уникальные: `uq_referral_codes_public_id`,
+// `uq_referral_codes_user`, `uq_referral_codes_code`, `uq_referrals_public_id`,
+// `uq_referrals_inviter_email`. CHECK — `ck_referrals_status`; переиздание
+// `ck_bonus_transactions_reason` счёт НЕ меняет (имя то же).
+$expect = ['fk' => 117, 'unique' => 105, 'check' => 51];
 foreach ($expect as $k => $want) {
     $got = $live[$k];
     $ok = $got === $want;

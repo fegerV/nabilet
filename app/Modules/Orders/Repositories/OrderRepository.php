@@ -31,9 +31,21 @@ class OrderRepository
         return $eventId === null ? null : (int) $eventId;
     }
 
+    /**
+     * Заказ по внутреннему id.
+     *
+     * `customer` из `with()` убран: связи `Order::customer()` не существует —
+     * в схеме нет таблицы `customers`, покупатель лежит тремя колонками прямо
+     * в `orders` (`customer_email` / `customer_name` / `customer_phone`). Пока
+     * связь стояла, ЛЮБОЙ вызов этого метода падал с
+     * `RelationNotFoundException: Call to undefined relationship [customer]`.
+     * Не проявлялось потому, что метод не вызывается ниоткуда
+     * (`OrderService::findOrder()` — тоже), но это мина, а не безобидный
+     * остаток: первый же вызов — 500.
+     */
     public function find(int $id, ?int $organizationId = null): ?Order
     {
-        $query = $this->model->with(['items.inventoryItem', 'customer', 'payments']);
+        $query = $this->model->with(['items.inventoryItem', 'payments']);
         
         if ($organizationId) {
             $query->where('organization_id', $organizationId);
@@ -42,6 +54,7 @@ class OrderRepository
         return $query->find($id);
     }
 
+    /** Заказ по `public_id`. Про `customer` в `with()` — см. `find()`. */
     public function findByPublicId(string $publicId, ?int $organizationId = null): ?Order
     {
         $query = $this->model->where('public_id', $publicId);
@@ -50,7 +63,7 @@ class OrderRepository
             $query->where('organization_id', $organizationId);
         }
         
-        return $query->with(['items.inventoryItem', 'customer', 'payments'])->first();
+        return $query->with(['items.inventoryItem', 'payments'])->first();
     }
 
     public function findByOrganization(int $organizationId, array $filters = [], int $limit = 15): LengthAwarePaginator

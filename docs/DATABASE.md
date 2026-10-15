@@ -2,19 +2,19 @@
 
 > **Источник истины — пакет `nabilet_core_spec/`.**
 > DDL: `nabilet_core_spec/migrations.sql` (консолидированный) и
-> `nabilet_core_spec/migrations/001..012` (сплит). Побайтовая копия консолидированного
+> `nabilet_core_spec/migrations/001..022` (сплит). Побайтовая копия консолидированного
 > DDL лежит в корне репозитория как `migrations.sql` — она попадает в образ
 > (`COPY . .`) и именно её накатывает оператор вручную; совпадение с каноном проверяет CI.
-> Оба представления проверены на идентичность: **785 колонок, 297 ограничений —
-> совпадают** (сверено по `information_schema`: колонки, индексы, внешние ключи,
+> Оба представления проверены на идентичность: **881 колонка — совпадают**
+> (сверено по `information_schema`: колонки, индексы, внешние ключи,
 > CHECK-ограничения, триггер, движок и коллация).
 >
 > **Проверено исполнением на MySQL 8.4.11**, а не чтением. Факты в этом документе —
 > результат запросов к `information_schema` работающей базы. Разбор пробелов и их причин:
 > `docs/REVIEW-spec-bundle.md`.
 
-**Схема:** 73 таблицы · 785 колонок · 101 внешний ключ · 88 уникальных ключей ·
-281 индекс · 35 CHECK-ограничений · 1 триггер.
+**Схема:** 85 таблиц · 881 колонка · 125 внешних ключей · 113 уникальных ключей ·
+336 индексов · 53 CHECK-ограничения · 1 триггер.
 
 ---
 
@@ -60,7 +60,7 @@ standing-зона:  capacity = 1000,  available_quantity ∈ [0, 1000]
 
 ---
 
-## 2. Группы таблиц (73)
+## 2. Группы таблиц (76)
 
 ### 2.1 Идентичность и аренда — 10
 `organizations` · `roles` · `permissions` · `role_permissions` · `users` ·
@@ -157,6 +157,27 @@ standing-зона:  capacity = 1000,  available_quantity ∈ [0, 1000]
 Яндекс.Метрики и параметры оформления). Они меняются из админки, поэтому лежат в БД,
 а не в конфиге.
 
+### 2.11 Клуб зрителей — 3
+`event_favorites` · `event_follows` · `follow_notifications`
+
+Фаза 1 плана «Клуба зрителей» (`docs/LOYALTY-PLAN.md`, сплит `018_loyalty_foundation.sql`):
+механика возврата, в которой нет денег. `event_favorites` — личный список «хочу
+посмотреть» (`❤️`), писем не порождает. `event_follows` — подписка (`🔔`), порождает.
+
+Таблицы намеренно разделены, хотя структурно одинаковы: одна таблица с флагом заставила
+бы отвечать на вопрос «получает ли человек письма?» чтением флага, который никто не
+проверяет, и рассылка по «избранному» начала бы присылать письма тем, кто их не просил.
+
+`follow_notifications` — журнал идемпотентности отправки подписных писем. Уникальный
+ключ `(follow_id, session_id, template_code)` превращает повторную отправку в конфликт
+вставки, который обрабатывается: SELECT-then-INSERT тут недостаточно, между ними влезает
+второй процесс. `status` говорит на словаре `queued|sent|failed` — том же, что
+`notifications.status` (`ck_notifications_status`).
+
+Ни одна из трёх таблиц не участвует в расчёте сумм: фаза выкатывается независимо от
+чекаута и не может сдвинуть `ck_orders_amounts`. Бонусный счёт (фаза 2) — отдельный
+сплит `019`.
+
 ---
 
 ## 3. Защита от двойной продажи — четыре слоя
@@ -217,6 +238,31 @@ uq_tickets_order_item_index   (order_item_id, ticket_index)
 `010_tz_gaps.sql` добавляет ещё 11 ограничений на новые таблицы и расширяет
 `ck_tickets_status` — итого **35 CHECK-ограничений на 18 таблицах**.
 
+`013_users_status_check.sql` добавляет `ck_users_status` — **итого 36 ограничений
+на 19 таблицах**. `users.status` был единственной status-колонкой без словаря в
+базе: он существовал только строкой `in:active,inactive,banned` в правиле
+валидации `UserController`. Следствие было не косметическим — `authenticate()`
+сверял только хеш пароля, поэтому `status = 'banned'` отзывал сессии и не мешал
+сразу же войти тем же паролем. Словарь теперь один на три места: CHECK здесь,
+`Nabilet\Modules\Core\Users\Domain\UserStatus` в коде и проверка при входе.
+
+`014_inventory_status_check.sql` и `015_events_status_check.sql` закрывают две
+последние status-колонки, за которыми стояла PHP-машина состояний без ограничения
+в схеме — **итого 47 ограничений на 28 таблицах**.
+
+`ck_inventory_status` — это не «ещё один CHECK ради единообразия». Словарь машины
+`InventoryItemStateMachine` не совпадал с тем, что писала корзина: состояния
+`sold_out` в машине не было, а `CartItemService` ставит его с первого добавления
+МЕСТА в корзину (у места `capacity = 1`, поэтому остаток обнуляется сразу).
+`PaymentService::markInventorySoldForOrder()` охраняет запись `→ sold` вызовом
+`can()`, поэтому оплаченная позиция навсегда оставалась `sold_out`. Подробности —
+`docs/STATE-MACHINES.md` §7 и `tests/Feature/Inventory/InventorySoldOnPaymentTest.php`.
+
+`ck_events_status` — здесь дисциплинирован был код, а молчала только база: все
+авторы записей идут через `EventStatus`/`Event::PUBLISHED`. Второй замок нужен
+потому, что `status` СОЗНАТЕЛЬНО отсутствует в `StoreEventRequest`/`UpdateEventRequest`,
+и единственной защитой от публикации в обход политики была деталь фреймворка.
+
 ```sql
 ck_inventory_available_qty  CHECK (available_quantity BETWEEN 0 AND capacity)
 ck_inventory_target         CHECK (type='seat' AND seat_id IS NOT NULL AND standing_zone_id IS NULL
@@ -226,11 +272,19 @@ ck_tickets_terminal_exclusive CHECK (NOT (used_at IS NOT NULL
                                       AND (cancelled_at IS NOT NULL OR refunded_at IS NOT NULL)))
 ```
 
-Полный список — 35 ограничений на 18 таблицах: `inventory_items` (5), `tickets` (3),
+Полный список исходных 35 ограничений на 18 таблицах (сплиты 009–010): `inventory_items` (5), `tickets` (3),
 `promo_codes` (6), `orders` (2), `order_items` (2), `payments` (2), `refunds` (2),
 `seats` (2), `offline_bundles` (2), а также по одному — `cart_items`,
 `hall_schema_versions`, `seat_holds`, `sectors`, `sessions`, `standing_zones`,
 `promo_code_redemptions`, `media_assets`, `media_links`.
+
+Позднее добавлены ещё 12 CHECK-ограничений сплитами 013–017 (итого **47 на 28 таблицах**):
+`ck_users_status` (`users`, 013), `ck_inventory_status` (`inventory_items`, 014),
+`ck_events_status` (`events`, 015), `ck_login_logs_event` (`login_logs`, 016), а из
+сплита 017 — `ck_carts_status` (`carts`), `ck_checkin_devices_status` (`checkin_devices`),
+`ck_consents_status` (`consents`), `ck_privacy_requests_status` (`privacy_requests`),
+`ck_notifications_status` (`notifications`), `ck_organizations_status` (`organizations`),
+`ck_ab_experiments_status` (`ab_experiments`), `ck_orders_payment_status` (`orders`).
 
 > Клаузул 21, а не 24, потому что три ограничения используют один и тот же текст
 > `(quantity > 0)`, и два — `(amount >= 0)`. Уникальны именно ограничения (по имени
@@ -271,7 +325,7 @@ CREATE TRIGGER trg_schema_version_immutable BEFORE UPDATE ON hall_schema_version
 
 ## 5. Политика ON DELETE
 
-101 внешний ключ: **55 CASCADE · 22 SET NULL · 24 RESTRICT**.
+113 внешних ключей: **65 CASCADE · 24 SET NULL · 24 RESTRICT**.
 
 ### RESTRICT — 24 (продажи, деньги, билеты)
 
@@ -290,12 +344,12 @@ seats         → tickets, inventory_items
 
 Это защита от каскадного удаления проданных билетов — самый дорогой вид потери данных.
 
-### CASCADE — 55 (геометрия и служебное)
+### CASCADE — 63 (геометрия и служебное)
 
 Удаление зала уносит версии схемы, секторы, ряды, места. Удаление события — сеансы и
 inventory. Удаление корзины — позиции и holds. Это структурные вложения.
 
-### SET NULL — 22 (обезличивание)
+### SET NULL — 24 (обезличивание)
 
 `orders.user_id`, `payments.*`, `consents.user_id`, `audit_logs.user_id`,
 `ticket_scans.device_id` и др. Удаление пользователя **не удаляет его заказы** — это

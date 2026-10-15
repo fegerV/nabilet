@@ -29,6 +29,10 @@ Route::middleware(['auth:api', 'admin'])->group(function () {
     // не отсекает.
     Route::get('/users/search', [UserController::class, 'search'])->name('users.search');
 
+    // Справочник ролей — тоже ДО `/users/{publicId}`: иначе `roles` уедет в
+    // `show('roles')` и ответит 404 (та же ловушка, что у `/users/search`).
+    Route::get('/users/roles', [UserController::class, 'roles'])->name('users.roles.index');
+
     // User management
     Route::get('/users', [UserController::class, 'index'])->name('users.index');
     Route::get('/users/{publicId}', [UserController::class, 'show'])->name('users.show');

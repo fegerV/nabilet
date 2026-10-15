@@ -123,6 +123,9 @@ rounded-3xl: 34  — hero-блоки витрины
 | `/checkout` | Оформление, контакты, оплата | `pages/storefront/CheckoutPage.vue` |
 | `/payment/:result` | Экран успеха / ошибки оплаты | `pages/storefront/PaymentResultPage.vue` |
 | `/tickets` | Активные и прошедшие билеты | `pages/storefront/TicketsPage.vue` |
+| `/account` | Личный кабинет покупателя: профиль, пароль, заказы, сессии | `pages/storefront/AccountPage.vue` |
+| `/favorites` | «Клуб зрителей»: избранное (требуется аккаунт) | `pages/storefront/FavoritesPage.vue` |
+| `/subscriptions` | «Клуб зрителей»: подписки на письма о новых сеансах (требуется аккаунт) | `pages/storefront/SubscriptionsPage.vue` |
 
 ### 3.2 Админка организатора (`/admin`)
 

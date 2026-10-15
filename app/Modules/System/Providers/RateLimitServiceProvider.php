@@ -8,6 +8,7 @@ use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
+use Nabilet\Modules\Checkin\Http\Middleware\AuthenticateChecker;
 
 /**
  * Лимиты частоты для публичных эндпоинтов, которые остались без `throttle`
@@ -44,10 +45,20 @@ class RateLimitServiceProvider extends ServiceProvider
     /** Чекин: выше человеческого темпа, но ниже brute-force по ticketPublicId. */
     private const CHECKIN_PER_MINUTE = 120;
 
+    /**
+     * Повторная отправка билета: эндпоинт шлёт письмо на адрес, который указал
+     * вызывающий. Без лимита он превращается в релей для спама от нашего домена.
+     */
+    private const RESEND_PER_IP = 5;
+
+    /** Тот же потолок, привязанный к корзине: человек жмёт «отправить» 1–2 раза. */
+    private const RESEND_PER_CART = 3;
+
     public function boot(): void
     {
         $this->registerPromoValidate();
         $this->registerCheckinScan();
+        $this->registerTicketResend();
     }
 
     /**
@@ -81,23 +92,57 @@ class RateLimitServiceProvider extends ServiceProvider
     }
 
     /**
-     * `POST /tickets/checkin/scan` и `/checkin/verify`.
+     * `POST /tickets/checkin/scan` и `/checkin/verify` (сессия сотрудника), а
+     * также `/api/v1/checkin/validate|use|sync` (токен устройства).
      *
-     * Маршруты и так под `['auth:api', 'admin']` — прямой IDOR закрыт, — но
+     * Маршруты и так аутентифицированы — прямой IDOR закрыт, — но
      * скомпрометированная учётка оператора могла перебирать `ticketPublicId`
      * (verify отдаёт данные билета) и заваливать БД транзакционными записями
      * сканов в день мероприятия (аудит S-06).
      *
-     * Ключ — пользователь, а не адрес: сканер на входе может ходить через
-     * меняющийся мобильный IP, и привязка к адресу давала бы свежую корзину
-     * после каждой смены сети, то есть лимит не работал бы вовсе.
+     * Ключ — устройство, затем пользователь, и только потом адрес: сканер на
+     * входе ходит через меняющийся мобильный IP, и привязка к адресу давала бы
+     * свежую корзину после каждой смены сети, то есть лимит не работал бы вовсе.
      */
     private function registerCheckinScan(): void
     {
         RateLimiter::for('checkin-scan', function (Request $request): Limit {
-            $identity = $request->user()?->getAuthIdentifier() ?? $request->ip();
+            $device = $request->attributes->get(AuthenticateChecker::ATTRIBUTE);
+            $identity = $device?->id
+                ?? $request->user()?->getAuthIdentifier()
+                ?? $request->ip();
 
             return Limit::perMinute(self::CHECKIN_PER_MINUTE)->by('checkin:' . $identity);
+        });
+    }
+
+    /**
+     * `POST /my-tickets/resend` — публичный эндпоинт самопомощи покупателя.
+     *
+     * Он отправляет письмо на адрес, который пришёл в теле запроса, поэтому без
+     * лимита становится релеем: один вызов = одно письмо от нашего домена любому
+     * получателю. Доступ к заказу закрыт capability-токеном корзины, но и с ним
+     * потолок нужен — покупателю достаточно одной повторной отправки.
+     *
+     * Две корзины, как у `promo-validate`: по адресу (сеть за NAT) и по токену
+     * корзины. Вторая добавляется только при непустом токене, иначе все
+     * анонимные запросы делили бы одну корзину и один скрипт исчерпал бы лимит
+     * для всех покупателей сразу.
+     */
+    private function registerTicketResend(): void
+    {
+        RateLimiter::for('ticket-resend', function (Request $request): array {
+            $limits = [
+                Limit::perMinute(self::RESEND_PER_IP)->by('resend-ip:' . $request->ip()),
+            ];
+
+            $cartToken = (string) $request->header('X-Cart-Token', '');
+
+            if ($cartToken !== '') {
+                $limits[] = Limit::perMinute(self::RESEND_PER_CART)->by('resend-cart:' . $cartToken);
+            }
+
+            return $limits;
         });
     }
 }

@@ -12,13 +12,20 @@ import { useRoute, useRouter } from 'vue-router'
 import NBadge from '@/components/ui/NBadge.vue'
 import NStatusBadge from '@/components/ui/NStatusBadge.vue'
 import { get } from '@/lib/api'
+import { customerUser, isCustomerSession } from '@/lib/customer'
+import { trackEvent } from '@/lib/metrika'
+import { useSeo } from '@/lib/seo'
 import { money, dateFull, time, seatsLabel } from '@/lib/format'
 import { cn } from '@/lib/cn'
+import { useUiStore } from '@/stores/ui'
+import { useLoyaltyStore } from '@/stores/loyalty'
 import type { EventStatus, SeatState } from '@/lib/types'
 import { SEAT_LEGEND } from '@/lib/hall'
 
 const route = useRoute()
 const router = useRouter()
+const ui = useUiStore()
+const loyalty = useLoyaltyStore()
 
 interface SessionItem {
   id: string
@@ -100,6 +107,14 @@ async function loadEvent(): Promise<void> {
     // не присваивался `EventDetail | null`, — `npm run typecheck` падал навсегда.
     const payload = res.data
     event.value = 'data' in payload ? payload.data : payload
+    // E2: цель `event_view` была сконфигурирована в config/metrika.php, но не
+    // имела call-site — воронка в Директе рвалась на первом же шаге.
+    void trackEvent('event_view', {
+      params: {
+        event_id: event.value?.public_id ?? slug,
+        slug: event.value?.slug ?? slug,
+      },
+    }).catch(() => {})
   } catch (e) {
     loadError.value = e instanceof Error ? e.message : String(e)
     event.value = null
@@ -151,6 +166,28 @@ const artists = computed<ArtistRef[]>(() =>
 const posterAlt = computed(() =>
   event.value ? `Афиша мероприятия «${event.value.title}»` : '',
 )
+
+/**
+ * E3: SEO-поля события приходили из API и не применялись — заголовок вкладки
+ * и превью ссылки у ВСЕХ событий оставались корневыми из `index.html`.
+ *
+ * Приоритет — серверные `seo_*`: их заполняет организатор, и именно они
+ * совпадают с og-блоком серверной обёртки (`EventPageController`), которую
+ * видят краулеры без JS. Фолбэк — название события и короткое описание.
+ */
+useSeo(() => {
+  const current = event.value
+  if (!current) return null
+  return {
+    title: current.seo_title?.trim() || `${current.title} — билеты`,
+    description:
+      current.seo_description?.trim() ||
+      current.short_description?.trim() ||
+      null,
+    image: current.poster ?? current.cover ?? null,
+    url: window.location.href,
+  }
+})
 
 const startsAtOf = (s: SessionItem): string => s.starts_at ?? s.startsAt ?? ''
 const availableOf = (s: SessionItem): number => s.available_seats ?? s.availableSeats ?? 0
@@ -225,6 +262,60 @@ function buy(): void {
   if (soldOut.value || !activeSession.value || !event.value) return
   router.push({ path: `/event/${event.value.slug}/seats`, query: { session: activeSession.value.id } })
 }
+
+/* ── «Клуб зрителей»: ♡ избранное, 🔔 подписка ─────────────────────────────
+ *
+ * Обе кнопки адресуют мероприятие по `public_id` (см. `EventDetail`), потому
+ * что `/me/events/{event}/…` резолвит событие только по нему. Гостя обе
+ * уводят на вход с возвратом на эту же страницу: `/me/*` требует аккаунта, и
+ * «молча ничего не произошло» было бы худшим ответом на нажатие.
+ */
+const favoriteOn = computed(() => {
+  const eventId = event.value?.public_id ?? ''
+  return eventId !== '' && loyalty.isFavorite(eventId)
+})
+
+const followingOn = computed(() => {
+  const eventId = event.value?.public_id ?? ''
+  return eventId !== '' && loyalty.isFollowing(eventId)
+})
+
+async function onFavorite(): Promise<void> {
+  const eventId = event.value?.public_id ?? ''
+  if (eventId === '') return
+
+  if (!isCustomerSession()) {
+    router.push({ path: '/login', query: { redirect: route.fullPath } })
+    return
+  }
+
+  try {
+    await loyalty.toggleFavorite(eventId)
+  } catch {
+    ui.notify('rose', 'Не удалось обновить избранное', 'Попробуйте ещё раз')
+  }
+}
+
+async function onFollow(): Promise<void> {
+  const eventId = event.value?.public_id ?? ''
+  if (eventId === '') return
+
+  if (!isCustomerSession()) {
+    router.push({ path: '/login', query: { redirect: route.fullPath } })
+    return
+  }
+
+  try {
+    const nowOn = await loyalty.toggleFollow(eventId)
+    ui.notify(
+      'mint',
+      nowOn ? 'Вы подписаны' : 'Подписка отменена',
+      nowOn ? `Письмо о новых сеансах придёт на ${customerUser()?.email ?? 'ваш адрес'}.` : undefined,
+    )
+  } catch {
+    ui.notify('rose', 'Не удалось изменить подписку', 'Попробуйте ещё раз')
+  }
+}
 </script>
 
 <template>
@@ -280,7 +371,47 @@ function buy(): void {
         <div class="flex flex-wrap items-center gap-2">
           <NBadge tone="brand">{{ catName }}</NBadge>
           <NStatusBadge kind="event" :status="event.status" size="md" />
+
+          <!--
+            «Клуб зрителей»: ♡ и 🔔. Обе кнопки работают только с аккаунтом —
+            гостя они уводят на вход с возвратом (`onFavorite`/`onFollow`).
+            «🔔 Следить» — это просьба прислать письмо, поэтому она подписана
+            словами, а не значком: «колокольчик» без текста не объясняет, что
+            произойдёт после нажатия.
+          -->
+          <div class="ml-auto flex items-center gap-2">
+            <button
+              type="button"
+              class="flex items-center gap-1.5 rounded-lg border border-line bg-surface-2 px-3 py-2 text-sm text-muted transition-colors hover:text-content"
+              :class="favoriteOn ? '!text-rose-400' : ''"
+              :aria-label="favoriteOn ? 'Убрать из избранного' : 'Добавить в избранное'"
+              :aria-pressed="favoriteOn"
+              @click="onFavorite"
+            >
+              <span aria-hidden="true">{{ favoriteOn ? '♥' : '♡' }}</span>
+              <span class="hidden sm:inline">{{ favoriteOn ? 'В избранном' : 'В избранное' }}</span>
+            </button>
+
+            <button
+              type="button"
+              class="flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm transition-colors"
+              :class="
+                followingOn
+                  ? 'border-brand-500/60 bg-brand-500/10 text-brand-400'
+                  : 'border-line bg-surface-2 text-muted hover:text-content'
+              "
+              :aria-pressed="followingOn"
+              @click="onFollow"
+            >
+              <span aria-hidden="true">🔔</span>
+              {{ followingOn ? 'Вы подписаны' : 'Следить' }}
+            </button>
+          </div>
         </div>
+
+        <p v-if="followingOn" class="mt-2 text-xs text-subtle">
+          Письмо о новых сеансах и открытии продажи придёт на {{ customerUser()?.email ?? 'ваш адрес' }}.
+        </p>
 
         <h1 class="mt-3 max-w-3xl text-balance text-3xl font-bold leading-tight tracking-tight text-content sm:text-4xl">
           {{ event.title }}

@@ -11,18 +11,56 @@
  * витрины: площадка настраивает брендинг в админке, а не в коде.
  */
 import { computed, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useUiStore } from '@/stores/ui'
 import { useCartStore } from '@/stores/cart'
 import { useStorefrontStore } from '@/stores/storefront'
+import { customerUser, isCustomerSession } from '@/lib/customer'
+import { useLoyaltyStore } from '@/stores/loyalty'
 
 const ui = useUiStore()
 const cart = useCartStore()
 const storefront = useStorefrontStore()
 const router = useRouter()
+const route = useRoute()
 
 const search = ref('')
 const cartCount = computed(() => cart.ticketsCount)
+
+/*
+ * Кнопка кабинета. Состояние сессии читается из localStorage, поэтому обновляем
+ * его на каждой навигации: вход, регистрация, выход и смена пароля — всё это
+ * переходы, а подписки на `storage` не хватило бы (событие не срабатывает в том
+ * же документе, который его вызвал).
+ */
+const account = ref({ authed: false, label: '' })
+
+/**
+ * «Клуб зрителей»: отметки «♡»/«🔔» на витрине и чип бонусного счёта.
+ *
+ * Грузятся здесь, а не в компонентах: сердце на карточке афиши и кнопка на
+ * странице события спрашивают одно и то же состояние, и десять карточек не
+ * должны делать десять запросов к `/me/favorites`. Баланс — там же: чип в
+ * шапке и плитка в кабинете показывают одно число. `load()` сам не ходит в
+ * сеть без аккаунта и не повторяется при навигации.
+ *
+ * Выход гасит и отметки, и баланс: иначе после смены аккаунта в том же
+ * браузере чужой список ещё мигал бы «♥», а в шапке висел бы чужой счёт.
+ */
+const loyalty = useLoyaltyStore()
+
+function refreshAccount(): void {
+  const authed = isCustomerSession()
+  const user = customerUser()
+  const name = [user?.first_name, user?.last_name].filter(Boolean).join(' ').trim()
+
+  account.value = { authed, label: name || user?.email || '' }
+
+  if (authed) void loyalty.load()
+  else loyalty.reset()
+}
+
+watch(() => route.fullPath, refreshAccount, { immediate: true })
 
 const branding = computed(() => storefront.config.branding)
 const header = computed(() => storefront.config.header)
@@ -102,6 +140,39 @@ watch(
             {{ item.label }}
           </RouterLink>
         </nav>
+
+        <!--
+          Кабинет. Подпись — имя покупателя, а не «Кабинет»: покупатель должен
+          узнавать себя в шапке, иначе непонятно, под чьим аккаунтом он смотрит
+          билеты. Без сессии кнопка ведёт на вход и подписана «Войти» — это
+          единственная точка входа в кабинет с витрины.
+        -->
+        <RouterLink
+          :to="account.authed ? '/account' : '/login'"
+          class="flex h-9 flex-none items-center gap-1.5 rounded-lg border border-line px-2.5 text-sm text-muted transition-colors hover:text-content"
+          :aria-label="account.authed ? 'Личный кабинет' : 'Войти'"
+        >
+          <span aria-hidden="true">☺</span>
+          <span class="hidden max-w-[9rem] truncate sm:block">
+            {{ account.authed ? (account.label || 'Кабинет') : 'Войти' }}
+          </span>
+        </RouterLink>
+
+        <!--
+          Бонусный счёт. Чип появляется ТОЛЬКО когда баланс реально загружен
+          (`loyalty.bonus !== null`): «✦ 0» до ответа сервера читалось бы как
+          «бонусов нет», а их может быть сколько угодно. На узких экранах скрыт
+          — там шапка уже тесная, и баланс достаётся из кабинета в один тап.
+        -->
+        <RouterLink
+          v-if="account.authed && loyalty.bonus"
+          to="/bonus"
+          class="hidden h-9 flex-none items-center gap-1.5 rounded-lg border border-line px-2.5 text-sm text-muted transition-colors hover:text-content sm:flex"
+          aria-label="Бонусный счёт"
+        >
+          <span aria-hidden="true" class="text-brand-400">✦</span>
+          <span class="tabular-nums">{{ loyalty.bonusesCount }}</span>
+        </RouterLink>
 
         <!-- Тема -->
         <button

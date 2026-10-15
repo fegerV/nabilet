@@ -1,0 +1,11 @@
+{
+  "name": "matrix",
+  "title": "Matrix (Element X)",
+  "version": "1.0.0",
+  "enabled": true,
+  "priority": 150,
+  "requires": ["notifications", "orders"],
+  "permissions": [],
+  "provides": ["matrix.message_sent"],
+  "description": "Административные уведомления в комнату Matrix через удалённый Synapse (клиент Element X). Настройки (homeserver, access token, room_id) правятся в админке и хранятся в таблице `settings`; транспорт шлёт сообщение в Client-Server API Synapse. Сообщения адресованы ТОЛЬКО сотрудникам — покупателям Matrix-канал ничего не отправляет. Схема БД не меняется: привязки пользователь↔Matrix ID нет."
+}

@@ -10,6 +10,7 @@
 import { computed, ref, watch } from 'vue'
 import QRCode from 'qrcode'
 import NStatusBadge from '@/components/ui/NStatusBadge.vue'
+import TicketCanvas from '@/components/storefront/TicketCanvas.vue'
 import { money, dateFull, time } from '@/lib/format'
 import type { TicketCard as TicketCardType } from '@/lib/types'
 import { cn } from '@/lib/cn'
@@ -71,61 +72,70 @@ const qrCaption = computed(() => inactiveLabel[props.ticket.status] ?? 'Пока
       )
     "
   >
-    <!-- Перфорация: билет должен выглядеть билетом, а не карточкой.
-         На мобильном QR стекает под информацией, иначе не помещается. -->
-    <div class="flex flex-col sm:flex-row">
-      <div class="min-w-0 flex-1 p-4">
-        <div class="flex min-w-0 items-start justify-between gap-3">
-          <div class="min-w-0 flex-1">
-            <p class="text-2xs uppercase tracking-wider text-subtle">{{ ticket.sector }}</p>
-            <h3 class="mt-0.5 truncate text-base font-semibold text-content">{{ ticket.eventTitle }}</h3>
-            <p class="mt-0.5 truncate text-xs text-muted">{{ ticket.venue }}</p>
-          </div>
-          <NStatusBadge kind="ticket" :status="ticket.status" />
+    <div class="p-4">
+      <!-- Шапка: сектор / событие / площадка / статус — видны всегда,
+           независимо от того, показываем ли мы полный макет билета. -->
+      <div class="mb-3 flex items-start justify-between gap-3">
+        <div class="min-w-0 flex-1">
+          <p class="text-2xs uppercase tracking-wider text-subtle">{{ ticket.sector }}</p>
+          <h3 class="mt-0.5 truncate text-base font-semibold text-content">{{ ticket.eventTitle }}</h3>
+          <p class="mt-0.5 truncate text-xs text-muted">{{ ticket.venue }}</p>
+        </div>
+        <NStatusBadge kind="ticket" :status="ticket.status" />
+      </div>
+
+      <!-- Полный макет билета (назначен мероприятию и билет действует). -->
+      <TicketCanvas
+        v-if="ticket.template && ticket.status === 'issued'"
+        :config="ticket.template"
+        :ticket="ticket"
+      />
+
+      <!-- Иначе — семантическая карточка: ряд/место/цена и отдельный QR. -->
+      <div v-else class="flex flex-col gap-4 sm:flex-row">
+        <div class="min-w-0 flex-1">
+          <dl class="grid grid-cols-3 gap-3">
+            <div>
+              <dt class="text-2xs uppercase tracking-wide text-subtle">Ряд</dt>
+              <dd class="text-xl font-bold tabular-nums text-content">{{ ticket.row || '—' }}</dd>
+            </div>
+            <div>
+              <dt class="text-2xs uppercase tracking-wide text-subtle">Место</dt>
+              <dd class="text-xl font-bold tabular-nums text-content">{{ ticket.seat || '—' }}</dd>
+            </div>
+            <div>
+              <dt class="text-2xs uppercase tracking-wide text-subtle">Цена</dt>
+              <dd class="text-base font-semibold tabular-nums text-content">{{ money(ticket.priceMinor) }}</dd>
+            </div>
+          </dl>
+
+          <p class="mt-3 flex items-center gap-1.5 text-sm text-content">
+            <span aria-hidden="true" class="text-brand-400">◷</span>
+            <template v-if="ticket.sessionAt">{{ dateFull(ticket.sessionAt) }}, {{ time(ticket.sessionAt) }}</template>
+            <template v-else>Дата и время не указаны</template>
+          </p>
         </div>
 
-        <dl class="mt-4 grid grid-cols-3 gap-3">
-          <div>
-            <dt class="text-2xs uppercase tracking-wide text-subtle">Ряд</dt>
-            <dd class="text-xl font-bold tabular-nums text-content">{{ ticket.row || '—' }}</dd>
-          </div>
-          <div>
-            <dt class="text-2xs uppercase tracking-wide text-subtle">Место</dt>
-            <dd class="text-xl font-bold tabular-nums text-content">{{ ticket.seat || '—' }}</dd>
-          </div>
-          <div>
-            <dt class="text-2xs uppercase tracking-wide text-subtle">Цена</dt>
-            <dd class="text-base font-semibold tabular-nums text-content">{{ money(ticket.priceMinor) }}</dd>
-          </div>
-        </dl>
-
-        <p class="mt-3 flex items-center gap-1.5 text-sm text-content">
-          <span aria-hidden="true" class="text-brand-400">◷</span>
-          <template v-if="ticket.sessionAt">{{ dateFull(ticket.sessionAt) }}, {{ time(ticket.sessionAt) }}</template>
-          <template v-else>Дата и время не указаны</template>
-        </p>
-
-        <p class="mt-3 border-t border-dashed border-line pt-3 font-mono text-2xs text-subtle">
-          {{ ticket.code }}
-        </p>
+        <div
+          class="flex flex-col items-center justify-center gap-2 border-line border-dashed p-3 sm:w-40 sm:border-l"
+        >
+          <img
+            v-if="qrUrl"
+            :src="qrUrl"
+            :alt="`QR-код билета ${ticket.code}`"
+            class="h-32 w-32 rounded-lg bg-white p-1.5 sm:h-full sm:w-full sm:max-w-[128px]"
+          />
+          <div v-else-if="ticket.status === 'issued' && !qrFailed" class="skeleton h-24 w-24" />
+          <div v-else class="grid h-24 w-24 place-items-center rounded-lg bg-surface-2 text-center text-xs text-subtle">QR недоступен</div>
+          <p :class="cn('text-center text-2xs', inactive ? 'text-subtle' : 'text-brand-400')">
+            {{ qrCaption }}
+          </p>
+        </div>
       </div>
 
-      <!-- QR -->
-      <div
-        class="flex flex-col items-center justify-center gap-2 border-line border-dashed p-3 sm:w-40 sm:border-l"
-      >
-        <img
-          v-if="qrUrl"
-          :src="qrUrl"
-          :alt="`QR-код билета ${ticket.code}`"
-          class="h-32 w-32 rounded-lg bg-white p-1.5 sm:h-full sm:w-full sm:max-w-[128px]"
-        />
-        <div v-else-if="ticket.status === 'issued' && !qrFailed" class="skeleton h-24 w-24" />
-        <div v-else class="grid h-24 w-24 place-items-center rounded-lg bg-surface-2 text-center text-xs text-subtle">QR недоступен</div>
-        <p :class="cn('text-center text-2xs', inactive ? 'text-subtle' : 'text-brand-400')">
-          {{ qrCaption }}
-        </p>
-      </div>
+      <p class="mt-3 border-t border-dashed border-line pt-3 font-mono text-2xs text-subtle">
+        {{ ticket.code }}
+      </p>
     </div>
   </article>
 </template>

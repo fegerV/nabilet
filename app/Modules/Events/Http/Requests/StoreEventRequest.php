@@ -4,15 +4,19 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Events\Http\Requests;
 
-use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
-use Nabilet\Core\Errors\ValidationError;
+use Nabilet\Modules\Events\Http\Requests\Concerns\HandlesPosterUpload;
 use Nabilet\Modules\Events\Models\Event;
 use Illuminate\Foundation\Http\FormRequest;
 
 class StoreEventRequest extends FormRequest
 {
+    // Сохранение файла афиши и перенос legacy `image_url` → `poster` — общие с
+    // `UpdateEventRequest` (см. трейт). Раньше в Update этой логики не было вовсе,
+    // и новая афиша при редактировании молча не сохранялась.
+    use HandlesPosterUpload;
+
     /**
      * Поля, которые принимает API (для совместимости со старыми клиентами), но
      * которых НЕТ в таблице `events` (миграция 000200_002_content). Они
@@ -256,70 +260,6 @@ class StoreEventRequest extends FormRequest
     {
         $this->request->remove('status');
         $this->getInputSource()->remove('status');
-    }
-
-    /**
-     * Сохранить загруженный файл афиши на public-диск и подставить URL в `poster`.
-     *
-     * Файл имеет приоритет над текстовыми полями: UI шлёт FormData, где
-     * poster_file и (иногда) пустой image_url сосуществуют. Ошибка записи на
-     * диск превращается в 422 (ValidationError), а не в 500 — это ожидаемый
-     * инфраструктурный отказ (права на storage, не смонтирован volume).
-     */
-    protected function storeUploadedPoster(): void
-    {
-        if (! $this->hasFile('poster_file')) {
-            return;
-        }
-
-        // Идемпотентность: validated() может вызываться повторно.
-        if ($this->input('__poster_stored') === true) {
-            return;
-        }
-
-        $file = $this->file('poster_file');
-
-        $this->request->remove('image_url');
-        $this->getInputSource()->remove('image_url');
-
-        try {
-            // hashName() даёт имя с расширением, выведенным из реального мим-типа
-            // (проверен валидатором `image`/`mimes`) — исходное расширение файла
-            // клиенту не верим. storeAs — детерминированный путь posters/<ULID>.<ext>.
-            $ext = pathinfo((string) $file->hashName(), PATHINFO_EXTENSION) ?: 'jpg';
-            $stored = $file->storeAs('posters', Str::ulid()->toBase32() . '.' . $ext, [
-                'disk' => 'public',
-                'visibility' => 'public',
-            ]);
-        } catch (\Throwable $e) {
-            throw new ValidationError(
-                ['poster_file' => ['Не удалось сохранить файл афиши: ' . $e->getMessage()]],
-                'Ошибка загрузки афиши.'
-            );
-        }
-
-        $url = rtrim((string) config('filesystems.disks.public.url'), '/') . '/' . ltrim((string) $stored, '/');
-
-        $this->merge(['poster' => $url, '__poster_stored' => true]);
-        // Из входных данных файл убираем — в Event::create/update попадает только `poster`.
-        $this->request->remove('poster_file');
-        $this->getInputSource()->remove('poster_file');
-    }
-
-    protected function normalizePosterMapping(): void
-    {
-        $url = $this->input('image_url', '__missing__');
-
-        if ($url === '__missing__') {
-            return;
-        }
-
-        $this->request->remove('image_url');
-        $this->getInputSource()->remove('image_url');
-
-        if ($url !== null && $this->input('poster') === null) {
-            $this->merge(['poster' => $url]);
-        }
     }
 
     /**
