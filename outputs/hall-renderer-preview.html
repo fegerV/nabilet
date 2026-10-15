@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Вавилон — обновлённая схема зала</title>
+  </head>
+  <body>
+    <main class="preview-shell">
+      <header class="preview-heading">
+        <div>
+          <p class="preview-kicker">NABILET · ВИЗУАЛЬНАЯ ПРОВЕРКА</p>
+          <h1>Трибьют Metallica</h1>
+          <p>Вавилон · опубликованный шаблон зала, версия 6</p>
+        </div>
+        <span class="preview-badge">359 мест за столами · танцпол 95</span>
+      </header>
+      <div id="app" aria-live="polite"></div>
+    </main>
+    <script type="module" src="/outputs/hall-renderer-preview.js"></script>
+    <style>
+      :root { color-scheme: light; }
+      body { margin: 0; background: #f4f5f7; color: #18212f; font-family: Arial, sans-serif; }
+      .preview-shell { width: min(1180px, calc(100% - 36px)); margin: 28px auto; }
+      .preview-heading { display: flex; align-items: end; justify-content: space-between; gap: 20px; margin-bottom: 18px; }
+      .preview-kicker { margin: 0 0 7px; color: #788393; font-size: 11px; font-weight: 700; letter-spacing: .12em; }
+      .preview-heading h1 { margin: 0; font-size: 24px; line-height: 1.2; font-weight: 650; }
+      .preview-heading p:last-child { margin: 6px 0 0; color: #657181; font-size: 14px; }
+      .preview-badge { border: 1px solid #dfe3e9; border-radius: 999px; background: #fff; padding: 9px 13px; color: #596273; font-size: 12px; white-space: nowrap; }
+      @media (max-width: 700px) {
+        .preview-shell { width: calc(100% - 20px); margin: 14px auto; }
+        .preview-heading { align-items: start; flex-direction: column; gap: 10px; }
+        .preview-heading h1 { font-size: 20px; }
+      }
+    </style>
+  </body>
+</html>

@@ -36,7 +36,7 @@ import {
 // `humanSize` — общая функция библиотеки файлов, а не часть галереи. Держать её
 // в двух местах значит однажды увидеть «2 КБ» на одном экране и «2.0 КБ» на
 // другом; поэтому она импортируется из общего модуля.
-import { humanSize } from '@/lib/mediaLibrary'
+import { assetSrc, humanSize } from '@/lib/mediaLibrary'
 
 const props = defineProps<{ eventId: number }>()
 
@@ -261,7 +261,7 @@ watch(() => props.eventId, () => {
         <div class="relative aspect-[4/3] bg-surface-3">
           <img
             v-if="isImage(item) && item.media"
-            :src="item.media.url"
+            :src="assetSrc(item.media)"
             :alt="item.media.alt_text || item.media.filename"
             class="h-full w-full object-cover"
             loading="lazy"

@@ -5,7 +5,8 @@ declare(strict_types=1);
 namespace Nabilet\Modules\Seo\Domain;
 
 /**
- * Готовая посадочная страница — города или площадки (аудит P-12).
+ * Готовая посадочная страница — города, площадки, категории, организатора или
+ * артиста (аудит P-12, артист — стратегия SEO B-1).
  *
  * ЗАЧЕМ ТИПИЗИРОВАННЫЙ ОБЪЕКТ, А НЕ МАССИВ. Ровно на этом проекте уже ловили
  * дефект от позиционной сборки строки: `renderSpaShell()` собирал SEO-блок через
@@ -43,7 +44,14 @@ final class LandingPage
      *                               `label` → `name` — лишний шаг, на котором
      *                               уровень молча выпал бы из разметки, если бы
      *                               ключ был назван иначе.
-     * @param  list<array{title: string, url: string, date: ?string, venue: ?string, price: ?string}>  $items
+     * @param  list<array{title: string, url: string, date: ?string, venue: ?string, price: ?string, past: bool}>  $items
+     *                               ЕДИНСТВЕННЫЙ источник списка записей страницы. Порядок задан
+     *                               запросом (предстоящие впереди, затем архив — см.
+     *                               `CatalogService::paginate()`), поэтому `items` не сортируется
+     *                               здесь: сортировка в PHP упорядочила бы только текущую
+     *                               страницу, а не всю выборку. Признак `past` — не украшение:
+     *                               по нему рендер разделяет список на «ближайшие» и «прошедшие»,
+     *                               не пересчитывая даты (см. `upcomingItems()`/`pastItems()`).
      * @param  list<array{label: string, url: string, count: int}>  $related  перелинковка на соседние коллекции
      * @param  int  $page      номер текущей страницы, от 1
      * @param  int  $lastPage  номер последней страницы, не меньше 1
@@ -56,6 +64,21 @@ final class LandingPage
      *                               (`LandingPageService` через `StructuredDataService`),
      *                               решено там же, где решены заголовок и описание: это
      *                               текст страницы, а не её структура.
+     * @param  string  $pageType  тип посадочной для аналитики (`venue`, `city`,
+     *                            `category`, `organizer`, `artist`); используется в
+     *                            `dataLayer.push({page_type: …})` для отчётов по типу
+     *                            страницы (стратегия SEO, B-7).
+     * @param  ?string  $geoRegion     ISO-код региона (`RU-MOW`, `RU-SVE`) для
+     *                                 `<meta name="geo.region">`. `null` → тег
+     *                                 не выводится. Яндекс читает это как
+     *                                 подтверждение региональной привязки страницы.
+     * @param  ?string  $geoPlacename  название города/места для
+     *                                 `<meta name="geo.placename">`. `null` →
+     *                                 тег не выводится.
+     * @param  ?string  $geoPosition   «lat;lng» для `<meta name="geo.position">`,
+     *                                 только для страниц с геопривязкой
+     *                                 (площадка, город). `null` → тег не
+     *                                 выводится. Формат — спецификация ICBM.
      */
     public function __construct(
         public readonly string $heading,
@@ -69,6 +92,10 @@ final class LandingPage
         public readonly int $page = 1,
         public readonly int $lastPage = 1,
         public readonly ?array $entity = null,
+        public readonly string $pageType = 'landing',
+        public readonly ?string $geoRegion = null,
+        public readonly ?string $geoPlacename = null,
+        public readonly ?string $geoPosition = null,
     ) {}
 
     /**
@@ -130,5 +157,52 @@ final class LandingPage
     public function urls(): array
     {
         return array_column($this->items, 'url');
+    }
+
+    /**
+     * Предстоящие записи — основной блок страницы (стратегия SEO, пункт 10).
+     *
+     * ЗАЧЕМ ОТДЕЛЬНЫЙ МЕТОД, А НЕ ФЛАГ В РЕНДЕРЕ. «Прошедшее» — это утверждение о
+     * записи, а не о том, как её показать: решает его тот, кто знает дату
+     * (`LandingPageService`), а рендер только вставляет готовые блоки. Если бы
+     * рендер сам сравнивал дату с «сейчас», момент времени попал бы в шаблон —
+     * а он вынесен в `strtr()` ровно для того, чтобы правки текста не трогали
+     * логику.
+     *
+     * ФИЛЬТР, А НЕ СРЕЗ ПО ИНДЕКСУ. Соблазнительно разрезать список в точке
+     * «первая прошедшая запись», но порядок `items` не гарантирует, что архив
+     * идёт непрерывным хвостом: событие БЕЗ сеансов не имеет даты вовсе, и
+     * запрос ставит его в конец (в группе «не предстоящее», где ключ — `NULL`),
+     * то есть после архива. Срез по индексу отправил бы такое событие в блок
+     * «прошедших», хотя оно не прошедшее. `array_filter` кладёт каждую запись по
+     * её собственному признаку и от порядка не зависит.
+     *
+     * @return list<array{title: string, url: string, date: ?string, venue: ?string, price: ?string, past: bool}>
+     */
+    public function upcomingItems(): array
+    {
+        return array_values(array_filter(
+            $this->items,
+            static fn (array $item): bool => ($item['past'] ?? false) === false,
+        ));
+    }
+
+    /**
+     * Прошедшие записи — архивный блок (стратегия SEO, пункт 10).
+     *
+     * АРХИВ — ЭТО НЕ «МУСОР», А ПРИЧИНА СУЩЕСТВОВАНИЯ СТРАНИЦЫ. Событие живёт
+     * два месяца, а страница артиста или площадки — годами; именно накопленный
+     * архив удерживает её в индексе, когда ближайших концертов нет вовсе. Поэтому
+     * прошедшие записи не выбрасываются из `items` (они остаются в `ItemList` и
+     * в `urls()`), а лишь показываются отдельным блоком с собственным заголовком.
+     *
+     * @return list<array{title: string, url: string, date: ?string, venue: ?string, price: ?string, past: bool}>
+     */
+    public function pastItems(): array
+    {
+        return array_values(array_filter(
+            $this->items,
+            static fn (array $item): bool => ($item['past'] ?? false) === true,
+        ));
     }
 }

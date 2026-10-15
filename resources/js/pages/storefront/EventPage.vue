@@ -52,6 +52,20 @@ interface EventDetail {
   price_from_minor?: number
   /** Дополнительные фото и видео: приходят в этом же ответе, см. showBySlug. */
   gallery?: GalleryItem[]
+  /**
+   * Исполнители события (стратегия SEO, B-1).
+   *
+   * Только имя и адрес: профиль артиста (биография, жанр, соцсети) живёт на
+   * серверной странице `/artist/{slug}` и там же индексируется. Копия профиля
+   * здесь разошлась бы с той страницей при первой правке.
+   */
+  artists?: ArtistRef[]
+}
+
+/** Ссылка на артиста: то, что нужно для `<a href>` и подписи. */
+interface ArtistRef {
+  name: string
+  slug: string
 }
 
 /**
@@ -111,6 +125,19 @@ const catName = computed(() => {
   const c = event.value?.category
   return typeof c === 'string' ? c : (c?.name ?? '')
 })
+
+/**
+ * Исполнители события (стратегия SEO, B-1).
+ *
+ * Элемент без адреса отбрасывается: ссылка без `slug` ведёт в никуда, а битая
+ * ссылка на странице хуже её отсутствия — и для человека, и для краулера,
+ * который помечает такой адрес как ошибку. Отсев делается здесь, а не на
+ * сервере, потому что это защита ОТОБРАЖЕНИЯ: сервер уже фильтрует по
+ * `status = 'active'` (`Event::artists()`).
+ */
+const artists = computed<ArtistRef[]>(() =>
+  (event.value?.artists ?? []).filter((a) => a && typeof a.slug === 'string' && a.slug !== ''),
+)
 
 /**
  * Alt афиши (SEO-аудит P-19).
@@ -285,6 +312,34 @@ function buy(): void {
             </div>
           </div>
         </dl>
+
+        <!--
+          Исполнители (стратегия SEO, B-1).
+
+          ОБЫЧНЫЙ `<a>`, А НЕ `<RouterLink>`. Витрина — hash-SPA
+          (`createWebHashHistory`), и маршрута `/artist/*` в ней нет: страница
+          артиста отдаётся сервером отдельным документом
+          (`LandingPageRenderer`). `<RouterLink>` попытался бы разрешить адрес
+          внутри SPA и привёл бы на «не найдено»; обычная ссылка делает ровно
+          то, что нужно, — полный переход на серверную страницу.
+
+          ЗАЧЕМ ССЫЛКА ЗДЕСЬ, А НЕ ТОЛЬКО В СЕРВЕРНОМ БЛОКЕ. Google и Яндекс
+          исполняют JS, поэтому на отрендеренной странице серверного блока уже
+          нет — его заменяет это приложение. Без ссылки тут страница артиста
+          осталась бы известна только карте сайта, то есть без перетекания веса
+          со страницы события.
+        -->
+        <div v-if="artists.length" class="mt-5 flex flex-wrap items-center gap-2">
+          <span class="text-2xs uppercase tracking-wide text-subtle">Исполнители</span>
+          <a
+            v-for="artist in artists"
+            :key="artist.slug"
+            :href="`/artist/${encodeURIComponent(artist.slug)}`"
+            class="rounded-full border border-line bg-surface-2 px-3 py-1 text-sm text-content transition hover:border-brand-500 hover:text-brand-400"
+          >
+            {{ artist.name }}
+          </a>
+        </div>
 
       <div class="mt-8 grid gap-6 lg:grid-cols-[1fr_360px]">
         <!-- Описание -->

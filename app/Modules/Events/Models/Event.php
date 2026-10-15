@@ -6,6 +6,7 @@ namespace Nabilet\Modules\Events\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Str;
@@ -111,6 +112,42 @@ class Event extends Model
     public function category(): BelongsTo
     {
         return $this->belongsTo(EventCategory::class, 'category_id');
+    }
+
+    /**
+     * Артисты события — КАНОНИЧЕСКИЕ, а не строки программы (стратегия SEO, B-1).
+     *
+     * ЗАЧЕМ ОТДЕЛЬНАЯ СВЯЗЬ, ЕСЛИ ЕСТЬ `event_artists`. `event_artists` хранит
+     * имя СВОБОДНЫМ ТЕКСТОМ внутри события: «Би-2» в одном мероприятии и
+     * «БИ-2» в другом — две несвязанные строки, и адреса у них нет вовсе.
+     * Здесь связь ведёт к канонической записи `artists`, у которой есть
+     * `/artist/{slug}`, — ровно она нужна странице события, чтобы дать ссылку
+     * на исполнителя. Подробнее — в докблоках `Artist` и `SyncArtistsCommand`.
+     *
+     * `status = 'active'` — ЧАСТЬ УСЛОВИЯ, А НЕ УКРАШЕНИЕ. Ссылка на снятого с
+     * публикации артиста ведёт на 404, а ссылка в 404 обесценивает и страницу
+     * события: краулер помечает её как «URL not found» и тратит бюджет на
+     * заведомо мёртвый адрес. Тем же правилом артист отсеивается и на своей
+     * странице (`CatalogService::artistBySlug()`).
+     *
+     * ПОРЯДОК ЗАДАЁТ СВЯЗЬ, А НЕ АЛФАВИТ. Хедлайнер идёт первым, затем по
+     * `sort_order` — так же, как исполнителей показывает программа события.
+     * Алфавит дал бы «Аквариум» выше хедлайнера, то есть список, не совпадающий
+     * с афишей.
+     *
+     * `orderBy` НА КВАЛИФИЦИРОВАННЫХ КОЛОНКАХ, потому что в запросе есть join:
+     * `artist_event` и `artists` содержат `sort_order`/`name` каждая по-своему
+     * (в `artists` есть `name`), и неполное имя столбца дало бы
+     * `SQLSTATE[23000] Column 'name' in order clause is ambiguous`.
+     */
+    public function artists(): BelongsToMany
+    {
+        return $this->belongsToMany(Artist::class, 'artist_event')
+            ->where('artists.status', 'active')
+            ->withPivot(['is_headliner', 'sort_order'])
+            ->orderByDesc('artist_event.is_headliner')
+            ->orderBy('artist_event.sort_order')
+            ->orderBy('artists.name');
     }
 
     public function sessions(): HasMany

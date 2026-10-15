@@ -38,10 +38,15 @@ class ProductionSafetyTest extends TestCase
 
         $this->originalEnv = (string) $this->app['env'];
 
-        // Остальные три проверки сторожа должны молчать: иначе тест на
-        // хранилище кэша падал бы по чужой причине и ничего не доказывал.
+        // Остальные проверки сторожа должны молчать: иначе тест на хранилище
+        // кэша падал бы по чужой причине и ничего не доказывал.
+        //
+        // `app.url` здесь тоже задан явно. Он читается сторожем (схема обязана
+        // быть https), а из `.env` приходит значение разработчика — то есть
+        // без этой строки результат теста зависел бы от чужого локального файла.
         config([
             'app.debug' => false,
+            'app.url' => 'https://nabilet.test',
             'nabilet.payment.demo_mode' => false,
             'nabilet.payment.providers' => [],
         ]);
@@ -162,5 +167,43 @@ class ProductionSafetyTest extends TestCase
             $this->assertStringContainsString('PAYMENT_DEMO_MODE=true', $e->getMessage());
             $this->assertStringContainsString('/payments/demo-pay', $e->getMessage());
         }
+    }
+
+    /**
+     * `APP_URL` по http в production — отказ старта (P0-7, «HTTPS forced»).
+     *
+     * Магазин отдаёт билеты и принимает оплату, поэтому схема из `APP_URL`
+     * уезжает в canonical, `og:url` и карту сайта: по http они указывают
+     * поисковику и мессенджерам на другой адрес. Тот же `APP_URL` участвует в
+     * `secure`-флаге сессионной cookie (`config/session.php`), поэтому http
+     * означает ещё и cookie, отправляемую по незашифрованному каналу.
+     *
+     * Проверка идёт через `config()`, потому что именно это значение читают
+     * `EventPageController`, `SitemapService` и `LandingPageRenderer`.
+     */
+    public function test_an_http_app_url_stops_production_boot(): void
+    {
+        $this->app['env'] = 'production';
+        config(['cache.default' => 'redis', 'app.url' => 'http://nabilet.ru']);
+
+        try {
+            (new ProductionSafetyProvider($this->app))->boot();
+
+            $this->fail('APP_URL по http был принят в production');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('APP_URL=http://nabilet.ru', $e->getMessage());
+            $this->assertStringContainsString('HTTPS', $e->getMessage());
+        }
+    }
+
+    /** https в `APP_URL` — норма, сторож молчит. */
+    public function test_an_https_app_url_is_accepted(): void
+    {
+        $this->app['env'] = 'production';
+        config(['cache.default' => 'redis', 'app.url' => 'https://nabilet.ru']);
+
+        (new ProductionSafetyProvider($this->app))->boot();
+
+        $this->addToAssertionCount(1);
     }
 }

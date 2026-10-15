@@ -133,7 +133,7 @@ class EventPageController
         // `sessions.inventoryItems` — по той же причине, но появился здесь
         // позже: цены в `offers` берутся ИЗ НИХ, а без предзагрузки это ещё один
         // запрос на каждый сеанс события (см. `offerPayload()`).
-        $event->load(['category', 'translations', 'sessions.venue', 'sessions.inventoryItems', 'organization']);
+        $event->load(['category', 'translations', 'sessions.venue', 'sessions.inventoryItems', 'organization', 'artists']);
 
         // Дата события живёт НЕ в `events` — в таблице нет ни `start_datetime`,
         // ни `start_date`, есть только `published_at` (момент выхода на сайт).
@@ -235,6 +235,10 @@ class EventPageController
             'imageHeight'   => $event->poster ? null : self::OG_FALLBACK_HEIGHT,
             'jsonLd'        => $jsonLd,
             'jsonLdBreadcrumb' => $breadcrumb,
+            // `public_id` события — идентификатор в `dataLayer.push` (B-7):
+            // GA4 связывает `event_view` (цель SPA) с серверным `page_view`
+            // именно по нему. Строкой, а не числом: ULID base32 не приводится.
+            'eventPublicId' => (string) $event->public_id,
             // Серверный текст внутри `#app` (аудит P-05/P-17/P-20).
             //
             // Сначала был только блок статуса, и это решало половину задачи:
@@ -282,6 +286,71 @@ class EventPageController
     private function storageUrl(string $path): string
     {
         return AssetUrl::storage($path);
+    }
+
+    /**
+     * Коды верификации поисковиков и региональные `geo.*` (стратегия SEO, B-7).
+     *
+     * Метод возвращает ГОТОВУЮ строку для вставки в `<head>`. Пустое значение
+     * означает «не вставлять ничего»: `strtr()` подставляет `''` как
+     * отсутствие блока, без остаточных `<meta></meta>`.
+     *
+     * Коды верификации читаются из `config/nabilet.php` (`SEO_VERIFICATION_*`).
+     * Сайт отдаёт их БЕЗ диагностики конфигурации: пустое значение
+     * (`config('...') === null`) трактуется как «верификация ещё не пройдена»
+     * и мета-тег не выводится. Эту же логику дублирует `LandingPageRenderer`,
+     * чтобы посадочные страницы и страницы событий вели себя одинаково.
+     *
+     * `geo.region`/`geo.placename` берутся из площадки события (`venue`),
+     * если она пришла в `$seo`. Для событий без площадки (онлайн-события,
+     * отменённые) региональные теги не выводятся: полу-валидный `geo.*` хуже
+     * его отсутствия.
+     *
+     * @param  array<string, mixed>  $seo
+     */
+    private function seoVerificationAndGeoTags(array $seo): string
+    {
+        $tags = [];
+
+        $yandexVerification = trim((string) (config('nabilet.seo.verification.yandex') ?? ''));
+        if ($yandexVerification !== '') {
+            $tags[] = sprintf(
+                '<meta name="yandex-verification" content="%s" />',
+                htmlspecialchars($yandexVerification, ENT_QUOTES),
+            );
+        }
+
+        $googleVerification = trim((string) (config('nabilet.seo.verification.google') ?? ''));
+        if ($googleVerification !== '') {
+            $tags[] = sprintf(
+                '<meta name="google-site-verification" content="%s" />',
+                htmlspecialchars($googleVerification, ENT_QUOTES),
+            );
+        }
+
+        // `geo.*` идут из площадки события: `$seo['venue']` собирается
+        // `venuePayload()` (см. выше). Это та же площадка, что попадает в
+        // JSON-LD `Place` внутри разметки события — для поисковика сигнал
+        // консистентный.
+        $venue = is_array($seo['venue'] ?? null) ? $seo['venue'] : [];
+        $city = trim((string) ($venue['city'] ?? ''));
+        $region = trim((string) ($venue['region'] ?? ''));
+
+        if ($region !== '') {
+            $tags[] = sprintf(
+                '<meta name="geo.region" content="%s" />',
+                htmlspecialchars($region, ENT_QUOTES),
+            );
+        }
+
+        if ($city !== '') {
+            $tags[] = sprintf(
+                '<meta name="geo.placename" content="%s" />',
+                htmlspecialchars($city, ENT_QUOTES),
+            );
+        }
+
+        return $tags === [] ? '' : implode('', $tags);
     }
 
     /**
@@ -791,6 +860,25 @@ class EventPageController
             }
         }
 
+        // Исполнители — ссылки на страницы артистов (стратегия SEO, B-1).
+        //
+        // ЗАЧЕМ ИМЕННО ССЫЛКА. Страница артиста существует под запрос «Би-2
+        // билеты», и попасть на неё краулер может двумя путями: из
+        // `sitemap-artists.xml` и по ссылке. Карта лишь сообщает о существовании
+        // адреса — вес по ней не перетекает. Ссылка со страницы события, самого
+        // обходимого типа страниц, делает артиста частью обычного обхода, а не
+        // отдельным островом, известным только карте.
+        //
+        // НЕ В JSON-LD, А В ТЕЛЕ. `performer` в разметке события выводится
+        // только при наличии данных и служит для расширенного сниппета; ходить
+        // по ссылкам робот умеет из HTML. Одно другого не заменяет, поэтому
+        // ссылка живёт здесь.
+        $artists = $this->artistLinks($event);
+
+        if ($artists !== '') {
+            $parts[] = $artists;
+        }
+
         // Блок без содержания не выводится: пустой `<div>` — это тот же «тонкий
         // контейнер», от которого избавляемся, только с классом.
         if ($parts === []) {
@@ -809,6 +897,51 @@ class EventPageController
             '<div class="seo-content-fallback" data-event-status="%s">%s</div>',
             htmlspecialchars((string) $event->status, ENT_QUOTES),
             implode('', $parts)
+        );
+    }
+
+    /**
+     * Ссылки на артистов события для серверного блока (стратегия SEO, B-1).
+     *
+     * АДРЕС СТРОИТСЯ ЧЕРЕЗ `route()`, А НЕ СКЛЕЙКОЙ. Формат адреса страницы
+     * артиста — публичный контракт, и он уже один раз менялся у событий (см.
+     * `resolveCanonical()`); копия строки здесь разошлась бы с маршрутом молча.
+     *
+     * `landing.artist` зарегистрирован в `Seo/routes/web.php`, который
+     * подключается из `routes/web.php` вместе с этим маршрутом, поэтому имя
+     * доступно на момент ответа. Если маршрут когда-нибудь уедет, `route()`
+     * бросит `RouteNotFoundException` на первом же рендере страницы события —
+     * это громкий отказ, а не тихо пропавшая ссылка.
+     *
+     * ПУСТОЙ СПИСОК ДАЁТ ПУСТУЮ СТРОКУ, А НЕ ПУСТОЙ АБЗАЦ: у события без
+     * исполнителей (обычное состояние до прогона `artists:sync`) блок не должен
+     * появляться вовсе — `<p>` с одним словом «Исполнители» и без ссылок это
+     * ровно та «тонкая» разметка, от которой избавляется весь серверный слой.
+     *
+     * @return string уже экранированный HTML либо пустая строка
+     */
+    private function artistLinks(Event $event): string
+    {
+        $links = [];
+
+        foreach ($event->artists as $artist) {
+            $links[] = sprintf(
+                '<a href="%s">%s</a>',
+                htmlspecialchars(
+                    route('landing.artist', ['slug' => (string) $artist->slug]),
+                    ENT_QUOTES
+                ),
+                htmlspecialchars((string) $artist->name, ENT_QUOTES)
+            );
+        }
+
+        if ($links === []) {
+            return '';
+        }
+
+        return sprintf(
+            '<p class="seo-fallback__artists">Исполнители: %s</p>',
+            implode(', ', $links)
         );
     }
 
@@ -1014,6 +1147,11 @@ class EventPageController
         // `%s` уже один раз поехала (аргумент `og:image` мог стать `null` и
         // сдвинуть все последующие), а порядок здесь критичен. `strtr` по
         // именам ключей такую ошибку делает невозможной.
+        //
+        // `{{headExtras}}` (стратегия SEO, B-7) — необязательные мета-теги
+        // верификации Яндекс/Google и региональные `geo.*`. Теги собираются
+        // строкой-методом и подставляются в шаблон; пустое значение означает
+        // «ничего не вставлять», чтобы не плодить пустые `<meta>` в HTML.
         $seoBlock = '<base href="/" />' . strtr(
             '<link rel="canonical" href="{{canonical}}" />'
             . '<meta property="og:type" content="website" />'
@@ -1027,6 +1165,7 @@ class EventPageController
             . '<meta property="og:url" content="{{canonical}}" />'
             . '{{robots}}'
             . '{{image}}'
+            . '{{headExtras}}'
             . '<script type="application/ld+json">{{jsonLd}}</script>'
             . '{{jsonLdBreadcrumb}}',
             [
@@ -1048,6 +1187,8 @@ class EventPageController
                 // «expected a value», поэтому тег не выводится вовсе, когда
                 // крошек нет.
                 '{{jsonLdBreadcrumb}}' => $this->breadcrumbScript($seo['jsonLdBreadcrumb'] ?? null),
+                // B-7: см. `seoVerificationAndGeoTags()` ниже.
+                '{{headExtras}}'  => $this->seoVerificationAndGeoTags($seo),
             ]
         );
 
@@ -1079,7 +1220,62 @@ class EventPageController
             ) ?? $html;
         }
 
+        // `dataLayer.push` для GTM/GA4/Яндекс.ТэгМенеджер (стратегия SEO, B-7).
+        //
+        // SPA уже вызывает `trackPageView(to.fullPath)` на каждом переходе
+        // маршрутизатора, но это происходит ТОЛЬКО после монтирования Vue. До
+        // него (и в сценарии «SPA не собрана → 503», и в сценарии «JS
+        // заблокирован → серверный блок читается») события `page_view` с
+        // `page_type: 'event'` не уходят. Серверный пуш закрывает оба
+        // случая: пустой массив `window.dataLayer || []` безвреден, если
+        // GTM не загружен, и не дублирует событие, если загружен — GTM
+        // обрабатывает оба `push` как два просмотра, а не схлопывает их.
+        $html = preg_replace_callback(
+            '/<\/body>/',
+            static fn (): string => self::dataLayerEventPageSnippet($seo) . '</body>',
+            $html,
+            1
+        ) ?? $html;
+
         return $html;
+    }
+
+    /**
+     * Серверный `dataLayer.push` для страницы события (стратегия SEO, B-7).
+     *
+     * `event_id` берётся из `public_id` — это и есть идентификатор события в
+     * отчётах. `page_type` фиксирован: «event». `page_path` — относительный
+     * путь без query-string, чтобы пагинация не считалась отдельной
+     * страницей в аналитике.
+     *
+     * Метод `static`, потому что не зависит от состояния контроллера и
+     * вызывается из колбэка `preg_replace_callback`. Тело пушится
+     * JSON-объектом: `page_type` будет читаться GA4 как пользовательское
+     * измерение, если в GTM настроено соответствующее определение custom
+     * dimension.
+     *
+     * @param  array<string, mixed>  $seo
+     */
+    private static function dataLayerEventPageSnippet(array $seo): string
+    {
+        $path = parse_url((string) ($seo['canonical'] ?? ''), PHP_URL_PATH) ?: '/event';
+        $eventId = (string) ($seo['eventPublicId'] ?? '');
+
+        $payload = json_encode([
+            'event' => 'page_view',
+            'page_type' => 'event',
+            'page_path' => $path,
+            'event_id' => $eventId,
+        ], JSON_UNESCAPED_UNICODE);
+
+        if (! is_string($payload)) {
+            return '';
+        }
+
+        return sprintf(
+            "<script>(function(w){w.dataLayer=w.dataLayer||[];w.dataLayer.push(%s);})(window);</script>",
+            $payload,
+        );
     }
 
     /**

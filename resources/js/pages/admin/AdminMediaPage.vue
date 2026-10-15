@@ -36,6 +36,7 @@ import {
   MEDIA_TYPES_LABEL,
   type MediaAsset,
   type MediaKind,
+  assetSrc,
   clampPage,
   dimensionsLabel,
   formatDate,
@@ -325,7 +326,7 @@ onMounted(load)
           <div class="relative aspect-[4/3] bg-surface-3">
             <img
               v-if="kindOf(item.mime_type) === 'image'"
-              :src="item.url"
+              :src="assetSrc(item)"
               :alt="item.alt_text || item.filename"
               class="h-full w-full object-cover"
               loading="lazy"

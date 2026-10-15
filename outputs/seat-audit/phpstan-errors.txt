@@ -1,0 +1,614 @@
+app/Core/Http/ApiExceptionRenderer.php:192:Result of || is always false.
+app/Core/Http/ApiExceptionRenderer.php:192:Strict comparison using === between class-string<Illuminate/Database/Eloquent/Model> and '' will always evaluate to false.
+app/Core/Http/ApiExceptionRenderer.php:192:Strict comparison using === between class-string<Illuminate/Database/Eloquent/Model> and null will always evaluate to false.
+app/Core/Http/Middleware/ApplySecurityHeaders.php:97:Method Nabilet/Core/Http/Middleware/ApplySecurityHeaders::nonce() is unused.
+app/Core/Support/StaffRole.php:38:Access to an undefined property object::$roles.
+app/Models/Cart.php:10:Access to an undefined property App/Models/Cart::$public_id.
+app/Models/Consent.php:50:Access to an undefined property App/Models/Consent::$public_id.
+app/Models/Event.php:52:Access to an undefined property App/Models/Event::$public_id.
+app/Models/Event.php:55:Access to an undefined property App/Models/Event::$organization_id.
+app/Models/Event.php:56:Call to an undefined method Illuminate/Contracts/Auth/Factory::user().
+app/Models/Event.php:90:Method App/Models/Event::upcomingDates() should return Illuminate/Database/Eloquent/Relations/HasMany but returns Illuminate/Database/Query/Builder.
+app/Models/Event.php:101:Method App/Models/Event::getNextDateAttribute() should return App/Models/EventDate|null but returns Illuminate/Database/Eloquent/Model|null.
+app/Models/EventArtist.php:50:Method App/Models/EventArtist::scopeOrdered() should return Illuminate/Database/Eloquent/Builder but returns Illuminate/Database/Query/Builder.
+app/Models/EventDate.php:50:Access to an undefined property App/Models/EventDate::$public_id.
+app/Models/EventDate.php:69:Access to an undefined property App/Models/EventDate::$is_sold_out.
+app/Models/EventDate.php:73:Access to an undefined property App/Models/EventDate::$status.
+app/Models/EventDate.php:79:Access to an undefined property App/Models/EventDate::$sales_start_at.
+app/Models/EventDate.php:83:Access to an undefined property App/Models/EventDate::$sales_end_at.
+app/Models/EventDate.php:95:Access to an undefined property App/Models/EventDate::$end_at.
+app/Models/EventDate.php:99:Access to an undefined property App/Models/EventDate::$start_at.
+app/Models/EventFaq.php:54:Method App/Models/EventFaq::scopeOrdered() should return Illuminate/Database/Eloquent/Builder but returns Illuminate/Database/Query/Builder.
+app/Models/EventScheduleItem.php:66:Method App/Models/EventScheduleItem::scopeOrdered() should return Illuminate/Database/Eloquent/Builder but returns Illuminate/Database/Query/Builder.
+app/Models/EventScheduleItem.php:72:Access to an undefined property App/Models/EventScheduleItem::$start_time.
+app/Models/EventScheduleItem.php:73:Access to an undefined property App/Models/EventScheduleItem::$duration_minutes.
+app/Models/EventScheduleItem.php:78:Access to an undefined property App/Models/EventScheduleItem::$duration_minutes.
+app/Models/EventScheduleItem.php:79:Access to an undefined property App/Models/EventScheduleItem::$duration_minutes.
+app/Models/EventSpeaker.php:47:Method App/Models/EventSpeaker::scopeOrdered() should return Illuminate/Database/Eloquent/Builder but returns Illuminate/Database/Query/Builder.
+app/Models/EventSponsor.php:53:Method App/Models/EventSponsor::scopeOrdered() should return Illuminate/Database/Eloquent/Builder but returns Illuminate/Database/Query/Builder.
+app/Models/EventSponsor.php:60:Access to an undefined property App/Models/EventSponsor::$tier.
+app/Models/EventTranslation.php:44:Access to an undefined property App/Models/EventTranslation::$public_id.
+app/Models/Hall.php:10:Access to an undefined property App/Models/Hall::$public_id.
+app/Models/LoginLog.php:49:Access to an undefined property App/Models/LoginLog::$public_id.
+app/Models/MediaLink.php:47:Access to an undefined property App/Models/MediaLink::$public_id.
+app/Models/Order.php:10:Access to an undefined property App/Models/Order::$public_id.
+app/Models/OrderItem.php:75:Access to an undefined property App/Models/OrderItem::$public_id.
+app/Models/Organization.php:10:Access to an undefined property App/Models/Organization::$public_id.
+app/Models/PageTranslation.php:44:Access to an undefined property App/Models/PageTranslation::$public_id.
+app/Models/Payment.php:10:Access to an undefined property App/Models/Payment::$public_id.
+app/Models/PaymentTransaction.php:52:Access to an undefined property App/Models/PaymentTransaction::$public_id.
+app/Models/PromoCode.php:10:Access to an undefined property App/Models/PromoCode::$public_id.
+app/Models/PromoCodeRedemption.php:55:Access to an undefined property App/Models/PromoCodeRedemption::$public_id.
+app/Models/Redirect.php:38:Access to an undefined property App/Models/Redirect::$public_id.
+app/Models/Refund.php:10:Access to an undefined property App/Models/Refund::$public_id.
+app/Models/RolePermission.php:19:Property App/Models/RolePermission::$primaryKey (string) does not accept default value of type array<int, string>.
+app/Models/RolePermission.php:41:Access to an undefined property App/Models/RolePermission::$public_id.
+app/Models/Seat.php:12:Access to an undefined property App/Models/Seat::$public_id.
+app/Models/SeatHold.php:14:Access to an undefined property App/Models/SeatHold::$public_id.
+app/Models/SeoMeta.php:50:Access to an undefined property App/Models/SeoMeta::$public_id.
+app/Models/Session.php:10:Access to an undefined property App/Models/Session::$public_id.
+app/Models/Ticket.php:10:Access to an undefined property App/Models/Ticket::$public_id.
+app/Models/User.php:25:Access to an undefined property App/Models/User::$public_id.
+app/Models/User.php:39:Access to an undefined property App/Models/User::$status.
+app/Models/UserOrganization.php:21:Property App/Models/UserOrganization::$primaryKey (string) does not accept default value of type array<int, string>.
+app/Models/UserOrganization.php:54:Access to an undefined property App/Models/UserOrganization::$public_id.
+app/Models/UserRole.php:59:Access to an undefined property App/Models/UserRole::$public_id.
+app/Models/UserSession.php:52:Access to an undefined property App/Models/UserSession::$public_id.
+app/Models/Venue.php:13:Access to an undefined property App/Models/Venue::$public_id.
+app/Models/Venue.php:16:Access to an undefined property App/Models/Venue::$organization_id.
+app/Models/Venue.php:17:Call to an undefined method Illuminate/Contracts/Auth/Factory::user().
+app/Models/VenueTranslation.php:44:Access to an undefined property App/Models/VenueTranslation::$public_id.
+app/Models/Webhook.php:10:Access to an undefined property App/Models/Webhook::$public_id.
+app/Modules/Analytics/Services/MetrikaSettings.php:85:Call to static method table() on an unknown class DB.
+app/Modules/Analytics/Services/MetrikaSettings.php:90:Call to static method table() on an unknown class DB.
+app/Modules/Analytics/Services/MetrikaSettings.php:100:Call to static method table() on an unknown class DB.
+app/Modules/Auth/Guards/SessionTokenGuard.php:105:Access to an undefined property Nabilet/Modules/Core/Models/UserSession::$user_id.
+app/Modules/Auth/Http/Controllers/AuthController.php:109:Method Nabilet/Modules/Auth/Http/Controllers/AuthController::logout() should return Illuminate/Http/Response but returns Illuminate/Contracts/Routing/ResponseFactory.
+app/Modules/Auth/Http/Resources/AuthResource.php:15:Access to an undefined property Nabilet/Modules/Auth/Http/Resources/AuthResource::$id.
+app/Modules/Auth/Http/Resources/AuthResource.php:16:Access to an undefined property Nabilet/Modules/Auth/Http/Resources/AuthResource::$email.
+app/Modules/Auth/Http/Resources/AuthResource.php:17:Access to an undefined property Nabilet/Modules/Auth/Http/Resources/AuthResource::$first_name.
+app/Modules/Auth/Http/Resources/AuthResource.php:18:Access to an undefined property Nabilet/Modules/Auth/Http/Resources/AuthResource::$last_name.
+app/Modules/Auth/Http/Resources/AuthResource.php:19:Access to an undefined property Nabilet/Modules/Auth/Http/Resources/AuthResource::$phone.
+app/Modules/Auth/Http/Resources/AuthResource.php:20:Access to an undefined property Nabilet/Modules/Auth/Http/Resources/AuthResource::$email_verified_at.
+app/Modules/Auth/Http/Resources/AuthResource.php:21:Access to an undefined property Nabilet/Modules/Auth/Http/Resources/AuthResource::$created_at.
+app/Modules/Auth/Http/Resources/AuthResource.php:22:Call to an undefined method Nabilet/Modules/Auth/Http/Resources/AuthResource::relationLoaded().
+app/Modules/Auth/Http/Resources/AuthResource.php:23:Access to an undefined property Nabilet/Modules/Auth/Http/Resources/AuthResource::$roles.
+app/Modules/Auth/Services/SessionIssuer.php:98:Access to an undefined property Nabilet/Modules/Core/Models/UserSession::$user_id.
+app/Modules/Auth/Services/SessionIssuer.php:99:Access to an undefined property Nabilet/Modules/Core/Models/UserSession::$session_token_hash.
+app/Modules/Auth/Services/SessionIssuer.php:100:Access to an undefined property Nabilet/Modules/Core/Models/UserSession::$device_name.
+app/Modules/Auth/Services/SessionIssuer.php:101:Access to an undefined property Nabilet/Modules/Core/Models/UserSession::$user_agent.
+app/Modules/Auth/Services/SessionIssuer.php:102:Access to an undefined property Nabilet/Modules/Core/Models/UserSession::$ip_address.
+app/Modules/Auth/Services/SessionIssuer.php:103:Access to an undefined property Nabilet/Modules/Core/Models/UserSession::$last_seen_at.
+app/Modules/Auth/Services/SessionIssuer.php:104:Access to an undefined property Nabilet/Modules/Core/Models/UserSession::$expires_at.
+app/Modules/Auth/Services/SessionIssuer.php:107:Access to an undefined property Nabilet/Modules/Core/Models/UserSession::$created_at.
+app/Modules/Auth/Services/SessionIssuer.php:159:Access to an undefined property Nabilet/Modules/Core/Models/UserSession::$last_seen_at.
+app/Modules/Auth/Services/SessionIssuer.php:232:Access to an undefined property Nabilet/Modules/Core/Models/LoginLog::$user_id.
+app/Modules/Auth/Services/SessionIssuer.php:232:Access to an undefined property Nabilet/Modules/Core/Models/UserSession::$user_id.
+app/Modules/Auth/Services/SessionIssuer.php:233:Access to an undefined property Nabilet/Modules/Core/Models/LoginLog::$identifier.
+app/Modules/Auth/Services/SessionIssuer.php:234:Access to an undefined property Nabilet/Modules/Core/Models/LoginLog::$success.
+app/Modules/Auth/Services/SessionIssuer.php:235:Access to an undefined property Nabilet/Modules/Core/Models/LoginLog::$ip_address.
+app/Modules/Auth/Services/SessionIssuer.php:236:Access to an undefined property Nabilet/Modules/Core/Models/LoginLog::$user_agent.
+app/Modules/Auth/Services/SessionIssuer.php:236:Access to an undefined property Nabilet/Modules/Core/Models/UserSession::$user_agent.
+app/Modules/Auth/Services/SessionIssuer.php:237:Access to an undefined property Nabilet/Modules/Core/Models/LoginLog::$failure_code.
+app/Modules/Auth/Services/SessionIssuer.php:238:Access to an undefined property Nabilet/Modules/Core/Models/LoginLog::$created_at.
+app/Modules/Auth/Services/SessionIssuer.php:265:Access to an undefined property Nabilet/Modules/Core/Models/UserSession::$created_at.
+app/Modules/Auth/Services/SessionIssuer.php:273:Access to an undefined property Nabilet/Modules/Core/Models/UserSession::$user_id.
+app/Modules/Auth/Services/SessionIssuer.php:274:Access to an undefined property Nabilet/Modules/Core/Models/UserSession::$session_token_hash.
+app/Modules/Auth/Services/SessionIssuer.php:276:Access to an undefined property Nabilet/Modules/Core/Models/UserSession::$expires_at.
+app/Modules/Auth/Services/SessionIssuer.php:277:Access to an undefined property Nabilet/Modules/Core/Models/UserSession::$last_seen_at.
+app/Modules/Auth/Services/SessionIssuer.php:278:Access to an undefined property Nabilet/Modules/Core/Models/UserSession::$device_name.
+app/Modules/Cart/Http/Controllers/CartController.php:154:Access to an undefined property Illuminate/Database/Eloquent/Model::$id.
+app/Modules/Cart/Http/Controllers/CartController.php:155:Access to an undefined property Illuminate/Database/Eloquent/Model::$total_amount.
+app/Modules/Cart/Http/Controllers/CartController.php:156:Access to an undefined property Illuminate/Database/Eloquent/Model::$currency.
+app/Modules/Cart/Http/Controllers/CartController.php:157:Access to an undefined property Illuminate/Database/Eloquent/Model::$expires_at.
+app/Modules/Cart/Http/Resources/CartItemResource.php:37:Access to an undefined property Nabilet/Modules/Cart/Http/Resources/CartItemResource::$inventoryItem.
+app/Modules/Cart/Http/Resources/CartItemResource.php:49:Access to an undefined property Nabilet/Modules/Cart/Http/Resources/CartItemResource::$id.
+app/Modules/Cart/Http/Resources/CartItemResource.php:50:Access to an undefined property Nabilet/Modules/Cart/Http/Resources/CartItemResource::$quantity.
+app/Modules/Cart/Http/Resources/CartItemResource.php:51:Access to an undefined property Nabilet/Modules/Cart/Http/Resources/CartItemResource::$unit_price.
+app/Modules/Cart/Http/Resources/CartItemResource.php:52:Access to an undefined property Nabilet/Modules/Cart/Http/Resources/CartItemResource::$total_price.
+app/Modules/Cart/Http/Resources/CartItemResource.php:66:Access to an undefined property Nabilet/Modules/Cart/Http/Resources/CartItemResource::$created_at.
+app/Modules/Cart/Http/Resources/CartResource.php:15:Access to an undefined property Nabilet/Modules/Cart/Http/Resources/CartResource::$public_id.
+app/Modules/Cart/Http/Resources/CartResource.php:16:Access to an undefined property Nabilet/Modules/Cart/Http/Resources/CartResource::$status.
+app/Modules/Cart/Http/Resources/CartResource.php:17:Access to an undefined property Nabilet/Modules/Cart/Http/Resources/CartResource::$expires_at.
+app/Modules/Cart/Http/Resources/CartResource.php:23:Access to an undefined property Nabilet/Modules/Cart/Http/Resources/CartResource::$items.
+app/Modules/Cart/Http/Resources/CartResource.php:23:Call to an undefined method Nabilet/Modules/Cart/Http/Resources/CartResource::relationLoaded().
+app/Modules/Cart/Http/Resources/CartResource.php:24:Access to an undefined property Nabilet/Modules/Cart/Http/Resources/CartResource::$total_amount.
+app/Modules/Cart/Http/Resources/CartResource.php:28:Access to an undefined property Nabilet/Modules/Cart/Http/Resources/CartResource::$created_at.
+app/Modules/Cart/Http/Resources/CartResource.php:29:Access to an undefined property Nabilet/Modules/Cart/Http/Resources/CartResource::$updated_at.
+app/Modules/Cart/Http/Resources/SeatHoldResource.php:15:Access to an undefined property Nabilet/Modules/Cart/Http/Resources/SeatHoldResource::$public_id.
+app/Modules/Cart/Http/Resources/SeatHoldResource.php:16:Access to an undefined property Nabilet/Modules/Cart/Http/Resources/SeatHoldResource::$inventoryItem.
+app/Modules/Cart/Http/Resources/SeatHoldResource.php:17:Access to an undefined property Nabilet/Modules/Cart/Http/Resources/SeatHoldResource::$inventoryItem.
+app/Modules/Cart/Http/Resources/SeatHoldResource.php:18:Access to an undefined property Nabilet/Modules/Cart/Http/Resources/SeatHoldResource::$inventoryItem.
+app/Modules/Cart/Http/Resources/SeatHoldResource.php:19:Access to an undefined property Nabilet/Modules/Cart/Http/Resources/SeatHoldResource::$inventoryItem.
+app/Modules/Cart/Http/Resources/SeatHoldResource.php:20:Access to an undefined property Nabilet/Modules/Cart/Http/Resources/SeatHoldResource::$inventoryItem.
+app/Modules/Cart/Http/Resources/SeatHoldResource.php:22:Access to an undefined property Nabilet/Modules/Cart/Http/Resources/SeatHoldResource::$expires_at.
+app/Modules/Cart/Http/Resources/SeatHoldResource.php:23:Access to an undefined property Nabilet/Modules/Cart/Http/Resources/SeatHoldResource::$status.
+app/Modules/Cart/Http/Resources/SeatHoldResource.php:24:Access to an undefined property Nabilet/Modules/Cart/Http/Resources/SeatHoldResource::$created_at.
+app/Modules/Cart/Models/Cart.php:29:Access to an undefined property Nabilet/Modules/Cart/Models/Cart::$public_id.
+app/Modules/Cart/Services/CartService.php:60:Access to an undefined property Nabilet/Modules/Sessions/Models/Session::$id.
+app/Modules/Cart/Services/CartService.php:65:Call to an undefined static method Nabilet/Modules/Cart/Models/Cart::create().
+app/Modules/Cart/Services/CartService.php:121:Access to an undefined property Nabilet/Modules/Sessions/Models/Session::$id.
+app/Modules/Cart/Services/CartService.php:181:Cannot call method update() on stdClass.
+app/Modules/Cart/Services/CartService.php:188:Cannot call method fresh() on stdClass.
+app/Modules/Cart/Services/CartService.php:192:Call to an undefined static method Nabilet/Modules/Cart/Models/CartItem::create().
+app/Modules/Cart/Services/CartService.php:204:Call to an undefined static method Nabilet/Modules/Orders/Models/SeatHold::create().
+app/Modules/Cart/Services/CartService.php:215:Cannot call method update() on stdClass.
+app/Modules/Cart/Services/CartService.php:217:Cannot call method update() on stdClass.
+app/Modules/Cart/Services/CartService.php:264:Call to protected method increment() of class Illuminate/Database/Eloquent/Model.
+app/Modules/Cart/Services/CartService.php:265:Access to an undefined property Nabilet/Modules/Inventory/Models/InventoryItem::$status.
+app/Modules/Cart/Services/CartService.php:268:Access to an undefined property Nabilet/Modules/Inventory/Models/InventoryItem::$available_quantity.
+app/Modules/Cart/Services/CartService.php:315:Cannot call method update() on stdClass.
+app/Modules/Cart/Services/CartService.php:319:Parameter #1 $cart of method Nabilet/Modules/Cart/Services/CartService::releaseCartInventory() expects Nabilet/Modules/Cart/Models/Cart, stdClass given.
+app/Modules/Cart/Services/CartService.php:338:Access to an undefined property Nabilet/Modules/Sessions/Models/Session::$id.
+app/Modules/Cart/Services/CartService.php:374:Cannot call method update() on stdClass.
+app/Modules/Cart/Services/CartService.php:394:Cannot call method session() on stdClass.
+app/Modules/Cart/Services/CartService.php:398:Call to an undefined static method Nabilet/Modules/Orders/Models/Order::create().
+app/Modules/Cart/Services/CartService.php:423:Call to an undefined static method Nabilet/Modules/Orders/Models/OrderItem::create().
+app/Modules/Cart/Services/CartService.php:475:Call to an undefined static method Nabilet/Modules/Cart/Models/CartItem::where().
+app/Modules/Cart/Services/CartService.php:524:Cannot call method items() on stdClass.
+app/Modules/Cart/Services/CartService.php:542:Cannot call method update() on stdClass.
+app/Modules/Cart/Services/CartService.php:548:Call to an undefined method Illuminate/Support/Collection<int, stdClass>::modelKeys().
+app/Modules/Cart/Services/CartService.php:593:Access to an undefined property Nabilet/Modules/Inventory/Models/InventoryItem::$status.
+app/Modules/Cart/Services/CartService.php:594:Call to protected method increment() of class Illuminate/Database/Eloquent/Model.
+app/Modules/Cart/Services/CartService.php:596:Access to an undefined property Nabilet/Modules/Inventory/Models/InventoryItem::$available_quantity.
+app/Modules/Cart/Services/CartService.php:596:Access to an undefined property Nabilet/Modules/Inventory/Models/InventoryItem::$capacity.
+app/Modules/Cart/Services/CartService.php:603:Cannot call method update() on stdClass.
+app/Modules/Cart/Services/CartService.php:612:Call to an undefined static method Nabilet/Modules/Cart/Models/CartItem::where().
+app/Modules/Checkin/Domain/CheckinEvaluator.php:13:If condition is always false.
+app/Modules/Checkin/Domain/CheckinEvaluator.php:15:Class Nabilet/Modules/Checkin/Domain/CheckinEvaluator extends final class Nabilet/Modules/Tickets/Domain/CheckinEvaluator.
+app/Modules/Core/Organizations/Http/Controllers/OrganizationController.php:104:Access to an undefined property Nabilet/Modules/Core/Organizations/Models/Organization::$owner_id.
+app/Modules/Core/Organizations/Http/Controllers/OrganizationController.php:104:Access to an undefined property Nabilet/Modules/Core/Users/Models/User::$id.
+app/Modules/Core/Organizations/Http/Controllers/OrganizationController.php:113:Access to an undefined property Nabilet/Modules/Core/Users/Models/User::$id.
+app/Modules/Core/Organizations/Http/Controllers/OrganizationController.php:122:Access to an undefined property Nabilet/Modules/Core/Users/Models/User::$id.
+app/Modules/Core/Organizations/Http/Controllers/OrganizationController.php:133:Access to an undefined property Nabilet/Modules/Core/Users/Models/User::$id.
+app/Modules/Core/Organizations/Http/Controllers/OrganizationController.php:151:Access to an undefined property Nabilet/Modules/Core/Organizations/Models/Organization::$owner_id.
+app/Modules/Core/Organizations/Http/Controllers/OrganizationController.php:151:Access to an undefined property Nabilet/Modules/Core/Users/Models/User::$id.
+app/Modules/Core/Organizations/Http/Resources/OrganizationResource.php:15:Access to an undefined property Nabilet/Modules/Core/Organizations/Http/Resources/OrganizationResource::$id.
+app/Modules/Core/Organizations/Http/Resources/OrganizationResource.php:16:Access to an undefined property Nabilet/Modules/Core/Organizations/Http/Resources/OrganizationResource::$public_id.
+app/Modules/Core/Organizations/Http/Resources/OrganizationResource.php:17:Access to an undefined property Nabilet/Modules/Core/Organizations/Http/Resources/OrganizationResource::$name.
+app/Modules/Core/Organizations/Http/Resources/OrganizationResource.php:18:Access to an undefined property Nabilet/Modules/Core/Organizations/Http/Resources/OrganizationResource::$description.
+app/Modules/Core/Organizations/Http/Resources/OrganizationResource.php:19:Access to an undefined property Nabilet/Modules/Core/Organizations/Http/Resources/OrganizationResource::$slug.
+app/Modules/Core/Organizations/Http/Resources/OrganizationResource.php:20:Access to an undefined property Nabilet/Modules/Core/Organizations/Http/Resources/OrganizationResource::$status.
+app/Modules/Core/Organizations/Http/Resources/OrganizationResource.php:21:Access to an undefined property Nabilet/Modules/Core/Organizations/Http/Resources/OrganizationResource::$logo_url.
+app/Modules/Core/Organizations/Http/Resources/OrganizationResource.php:23:Access to an undefined property Nabilet/Modules/Core/Organizations/Http/Resources/OrganizationResource::$owner.
+app/Modules/Core/Organizations/Http/Resources/OrganizationResource.php:24:Access to an undefined property Nabilet/Modules/Core/Organizations/Http/Resources/OrganizationResource::$owner.
+app/Modules/Core/Organizations/Http/Resources/OrganizationResource.php:25:Access to an undefined property Nabilet/Modules/Core/Organizations/Http/Resources/OrganizationResource::$owner.
+app/Modules/Core/Organizations/Http/Resources/OrganizationResource.php:27:Access to an undefined property Nabilet/Modules/Core/Organizations/Http/Resources/OrganizationResource::$members.
+app/Modules/Core/Organizations/Http/Resources/OrganizationResource.php:28:Access to an undefined property Nabilet/Modules/Core/Organizations/Http/Resources/OrganizationResource::$created_at.
+app/Modules/Core/Organizations/Http/Resources/OrganizationResource.php:29:Access to an undefined property Nabilet/Modules/Core/Organizations/Http/Resources/OrganizationResource::$updated_at.
+app/Modules/Core/Organizations/Repositories/OrganizationRepository.php:23:Call to an undefined method Nabilet/Modules/Core/Organizations/Models/Organization::where().
+app/Modules/Core/Organizations/Repositories/OrganizationRepository.php:28:Call to an undefined method Nabilet/Modules/Core/Organizations/Models/Organization::where().
+app/Modules/Core/Organizations/Repositories/OrganizationRepository.php:39:Method Nabilet/Modules/Core/Organizations/Repositories/OrganizationRepository::all() should return Illuminate/Database/Eloquent/Collection but returns Illuminate/Pagination/LengthAwarePaginator<int, Nabilet/Modules/Core/Organizations/Models/Organization>.
+app/Modules/Core/Organizations/Repositories/OrganizationRepository.php:44:Call to an undefined method Nabilet/Modules/Core/Organizations/Models/Organization::create().
+app/Modules/Core/Organizations/Services/OrganizationService.php:47:Access to an undefined property Nabilet/Modules/Core/Users/Models/User::$id.
+app/Modules/Core/Organizations/Services/OrganizationService.php:52:Access to an undefined property Nabilet/Modules/Core/Users/Models/User::$id.
+app/Modules/Core/Organizations/Services/OrganizationService.php:80:Access to an undefined property Nabilet/Modules/Core/Users/Models/User::$id.
+app/Modules/Core/Organizations/Services/OrganizationService.php:85:Access to an undefined property Nabilet/Modules/Core/Users/Models/User::$id.
+app/Modules/Core/Organizations/Services/OrganizationService.php:90:Access to an undefined property Nabilet/Modules/Core/Users/Models/User::$id.
+app/Modules/Core/Users/Http/Controllers/UserController.php:70:Access to an undefined property Nabilet/Modules/Core/Users/Models/User::$id.
+app/Modules/Core/Users/Models/User.php:71:Access to an undefined property Nabilet/Modules/Core/Users/Models/User::$public_id.
+app/Modules/Core/Users/Repositories/UserRepository.php:23:Call to an undefined method Nabilet/Modules/Core/Users/Models/User::where().
+app/Modules/Core/Users/Repositories/UserRepository.php:28:Call to an undefined method Nabilet/Modules/Core/Users/Models/User::where().
+app/Modules/Core/Users/Repositories/UserRepository.php:55:Call to an undefined method Nabilet/Modules/Core/Users/Models/User::create().
+app/Modules/Core/Users/Repositories/UserRepository.php:99:Call to an undefined method Nabilet/Modules/Core/Users/Models/User::where().
+app/Modules/Core/Users/Services/UserService.php:53:Access to an undefined property Nabilet/Modules/Core/Users/Models/User::$email.
+app/Modules/Core/Users/Services/UserService.php:73:Access to an undefined property Nabilet/Modules/Core/Users/Models/User::$password.
+app/Modules/Events/Http/Controllers/EventController.php:68:Access to an undefined property Nabilet/Modules/Events/Models/Event::$sessions.
+app/Modules/Events/Http/Controllers/EventPageController.php:28:Property Nabilet/Modules/Events/Http/Controllers/EventPageController::$eventService is never read, only written.
+app/Modules/Events/Http/Controllers/EventPageController.php:41:Access to an undefined property Nabilet/Modules/Events/Models/Event::$status.
+app/Modules/Events/Http/Controllers/EventPageController.php:42:Method Nabilet/Modules/Events/Http/Controllers/EventPageController::show() should return Illuminate/Http/RedirectResponse|Illuminate/Http/Response but returns Illuminate/Http/JsonResponse.
+app/Modules/Events/Http/Controllers/EventPageController.php:52:Access to an undefined property Nabilet/Modules/Events/Models/Event::$slug.
+app/Modules/Events/Http/Controllers/EventPageController.php:53:Access to an undefined property Nabilet/Modules/Events/Models/Event::$public_id.
+app/Modules/Events/Http/Controllers/EventPageController.php:62:Access to an undefined property Nabilet/Modules/Events/Models/Event::$title.
+app/Modules/Events/Http/Controllers/EventPageController.php:66:Access to an undefined property Nabilet/Modules/Events/Models/Event::$title.
+app/Modules/Events/Http/Controllers/EventPageController.php:69:Access to an undefined property Nabilet/Modules/Events/Models/Event::$title.
+app/Modules/Events/Http/Controllers/EventPageController.php:70:Access to an undefined property Nabilet/Modules/Events/Models/Event::$short_description.
+app/Modules/Events/Http/Controllers/EventPageController.php:71:Access to an undefined property Nabilet/Modules/Events/Models/Event::$description.
+app/Modules/Events/Http/Controllers/EventPageController.php:72:Access to an undefined property Nabilet/Modules/Events/Models/Event::$slug.
+app/Modules/Events/Http/Controllers/EventPageController.php:73:Access to an undefined property Nabilet/Modules/Events/Models/Event::$public_id.
+app/Modules/Events/Http/Controllers/EventPageController.php:74:Access to an undefined property Nabilet/Modules/Events/Models/Event::$status.
+app/Modules/Events/Http/Controllers/EventPageController.php:75:Access to an undefined property Nabilet/Modules/Events/Models/Event::$poster.
+app/Modules/Events/Http/Controllers/EventPageController.php:76:Access to an undefined property Nabilet/Modules/Events/Models/Event::$cover.
+app/Modules/Events/Http/Controllers/EventPageController.php:77:Access to an undefined property Nabilet/Modules/Events/Models/Event::$start_datetime.
+app/Modules/Events/Http/Controllers/EventPageController.php:78:Access to an undefined property Nabilet/Modules/Events/Models/Event::$end_datetime.
+app/Modules/Events/Http/Controllers/EventPageController.php:81:Access to an undefined property Nabilet/Modules/Events/Models/Event::$organization.
+app/Modules/Events/Http/Controllers/EventPageController.php:88:Access to an undefined property Nabilet/Modules/Events/Models/Event::$poster.
+app/Modules/Events/Http/Requests/UpdateEventRequest.php:27:Cannot access property $id on object|string.
+app/Modules/Events/Http/Resources/EventCategoryResource.php:17:Access to an undefined property Nabilet/Modules/Events/Models/EventCategory::$id.
+app/Modules/Events/Http/Resources/EventCategoryResource.php:18:Access to an undefined property Nabilet/Modules/Events/Models/EventCategory::$slug.
+app/Modules/Events/Http/Resources/EventCategoryResource.php:19:Call to an undefined method Nabilet/Modules/Events/Models/EventCategory::getTranslation().
+app/Modules/Events/Http/Resources/EventCategoryResource.php:20:Call to an undefined method Nabilet/Modules/Events/Models/EventCategory::getTranslation().
+app/Modules/Events/Http/Resources/EventCategoryResource.php:21:Access to an undefined property Nabilet/Modules/Events/Models/EventCategory::$parent_id.
+app/Modules/Events/Http/Resources/EventCategoryResource.php:22:Access to an undefined property Nabilet/Modules/Events/Models/EventCategory::$created_at.
+app/Modules/Events/Http/Resources/EventResource.php:20:Access to an undefined property Nabilet/Modules/Events/Models/Event::$sessions.
+app/Modules/Events/Http/Resources/EventResource.php:24:Access to an undefined property Nabilet/Modules/Events/Models/Event::$id.
+app/Modules/Events/Http/Resources/EventResource.php:25:Access to an undefined property Nabilet/Modules/Events/Models/Event::$public_id.
+app/Modules/Events/Http/Resources/EventResource.php:26:Access to an undefined property Nabilet/Modules/Events/Models/Event::$slug.
+app/Modules/Events/Http/Resources/EventResource.php:27:Access to an undefined property Nabilet/Modules/Events/Models/Event::$organization_id.
+app/Modules/Events/Http/Resources/EventResource.php:28:Access to an undefined property Nabilet/Modules/Events/Models/Event::$category.
+app/Modules/Events/Http/Resources/EventResource.php:28:Call to an undefined method Nabilet/Modules/Events/Models/Event::whenLoaded().
+app/Modules/Events/Http/Resources/EventResource.php:29:Access to an undefined property Nabilet/Modules/Events/Models/Event::$title.
+app/Modules/Events/Http/Resources/EventResource.php:30:Access to an undefined property Nabilet/Modules/Events/Models/Event::$description.
+app/Modules/Events/Http/Resources/EventResource.php:31:Access to an undefined property Nabilet/Modules/Events/Models/Event::$short_description.
+app/Modules/Events/Http/Resources/EventResource.php:32:Access to an undefined property Nabilet/Modules/Events/Models/Event::$status.
+app/Modules/Events/Http/Resources/EventResource.php:33:Access to an undefined property Nabilet/Modules/Events/Models/Event::$published_at.
+app/Modules/Events/Http/Resources/EventResource.php:34:Access to an undefined property Nabilet/Modules/Events/Models/Event::$age_limit.
+app/Modules/Events/Http/Resources/EventResource.php:35:Access to an undefined property Nabilet/Modules/Events/Models/Event::$duration_minutes.
+app/Modules/Events/Http/Resources/EventResource.php:36:Access to an undefined property Nabilet/Modules/Events/Models/Event::$poster.
+app/Modules/Events/Http/Resources/EventResource.php:37:Access to an undefined property Nabilet/Modules/Events/Models/Event::$cover.
+app/Modules/Events/Http/Resources/EventResource.php:38:Access to an undefined property Nabilet/Modules/Events/Models/Event::$seo_title.
+app/Modules/Events/Http/Resources/EventResource.php:39:Access to an undefined property Nabilet/Modules/Events/Models/Event::$seo_description.
+app/Modules/Events/Http/Resources/EventResource.php:44:Access to an undefined property Nabilet/Modules/Events/Models/Event::$sessions.
+app/Modules/Events/Http/Resources/EventResource.php:44:Call to an undefined method Nabilet/Modules/Events/Models/Event::whenLoaded().
+app/Modules/Events/Http/Resources/EventResource.php:58:Access to an undefined property Nabilet/Modules/Events/Models/Event::$created_at.
+app/Modules/Events/Http/Resources/EventResource.php:59:Access to an undefined property Nabilet/Modules/Events/Models/Event::$updated_at.
+app/Modules/Events/Models/Event.php:25:Access to an undefined property Nabilet/Modules/Events/Models/Event::$public_id.
+app/Modules/Events/Repositories/EventRepository.php:34:Method Nabilet/Modules/Events/Repositories/EventRepository::all() should return Illuminate/Database/Eloquent/Collection<int, Nabilet/Modules/Events/Models/Event> but returns Illuminate/Database/Eloquent/Collection<int, Illuminate/Database/Eloquent/Model>.
+app/Modules/Events/Services/EventService.php:139:Access to an undefined property Nabilet/Modules/Events/Models/Event::$status.
+app/Modules/Events/Services/EventService.php:147:Access to an undefined property Nabilet/Modules/Events/Models/Event::$status.
+app/Modules/Installer/Http/Controllers/InstallerController.php:387:Call to an undefined static method App/Models/User::create().
+app/Modules/Inventory/Console/ClearExpiredHoldsCommand.php:73:Offset 'released' on array{released: int, orders_expired: int, errors: array} on left side of ?? always exists and is not nullable.
+app/Modules/Inventory/Console/ClearExpiredHoldsCommand.php:74:Offset 'errors' on array{released: int, orders_expired: int, errors: array} on left side of ?? always exists and is not nullable.
+app/Modules/Inventory/Http/Controllers/InventoryController.php:59:Access to an undefined property Nabilet/Modules/Inventory/Models/InventoryItem::$seat.
+app/Modules/Inventory/Http/Controllers/InventoryController.php:94:Access to an undefined property Nabilet/Modules/Inventory/Models/InventoryItem::$seat.
+app/Modules/Inventory/Models/InventoryItem.php:51:Access to an undefined property Nabilet/Modules/Inventory/Models/InventoryItem::$public_id.
+app/Modules/Inventory/Models/InventoryItem.php:54:Access to an undefined property Nabilet/Modules/Inventory/Models/InventoryItem::$currency.
+app/Modules/Inventory/Models/InventoryItem.php:57:Access to an undefined property Nabilet/Modules/Inventory/Models/InventoryItem::$capacity.
+app/Modules/Inventory/Models/InventoryItem.php:60:Access to an undefined property Nabilet/Modules/Inventory/Models/InventoryItem::$available_quantity.
+app/Modules/Inventory/Models/InventoryItem.php:63:Access to an undefined property Nabilet/Modules/Inventory/Models/InventoryItem::$status.
+app/Modules/Inventory/Repositories/InventoryItemRepository.php:25:Call to an undefined method Nabilet/Modules/Inventory/Models/InventoryItem::where().
+app/Modules/Inventory/Repositories/InventoryItemRepository.php:32:Call to an undefined method Nabilet/Modules/Inventory/Models/InventoryItem::where().
+app/Modules/Inventory/Repositories/InventoryItemRepository.php:39:Call to an undefined method Nabilet/Modules/Inventory/Models/InventoryItem::where().
+app/Modules/Inventory/Repositories/InventoryItemRepository.php:48:Call to an undefined method Nabilet/Modules/Inventory/Models/InventoryItem::create().
+app/Modules/Inventory/Repositories/InventoryItemRepository.php:59:Call to protected method decrement() of class Illuminate/Database/Eloquent/Model.
+app/Modules/Inventory/Repositories/InventoryItemRepository.php:61:Access to an undefined property Nabilet/Modules/Inventory/Models/InventoryItem::$available_quantity.
+app/Modules/Inventory/Repositories/InventoryItemRepository.php:70:Call to protected method increment() of class Illuminate/Database/Eloquent/Model.
+app/Modules/Inventory/Repositories/InventoryItemRepository.php:72:Access to an undefined property Nabilet/Modules/Inventory/Models/InventoryItem::$available_quantity.
+app/Modules/Inventory/Repositories/InventoryItemRepository.php:72:Access to an undefined property Nabilet/Modules/Inventory/Models/InventoryItem::$status.
+app/Modules/Inventory/Repositories/InventoryItemRepository.php:81:Call to an undefined method Nabilet/Modules/Inventory/Models/InventoryItem::insert().
+app/Modules/Inventory/Services/HoldSweeper.php:206:Call to an undefined static method Nabilet/Modules/Cart/Models/Cart::find().
+app/Modules/Inventory/Services/HoldSweeper.php:212:Cannot call method update() on stdClass.
+app/Modules/Inventory/Services/InventoryService.php:49:Access to an undefined property Nabilet/Modules/Venues/Models/HallSchemaVersion::$id.
+app/Modules/Inventory/Services/InventoryService.php:51:Access to an undefined property Nabilet/Modules/Venues/Models/Sector::$id.
+app/Modules/Inventory/Services/InventoryService.php:53:Access to an undefined property Nabilet/Modules/Venues/Models/HallRow::$id.
+app/Modules/Inventory/Services/InventoryService.php:55:Access to an undefined property Nabilet/Modules/Venues/Models/Sector::$id.
+app/Modules/Inventory/Services/InventoryService.php:57:Access to an undefined property Nabilet/Modules/Venues/Models/HallSchemaVersion::$id.
+app/Modules/Inventory/Services/InventoryService.php:62:Call to an undefined static method Nabilet/Modules/Venues/Models/Sector::create().
+app/Modules/Inventory/Services/InventoryService.php:63:Access to an undefined property Nabilet/Modules/Venues/Models/HallSchemaVersion::$id.
+app/Modules/Inventory/Services/InventoryService.php:79:Call to an undefined static method Nabilet/Modules/Venues/Models/HallRow::create().
+app/Modules/Inventory/Services/InventoryService.php:105:Call to an undefined static method Nabilet/Modules/Venues/Models/Seat::create().
+app/Modules/Inventory/Services/InventoryService.php:124:Access to an undefined property Nabilet/Modules/Sessions/Models/Session::$id.
+app/Modules/Inventory/Services/InventoryService.php:124:Call to an undefined static method Nabilet/Modules/Inventory/Models/InventoryItem::where().
+app/Modules/Inventory/Services/InventoryService.php:134:Call to an undefined static method Nabilet/Modules/Venues/Models/StandingZone::create().
+app/Modules/Inventory/Services/InventoryService.php:143:Access to an undefined property Nabilet/Modules/Sessions/Models/Session::$id.
+app/Modules/Inventory/Services/InventoryService.php:164:Access to an undefined property Nabilet/Modules/Venues/Models/HallRow::$id.
+app/Modules/Inventory/Services/InventoryService.php:168:Access to an undefined property Nabilet/Modules/Sessions/Models/Session::$id.
+app/Modules/Inventory/Services/InventoryService.php:170:Access to an undefined property Nabilet/Modules/Venues/Models/Seat::$id.
+app/Modules/Inventory/Services/InventoryService.php:171:Access to an undefined property Nabilet/Modules/Venues/Models/HallRow::$price_amount.
+app/Modules/Inventory/Services/InventoryService.php:178:Access to an undefined property Nabilet/Modules/Venues/Models/HallRow::$name.
+app/Modules/Inventory/Services/InventoryService.php:179:Access to an undefined property Nabilet/Modules/Venues/Models/Seat::$number.
+app/Modules/Inventory/Services/InventoryService.php:249:Access to an undefined property Nabilet/Modules/Sessions/Models/Session::$id.
+app/Modules/Inventory/Services/InventoryService.php:254:Access to an undefined property Nabilet/Modules/Sessions/Models/Session::$id.
+app/Modules/Inventory/Services/InventoryService.php:264:Access to an undefined property Nabilet/Modules/Sessions/Models/Session::$id.
+app/Modules/Inventory/Services/InventoryService.php:271:Access to an undefined property Nabilet/Modules/Sessions/Models/Session::$id.
+app/Modules/Inventory/Services/InventoryService.php:281:Call to an undefined static method Nabilet/Modules/Venues/Models/HallRow::find().
+app/Modules/Inventory/Services/InventoryService.php:291:Access to an undefined property Nabilet/Modules/Sessions/Models/Session::$id.
+app/Modules/Inventory/Services/InventoryService.php:297:Access to an undefined property Nabilet/Modules/Sessions/Models/Session::$id.
+app/Modules/Inventory/Services/InventoryService.php:307:Access to an undefined property Nabilet/Modules/Sessions/Models/Session::$id.
+app/Modules/Inventory/Services/InventoryService.php:316:Access to an undefined property Nabilet/Modules/Sessions/Models/Session::$id.
+app/Modules/Inventory/Services/InventoryService.php:331:Access to an undefined property Nabilet/Modules/Sessions/Models/Session::$id.
+app/Modules/Inventory/Services/InventoryService.php:353:Call to an undefined method Illuminate/Database/Query/Builder::whereHas().
+app/Modules/Inventory/Services/InventoryService.php:403:Access to an undefined property Nabilet/Modules/Sessions/Models/Session::$id.
+app/Modules/Inventory/Services/InventoryService.php:408:Access to an undefined property Nabilet/Modules/Sessions/Models/Session::$id.
+app/Modules/Inventory/Services/InventoryService.php:408:Call to an undefined static method Nabilet/Modules/Inventory/Models/InventoryItem::where().
+app/Modules/Inventory/Services/InventoryService.php:413:Access to an undefined property Nabilet/Modules/Sessions/Models/Session::$id.
+app/Modules/Inventory/Services/InventoryService.php:418:Access to an undefined property Nabilet/Modules/Sessions/Models/Session::$id.
+app/Modules/Inventory/Services/InventoryService.php:423:Access to an undefined property Nabilet/Modules/Inventory/Models/InventoryItem::$available_quantity.
+app/Modules/Notifications/Services/NewsletterService.php:25:Call to an undefined static method App/Models/User::where().
+app/Modules/Notifications/Services/NewsletterService.php:43:Call to static method error() on an unknown class Log.
+app/Modules/Orders/Http/Resources/OrderItemResource.php:15:Access to an undefined property Nabilet/Modules/Orders/Http/Resources/OrderItemResource::$public_id.
+app/Modules/Orders/Http/Resources/OrderItemResource.php:16:Access to an undefined property Nabilet/Modules/Orders/Http/Resources/OrderItemResource::$quantity.
+app/Modules/Orders/Http/Resources/OrderItemResource.php:17:Access to an undefined property Nabilet/Modules/Orders/Http/Resources/OrderItemResource::$unit_price.
+app/Modules/Orders/Http/Resources/OrderItemResource.php:18:Access to an undefined property Nabilet/Modules/Orders/Http/Resources/OrderItemResource::$total_price.
+app/Modules/Orders/Http/Resources/OrderItemResource.php:20:Access to an undefined property Nabilet/Modules/Orders/Http/Resources/OrderItemResource::$inventoryItem.
+app/Modules/Orders/Http/Resources/OrderItemResource.php:21:Access to an undefined property Nabilet/Modules/Orders/Http/Resources/OrderItemResource::$inventoryItem.
+app/Modules/Orders/Http/Resources/OrderItemResource.php:22:Access to an undefined property Nabilet/Modules/Orders/Http/Resources/OrderItemResource::$inventoryItem.
+app/Modules/Orders/Http/Resources/OrderItemResource.php:23:Access to an undefined property Nabilet/Modules/Orders/Http/Resources/OrderItemResource::$inventoryItem.
+app/Modules/Orders/Http/Resources/OrderItemResource.php:24:Access to an undefined property Nabilet/Modules/Orders/Http/Resources/OrderItemResource::$inventoryItem.
+app/Modules/Orders/Http/Resources/OrderItemResource.php:25:Access to an undefined property Nabilet/Modules/Orders/Http/Resources/OrderItemResource::$inventoryItem.
+app/Modules/Orders/Http/Resources/OrderItemResource.php:26:Access to an undefined property Nabilet/Modules/Orders/Http/Resources/OrderItemResource::$inventoryItem.
+app/Modules/Orders/Http/Resources/OrderItemResource.php:27:Access to an undefined property Nabilet/Modules/Orders/Http/Resources/OrderItemResource::$inventoryItem.
+app/Modules/Orders/Http/Resources/OrderResource.php:15:Access to an undefined property Nabilet/Modules/Orders/Http/Resources/OrderResource::$public_id.
+app/Modules/Orders/Http/Resources/OrderResource.php:16:Access to an undefined property Nabilet/Modules/Orders/Http/Resources/OrderResource::$order_number.
+app/Modules/Orders/Http/Resources/OrderResource.php:17:Access to an undefined property Nabilet/Modules/Orders/Http/Resources/OrderResource::$status.
+app/Modules/Orders/Http/Resources/OrderResource.php:18:Access to an undefined property Nabilet/Modules/Orders/Http/Resources/OrderResource::$total_amount.
+app/Modules/Orders/Http/Resources/OrderResource.php:19:Access to an undefined property Nabilet/Modules/Orders/Http/Resources/OrderResource::$paid_amount.
+app/Modules/Orders/Http/Resources/OrderResource.php:21:Access to an undefined property Nabilet/Modules/Orders/Http/Resources/OrderResource::$payment_status.
+app/Modules/Orders/Http/Resources/OrderResource.php:22:Access to an undefined property Nabilet/Modules/Orders/Http/Resources/OrderResource::$items_count.
+app/Modules/Orders/Http/Resources/OrderResource.php:24:Access to an undefined property Nabilet/Modules/Orders/Http/Resources/OrderResource::$customer_email.
+app/Modules/Orders/Http/Resources/OrderResource.php:25:Access to an undefined property Nabilet/Modules/Orders/Http/Resources/OrderResource::$customer_phone.
+app/Modules/Orders/Http/Resources/OrderResource.php:26:Access to an undefined property Nabilet/Modules/Orders/Http/Resources/OrderResource::$customer_first_name.
+app/Modules/Orders/Http/Resources/OrderResource.php:27:Access to an undefined property Nabilet/Modules/Orders/Http/Resources/OrderResource::$customer_last_name.
+app/Modules/Orders/Http/Resources/OrderResource.php:33:Access to an undefined property Nabilet/Modules/Orders/Http/Resources/OrderResource::$organization.
+app/Modules/Orders/Http/Resources/OrderResource.php:34:Access to an undefined property Nabilet/Modules/Orders/Http/Resources/OrderResource::$organization.
+app/Modules/Orders/Http/Resources/OrderResource.php:36:Access to an undefined property Nabilet/Modules/Orders/Http/Resources/OrderResource::$created_at.
+app/Modules/Orders/Http/Resources/OrderResource.php:37:Access to an undefined property Nabilet/Modules/Orders/Http/Resources/OrderResource::$expires_at.
+app/Modules/Orders/Http/Resources/OrderResource.php:38:Access to an undefined property Nabilet/Modules/Orders/Http/Resources/OrderResource::$paid_at.
+app/Modules/Orders/Http/Resources/PaymentResource.php:21:Access to an undefined property Nabilet/Modules/Orders/Http/Resources/PaymentResource::$public_id.
+app/Modules/Orders/Http/Resources/PaymentResource.php:22:Access to an undefined property Nabilet/Modules/Orders/Http/Resources/PaymentResource::$provider.
+app/Modules/Orders/Http/Resources/PaymentResource.php:23:Access to an undefined property Nabilet/Modules/Orders/Http/Resources/PaymentResource::$provider_payment_id.
+app/Modules/Orders/Http/Resources/PaymentResource.php:24:Access to an undefined property Nabilet/Modules/Orders/Http/Resources/PaymentResource::$amount.
+app/Modules/Orders/Http/Resources/PaymentResource.php:25:Access to an undefined property Nabilet/Modules/Orders/Http/Resources/PaymentResource::$currency.
+app/Modules/Orders/Http/Resources/PaymentResource.php:26:Access to an undefined property Nabilet/Modules/Orders/Http/Resources/PaymentResource::$status.
+app/Modules/Orders/Http/Resources/PaymentResource.php:27:Access to an undefined property Nabilet/Modules/Orders/Http/Resources/PaymentResource::$payment_url.
+app/Modules/Orders/Http/Resources/PaymentResource.php:28:Access to an undefined property Nabilet/Modules/Orders/Http/Resources/PaymentResource::$paid_at.
+app/Modules/Orders/Http/Resources/PaymentResource.php:29:Access to an undefined property Nabilet/Modules/Orders/Http/Resources/PaymentResource::$created_at.
+app/Modules/Orders/Models/SeatHold.php:80:Cannot call method isPast() on string.
+app/Modules/Orders/Models/SeatHold.php:96:Cannot call method copy() on string.
+app/Modules/Orders/Models/SeatHold.php:98:Cannot call method isFuture() on string.
+app/Modules/Orders/Repositories/OrderRepository.php:30:Call to an undefined method Nabilet/Modules/Orders/Models/Order::where().
+app/Modules/Orders/Repositories/OrderRepository.php:41:Call to an undefined method Nabilet/Modules/Orders/Models/Order::where().
+app/Modules/Orders/Repositories/OrderRepository.php:115:Call to an undefined method Nabilet/Modules/Orders/Models/Order::create().
+app/Modules/Orders/Repositories/OrderRepository.php:138:Method Nabilet/Modules/Orders/Repositories/OrderRepository::addItem() should return Nabilet/Modules/Orders/Models/OrderItem but returns Illuminate/Database/Eloquent/Model.
+app/Modules/Orders/Repositories/OrderRepository.php:143:Call to an undefined method Nabilet/Modules/Orders/Models/Order::where().
+app/Modules/Orders/Repositories/OrderRepository.php:151:Call to an undefined method Nabilet/Modules/Orders/Models/Order::where().
+app/Modules/Orders/Repositories/OrderRepository.php:152:Call to static method raw() on an unknown class DB.
+app/Modules/Orders/Services/OrderService.php:33:Call to an undefined static method Nabilet/Modules/Inventory/Models/InventoryItem::findOrFail().
+app/Modules/Orders/Services/OrderService.php:162:Anonymous function has an unused use $reason.
+app/Modules/Orders/Services/OrderService.php:178:Access to an undefined property Nabilet/Modules/Orders/Models/Order::$items.
+app/Modules/Orders/Services/OrderService.php:227:Anonymous function has an unused use $payment.
+app/Modules/Payments/Http/Controllers/PaymentController.php:226:Access to an undefined property Nabilet/Modules/Payments/Models/Payment::$order.
+app/Modules/Payments/Providers/YooKassaProvider.php:107:Offset 'order_id' on array{amount: int, currency: string, order_id: int, description: string, customer_email?: string, success_url?: string, failure_url?: string} on left side of ?? always exists and is not nullable.
+app/Modules/Payments/Providers/YooKassaProvider.php:108:Offset 'amount' on array{amount: int, currency: string, order_id: int, description: string, customer_email?: string, success_url?: string, failure_url?: string} on left side of ?? always exists and is not nullable.
+app/Modules/Payments/Providers/YooKassaProvider.php:111:Method Nabilet/Modules/Payments/Providers/YooKassaProvider::createPayment() should return array{payment_id: string, status: string, confirmation_url?: string, confirmation_token?: string, provider_data: array} but returns array{payment_id: non-falsy-string, status: 'pending', confirmation_url: non-falsy-string, confirmation_token: null, provider_data: array{id: non-falsy-string, status: 'pending', demo: true}}.
+app/Modules/Payments/Providers/YooKassaProvider.php:126:Offset 'idempotency_key' on array{amount: int, currency: string, order_id: int, description: string, customer_email?: string, success_url?: string, failure_url?: string} on left side of ?? does not exist.
+app/Modules/Payments/Providers/YooKassaProvider.php:140:Offset 'description' on array{amount: int, currency: string, order_id: int, description: string, customer_email?: string, success_url?: string, failure_url?: string} on left side of ?? always exists and is not nullable.
+app/Modules/Payments/Repositories/PaymentRepository.php:76:Call to an undefined method Nabilet/Modules/Payments/Models/Payment::where().
+app/Modules/Payments/Repositories/PaymentRepository.php:89:Call to an undefined method Nabilet/Modules/Payments/Models/Payment::where().
+app/Modules/Payments/Repositories/PaymentRepository.php:96:Call to an undefined method Nabilet/Modules/Payments/Models/Payment::create().
+app/Modules/Payments/Repositories/PaymentRepository.php:107:Method Nabilet/Modules/Payments/Repositories/PaymentRepository::addTransaction() should return Nabilet/Modules/Payments/Models/PaymentTransaction but returns Illuminate/Database/Eloquent/Model.
+app/Modules/Payments/Repositories/PaymentRepository.php:112:Call to an undefined method Nabilet/Modules/Payments/Models/Payment::whereHas().
+app/Modules/Payments/Repositories/PaymentRepository.php:123:Call to an undefined method Nabilet/Modules/Payments/Models/Payment::whereHas().
+app/Modules/Payments/Repositories/PaymentRepository.php:126:Call to static method raw() on an unknown class DB.
+app/Modules/Payments/Repositories/PaymentRepository.php:165:Call to an undefined method Nabilet/Modules/Payments/Models/Payment::where().
+app/Modules/Payments/Services/PaymentService.php:81:Call to an undefined static method Nabilet/Modules/Orders/Models/Order::findOrFail().
+app/Modules/Payments/Services/PaymentService.php:91:Call to an undefined static method Nabilet/Modules/Payments/Models/Payment::where().
+app/Modules/Payments/Services/PaymentService.php:105:Call to an undefined static method Nabilet/Modules/Payments/Models/Payment::where().
+app/Modules/Payments/Services/PaymentService.php:117:Parameter #1 $paymentData of method Nabilet/Modules/Payments/Providers/PaymentProviderInterface::createPayment() expects array{amount: int, currency: string, order_id: int, description: string, customer_email?: string, success_url?: string, failure_url?: string}, array{order_id: numeric-string, amount: int, currency: mixed, description: non-falsy-string, success_url: string, idempotency_key: string} given.
+app/Modules/Payments/Services/PaymentService.php:157:Call to an undefined static method Nabilet/Modules/Payments/Models/Payment::where().
+app/Modules/Payments/Services/PaymentService.php:187:Call to an undefined static method Nabilet/Modules/Payments/Models/Payment::where().
+app/Modules/Payments/Services/PaymentService.php:196:Call to an undefined static method Nabilet/Modules/Orders/Models/Order::findOrFail().
+app/Modules/Payments/Services/PaymentService.php:208:Offset 'metadata' on array{provider?: string, provider_payment_id?: string|null, amount?: int|null, currency?: string|null, payment_url?: string|null, idempotency_key?: string|null} on left side of ?? does not exist.
+app/Modules/Payments/Services/PaymentService.php:255:Call to an undefined static method Nabilet/Modules/Payments/Models/Payment::where().
+app/Modules/Payments/Services/PaymentService.php:332:Access to an undefined property Nabilet/Modules/Payments/Models/Payment::$order.
+app/Modules/Payments/Services/PaymentService.php:397:Access to an undefined property Illuminate/Database/Eloquent/Model::$inventoryItem.
+app/Modules/Payments/Services/PaymentService.php:426:Call to an undefined static method Nabilet/Modules/Orders/Models/SeatHold::where().
+app/Modules/Payments/Services/PaymentService.php:469:Call to an undefined static method Nabilet/Modules/Orders/Models/SeatHold::where().
+app/Modules/Payments/Services/PaymentService.php:508:Access to an undefined property Nabilet/Modules/Payments/Models/Payment::$order.
+app/Modules/Payments/Services/PaymentService.php:534:Access to an undefined property Nabilet/Modules/Payments/Models/Payment::$order.
+app/Modules/Payments/Services/RefundService.php:116:Parameter #2 $refund of method Nabilet/Modules/Payments/Services/RefundService::transition() expects Nabilet/Modules/Payments/Models/Refund, Illuminate/Database/Eloquent/Model given.
+app/Modules/Payments/Services/RefundService.php:121:Parameter #2 $refund of method Nabilet/Modules/Payments/Services/RefundService::transition() expects Nabilet/Modules/Payments/Models/Refund, Illuminate/Database/Eloquent/Model given.
+app/Modules/Payments/Services/RefundService.php:124:Offset 'refund_id' on array{refund_id: string, status: string, amount: int, provider_data: array} on left side of ?? always exists and is not nullable.
+app/Modules/Payments/Services/RefundService.php:131:Access to an undefined property Illuminate/Database/Eloquent/Model::$id.
+app/Modules/Payments/Services/RefundService.php:138:Access to an undefined property Nabilet/Modules/Payments/Models/Payment::$order.
+app/Modules/Payments/Services/RefundService.php:154:Call to an undefined static method Nabilet/Modules/Tickets/Models/Ticket::where().
+app/Modules/Seo/Http/Controllers/SitemapController.php:40:Parameter #2 $default of method Illuminate/Http/Request::query() expects array|string|null, int given.
+app/Modules/Seo/Http/Controllers/SitemapController.php:43:Call to an undefined method Illuminate/Contracts/Pagination/LengthAwarePaginator::getCollection().
+app/Modules/Seo/Services/SitemapService.php:31:Constant Nabilet/Modules/Seo/Services/SitemapService::CACHE_TTL is unused.
+app/Modules/Seo/Services/SitemapService.php:142:Access to an undefined property Nabilet/Modules/Events/Models/Event::$published_at.
+app/Modules/Seo/Services/SitemapService.php:148:Access to an undefined property Nabilet/Modules/Events/Models/Event::$status.
+app/Modules/Seo/Services/SitemapService.php:176:Access to an undefined property Nabilet/Modules/Events/Models/Event::$slug.
+app/Modules/Seo/Services/SitemapService.php:177:Access to an undefined property Nabilet/Modules/Events/Models/Event::$public_id.
+app/Modules/Seo/Services/StructuredDataService.php:192:Method Nabilet/Modules/Seo/Services/StructuredDataService::buildOffers() should return array<string, mixed> but returns array<int, array<string, mixed>>.
+app/Modules/Sessions/Http/Controllers/SessionController.php:97:Call to an undefined static method Nabilet/Modules/Sessions/Models/Session::create().
+app/Modules/Sessions/Http/Controllers/SessionController.php:103:Call to an undefined static method Nabilet/Modules/Venues/Models/HallSchemaVersion::findOrFail().
+app/Modules/Sessions/Http/Resources/SessionResource.php:15:Access to an undefined property Nabilet/Modules/Sessions/Http/Resources/SessionResource::$public_id.
+app/Modules/Sessions/Http/Resources/SessionResource.php:16:Access to an undefined property Nabilet/Modules/Sessions/Http/Resources/SessionResource::$name.
+app/Modules/Sessions/Http/Resources/SessionResource.php:17:Access to an undefined property Nabilet/Modules/Sessions/Http/Resources/SessionResource::$starts_at.
+app/Modules/Sessions/Http/Resources/SessionResource.php:18:Access to an undefined property Nabilet/Modules/Sessions/Http/Resources/SessionResource::$ends_at.
+app/Modules/Sessions/Http/Resources/SessionResource.php:19:Access to an undefined property Nabilet/Modules/Sessions/Http/Resources/SessionResource::$doors_open_at.
+app/Modules/Sessions/Http/Resources/SessionResource.php:20:Access to an undefined property Nabilet/Modules/Sessions/Http/Resources/SessionResource::$is_published.
+app/Modules/Sessions/Http/Resources/SessionResource.php:21:Access to an undefined property Nabilet/Modules/Sessions/Http/Resources/SessionResource::$min_price.
+app/Modules/Sessions/Http/Resources/SessionResource.php:22:Access to an undefined property Nabilet/Modules/Sessions/Http/Resources/SessionResource::$max_price.
+app/Modules/Sessions/Http/Resources/SessionResource.php:24:Access to an undefined property Nabilet/Modules/Sessions/Http/Resources/SessionResource::$available_tickets.
+app/Modules/Sessions/Http/Resources/SessionResource.php:26:Access to an undefined property Nabilet/Modules/Sessions/Http/Resources/SessionResource::$event.
+app/Modules/Sessions/Http/Resources/SessionResource.php:27:Access to an undefined property Nabilet/Modules/Sessions/Http/Resources/SessionResource::$event.
+app/Modules/Sessions/Http/Resources/SessionResource.php:28:Access to an undefined property Nabilet/Modules/Sessions/Http/Resources/SessionResource::$event.
+app/Modules/Sessions/Http/Resources/SessionResource.php:31:Access to an undefined property Nabilet/Modules/Sessions/Http/Resources/SessionResource::$hall.
+app/Modules/Sessions/Http/Resources/SessionResource.php:32:Access to an undefined property Nabilet/Modules/Sessions/Http/Resources/SessionResource::$hall.
+app/Modules/Sessions/Http/Resources/SessionResource.php:33:Access to an undefined property Nabilet/Modules/Sessions/Http/Resources/SessionResource::$hall.
+app/Modules/Sessions/Http/Resources/SessionResource.php:34:Access to an undefined property Nabilet/Modules/Sessions/Http/Resources/SessionResource::$hall.
+app/Modules/Sessions/Http/Resources/SessionResource.php:37:Access to an undefined property Nabilet/Modules/Sessions/Http/Resources/SessionResource::$hall.
+app/Modules/Sessions/Http/Resources/SessionResource.php:38:Access to an undefined property Nabilet/Modules/Sessions/Http/Resources/SessionResource::$hall.
+app/Modules/Sessions/Http/Resources/SessionResource.php:41:Access to an undefined property Nabilet/Modules/Sessions/Http/Resources/SessionResource::$schemaVersion.
+app/Modules/Sessions/Http/Resources/SessionResource.php:42:Access to an undefined property Nabilet/Modules/Sessions/Http/Resources/SessionResource::$schemaVersion.
+app/Modules/Sessions/Http/Resources/SessionResource.php:43:Access to an undefined property Nabilet/Modules/Sessions/Http/Resources/SessionResource::$schemaVersion.
+app/Modules/Sessions/Http/Resources/SessionResource.php:45:Access to an undefined property Nabilet/Modules/Sessions/Http/Resources/SessionResource::$created_at.
+app/Modules/Sessions/Http/Resources/SessionResource.php:46:Access to an undefined property Nabilet/Modules/Sessions/Http/Resources/SessionResource::$updated_at.
+app/Modules/Sessions/Models/Session.php:38:Access to an undefined property Nabilet/Modules/Sessions/Models/Session::$public_id.
+app/Modules/Sessions/Models/Session.php:98:Access to an undefined property Nabilet/Modules/Sessions/Models/Session::$status.
+app/Modules/Sessions/Models/Session.php:102:Access to an undefined property Nabilet/Modules/Sessions/Models/Session::$sales_start_at.
+app/Modules/Sessions/Models/Session.php:106:Access to an undefined property Nabilet/Modules/Sessions/Models/Session::$sales_end_at.
+app/Modules/Sessions/Models/Session.php:120:Access to an undefined property Nabilet/Modules/Sessions/Models/Session::$status.
+app/Modules/Sessions/Models/Session.php:121:Access to an undefined property Nabilet/Modules/Sessions/Models/Session::$status.
+app/Modules/Sessions/Models/Session.php:124:Access to an undefined property Nabilet/Modules/Sessions/Models/Session::$sales_start_at.
+app/Modules/Sessions/Models/Session.php:128:Access to an undefined property Nabilet/Modules/Sessions/Models/Session::$sales_end_at.
+app/Modules/Storefront/Services/StorefrontService.php:216:Method Nabilet/Modules/Storefront/Services/StorefrontService::findRow() should return Nabilet/Modules/Storefront/Models/StorefrontSetting|null but returns stdClass|null.
+app/Modules/System/Http/Controllers/SystemStatusController.php:66:Call to static method call() on an unknown class Artisan.
+app/Modules/System/Http/Controllers/SystemStatusController.php:67:Call to static method call() on an unknown class Artisan.
+app/Modules/System/Http/Controllers/SystemStatusController.php:68:Call to static method call() on an unknown class Artisan.
+app/Modules/Tickets/Domain/TicketIssuance.php:42:Offset 'order_item_id' on array{order_item_id: int, quantity: int} on left side of ?? always exists and is not nullable.
+app/Modules/Tickets/Domain/TicketIssuance.php:43:Offset 'quantity' on array{order_item_id: int, quantity: int} on left side of ?? always exists and is not nullable.
+app/Modules/Tickets/Domain/TicketRevocation.php:52:Offset 'order_item_id' on array{order_item_id: int, quantity: int} on left side of ?? always exists and is not nullable.
+app/Modules/Tickets/Domain/TicketRevocation.php:53:Offset 'quantity' on array{order_item_id: int, quantity: int} on left side of ?? always exists and is not nullable.
+app/Modules/Tickets/Http/Controllers/CheckinController.php:72:Call to an undefined static method Nabilet/Modules/Tickets/Models/Ticket::where().
+app/Modules/Tickets/Http/Controllers/TicketController.php:149:Access to an undefined property Nabilet/Modules/Tickets/Models/Ticket::$qr_version.
+app/Modules/Tickets/Http/Controllers/TicketController.php:174:Access to an undefined property Nabilet/Modules/Tickets/Models/Ticket::$used_at.
+app/Modules/Tickets/Http/Controllers/TicketController.php:175:Access to an undefined property Nabilet/Modules/Tickets/Models/Ticket::$revoked_at.
+app/Modules/Tickets/Http/Controllers/TicketController.php:190:Access to an undefined property Nabilet/Modules/Tickets/Models/Ticket::$order.
+app/Modules/Tickets/Models/CheckinDevice.php:36:Access to an undefined property Nabilet/Modules/Tickets/Models/CheckinDevice::$public_id.
+app/Modules/Tickets/Models/OfflineBundle.php:50:Access to an undefined property Nabilet/Modules/Tickets/Models/OfflineBundle::$public_id.
+app/Modules/Tickets/Models/TicketTemplate.php:42:Access to an undefined property Nabilet/Modules/Tickets/Models/TicketTemplate::$public_id.
+app/Modules/Tickets/Repositories/TicketRepository.php:40:Call to an undefined method Nabilet/Modules/Tickets/Models/Ticket::where().
+app/Modules/Tickets/Repositories/TicketRepository.php:53:Call to an undefined method Nabilet/Modules/Tickets/Models/Ticket::where().
+app/Modules/Tickets/Repositories/TicketRepository.php:62:Call to an undefined method Nabilet/Modules/Tickets/Models/Ticket::where().
+app/Modules/Tickets/Repositories/TicketRepository.php:69:Call to an undefined method Nabilet/Modules/Tickets/Models/Ticket::create().
+app/Modules/Tickets/Repositories/TicketRepository.php:117:Method Nabilet/Modules/Tickets/Repositories/TicketRepository::recordScan() should return Nabilet/Modules/Tickets/Models/TicketScan but returns Illuminate/Database/Eloquent/Model.
+app/Modules/Tickets/Repositories/TicketRepository.php:119:Access to an undefined property Nabilet/Modules/Tickets/Models/Ticket::$session_id.
+app/Modules/Tickets/Repositories/TicketRepository.php:136:Call to an undefined method Nabilet/Modules/Tickets/Models/Ticket::where().
+app/Modules/Tickets/Repositories/TicketRepository.php:144:Call to an undefined method Nabilet/Modules/Tickets/Models/Ticket::where().
+app/Modules/Tickets/Repositories/TicketRepository.php:148:Call to an undefined method Nabilet/Modules/Tickets/Models/Ticket::where().
+app/Modules/Tickets/Services/TicketGeneratorService.php:47:Access to an undefined property Nabilet/Modules/Tickets/Models/Ticket::$order.
+app/Modules/Tickets/Services/TicketGeneratorService.php:55:Access to an undefined property Nabilet/Modules/Tickets/Models/Ticket::$event.
+app/Modules/Tickets/Services/TicketGeneratorService.php:56:Access to an undefined property Nabilet/Modules/Tickets/Models/Ticket::$session.
+app/Modules/Tickets/Services/TicketGeneratorService.php:57:Access to an undefined property Nabilet/Modules/Tickets/Models/Ticket::$seat.
+app/Modules/Tickets/Services/TicketGeneratorService.php:58:Access to an undefined property Nabilet/Modules/Tickets/Models/Ticket::$standingZone.
+app/Modules/Tickets/Services/TicketScanService.php:117:Parameter #1 $ticket of method Nabilet/Modules/Tickets/Services/TicketScanService::snapshot() expects Nabilet/Modules/Tickets/Models/Ticket, stdClass given.
+app/Modules/Tickets/Services/TicketScanService.php:121:Parameter #1 $ticket of method Nabilet/Modules/Tickets/Repositories/TicketRepository::recordScan() expects Nabilet/Modules/Tickets/Models/Ticket, stdClass given.
+app/Modules/Tickets/Services/TicketScanService.php:142:Cannot call method update() on stdClass.
+app/Modules/Tickets/Services/TicketScanService.php:152:Cannot call method fresh() on stdClass.
+app/Modules/Tickets/Services/TicketScanService.php:165:Access to an undefined property Nabilet/Modules/Tickets/Models/Ticket::$session_id.
+app/Modules/Tickets/Services/TicketScanService.php:285:Parameter #1 $ticket of method Nabilet/Modules/Tickets/Services/TicketScanService::snapshot() expects Nabilet/Modules/Tickets/Models/Ticket, stdClass given.
+app/Modules/Tickets/Services/TicketScanService.php:289:Parameter #1 $ticket of method Nabilet/Modules/Tickets/Repositories/TicketRepository::recordScan() expects Nabilet/Modules/Tickets/Models/Ticket, stdClass given.
+app/Modules/Tickets/Services/TicketScanService.php:300:Parameter #1 $ticket of method Nabilet/Modules/Tickets/Repositories/TicketRepository::revoke() expects Nabilet/Modules/Tickets/Models/Ticket, stdClass given.
+app/Modules/Tickets/Services/TicketScanService.php:302:Cannot call method update() on stdClass.
+app/Modules/Tickets/Services/TicketScanService.php:389:Access to an undefined property Nabilet/Modules/Tickets/Models/Ticket::$session_id.
+app/Modules/Tickets/Services/TicketScanService.php:390:Access to an undefined property Nabilet/Modules/Tickets/Models/Ticket::$event_id.
+app/Modules/Tickets/Services/TicketScanService.php:392:Access to an undefined property Nabilet/Modules/Tickets/Models/Ticket::$used_at.
+app/Modules/Tickets/Services/TicketScanService.php:393:Access to an undefined property Nabilet/Modules/Tickets/Models/Ticket::$revoked_at.
+app/Modules/Tickets/Services/TicketScanService.php:394:Access to an undefined property Nabilet/Modules/Tickets/Models/Ticket::$cancelled_at.
+app/Modules/Tickets/Services/TicketScanService.php:395:Access to an undefined property Nabilet/Modules/Tickets/Models/Ticket::$refunded_at.
+app/Modules/Tickets/Services/TicketScanService.php:396:Access to an undefined property Nabilet/Modules/Tickets/Models/Ticket::$expired_at.
+app/Modules/Tickets/Services/TicketScanService.php:397:Access to an undefined property Nabilet/Modules/Tickets/Models/Ticket::$revoked_reason.
+app/Modules/Tickets/Services/TicketService.php:51:Call to an undefined static method Nabilet/Modules/Tickets/Models/Ticket::where().
+app/Modules/Tickets/Services/TicketService.php:60:Access to an undefined property Nabilet/Modules/Orders/Models/Order::$items.
+app/Modules/Tickets/Services/TicketService.php:61:Call to an undefined static method Nabilet/Modules/Inventory/Models/InventoryItem::find().
+app/Modules/Tickets/Services/TicketService.php:105:Call to an undefined static method Nabilet/Modules/Tickets/Models/Ticket::create().
+app/Modules/Tickets/Services/TicketService.php:170:Access to an undefined property Nabilet/Modules/Tickets/Models/Ticket::$session_id.
+app/Modules/Venues/Halls/Http/Controllers/HallController.php:132:Access to an undefined property Nabilet/Modules/Venues/Models/HallSchemaVersion::$id.
+app/Modules/Venues/Halls/Http/Controllers/HallController.php:133:Access to an undefined property Nabilet/Modules/Venues/Models/HallSchemaVersion::$public_id.
+app/Modules/Venues/Halls/Http/Controllers/HallController.php:134:Access to an undefined property Nabilet/Modules/Venues/Models/HallSchemaVersion::$hall_id.
+app/Modules/Venues/Halls/Http/Controllers/HallController.php:135:Access to an undefined property Nabilet/Modules/Venues/Models/HallSchemaVersion::$version.
+app/Modules/Venues/Halls/Http/Controllers/HallController.php:136:Access to an undefined property Nabilet/Modules/Venues/Models/HallSchemaVersion::$status.
+app/Modules/Venues/Halls/Http/Controllers/HallController.php:137:Access to an undefined property Nabilet/Modules/Venues/Models/HallSchemaVersion::$width.
+app/Modules/Venues/Halls/Http/Controllers/HallController.php:138:Access to an undefined property Nabilet/Modules/Venues/Models/HallSchemaVersion::$height.
+app/Modules/Venues/Halls/Http/Controllers/HallController.php:139:Access to an undefined property Nabilet/Modules/Venues/Models/HallSchemaVersion::$background_url.
+app/Modules/Venues/Halls/Http/Controllers/HallController.php:140:Access to an undefined property Nabilet/Modules/Venues/Models/HallSchemaVersion::$schema_json.
+app/Modules/Venues/Halls/Http/Controllers/HallController.php:141:Access to an undefined property Nabilet/Modules/Venues/Models/HallSchemaVersion::$published_at.
+app/Modules/Venues/Halls/Http/Resources/HallResource.php:14:Access to an undefined property Nabilet/Modules/Venues/Halls/Http/Resources/HallResource::$id.
+app/Modules/Venues/Halls/Http/Resources/HallResource.php:15:Access to an undefined property Nabilet/Modules/Venues/Halls/Http/Resources/HallResource::$public_id.
+app/Modules/Venues/Halls/Http/Resources/HallResource.php:16:Access to an undefined property Nabilet/Modules/Venues/Halls/Http/Resources/HallResource::$name.
+app/Modules/Venues/Halls/Http/Resources/HallResource.php:17:Access to an undefined property Nabilet/Modules/Venues/Halls/Http/Resources/HallResource::$venue_id.
+app/Modules/Venues/Halls/Http/Resources/SchemaVersionResource.php:14:Access to an undefined property Nabilet/Modules/Venues/Halls/Http/Resources/SchemaVersionResource::$id.
+app/Modules/Venues/Halls/Http/Resources/SchemaVersionResource.php:15:Access to an undefined property Nabilet/Modules/Venues/Halls/Http/Resources/SchemaVersionResource::$public_id.
+app/Modules/Venues/Halls/Http/Resources/SchemaVersionResource.php:16:Access to an undefined property Nabilet/Modules/Venues/Halls/Http/Resources/SchemaVersionResource::$hall_id.
+app/Modules/Venues/Halls/Http/Resources/SchemaVersionResource.php:17:Access to an undefined property Nabilet/Modules/Venues/Halls/Http/Resources/SchemaVersionResource::$version.
+app/Modules/Venues/Halls/Http/Resources/SchemaVersionResource.php:19:Access to an undefined property Nabilet/Modules/Venues/Halls/Http/Resources/SchemaVersionResource::$status.
+app/Modules/Venues/Halls/Http/Resources/SchemaVersionResource.php:20:Access to an undefined property Nabilet/Modules/Venues/Halls/Http/Resources/SchemaVersionResource::$width.
+app/Modules/Venues/Halls/Http/Resources/SchemaVersionResource.php:21:Access to an undefined property Nabilet/Modules/Venues/Halls/Http/Resources/SchemaVersionResource::$height.
+app/Modules/Venues/Halls/Http/Resources/SchemaVersionResource.php:22:Access to an undefined property Nabilet/Modules/Venues/Halls/Http/Resources/SchemaVersionResource::$background_url.
+app/Modules/Venues/Halls/Http/Resources/SchemaVersionResource.php:23:Access to an undefined property Nabilet/Modules/Venues/Halls/Http/Resources/SchemaVersionResource::$schema_json.
+app/Modules/Venues/Halls/Http/Resources/SchemaVersionResource.php:24:Access to an undefined property Nabilet/Modules/Venues/Halls/Http/Resources/SchemaVersionResource::$published_at.
+app/Modules/Venues/Halls/Http/Resources/SchemaVersionResource.php:25:Access to an undefined property Nabilet/Modules/Venues/Halls/Http/Resources/SchemaVersionResource::$created_at.
+app/Modules/Venues/Halls/Repositories/HallRepository.php:38:Call to an undefined method Nabilet/Modules/Venues/Models/Hall::where().
+app/Modules/Venues/Halls/Repositories/HallRepository.php:58:Call to an undefined method Nabilet/Modules/Venues/Models/Hall::where().
+app/Modules/Venues/Halls/Repositories/HallRepository.php:72:Call to an undefined method Nabilet/Modules/Venues/Models/Hall::create().
+app/Modules/Venues/Halls/Repositories/HallRepository.php:88:Method Nabilet/Modules/Venues/Halls/Repositories/HallRepository::getSchemaVersions() should return Illuminate/Database/Eloquent/Collection but returns Illuminate/Support/Collection<int, stdClass>.
+app/Modules/Venues/Halls/Repositories/HallRepository.php:95:Method Nabilet/Modules/Venues/Halls/Repositories/HallRepository::createSchemaVersion() should return Nabilet/Modules/Venues/Models/HallSchemaVersion but returns Illuminate/Database/Eloquent/Model.
+app/Modules/Venues/Halls/Services/HallService.php:48:Access to an undefined property Nabilet/Modules/Venues/Models/HallSchemaVersion::$id.
+app/Modules/Venues/Halls/Services/HallService.php:49:Access to an undefined property Nabilet/Modules/Venues/Models/HallSchemaVersion::$hall_id.
+app/Modules/Venues/Halls/Services/HallService.php:50:Access to an undefined property Nabilet/Modules/Venues/Models/HallSchemaVersion::$version.
+app/Modules/Venues/Halls/Services/HallService.php:51:Access to an undefined property Nabilet/Modules/Venues/Models/HallSchemaVersion::$status.
+app/Modules/Venues/Halls/Services/HallService.php:53:Access to an undefined property Nabilet/Modules/Venues/Models/HallSchemaVersion::$published_at.
+app/Modules/Venues/Halls/Services/HallService.php:168:Access to an undefined property Nabilet/Modules/Venues/Models/Hall::$id.
+app/Modules/Venues/Halls/Services/HallService.php:175:Cannot call method schemaVersions() on stdClass.
+app/Modules/Venues/Halls/Services/HallService.php:182:Parameter #1 $hall of method Nabilet/Modules/Venues/Halls/Repositories/HallRepository::delete() expects Nabilet/Modules/Venues/Models/Hall, stdClass given.
+app/Modules/Venues/Halls/Services/HallService.php:237:Method Nabilet/Modules/Venues/Halls/Services/HallService::getPublishedSchemaVersion() should return Nabilet/Modules/Venues/Models/HallSchemaVersion|null but returns stdClass|null.
+app/Modules/Venues/Halls/Services/HallService.php:238:Access to an undefined property Nabilet/Modules/Venues/Models/Hall::$id.
+app/Modules/Venues/Halls/Services/HallService.php:246:Anonymous function has an unused use $userId.
+app/Modules/Venues/Halls/Services/HallService.php:252:Access to an undefined property Nabilet/Modules/Venues/Models/Hall::$id.
+app/Modules/Venues/Halls/Services/HallService.php:254:Access to an undefined property Nabilet/Modules/Venues/Models/Hall::$public_id.
+app/Modules/Venues/Halls/Services/HallService.php:258:Cannot call method schemaVersions() on stdClass.
+app/Modules/Venues/Halls/Services/HallService.php:297:Cannot call method schemaVersions() on stdClass.
+app/Modules/Venues/Halls/Services/HallService.php:310:Parameter #1 $hall of method Nabilet/Modules/Venues/Halls/Repositories/HallRepository::createSchemaVersion() expects Nabilet/Modules/Venues/Models/Hall, stdClass given.
+app/Modules/Venues/Halls/Services/HallService.php:326:Anonymous function has an unused use $userId.
+app/Modules/Venues/Halls/Services/HallService.php:337:Cannot call method schemaVersions() on stdClass.
+app/Modules/Venues/Halls/Services/HallService.php:345:Cannot call method schemaVersions() on stdClass.
+app/Modules/Venues/Halls/Services/HallService.php:347:Access to an undefined property Nabilet/Modules/Venues/Models/HallSchemaVersion::$status.
+app/Modules/Venues/Halls/Services/HallService.php:372:Access to an undefined property Nabilet/Modules/Venues/Models/HallSchemaVersion::$id.
+app/Modules/Venues/Halls/Services/HallService.php:373:Access to an undefined property Nabilet/Modules/Venues/Models/HallSchemaVersion::$status.
+app/Modules/Venues/Halls/Services/HallService.php:403:Cannot call method schemaVersions() on stdClass.
+app/Modules/Venues/Http/Controllers/VenueController.php:99:Call to an undefined static method Nabilet/Modules/Venues/Models/Venue::where().
+app/Modules/Venues/Http/Controllers/VenueController.php:104:Call to an undefined static method Nabilet/Modules/Venues/Models/Venue::create().
+app/Modules/Venues/Http/Controllers/VenueController.php:118:Access to an undefined property Nabilet/Modules/Venues/Models/Venue::$id.
+app/Modules/Venues/Models/Hall.php:37:Access to an undefined property Nabilet/Modules/Venues/Models/Hall::$public_id.
+app/Modules/Venues/Models/Hall.php:81:Method Nabilet/Modules/Venues/Models/Hall::currentSchemaVersion() should return Illuminate/Database/Eloquent/Relations/HasOne but returns Illuminate/Database/Query/Builder.
+app/Modules/Venues/Models/HallRow.php:59:Access to an undefined property Nabilet/Modules/Venues/Models/HallRow::$public_id.
+app/Modules/Venues/Models/HallSchemaVersion.php:58:Access to an undefined property Nabilet/Modules/Venues/Models/HallSchemaVersion::$public_id.
+app/Modules/Venues/Models/Seat.php:69:Access to an undefined property Nabilet/Modules/Venues/Models/Seat::$public_id.
+app/Modules/Venues/Models/Sector.php:72:Access to an undefined property Nabilet/Modules/Venues/Models/Sector::$public_id.
+app/Modules/Venues/Models/Venue.php:53:Access to an undefined property Nabilet/Modules/Venues/Models/Venue::$public_id.
+app/Modules/Webhooks/Http/Controllers/WebhookController.php:60:Call to static method error() on an unknown class Log.
+app/Modules/Webhooks/Http/Controllers/WebhookController.php:98:Call to static method error() on an unknown class Log.
+config/auth.php:0:Ignored error pattern #Class Nabilet//Modules//Users//Models//User not found# in path C:/Project/nabilet/config/auth.php was not matched in reported errors.
+routes/web.php:53:Strict comparison using === between int|false and null will always evaluate to false.
+tests/Feature/HallSchemaLifecycleTest.php:68:Access to an undefined property Nabilet/Modules/Venues/Models/HallSchemaVersion::$revision.
+tests/Feature/HallSchemaLifecycleTest.php:74:Access to an undefined property Nabilet/Modules/Venues/Models/HallSchemaVersion::$id.
+tests/Feature/HallSchemaLifecycleTest.php:77:Access to an undefined property Nabilet/Modules/Venues/Models/HallSchemaVersion::$revision.
+tests/Feature/HallSchemaLifecycleTest.php:84:Access to an undefined property Nabilet/Modules/Venues/Models/HallSchemaVersion::$id.
+tests/Feature/HallSchemaLifecycleTest.php:93:Access to an undefined property Nabilet/Modules/Venues/Models/HallSchemaVersion::$schema_json.
+tests/Feature/HallSchemaLifecycleTest.php:99:Access to an undefined property Nabilet/Modules/Venues/Models/Hall::$public_id.
+tests/Feature/HallSchemaLifecycleTest.php:99:Access to an undefined property Nabilet/Modules/Venues/Models/HallSchemaVersion::$id.
+tests/Feature/HallSchemaLifecycleTest.php:102:Access to an undefined property Nabilet/Modules/Venues/Models/Hall::$public_id.
+tests/Feature/HallSchemaLifecycleTest.php:102:Access to an undefined property Nabilet/Modules/Venues/Models/HallSchemaVersion::$id.
+tests/Feature/HallSchemaLifecycleTest.php:104:Access to an undefined property Nabilet/Modules/Venues/Models/HallSchemaVersion::$status.
+tests/Feature/HallSchemaLifecycleTest.php:105:Access to an undefined property Nabilet/Modules/Venues/Models/HallSchemaVersion::$status.
+tests/Feature/HallSchemaLifecycleTest.php:107:Access to an undefined property Nabilet/Modules/Venues/Models/HallSchemaVersion::$version.
+tests/Feature/HallSchemaLifecycleTest.php:114:Access to an undefined property Nabilet/Modules/Venues/Models/HallSchemaVersion::$id.
+tests/Feature/HallSchemaLifecycleTest.php:117:Access to an undefined property Nabilet/Modules/Venues/Models/HallSchemaVersion::$status.
+tests/Feature/HallSchemaLifecycleTest.php:121:Access to an undefined property Nabilet/Modules/Venues/Models/Hall::$public_id.
+tests/Feature/HallSchemaLifecycleTest.php:121:Access to an undefined property Nabilet/Modules/Venues/Models/HallSchemaVersion::$id.
+tests/Feature/HallSchemaLifecycleTest.php:133:Access to an undefined property Nabilet/Modules/Venues/Models/HallSchemaVersion::$id.
+tests/Feature/HallSchemaLifecycleTest.php:136:Access to an undefined property Nabilet/Modules/Venues/Models/HallSchemaVersion::$revision.
+tests/Feature/HallSchemaLifecycleTest.php:139:Access to an undefined property Nabilet/Modules/Venues/Models/HallSchemaVersion::$id.
+tests/Feature/HallSchemaLifecycleTest.php:143:Access to an undefined property Nabilet/Modules/Venues/Models/HallSchemaVersion::$revision.
+tests/Feature/HallSchemaLifecycleTest.php:147:Access to an undefined property Nabilet/Modules/Venues/Models/HallSchemaVersion::$id.
+tests/Feature/HallSchemaLifecycleTest.php:150:Access to an undefined property Nabilet/Modules/Venues/Models/HallSchemaVersion::$status.
+tests/Feature/HallSchemaLifecycleTest.php:154:Access to an undefined property Nabilet/Modules/Venues/Models/Hall::$public_id.
+tests/Feature/HallSchemaLifecycleTest.php:154:Access to an undefined property Nabilet/Modules/Venues/Models/HallSchemaVersion::$id.
+tests/Feature/HallSchemaLifecycleTest.php:157:Access to an undefined property Nabilet/Modules/Venues/Models/HallSchemaVersion::$id.
+tests/Feature/HallSchemaLifecycleTest.php:164:Access to an undefined property Nabilet/Modules/Venues/Models/HallSchemaVersion::$id.
+tests/Feature/HallSchemaLifecycleTest.php:168:Access to an undefined property Nabilet/Modules/Venues/Models/HallSchemaVersion::$id.
+tests/Feature/HallSchemaLifecycleTest.php:175:Access to an undefined property Nabilet/Modules/Venues/Models/HallSchemaVersion::$id.
+tests/Feature/HallSchemaLifecycleTest.php:233:Access to an undefined property Nabilet/Modules/Venues/Models/HallSchemaVersion::$id.
+tests/Feature/HallSchemaLifecycleTest.php:234:Access to an undefined property Nabilet/Modules/Venues/Models/HallSchemaVersion::$revision.
+tests/Feature/HallSchemaLifecycleTest.php:266:Access to an undefined property Illuminate/Database/Eloquent/Model::$revision.
+tests/Feature/HallSchemaLifecycleTest.php:273:Access to an undefined property Illuminate/Database/Eloquent/Model::$id.
+tests/Feature/HallSchemaLifecycleTest.php:277:Access to an undefined property Nabilet/Modules/Venues/Models/HallSchemaVersion::$revision.
+tests/Feature/HallSchemaLifecycleTest.php:283:Access to an undefined property Nabilet/Modules/Venues/Models/Hall::$public_id.
+tests/Feature/HallSchemaLifecycleTest.php:283:Access to an undefined property Nabilet/Modules/Venues/Models/HallSchemaVersion::$id.
+tests/Feature/HallSchemaLifecycleTest.php:293:Access to an undefined property Nabilet/Modules/Venues/Models/HallSchemaVersion::$id.
+tests/Feature/HallSchemaLifecycleTest.php:296:Access to an undefined property Nabilet/Modules/Venues/Models/HallSchemaVersion::$status.
+tests/Feature/HallSchemaLifecycleTest.php:300:Access to an undefined property Nabilet/Modules/Venues/Models/Hall::$id.
+tests/Feature/HallSchemaLifecycleTest.php:303:Access to an undefined property Nabilet/Modules/Venues/Models/Hall::$id.
+tests/Feature/HallSchemaLifecycleTest.php:313:Access to an undefined property Nabilet/Modules/Venues/Models/Hall::$id.
+tests/Feature/HallSchemaLifecycleTest.php:314:Access to an undefined property Nabilet/Modules/Venues/Models/HallSchemaVersion::$id.
+tests/Feature/HallSchemaVersionToInventoryTest.php:20:Access to an undefined property Nabilet/Modules/Venues/Models/HallSchemaVersion::$schema_json.
+tests/Feature/InventoryRepositoryContractTest.php:79:Call to an undefined method ReflectionType::getName().
+tests/Feature/InventoryRepositoryContractTest.php:80:Call to an undefined method ReflectionType::getName().
+tests/Feature/InventoryRepositoryContractTest.php:81:Call to an undefined method ReflectionType::getName().
+tests/Feature/InventoryRepositoryContractTest.php:89:Access to an undefined property App/Models/User::$name.
+tests/Feature/InventoryRepositoryContractTest.php:90:Access to an undefined property App/Models/User::$email.
+tests/Feature/InventoryRepositoryContractTest.php:103:Access to an undefined property Nabilet/Modules/Events/Models/Event::$title.
+tests/Feature/InventoryRepositoryContractTest.php:106:Access to an undefined property Nabilet/Modules/Venues/Models/Venue::$name.
+tests/Feature/InventoryRepositoryContractTest.php:109:Access to an undefined property Nabilet/Modules/Sessions/Models/Session::$starts_at.
+tests/Feature/InventoryRepositoryContractTest.php:113:Access to an undefined property Nabilet/Modules/Venues/Models/HallRow::$name.
+tests/Feature/InventoryRepositoryContractTest.php:116:Access to an undefined property Nabilet/Modules/Venues/Models/Seat::$number.
+tests/Feature/InventoryRepositoryContractTest.php:117:Access to an undefined property Nabilet/Modules/Venues/Models/Seat::$label.
+tests/Feature/Orders/OrderWritePathTest.php:420:Access to an undefined property Nabilet/Modules/Core/Users/Models/User::$id.
+tests/Feature/Orders/OrderWritePathTest.php:431:Access to an undefined property Nabilet/Modules/Core/Users/Models/User::$id.
+tests/Support/TestCase.php:196:Unreachable statement - code above always terminates.
+tests/Unit/CartTest.php:253:Parameter $items of class Nabilet/Modules/Cart/Domain/Cart constructor expects array<int, Nabilet/Modules/Cart/Domain/CartItem>, array<int, stdClass> given.
+tests/Unit/CartTest.php:526:Parameter #1 $holds of class Nabilet/Modules/Cart/Domain/CartPolicy constructor expects array<int, Nabilet/Modules/Inventory/Domain/SeatHold>, array<int, stdClass> given.
+tests/Unit/RetryPolicyTest.php:31:PHPDoc tag @param references unknown parameter: $override
+tests/Unit/SecurityPolicyTest.php:456:Parameter #2 $rules of method Nabilet/Modules/Security/Domain/IpRulePolicy::evaluate() expects array<int, Nabilet/Modules/Security/Domain/IpRule>, array<int, stdClass> given.

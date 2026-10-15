@@ -17,6 +17,11 @@ use Illuminate\Http\Resources\Json\JsonResource;
  *
  * `organization_id` не отдаём: он всегда равен организации из токена
  * (см. `TicketTemplateController`), и лишнее поле в ответе только сбивает с толку.
+ *
+ * `events` — мероприятия, которым назначен макет (id + title, без лишнего):
+ * список `/admin/ticket-templates` показывает, чьи билеты оформляет каждый
+ * макет. Подгружается контроллером (`with('events')`); без него ключа нет
+ * (`whenLoaded`), чтобы гостевые потребители не тянули лишнее.
  */
 class TicketTemplateResource extends JsonResource
 {
@@ -33,6 +38,9 @@ class TicketTemplateResource extends JsonResource
             'height' => (int) $template->height,
             'template_json' => $template->template_json ?? ['backgroundColor' => '#ffffff', 'elements' => []],
             'active' => (bool) $template->active,
+            'events' => $this->whenLoaded('events', fn () => $template->events->map(
+                fn ($event) => ['id' => (int) $event->id, 'title' => (string) $event->title]
+            )->values()->all(), []),
             'created_at' => $template->created_at?->toIso8601String(),
             'updated_at' => $template->updated_at?->toIso8601String(),
         ];

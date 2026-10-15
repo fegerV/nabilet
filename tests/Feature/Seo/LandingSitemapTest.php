@@ -202,6 +202,86 @@ final class LandingSitemapTest extends TestCase
         $this->assertStringContainsString(route('sitemap.organizers'), $this->indexXml());
     }
 
+    // ── Карта артистов (стратегия SEO, B-1) ────────────────────────────────
+
+    public function test_the_artists_sitemap_lists_artists_that_have_events(): void
+    {
+        $event = $this->seedCatalogEvent('Концерт', 'zal-art-sm-1', 'Москва');
+        $this->seedArtist('Би-2', 'bi-2', [$event['event']]);
+
+        $xml = $this->artistsSitemap();
+
+        $this->assertStringContainsString(route('landing.artist', ['slug' => 'bi-2']), $xml);
+        $this->assertStringContainsString('<lastmod>', $xml);
+        $this->assertStringContainsString('<changefreq>weekly</changefreq>', $xml);
+    }
+
+    public function test_the_artists_sitemap_skips_artists_without_public_events(): void
+    {
+        // Артист существует, но его единственное событие — черновик: страница
+        // такого артиста отвечает 404, и адрес в карте был бы обещанием, которое
+        // карта не выполняет.
+        $event = $this->seedCatalogEvent('Черновик', 'zal-art-sm-2', 'Москва', status: EventStatus::DRAFT);
+        $this->seedArtist('Пустой', 'pustoy-artist', [$event['event']]);
+
+        $this->assertStringNotContainsString(
+            route('landing.artist', ['slug' => 'pustoy-artist']),
+            $this->artistsSitemap(),
+        );
+    }
+
+    public function test_the_artists_sitemap_skips_artists_without_any_event(): void
+    {
+        // Артиста создали (например, `artists:sync` завёл запись до того, как у
+        // неё появилось событие) — страницы у него нет, значит и в карте его быть
+        // не должно.
+        $this->seedArtist('Без событий', 'bez-sobytij');
+
+        $this->assertStringNotContainsString(
+            route('landing.artist', ['slug' => 'bez-sobytij']),
+            $this->artistsSitemap(),
+        );
+    }
+
+    public function test_the_artists_sitemap_skips_inactive_artists(): void
+    {
+        $event = $this->seedCatalogEvent('Концерт', 'zal-art-sm-3', 'Москва');
+        $this->seedArtist('Закрытый', 'zakrytyj-artist', [$event['event']], 'inactive');
+
+        $this->assertStringNotContainsString(
+            route('landing.artist', ['slug' => 'zakrytyj-artist']),
+            $this->artistsSitemap(),
+        );
+    }
+
+    public function test_the_index_points_at_the_artists_sitemap(): void
+    {
+        $this->assertStringContainsString(route('sitemap.artists'), $this->indexXml());
+    }
+
+    public function test_every_address_in_the_artists_sitemap_answers_200(): void
+    {
+        $live = $this->seedCatalogEvent('Концерт', 'zal-art-sm-4', 'Москва');
+        $this->seedArtist('Би-2', 'bi-2', [$live['event']]);
+
+        // Второй артист с непубличным событием: его страница отвечает 404, и в
+        // карту он попадать не должен — иначе проверка «каждый адрес отвечает
+        // 200» упала бы, поймав ровно ту ошибку, ради которой написана.
+        $draftOnly = $this->seedCatalogEvent('Черновик', 'zal-art-sm-5', 'Москва', status: EventStatus::DRAFT);
+        $this->seedArtist('Пустой', 'pustoy-artist', [$draftOnly['event']]);
+
+        $locs = $this->locs($this->artistsSitemap());
+
+        $this->assertNotContains(
+            parse_url(route('landing.artist', ['slug' => 'pustoy-artist']), PHP_URL_PATH),
+            $locs,
+        );
+
+        foreach ($locs as $loc) {
+            $this->get($loc)->assertStatus(200);
+        }
+    }
+
     // ── Инвариант «адрес из карты отвечает 200» ────────────────────────────
 
     public function test_every_address_in_the_venues_sitemap_answers_200(): void
@@ -267,18 +347,20 @@ final class LandingSitemapTest extends TestCase
         $category = $this->seedCategory('Концерты', 'koncerty');
         $event = $this->seedCatalogEvent('Концерт', 'zal-lm', 'Оренбург', categoryId: $category);
         $this->seedOrganization($event['org'], 'surgut-koncert', 'Сургут-Концерт');
+        $artist = $this->seedArtist('Би-2', 'bi-2', [$event['event']]);
 
         $moment = Carbon::parse('2026-02-03 08:15:00');
 
-        // Дату правки двигаем ВСЕМ источникам: у площадки и организатора её даёт
-        // `GREATEST` из правки самой строки и правок её событий, поэтому без
-        // правки строки `venues`/`organizations` значение осталось бы равным
-        // моменту создания фикстуры (`now()`), и тест проверял бы не то. У
-        // категории своего `updated_at` нет вовсе (`$timestamps = false`),
-        // поэтому её дата — только из события.
+        // Дату правки двигаем ВСЕМ источникам: у площадки, организатора и
+        // артиста её даёт `GREATEST` из правки самой строки и правок её событий,
+        // поэтому без правки строки `venues`/`organizations`/`artists` значение
+        // осталось бы равным моменту создания фикстуры (`now()`), и тест
+        // проверял бы не то. У категории своего `updated_at` нет вовсе
+        // (`$timestamps = false`), поэтому её дата — только из события.
         DB::table('events')->where('id', $event['event'])->update(['updated_at' => $moment]);
         DB::table('venues')->where('id', $event['venue'])->update(['updated_at' => $moment]);
         DB::table('organizations')->where('id', $event['org'])->update(['updated_at' => $moment]);
+        DB::table('artists')->where('id', $artist)->update(['updated_at' => $moment]);
         Cache::flush();
 
         foreach ([
@@ -286,6 +368,7 @@ final class LandingSitemapTest extends TestCase
             $this->citiesSitemap(),
             $this->categoriesSitemap(),
             $this->organizersSitemap(),
+            $this->artistsSitemap(),
         ] as $xml) {
             $lastmod = Carbon::parse($this->firstLastmod($xml));
 
@@ -301,22 +384,61 @@ final class LandingSitemapTest extends TestCase
 
     public function test_the_landing_sitemaps_are_cached(): void
     {
-        $this->get('/api/v1/sitemap-venues.xml')->assertStatus(200);
-        $this->get('/api/v1/sitemap-cities.xml')->assertStatus(200);
-        $this->get('/api/v1/sitemap-categories.xml')->assertStatus(200);
-        $this->get('/api/v1/sitemap-organizers.xml')->assertStatus(200);
+        $this->get('/sitemap-venues.xml')->assertStatus(200);
+        $this->get('/sitemap-cities.xml')->assertStatus(200);
+        $this->get('/sitemap-categories.xml')->assertStatus(200);
+        $this->get('/sitemap-organizers.xml')->assertStatus(200);
+        $this->get('/sitemap-artists.xml')->assertStatus(200);
 
         $this->assertTrue(Cache::has('seo:sitemap:venues'), 'карта площадок не попала в кеш');
         $this->assertTrue(Cache::has('seo:sitemap:cities'), 'карта городов не попала в кеш');
         $this->assertTrue(Cache::has('seo:sitemap:categories'), 'карта категорий не попала в кеш');
         $this->assertTrue(Cache::has('seo:sitemap:organizers'), 'карта организаторов не попала в кеш');
+        $this->assertTrue(Cache::has('seo:sitemap:artists'), 'карта артистов не попала в кеш');
+    }
+
+    // ── Адреса карт (аудит P-10a) ──────────────────────────────────────────
+
+    /**
+     * Карты обязаны отвечать в корне сайта, а не под `/api/v1/`.
+     *
+     * ПОЧЕМУ ЭТО ТЕСТ, А НЕ СОГЛАШЕНИЕ. Внутри карт адреса строятся через
+     * `route()`, а не строками, поэтому достаточно один раз вернуть
+     * регистрацию в `Seo/routes/api.php` — и все шесть разделов молча уедут
+     * внутрь `/api/v1`, который `robots.txt` запрещает целиком. Снаружи это
+     * выглядит как «поисковик перестал обходить карту»: страницы живы, карта
+     * отдаёт 200, а в отчёте Search Console — тишина. Причина находится не
+     * сразу, поэтому проверка закреплена здесь.
+     */
+    public function test_the_sitemaps_are_served_from_the_site_root(): void
+    {
+        $this->get('/sitemap.xml')->assertStatus(200);
+        $this->get('/sitemap-events.xml')->assertStatus(200);
+        $this->get('/sitemap-static.xml')->assertStatus(200);
+
+        $locs = $this->locs($this->indexXml());
+
+        $this->assertNotSame([], $locs, 'карта-индекс пуста — проверять нечего');
+
+        foreach ($locs as $loc) {
+            $this->assertStringStartsWith(
+                '/sitemap-',
+                $loc,
+                'раздел карты уехал из корня сайта',
+            );
+            $this->assertStringNotContainsString(
+                '/api/v1/',
+                $loc,
+                'карта сайта не может жить внутри запрещённого в robots.txt раздела',
+            );
+        }
     }
 
     // ── Вспомогательное ────────────────────────────────────────────────────
 
     private function venuesSitemap(): string
     {
-        $response = $this->get('/api/v1/sitemap-venues.xml');
+        $response = $this->get('/sitemap-venues.xml');
 
         $response->assertStatus(200);
         $response->assertHeader('Content-Type', 'text/xml; charset=utf-8');
@@ -326,7 +448,7 @@ final class LandingSitemapTest extends TestCase
 
     private function citiesSitemap(): string
     {
-        $response = $this->get('/api/v1/sitemap-cities.xml');
+        $response = $this->get('/sitemap-cities.xml');
 
         $response->assertStatus(200);
         $response->assertHeader('Content-Type', 'text/xml; charset=utf-8');
@@ -336,7 +458,7 @@ final class LandingSitemapTest extends TestCase
 
     private function categoriesSitemap(): string
     {
-        $response = $this->get('/api/v1/sitemap-categories.xml');
+        $response = $this->get('/sitemap-categories.xml');
 
         $response->assertStatus(200);
         $response->assertHeader('Content-Type', 'text/xml; charset=utf-8');
@@ -346,7 +468,17 @@ final class LandingSitemapTest extends TestCase
 
     private function organizersSitemap(): string
     {
-        $response = $this->get('/api/v1/sitemap-organizers.xml');
+        $response = $this->get('/sitemap-organizers.xml');
+
+        $response->assertStatus(200);
+        $response->assertHeader('Content-Type', 'text/xml; charset=utf-8');
+
+        return (string) $response->getContent();
+    }
+
+    private function artistsSitemap(): string
+    {
+        $response = $this->get('/sitemap-artists.xml');
 
         $response->assertStatus(200);
         $response->assertHeader('Content-Type', 'text/xml; charset=utf-8');
@@ -356,7 +488,7 @@ final class LandingSitemapTest extends TestCase
 
     private function indexXml(): string
     {
-        $response = $this->get('/api/v1/sitemap.xml');
+        $response = $this->get('/sitemap.xml');
 
         $response->assertStatus(200);
 

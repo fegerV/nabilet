@@ -1,5 +1,7 @@
 # NABILET Vue 3 SPA — Frontend Audit
 
+> **Статус проверки (2026-10-16):** верификация матрицы A1–E3 по текущему коду — см. `docs/AUDIT-VERIFICATION-2026-10-16.md`. Итог: B3/B3b/C3/D1/D3-xss/E1/E3 закрыты; B2/D2 частично; C2/E2 открыты.
+
 **Audit target:** `C:/Project/nabilet` at commit `1611bda1` (`fix: привести модели и репозитории билетов к контракту`).
 
 **Scope:** Vue 3 / TypeScript SPA, Vite build and Laravel `dist/` delivery, storefront, cart/checkout/payment/tickets, admin UI and guards, Metrika, SEO metadata, responsive behavior, and frontend XSS sinks.

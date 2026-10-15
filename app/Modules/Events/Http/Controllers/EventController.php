@@ -14,6 +14,7 @@ use Nabilet\Modules\Events\Models\Event;
 use Nabilet\Modules\Events\Services\EventPublicationService;
 use Nabilet\Modules\Events\Services\EventService;
 use Nabilet\Modules\Seo\Services\RedirectResolver;
+use Nabilet\Modules\Tickets\Services\TicketTemplateService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -112,7 +113,7 @@ class EventController extends Controller
                     ], 404);
                 }
 
-                $event->load(['category', 'translations', 'sessions.hall', 'sessions.inventoryItems', 'organization', 'galleryLinks.mediaAsset']);
+                $event->load(['category', 'translations', 'sessions.hall', 'sessions.inventoryItems', 'organization', 'galleryLinks.mediaAsset', 'artists']);
 
                         $resource = new EventResource($event);
                         $data = $resource->toArray(request());
@@ -152,6 +153,31 @@ class EventController extends Controller
                     ->values()
                     ->toArray();
 
+                // Исполнители (стратегия SEO, B-1) — ТОЛЬКО имя и адрес.
+                //
+                // ССЫЛКА НА АРТИСТА — ГЛАВНАЯ ПЕРЕЛИНКОВКА ВСЕЙ СЕРИИ. Страница
+                // события — самый обходимый тип страниц: краулер приходит на неё
+                // из карты сайта и из выдачи. Без ссылки отсюда страницы
+                // артистов были бы достижимы ТОЛЬКО через `sitemap-artists.xml`,
+                // то есть вес на них не перетекал бы вовсе — карта сообщает о
+                // существовании адреса, но не передаёт авторитет.
+                //
+                // БЕЗ `bio`, `photo` И ПРОЧЕГО ПРОФИЛЯ. Это ответ ВИТРИНЫ: она
+                // показывает список исполнителей и ведёт на их страницы, а
+                // карточка артиста целиком (биография, жанр, соцсети) живёт на
+                // `/artist/{slug}` и там же индексируется. Копия профиля в
+                // ответе разошлась бы с той страницей при первой правке.
+                //
+                // `status = 'active'` уже отсеян связью `Event::artists()` —
+                // ссылка на снятого с публикации артиста вела бы на 404.
+                $data['artists'] = $event->artists
+                    ->map(fn ($artist) => [
+                        'name' => (string) $artist->name,
+                        'slug' => (string) $artist->slug,
+                    ])
+                    ->values()
+                    ->toArray();
+
                 return response()->json([
                     'data' => $data,
                 ]);
@@ -166,6 +192,24 @@ class EventController extends Controller
             if (empty($data['organization_id'])) {
                 $orgId = $request->user()?->organizations()->first()?->id;
                 $data['organization_id'] = $orgId ?? \Nabilet\Modules\Core\Organizations\Models\Organization::query()->value('id');
+            }
+
+            // Макет билета по умолчанию. Новое мероприятие без выбранного макета
+            // получает первый активный макет организации (а если макетов нет
+            // вообще — созданный «Стандартный»), а не NULL: первое мероприятие
+            // обычно появляется раньше первого собранного шаблона, и билеты
+            // не должны уходить неоформленными. Явный выбор администратора не
+            // трогаем; снять назначение позже можно выбором «Стандартный вид».
+            //
+            // Вызов идёт напрямую в сервис Tickets, а не через `requires` в
+            // module.json: туда его добавить нельзя — cart требует events, а
+            // tickets требует orders/cart, получился бы цикл
+            // events → tickets → orders → cart → events. Прецедент связи уже
+            // есть (`Event::ticketTemplate()`), направление то же.
+            if (empty($data['ticket_template_id']) && ! empty($data['organization_id'])) {
+                $data['ticket_template_id'] = app(TicketTemplateService::class)
+                    ->ensureDefaultTemplate((int) $data['organization_id'])
+                    ->id;
             }
 
             $event = $this->eventService->create($data);

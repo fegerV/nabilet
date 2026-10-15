@@ -193,7 +193,7 @@ final class SitemapLastmodTest extends TestCase
 
     private function eventsSitemapXml(): string
     {
-        $response = $this->get('/api/v1/sitemap-events.xml');
+        $response = $this->get('/sitemap-events.xml');
 
         $response->assertStatus(200);
 
@@ -202,7 +202,7 @@ final class SitemapLastmodTest extends TestCase
 
     private function indexXml(): string
     {
-        $response = $this->get('/api/v1/sitemap.xml');
+        $response = $this->get('/sitemap.xml');
 
         $response->assertStatus(200);
 

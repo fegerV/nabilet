@@ -60,7 +60,14 @@ $moduleRoutes = [
     __DIR__ . '/../app/Modules/Core/Users/routes/api.php',
     __DIR__ . '/../app/Modules/Core/Organizations/routes/api.php',
     __DIR__ . '/../app/Modules/Venues/Halls/routes/api.php',
-    __DIR__ . '/../app/Modules/Seo/routes/api.php',
+    // Модуль Seo больше не имеет api-маршрутов: карты сайта перенесены на
+    // корневые адреса `/sitemap.xml` и зарегистрированы в
+    // `app/Modules/Seo/routes/web.php` (аудит P-10a). Карта — не часть API:
+    // она не версионируется и адресуется роботом, а префикс `/api/v1`
+    // заставлял `robots.txt` одновременно запрещать адрес карты и объявлять
+    // его в директиве `Sitemap`. Старые пути `/api/v1/sitemap*.xml` отвечают
+    // 301 через nginx, а не отсюда: на api-группу навешан `ForceJsonResponse`,
+    // поэтому маршрут внутри `/api/v1` отдал бы JSON вместо редиректа.
     // Конструктор витрины: публичный конфиг + админские настройки.
     __DIR__ . '/../app/Modules/Storefront/routes/api.php',
     // Аналитика: публичный конфиг счётчика + админские настройки Метрики.

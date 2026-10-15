@@ -18,6 +18,11 @@ import NEmptyState from '@/components/ui/NEmptyState.vue'
 import { get, send, ApiError } from '@/lib/api'
 import { useUiStore } from '@/stores/ui'
 
+interface TicketTemplateEvent {
+  id: number
+  title: string
+}
+
 interface TicketTemplate {
   id: number
   public_id: string
@@ -27,6 +32,7 @@ interface TicketTemplate {
   height: number
   template_json: { backgroundColor?: string; elements?: unknown[] }
   active: boolean
+  events?: TicketTemplateEvent[]
   updated_at: string | null
 }
 
@@ -40,10 +46,16 @@ const error = ref<string | null>(null)
 
 const selectedId = computed<number | null>(() => {
   const raw = route.query.template
-  if (typeof raw !== 'string' || raw === '') return null
+  if (typeof raw !== 'string' || raw === '' || raw === 'new') return null
   const parsed = Number(raw)
   return Number.isFinite(parsed) ? parsed : null
 })
+
+// Режим создания: конструктор с пустым холстом (старт из заготовок,
+// сохранение идёт POST'ом). Раньше в него было не попасть вообще:
+// конструктор монтировался только для существующего id, а при пустом списке
+// открывать было нечего — первый шаблон создать было нельзя.
+const isNew = computed(() => route.query.template === 'new')
 
 const selected = computed(() => templates.value.find((t) => t.id === selectedId.value) ?? null)
 
@@ -67,14 +79,27 @@ function openTemplate(id: number): void {
   router.push({ query: { ...route.query, template: String(id) } })
 }
 
+function openNew(): void {
+  router.push({ query: { ...route.query, template: 'new' } })
+}
+
 function closeTemplate(): void {
   const query = { ...route.query }
   delete query.template
   router.push({ query })
 }
 
-function onSaved(): void {
+function onSaved(saved: unknown): void {
   ui.notify('mint', 'Шаблон сохранён', 'Новый макет применён к билетам этого шаблона.')
+  // После создания уходим с `template=new` на реальный id, иначе F5 вернул бы
+  // на пустой холст вместо только что созданного макета.
+  const node = (saved as { data?: { id?: unknown } } | null)?.data ?? saved
+  const id = Number((node as { id?: unknown } | null)?.id)
+  if (isNew.value && Number.isFinite(id)) {
+    load()
+    openTemplate(id)
+    return
+  }
   load()
 }
 
@@ -95,6 +120,30 @@ async function removeFromList(template: TicketTemplate): Promise<void> {
     ui.notify('rose', 'Не удалось удалить', e instanceof ApiError ? e.message : String(e))
   }
 }
+
+/**
+ * Дублировать макет — «свой билет» с другой типографикой/фоном, не трогая
+ * исходник. Сразу открываем копию в конструкторе, чтобы администратор правил
+ * именно её.
+ */
+const duplicatingId = ref<number | null>(null)
+
+async function duplicateFromList(template: TicketTemplate): Promise<void> {
+  if (duplicatingId.value !== null) return
+  duplicatingId.value = template.id
+  try {
+    const res = await send<{ id: number }>(`/ticket-templates/${template.id}/duplicate`, 'POST', {})
+    const saved = (res as unknown as { data?: { id: number } }).data ?? res
+    const newId = (saved as { id: number }).id
+    ui.notify('mint', 'Копия создана', `${template.name} → макет №${newId}`)
+    await load()
+    openTemplate(newId)
+  } catch (e) {
+    ui.notify('rose', 'Не удалось дублировать', e instanceof ApiError ? e.message : String(e))
+  } finally {
+    duplicatingId.value = null
+  }
+}
 </script>
 
 <template>
@@ -107,7 +156,8 @@ async function removeFromList(template: TicketTemplate): Promise<void> {
           — тогда его билеты приходят покупателю в этом виде.
         </p>
       </div>
-      <NButton v-if="selected" variant="secondary" @click="closeTemplate">← К списку</NButton>
+      <NButton v-if="selected || isNew" variant="secondary" @click="closeTemplate">← К списку</NButton>
+      <NButton v-else variant="primary" @click="openNew">Новый шаблон</NButton>
     </div>
 
     <div v-if="error" class="surface-card mt-5 border-rose-500/30 px-4 py-3 text-sm text-rose-400">
@@ -115,11 +165,11 @@ async function removeFromList(template: TicketTemplate): Promise<void> {
       <NButton variant="secondary" class="mt-3" @click="load">Повторить</NButton>
     </div>
 
-    <!-- Конструктор открытого шаблона -->
-    <div v-else-if="selected" class="mt-5">
+    <!-- Конструктор открытого или нового шаблона -->
+    <div v-else-if="selected || isNew" class="mt-5">
       <TicketBuilder
-        :key="selected.id"
-        :template-id="selected.id"
+        :key="isNew ? 'new' : (selected as TicketTemplate).id"
+        :template-id="isNew ? null : (selected as TicketTemplate).id"
         @template-saved="onSaved"
         @template-deleted="onDeleted"
       />
@@ -134,9 +184,9 @@ async function removeFromList(template: TicketTemplate): Promise<void> {
         class="surface-card mt-6"
         icon="🎫"
         title="Шаблонов пока нет"
-        description="Создайте первый шаблон: откройте любой и соберите макет билета. Без шаблона билеты уходят в стандартном виде."
-        action-label="Обновить"
-        @action="load"
+        description="Создайте первый шаблон: выберите заготовку и соберите макет билета. Без шаблона билеты уходят в стандартном виде."
+        action-label="Создать шаблон"
+        @action="openNew"
       />
 
       <div v-else class="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -191,9 +241,22 @@ async function removeFromList(template: TicketTemplate): Promise<void> {
               {{ template.width }}×{{ template.height }} · элементов:
               {{ (template.template_json?.elements ?? []).length }}
             </p>
+            <!-- Привязки: чьи билеты оформляет макет. Пусто — макет ни за кем
+              не закреплён (может быть макетом по умолчанию для новых мероприятий). -->
+            <p class="mt-1 truncate text-xs text-subtle" :title="(template.events ?? []).map((e) => e.title).join(', ')">
+              <template v-if="(template.events ?? []).length">
+                🎟 {{ (template.events ?? []).map((e) => e.title).join(' · ') }}
+              </template>
+              <template v-else>Не назначен ни одному мероприятию</template>
+            </p>
 
             <div class="mt-4 flex flex-wrap items-center gap-2">
               <NButton @click="openTemplate(template.id)">Открыть</NButton>
+              <NButton
+                variant="secondary"
+                :loading="duplicatingId === template.id"
+                @click="duplicateFromList(template)"
+              >Дублировать</NButton>
               <button
                 type="button"
                 class="text-xs text-rose-400 underline decoration-dotted hover:text-rose-300"

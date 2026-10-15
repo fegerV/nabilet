@@ -20,11 +20,13 @@ import {
   MEDIA_MAX_BYTES,
   MEDIA_TYPES,
   MEDIA_TYPES_LABEL,
+  assetSrc,
   clampPage,
   dimensionsLabel,
   formatDate,
   humanSize,
   kindOf,
+  storageSrc,
   type MediaAsset,
   type MediaLinkRef,
   usageLabels,
@@ -244,5 +246,29 @@ describe('MediaAsset', () => {
     // используется».
     expect(usageLabels(base.links)).toEqual([])
     expect(usageLabels([...([] as MediaLinkRef[])])).toEqual([])
+  })
+})
+
+describe('storageSrc / assetSrc', () => {
+  it('свой /storage/... показывает same-origin: хост APP_URL отбрасывается', () => {
+    // Локально админка открыта с 127.0.0.1:8001, а APP_URL — tickets.example.com:
+    // абсолютный src вёл в никуда при живых файлах.
+    expect(storageSrc('https://tickets.example.com/storage/media/a.png')).toBe('/storage/media/a.png')
+    expect(storageSrc('/storage/media/a.png')).toBe('/storage/media/a.png')
+  })
+  it('чужой абсолютный URL не трогает', () => {
+    expect(storageSrc('https://cdn.example.com/a.png')).toBe('https://cdn.example.com/a.png')
+  })
+  it('служебные схемы и пустоту пропускает как есть', () => {
+    expect(storageSrc('blob:http://127.0.0.1:8001/uuid')).toBe('blob:http://127.0.0.1:8001/uuid')
+    expect(storageSrc('data:image/png;base64,AAA')).toBe('data:image/png;base64,AAA')
+    expect(storageSrc('')).toBe('')
+    expect(storageSrc(null)).toBe('')
+  })
+  it('assetSrc берёт url из карточки', () => {
+    expect(assetSrc({ url: 'https://tickets.example.com/storage/media/a.png' })).toBe(
+      '/storage/media/a.png',
+    )
+    expect(assetSrc(null)).toBe('')
   })
 })

@@ -12,8 +12,8 @@ use Nabilet\Modules\Seo\Services\LandingPageRenderer;
 use Nabilet\Modules\Seo\Services\LandingPageService;
 
 /**
- * Посадочные страницы: площадка, город, категория, фасет «город × категория»
- * и организатор (аудит P-12).
+ * Посадочные страницы: площадка, город, категория, фасет «город × категория»,
+ * организатор и артист (аудит P-12, стратегия SEO B-1).
  *
  * ЗАЧЕМ. Длинный хвост запросов — «концерт в Кремлёвском дворце», «афиша
  * Сургута», «театр в Казани» — не имеет адресуемых страниц: каталог это
@@ -138,6 +138,44 @@ class LandingController
             return NotFoundPage::response(
                 $request->getPathInfo(),
                 sprintf('У организатора «%s» пока нет мероприятий.', $organization->name),
+            );
+        }
+
+        return $this->renderer->render($page);
+    }
+
+    /**
+     * GET /artist/{slug} — афиша одного артиста (стратегия SEO, B-1).
+     *
+     * АРТИСТ — ФАСЕТ КАТАЛОГА, как категория и организатор: события собираются
+     * со всех площадок и городов, и сеанс для них не требуется. Смысл страницы —
+     * «где и когда играет этот артист», и он не зависит от зала. Подробнее — в
+     * `CatalogService::eventsAtArtist()`.
+     *
+     * ПОЧЕМУ ЗДЕСЬ ТОЛЬКО `artistBySlug()`, А НЕ ПОИСК ПО `event_artists`. Имена
+     * в `event_artists` хранятся свободным текстом внутри события, поэтому
+     * «Би-2» и «БИ-2» — разные строки, и страница, собранная по ним, была бы
+     * одной на каждое написание и «тонкой» на каждой. Слияние делает
+     * `SyncArtistsCommand`, и адресуемое имя — только каноническая запись
+     * `artists`.
+     */
+    public function artist(Request $request, string $slug): Response
+    {
+        $artist = $this->catalog->artistBySlug($slug);
+
+        if ($artist === null) {
+            return NotFoundPage::response(
+                $request->getPathInfo(),
+                sprintf('Артист «%s» не найден.', $slug),
+            );
+        }
+
+        $page = $this->pages->forArtist($artist, $this->requestedPage($request));
+
+        if ($page->isEmpty()) {
+            return NotFoundPage::response(
+                $request->getPathInfo(),
+                sprintf('У артиста «%s» пока нет мероприятий.', $artist->name),
             );
         }
 

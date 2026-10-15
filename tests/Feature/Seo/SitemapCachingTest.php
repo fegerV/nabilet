@@ -53,7 +53,7 @@ final class SitemapCachingTest extends TestCase
     /** Карта-индекс отдаётся из кеша. */
     public function test_the_sitemap_index_is_served_from_cache(): void
     {
-        $first = (string) $this->get('/api/v1/sitemap.xml')->getContent();
+        $first = (string) $this->get('/sitemap.xml')->getContent();
 
         $this->assertTrue(Cache::has('seo:sitemap:index'), 'карта-индекс не попала в кеш');
 
@@ -74,12 +74,12 @@ final class SitemapCachingTest extends TestCase
     {
         [, , $firstSlug] = $this->seedPublishedEvent('Событие до прогрева');
 
-        $first = (string) $this->get('/api/v1/sitemap-events.xml')->getContent();
+        $first = (string) $this->get('/sitemap-events.xml')->getContent();
         $this->assertStringContainsString($firstSlug, $first);
 
         [, , $secondSlug] = $this->seedPublishedEvent('Событие после прогрева');
 
-        $cached = (string) $this->get('/api/v1/sitemap-events.xml')->getContent();
+        $cached = (string) $this->get('/sitemap-events.xml')->getContent();
         $this->assertStringNotContainsString(
             $secondSlug,
             $cached,
@@ -88,7 +88,7 @@ final class SitemapCachingTest extends TestCase
 
         Cache::flush();
 
-        $fresh = (string) $this->get('/api/v1/sitemap-events.xml')->getContent();
+        $fresh = (string) $this->get('/sitemap-events.xml')->getContent();
         $this->assertStringContainsString(
             $secondSlug,
             $fresh,
@@ -99,7 +99,7 @@ final class SitemapCachingTest extends TestCase
     /** Статическая карта кешируется так же. */
     public function test_the_static_sitemap_is_served_from_cache(): void
     {
-        $this->get('/api/v1/sitemap-static.xml')->assertStatus(200);
+        $this->get('/sitemap-static.xml')->assertStatus(200);
 
         $this->assertTrue(Cache::has('seo:sitemap:static'), 'статическая карта не попала в кеш');
 
@@ -111,13 +111,13 @@ final class SitemapCachingTest extends TestCase
     /** Кеш заполняется всеми точками входа, включая посадочные карты (P-12). */
     public function test_all_sitemap_entries_populate_the_cache(): void
     {
-        $this->get('/api/v1/sitemap.xml');
-        $this->get('/api/v1/sitemap-events.xml');
-        $this->get('/api/v1/sitemap-static.xml');
-        $this->get('/api/v1/sitemap-venues.xml');
-        $this->get('/api/v1/sitemap-cities.xml');
-        $this->get('/api/v1/sitemap-categories.xml');
-        $this->get('/api/v1/sitemap-organizers.xml');
+        $this->get('/sitemap.xml');
+        $this->get('/sitemap-events.xml');
+        $this->get('/sitemap-static.xml');
+        $this->get('/sitemap-venues.xml');
+        $this->get('/sitemap-cities.xml');
+        $this->get('/sitemap-categories.xml');
+        $this->get('/sitemap-organizers.xml');
 
         $this->assertTrue(Cache::has('seo:sitemap:index'));
         $this->assertTrue(Cache::has('seo:sitemap:events:1'));
@@ -137,7 +137,7 @@ final class SitemapCachingTest extends TestCase
 
         $row = DB::table('events')->where('id', $eventId)->first();
 
-        $xml = (string) $this->get('/api/v1/sitemap-events.xml')->getContent();
+        $xml = (string) $this->get('/sitemap-events.xml')->getContent();
 
         $this->assertStringContainsString(htmlspecialchars((string) $row->slug, ENT_QUOTES | ENT_XML1), $xml);
         $this->assertStringContainsString((string) $row->public_id, $xml);
@@ -159,7 +159,7 @@ final class SitemapCachingTest extends TestCase
             'canonical_url' => 'https://nabilet.ru/event/kanonicheskij-adres/01HZZ',
         ]);
 
-        $xml = (string) $this->get('/api/v1/sitemap-events.xml')->getContent();
+        $xml = (string) $this->get('/sitemap-events.xml')->getContent();
 
         $this->assertStringContainsString('kanonicheskij-adres', $xml);
     }
@@ -175,7 +175,7 @@ final class SitemapCachingTest extends TestCase
     {
         $this->seedPublishedEvent('Приоритетное событие');
 
-        $xml = (string) $this->get('/api/v1/sitemap-events.xml')->getContent();
+        $xml = (string) $this->get('/sitemap-events.xml')->getContent();
 
         $this->assertStringContainsString('<priority>0.9</priority>', $xml);
         $this->assertStringNotContainsString('<priority>0.8</priority>', $xml);
@@ -188,7 +188,7 @@ final class SitemapCachingTest extends TestCase
 
         DB::table('events')->where('id', $eventId)->update(['status' => 'completed']);
 
-        $xml = (string) $this->get('/api/v1/sitemap-events.xml')->getContent();
+        $xml = (string) $this->get('/sitemap-events.xml')->getContent();
 
         $this->assertStringContainsString('<priority>0.8</priority>', $xml);
     }

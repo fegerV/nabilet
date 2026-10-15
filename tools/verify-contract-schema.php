@@ -219,9 +219,11 @@ function parseDdlColumns(string $file): array
  * from a real MySQL 8.4 (`information_schema`), and they are asserted before any
  * drift is reported, so a broken parser fails loudly instead of quietly inventing
  * drift. If the schema legitimately grows, update these in the same commit.
+ *
+ * 73/785 → 75/805 в B-1: таблицы `artists` (13 колонок) и `artist_event` (7).
  */
-const EXPECTED_TABLES = 73;
-const EXPECTED_COLUMNS = 785;
+const EXPECTED_TABLES = 75;
+const EXPECTED_COLUMNS = 805;
 
 /**
  * @param array<string, list<string>> $tables

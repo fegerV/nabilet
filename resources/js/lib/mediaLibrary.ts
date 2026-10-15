@@ -178,6 +178,41 @@ export function dimensionsLabel(asset: Pick<MediaAsset, 'width' | 'height'>): st
   return `${asset.width}×${asset.height}`
 }
 
+/**
+ * Tot же файл, что в `url`, но пригодный для `<img>` в админке.
+ *
+ * `MediaAssetResource.url` — АБСОЛЮТНЫЙ адрес от `APP_URL` (нужен письмам и
+ * `og:image`: там относительный src не работает). Но хост приложения и хост,
+ * с которого открыта админка, совпадают только в продакшене: локально
+ * (`127.0.0.1:8001` против `APP_URL=https://tickets.example.com`) и на
+ * стейджинге абсолютный src ведёт в никуда — превьюшки «сломаны», хотя файлы
+ * на месте (`public/storage` → `storage/app/public` отдаёт их с любого хоста).
+ *
+ * Поэтому собственный `/storage/...` показываем same-origin (только путь),
+ * а всё остальное (внешний CDN, `blob:`, `data:`, уже относительный путь)
+ * отдаём как есть: переписывать чужой хост на свой значило бы ломать внешние
+ * файлы тем же приёмом.
+ */
+export function storageSrc(url: string | null | undefined): string {
+  const raw = (url ?? '').trim()
+  if (raw === '') return ''
+  if (/^(data|blob|file):/i.test(raw)) return raw
+
+  let path = ''
+  try {
+    path = new URL(raw, 'http://localhost').pathname
+  } catch {
+    return raw
+  }
+
+  return path.startsWith('/storage/') ? path : raw
+}
+
+/** `storageSrc()` для карточки из ответа API. */
+export function assetSrc(asset: Pick<MediaAsset, 'url'> | null | undefined): string {
+  return storageSrc(asset?.url)
+}
+
 /** Дата загрузки в виде «9 октября 2026». Пустая строка, если даты нет. */
 export function formatDate(iso: string | null | undefined): string {
   if (!iso) return ''

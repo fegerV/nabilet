@@ -1719,4 +1719,60 @@ CREATE TABLE IF NOT EXISTS order_reminders (
   KEY idx_order_reminders_session (session_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- ---------------------------------------------------------- 9. artists (SEO landing entity)
+-- An artist as a CATALOG entity, not as a line inside one event.
+--
+-- WHY NOT DERIVE IT FROM `event_artists`. That table already stores names, but
+-- inside a single event: «Би-2» on one poster and «БИ-2» on another are two
+-- unrelated rows. An artist page cannot be derived from it — it would produce one
+-- page per SPELLING, and each would be thin. `normalized_name` is the merge key
+-- (case-folded, punctuation and repeated spaces collapsed) and it is UNIQUE: that
+-- is the single thing that turns many spellings into one page.
+--
+-- NO `organization_id`, like `event_categories`: an artist is a catalog-wide
+-- entity, and the landing page reads the catalog by status across organizations.
+-- `slug` is globally unique for the same reason `events.slug` became globally
+-- unique (2026_10_11_000100) — an interim decision until per-organization URLs
+-- exist (audit P-03). The cost is the same and is accepted for the same reason:
+-- a collision surfaces at insert time (422) instead of as a wrong page later.
+CREATE TABLE IF NOT EXISTS artists (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  slug VARCHAR(150) NOT NULL,
+  name VARCHAR(255) NOT NULL,
+  normalized_name VARCHAR(255) NOT NULL,
+  genre VARCHAR(255) NULL,
+  bio TEXT NULL,
+  photo VARCHAR(255) NULL,
+  social_links JSON NULL,
+  seo_title VARCHAR(255) NULL,
+  seo_description VARCHAR(500) NULL,
+  status VARCHAR(32) NOT NULL DEFAULT 'active',
+  created_at TIMESTAMP NULL DEFAULT NULL,
+  updated_at TIMESTAMP NULL DEFAULT NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_artists_slug (slug),
+  UNIQUE KEY uq_artists_normalized_name (normalized_name),
+  KEY artists_status_index (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Link table artist ↔ event. NOT a rename of `event_artists`: that table stays the
+-- per-event programme line (stage, performance_at, order within the event), while
+-- this one answers the question the artist page actually asks — «which events does
+-- this artist play». Both are written by `artists:sync`, which is the only writer,
+-- so the two cannot disagree about who performed.
+CREATE TABLE IF NOT EXISTS artist_event (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  artist_id BIGINT UNSIGNED NOT NULL,
+  event_id BIGINT UNSIGNED NOT NULL,
+  is_headliner TINYINT(1) NOT NULL DEFAULT 0,
+  sort_order INT NOT NULL DEFAULT 0,
+  created_at TIMESTAMP NULL DEFAULT NULL,
+  updated_at TIMESTAMP NULL DEFAULT NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_artist_event (artist_id, event_id),
+  KEY artist_event_event_id_index (event_id),
+  CONSTRAINT artist_event_artist_id_foreign FOREIGN KEY (artist_id) REFERENCES artists(id) ON DELETE CASCADE,
+  CONSTRAINT artist_event_event_id_foreign FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 SET FOREIGN_KEY_CHECKS = 1;

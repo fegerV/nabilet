@@ -15,9 +15,10 @@ class ContentServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
-        // Маршруты модуля подключены централизованно в routes/api.php, внутри
-        // группы /api/v1. Загрузка отсюда зарегистрировала бы их второй раз —
-        // в корне, без префикса и вне API-группы middleware. См.
-        // tools/verify-route-ownership.php.
+        // Маршруты модуля живут в `app/Modules/Content/routes/web.php` и
+        // подключены корневым `routes/web.php` ДО `Route::fallback()` (аудит
+        // P-12 + стратегия SEO, B-2). Загрузка отсюда зарегистрировала бы их
+        // второй раз — в корне, без префикса и вне порядка обхода обычных
+        // маршрутов. См. `tools/verify-route-ownership.php`.
     }
 }

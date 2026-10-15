@@ -248,4 +248,44 @@ CREATE TABLE IF NOT EXISTS order_reminders (
   KEY idx_order_reminders_session (session_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- ---------------------------------------------------------- 9. artists (SEO landing entity)
+-- See `nabilet_core_spec/migrations.sql` for the full reasoning. Short form: an
+-- artist is a CATALOG entity (no `organization_id`, like `event_categories`), and
+-- `normalized_name` is UNIQUE so that many spellings of one name («Би-2» / «БИ-2»)
+-- merge into a single landing page instead of one thin page per spelling.
+CREATE TABLE IF NOT EXISTS artists (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  slug VARCHAR(150) NOT NULL,
+  name VARCHAR(255) NOT NULL,
+  normalized_name VARCHAR(255) NOT NULL,
+  genre VARCHAR(255) NULL,
+  bio TEXT NULL,
+  photo VARCHAR(255) NULL,
+  social_links JSON NULL,
+  seo_title VARCHAR(255) NULL,
+  seo_description VARCHAR(500) NULL,
+  status VARCHAR(32) NOT NULL DEFAULT 'active',
+  created_at TIMESTAMP NULL DEFAULT NULL,
+  updated_at TIMESTAMP NULL DEFAULT NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_artists_slug (slug),
+  UNIQUE KEY uq_artists_normalized_name (normalized_name),
+  KEY artists_status_index (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS artist_event (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  artist_id BIGINT UNSIGNED NOT NULL,
+  event_id BIGINT UNSIGNED NOT NULL,
+  is_headliner TINYINT(1) NOT NULL DEFAULT 0,
+  sort_order INT NOT NULL DEFAULT 0,
+  created_at TIMESTAMP NULL DEFAULT NULL,
+  updated_at TIMESTAMP NULL DEFAULT NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_artist_event (artist_id, event_id),
+  KEY artist_event_event_id_index (event_id),
+  CONSTRAINT artist_event_artist_id_foreign FOREIGN KEY (artist_id) REFERENCES artists(id) ON DELETE CASCADE,
+  CONSTRAINT artist_event_event_id_foreign FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 SET FOREIGN_KEY_CHECKS = 1;

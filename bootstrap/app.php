@@ -86,6 +86,21 @@ return Application::configure(basePath: dirname(__DIR__))
         // `published`, и разметка обещала Google событие в будущем с билетами в
         // наличии. По расписанию, поэтому регистрация обязательна.
         \Nabilet\Modules\Events\Console\SyncEventStatusCommand::class,
+        // Сведение артистов из `event_artists` в канонические записи `artists`
+        // (стратегия SEO, B-1). Регистрация обязательна по той же причине, что у
+        // команд выше: модульные провайдеры не бутятся, а Laravel не находит
+        // команды вне `app/Console/Commands/` сам. Не по расписанию: сведение
+        // написаний нужно ВИДЕТЬ до применения (`--dry-run`), поэтому это
+        // ручной шаг, а не cron.
+        \Nabilet\Modules\Events\Console\SyncArtistsCommand::class,
+        // Проверка конфигурации на безопасность для продакшена (ТЗ §79, P0-7).
+        // Регистрация нужна по другой причине, чем у команд выше: эта НЕ по
+        // расписанию, она — гейт деплоя (`php artisan config:validate`). Но
+        // модульные провайдеры не бутятся, а команды вне `app/Console/Commands/`
+        // Laravel не находит сам, поэтому без этой строки её просто не
+        // существовало бы: `artisan config:validate` отвечал бы «Command not
+        // defined», и гейт молча ничего не проверял.
+        \Nabilet\Modules\System\Console\ConfigValidateCommand::class,
     ])
     ->withMiddleware(function (Middleware $middleware): void {
         // ── Global stack, in order ───────────────────────────────────────────

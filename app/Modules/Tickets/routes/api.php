@@ -27,6 +27,10 @@ Route::prefix('ticket-templates')->middleware(['auth:api', 'admin'])->group(func
     Route::get('/{template}', [TicketTemplateController::class, 'show'])->whereNumber('template');
     Route::put('/{template}', [TicketTemplateController::class, 'update'])->whereNumber('template');
     Route::patch('/{template}', [TicketTemplateController::class, 'update'])->whereNumber('template');
+    // Дубликат для мероприятия («свой билет» с другой типографикой/фоном):
+    // отдельный глагол, а не флаг у store — копирование читает существующий
+    // макет целиком, store собирает новый из payload конструктора.
+    Route::post('/{template}/duplicate', [TicketTemplateController::class, 'duplicate'])->whereNumber('template');
     Route::delete('/{template}', [TicketTemplateController::class, 'destroy'])->whereNumber('template');
 });
 //
