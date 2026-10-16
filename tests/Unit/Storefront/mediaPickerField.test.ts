@@ -1,10 +1,13 @@
 /**
- * Пикер медиатеки (MediaPickerField): ленивый список, выбор → emit URL,
- * очистка поля. Компонент нужен трём формам (hero конструктора витрины,
- * логотип и иконка сайта в брендинге), поэтому проверяется отдельным файлом.
+ * Пикер медиатеки (MediaPickerField) в модалке: ленивый список, выбор →
+ * emit URL, очистка, ошибка сети. Компонент нужен трём формам (hero
+ * конструктора витрины, логотип и иконка сайта в брендинге).
+ *
+ * NModal телепортирует содержимое в document.body, поэтому пикер ищется
+ * не через wrapper, а в body.
  */
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { flushPromises, mount } from '@vue/test-utils'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils'
 import MediaPickerField from '@/components/admin/MediaPickerField.vue'
 import { get } from '@/lib/api'
 
@@ -19,45 +22,66 @@ const IMAGES = [
   { id: 2, url: 'https://cdn.test/b.jpg', filename: 'b.jpg', mime_type: 'image/jpeg' },
 ]
 
-function mountField(modelValue = '', props: Record<string, string> = {}) {
+function mountField(modelValue = '') {
   return mount(MediaPickerField, {
-    props: { modelValue, label: 'Фон', hint: 'подсказка', ...props },
+    props: { modelValue, label: 'Фон', hint: 'подсказка' },
+    attachTo: document.body,
   })
+}
+
+function pickerInBody(): HTMLElement | null {
+  const heading = Array.from(document.body.querySelectorAll('h2')).find((h) => h.textContent === 'Медиатека')
+
+  return (heading?.closest('div[role="dialog"]') as HTMLElement | null) ?? null
+}
+
+function tile(filename: string): HTMLButtonElement | null {
+  const dialog = pickerInBody()
+
+  if (!dialog) return null
+
+  return Array.from(dialog.querySelectorAll('button')).find((b) => b.textContent?.includes(filename)) ?? null
 }
 
 beforeEach(() => {
   getMock.mockReset()
   getMock.mockResolvedValue({ data: IMAGES })
+  document.body.innerHTML = ''
 })
 
-describe('MediaPickerField', () => {
-  it('лениво подгружает медиатеку по кнопке', async () => {
+// NModal телепортирует в body: без размонтирования DOM прошлого теста
+// оставался в body, и «закрытая» модалка находилась по селектору вечноживо.
+enableAutoUnmount(afterEach)
+
+describe('MediaPickerField (модалка)', () => {
+  it('кнопка открывает модалку и лениво подгружает медиатеку', async () => {
     const wrapper = mountField()
 
     expect(getMock).not.toHaveBeenCalled()
-    expect(wrapper.text()).not.toContain('b.jpg')
 
-    await wrapper.find('button[aria-label="Выбрать из медиатеки"], button').trigger('click')
+    await wrapper.find('button').trigger('click')
     await flushPromises()
+
+    const dialog = pickerInBody()
 
     expect(getMock).toHaveBeenCalledTimes(1)
     expect(getMock).toHaveBeenCalledWith('/media?per_page=48')
-    expect(wrapper.text()).toContain('a.png')
+    expect(dialog).not.toBeNull()
+    expect(dialog!.textContent).toContain('a.png')
+    expect(dialog!.textContent).toContain('b.jpg')
   })
 
-  it('клик по превью возвращает URL файла', async () => {
+  it('клик по превью возвращает URL файла и закрывает модалку', async () => {
     const wrapper = mountField()
 
     await wrapper.find('button').trigger('click')
     await flushPromises()
 
-    // Второй файл — по его имени в заголовке плитки.
-    const tile = wrapper.findAll('button').find((b) => b.text().includes('b.jpg'))
-    expect(tile).toBeTruthy()
-
-    await tile!.trigger('click')
+    await tile('b.jpg')!.click()
+    await flushPromises()
 
     expect(wrapper.emitted('update:modelValue')).toEqual([['https://cdn.test/b.jpg']])
+    expect(pickerInBody()).toBeNull()
   })
 
   it('второе открытие не перезапрашивает список', async () => {
@@ -66,13 +90,32 @@ describe('MediaPickerField', () => {
     await wrapper.find('button').trigger('click')
     await flushPromises()
 
-    // Закрыть и открыть снова.
-    await wrapper.find('button[aria-label="Закрыть пикер"]').trigger('click')
+    // Отмена из футера модалки.
+    const cancel = Array.from(pickerInBody()!.querySelectorAll('button')).find((b) => b.textContent === 'Отмена')
+
+    await cancel!.click()
+
+    expect(pickerInBody()).toBeNull()
+
     await wrapper.find('button').trigger('click')
     await flushPromises()
 
     expect(getMock).toHaveBeenCalledTimes(1)
-    expect(wrapper.text()).toContain('a.png')
+    expect(pickerInBody()!.textContent).toContain('a.png')
+  })
+
+  it('Escape закрывает модалку', async () => {
+    const wrapper = mountField()
+
+    await wrapper.find('button').trigger('click')
+    await flushPromises()
+
+    expect(pickerInBody()).not.toBeNull()
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    await flushPromises()
+
+    expect(pickerInBody()).toBeNull()
   })
 
   it('очищает поле отдельной кнопкой', async () => {
@@ -94,6 +137,6 @@ describe('MediaPickerField', () => {
     await wrapper.find('button').trigger('click')
     await flushPromises()
 
-    expect(wrapper.text()).toContain('boom')
+    expect(pickerInBody()!.textContent).toContain('boom')
   })
 })

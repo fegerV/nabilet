@@ -36,7 +36,8 @@ const items = computed(() => {
 
   const auto = [
     { value: String(catalog.events.length), label: 'мероприятий в афише' },
-    { value: String(cities.size || catalog.events.length ? cities.size : 0), label: 'городов' },
+    // Ноль городов отфильтруется ниже: «0 городов» хуже отсутствия блока.
+    { value: String(cities.size), label: 'городов' },
     { value: String(catalog.upcoming.length), label: 'ближайших сеансов' },
   ]
 
