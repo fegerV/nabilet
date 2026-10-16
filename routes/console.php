@@ -54,6 +54,15 @@ Schedule::command('webhooks:retry-pending')->everyMinute();
 // поэтому наложение двух тиков не удвоит письмо.
 Schedule::command('orders:send-reminders')->hourly();
 
+// Напоминание о незавершённой оплате: заказ «полежал» час — покупателю
+// уходит письмо с суммой и ссылкой на оплату (одно письмо на заказ).
+Schedule::command('orders:remind-unpaid')->hourly()->withoutOverlapping(15);
+
+// Напоминание о брошенной корзине авторизованного покупателя: TTL корзины
+// 15 минут, поэтому прогон раз в 5 минут — письмо приходит ДО истечения
+// брони, пока места ещё живы. Гостевые корзины не напоминаются (контакта нет).
+Schedule::command('carts:remind-abandoned')->everyFiveMinutes()->withoutOverlapping(4);
+
 // Резервное копирование: ежедневный полный бэкап (дамп БД + storage/app/public)
 // с выгрузкой на Яндекс.Диск (ТЗ §72).
 //

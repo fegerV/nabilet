@@ -42,10 +42,12 @@ class Cart extends Model
         'currency',
         'total_amount',
         'expires_at',
+        'reminder_sent_at',
     ];
 
     protected $casts = [
         'expires_at' => 'datetime',
+        'reminder_sent_at' => 'datetime',
         'total_amount' => 'string',
     ];
 
