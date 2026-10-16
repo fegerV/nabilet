@@ -95,7 +95,12 @@ class CartService
             $cart = Cart::create([
                 'session_id' => $sessionId,
                 'cart_token' => $token,
-                'user_id' => $session->user_id ?? null,
+                // Владелец — ВОШЕДШИЙ покупатель, а не «пользователь сеанса»:
+                // колонки user_id у sessions не существует, поэтому здесь всегда
+                // был null, и корзины авторизованных покупателей никогда не
+                // привязывались к аккаунту (ломая per_user_limit промокодов,
+                // напоминания о брошенном и проверку владения «carts.user_id»).
+                'user_id' => $buyer?->id ?? null,
                 'status' => 'active',
                 // C1: единый источник истины для срока холда — конфиг
                 // nabilet.checkout.hold_duration_minutes (дефолт 15). UI больше
