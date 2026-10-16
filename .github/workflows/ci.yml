@@ -461,7 +461,18 @@ jobs:
             -e "SET GLOBAL log_bin_trust_function_creators = 1;"
 
       - name: Run the test suite
-        run: php vendor/bin/phpunit
+        # JUnit-лог всегда пишется рядом: если свит упал, следующий шаг
+        # публикует его артефактом — по нему видно, какой тест и почему,
+        # не открывая лог джобы.
+        run: php vendor/bin/phpunit --log-junit phpunit-junit.xml
+
+      - name: Publish the JUnit log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phpunit-junit
+          path: phpunit-junit.xml
+          if-no-files-found: ignore
 
   # ───────────────────────────────────────────────────────────────────────────
   # The frontend: types, unit tests, and a real bundle.
