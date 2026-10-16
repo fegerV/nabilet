@@ -49,7 +49,12 @@ class EventController extends Controller
             $filters['statuses'] = EventStatus::publiclyVisible();
         }
 
-        $perPage = (int) $request->get('per_page', 20);
+        // Потолок на per_page (аудит производительности 1.5): запрос
+        // `?per_page=100000` раньше уходил в пагинатор как есть и читал всю
+        // таблицу. ListEventsRequest с тем же правилом в контроллере не
+        // применяется, поэтому клампим здесь — единственная точка входа
+        // `GET /api/v1/events`.
+        $perPage = min(100, max(1, (int) $request->get('per_page', 20)));
         
         $events = $this->eventService->paginate($filters, $perPage);
         

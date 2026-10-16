@@ -228,7 +228,7 @@ trait CatalogFixtures
         ?string $genre = null,
         ?string $bio = null,
         ?string $photo = null,
-        mixed $socialLinks = null,
+        array|string|null $socialLinks = null,
         ?string $seoTitle = null,
         ?string $seoDescription = null,
     ): int {

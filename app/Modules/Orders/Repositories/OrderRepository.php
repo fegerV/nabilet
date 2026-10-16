@@ -175,9 +175,14 @@ class OrderRepository
         return $order->items()->create($itemData);
     }
 
-    public function getRevenueByOrganization(int $organizationId, string $dateFrom, string $dateTo): float
+    /**
+     * Сумма выручки в MINOR UNITS (int), а не во float (аудит архитектуры D10):
+     * `(float) sum(total_amount)` для денег — источник ошибок округления и
+     * потери точности на больших оборотах. Колонка BIGINT — остаёмся в int.
+     */
+    public function getRevenueByOrganization(int $organizationId, string $dateFrom, string $dateTo): int
         {
-            return (float) $this->model->where('organization_id', $organizationId)
+            return (int) $this->model->where('organization_id', $organizationId)
                 ->where('status', 'paid')
                 ->whereBetween('created_at', [$dateFrom, $dateTo])
                 ->sum('total_amount');

@@ -1,5 +1,7 @@
 # Углублённый аудит оплаты и возвратов — Nabilet
 
+> **Статус проверки (2026-10-16):** R-01…R-07, R-09, R-10, R-12, R-13 закрыты (PaymentSettlement подключён к вебхуку, авто-возвраты, reconcile, refunds API); открыта R-08 (массовый возврат при отмене события) — см. `docs/AUDIT-VERIFICATION-2026-10-16.md`.
+
 **Дата:** 2026-10-10
 **Аудитор:** специалист по платёжным системам и финансовой безопасности
 **Объём:** `app/Modules/Payments`, `app/Modules/Webhooks`, `app/Modules/Orders` (OrderService, OrderStateMachine, StaleOrderExpirer), `app/Modules/Events` (EventPublicationService/Policy), `config/nabilet.php`, миграции (`database/migrations/2026_09_20_000500_005_payments_tickets.php`, `..._000800_008_integrations_system.php`), тесты (`tests/Feature/Payments/PaymentWritePathTest.php`, `tests/Unit/PaymentSettlementTest.php`).

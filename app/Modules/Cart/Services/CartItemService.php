@@ -140,6 +140,31 @@ final class CartItemService
                 );
             }
 
+            // Валютная сверка (аудит архитектуры D7): у `carts` нет колонки
+            // валюты — эталон выводим из валют инвентаря уже лежащих позиций.
+            // Цена каждого inventory_item — сохранённый snapshot своего сеанса,
+            // и смешение RUB-места с KZT-корзиной дало бы смешанный total без
+            // пересчёта. Бросок внутри транзакции откатывает decrement выше.
+            $itemCurrency = (string) ($inventoryItem->currency ?? 'RUB');
+
+            $cartCurrencies = DB::table('cart_items')
+                ->join('inventory_items', 'inventory_items.id', '=', 'cart_items.inventory_item_id')
+                ->where('cart_items.cart_id', $cart->id)
+                ->lockForUpdate()
+                ->distinct()
+                ->pluck('inventory_items.currency');
+
+            if ($cartCurrencies->isNotEmpty() && ! $cartCurrencies->contains($itemCurrency)) {
+                throw new ConflictError(
+                    sprintf(
+                        'The seat is in %s, but the cart already contains %s items.',
+                        $itemCurrency,
+                        $cartCurrencies->implode(', ')
+                    ),
+                    'CURRENCY_MISMATCH'
+                );
+            }
+
             // Check if item already exists in cart
             $existingItem = CartItem::query()
                 ->where('cart_id', $cart->id)

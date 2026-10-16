@@ -1,6 +1,6 @@
 # Верификация аудитов — 2026-10-16
 
-**Метод:** два прохода. Первый — по локальному дереву до слияния; после слияния `origin/main` (merge `c84e8688`, 38 коммитов удалённой линии: лояльность/кабинет/чекин/платежи) **все спорные пункты пере-проверены по итоговому дереву**. Исследование без правок кода, доказательства — `файл:строка`. Гейты на дереве слияния: vitest 382/382, vue-tsc чисто, build ok, php hermetic 820/820, verify-migrations/state-machines/models/contract зелёные.
+**Метод:** два прохода. Первый — по локальному дереву до слияния; после слияния `origin/main` (merge `c84e8688`, 38 коммитов удалённой линии: лояльность/кабинет/чекин/платежи) **все спорные пункты пере-проверены по итоговому дереву**. Третий проход — доработка: часть остатков закрыта в этом же коммите (помечено «закрыто 16.10»). Исследование/правки с тестами, доказательства — `файл:строка`. Гейты на дереве: vitest 382/382, vue-tsc чисто, build ok, php hermetic 820/820, verify-migrations/state-machines/models/contract/openapi/lint зелёные.
 
 **Обозначения:** ✅ FIXED · 🟡 PARTIAL · ❌ NOT FIXED · ❓ не проверяемо в этой среде (нужны прод/секреты/нагрузка)
 
@@ -14,13 +14,13 @@
 | D-2 | SEAT_HOLDS_EXPIRED без возврата, вечный ретрай | ✅ | `PaymentService.php:547-557` → `recordReceiptAndRefund` `:709-742`; claim фиксируется `:512-515` |
 | D-3 | Вебхук-авторизация | ✅ | Конфиг-путь `nabilet.payment.yookassa.webhook_secret` (`YooKassaProvider.php:277-288`, `config/nabilet.php:291`); raw-body HMAC; wildcards банятся `ProductionSafetyAudit` |
 | D-4 | Каскад отмены мероприятия | 🟡 | Отказ при проданных местах `EventPublicationPolicy.php:85-96`; самого каскада нет (см. R-08) |
-| D-5 | `isHoldConvertible()` без блокировки | ❌ | `SeatHoldLifecycle.php:59` — `->first()` без lockForUpdate |
+| D-5 | `isHoldConvertible()` без блокировки | ✅ закрыто 16.10 | `SeatHoldLifecycle.php:61` `lockForUpdate()` (транзакция вебхука); выборка холдов в `validateHoldsForOrder` тоже под локом (`PaymentService.php:890-897`) |
 | D-6 | Промокоды check-then-act | 🟡 | `limit_total` атомарен (`PromoCodeService.php:240-256`); `per_user_limit` всё ещё check-then-act (гонка параллельных чекаутов) |
-| D-7 | `RuntimeException` при выпуске билетов | ❌ | `TicketService.php:47` |
-| D-8 | Checkout 404 вместо идемпотентного повтора | ❌ | `CartCheckoutService.php:64-71` firstOrFail; UI не обрабатывает 404 |
+| D-7 | `RuntimeException` при выпуске билетов | ✅ закрыто 16.10 | `TicketService.php:46-54` — `DomainRuleViolation('ORDER_NOT_PAID', 422)`; тестов на старое сообщение нет |
+| D-8 | Checkout 404 вместо идемпотентного повтора | 🟡 закрыто 16.10 (UI) | Сервер по-прежнему 404 (`CartCheckoutService.php:64-71`, firstOrFail); UI честно обрабатывает: `CheckoutPage.vue:299-306` — «корзина устарела, выберите места заново» вместо общей ошибки |
 | D-9 | Гостевой токен без хеша/ротации | ❌ | `CartToken.php:28-48`, сравнение открытым текстом |
 | D-10 | Письмо оседает в failed_jobs | 🟡 | Resend появился: `POST /my-tickets/resend` (`Orders/routes/api.php:52`) + UI (`TicketsPage.vue:175-204`); авто-эскалации/`failed()` хука нет |
-| D-11 | HOLD_SECONDS=600 vs серверные 900с | ❌ | `stores/cart.ts:34` |
+| D-11 | HOLD_SECONDS=600 vs серверные 900с | ✅ закрыто 16.10 | `stores/cart.ts:34-38` — 15*60 + комментарий легаси-фолбэка |
 | D-12 | `/ping` при мёртвой БД | ✅ | Задокументировано; `GET /health` с реальными проверками (`HealthController.php:43-55`) |
 | (S4/C2) | Результат платежа доверяет query-параметру | ✅ | `PaymentResultPage.vue:114-121` — `refreshStatus()` → `fetchPayment()`, `statusToResult()` |
 
@@ -34,9 +34,9 @@
 | D3-арх | Нет FK orders→cart/session/event; CASCADE перс. таблиц | ❌ | `2026_09_30_000100:20-25`; `2026_09_20_000900:162,177,182` |
 | D4-арх | Deadlocks (порядок локов, retry 1213) | ❌ | `CartItemService` → `CartCheckoutService` → `HoldSweeper` по-прежнему в разном порядке; retry-декоратора нет |
 | D6 | Молчаливые пропуски CHECK/триггеров | ✅ | WARNING при skip; CI применяет бандл на MySQL 8.4 и проверяет триггер (`ci.yml:198-464`) |
-| D7-арх | Сверка валюты в addItem | ❌ | `CartItemService.php:58-180` |
+| D7-арх | Сверка валюты в addItem | ✅ закрыто 16.10 | `CartItemService.php:150-170` — сравнение с валютами уже лежащих позиций (CURRENCY_MISMATCH 409, откат в транзакции) |
 | D9-арх | EnsureIdempotency не применён к роутам | ❌ | Ноль использований в `routes/` |
-| D10-арх | Revenue-отчёт во float | ❌ | `OrderService.php:292-294`, `OrderRepository.php:180-183` |
+| D10-арх | Revenue-отчёт во float | ✅ закрыто 16.10 | `OrderService.php:299-305`, `OrderRepository.php:178-190` — int minor units (вызовов больше нет — метод-изолят) |
 | X1 | Дрейф трёх бандлов схемы | ✅ | `tools/verify-migrations.php` + CI byte-identity; после слияния бандлы восстановлены (87 таблиц/901 колонок, инструменты зелёные) |
 | X2 | Осиротевшая `event_dates` | ❌ | Присутствует в спеке и плоских моделях |
 | — | Дублирование плоских моделей | ❌ | `app/Models` 54 файла vs 65 модульных; 17 файлов модулей импортируют плоские |
@@ -71,10 +71,10 @@
 
 | № | Пункт | Статус | Доказательство |
 |---|---|---|---|
-| 9 | Возвраты без HTTP-входа | 🟡 | `POST /orders/{order}/refund` admin (`Orders/routes/api.php:31`, `OrderController::refund:229-262`); cancel возвращыет только места (`OrderService.php:205-254`); кнопки в UI нет; расхождение пути с openapi (`/admin/orders/{order}/refund`) |
-| 9б | Текст отмены обещает возврат | ❌ | `AdminOrdersPage.vue:156-159` — диалог всё ещё обещает возврат |
-| 11 | `GET /tickets/{id}/pdf` | ❌ | Роута нет; PDF только вложением в письмо (`TicketPdfRenderer.php:43`, `TicketPurchasedMail.php:41`) |
-| 13 | Чекин: устройства/offline-бандлы | 🟡 | Device CRUD + checkerAuth + scan/sync есть (`Checkin/routes/api.php:51-80`, `AuthenticateChecker.php`); выдача offline-бандлов отсутствует (openapi `:2310-2351`) |
+| 9 | Возвраты без HTTP-входа | ✅ закрыто 16.10 | Эндпоинт уже был (`Orders/routes/api.php:31`); диалог админки теперь для paid заказов вызывает именно refund (`AdminOrdersPage.vue:154-186`) — текст обещания стал правдой; расхождение пути с openapi осталось (см. договорённость ниже) |
+| 9б | Текст отмены обещает возврат | ✅ закрыто 16.10 | см. выше: paid → refund-запрос, не-paid → cancel |
+| 11 | `GET /tickets/{id}/pdf` | ✅ закрыто 16.10 | Роут + экшен (`Tickets/routes/api.php:74-78`, `TicketController::pdf`, `TicketPdfRenderer::render`); null-рендер = 202 AsyncJobResponse по контракту; 200 — `application/pdf` attachment |
+| 13 | Чекин: устройства/offline-бандлы | ✅ закрыто 16.10 | Транспорт достроен: `GET/POST /api/v1/checkin-devices/{device}/bundles` + `GET /api/v1/offline-bundles/{bundle}` (`Checkin/routes/api.php:82-90`; `Admin\OfflineBundleController`, `OfflineBundleService` — билдер домена подключён, dedup по `bundle_hash`, device-чтение по `nbck_`-токену с отметкой `downloaded_at`) |
 | 16 | SMTP/queue/cron | 🟡 | queue worker в cron `routes/console.php:35-37` + systemd unit; ресенд есть; `MAIL_HOST=` пуст в `.env.example:162` |
 | 20 | OAuth (VK/Yandex/Google) | ❌ | Socialite нет в composer.json; только email-аутентификация |
 | 21 | Telegram | ❌ | Каркас из 2 файлов без логики |
@@ -131,8 +131,8 @@
 |---|---|---|---|
 | 1.1 | Кеш публичных страниц | ❌ | `EventPageController::show()`, `StorefrontController::show()` без Cache (кроме sitemap) |
 | 1.2 | Тяжёлый eager-load инвентаря; подсчёт мест в PHP | ❌ | `EventRepository.php:24`, `EventController.php:116-131`, `EventPageController.php:136` |
-| 1.4 | HTTP к провайдеру без timeout | ❌ | `YooKassaProvider.php:124-129,168-172,205-213` без `timeout()` |
-| 1.5 | per_page без потолка | ❌ | `ListEventsRequest` (max:100) не применяется; `EventController.php:52` читает напрямую |
+| 1.4 | HTTP к провайдеру без timeout | ✅ закрыто 16.10 | `YooKassaProvider.php` — все три вызова с `timeout(20)/connectTimeout(5)` |
+| 1.5 | per_page без потолка | ✅ закрыто 16.10 | `EventController.php:52-57` — кламп [1..100] в единственной точке входа каталога |
 | 1.5b | HoldSweeeper без LIMIT | 🟡 | Выборка без limit (`HoldSweeper.php:85-90`), но каждая сдача — своя короткая транзакция `:92-159` |
 | 1.3/1.6 | Deadlocks/наблюдаемость | ❌ | см. D4-арх; метрик/алертов нет |
 
@@ -140,13 +140,12 @@
 
 ## Итог: что осталось до закрытия аудитов
 
-**Закрыто целиком:** R-01…R-05, R-06, R-07, R-09, R-10, R-12, R-13; D-1, D-2, D-3, D-12; архитектурные D5/D1/D6/X1; фронтовый B2/B3/B3b/C2/C3/D1/D2/D3/E1/E2/E3; лояльность (включая L3); инсталлер B-1…B-4, W-2, W-3; приёмочные P0-1, P0-2, P0-4(контур CI), P0-7.
+**Закрыто целиком:** R-01…R-07, R-09, R-10, R-12, R-13; D-1, D-2, D-3, D-5, D-7, D-11, D-12; архитектурные D5/D1/D6/D7-арх/D10-арх/X1; фронтовый B2/B3/B3b/C2/C3/D1/D2/D3/E1/E2/E3; лояльность (включая L3, L4-фантом удалён); инсталлер B-1…B-4, W-2, W-3; приёмочные P0-1, P0-2, P0-4(контур CI), P0-7; отчёт 09.10 №9/№11/№13 и производительность 1.4/1.5.
 
 **Открытые дефекты кода (по убыванию риска):**
 1. R-08 / D-4 (арх.): нет каскада отмены события (batch refund) — только rejection-guard.
-2. №9/11 из отчёта 09-го: cancel не возвращает деньги за paid (UI-текст обещает!) и нет `GET /tickets/{id}/pdf` при объявленном контракте.
-3. Производительность: кеш публичных страниц, eager-load инвентаря + подсчёт в PHP, `Http` без timeout, per_page без потолка (1.1/1.2/1.4/1.5).
-4. Целостность: `isHoldConvertible()`/`validateHoldsForOrder` без lockForUpdate (D-5); UNIQUE(session_id, seat_id) на tickets (D2-арх); валютная сверка в addItem (D7-арх); FK/CASCADE на orders/payments/promo (D3-арх).
-5. Хвосты: `TicketService` RuntimeException (D-7); checkout 404 (D-8); гостевой токен без ротации (D-9); `EnsureIdempotency` не применён (D9-арх); float в отчётах (D10-арх); HOLD_SECONDS=600 (D-11); per_user_limit гонка (D-6b); `NewsletterService` с несуществующей колонкой; offline-бандлы без транспорт-слоя; OAuth/Telegram/блокировка мест — не реализованы; бэкап-инструкция в docs.
+2. Производительность: кеш публичных страниц (1.1), eager-load инвентаря + подсчёт мест в PHP (1.2), deadlocks/наблюдаемость (1.3/1.6), HoldSweeper без LIMIT (1.5b, смягчён).
+3. Целостность: UNIQUE(session_id, seat_id) на tickets (D2-арх — требует согласования с повторным выпуском после возврата); FK/CASCADE на orders/payments/promo (D3-арх); `EnsureIdempotency` не применён (D9-арх); гостевой токен без ротации (D-9); checkout-идемпотентность 404 на сервере (D-8 серверная половина); per_user_limit гонка (D-6b); R-11 хвосты (provider_event_id в RefundService, audit_logs); R-14 хвост (case `payment.waiting_for_capture` в processWebhook).
+4. Продуктовые: OAuth, Telegram-модуль, админская блокировка места, self-service возвраты (P2-2), backup-инструкция в docs (G-1), openapi path `/admin/orders/{order}/refund` vs реализованный `/orders/{order}/refund`.
 
-**Нужна среда/ключи (❓):** drill восстановления, стресс одного места, sandbox YooKassa, нагрузочное.
+**Нужна среда/ключи (❓):** drill восстановления, стресс одного места, sandbox YooKassa, нагрузочное (P0-3/5/6, P1-1).

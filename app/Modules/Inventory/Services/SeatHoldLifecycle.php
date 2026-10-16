@@ -54,8 +54,13 @@ final class SeatHoldLifecycle
      */
     public function isHoldConvertible(int $holdId): bool
     {
+        // lockForUpdate закрывает окно «sweeper прочитал холд, вебхук проверяет
+        // grace, оба расходятся» (аудит S6/D-5): с блокировкой sweeper физически
+        // не может подсунуть released-холд между чтением и markAsConverted здесь.
+        // Вызывающий код всегда исполняет это внутри своей транзакции вебхука.
         $hold = DB::table('seat_holds')
             ->where('id', $holdId)
+            ->lockForUpdate()
             ->first();
 
         if ($hold === null) {

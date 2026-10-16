@@ -887,9 +887,14 @@ class PaymentService
             return true; // Заказ без корзины (admin API) — холдов не было.
         }
 
+        // lockForUpdate при выборке: без него sweeper мог бы отпустить холд
+        // между этим чтением и isHoldConvertible() (аудит D-5/S6, миллисекундное
+        // окно grace). Строка холда перечитывается с блокировкой внутри
+        // isHoldConvertible(), поэтому двойная блокировка здесь безопасна.
         $holds = SeatHold::where('cart_id', $cartId)
             ->whereNull('converted_at')
             ->whereNull('released_at')
+            ->lockForUpdate()
             ->get();
 
         foreach ($holds as $hold) {
