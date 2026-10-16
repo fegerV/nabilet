@@ -23,6 +23,16 @@ final class RemindAbandonedCartsCommand extends Command
     {
         $outcome = $sweeper->remind();
 
+        // ВРЕМЕННАЯ диагностика: свип зелёный локально и не выбирает корзины
+        // на CI. Убирается после выявления расхождения.
+        fwrite(STDOUT, sprintf(
+            "::warning::carts-remind window=[%s .. %s] sent=%d failed=%d\n",
+            $outcome['debug_window_low'],
+            $outcome['debug_window_high'],
+            $outcome['sent'],
+            $outcome['failed'],
+        ));
+
         $this->info(sprintf(
             'abandoned cart reminders: sent %d, failed %d',
             $outcome['sent'],

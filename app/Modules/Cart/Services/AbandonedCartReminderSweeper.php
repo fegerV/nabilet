@@ -93,7 +93,7 @@ final class AbandonedCartReminderSweeper
             }
         }
 
-        return ['sent' => $sent, 'failed' => $failed];
+        return ['sent' => $sent, 'failed' => $failed, 'debug_window_low' => $deadlineLow, 'debug_window_high' => $deadlineHigh];
     }
 
     private function mailFor(object $cart): TemplateMail
