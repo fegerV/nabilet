@@ -93,12 +93,7 @@ final class AbandonedCartReminderSweeper
             }
         }
 
-        return [
-            'sent' => $sent,
-            'failed' => $failed,
-            'debug_window_low' => $now->toDateTimeString(),
-            'debug_window_high' => $now->addMinutes(self::REMIND_BEFORE_MINUTES)->toDateTimeString(),
-        ];
+        return ['sent' => $sent, 'failed' => $failed];
     }
 
     private function mailFor(object $cart): TemplateMail
