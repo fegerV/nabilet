@@ -65,6 +65,7 @@ class Order extends Model
         'customer_phone',
         'paid_at',
         'cancelled_at',
+        'reminder_sent_at',
         'promo_code_id',
         'cart_id',
     ];
@@ -80,6 +81,7 @@ class Order extends Model
         'cart_id' => 'integer',
         'paid_at' => 'datetime',
         'cancelled_at' => 'datetime',
+        'reminder_sent_at' => 'datetime',
     ];
 
     protected static function booted(): void

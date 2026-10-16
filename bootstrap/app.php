@@ -84,6 +84,8 @@ return Application::configure(basePath: dirname(__DIR__))
         // валит весь `schedule:run`, и тогда перестают работать и холды, и
         // очередь — а не только напоминания.
         \Nabilet\Modules\Orders\Console\SendEventRemindersCommand::class,
+        \Nabilet\Modules\Orders\Console\RemindUnpaidOrdersCommand::class,
+        \Nabilet\Modules\Cart\Console\RemindAbandonedCartsCommand::class,
         // Резервное копирование по расписанию (ТЗ §72). До этого сервис бэкапов
         // не вызывался ниоткуда: ни команды, ни задачи в планировщике — отказ
         // диска означал безвозвратную потерю данных.

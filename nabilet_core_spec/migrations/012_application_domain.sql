@@ -288,4 +288,12 @@ CREATE TABLE IF NOT EXISTS artist_event (
   CONSTRAINT artist_event_event_id_foreign FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Колонки напоминаний о брошенном (см. 2026_10_16_000100_add_reminder_columns.php):
+-- NULL = «ещё не напоминали», ставится после фактической постановки письма.
+-- У orders email уже в строке; reminder корзины уходит только авторизованным
+-- (carts.user_id NOT NULL) — у гостевой корзины контакта нет.
+ALTER TABLE orders
+  ADD COLUMN reminder_sent_at DATETIME(6) NULL AFTER paid_at;
+ALTER TABLE carts
+  ADD COLUMN reminder_sent_at DATETIME(6) NULL AFTER expires_at;
 SET FOREIGN_KEY_CHECKS = 1;
