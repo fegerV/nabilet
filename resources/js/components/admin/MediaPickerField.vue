@@ -1,14 +1,13 @@
 <script setup lang="ts">
 /**
- * Поле «картинка из медиатеки» — NInput URL + кнопка «Выбрать из медиатеки».
+ * Поле «картинка из медиатеки» — NInput URL + кнопка «Выбрать из медиатеки»
+ * и модалка-пикер (выбор в всплывающем окне удобнее: не сдвигает форму).
  *
  * ЗАЧЕМ ЖИВЁТ ОТДЕЛЬНЫМ КОМПОНЕНТОМ
- *   Раньше у конструктора билетов был свой встроенный пикер (модалка внутри
- *   TicketBuilder), а конструктор витрины предлагал вставлять картинку
- *   «руками, строкой URL» — медиатека в проекте одна, и копировать её
- *   выборку в каждую форму значило бы трижды поддерживать один и тот же
- *   список. Поле можно вбить руками (внешний URL), а можно выбрать из
- *   библиотеки — оба пути пишут одну строку в `modelValue`.
+ *   Медиатека в проекте одна; копировать её выборку в каждую форму
+ *   (билетный конструктор, витрина, брендинг) значило бы трижды поддерживать
+ *   один и тот же список. Поле можно вбить руками (внешний URL), а можно
+ *   выбрать из библиотеки — оба пути пишут одну строку в `modelValue`.
  *
  * ЗАГРУЗКА ЛЕНИВАЯ: список медиатеки поднимается при первом открытии
  * пикера, а не при монтировании формы — форма с шестью полями картинок не
@@ -19,13 +18,17 @@ import { get } from '@/lib/api'
 import { storageSrc, type MediaAsset } from '@/lib/mediaLibrary'
 import NButton from '@/components/ui/NButton.vue'
 import NInput from '@/components/ui/NInput.vue'
+import NModal from '@/components/ui/NModal.vue'
 
-const props = defineProps<{
-  modelValue: string
-  label?: string
-  hint?: string
-  placeholder?: string
-}>()
+const props = withDefaults(
+  defineProps<{
+    modelValue: string
+    label?: string
+    hint?: string
+    placeholder?: string
+  }>(),
+  { placeholder: 'https://…' },
+)
 
 const emit = defineEmits<{ 'update:modelValue': [value: string] }>()
 
@@ -60,7 +63,13 @@ function pick(asset: MediaAsset): void {
   open.value = false
 }
 
-/** Внешние картинки и абсолютные URL не трогаем, медиатечные — через storage. */
+function clear(): void {
+  emit('update:modelValue', '')
+
+  open.value = false
+}
+
+/** Внешние картинки и абсолютные URL не трогаем, медиатечные — через /storage. */
 const previewSrc = props.modelValue.startsWith('http')
   ? props.modelValue
   : storageSrc(props.modelValue)
@@ -85,33 +94,30 @@ const previewSrc = props.modelValue.startsWith('http')
         class="h-10 w-16 rounded border border-line bg-surface-2 object-contain"
       />
       <NButton variant="secondary" size="sm" icon="🖼" @click="openPicker">Выбрать из медиатеки</NButton>
-      <NButton v-if="modelValue" variant="ghost" size="sm" aria-label="Очистить поле" @click="emit('update:modelValue', '')">✕</NButton>
+      <NButton v-if="modelValue" variant="ghost" size="sm" aria-label="Очистить поле" @click="clear">✕</NButton>
     </div>
 
-    <!-- Пикер медиатеки: сетка превью, ленивая загрузка, клик = выбор. -->
-    <div v-if="open" class="mt-2 rounded-lg border border-line bg-surface p-3">
-      <div class="mb-2 flex items-center justify-between">
-        <p class="text-xs font-semibold uppercase tracking-wide text-subtle">Медиатека</p>
-        <button
-          type="button"
-          class="rounded px-1.5 text-sm text-subtle hover:text-content"
-          aria-label="Закрыть пикер"
-          @click="open = false"
-        >✕</button>
-      </div>
-
-      <p v-if="loading" class="py-4 text-center text-sm text-subtle">Загружаем файлы…</p>
+    <NModal
+      :open="open"
+      title="Медиатека"
+      description="Выберите изображение — путь подставится в поле."
+      size="lg"
+      @update:open="open = $event"
+    >
+      <p v-if="loading" class="py-8 text-center text-sm text-subtle">Загружаем файлы…</p>
 
       <p v-else-if="error" class="py-2 text-sm text-rose-400">Не удалось загрузить: {{ error }}</p>
 
-      <p v-else-if="!items.length" class="py-4 text-center text-sm text-subtle">Медиатека пуста — загрузите файлы в разделе «Медиатека».</p>
+      <p v-else-if="!items.length" class="py-8 text-center text-sm text-subtle">
+        Медиатека пуста — загрузите файлы в разделе «Медиатека».
+      </p>
 
-      <div v-else class="grid max-h-64 grid-cols-3 gap-2 overflow-y-auto sm:grid-cols-4">
+      <div v-else class="grid max-h-[55vh] grid-cols-3 gap-2 overflow-y-auto sm:grid-cols-4">
         <button
           v-for="asset in items"
           :key="asset.id"
           type="button"
-          class="group rounded-lg border border-line bg-surface-2 p-1 transition-colors hover:border-brand-500/60"
+          class="rounded-lg border border-line bg-surface-2 p-1 transition-colors hover:border-brand-500/60"
           :title="asset.filename"
           @click="pick(asset)"
         >
@@ -125,6 +131,11 @@ const previewSrc = props.modelValue.startsWith('http')
           <span class="block truncate text-2xs text-subtle">{{ asset.filename }}</span>
         </button>
       </div>
-    </div>
+
+      <template #footer>
+        <NButton v-if="modelValue" variant="ghost" size="sm" @click="clear">Очистить поле</NButton>
+        <NButton variant="secondary" size="sm" @click="open = false">Отмена</NButton>
+      </template>
+    </NModal>
   </div>
 </template>
