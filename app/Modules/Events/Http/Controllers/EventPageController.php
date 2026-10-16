@@ -130,10 +130,11 @@ class EventPageController
         // берутся из ближайшего сеанса. Без `venue` в цепочке `$session->venue`
         // даёт N+1 запрос на каждое место, а мест в зале сотни.
         //
-        // `sessions.inventoryItems` — по той же причине, но появился здесь
-        // позже: цены в `offers` берутся ИЗ НИХ, а без предзагрузки это ещё один
-        // запрос на каждый сеанс события (см. `offerPayload()`).
-        $event->load(['category', 'translations', 'sessions.venue', 'sessions.inventoryItems', 'organization', 'artists']);
+        // Раньше здесь грузился ЦЕЛИКОМ `sessions.inventoryItems` — все строки
+        // инвентаря всех сеансов события (аудит 1.2): offers нужны только три
+        // числа ближайшего сеанса (мин. цена, кол-во доступных, валюта), и они
+        // считаются одним запросом в `offerPayload()`.
+        $event->load(['category', 'translations', 'sessions.venue', 'organization', 'artists']);
 
         // Дата события живёт НЕ в `events` — в таблице нет ни `start_datetime`,
         // ни `start_date`, есть только `published_at` (момент выхода на сайт).
@@ -485,11 +486,18 @@ class EventPageController
      */
     private function offerPayload(Event $event, ?object $session): array
     {
-        $items = $session?->inventoryItems;
+        // Три числа вместо N строк инвентаря (аудит 1.2): мин. цена, сколько
+        // позиций доступно, валюта. Один агрегат по сеансу; строки не грузятся.
+        $aggregate = $session === null ? null : \Illuminate\Support\Facades\DB::table('inventory_items')
+            ->where('session_id', $session->id)
+            ->where('status', 'available')
+            ->where('available_quantity', '>', 0)
+            ->selectRaw('MIN(price_amount) as min_price, COUNT(*) as available_count, MIN(currency) as currency')
+            ->first();
 
         // Валюта нужна и в ветке «купить нельзя»: `offers.priceCurrency` —
         // обязательное поле, и Offer без него Google отбраковывает.
-        $currency = (string) ($items?->first()?->currency ?: 'RUB');
+        $currency = (string) ($aggregate?->currency ?: 'RUB');
 
         if ($event->status !== EventStatus::PUBLISHED) {
             return [
@@ -508,18 +516,13 @@ class EventPageController
             ];
         }
 
-        if ($items === null) {
+        if ($aggregate === null) {
             return [];
         }
 
-        $available = $items->filter(
-            static fn ($item): bool => $item->status === 'available'
-                && (int) ($item->available_quantity ?? 0) > 0
-        );
-
         // Всё раскуплено или продажи не открыты: `SoldOut` — это сигнал, а не
         // отсутствие данных. Google показывает «билетов нет» вместо «бесплатно».
-        if ($available->isEmpty()) {
+        if ((int) $aggregate->available_count === 0) {
             return [
                 'price' => '',
                 'currency' => $currency,
@@ -527,17 +530,14 @@ class EventPageController
             ];
         }
 
-        $prices = $available
-            ->pluck('price_amount')
-            ->filter(static fn ($price): bool => is_numeric($price))
-            ->map(static fn ($price): int => (int) $price);
+        $minPrice = $aggregate->min_price;
 
-        if ($prices->isEmpty()) {
+        if (! is_numeric($minPrice)) {
             return [];
         }
 
         return [
-            'price' => Money::of((int) $prices->min(), $currency)->toDecimal(),
+            'price' => Money::of((int) $minPrice, $currency)->toDecimal(),
             'currency' => $currency,
             'availability' => 'available',
         ];

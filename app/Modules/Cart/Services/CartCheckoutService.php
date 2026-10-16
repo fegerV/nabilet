@@ -8,6 +8,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Nabilet\Core\Errors\ConflictError;
 use Nabilet\Core\Errors\DomainRuleViolation;
+use Nabilet\Core\Errors\NotFoundError;
 use Nabilet\Core\Errors\ValidationError;
 use Nabilet\Core\Support\Money;
 use Nabilet\Modules\Cart\Models\Cart;
@@ -95,7 +96,23 @@ final class CartCheckoutService
                 ->where('cart_token', $token)
                 ->with(['items.inventoryItem'])
                 ->lockForUpdate()
-                ->firstOrFail();
+                ->first();
+
+            if ($cart === null) {
+                // D-8/S8: 404 на повторный checkout после успешного оформления
+                // волновал покупателя больше, чем информировал. Если корзина
+                // конвертирована этим же токеном и у неё есть заказ — честно
+                // возвращаем Тот же заказ (идемпотентный replay с 'replayed':
+                // true), вместо инфраструктурного NOT_FOUND. Случай «корзина
+                // вообще не наша» остаётся 404 по домену (NotFoundError).
+                $replayed = $this->replayConvertedOrder($sessionId, $token);
+
+                if ($replayed !== null) {
+                    return $replayed;
+                }
+
+                throw new NotFoundError('Cart', $sessionId);
+            }
 
             return $this->convert($cart, $customer, $expired, null, $buyer);
         });
@@ -558,7 +575,63 @@ final class CartCheckoutService
                 'subtotal_amount' => $subtotalAmount,
                 'discount_amount' => $discountAmount,
                 'bonus_amount' => $bonusAmount,
-                'currency' => $cart->currency,
+                // Порядок поиска валюты: цена.attr есть и у инвентаря. У CARTS
+                // колонки currency НЕТ ((INVENTED_FIELDS Cart) — она была бы
+                // null, и витрина могла бы показать пустую валюту.
+                'currency' => (string) ($order->currency ?? 'RUB'),
             ];
+    }
+
+    /**
+     * Восстановить ответ уже ОФОРМЛЕННОЙ корзины (D-8/S8).
+     *
+     * Ответ собирается из ЗАКАЗА, а не из корзины: у конвертированной корзины
+     * позиции уже переехали в order_items, и их перечень источник истины —
+     * заказ. Возвращается с флагом `replayed: true`, чтобы отличить повтор
+     * от первичного оформления (наше время — наблюдаемость, а не контракт:
+     * ключи ответа совпадают с обычным успехом).
+     */
+    private function replayConvertedOrder(string $sessionId, string $token): ?array
+    {
+        $cartId = DB::table('carts')
+            ->where('session_id', $sessionId)
+            ->where('cart_token', $token)
+            ->where('status', 'converted')
+            ->orderByDesc('id')
+            ->value('id');
+
+        if ($cartId === null) {
+            return null;
+        }
+
+        $order = Order::query()
+            ->where('cart_id', $cartId)
+            ->orderBy('id')
+            ->with('items')
+            ->first();
+
+        if ($order === null) {
+            return null;
+        }
+
+        return [
+            'cart_id' => (int) $cartId,
+            'order_id' => (string) $order->public_id,
+            'session_id' => (string) $sessionId,
+            'items' => $order->items
+                ->map(fn (\Nabilet\Modules\Orders\Models\OrderItem $item) => [
+                    'inventory_item_id' => (int) $item->inventory_item_id,
+                    'quantity' => (int) $item->quantity,
+                    'unit_price' => (int) $item->unit_price,
+                    'total_price' => (int) $item->total_price,
+                ])
+                ->toArray(),
+            'total_amount' => (int) $order->total_amount,
+            'subtotal_amount' => (int) $order->subtotal_amount,
+            'discount_amount' => (int) $order->discount_amount,
+            'bonus_amount' => (int) ($order->bonus_amount ?? 0),
+            'currency' => (string) ($order->currency ?? 'RUB'),
+            'replayed' => true,
+        ];
     }
 }

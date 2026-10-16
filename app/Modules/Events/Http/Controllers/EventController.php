@@ -118,22 +118,33 @@ class EventController extends Controller
                     ], 404);
                 }
 
-                $event->load(['category', 'translations', 'sessions.hall', 'sessions.inventoryItems', 'organization', 'galleryLinks.mediaAsset', 'artists']);
+                $event->load(['category', 'translations', 'sessions.hall', 'organization', 'galleryLinks.mediaAsset', 'artists']);
 
                         $resource = new EventResource($event);
                         $data = $resource->toArray(request());
 
                 // Сеансы — покупательским контрактом Vue: id, starts_at, hall, available_seats.
-                                $data['sessions'] = $event->sessions
-                                    ->map(fn ($s) => [
-                                        'id' => $s->id,
-                                        'starts_at' => $s->starts_at?->toIso8601String(),
-                                        'hall' => $s->hall?->name,
-                                        'available_seats' => $s->inventoryItems
-                                            ->filter(fn ($i) => $i->status === 'available' && ($i->available_quantity ?? 0) > 0)
-                                            ->count(),
-                                    ])
-                                    ->toArray();
+                //
+                // Доступность считает ОДИН сгруппированный запрос (аудит 1.2):
+                // раньше здесь грузились ВСЕ строки инвентаря каждого сеанса,
+                // а число уже вычислялось фильтром в PHP.
+                $availableBySession = \Illuminate\Support\Facades\DB::table('inventory_items')
+                    ->join('sessions', 'sessions.id', '=', 'inventory_items.session_id')
+                    ->where('sessions.event_id', $event->id)
+                    ->where('inventory_items.status', 'available')
+                    ->where('inventory_items.available_quantity', '>', 0)
+                    ->groupBy('inventory_items.session_id')
+                    ->selectRaw('inventory_items.session_id as session_id, COUNT(*) as available_seats')
+                    ->pluck('available_seats', 'session_id');
+
+                        $data['sessions'] = $event->sessions
+                            ->map(fn ($s) => [
+                                'id' => $s->id,
+                                'starts_at' => $s->starts_at?->toIso8601String(),
+                                'hall' => $s->hall?->name,
+                                'available_seats' => (int) ($availableBySession[$s->id] ?? 0),
+                            ])
+                            ->toArray();
 
                 // Дополнительные фото и видео — прямо в публичном ответе, а не
                 // отдельным запросом. Отдельный эндпоинт потребовал бы второго
