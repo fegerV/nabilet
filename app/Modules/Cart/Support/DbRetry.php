@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Nabilet\Core\Support;
+namespace Nabilet\Modules\Cart\Support;
 
 use Illuminate\Database\QueryException;
 
