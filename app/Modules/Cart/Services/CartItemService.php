@@ -10,6 +10,7 @@ use Illuminate\Support\Str;
 use Nabilet\Core\Errors\ConflictError;
 use Nabilet\Core\Errors\DomainRuleViolation;
 use Nabilet\Core\Errors\ValidationError;
+use Nabilet\Core\Support\DbRetry;
 use Nabilet\Modules\Cart\Models\Cart;
 use Nabilet\Modules\Cart\Models\CartItem;
 use Nabilet\Modules\Cart\Support\CartToken;
@@ -78,7 +79,10 @@ final class CartItemService
             throw new ValidationError(['cart_token' => ['The cart token is required.']], 'Cart token is required.');
         }
 
-        return DB::transaction(function () use ($sessionId, $inventoryItemId, $quantity, $token, $buyer) {
+        // DbRetry (аудит 1.3/D4-арх): deadlock 1213/40001 на пути добавления
+        // места раньше уходил клиенту 500-ей. Транзакция all-or-nothing —
+        // повтор безопасен; у платёжных вызовов идемпотентность своя.
+        return DbRetry::run(fn (): CartItem => DB::transaction(function () use ($sessionId, $inventoryItemId, $quantity, $token, $buyer) {
             // Sales gate on EVERY add: the session must still be `on_sale` and inside
             // its sales window. Checking only at cart creation is not enough — a cart
             // opened while sales are live must stop accepting new seats the moment the
@@ -218,13 +222,13 @@ final class CartItemService
             $this->recalculateCartTotal($cart);
 
             return $cartItem;
-        });
+        }));
     }
 
     /**
      * Удалить позицию из корзины.
      *
-     * @throws \Illuminate\Database\Eloquent\ModelNotFoundException корзина или позиция не найдены
+     * @throws \Illuminate\Database\Eloquent\ModelNotFoundException корзина или позиция не найдена
      */
     public function removeItem(string $sessionId, int $itemId, ?string $token = null): bool
     {

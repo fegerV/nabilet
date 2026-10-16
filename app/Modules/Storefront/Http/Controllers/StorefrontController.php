@@ -6,6 +6,7 @@ namespace Nabilet\Modules\Storefront\Http\Controllers;
 
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Storefront\Services\StorefrontService;
 use Throwable;
@@ -29,8 +30,25 @@ class StorefrontController
     /** Публичный конфиг витрины (гость). */
     public function show(): JsonResponse
     {
+        // Аудит производительности 1.1: `GET /storefront` выполняется на каждом
+        // открытии витрины, а конфиг меняется только из админки. Короткий кеш
+        // (60 c) с явной инвалидацией в `update()`/`reset()` — устаревание
+        // ограничено и для самой админки неощутимо.
+        $organizationId = $this->publicOrganizationId();
+        $cacheKey = 'storefront-config:' . (string) $organizationId;
+
+        $cached = Cache::get($cacheKey);
+
+        if (is_array($cached)) {
+            return response()->json(['data' => $cached]);
+        }
+
+        $config = $this->storefront->resolve($organizationId);
+
+        Cache::put($cacheKey, $config, now()->addSeconds(60));
+
         return response()->json([
-            'data' => $this->storefront->resolve($this->publicOrganizationId()),
+            'data' => $config,
         ]);
     }
 
@@ -107,6 +125,8 @@ class StorefrontController
             ], 500);
         }
 
+        Cache::forget('storefront-config:' . (string) $organizationId);
+
         return response()->json([
             'data' => $config,
             'meta' => [
@@ -121,6 +141,8 @@ class StorefrontController
     {
         $organizationId = $this->organizationId($request);
         $config = $this->storefront->reset($organizationId);
+
+        Cache::forget('storefront-config:' . (string) $organizationId);
 
         return response()->json([
             'data' => $config,

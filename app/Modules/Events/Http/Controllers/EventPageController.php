@@ -16,6 +16,7 @@ use Nabilet\Modules\Seo\Services\StructuredDataService;
 use Illuminate\Http\Response;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Route;
 
 /**
@@ -96,6 +97,40 @@ class EventPageController
         // публика не видела никогда.
         if ($event->status === EventStatus::DRAFT) {
             return $this->notFound($slug);
+        }
+
+        // Кеш собранной SEO-страницы (аудит производительности 1.1).
+        //
+        // КЕШИРУЕМ ТОЛЬКО published: archived/completed/cancelled редко
+        // запрашиваются, а отмена события должна снять «билеты в продаже»
+        // мгновенно, без окна устаревания.
+        //
+        // КЛЮЧ включает отпечаток сеансов (количество + максимальный
+        // updated_at): добавление сеанса или правка цен меняет JSON-LD
+        // (offers/startDate) — собранная страница перестаёт быть валидной,
+        // хотя сама строка events не менялась и её updated_at не сдвинулся.
+        // Правка события меняет `events.updated_at` — ключ уезжает
+        // сам, без ручной инвалидации (TTL-нижний предел — 5 минут).
+        if ($event->status === EventStatus::PUBLISHED) {
+            $fingerprint = \Illuminate\Support\Facades\DB::table('sessions')
+                ->where('event_id', $event->id)
+                ->selectRaw('COUNT(*) as session_count, MAX(updated_at) as last_update')
+                ->first();
+
+            $cacheKey = sprintf(
+                'event-page:%d:%s:%d:%s',
+                $event->id,
+                (string) $event->updated_at?->format('YmdHis'),
+                (int) ($fingerprint->session_count ?? 0),
+                (string) $fingerprint->last_update,
+            );
+
+            $cachedHtml = Cache::get($cacheKey);
+
+            if (is_string($cachedHtml) && $cachedHtml !== '') {
+                return response($cachedHtml)
+                    ->header('Content-Type', 'text/html; charset=utf-8');
+            }
         }
 
         // Канонический URL: /event/{slug}/{publicId}.
@@ -261,6 +296,11 @@ class EventPageController
             // вместо того чтобы её дополнять.
             'robots'        => $this->effectiveRobots($event),
         ]);
+
+        // Кладём в кеш только то, что уже кешируется: published (см. выше).
+        if ($event->status === EventStatus::PUBLISHED && isset($cacheKey)) {
+            Cache::put($cacheKey, $html, now()->addMinutes(5));
+        }
 
         return response($html)
             ->header('Content-Type', 'text/html; charset=utf-8');

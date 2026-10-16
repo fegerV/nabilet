@@ -10,6 +10,7 @@ use Nabilet\Core\Errors\ConflictError;
 use Nabilet\Core\Errors\DomainRuleViolation;
 use Nabilet\Core\Errors\NotFoundError;
 use Nabilet\Core\Errors\ValidationError;
+use Nabilet\Core\Support\DbRetry;
 use Nabilet\Core\Support\Money;
 use Nabilet\Modules\Cart\Models\Cart;
 use Nabilet\Modules\Core\Organizations\Models\Organization;
@@ -89,32 +90,47 @@ final class CartCheckoutService
         // оставалась `active`, места — удержанными, а комментарий «освобождает
         // инвентарь немедленно» описывал недостижимую ветку. Воспроизведено
         // тестом CartWritePathTest::test_expired_cart_returns_every_seat_it_reserved.
-        $result = DB::transaction(function () use ($sessionId, $token, $customer, $buyer, &$expired): ?array {
-            $cart = Cart::query()
-                ->where('session_id', $sessionId)
-                ->where('status', 'active')
-                ->where('cart_token', $token)
-                ->with(['items.inventoryItem'])
-                ->lockForUpdate()
-                ->first();
+        // DbRetry (аудит 1.3/D4-арх): deadlock 1213/40001 на чекауте — спор о
+        // порядке блокировок, а не испорченные данные; повтор транзакции
+        // безопасен и вместо 500 даёт покупателю обычный успех.
+        //
+        // ОБЫЧНОЕ замыкание, а не `fn()`: стрелочные функции захватывают
+        // переменные ТОЛЬКО по значению, что разорвало бы `&$expired` — флаг
+        // «корзина истекла», присвоенный внутри транзакции, терялся бы, и
+        // покупатель получал 200 вместо 409.
+        $result = DbRetry::run(function () use ($sessionId, $token, $customer, $buyer, &$expired): ?array {
+            return DB::transaction(function () use ($sessionId, $token, $customer, $buyer, &$expired): ?array {
+                // Сброс флага на каждой попытке: откат по deadlock может оставить
+                // «истекла» от неудавшейся попытки, и снаружи это выглядело бы
+                // CART_EXPIRED вместо честного повтора.
+                $expired = false;
 
-            if ($cart === null) {
-                // D-8/S8: 404 на повторный checkout после успешного оформления
-                // волновал покупателя больше, чем информировал. Если корзина
-                // конвертирована этим же токеном и у неё есть заказ — честно
-                // возвращаем Тот же заказ (идемпотентный replay с 'replayed':
-                // true), вместо инфраструктурного NOT_FOUND. Случай «корзина
-                // вообще не наша» остаётся 404 по домену (NotFoundError).
-                $replayed = $this->replayConvertedOrder($sessionId, $token);
+                $cart = Cart::query()
+                    ->where('session_id', $sessionId)
+                    ->where('status', 'active')
+                    ->where('cart_token', $token)
+                    ->with(['items.inventoryItem'])
+                    ->lockForUpdate()
+                    ->first();
 
-                if ($replayed !== null) {
-                    return $replayed;
+                if ($cart === null) {
+                    // D-8/S8: 404 на повторный checkout после успешного оформления
+                    // волновал покупателя больше, чем информировал. Если корзина
+                    // конвертирована этим же токеном и у неё есть заказ — честно
+                    // возвращаем Тот же заказ (идемпотентный replay с 'replayed':
+                    // true), вместо инфраструктурного NOT_FOUND. Случай «корзина
+                    // вообще не наша» остаётся 404 по домену (NotFoundError).
+                    $replayed = $this->replayConvertedOrder($sessionId, $token);
+
+                    if ($replayed !== null) {
+                        return $replayed;
+                    }
+
+                    throw new NotFoundError('Cart', $sessionId);
                 }
 
-                throw new NotFoundError('Cart', $sessionId);
-            }
-
-            return $this->convert($cart, $customer, $expired, null, $buyer);
+                return $this->convert($cart, $customer, $expired, null, $buyer);
+            });
         });
 
         // Возврат инвентаря уже зафиксирован транзакцией — только теперь можно
@@ -149,10 +165,16 @@ final class CartCheckoutService
     {
         $expired = false;
 
-        $result = DB::transaction(function () use ($publicId, $customer, $token, $userId, $buyer, &$expired): ?array {
-            $cart = $this->lockOwnedByPublicId($publicId, $token, $userId);
+        // Обычное замыкание (не fn()) — по той же причине: &$expired должен
+        // пробиться наружу через слои повторов.
+        $result = DbRetry::run(function () use ($publicId, $customer, $token, $userId, $buyer, &$expired): ?array {
+            return DB::transaction(function () use ($publicId, $customer, $token, $userId, $buyer, &$expired): ?array {
+                $expired = false;
 
-            return $this->convert($cart, $customer, $expired, $userId, $buyer);
+                $cart = $this->lockOwnedByPublicId($publicId, $token, $userId);
+
+                return $this->convert($cart, $customer, $expired, $userId, $buyer);
+            });
         });
 
         if ($expired) {

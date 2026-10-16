@@ -226,8 +226,21 @@ class OrderController extends Controller
      *
      * Роут закрыт `admin`: возврат — финансовая операция.
      */
-    public function refund(Request $request, Order $order): JsonResponse
+    public function refund(Request $request, string $order): JsonResponse
     {
+        // Идентификатор приходит и числом (админка), и строкой-`public_id`
+        // (контракт: OrderIdPath — строка). Число резолвим по ключу, всё
+        // остальное — по public_id; неизвестное — fail-closed 404.
+        $resolved = preg_match('/^\d{1,19}$/', $order) === 1
+            ? Order::query()->whereKey((int) $order)->first()
+            : Order::query()->where('public_id', $order)->first();
+
+        if ($resolved === null) {
+            throw new NotFoundError('Order', $order);
+        }
+
+        $order = $resolved;
+
         $this->assertCanSee($request, $order);
 
         $validated = $request->validate([
