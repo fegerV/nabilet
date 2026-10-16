@@ -88,9 +88,14 @@ final class EventOrderRefunder
 
                 $refunded++;
             } catch (\Throwable $e) {
+                // §66 E2: наружу уходят МАШИННЫЙ код и безопасный текст, а не
+                // сырой $e->getMessage() (внутренние детали в ответе клиенту).
+                $appError = $e instanceof \Nabilet\Core\Errors\AppError ? $e : null;
+
                 $failures[] = [
                     'order' => (string) ($order->public_id ?? $order->id),
-                    'error' => $e->getMessage(),
+                    'code' => $appError !== null ? $appError->errorCode : 'REFUND_FAILED',
+                    'message' => $appError !== null ? $e->getMessage() : 'Refund did not pass; see logs.',
                 ];
             }
         }
