@@ -10,7 +10,7 @@ use Nabilet\Core\Errors\DomainRuleViolation;
 use Nabilet\Modules\Orders\Services\OrderService;
 use Nabilet\Modules\Payments\Services\PaymentService;
 use Nabilet\Modules\Payments\Services\WebhookSignatureVerifier;
-use Nabilet\Modules\System\Providers\ProductionSafetyProvider;
+use Nabilet\Modules\System\Support\ProductionSafetyAudit;
 use Nabilet\Tests\Support\SellableSeatFixtures;
 use Tests\TestCase;
 
@@ -160,10 +160,12 @@ class WebhookAuthenticationTest extends TestCase
             'nabilet.payment.yookassa.webhook_ip_allowlist' => ['*'],
         ]);
 
-        $provider = new ProductionSafetyProvider($this->app);
-        $method = new \ReflectionMethod($provider, 'wildcardWebhookAllowlists');
+        // Правила живут в `ProductionSafetyAudit` (провайдер только решает,
+        // когда падать) — рефлексия же по провайдеру осталась от времён, когда
+        // код проверок жил внутри него.
+        $method = new \ReflectionMethod(ProductionSafetyAudit::class, 'wildcardWebhookAllowlists');
 
-        $this->assertSame(['YOOKASSA_WEBHOOK_IP_ALLOWLIST'], $method->invoke($provider));
+        $this->assertSame(['YOOKASSA_WEBHOOK_IP_ALLOWLIST'], $method->invoke(new ProductionSafetyAudit()));
     }
 
     public function test_the_production_guard_stays_quiet_for_a_real_allowlist(): void
@@ -173,10 +175,9 @@ class WebhookAuthenticationTest extends TestCase
             'nabilet.payment.yookassa.webhook_ip_allowlist' => ['185.32.0.0/24'],
         ]);
 
-        $provider = new ProductionSafetyProvider($this->app);
-        $method = new \ReflectionMethod($provider, 'wildcardWebhookAllowlists');
+        $method = new \ReflectionMethod(ProductionSafetyAudit::class, 'wildcardWebhookAllowlists');
 
-        $this->assertSame([], $method->invoke($provider));
+        $this->assertSame([], $method->invoke(new ProductionSafetyAudit()));
     }
 
     /**
