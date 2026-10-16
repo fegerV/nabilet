@@ -233,8 +233,8 @@ function parseDdlColumns(string $file): array
  *
  * 73/785 → 75/805 в B-1: таблицы `artists` (13 колонок) и `artist_event` (7).
  */
-const EXPECTED_TABLES = 87;
-    const EXPECTED_COLUMNS = 903;
+const EXPECTED_TABLES = 88;
+    const EXPECTED_COLUMNS = 911;
 /**
  * @param array<string, list<string>> $tables
  */
