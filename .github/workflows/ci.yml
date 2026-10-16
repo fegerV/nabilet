@@ -474,6 +474,13 @@ jobs:
           path: phpunit-junit.xml
           if-no-files-found: ignore
 
+      # Лог джобы закрыт правами (read-only clone не авторизован), поэтому
+      # упавшие тесты печатаются аннотациями — они читаются по API без
+      # авторизации, по тому же check-run.
+      - name: Print the failing tests as annotations
+        if: failure()
+        run: php tools/ci-print-phpunit-failures.php phpunit-junit.xml
+
   # ───────────────────────────────────────────────────────────────────────────
   # The frontend: types, unit tests, and a real bundle.
   #
