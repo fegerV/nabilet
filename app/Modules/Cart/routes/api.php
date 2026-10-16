@@ -46,8 +46,13 @@ Route::prefix('cart')->group(function () {
     Route::get('/', [CartController::class, 'show']);
     Route::post('/items', [CartController::class, 'addItem']);
     Route::delete('/items/{itemId}', [CartController::class, 'removeItem']);
+    // Идемпотентность checkout — на уровне СЕРВИСА (replayConvertedOrder,
+    // см. CartCheckoutService): мидлварь `idempotent` сюда ставить нельзя —
+    // `IdempotencyScope` обязан знать арендатора (fail-closed), а checkout —
+    // гостевой маршрут без OrganizationContext.
     Route::post('/checkout', [CartController::class, 'checkout']);
-    // B5: продление серверного холда. Гостевой токен (X-Cart-Token) обязателен —
-    // без него сервер не найдёт корзину покупателя и вернёт CART_EXPIRED.
+    // B5: продление hold-времени корзины. Публичный метод (X-Cart-Token) и для
+    // пользователей: продолжить можно и свою авторизованную корзину, а не
+    // только гостевую. Ошибки истечения отдаются флашем CART_EXPIRED.
     Route::post('/extend', [CartController::class, 'extend']);
 });

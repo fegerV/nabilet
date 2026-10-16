@@ -243,7 +243,51 @@ php artisan db:seed --class='Database\\Seeders\\SurgutVenuesSeeder' --force
 
 ---
 
-## 7. Проверка после деплоя
+## 7. Резервное копирование и восстановление (G-1, аудит готовности)
+
+Команда `backup:run` уже в расписании (`routes/console.php`: ежедневно 03:00,
+`withoutOverlapping`): полный дамп БД через `mysqldump --defaults-extra-file`
+(пароль не светится в `ps`) + загрузка дампа на Яндекс.Диск.
+
+**Перед первым запуском:** в `.env` должны быть `YANDEX_DISK_OAUTH_TOKEN=...`
+(OAuth-токен диска) — без него команда падает громко, а не «морчит про успех».
+
+Разовый дамп вручную (например, перед рискованным обновлением):
+
+```bash
+php artisan backup:run
+```
+
+**Восстановление** (чистая БД на хостинге; данные в яндексе — файл вида
+`nabilet-YYYY-MM-DD.sql.gz`):
+
+```bash
+# 1) скачать последний дамп с Яндекса (любой WebDAV-клиент или curl с OAuth-токеном)
+curl -H "Authorization: OAuth $YANDEX_DISK_OAUTH_TOKEN" \
+  "https://cloud-api.yandex.net/v1/disk/resources/download?path=disk%3A/<путь>/<файл>.sql.gz"
+
+# 2) распаковать и накатить в пустую базу
+gunzip -c nabilet.sql.gz | mysql -h<host> -u<user> -p <dbname>
+```
+
+**Сверка после восстановления** (что сравнивать с источником):
+
+```sql
+SELECT COUNT(*) FROM orders;
+SELECT COUNT(*) FROM tickets;
+SELECT status, COUNT(*) FROM payments GROUP BY status;
+SELECT code, used_count FROM promo_codes WHERE used_count > 0;
+```
+
+Чего дамп НЕ содержит: `.env` (секреты — храните их отдельно) и содержимое
+`storage/app/public` (медиатека — она восстанавливается отдельным копированием
+каталога). Каталог медиатеки регулярно копируйте рядом с дампом: дамп без
+файлов афиши — половина бэкапа.
+
+**Проверка свежести** должна быть в мониторинге: файл дампа на диске не старше
+26 часов, иначе алерт (аудит P0-1).
+
+## 8. Проверка после деплоя
 
 - `https://домен/` открывается (не 500, не листинг каталога).
 - `https://домен/build/assets/*.js` отдаётся как статикa (200).

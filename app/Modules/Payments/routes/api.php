@@ -18,6 +18,10 @@ use Illuminate\Support\Facades\Route;
 // токеном той корзины, из которой создан заказ. Чужой заказ — 404.
 Route::prefix('payments')->group(function () {
     Route::get('/', [PaymentController::class, 'index'])->middleware('auth:api');
+    // Идемпотентность инициирования — доменная (`initiatePayment` + контрактный
+    // `Idempotency-Key`, PaymentIdempotencyTest): мидлвар `idempotent` сюда
+    // ставить нельзя — гостевой маршрут без OrganizationContext, а scope обязан
+    // знать арендатора (fail-closed, cross-tenant leak).
     Route::post('/', [PaymentController::class, 'store']);
     // `whereNumber`: неявная привязка приводит путь к int, поэтому
     // `/payments/1abc` открывал платёж 1. С ограничением — 404 (fail-closed).

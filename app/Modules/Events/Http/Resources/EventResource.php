@@ -61,12 +61,18 @@ class EventResource extends JsonResource
                     'starts_at' => $s->starts_at?->toIso8601String(),
                     'startsAt' => $s->starts_at?->toIso8601String(),
                     'hall' => $s->hall?->name,
-                    'available_seats' => $s->inventoryItems
-                        ->filter(fn ($i) => $i->status === 'available' && ($i->available_quantity ?? 0) > 0)
-                        ->count(),
-                    'availableSeats' => $s->inventoryItems
-                        ->filter(fn ($i) => $i->status === 'available' && ($i->available_quantity ?? 0) > 0)
-                        ->count(),
+                    // Аудит 1.2: каталог приносит `available_seats_count`
+                    // (один COUNT на страницу), а не весь инвентарь сеанса.
+                    // Фолбэк на коллекцию — для путей, где связь загружена,
+                    // но агрегат не считался (админские сценарии).
+                    'available_seats' => $s->available_seats_count
+                        ?? $s->inventoryItems
+                            ->filter(fn ($i) => $i->status === 'available' && ($i->available_quantity ?? 0) > 0)
+                            ->count(),
+                    'availableSeats' => $s->available_seats_count
+                        ?? $s->inventoryItems
+                            ->filter(fn ($i) => $i->status === 'available' && ($i->available_quantity ?? 0) > 0)
+                            ->count(),
                 ])
                 ->toArray()),
             'created_at' => $this->created_at?->toIso8601String(),

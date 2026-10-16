@@ -519,6 +519,30 @@ class PaymentService
                     throw new \RuntimeException('Unknown webhook event type');
             }
 
+            // R-11 (журналирование финансовых операций): каждое обработанное
+            // уведомление провайдера остаётся в audit_logs и может быть
+            // восстановлено по payment/order. Запись — в ЭТОЙ же транзакции:
+            // откат бизнес-логики не оставляет "обработанный" аудит-след, и
+            // наоборот. ip/user_agent — NULL: источник вебхука фиксируется
+            // allowlist'ом, а не строкой запроса.
+            DB::table('audit_logs')->insert([
+                'user_id' => null,
+                'organization_id' => $payment->order?->organization_id,
+                'action' => (string) $eventType,
+                'entity_type' => 'payment',
+                'entity_id' => $payment->id,
+                'old_values_json' => null,
+                'new_values_json' => json_encode([
+                    'payment_id' => $payment->id,
+                    'order_id' => $payment->order_id,
+                    'payment_status' => $payment->status,
+                    'amount' => $payment->amount,
+                ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES),
+                'ip_address' => null,
+                'user_agent' => null,
+                'created_at' => now(),
+            ]);
+
             DB::table('webhook_events')
                 ->where('provider', $provider)
                 ->where('provider_event_id', $eventId)

@@ -8,6 +8,7 @@ use Nabilet\Modules\Events\Models\Event;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\DB;
 
 class EventRepository
 {
@@ -16,13 +17,58 @@ class EventRepository
     ) {}
 
     /**
+     * Каталог: список событий с СЕАНСАМИ, но НЕ с инвентарём
+     * (аудит производительности 1.2).
+     *
+     * Раньше `sessions.inventoryItems` тащил ВСЕ строки инвентаря всех сеансов
+     * всех событий страницы — десятки тысяч строк при зале в паре тысяч мест.
+     * Ресурсу из инвентаря нужен только один факт: сколько позиций
+     * `available` с `available_quantity > 0` у сеанса. Он считается ОДНИМ
+     * сгруппированным запросом и вешается на сеанс атрибутом
+     * `available_seats_count` (`EventResource` читает его первым и лишь при
+     * отсутствии падает на инвентарь — админские пути, грузящие связь сами,
+     * живут как жили).
+     *
      * @param array<string, mixed> $filters
      */
     public function paginate(array $filters = [], int $perPage = 20): LengthAwarePaginator
     {
-        return $this->applyFilters($filters)
-            ->with(['category', 'sessions.venue', 'sessions.hall', 'sessions.inventoryItems'])
+        $paginator = $this->applyFilters($filters)
+            ->with(['category', 'sessions.venue', 'sessions.hall'])
             ->paginate($perPage);
+
+        $this->hydrateAvailableSeats($paginator->getCollection());
+
+        return $paginator;
+    }
+
+    /**
+     * Один COUNT по группе сеансов страницы вместо загрузки инвентаря.
+     *
+     * @param Collection<int, Event> $events
+     */
+    private function hydrateAvailableSeats(Collection $events): void
+    {
+        $eventIds = $events->modelKeys();
+
+        if ($eventIds === []) {
+            return;
+        }
+
+        $counts = DB::table('inventory_items')
+            ->join('sessions', 'sessions.id', '=', 'inventory_items.session_id')
+            ->whereIn('sessions.event_id', $eventIds)
+            ->where('inventory_items.status', 'available')
+            ->where('inventory_items.available_quantity', '>', 0)
+            ->groupBy('inventory_items.session_id')
+            ->select('inventory_items.session_id', DB::raw('COUNT(*) as available_seats_count'))
+            ->pluck('available_seats_count', 'inventory_items.session_id');
+
+        foreach ($events as $event) {
+            foreach ($event->sessions as $session) {
+                $session->available_seats_count = (int) ($counts[$session->id] ?? 0);
+            }
+        }
     }
 
     /**
