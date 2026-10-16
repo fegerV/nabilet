@@ -139,6 +139,13 @@ final class RefundService
                 'type' => 'refund',
                 'amount' => -$refundAmount,
                 'status' => 'pending',
+                // Стартовая запись журнала получает provider_event_id ДО прихода
+                // ответа провайдера (аудит R-11): UNIQUE (payment_id,
+                // provider_event_id) с NULL для этого ключа не защищал бы от
+                // дублей. Детерминированный маркер — тот же, что в
+                // Idempotence-Key, поэтому повторная инициация того же возврата
+                // не может плодить парные транзакции.
+                'provider_event_id' => 'refund:' . $refund->public_id,
                 'payload_json' => ['refund_id' => $refund->id, 'reason' => $reason],
             ]);
 
