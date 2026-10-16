@@ -2587,16 +2587,30 @@ function setSeatKindForSelection(kind: SeatKind): void {
  * Индивидуальная цена выделенных мест (минорные единицы). `null` снимает
  * переопределение — место снова берёт цену ряда/сектора. Работает и для
  * группового выделения (на все выбранные места сразу).
+ *
+ * Как у `setSeatKindForSelection`: снапшот истории только при фактических
+ * изменениях (пустой прогон не захламляет undo), и группа получает
+ * уведомление с числом изменённых мест.
  */
 function setSeatPriceRub(value: number | null): void {
   if (selectedSeatIds.value.size === 0) return
   snapshot()
+  let changed = 0
   for (const sector of sectors.value) {
     for (const seat of sector.seats) {
-      if (selectedSeatIds.value.has(seat.id)) {
-        seat.priceMinor = value == null || !Number.isFinite(value) || value <= 0 ? null : Math.round(value * 100)
+      const next = value == null || !Number.isFinite(value) || value <= 0 ? null : Math.round(value * 100)
+      if (selectedSeatIds.value.has(seat.id) && seat.priceMinor !== next) {
+        seat.priceMinor = next
+        changed += 1
       }
     }
+  }
+  if (changed === 0) {
+    editorHistory.undo()
+    return
+  }
+  if (selectedSeatIds.value.size > 1) {
+    ui.notify('mint', 'Цена обновлена', `${changed} мест`)
   }
 }
 
