@@ -1878,6 +1878,8 @@ ALTER TABLE organizations
 ALTER TABLE ab_experiments
   ADD CONSTRAINT ck_ab_experiments_status CHECK (status IN ('draft','running','completed'));
 
+UPDATE orders SET payment_status = 'succeeded' WHERE payment_status NOT IN ('pending','succeeded') AND payment_status LIKE 'pai%';
+
 ALTER TABLE orders
   ADD CONSTRAINT ck_orders_payment_status CHECK (payment_status IN ('pending','succeeded'));
 

@@ -65,6 +65,11 @@ ALTER TABLE ab_experiments
 -- значения здесь нет не по недосмотру.
 -- Если однажды понадобится различать оплату и возврат деньгами, это новый
 -- сплит с новым согласованным значением, а не правка этого файла.
+-- Нормализация легаси значений ДО построения CHECK: на развёрнутых базах
+-- встречалось orders.payment_status = 'paid' (писали до того, как markPaid() стал
+-- писать 'succeeded'); ALTER с CHECK на строках вне словаря падал 3819.
+UPDATE orders SET payment_status = 'succeeded' WHERE payment_status NOT IN ('pending','succeeded') AND payment_status LIKE 'pai%';
+
 ALTER TABLE orders
   ADD CONSTRAINT ck_orders_payment_status CHECK (payment_status IN ('pending','succeeded'));
 

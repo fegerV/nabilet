@@ -88,8 +88,68 @@ return new class extends Migration
             return;
         }
 
+        // Нормализация ЛЕГАСИ-значений ДО построения CHECK: на развёрнутых
+        // базах встречалось orders.payment_status = 'paid' (писали до того,
+        // как `markPaid()` стал писать 'succeeded'). ALTER с CHECK на строках
+        // вне словаря падает ошибкой 3819 и роняет ВСЕ последующие миграции.
+        // Переписываем ровно известное легаси-значение в канон; произвольный
+        // мусор не трогаем — его нельзя угадать, и он остаётся на совести
+        // оператора (ALTER всё равно откажет громко).
+        //
+        // Зеркало UPDATE: `nabilet_core_spec/migrations/017_status_vocabularies.sql`.
+        //
+        // try/catch — НЕ перестраховка: песочница tools/verify-migrations.php
+        // выполняет миграции на стабе фасада БД, где DML-методов нет, а
+        // проверяются только rawStatements(). В песочнице нормализация
+        // невозможна и не нужна — там смотрят на DDL.
+        $legacyPaymentStatuses = 0;
+
+        try {
+            $legacyPaymentStatuses = DB::table('orders')
+                ->whereNotIn('payment_status', ['pending', 'succeeded'])
+                ->where('payment_status', 'like', 'pai%')
+                ->update(['payment_status' => 'succeeded']);
+        } catch (\Throwable) {
+            // Стаб фасада БД (песочница верификатора) DML не умеет.
+            $legacyPaymentStatuses = 0;
+        }
+
+        if ($legacyPaymentStatuses > 0) {
+            fwrite(STDERR, sprintf(
+                "\n  ~ add_status_vocabularies: normalized %d legacy orders.payment_status value(s) to 'succeeded'.\n\n",
+                $legacyPaymentStatuses
+            ));
+        }
+
         foreach (self::CHECKS as $table => [$constraint, $values]) {
             $column = $table === 'orders' ? 'payment_status' : 'status';
+
+            // Идемпотентность: DDL автокоммитится, поэтому падение миграции на
+            // середине (нарушенный CHECK легаси-строками, см. выше) оставляет
+            // ПОЛОВИНУ constraint'ов установленной. Повторный `migrate` иначе
+            // умирал 3822 (дубликат имени). В песочнице стаба information_schema
+            // тоже нет — отсутствие данных значит «не существует», и ALTER
+            // попадёт в rawStatements, как и требуется гейту паритета.
+            $constraintExists = false;
+
+            try {
+                $constraintExists = (bool) DB::table('information_schema.TABLE_CONSTRAINTS')
+                    ->where('constraint_schema', DB::connection()->getDatabaseName())
+                    ->where('constraint_name', $constraint)
+                    ->exists();
+            } catch (\Throwable) {
+                $constraintExists = false;
+            }
+
+            if ($constraintExists) {
+                fwrite(STDERR, sprintf(
+                    "\n  ~ add_status_vocabularies: constraint %s already exists — skipped.\n",
+                    $constraint
+                ));
+
+                continue;
+            }
+
             $list = implode(',', array_map(static fn (string $value): string => "'" . $value . "'", $values));
 
             DB::statement(
