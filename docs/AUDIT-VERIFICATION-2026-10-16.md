@@ -148,3 +148,9 @@
 3. Продуктовые: OAuth, Telegram-модуль, админская блокировка места, self-service возвраты (P2-2), openapi path `/admin/orders/{order}/refund` vs реализованный `/orders/{order}/refund`.
 
 **Нужна среда/ключи (❓):** drill восстановления, стресс одного места, sandbox YooKassa, нагрузочное (P0-3/5/6, P1-1); инсталлер W-1/G-2 дословно.
+
+## Приложение: возврат покупателя к брошенному (2026-10-16)
+
+- orders:remind-unpaid (час) — письмо о заказе в waiting_payment старше часа: номер, сумма, сеанс, ссылка payments.payment_url; флаг orders.reminder_sent_at ставится только после отправки.
+- carts:remind-abandoned (5 мин) — корзинам авторизованных с expires_at в ближайшие 5 минут; гостевые корзины не напоминаются (контакта нет).
+- Попутный фикс: getOrCreateCart() раньше писал в carts.user_id несуществующий sessions.user_id (всегда NULL) — корзины авторизованных не привязывались к аккаунту (ломая per_user_limit).
