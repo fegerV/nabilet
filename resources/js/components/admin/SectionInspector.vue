@@ -12,6 +12,7 @@ import NInput from '@/components/ui/NInput.vue'
 import NSelect from '@/components/ui/NSelect.vue'
 import NCheckbox from '@/components/ui/NCheckbox.vue'
 import NButton from '@/components/ui/NButton.vue'
+import MediaPickerField from '@/components/admin/MediaPickerField.vue'
 import { useCatalogStore } from '@/stores/catalog'
 import { WIDGET_LABELS, setting, type StorefrontSection } from '@/lib/storefront'
 
@@ -167,7 +168,13 @@ const OPTIONS = {
             <NInput :model-value="get('ctaLabel', '')" label="Кнопка: подпись" @update:model-value="set('ctaLabel', $event)" />
             <NInput :model-value="get('ctaLink', '/')" label="Кнопка: ссылка" hint="/ или https://" @update:model-value="set('ctaLink', $event)" />
           </div>
-          <NInput :model-value="get('image', '')" label="Фон (URL картинки)" placeholder="https://…" @update:model-value="set('image', $event)" />
+          <MediaPickerField
+            :model-value="String(get('image', ''))"
+            label="Фон"
+            hint="Картинка из медиатеки или внешний URL"
+            placeholder="https://…"
+            @update:model-value="set('image', $event)"
+          />
           <div class="grid gap-3 sm:grid-cols-2">
             <NSelect :model-value="get('align', 'left')" label="Выравнивание" :options="OPTIONS.align" @update:model-value="set('align', $event)" />
             <NSelect :model-value="get('height', 'medium')" label="Высота" :options="OPTIONS.height" @update:model-value="set('height', $event)" />

@@ -10,12 +10,13 @@
  * Порядок секций — drag & drop плюс кнопки ↑/↓: перетаскивание нельзя делать
  * единственным способом, иначе раздел недоступен с клавиатуры.
  */
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import NButton from '@/components/ui/NButton.vue'
 import NInput from '@/components/ui/NInput.vue'
 import NSelect from '@/components/ui/NSelect.vue'
 import NSegmented from '@/components/ui/NSegmented.vue'
 import NCheckbox from '@/components/ui/NCheckbox.vue'
+import MediaPickerField from '@/components/admin/MediaPickerField.vue'
 import SectionInspector from '@/components/admin/SectionInspector.vue'
 import SectionShell from '@/components/storefront/widgets/SectionShell.vue'
 import { isFlushWidget, widgetComponent } from '@/components/storefront/widgets/index'
@@ -67,15 +68,11 @@ const selected = computed(() => draft.value.sections.find((s) => s.id === select
 /** Кисти предпросмотра: применяются к контейнеру, а не ко всему документу. */
 const previewVars = computed(() => themeVars(draft.value.theme))
 
-watch(
-  () => draft.value.theme,
-  (theme) => {
-    // Режим темы применяется сразу: организатор выбирает «тёмную витрину»
-    // и должен увидеть её, а не прочитать в подсказке.
-    if (theme.mode !== 'auto') ui.setTheme(theme.mode)
-  },
-  { deep: true },
-)
+// ВАЖНО: режим темы черновика НЕ применяется к глобальной теме интерфейса.
+// Преждездесь стоял `ui.setTheme(theme.mode)` — и вход в конструктор «переклю-
+// чал» всю админку на светлую, если в черновике витрины была записана светлая
+// (или наоборот). Предпросмотр самодостаточен: `previewVars` красит контейнер
+// предпросмотра палитрой черновика, а тема админки — личная настройка.
 
 /* ── Секции ─────────────────────────────────────────────────────────────── */
 
@@ -339,10 +336,22 @@ function discard(): void {
           <NInput v-model="draft.branding.name" label="Название площадки" placeholder="NABILET" />
           <NInput v-model="draft.branding.tagline" label="Подпись" placeholder="Билеты на события" />
         </div>
-        <NInput v-model="draft.branding.logoUrl" label="Логотип (URL)" hint="PNG/SVG с прозрачным фоном, до 200 px по высоте" placeholder="https://…" />
+        <MediaPickerField
+          :model-value="draft.branding.logoUrl"
+          label="Логотип"
+          hint="PNG/SVG с прозрачным фоном, до 200 px по высоте — выберите из медиатеки или вставьте URL"
+          placeholder="https://…"
+          @update:model-value="draft.branding.logoUrl = $event"
+        />
         <div class="grid gap-4 sm:grid-cols-2">
           <NInput v-model="draft.branding.logoMark" label="Литера в шапке" hint="Если логотипа нет — показываем первую букву" maxlength="4" />
-          <NInput v-model="draft.branding.faviconUrl" label="Иконка сайта (URL)" placeholder="https://…" />
+          <MediaPickerField
+            :model-value="draft.branding.faviconUrl"
+            label="Иконка сайта"
+            hint="PNG 32×32 или 64×64, квадрат"
+            placeholder="https://…"
+            @update:model-value="draft.branding.faviconUrl = $event"
+          />
         </div>
       </div>
 
