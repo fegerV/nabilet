@@ -296,7 +296,10 @@ class OrderService
         return $this->repository->findByOrganization($organizationId, $filters, $limit);
     }
 
-    public function getRevenueReport(int $organizationId, string $dateFrom, string $dateTo): float
+    /**
+     * Выручка в minor units (int) — см. докблок репозитория (аудит D10).
+     */
+    public function getRevenueReport(int $organizationId, string $dateFrom, string $dateTo): int
     {
         return $this->repository->getRevenueByOrganization($organizationId, $dateFrom, $dateTo);
     }

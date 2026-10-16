@@ -31,7 +31,10 @@ export interface CartSeat {
   quantity?: number
 }
 
-const HOLD_SECONDS = 10 * 60
+// Легаси-фолбэк, когда сервер не прислал expires_at (аудит D-11): раньше
+// стояло 10*60 — расхождение с серверными 15 минутами (CHECKOUT_HOLD_DURATION)
+// путало пользователя таймером. Остальные части UI уже считали 900.
+const HOLD_SECONDS = 15 * 60
 const WARN_SECONDS = 60
 
 /* ── Билеты и позиции: это РАЗНЫЕ числа ──────────────────────────────────

@@ -91,6 +91,13 @@ foreach ($rii as $file) {
                 if (is_array($pt)) {
                     if ($pt[0] === T_WHITESPACE || $pt[0] === T_COMMENT || $pt[0] === T_DOC_COMMENT) continue;
                     if (in_array($pt[0], [T_STRING, T_ARRAY, T_CALLABLE, T_STATIC, T_NS_SEPARATOR, T_NAME_QUALIFIED], true)) {
+                        // `null` в составе union-типа (`array|string|null`) — это
+                        // ЯВНО nullable, как и `?`. Без этой ветки ложно падали
+                        // union-параметры с допустимым null.
+                        if ($pt[0] === T_STRING && strcasecmp($pt[1], 'null') === 0) {
+                            $nullable = true;
+                            continue;
+                        }
                         $hasType = true;
                         continue;
                     }

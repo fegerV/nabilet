@@ -44,7 +44,14 @@ class TicketService
     {
         return DB::transaction(function () use ($order) {
             if ($order->status !== 'paid') {
-                throw new \RuntimeException('Can only issue tickets for paid orders');
+                // Доменная ошибка вместо RuntimeException (аудит D-7):
+                // прямой вызов из админ-пути должен давать конверт §66 (422
+                // ORDER_NOT_PAID), а не 500, — машина состояний просто не даёт
+                // этот переход, и это deliberate refusal, а не сбой.
+                throw new \Nabilet\Core\Errors\DomainRuleViolation(
+                    'order must be paid before tickets can be issued',
+                    'ORDER_NOT_PAID',
+                );
             }
 
             // Идемпотентность: если билеты уже выпущены — ничего не создаём заново.

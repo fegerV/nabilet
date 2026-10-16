@@ -153,11 +153,28 @@ function reset(): void {
 
 async function cancelOrder(): Promise<void> {
   if (!detail.value || cancelling.value) return
-  if (!window.confirm('Отменить заказ? Если он оплачен — будет инициирован возврат.')) return
+  // Оплаченный заказ через `/cancel` отменить нельзя: машина состояний не даёт
+  // `paid → cancelled` (терминальный успех). «Отмена» оплаченного — это возврат
+  // денег (RefundLedger переводит заказ в refunded и отзывает билеты). Текст
+  // диалога больше не врёт: для paid уходит именно refund-запрос.
+  const isPaid = detail.value.status === 'paid'
+  if (!window.confirm(
+    isPaid
+      ? 'Отменить оплаченный заказ? Деньги будут полностью возвращены, билеты отозваны.'
+      : 'Отменить заказ? Места вернутся в продажу.',
+  )) return
+
   cancelling.value = true
   try {
-    await send<unknown>(`/orders/${detail.value.id}/cancel`, 'POST')
-    ui.notify('sun', 'Заказ отменён', detail.value.order_number ?? detail.value.id)
+    if (isPaid) {
+      await send<unknown>(`/orders/${detail.value.id}/refund`, 'POST', {
+        reason: 'Отмена заказа из админки',
+      })
+      ui.notify('sun', 'Возврат инициирован', detail.value.order_number ?? detail.value.id)
+    } else {
+      await send<unknown>(`/orders/${detail.value.id}/cancel`, 'POST')
+      ui.notify('sun', 'Заказ отменён', detail.value.order_number ?? detail.value.id)
+    }
     detailOpen.value = false
     await load()
   } catch (e) {

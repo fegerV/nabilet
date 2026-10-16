@@ -11,9 +11,11 @@ use Nabilet\Modules\Cart\Support\CartToken;
 use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Tickets\Http\Resources\TicketCardResource;
 use Nabilet\Modules\Tickets\Models\Ticket;
+use Nabilet\Modules\Tickets\Services\TicketPdfRenderer;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Str;
 
 /**
  * Билеты покупателя.
@@ -174,6 +176,42 @@ class TicketController extends Controller
                 'qr_version' => $ticket->qr_version,
                 'checkin_endpoint' => url('/api/v1/tickets/checkin/verify'),
             ],
+        ]);
+    }
+
+    /**
+     * Скачиваемая PDF-версия билета (контракт: GET /tickets/{ticket}/pdf,
+     * bearerAuth, ответ `application/pdf`).
+     *
+     * Прежние стоящие причины отсутствия маршрута сняты: `TicketPdfRenderer`
+     * уже управляет PDF для вложения письма, и здесь вызывается тот же код.
+     * `render()` возвращает `null`, когда Headless Chrome недоступен — это
+     * НЕ ошибка владельца, и по контракту это 202 AsyncJobResponse, а не 500.
+     */
+    public function pdf(Request $request, Ticket $ticket)
+    {
+        $this->assertCanSee($request, $ticket);
+
+        $pdf = app(TicketPdfRenderer::class)->render($ticket);
+
+        if ($pdf === null || $pdf === '') {
+            return response()->json([
+                'data' => [
+                    'job_id' => (string) Str::uuid(),
+                    'status' => 'queued',
+                ],
+            ], 202);
+        }
+
+        return response($pdf, 200, [
+            'Content-Type' => 'application/pdf',
+            // Attachment, а не inline: пенсионный крючок — браузер с
+            // форматом билетов ничего сделать не может; файл тарифицируется
+            // как загрузка.
+            'Content-Disposition' => sprintf(
+                'attachment; filename="ticket-%s.pdf"',
+                $ticket->public_id ?? $ticket->ticket_number
+            ),
         ]);
     }
 

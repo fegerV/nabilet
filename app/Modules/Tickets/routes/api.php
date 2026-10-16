@@ -70,5 +70,9 @@ Route::prefix('tickets')->group(function () {
         Route::get('/{ticket}', [TicketController::class, 'show'])->whereNumber('ticket');
         Route::get('/{ticket}/qr', [TicketController::class, 'qrCode'])->whereNumber('ticket');
         Route::get('/{ticket}/history', [TicketController::class, 'history'])->whereNumber('ticket');
+        // PDF-билет (№11 аудита 09.10): контракт объявлял маршрут (openapi
+        // yaml:516+), приложения не было. Владелец-скоуп внутри экшена тот же,
+        // что у show/qr (assertCanSee).
+        Route::get('/{ticket}/pdf', [TicketController::class, 'pdf'])->whereNumber('ticket');
     });
 });

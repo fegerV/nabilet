@@ -126,6 +126,10 @@ class YooKassaProvider implements PaymentProviderInterface
             'Idempotence-Key' => $paymentData['idempotency_key'] ?? uniqid('yk_', true),
         ])
         ->withBasicAuth($this->shopId, $this->secretKey)
+        // Таймауты обязательны (аудит производительности 1.4): зависший шлюз
+        // не должен удерживать PHP-воркер и фазу-3 транзакции оформления.
+        ->timeout(20)
+        ->connectTimeout(5)
         ->post("{$this->baseUrl}/payments", [
             'amount' => [
                 'value' => number_format($paymentData['amount'] / 100, 2, '.', ''),
@@ -169,6 +173,8 @@ class YooKassaProvider implements PaymentProviderInterface
             'Content-Type' => 'application/json',
         ])
         ->withBasicAuth($this->shopId, $this->secretKey)
+        ->timeout(20)
+        ->connectTimeout(5)
         ->get("{$this->baseUrl}/payments/{$providerPaymentId}");
 
         if ($response->failed()) {
@@ -203,6 +209,8 @@ class YooKassaProvider implements PaymentProviderInterface
             'Idempotence-Key' => (string) ($refundData['idempotency_key'] ?? ('ykr_' . $refundData['payment_id'] . '_' . $refundData['amount'])),
         ])
         ->withBasicAuth($this->shopId, $this->secretKey)
+        ->timeout(20)
+        ->connectTimeout(5)
         ->post("{$this->baseUrl}/refunds", [
             'payment_id' => $refundData['payment_id'],
             'amount' => [

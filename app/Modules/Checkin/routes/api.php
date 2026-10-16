@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Illuminate\Support\Facades\Route;
 use Nabilet\Modules\Checkin\Http\Controllers\Admin\CheckinDeviceController;
 use Nabilet\Modules\Checkin\Http\Controllers\Admin\CheckinScanReportController;
+use Nabilet\Modules\Checkin\Http\Controllers\Admin\OfflineBundleController;
 use Nabilet\Modules\Checkin\Http\Controllers\CheckerController;
 use Nabilet\Modules\Checkin\Http\Middleware\AuthenticateChecker;
 
@@ -78,3 +79,19 @@ Route::prefix('admin/checkin')->middleware(['auth:api', 'admin'])->group(functio
 
     Route::get('scans', [CheckinScanReportController::class, 'index']);
 });
+
+/*
+ * Offline-бандлы (ы43/ы44; контракт openapi: GET/POST
+ * /api/v1/checkin-devices/{device}/bundles, GET /api/v1/offline-bundles/{bundle}).
+ *
+ * Выдача и список — админские: бандл даёт устройству право пускать людей
+ * офлайн, раздавать его может только сотрудник. Один бандл читает либо
+ * владеющее устройство (nbck_-токен), либо сотрудник — идентификация выбирается
+ * в контроллере по префиксу токена (см. OfflineBundleController::show()).
+ */
+Route::prefix('checkin-devices')->middleware(['auth:api', 'admin'])->group(function (): void {
+    Route::get('{device}/bundles', [OfflineBundleController::class, 'index']);
+    Route::post('{device}/bundles', [OfflineBundleController::class, 'issue']);
+});
+
+Route::get('offline-bundles/{bundle}', [OfflineBundleController::class, 'show']);
