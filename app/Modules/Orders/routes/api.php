@@ -31,6 +31,13 @@ Route::prefix('orders')->middleware(['auth:api'])->group(function () {
     Route::post('/{order}/refund', [OrderController::class, 'refund'])->middleware('admin')->whereNumber('order');
 });
 
+// Контрактный путь того же экшена: openapi объявляет refunds под
+// `/api/v1/admin/orders/{order}/refund`, где OrderIdPath — строка, поэтому
+// без whereNumber: резолв public_id/числа живёт в самом экшене. Два адреса —
+// один метод; расхождение контракта и кода было находкой аудита.
+Route::post('admin/orders/{order}/refund', [OrderController::class, 'refund'])
+    ->middleware(['auth:api', 'admin']);
+
 /*
  * Самопомощь покупателя: повторная отправка письма с билетом.
  *

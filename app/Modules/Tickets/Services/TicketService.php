@@ -102,12 +102,37 @@ class TicketService
                 for ($i = 0; $i < max(1, (int) $item->quantity); $i++) {
                     $seq++;
                     $publicId = (string) Str::ulid();
+                    $snapshot = $item->seat_snapshot_json ?? [];
+                    $seatId = $snapshot['seat_id'] ?? $inventory?->seat_id;
+
+                    // Смягчение D2-арх (UNIQUE(session_id, seat_id) в схеме был
+                    // бы радикальным решением: возврат места и его ПЕРЕПРОДАЖА
+                    // законно создают второй билет на то же место, а частичного
+                    // уникального индекса в MySQL нет). Гвард app-уровня:
+                    // АКТИВНЫЙ билет (issued/used) на это место этого сеанса
+                    // уже существует — значит, инвентарь дважды попал в
+                    // checkout. Второй билет не создаём (критично в лог) и
+                    // продолжаем выпуск остальных, не роняя оплаченный заказ.
+                    if ($seatId !== null
+                        && Ticket::query()
+                            ->where('session_id', $sessionId)
+                            ->where('seat_id', (int) $seatId)
+                            ->whereIn('status', [TicketStateMachine::ISSUED, TicketStateMachine::USED])
+                            ->exists()
+                    ) {
+                        Log::critical('TicketService: duplicate active ticket for the same seat — second ticket suppressed', [
+                            'order_id' => $order->id,
+                            'order_item_id' => $item->id,
+                            'session_id' => $sessionId,
+                            'seat_id' => (int) $seatId,
+                        ]);
+
+                        continue;
+                    }
 
                     // QrSigner (§30): в QR нет ни e-mail, ни цены — только
                     // NB1.<ticketPublicId>.<token>.<signature>.
                     $signed = $signer->issue($publicId);
-
-                    $snapshot = $item->seat_snapshot_json ?? [];
 
                     $ticket = Ticket::create([
                         'public_id' => $publicId,
@@ -118,7 +143,7 @@ class TicketService
                         'event_id' => $eventId,
                         'session_id' => $sessionId,
                         'inventory_item_id' => $item->inventory_item_id,
-                        'seat_id' => $snapshot['seat_id'] ?? $inventory?->seat_id,
+                        'seat_id' => $seatId,
                         'holder_name' => $order->customer_name ?? $order->customer_email,
                         'status' => 'issued',
                         'qr_version' => 1,
