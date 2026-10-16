@@ -24,7 +24,7 @@ class EventController extends Controller
     public function __construct(
         private readonly EventService $eventService,
         private readonly EventPublicationService $publication,
-        private readonly RedirectResolver $redirects
+        private readonly RedirectResolver $redirects,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -334,16 +334,41 @@ class EventController extends Controller
      *
      * Отмена блокируется, если по событию есть оплаченные заказы: билеты нельзя
      * аннулировать раньше, чем покупателям вернут деньги (ТЗ §13).
+     *
+     * Выход из тупика «оплачено — но отменить нельзя» (аудит D-4/S11, R-08):
+     * тело `{ refund_sold: true }` сначала прогоняет каскад возвратов по всем
+     * оплаченным заказам события (`EventOrderRefunder`), и лишь когда денег
+     * снаружи не осталось, обычная политика пускает отмену. При частичной
+     * неудаче событие НАМЕРЕННО остаётся как есть — 409 честно перечисляет
+     * заказы, чьи возвраты не прошли.
      */
     public function cancel(Event $event): JsonResponse
     {
-        $decision = $this->publication->cancel($event);
+        $decision = null;
+        $cascade = null;
+
+        if ((bool) request()->boolean('refund_sold')) {
+            $canceller = new \Nabilet\Modules\Orders\Services\EventOrderRefunder(
+                app(\Nabilet\Modules\Payments\Services\RefundService::class),
+            );
+
+            $cascade = $canceller->cancelEventWithRefunds(
+                $event->refresh(),
+                $this->publication,
+                'Отмена мероприятия',
+            );
+
+            $decision = $this->publication->cancel($event->refresh());
+        } else {
+            $decision = $this->publication->cancel($event);
+        }
 
         return response()->json([
             'data' => new EventResource($event->fresh()),
             'meta' => [
                 'verdict' => $decision->verdict,
                 'changed' => $decision->requiresWrite(),
+                ...(is_array($cascade) ? ['refunded_orders' => $cascade['refunded']] : []),
             ],
         ]);
     }

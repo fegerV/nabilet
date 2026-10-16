@@ -502,6 +502,16 @@ class PaymentService
                     $this->handleRefundEvent($eventType, $payment, $payload);
                     break;
 
+                // waiting_for_capture — не терминал и не сбой (R-14): при
+                // capture:true (наш режим) состояние почти недостижимо, но
+                // включение двухшаговой схемы не должно превращать каждое
+                // штатное уведомление в 500 с бесконечным ретраем провайдера.
+                // Заявляем событие обработанным, состояние платежа не трогаем:
+                // платёж уже pending, деньги ещё не зачислены — записывать
+                // capture-транзакцию рано.
+                case 'payment.waiting_for_capture':
+                    break;
+
                 default:
                     // Throwing rolls the claim back with the rest of the
                     // transaction, so an event we cannot handle is not recorded

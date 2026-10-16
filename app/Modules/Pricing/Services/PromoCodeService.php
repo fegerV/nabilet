@@ -237,6 +237,33 @@ final class PromoCodeService
 
         $discount = $evaluation->discount->minorUnits();
 
+        // Re-check per_user_limit ПОД ЛОКОМ (гонка D-6b): счётчик покупателя
+        // читался в evaluateForCart() ДО блокировок, поэтому два параллельных
+        // чекаута одного пользователя оба проходили проверку. Здесь, уже внутри
+        // транзакции чекаута, пересчитываем использования с lockForUpdate —
+        // параллельному оформлению придётся ждать лок и увидеть свежий счёт.
+        if ($code->per_user_limit !== null && $userId !== null) {
+            $used = PromoCodeRedemption::query()
+                ->where('promo_code_id', $code->id)
+                ->where('user_id', $userId)
+                ->lockForUpdate()
+                ->count();
+
+            if ($used >= $code->per_user_limit) {
+                throw new ConflictError(
+                    sprintf(
+                        'Promo code "%s" has already been used %d time(s) by this customer (limit %d).',
+                        $code->code,
+                        $used,
+                        $code->per_user_limit
+                    ),
+                    // Тот же машинный код, что у исчерпанного кода: витрина и
+                    // API-клиенты уже умеют его показывать; текст различает причину.
+                    'PROMO_CODE_EXHAUSTED'
+                );
+            }
+        }
+
         $affected = DB::table('promo_codes')
             ->where('id', $code->id)
             ->when(

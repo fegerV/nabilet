@@ -13,9 +13,9 @@
 | D-1 | Нет reconcile платежей у провайдера | ✅ | `ReconcilePaymentsCommand.php:42`; расписание `routes/console.php:85`; идемпотентный synthetic event `:194` |
 | D-2 | SEAT_HOLDS_EXPIRED без возврата, вечный ретрай | ✅ | `PaymentService.php:547-557` → `recordReceiptAndRefund` `:709-742`; claim фиксируется `:512-515` |
 | D-3 | Вебхук-авторизация | ✅ | Конфиг-путь `nabilet.payment.yookassa.webhook_secret` (`YooKassaProvider.php:277-288`, `config/nabilet.php:291`); raw-body HMAC; wildcards банятся `ProductionSafetyAudit` |
-| D-4 | Каскад отмены мероприятия | 🟡 | Отказ при проданных местах `EventPublicationPolicy.php:85-96`; самого каскада нет (см. R-08) |
+| D-4 | Каскад отмены мероприятия | ✅ закрыто 16.10 | `EventOrderRefunder::cancelEventWithRefunds` (`Orders/Services`): возвраты по всем succeeded-платежам события (цепочка как в soldUnits) → затем обычная политика; частичная неудача = 409 REFUND_PARTIALLY_FAILED без отмены; эндпоинт: `POST /events/{event}/cancel { refund_sold: true }`; тест `EventCancellationCascadeTest` |
 | D-5 | `isHoldConvertible()` без блокировки | ✅ закрыто 16.10 | `SeatHoldLifecycle.php:61` `lockForUpdate()` (транзакция вебхука); выборка холдов в `validateHoldsForOrder` тоже под локом (`PaymentService.php:890-897`) |
-| D-6 | Промокоды check-then-act | 🟡 | `limit_total` атомарен (`PromoCodeService.php:240-256`); `per_user_limit` всё ещё check-then-act (гонка параллельных чекаутов) |
+| D-6 | Промокоды check-then-act | ✅ закрыто 16.10 | `limit_total` атомарен (`PromoCodeService.php:240-256`); per_user_limit перечитывается под lockForUpdate в `redeem()` — гонка параллельных чекаутов одного покупателя закрыта (тот же код PROMO_CODE_EXHAUSTED) |
 | D-7 | `RuntimeException` при выпуске билетов | ✅ закрыто 16.10 | `TicketService.php:46-54` — `DomainRuleViolation('ORDER_NOT_PAID', 422)`; тестов на старое сообщение нет |
 | D-8 | Checkout 404 вместо идемпотентного повтора | 🟡 закрыто 16.10 (UI) | Сервер по-прежнему 404 (`CartCheckoutService.php:64-71`, firstOrFail); UI честно обрабатывает: `CheckoutPage.vue:299-306` — «корзина устарела, выберите места заново» вместо общей ошибки |
 | D-9 | Гостевой токен без хеша/ротации | ❌ | `CartToken.php:28-48`, сравнение открытым текстом |
@@ -93,13 +93,13 @@
 | R-05 | Оплата терминального заказа | ✅ | `assertOrderIsPayable` (`PaymentService.php:276-294`); поздний succeeded → авто-возврат |
 | R-06 | Возвраты без HTTP-входа | ✅ | `POST /payments/{payment}/refund` admin (`Payments/routes/api.php:29-31`) |
 | R-07 | refund.succeeded/failed не обрабатывались | ✅ | `handleRefundEvent` (`PaymentService.php:751-809`, `:500-503`) |
-| R-08 | Нет массовых возвратов при отмене события | ❌ | Batch-механизма нет; отмена заперта политикой HAS_SOLD_UNITS |
+| R-08 | Нет массовых возвратов при отмене события | ✅ закрыто 16.10 | см. D-4: `EventOrderRefunder` + эндпоинт с `refund_sold`; Feature-тест каскада |
 | R-09 | Вызов провайдера внутри транзакции | ✅ | 3-фазный initiatePayment, провайдер вне транзакции (`:145-165`) |
 | R-10 | Нет reconcile | ✅ | см. D-1 |
-| R-11 | provider_event_id/audit_log | 🟡 | Заполняется для capture/refund/failure (`:562-568,723-729,802-808,959-965`); в начальной транзакции RefundService и в audit_logs — нет |
+| R-11 | provider_event_id/audit_log | 🟡 | Заполняется для capture/refund/failure (`:562-568,723-729,802-808,959-965`); стартовая транзакция возврата отдает детерминированный `refund:<public_id>` (закрыто 16.10); audit_logs — по-прежнему нет |
 | R-12 | Прямые update мимо машин | ✅ | Машинные проверки (`:843-866`); `markAsCanceled` через репозиторий |
 | R-13 | Анонимный demo-pay | ✅ | Двойной guard + 403 в проде (`PaymentController.php:321-341`) + safety-аудит |
-| R-14 | waiting_for_capture → failed | 🟡 | mapStatus корректен, но в `processWebhook` нет case `payment.waiting_for_capture` (default → throw) | 
+| R-14 | waiting_for_capture → failed | 🟡 закрыто 16.10 (вебхук) | `processWebhook` теперь признаёт `payment.waiting_for_capture` обработанным (no-op, claim фиксируется — ретрая не будет); mapStatus корректен; adapter `handleWebhook` — мёртвый код |
 
 ## 7. `AUDIT-INSTALLER-READINESS-2026-10-10.md`
 
@@ -133,19 +133,18 @@
 | 1.2 | Тяжёлый eager-load инвентаря; подсчёт мест в PHP | ❌ | `EventRepository.php:24`, `EventController.php:116-131`, `EventPageController.php:136` |
 | 1.4 | HTTP к провайдеру без timeout | ✅ закрыто 16.10 | `YooKassaProvider.php` — все три вызова с `timeout(20)/connectTimeout(5)` |
 | 1.5 | per_page без потолка | ✅ закрыто 16.10 | `EventController.php:52-57` — кламп [1..100] в единственной точке входа каталога |
-| 1.5b | HoldSweeeper без LIMIT | 🟡 | Выборка без limit (`HoldSweeper.php:85-90`), но каждая сдача — своя короткая транзакция `:92-159` |
+| 1.5b | HoldSweeper без LIMIT | ✅ закрыто 16.10 | Пакетная отборка по 200 (`HoldSweeper::BATCH_SIZE`) + короткая транзакция на каждый холд; декоративный лок вне транзакции убран — идемпотентность держит перечитывание строки с локом |
 | 1.3/1.6 | Deadlocks/наблюдаемость | ❌ | см. D4-арх; метрик/алертов нет |
 
 ---
 
 ## Итог: что осталось до закрытия аудитов
 
-**Закрыто целиком:** R-01…R-07, R-09, R-10, R-12, R-13; D-1, D-2, D-3, D-5, D-7, D-11, D-12; архитектурные D5/D1/D6/D7-арх/D10-арх/X1; фронтовый B2/B3/B3b/C2/C3/D1/D2/D3/E1/E2/E3; лояльность (включая L3, L4-фантом удалён); инсталлер B-1…B-4, W-2, W-3; приёмочные P0-1, P0-2, P0-4(контур CI), P0-7; отчёт 09.10 №9/№11/№13 и производительность 1.4/1.5.
+**Закрыто целиком:** R-01…R-07, R-08, R-09, R-10, R-12, R-13, R-14(вебхук); D-1…D-8(UI), D-11, D-12; архитектурные D5/D1/D6/D7-арх/D10-арх/X1; фронтовый B2/B3/B3b/C2/C3/D1/D2/D3/E1/E2/E3; лояльность (L1–L4); инсталлер B-1…B-4, W-2, W-3; приёмочные P0-1, P0-2, P0-4(контур CI), P0-7; отчёт 09.10 №9/№11/№13; производительность 1.4/1.5/1.5b.
 
 **Открытые дефекты кода (по убыванию риска):**
-1. R-08 / D-4 (арх.): нет каскада отмены события (batch refund) — только rejection-guard.
-2. Производительность: кеш публичных страниц (1.1), eager-load инвентаря + подсчёт мест в PHP (1.2), deadlocks/наблюдаемость (1.3/1.6), HoldSweeper без LIMIT (1.5b, смягчён).
-3. Целостность: UNIQUE(session_id, seat_id) на tickets (D2-арх — требует согласования с повторным выпуском после возврата); FK/CASCADE на orders/payments/promo (D3-арх); `EnsureIdempotency` не применён (D9-арх); гостевой токен без ротации (D-9); checkout-идемпотентность 404 на сервере (D-8 серверная половина); per_user_limit гонка (D-6b); R-11 хвосты (provider_event_id в RefundService, audit_logs); R-14 хвост (case `payment.waiting_for_capture` в processWebhook).
-4. Продуктовые: OAuth, Telegram-модуль, админская блокировка места, self-service возвраты (P2-2), backup-инструкция в docs (G-1), openapi path `/admin/orders/{order}/refund` vs реализованный `/orders/{order}/refund`.
+1. Производительность: кеш публичных страниц (1.1), eager-load инвентаря + подсчёт мест в PHP (1.2), deadlocks/наблюдаемость (1.3/1.6 — порядок локов D4-арх, retry 1213).
+2. Целостность: UNIQUE(session_id, seat_id) на tickets (D2-арх — требует решения о повторном выпуске после возврата); FK/CASCADE на orders/payments/promo (D3-арх); `EnsureIdempotency` не применён (D9-арх); гостевой токен без ротации (D-9); серверная идемпотентность checkout при 404 (D-8 серверная половина); audit_logs для платежей (R-11 остаток).
+3. Продуктовые: OAuth, Telegram-модуль, админская блокировка места, self-service возвраты (P2-2), backup-инструкция в docs (G-1), openapi path `/admin/orders/{order}/refund` vs реализованный `/orders/{order}/refund`.
 
 **Нужна среда/ключи (❓):** drill восстановления, стресс одного места, sandbox YooKassa, нагрузочное (P0-3/5/6, P1-1).

@@ -41,6 +41,15 @@ use Nabilet\Modules\Orders\Services\StaleOrderExpirer;
  */
 class HoldSweeper
 {
+    /**
+     * Размер батча отборки просроченных холдов (аудит 1.5b): после простоя cron
+     * просроченных строк может быть тысячи, и одна неограниченная выборка
+     * превращает проход в длинную транзакцию/большую память. Порции в 200
+     * строк с ре-чтением каждой строки под локом внутри короткой транзакции
+     * дают тот же результат с предсказуемым профилем.
+     */
+    private const BATCH_SIZE = 200;
+
     public function __construct(private readonly StaleOrderExpirer $staleOrders)
     {
     }
@@ -80,94 +89,108 @@ class HoldSweeper
             // вебхук, пришедший в последнюю секунду grace, видел released_at и
             // отклонял платёж, хотя по логике он ещё валиден (race-condition).
             //
-            // `lockForUpdate()` — чтобы два параллельных sweeper'а не выбрали одни
-            // и те же строки.
-            $expiredHolds = DB::table('seat_holds')
-                ->where('expires_at', '<', HoldGrace::cutoff($now)->toDateTimeString())
-                ->whereNull('converted_at')
-                ->whereNull('released_at')
-                ->lockForUpdate()
-                ->get(['id', 'inventory_item_id', 'quantity', 'cart_id']);
+            // Отборка идёт ПАКЕТАМИ по BATCH_SIZE с повторным циклом: после простоя
+            // cron накопилось N тысяч холдов — неограниченная выборка дала бы
+            // длинную транзакцию и скачок памяти. Блокировку отборки сознательно
+            // не ставим: `lockForUpdate()` вне транзакции в autocommit не живёт
+            // дольше одного SELECT, а корректность обеспечивает перечитывание
+            // строки с локом внутри короткой транзакции каждого холда.
+            while (true) {
+                $expiredHolds = DB::table('seat_holds')
+                    ->where('expires_at', '<', HoldGrace::cutoff($now)->toDateTimeString())
+                    ->whereNull('converted_at')
+                    ->whereNull('released_at')
+                    ->limit(self::BATCH_SIZE)
+                    ->get(['id', 'inventory_item_id', 'quantity', 'cart_id']);
 
-            foreach ($expiredHolds as $hold) {
-                try {
-                    DB::transaction(function () use ($hold, $now, &$releasedCount) {
-                        // Перечитываем холд внутри транзакции: пока шёл отбор, его
-                        // мог сконвертировать вебхук оплаты.
-                        $freshHold = DB::table('seat_holds')
-                            ->where('id', $hold->id)
-                            ->lockForUpdate()
-                            ->first();
+                if ($expiredHolds->isEmpty()) {
+                    break;
+                }
 
-                        if ($freshHold === null) {
-                            // Холд удалён параллельной транзакцией.
-                            return;
-                        }
+                foreach ($expiredHolds as $hold) {
+                    try {
+                        DB::transaction(function () use ($hold, $now, &$releasedCount) {
+                            // Перечитываем холд внутри транзакции: пока шёл отбор, его
+                            // мог сконвертировать вебхук оплаты.
+                            $freshHold = DB::table('seat_holds')
+                                ->where('id', $hold->id)
+                                ->lockForUpdate()
+                                ->first();
 
-                        if ($freshHold->converted_at !== null || $freshHold->released_at !== null) {
-                            // Уже обработан другой транзакцией — идемпотентность.
-                            return;
-                        }
+                            if ($freshHold === null) {
+                                // Холд удалён параллельной транзакцией.
+                                return;
+                            }
 
-                        // Корзина ещё жива? Это только для аудита: сам факт снятия
-                        // холда от неё не зависит, но в логе полезно видеть, был ли
-                        // это «заброшенный» холд или гонка с активной корзиной.
-                        $cartStillActive = DB::table('carts')
-                            ->where('id', $freshHold->cart_id)
-                            ->where('status', 'active')
-                            ->exists();
+                            if ($freshHold->converted_at !== null || $freshHold->released_at !== null) {
+                                // Уже обработан другой транзакцией — идемпотентность.
+                                return;
+                            }
 
-                        DB::table('seat_holds')
-                            ->where('id', $freshHold->id)
-                            ->update([
-                                'released_at' => $now->toDateTimeString(),
-                            ]);
+                            // Корзина ещё жива? Это только для аудита: сам факт снятия
+                            // холда от неё не зависит, но в логе полезно видеть, был ли
+                            // это «заброшенный» холд или гонка с активной корзиной.
+                            $cartStillActive = DB::table('carts')
+                                ->where('id', $freshHold->cart_id)
+                                ->where('status', 'active')
+                                ->exists();
 
-                        // Атомарно возвращаем количество в инвентарь.
-                        $affected = DB::table('inventory_items')
-                            ->where('id', $freshHold->inventory_item_id)
-                            ->increment('available_quantity', (int) $freshHold->quantity);
+                            DB::table('seat_holds')
+                                ->where('id', $freshHold->id)
+                                ->update([
+                                    'released_at' => $now->toDateTimeString(),
+                                ]);
 
-                        if ($affected === 0) {
-                            Log::warning('HoldSweeper: Failed to restore inventory', [
+                            // Атомарно возвращаем количество в инвентарь.
+                            $affected = DB::table('inventory_items')
+                                ->where('id', $freshHold->inventory_item_id)
+                                ->increment('available_quantity', (int) $freshHold->quantity);
+
+                            if ($affected === 0) {
+                                Log::warning('HoldSweeper: Failed to restore inventory', [
+                                    'hold_id' => $freshHold->id,
+                                    'inventory_item_id' => $freshHold->inventory_item_id,
+                                    'quantity' => $freshHold->quantity,
+                                ]);
+                            }
+
+                            // A13: помечаем корзину abandoned — иначе истёкшая через
+                            // sweeper корзина оставалась 'active' с просроченным
+                            // expires_at, хотя места уже возвращены (checkout-путь ставил
+                            // abandoned, а sweep — нет, создавая расхождение в отчётности).
+                            DB::table('carts')
+                                ->where('id', $freshHold->cart_id)
+                                ->where('status', 'active')
+                                ->update(['status' => 'abandoned']);
+
+                            $releasedCount++;
+
+                            Log::info('HoldSweeper: Released expired hold', [
                                 'hold_id' => $freshHold->id,
+                                'cart_id' => $freshHold->cart_id,
                                 'inventory_item_id' => $freshHold->inventory_item_id,
                                 'quantity' => $freshHold->quantity,
+                                'expired_at' => $freshHold->expires_at,
+                                'released_at' => $now->toIso8601String(),
+                                'cart_was_active' => $cartStillActive,
                             ]);
-                        }
-
-                        // A13: помечаем корзину abandoned — иначе истёкшая через
-                        // sweeper корзина оставалась 'active' с просроченным
-                        // expires_at, хотя места уже возвращены (checkout-путь ставил
-                        // abandoned, а sweep — нет, создавая расхождение в отчётности).
-                        DB::table('carts')
-                            ->where('id', $freshHold->cart_id)
-                            ->where('status', 'active')
-                            ->update(['status' => 'abandoned']);
-
-                        $releasedCount++;
-
-                        Log::info('HoldSweeper: Released expired hold', [
-                            'hold_id' => $freshHold->id,
-                            'cart_id' => $freshHold->cart_id,
-                            'inventory_item_id' => $freshHold->inventory_item_id,
-                            'quantity' => $freshHold->quantity,
-                            'expired_at' => $freshHold->expires_at,
-                            'released_at' => $now->toIso8601String(),
-                            'cart_was_active' => $cartStillActive,
+                        });
+                    } catch (\Throwable $e) {
+                        // Один сбойный холд не должен останавливать проход: остальные
+                        // места обязаны вернуться в продажу.
+                        $errors[] = [
+                            'hold_id' => $hold->id,
+                            'error' => $e->getMessage(),
+                        ];
+                        Log::error('HoldSweeper: Error releasing hold', [
+                            'hold_id' => $hold->id,
+                            'error' => $e->getMessage(),
                         ]);
-                    });
-                } catch (\Throwable $e) {
-                    // Один сбойный холд не должен останавливать проход: остальные
-                    // места обязаны вернуться в продажу.
-                    $errors[] = [
-                        'hold_id' => $hold->id,
-                        'error' => $e->getMessage(),
-                    ];
-                    Log::error('HoldSweeper: Error releasing hold', [
-                        'hold_id' => $hold->id,
-                        'error' => $e->getMessage(),
-                    ]);
+                    }
+                }
+
+                if ($expiredHolds->count() < self::BATCH_SIZE) {
+                    break;
                 }
             }
 
