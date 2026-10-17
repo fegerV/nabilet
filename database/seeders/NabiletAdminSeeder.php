@@ -125,11 +125,16 @@ class NabiletAdminSeeder extends Seeder
         // Организация. public_id — ULID-совместимая строка char(26); генерим
         // только при вставке, иначе повторный запуск менял бы публичный
         // идентификатор и ломал уже выданные ссылки.
+        //
+        // Имя организации — из APP_NAME (его спрашивает установщик): площадка
+        // должно называться так, как зовут себя, а не шаблонным «NABILET Demo».
+        // Slug остаётся стабильным 'nabilet-demo': это ключ субдоменной
+        // привязки, а не вывеска.
         $orgId = DB::table('organizations')->where('slug', 'nabilet-demo')->value('id');
         if ($orgId === null) {
             $orgId = DB::table('organizations')->insertGetId([
                 'public_id' => (string) Str::ulid()->toBase32(),
-                'name' => 'NABILET Demo',
+                'name' => (string) (config('app.name') ?: 'NABILET'),
                 'slug' => 'nabilet-demo',
                 'status' => 'active',
                 'created_at' => now(),
