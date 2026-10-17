@@ -25,5 +25,8 @@ class DatabaseSeeder extends Seeder
         // опубликованной схемой (1073 места, снята с Яндекс.Афиши и адаптирована
         // под редактор). После SurgutVenuesSeeder: нужна площадка из каталога.
         $this->call(NeftyanikHallSeeder::class);
+
+        // Клуб «Вавилон»: основной зал со столовой схемой (62 стола, 359 мест).
+        $this->call(BabylonHallSeeder::class);
     }
 }
