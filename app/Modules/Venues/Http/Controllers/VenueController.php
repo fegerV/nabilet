@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Venues\Http\Controllers;
 
+use Nabilet\Core\Errors\ConflictError;
 use Nabilet\Core\Errors\ValidationError;
 use Nabilet\Core\Support\LikePattern;
 use Nabilet\Modules\Venues\Models\Venue;
@@ -139,8 +140,31 @@ class VenueController extends Controller
         return response()->json(['success' => true, 'data' => $venue]);
     }
 
+    /**
+     * DELETE /api/v1/venues/{venue}
+     *
+     * `sessions.venue_id` — RESTRICT: площадка с сеансами не удаляется ни в
+     * каком каскаде (билеты и заказы ссылаются на сеансы). Раньше контроллер
+     * делал голый `$venue->delete()`, и MySQL отвечала QueryException → 500
+     * «Internal server error» — админ видел только «Не удалось удалить» без
+     * причины. 409, а не 422: запрос корректен, отказ вызван состоянием
+     * ресурса (та же конвенция, что у `EventController::publish`).
+     *
+     * Залы при удалении уходят каскадом (`halls.venue_id` CASCADE, включая
+     * версии схем) — поэтому в подтверждении на клиенте стоит честный текст.
+     */
     public function destroy(Venue $venue): JsonResponse
     {
+        $sessionsCount = $venue->sessions()->count();
+
+        if ($sessionsCount > 0) {
+            throw new ConflictError(
+                'Нельзя удалить площадку: к ней привязаны сеансы. Сначала удалите или переназначьте их.',
+                'VENUE_HAS_SESSIONS',
+                ['sessions_count' => $sessionsCount],
+            );
+        }
+
         $venue->delete();
 
         return response()->json(['success' => true, 'message' => 'Venue deleted successfully']);

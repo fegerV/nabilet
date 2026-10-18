@@ -3,7 +3,10 @@
  * Площадки (админка).
  *
  * CRUD через /api/v1/venues (write-роуты под auth:api + admin).
- * Модалка-форма: название, город, адрес, регион, страна, статус.
+ * Модалка-форма: название, город, адрес, регион, статус.
+ *
+ * Поле «Страна» из формы убрано по требованию: страна в каталоге пишется
+ * сидерами, вручную её править не нужно. Бэкенд поле принимает и без него.
  *
  * Адресация — по `public_id` (ULID), как у залов и событий. Числовой `id`
  * в пути приводился к int, поэтому `/venues/1abc` попадал в площадку 1.
@@ -42,11 +45,11 @@ const modalOpen = ref(false)
 const saving = ref(false)
 const formError = ref<string | null>(null)
 const editId = ref<string | null>(null)
-const form = ref({ name: '', city: '', region: '', country: '', address: '', status: 'active' })
+const form = ref({ name: '', city: '', region: '', address: '', status: 'active' })
 
 function openCreate(): void {
   editId.value = null
-  form.value = { name: '', city: '', region: '', country: '', address: '', status: 'active' }
+  form.value = { name: '', city: '', region: '', address: '', status: 'active' }
   formError.value = null
   modalOpen.value = true
 }
@@ -58,7 +61,6 @@ function openEdit(row: { raw: ApiVenue }): void {
     name: v.name ?? '',
     city: v.city ?? '',
     region: v.region ?? '',
-    country: v.country ?? '',
     address: v.address ?? '',
     status: v.status ?? 'active',
   }
@@ -79,7 +81,6 @@ async function save(): Promise<void> {
       name: form.value.name.trim(),
       city: form.value.city.trim() || null,
       region: form.value.region.trim() || null,
-      country: form.value.country.trim() || null,
       address: form.value.address.trim() || null,
       status: form.value.status,
     }
@@ -100,7 +101,9 @@ async function save(): Promise<void> {
 }
 
 async function remove(v: ApiVenue): Promise<void> {
-  if (!window.confirm(`Удалить площадку «${v.name}»? Связанные залы останутся.`)) return
+  // Залы уходят каскадом (`halls.venue_id` CASCADE), а площадку с сеансами
+  // сервер не даст удалить — 409 VENUE_HAS_SESSIONS; сообщение показываем как есть.
+  if (!window.confirm(`Удалить площадку «${v.name}»? Вместе с ней удалятся её залы и схемы залов.`)) return
   try {
     await send<unknown>(`/venues/${v.public_id}`, 'DELETE')
     ui.notify('sun', 'Площадка удалена', v.name)
@@ -210,7 +213,6 @@ onMounted(load)
         <NInput v-model="form.name" label="Название" placeholder="ДК «Маяк»" required />
         <NInput v-model="form.city" label="Город" placeholder="Казань" />
         <NInput v-model="form.region" label="Регион" placeholder="Татарстан" />
-        <NInput v-model="form.country" label="Страна" placeholder="Россия" />
         <NInput v-model="form.address" label="Адрес" placeholder="ул. Ленина, 12" />
         <NSelect v-model="form.status" label="Статус" :options="[{ value: 'active', label: 'Активна' }, { value: 'inactive', label: 'Не активна' }]" />
 
