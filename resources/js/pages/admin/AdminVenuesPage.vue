@@ -118,6 +118,100 @@ async function remove(v: ApiVenue): Promise<void> {
   }
 }
 
+/* ── Импорт с Яндекс.Афиши ──────────────────────────────────────────────
+ * Ссылка на страницу события → разбор JSON-LD сервером (`POST
+ * /venues/import-afisha`) → предпросмотр → поля правятся → создание через
+ * обычный POST /venues. Схема зала в страницу события не входит (закрытый
+ * API Яндекса), поэтому после импорта зал и схему рисуют в конструкторе —
+ * см. раздел «Помощь». */
+interface AfishaPreview {
+  event: {
+    title: string | null
+    description: string | null
+    image: string | null
+    starts_at: string | null
+    price_min: number | null
+    price_max: number | null
+    price_currency: string | null
+  }
+  venue: {
+    name: string | null
+    city: string | null
+    address: string | null
+    latitude: number | null
+    longitude: number | null
+    phones: string[]
+  }
+}
+
+const importOpen = ref(false)
+const importing = ref(false)
+const parsing = ref(false)
+const importError = ref<string | null>(null)
+const importUrl = ref('')
+const afisha = ref<AfishaPreview | null>(null)
+const importForm = ref({ name: '', city: '', address: '', description: '' })
+
+function openImport(): void {
+  importOpen.value = true
+  importError.value = null
+  importUrl.value = ''
+  afisha.value = null
+}
+
+async function parseAfisha(): Promise<void> {
+  if (parsing.value || !importUrl.value.trim()) return
+  parsing.value = true
+  importError.value = null
+  try {
+    const res = await send<AfishaPreview>('/venues/import-afisha', 'POST', {
+      url: importUrl.value.trim(),
+    })
+    const preview = res.data
+    afisha.value = preview
+    const by = preview.event.title ? ` — по странице события «${preview.event.title}»` : ''
+    importForm.value = {
+      name: preview.venue.name ?? '',
+      city: preview.venue.city ?? '',
+      address: preview.venue.address ?? '',
+      description: `Импортировано с Яндекс.Афиши${by}`,
+    }
+  } catch (e) {
+    afisha.value = null
+    importError.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    parsing.value = false
+  }
+}
+
+async function createImported(): Promise<void> {
+  if (importing.value || !afisha.value) return
+  if (!importForm.value.name.trim()) {
+    importError.value = 'Укажите название площадки'
+    return
+  }
+  importing.value = true
+  importError.value = null
+  try {
+    await send<unknown>('/venues', 'POST', {
+      name: importForm.value.name.trim(),
+      city: importForm.value.city.trim() || null,
+      address: importForm.value.address.trim() || null,
+      description: importForm.value.description.trim() || null,
+      latitude: afisha.value.venue.latitude,
+      longitude: afisha.value.venue.longitude,
+      status: 'active',
+    })
+    ui.notify('mint', 'Площадка импортирована', importForm.value.name)
+    importOpen.value = false
+    await load()
+  } catch (e) {
+    importError.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    importing.value = false
+  }
+}
+
 const rows = computed(() =>
   venues.value.map((v) => ({
     id: String(v.public_id),
@@ -166,7 +260,10 @@ onMounted(load)
           <template v-else>{{ rows.length }} площадок</template>
         </p>
       </div>
-      <NButton variant="primary" @click="openCreate">Новая площадка</NButton>
+      <div class="flex gap-2">
+        <NButton variant="secondary" @click="openImport">Импорт с Яндекс.Афиши</NButton>
+        <NButton variant="primary" @click="openCreate">Новая площадка</NButton>
+      </div>
     </div>
 
     <div v-if="loadError" class="surface-card mt-5 border-rose-500/30 px-4 py-3 text-sm text-rose-400">
@@ -202,6 +299,45 @@ onMounted(load)
         </template>
       </NDataTable>
     </div>
+
+    <!-- Модалка импорта с Яндекс.Афиши -->
+    <NModal :open="importOpen" title="Импорт площадки с Яндекс.Афиши" size="md" @update:open="importOpen = false">
+      <p class="mb-3 text-xs text-subtle">
+        Вставьте ссылку на страницу СОБЫТИЯ афиши (…/concert/…). Разбираются название площадки, адрес, город,
+        координаты и цены события. Схему зала после импорта рисуют в конструкторе схем.
+      </p>
+      <form @submit.prevent="parseAfisha" class="mb-3 flex gap-2">
+        <NInput v-model="importUrl" placeholder="https://afisha.yandex.ru/surgut/concert/…" />
+        <NButton type="submit" variant="secondary" :loading="parsing">Разобрать</NButton>
+      </form>
+
+      <p v-if="importError" class="mb-3 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-400">
+        {{ importError }}
+      </p>
+
+      <template v-if="afisha">
+        <div class="mb-3 rounded-lg bg-surface-2 px-3 py-2 text-xs text-muted">
+          <template v-if="afisha.event.title">
+            Событие: <b class="text-content">{{ afisha.event.title }}</b>
+            <span v-if="afisha.event.price_min !== null">
+              · цены {{ afisha.event.price_min }}–{{ afisha.event.price_max }} {{ afisha.event.price_currency ?? 'RUB' }}
+            </span>
+            <div v-if="afisha.venue.phones.length" class="mt-1">Телефоны: {{ afisha.venue.phones.join(', ') }}</div>
+          </template>
+        </div>
+
+        <form class="space-y-3" @submit.prevent="createImported">
+          <NInput v-model="importForm.name" label="Название" placeholder="Вавилон" required />
+          <NInput v-model="importForm.city" label="Город" placeholder="Сургут" />
+          <NInput v-model="importForm.address" label="Адрес" placeholder="ул. Университетская, 55" />
+          <NInput v-model="importForm.description" label="Описание" placeholder="Пусто — можно не заполнять" />
+          <div class="flex justify-end gap-2 border-t border-line pt-3">
+            <NButton variant="secondary" @click="importOpen = false">Отмена</NButton>
+            <NButton type="submit" variant="accent" :loading="importing">Создать площадку</NButton>
+          </div>
+        </form>
+      </template>
+    </NModal>
 
     <!-- Модалка формы -->
     <NModal

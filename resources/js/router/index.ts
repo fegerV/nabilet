@@ -181,6 +181,9 @@ const routes: RouteRecordRaw[] = [
       { path: 'events/new', name: 'admin-event-new', component: () => import('@/pages/admin/AdminEventFormPage.vue') },
       { path: 'events/:id', name: 'admin-event-edit', component: () => import('@/pages/admin/AdminEventFormPage.vue') },
             { path: 'venues', name: 'admin-venues', component: () => import('@/pages/admin/AdminVenuesPage.vue') },
+      // Центр помощи админа: настройка системы, запуск концерта в продажу,
+      // все разделы. Статическая страница — эндпоинтов не требует.
+      { path: 'help', name: 'admin-help', component: () => import('@/pages/admin/AdminHelpPage.vue') },
             { path: 'sessions', name: 'admin-sessions', component: () => import('@/pages/admin/AdminSessionsPage.vue') },
       { path: 'sessions/:id/prices', name: 'admin-session-prices', component: () => import('@/pages/admin/AdminSessionPricesPage.vue') },
       {
