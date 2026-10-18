@@ -3,10 +3,12 @@
  * Площадки (админка).
  *
  * CRUD через /api/v1/venues (write-роуты под auth:api + admin).
- * Модалка-форма: название, город, адрес, регион, статус.
+ * Модалка-форма: название, город, адрес, регион, описание, статус.
  *
  * Поле «Страна» из формы убрано по требованию: страна в каталоге пишется
  * сидерами, вручную её править не нужно. Бэкенд поле принимает и без него.
+ * Описание площадки живёт здесь (как и адрес); сведения зала — на странице
+ * «Залы», конструктор схемы сведениями зала не занимается.
  *
  * Адресация — по `public_id` (ULID), как у залов и событий. Числовой `id`
  * в пути приводился к int, поэтому `/venues/1abc` попадал в площадку 1.
@@ -32,6 +34,7 @@ interface ApiVenue {
   region?: string | null
   country?: string | null
   address?: string | null
+  description?: string | null
   status: string
   halls?: unknown[]
 }
@@ -45,11 +48,11 @@ const modalOpen = ref(false)
 const saving = ref(false)
 const formError = ref<string | null>(null)
 const editId = ref<string | null>(null)
-const form = ref({ name: '', city: '', region: '', address: '', status: 'active' })
+const form = ref({ name: '', city: '', region: '', address: '', description: '', status: 'active' })
 
 function openCreate(): void {
   editId.value = null
-  form.value = { name: '', city: '', region: '', address: '', status: 'active' }
+  form.value = { name: '', city: '', region: '', address: '', description: '', status: 'active' }
   formError.value = null
   modalOpen.value = true
 }
@@ -62,6 +65,7 @@ function openEdit(row: { raw: ApiVenue }): void {
     city: v.city ?? '',
     region: v.region ?? '',
     address: v.address ?? '',
+    description: v.description ?? '',
     status: v.status ?? 'active',
   }
   formError.value = null
@@ -82,6 +86,7 @@ async function save(): Promise<void> {
       city: form.value.city.trim() || null,
       region: form.value.region.trim() || null,
       address: form.value.address.trim() || null,
+      description: form.value.description.trim() || null,
       status: form.value.status,
     }
     if (editId.value) {
@@ -214,6 +219,7 @@ onMounted(load)
         <NInput v-model="form.city" label="Город" placeholder="Казань" />
         <NInput v-model="form.region" label="Регион" placeholder="Татарстан" />
         <NInput v-model="form.address" label="Адрес" placeholder="ул. Ленина, 12" />
+        <NInput v-model="form.description" label="Описание" placeholder="Крупнейшая концертная площадка города" />
         <NSelect v-model="form.status" label="Статус" :options="[{ value: 'active', label: 'Активна' }, { value: 'inactive', label: 'Не активна' }]" />
 
         <div class="flex justify-end gap-2 border-t border-line pt-3">

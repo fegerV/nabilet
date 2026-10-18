@@ -4,6 +4,10 @@
  *
  * Список залов из /api/v1/halls; клик по строке → редактор схемы зала
  * (/#/admin/halls/{publicId}/editor).
+ *
+ * Сведения о зале (название, город, адрес, описание, фото снаружи/внутри)
+ * правятся здесь — в модалке «Изменить зал». Конструктор схемы (редактор)
+ * сведениями зала больше не занимается: там — только схема мест.
  */
 import { computed, ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
@@ -12,6 +16,7 @@ import NStatusBadge from '@/components/ui/NStatusBadge.vue'
 import NButton from '@/components/ui/NButton.vue'
 import NInput from '@/components/ui/NInput.vue'
 import NSelect from '@/components/ui/NSelect.vue'
+import NModal from '@/components/ui/NModal.vue'
 import { get, send } from '@/lib/api'
 import type { Column } from '@/components/ui/NDataTable.vue'
 
@@ -25,6 +30,11 @@ interface ApiHall {
   status?: string
   capacity?: number | null
   venue?: { id: number; name: string } | null
+  city?: string | null
+  address?: string | null
+  description?: string | null
+  exterior_photo_url?: string | null
+  interior_photo_url?: string | null
 }
 
 const halls = ref<ApiHall[]>([])
@@ -48,6 +58,7 @@ const COLUMNS: Column[] = [
   { key: 'venue', label: 'Площадка', hideOnMobile: true },
   { key: 'capacity', label: 'Вместимость', align: 'right', width: '120px' },
   { key: 'status', label: 'Статус', align: 'right', width: '110px' },
+  { key: 'actions', label: '', align: 'right', width: '90px' },
 ]
 
 async function load(): Promise<void> {
@@ -144,6 +155,69 @@ async function createHall(): Promise<void> {
     creating.value = false
   }
 }
+
+/* ── Изменение зала (сведения: название/город/адрес/описание/фото) ──── */
+
+interface EditableHall {
+  name: string
+  city: string
+  address: string
+  description: string
+  capacity: string
+  exterior_photo_url: string
+  interior_photo_url: string
+}
+
+const editOpen = ref(false)
+const editSaving = ref(false)
+const editError = ref<string | null>(null)
+const editPublicId = ref<string | null>(null)
+const editForm = ref<EditableHall>({
+  name: '', city: '', address: '', description: '',
+  capacity: '', exterior_photo_url: '', interior_photo_url: '',
+})
+
+async function openEdit(row: { raw: ApiHall }): Promise<void> {
+  editPublicId.value = row.raw.public_id
+  editError.value = null
+  editForm.value = {
+    name: row.raw.name,
+    city: row.raw.city ?? '',
+    address: row.raw.address ?? '',
+    description: row.raw.description ?? '',
+    capacity: row.raw.capacity != null ? String(row.raw.capacity) : '',
+    exterior_photo_url: row.raw.exterior_photo_url ?? '',
+    interior_photo_url: row.raw.interior_photo_url ?? '',
+  }
+  editOpen.value = true
+}
+
+async function saveEdit(): Promise<void> {
+  if (!editPublicId.value || editSaving.value) return
+  if (!editForm.value.name.trim()) {
+    editError.value = 'Укажите название зала'
+    return
+  }
+  editSaving.value = true
+  editError.value = null
+  try {
+    await send(`/halls/${editPublicId.value}`, 'PUT', {
+      name: editForm.value.name.trim(),
+      city: editForm.value.city.trim() || null,
+      address: editForm.value.address.trim() || null,
+      description: editForm.value.description.trim() || null,
+      capacity: editForm.value.capacity ? Number(editForm.value.capacity) : null,
+      exterior_photo_url: editForm.value.exterior_photo_url.trim() || null,
+      interior_photo_url: editForm.value.interior_photo_url.trim() || null,
+    })
+    editOpen.value = false
+    await load()
+  } catch (e) {
+    editError.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    editSaving.value = false
+  }
+}
 </script>
 
 <template>
@@ -204,6 +278,10 @@ async function createHall(): Promise<void> {
         <template #cell-status="{ row }">
           <NStatusBadge kind="hall" :status="row.status" />
         </template>
+        <!-- Клик по строке открывает конструктор схемы, правка сведений — отдельной кнопкой -->
+        <template #cell-actions="{ row }">
+          <NButton variant="ghost" size="sm" @click.stop="openEdit(row)">Изменить</NButton>
+        </template>
 
         <template #mobile-title="{ row }">
           <span class="block text-sm font-medium text-content">{{ row.name }}</span>
@@ -211,8 +289,34 @@ async function createHall(): Promise<void> {
         <template #mobile-meta="{ row }">
           <span>{{ row.venue }}</span>
           <NStatusBadge kind="hall" :status="row.status" />
+          <NButton variant="ghost" size="sm" @click.stop="openEdit(row)">Изменить</NButton>
         </template>
       </NDataTable>
     </div>
+
+    <!-- Модалка правки сведений о зале -->
+    <NModal :open="editOpen" title="Изменить зал" size="md" @update:open="editOpen = false">
+      <p class="mb-3 text-xs text-subtle">
+        Адрес, описание и фото хранятся здесь. Схема мест правится в конструкторе схемы (клик по строке).
+      </p>
+      <p v-if="editError" class="mb-3 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-400">
+        {{ editError }}
+      </p>
+      <form class="space-y-3" @submit.prevent="saveEdit">
+        <NInput v-model="editForm.name" label="Название зала" placeholder="Большой зал" required />
+        <div class="grid grid-cols-2 gap-2">
+          <NInput v-model="editForm.city" label="Город" placeholder="Москва" />
+          <NInput v-model="editForm.capacity" label="Вместимость" type="number" :min="0" placeholder="400" />
+        </div>
+        <NInput v-model="editForm.address" label="Адрес" placeholder="ул. Тверская, 1" />
+        <NInput v-model="editForm.description" label="Описание" placeholder="Описание зала" />
+        <NInput v-model="editForm.exterior_photo_url" label="Фото снаружи (URL)" placeholder="https://…" />
+        <NInput v-model="editForm.interior_photo_url" label="Фото внутри (URL)" placeholder="https://…" />
+        <div class="flex justify-end gap-2 border-t border-line pt-3">
+          <NButton variant="secondary" @click="editOpen = false">Отмена</NButton>
+          <NButton type="submit" variant="accent" :loading="editSaving">Сохранить</NButton>
+        </div>
+      </form>
+    </NModal>
   </div>
 </template>

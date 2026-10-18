@@ -171,64 +171,11 @@ const draftVersionId = ref<number | null>(null)
 const loadedPublished = ref<number | null>(null)
 const hallLoadState = ref<'idle' | 'loading' | 'ok' | 'error'>('idle')
 
-/* ── Сведения о зале (§54: город/адрес/описание/фото) ──────────────── */
-
-interface HallDetails {
-  name: string
-  description: string
-  city: string
-  address: string
-  exterior_photo_url: string
-  interior_photo_url: string
-}
-
-const hallDetails = ref<HallDetails>({
-  name: '',
-  description: '',
-  city: '',
-  address: '',
-  exterior_photo_url: '',
-  interior_photo_url: '',
-})
-const hallSaving = ref(false)
-
-function loadHallDetails(): void {
-  if (!hallPublicId.value) return
-  void get<Partial<HallDetails>>(`/halls/${hallPublicId.value}`)
-    .then((res) => {
-      const d = res.data
-      hallDetails.value = {
-        name: d.name ?? hallDetails.value.name,
-        description: d.description ?? '',
-        city: d.city ?? '',
-        address: d.address ?? '',
-        exterior_photo_url: d.exterior_photo_url ?? '',
-        interior_photo_url: d.interior_photo_url ?? '',
-      }
-    })
-    .catch(() => { /* сведения о зале не критичны для редактора схемы */ })
-}
-
-async function saveHallDetails(): Promise<void> {
-  if (!hallPublicId.value || hallSaving.value) return
-  hallSaving.value = true
-  try {
-    const payload = {
-      name: hallDetails.value.name,
-      description: hallDetails.value.description?.trim() || null,
-      city: hallDetails.value.city?.trim() || null,
-      address: hallDetails.value.address?.trim() || null,
-      exterior_photo_url: hallDetails.value.exterior_photo_url?.trim() || null,
-      interior_photo_url: hallDetails.value.interior_photo_url?.trim() || null,
-    }
-    await send(`/halls/${hallPublicId.value}`, 'PUT', payload)
-    ui.notify('mint', 'Сведения о зале сохранены')
-  } catch (e) {
-    ui.notify('rose', 'Не удалось сохранить', e instanceof Error ? e.message : String(e))
-  } finally {
-    hallSaving.value = false
-  }
-}
+/* ── Сведения о зале ───────────────────────────────────────────────────
+ * Отдельной панели «Сведения о зале» в редакторе больше нет: адрес,
+ * описание и фото (снаружи/внутри) хранятся и правятся на страницах
+ * «Площадки» и «Залы» админки, а конструктор посвящён только схеме мест.
+ */
 
 /** Реальный id версии и номер ревизии черновика для optimistic locking. */
 let currentVersionId: number | null = null
@@ -1382,7 +1329,6 @@ async function loadFromServer(): Promise<void> {
     return
   }
   hallPublicId.value = pid
-  loadHallDetails()
   currentVersionId = null
   currentSchemaRevision = null
   draftVersionId.value = null
@@ -1518,19 +1464,6 @@ function exportSchema(): void {
         if (!root) throw new Error('Файл должен содержать JSON-объект схемы зала')
         snapshot()
         applyServerSchema(root)
-        // Метаданные зала из импорта (§54): город/адрес/описание/фото. Не
-        // перезаписываем уже заданные значения, чтобы не затереть правки.
-        const hallMeta = (root as Record<string, unknown>).hall
-        if (hallMeta && typeof hallMeta === 'object') {
-          const m = hallMeta as Record<string, unknown>
-          const pick = (k: string): string =>
-            typeof m[k] === 'string' && (m[k] as string).trim() ? (m[k] as string) : ''
-          if (!hallDetails.value.city) hallDetails.value.city = pick('city')
-          if (!hallDetails.value.address) hallDetails.value.address = pick('address')
-          if (!hallDetails.value.description) hallDetails.value.description = pick('description')
-          if (!hallDetails.value.exterior_photo_url) hallDetails.value.exterior_photo_url = pick('exterior_photo_url')
-          if (!hallDetails.value.interior_photo_url) hallDetails.value.interior_photo_url = pick('interior_photo_url')
-        }
         // Если загружали поверх published — снимем блокировку, чтобы можно было править
         if (published.value !== null) {
           newVersion()
@@ -1838,16 +1771,28 @@ function draw(): void {
       draggable: published.value === null && tool.value !== 'pan' && !seatsSelectedHere,
     })
 
-    group.add(
-      new Konva.Text({
-        y: -20,
-        name: 'sector-label',
-        text: `${sector.name} · от ${money(sector.priceMinor)}`,
-        fontSize: 12,
-        fontStyle: 'bold',
-        fill: '#B0A0FF',
-      }),
-    )
+    // Наименование «Столы на танцполе» не делает сектор standing: столы остаются
+    // продаваемыми местами, а овал рисуем только для настоящей или вырожденной зоны.
+    const isTableSector = sector.shape === 'table' || sector.name.toLocaleLowerCase('ru').includes('стол')
+
+    // Подпись сектора — как на виджетах Яндекса. У банкетных столов подписи
+    // над сектором нет вовсе: в «Вавилоне» 62 стола стоят вплотную, и длинные
+    // «Столы на танцполе · стол N · от 1 000 ₽» перекрывали друг друга в
+    // кашу. Номер стола печатается на крышке (ниже), цена и название — в
+    // инспекторе по клику. У рядовых секторов (партер, балкон) подпись
+    // остаётся: она одна над секцией и ничего не перекрывает.
+    if (!isTableSector) {
+      group.add(
+        new Konva.Text({
+          y: -20,
+          name: 'sector-label',
+          text: `${sector.name} · от ${money(sector.priceMinor)}`,
+          fontSize: 12,
+          fontStyle: 'bold',
+          fill: '#B0A0FF',
+        }),
+      )
+    }
 
     // Для амфитеатра рисуем концентрические дуги-направляющие по рядам.
     if (sector.shape === 'arc') {
@@ -1871,9 +1816,8 @@ function draw(): void {
       }
     }
 
-    // Наименование «Столы на танцполе» не делает сектор standing: столы остаются
-    // продаваемыми местами, а овал рисуем только для настоящей или вырожденной зоны.
-    const isTableSector = sector.shape === 'table' || sector.name.toLocaleLowerCase('ru').includes('стол')
+    // «Танцпол» — не стоячая зона для продажи количества, а овал вокруг мест:
+    // рисуем его только для настоящей или вырожденной (все места в точке) зоны.
     const seatsCollapsed = sector.seats.length > 1
       && sector.seats.every((seat) => seat.x === sector.seats[0].x && seat.y === sector.seats[0].y)
     const isDanceZone = !isTableSector && sector.seats.length > 0 && (
@@ -2900,24 +2844,6 @@ function reassignSelectedSeats(targetSectorId: string): void {
         </div>
 
         <div class="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
-        <!-- Сведения о зале (§54: город/адрес/описание/фото) -->
-        <div class="surface-card overflow-hidden">
-          <div class="border-b border-line px-3 py-2.5">
-            <h2 class="text-sm font-semibold text-content">Сведения о зале</h2>
-            <p class="mt-0.5 text-xs text-subtle">Город, адрес, описание и фото</p>
-          </div>
-          <div class="space-y-3 p-3">
-            <NInput v-model="hallDetails.name" label="Название зала" placeholder="Большой зал" />
-            <NInput v-model="hallDetails.city" label="Город" placeholder="Москва" />
-            <NInput v-model="hallDetails.address" label="Адрес" placeholder="ул. Тверская, 1" />
-            <NInput v-model="hallDetails.description" label="Описание" placeholder="Описание зала" />
-            <NInput v-model="hallDetails.exterior_photo_url" label="Фото снаружи (URL)" placeholder="https://…" />
-            <NInput v-model="hallDetails.interior_photo_url" label="Фото внутри (URL)" placeholder="https://…" />
-            <NButton variant="secondary" block :disabled="hallSaving" @click="saveHallDetails">
-              {{ hallSaving ? 'Сохраняем…' : 'Сохранить сведения' }}
-            </NButton>
-          </div>
-        </div>
         <!-- Генератор сектора (§49) -->
         <div class="surface-card overflow-hidden">
           <div class="border-b border-line px-3 py-2.5">
