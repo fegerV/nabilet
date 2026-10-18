@@ -98,12 +98,66 @@ Referer: https://widget.afisha.yandex.ru/w/sessions/<B64>?widgetName=w1
   * куки Яндекса (`Session_id`, `yandexuid`, …) — персональные, в логи/чат
     не выносить;
   * `clientKey` — ключ конкретного партнёра виджета (у каждого свой).
-* Ответ: `application/json`; **может быть почти пустым** — в снятом примере
-  `content-length: 20` (≈ `{"sections":[], …}`), что значит «у этой площадки
-  в Яндексе seat-плана нет»: для университетских/клубных залов продажа часто
-  идёт «на количество», без выбора мест. Вом случае тело ответа —
-  единственный источник структуры: смотреть вкладку Response (ПКМ → Copy →
-  Copy response), а не заголовки.
+* Ответ: `application/json`; может быть почти пустым (~20 байт, нет плана)
+  либо полноценным `with-seats`-планом. Реальный образец (СурГУ, сеанс 843017
+  событие Марат Яруллина, kassa-ugra 356653) сохранён у владельца и разобран
+  здесь.
+
+## 4.1. Формат hallplan (по живому образцу)
+
+```
+result: {
+  saleStatus: "available",
+  hallplan: {
+    totalSeatCount: 512, availableSeatCount: 163,   ← seats[] НЕПОЛНЫЙ: только продаваемые места
+    maxTicketsCount: 6, allowCompositeOrders: false,
+    hallplanDisplayType: "with-seats",
+    categories: [ {id, name: "Партер", priceInfos: [{price, fee, total}]} ],
+    levels: [
+      {
+        id: 1, name: "Партер",
+        seats: [ { seat: {place, row, xCoord, yCoord},
+                   sourceSeatId, categoryId, priceInfo: {price/fee/total, копейки},
+                   extSessionId, sourceLevelId, levelId, admission: false,
+                   sourceCategoryId: "Партер-RUB 3080.00" (цена + СБОР!), 
+                   categories[], serviceId: "ticketsteam-5466",
+                   gatewaySessionId: 356653 } ],
+        rows: [ {row: "9", seatCount: 29, xCoord, yCoord} ],  ← ПОЛНАЯ геометрия рядов,
+                                                               в т.ч. проданных целиком
+        admission: false, availableSeatCount: 65,
+        outline: "M13.0 211.0 L869.0 … (SVG-path контура сектора на фоне)",
+        prices: [{value: 280000}, {value: 270000}]
+      },
+      { id: 2, name: "Балкон", … }
+    ],
+    prices: [280000, 270000, 240000, 230000, 250000],
+    sessionServices: [ {serviceName: "ЯБилеты ARM", serviceDescription: "Касса Югра",
+                        protocolName: "TICKETSTEAM", serviceId: 5466,
+                        gatewaySessionId ↔ id события на белом лейбле,
+                        serviceOrganizationInfo: ООО «Тикет Бэст», organizerInfo: ИП…} ]
+  }
+}
+```
+
+Ключевые факты формата:
+
+1. **`levels[].seats[]` содержит ТОЛЬКО продаваемые места** (163 из 512).
+   Полная геометрия — в `levels[].rows[]`: номер ряда, `seatCount` и
+   координата первого места. Любой конвертер обязан восстанавливать
+   полные ряды из `rows[]`, интерполируя позиции по якорям из `seats[]`.
+2. **Цены в копейках** и ДВУХСЛОЙНЫЕ: `price` («цена места») и `total`
+   (с сервисным сбором `fee`). В NABILET переносится `price`. Для проверки
+   соответствия Яндексу при сравнении помните: на витрине Яндекса клиент
+   видит **total с сбором** (2700 ₽ места = 2970 ₽ на кассе).
+3. **Продавец может быть внешним** (`protocolName: TICKETSTEAM`,
+   «ЯБилеты ARM» = касса Югра): тогда `gatewaySessionId` — id события у
+   продавца (356653 — это и есть `/events/356653` на kassa-ugra),
+   а сервисный блок несёт его реквизиты (юрганизация, оферта).
+4. `sourceCategoryId` вида «Партер-RUB 3080.00» — дублирует total с сбором.
+5. `outline` — контур сектора в SVG-path: можно рисовать фоном в конструкторе
+   (инструмент «Фон»/подложка), если важно сохранить фигуру зоны.
+6. `admission: false` у мест — стандартная посадка; `seatGroups: []` и
+   `sections: []` в этом примере не используются (уровни вместо секций).
 * Без кук/antibot-токена эндпоинт отвечает **400** (проверено). Сервер то же
   самое воспроизвести не может: нужны живые cookies + свежий antibot-JWT,
   то есть участие человека в окне виджета. Программный обход (headless,
@@ -155,7 +209,47 @@ Referer: https://widget.afisha.yandex.ru/w/sessions/<B64>?widgetName=w1
 * Не публиковать распарсенную схему сразу в боевой зал: всегда новая версия
   (immutable published версий — см. `HallService`).
 
-## 6. Соответствие форматов
+## 6. Конвертер: hallplan → схема конструктора
+
+`tools/hallplan-to-schema.php` — PHP-скрипт без внешних зависимостей:
+
+```
+php tools/hallplan-to-schema.py hallplan.json --out schema.json
+```
+
+Что делает:
+
+1. Берёт полный ответ (`result.hallplan`) или сам `hallplan`.
+2. Для каждого уровня (`levels[]`) собирает сектор: геометрию восстанавливает
+   из `rows[]` (там seatCount и стартовые координаты), точные позиции — из
+   якорей доступных мест (`seats[]`), промежуточные — кусочно-линейной
+   интерполяцией по якорям, крайние — экстраполяцией крайним наклоном;
+   ряды без якорей (проданы целиком) — прямой линией от `rows[].xCoord`
+   медианным шагом уровня.
+3. Разрешает перекрытия (валидатор §50 требует ≥16px по обеим осям) сдвигом
+   по y на 1px вниз; id мест делаются уникальными во всей схеме.
+4. Цены: точная у доступных мест, рядам без якорей — цена ближайшего
+   известного ряда того же уровня («ценомерная лестница»); рыночная
+   `rowPrices` + секторная медиана. Копейки Яндекса → копейки NABILET
+   (сервисный сбор НЕ переносится — на витрине Яндекса клиент видит total
+   со сбором, поэтому цена на кассе и на витрине Яндекса визуально разнится).
+5. Проверяет: вывод проходит `HallService::validateSchemaPayload` (OK на
+   образце СурГУ: 512 мест, Партер 2800×13/2700×3, Балкон 2500/2400/2300).
+6. Результат — в «Импорт» конструктора и публикация новой версией.
+
+Соответствие форматов:
+
+| Яндекс (hallplan) | NABILET (schema_json) |
+|---|---|
+| `levels[]/{id,name}` | `sectors[]/{id,name,x,y}` |
+| `levels[].rows[]/seatCount` | `sectors[].seats[]` (восстановленные ряды) |
+| `levels[].seats[].seat.xCoord/yCoord` | `sectors[].seats[]/{x,y}` (px канваса) |
+| `priceInfo.price.value` (копейки) | `rowPrices{row}` / `seat.priceMinor` (копейки) |
+| `serviceInfo.fee` | не переносится (сбор продавца) |
+| типы мест, admission | `seats[].kind: standard/vip/accessible` |
+| `outline` (SVG path) | фон конструктора (вручную) |
+
+## 7. Соответствие форматов (устаревшая сводная таблица §6 → см. выше)
 
 | Яндекс (hallplan JSON) | Конструктор NABILET (schema_json) |
 |---|---|
