@@ -102,7 +102,46 @@ class VenueImportController extends Controller
             );
         }
 
+        $parsed['ticket'] = $this->extractTicket($response->body());
+
         return response()->json(['data' => $parsed]);
+    }
+
+    /**
+     * Сеанс и цены из SSR-стейта страницы события.
+     *
+     * В HTML зашит Apollo-стейт, где у сеанса есть `ticket: {id…,
+     * price: {min, max}}` (цены в КОПЕЙКАХ). Ticket id — это id сеанса
+     * в системе Яндекс.Билетов: по нему в окне покупки (F12 → Network)
+     * ищется карта мест, поэтому предпросмотр отдаёт его админу.
+     */
+    private function extractTicket(string $html): array
+    {
+        $ticket = [
+            'id' => null,
+            'price_min' => null,
+            'price_max' => null,
+            'price_currency' => null,
+        ];
+
+        if (! preg_match(
+            // Сеансовый стейт может лежать и под `"ticket":{…}}`, и под
+            // нормализованным ключом Apollo `"Ticket:…":{…}`.
+            '#"(?:ticket|Ticket:[^"]*)":\{"id":"(\d+)","price":\{[^}]*?"currency":"([a-z]+)","min":(\d+),"max":(\d+)#i',
+            $html,
+            $m,
+        )) {
+            return $ticket;
+        }
+
+        $ticket['id'] = $m[1];
+        $ticket['price_currency'] = mb_strtoupper($m[2]);
+
+        // Копейки → рубли: на витрине Яндекса и в нашей системе рубли.
+        $ticket['price_min'] = (int) (((int) $m[3]) / 100);
+        $ticket['price_max'] = (int) (((int) $m[4]) / 100);
+
+        return $ticket;
     }
 
     /**

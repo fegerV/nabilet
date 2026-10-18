@@ -74,7 +74,7 @@ final class VenueAfishaImportTest extends TestCase
         <!doctype html><html><head>
         <script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Сургут"}]}</script>
         <script type="application/ld+json">{"@context":"https://schema.org","@type":"MusicEvent","name":"Шура","description":"Феерия русского поп-рока","url":"https://afisha.yandex.ru/surgut/concert/shura-2026-10-30","image":"https://avatars.mds.yandex.net/orig","startDate":"2026-10-29T21:00:00.000Z","location":{"@type":"Place","name":"Вавилон","address":{"@type":"PostalAddress","streetAddress":"ул. Университетская, 55","addressLocality":"Сургут"},"geo":{"@type":"GeoCoordinates","latitude":61.263354,"longitude":73.432163},"telephone":["+7 (3462) 94-40-48"]},"offers":{"@type":"AggregateOffer","lowPrice":"2500.00","highPrice":"12000.00","priceCurrency":"RUB"}}</script>
-        </head><body>…</body></html>
+        </head><body><script>window.__APOLLO_STATE__={"Session:1":{"ticket":{"__ref":"Ticket:1"}},"Ticket:1":{"id":"843017","price":{"__typename":"TicketPriceRange","currency":"rub","min":230000,"max":280000},"saleStatus":"available"}}</script></body></html>
         HTML;
     }
 
@@ -97,7 +97,12 @@ final class VenueAfishaImportTest extends TestCase
             ->assertJsonPath('data.venue.city', 'Сургут')
             ->assertJsonPath('data.venue.address', 'ул. Университетская, 55')
             ->assertJsonPath('data.venue.latitude', 61.263354)
-            ->assertJsonPath('data.venue.phones.0', '+7 (3462) 94-40-48');
+            ->assertJsonPath('data.venue.phones.0', '+7 (3462) 94-40-48')
+            // Сеанс и цены из SSR-стейта (TicketPriceRange): цена в копейках → в рублях.
+            ->assertJsonPath('data.ticket.id', '843017')
+            ->assertJsonPath('data.ticket.price_min', 2300)
+            ->assertJsonPath('data.ticket.price_max', 2800)
+            ->assertJsonPath('data.ticket.price_currency', 'RUB');
 
         // Эндпоинт — чистый разбор: площадок после вызова не прибавилось.
         $this->assertDatabaseCount('venues', 0);
