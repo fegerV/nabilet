@@ -11,12 +11,14 @@ import {
   MAX_ARC_SPREAD_DEG,
   ROW_GAP,
   SEAT,
+  alignTableSeatsEvenly,
   appendRowToSector,
   findFreeSeatPosition,
   arcLayoutParams,
   arcSeatXY,
   buildArcSeats,
   buildGridSeats,
+  tableLayout,
   seatKindFor,
 } from '../../../resources/js/pages/hall-editor/seatGeometry'
 import { unwrapSchemaRoot } from '../../../resources/js/pages/hall-editor/schemaImport'
@@ -154,6 +156,86 @@ describe('seatGeometry: поиск свободного места', () => {
     const existing = Array.from({ length: 4 }, (_, i) => ({ x: i * 22, y: 0 }))
     const free = findFreeSeatPosition(existing, 0, 0, SEAT, 4)
     expect(free.y).toBeGreaterThan(Math.max(...existing.map((seat) => seat.y + SEAT)))
+  })
+})
+
+describe('seatGeometry: alignTableSeatsEvenly (выравнивание «сырых» колец)', () => {
+  /** Импортированный стол с «сырыми» координатами Яндекса: радиус и шаг скачут. */
+  function makeUnevenTable(): ESector {
+    const raw = [
+      { x: 32, y: 77 }, { x: 11, y: 66 }, { x: 0, y: 44 }, { x: 2, y: 20 },
+      { x: 19, y: 4 }, { x: 43, y: 0 }, { x: 66, y: 11 }, { x: 77, y: 31 },
+      { x: 73, y: 55 }, { x: 56, y: 73 },
+    ]
+    return {
+      id: 'tbl-1',
+      name: 'Столы на танцполе · стол 3',
+      priceMinor: 100000,
+      x: 0,
+      y: 0,
+      seats: raw.map((p, i) => ({
+        id: `seat-${i + 1}`,
+        row: 1,
+        number: i + 1,
+        kind: 'standard' as const,
+        x: p.x - 8,
+        y: p.y - 8,
+      })),
+      rowPrices: {},
+      shape: 'table',
+    }
+  }
+
+  const centroid = (sector: ESector): { cx: number; cy: number } => {
+    const t = tableLayout(sector)
+    return { cx: t.cx, cy: t.cy }
+  }
+
+  it('делает все радиусы равными и шаг ровным 360/n, сохраняя число мест', () => {
+    const sector = makeUnevenTable()
+    alignTableSeatsEvenly(sector)
+    const { cx, cy } = centroid(sector)
+    const dists = sector.seats.map((s) => Math.hypot(s.x + SEAT / 2 - cx, s.y + SEAT / 2 - cy))
+    // Math.round координат даёт субпиксельный разброс радиуса — допускаем 1 px.
+    for (const d of dists) expect(Math.abs(d - dists[0]!)).toBeLessThanOrEqual(1)
+    expect(sector.seats).toHaveLength(10)
+    const angles = sector.seats
+      .map((s) => Math.atan2(s.y + SEAT / 2 - cy, s.x + SEAT / 2 - cx))
+      .sort((a, b) => a - b)
+    const ideal = (2 * Math.PI) / sector.seats.length
+    for (let i = 1; i < angles.length; i += 1) {
+      expect(Math.abs(angles[i]! - angles[i - 1]! - ideal)).toBeLessThanOrEqual(Math.PI / 90)
+    }
+  })
+
+  it('не сдвигает стол: центроид до и после совпадает', () => {
+    const sector = makeUnevenTable()
+    const before = centroid(sector)
+    alignTableSeatsEvenly(sector)
+    const after = centroid(sector)
+    expect(after.cx).toBeCloseTo(before.cx, 0)
+    expect(after.cy).toBeCloseTo(before.cy, 0)
+  })
+
+  it('меняет неровный «вытянутый» стол, но нетронутое кольцо не трогает по смыслу радиуса', () => {
+    // Габарит: радиус выравнивания не превышает прежний максимум.
+    const sector = makeUnevenTable()
+    const { cx: bx, cy: by } = centroid(sector)
+    const rMax = Math.max(...sector.seats.map((s) => Math.hypot(s.x + SEAT / 2 - bx, s.y + SEAT / 2 - by)))
+    alignTableSeatsEvenly(sector)
+    const { cx, cy } = centroid(sector)
+    for (const s of sector.seats) {
+      expect(Math.hypot(s.x + SEAT / 2 - cx, s.y + SEAT / 2 - cy)).toBeLessThanOrEqual(rMax + 1)
+    }
+  })
+
+  it('одному месту выравнивать нечего — координаты нетронуты', () => {
+    const sector = makeUnevenTable()
+    sector.seats = [sector.seats[0]!]
+    const before = { ...sector.seats[0]! }
+    alignTableSeatsEvenly(sector)
+    expect(sector.seats[0]!.x).toBe(before.x)
+    expect(sector.seats[0]!.y).toBe(before.y)
   })
 })
 

@@ -51,6 +51,7 @@ import {
   buildArcSeats,
   buildGridSeats,
   buildTableSeats,
+  alignTableSeatsEvenly,
   deleteRow,
   distributeSeats,
   findFreeSeatPosition,
@@ -2347,6 +2348,47 @@ function setTableSeatCount(sector: ESector, raw: unknown): void {
 }
 
 /**
+ * Выровнять места выбранного стола ровным кольцом (инспектор).
+ *
+ * Схемы, снятые с витрины Яндекса, несут «сырые» координаты: у части столов
+ * «Вавилона» радиус плывёт почти вдвое, а угловой шаг — от 16° до 151°.
+ * Выравнивание возвращает кольцу идеальную форму `buildTableSeats`, не меняя
+ * число мест, их нумерацию (обход по часовой) и положение стола на холсте.
+ */
+function alignTableSeats(sector: ESector): void {
+  if (isLocked.value || sector.shape !== 'table' || sector.seats.length < 2) return
+  const seatsTotal = sector.seats.length
+  snapshot()
+  alignTableSeatsEvenly(sector)
+  selectedSectorId.value = sector.id
+  ui.notify('mint', 'Места выровнены по кольцу', `${sector.name} · ${seatsTotal} мест`)
+}
+
+/** Сколько банкетных столов в схеме — для доступности кнопки «Выровнять все столы». */
+const tableSectorsCount = computed(() => sectors.value.filter((s) => s.shape === 'table').length)
+
+/**
+ * Выровнять места ВСЕХ банкетных столов схемы (шапка редактора).
+ *
+ * Одно действие вместо обхода 62 столов «Вавилона» вручную. Столы с
+ * меньшим количеством мест, чем 2, пропускаются (выравнивать нечего).
+ */
+function alignAllTables(): void {
+  if (isLocked.value) return
+  const tables = sectors.value.filter((s) => s.shape === 'table' && s.seats.length >= 2)
+  if (tables.length === 0) return
+  snapshot()
+  let aligned = 0
+  for (const t of tables) {
+    const before = JSON.stringify(t.seats)
+    alignTableSeatsEvenly(t)
+    if (JSON.stringify(t.seats) !== before) aligned += 1
+  }
+  selectedSectorId.value = null
+  ui.notify('mint', 'Столы выровнены', `Переставлено ${aligned} из ${tables.length} столов`)
+}
+
+/**
  * Введённая цена ряда (₽) с точки зрения валидации; undefined — ошибки нет.
  * Пустой ввод легален: он снимает переопределение (ряд берёт цену сектора).
  */
@@ -2645,6 +2687,16 @@ function reassignSelectedSeats(targetSectorId: string): void {
       <div class="flex flex-wrap items-center gap-1.5">
         <NButton variant="ghost" size="sm" @click="exportSchema">Экспорт</NButton>
         <NButton variant="ghost" size="sm" @click="importJsonClick">Импорт</NButton>
+        <NButton
+          v-if="tableSectorsCount > 0"
+          variant="ghost"
+          size="sm"
+          :disabled="isLocked"
+          title="Идеальные кольца мест для каждого банкетного стола — поправить «сырые» координаты импорта"
+          @click="alignAllTables"
+        >
+          Выровнять все столы
+        </NButton>
         <NButton v-if="isLocked" variant="secondary" size="sm" @click="newVersion">Новая версия</NButton>
         <NButton v-else variant="primary" size="sm" @click="publish">Опубликовать</NButton>
       </div>
@@ -2904,7 +2956,19 @@ function reassignSelectedSeats(targetSectorId: string): void {
                 :disabled="isLocked"
                 @update:model-value="setTableSeatCount(selectedSector!, $event)"
               />
-              <p class="text-2xs text-subtle">Банкетный стол: места по кольцу, одна цена на весь стол.</p>
+              <NButton
+                variant="secondary"
+                block
+                size="sm"
+                :disabled="isLocked || selectedSector.seats.length < 2"
+                @click="alignTableSeats(selectedSector!)"
+              >
+                Выровнять места по кольцу
+              </NButton>
+              <p class="text-2xs text-subtle">
+                Банкетный стол: места по кольцу, одна цена на весь стол. Выравнивание
+                приводит «сырые» координаты импорта к ровному кольцу, не сдвигая стол.
+              </p>
             </template>
             <template v-if="selectedSector.shape !== 'table'">
               <!-- Ряды: выбор, вставка, удаление, цены — всё в одном месте.

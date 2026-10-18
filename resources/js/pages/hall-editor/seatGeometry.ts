@@ -224,8 +224,7 @@ export function buildTableSeats(
 }
 
 /** Геометрия банкетного стола, вычисленная по уже расставленным местам. */
-export function tableLayout(sector: ESector): TableBuildResult {
-  if (sector.seats.length === 0) {
+export function tableLayout(sector: ESector): TableBuildResult {  if (sector.seats.length === 0) {
     return { seats: [], cx: 0, cy: 0, ring: 0 }
   }
   let sx = 0
@@ -242,6 +241,46 @@ export function tableLayout(sector: ESector): TableBuildResult {
     if (d > ring) ring = d
   }
   return { seats: sector.seats, cx, cy, ring: ring + SEAT / 2 }
+}
+
+/**
+ * Выровнять уже расставленные места стола ровным кольцом вокруг центра.
+ *
+ * Схемы, перенесённые с витрины Яндекса («Вавилон»), несут «сырые» координаты
+ * мест: у части столов радиус плывёт почти вдвое (VIP 28–31: 8.7…57.8 px при
+ * среднем 27), угловой шаг — от 16° до 151° вместо ровных 360/n. Действие
+ * возвращает геометрию к идеальному кольцу: места сортируются по текущему
+ * углу, поэтому нумерация продолжает прежний обход по часовой стрелке;
+ * радиус берётся средний — габарит стола не растёт и соседние столы не
+ * наезжают друг на друга (нижняя граница только от плотной посадки). Центр
+ * кольца после выравнивания совпадает с прежним центроидом, поэтому
+ * положение стола на холсте сохраняется. Мутирует переданный сектор.
+ */
+export function alignTableSeatsEvenly(sector: ESector): void {
+  const n = sector.seats.length
+  if (n < 2) return
+  const before = tableLayout(sector)
+  const angleOf = (s: ESeat): number => {
+    const a = Math.atan2(s.y + SEAT / 2 - before.cy, s.x + SEAT / 2 - before.cx)
+    // От «верха» (−90°) по часовой на экране (ось Y вниз) — как в buildTableSeats.
+    const k = (a + Math.PI / 2) % (2 * Math.PI)
+    return k < 0 ? k + 2 * Math.PI : k
+  }
+  const sorted = [...sector.seats].sort((a, b) => angleOf(a) - angleOf(b))
+  const meanRadius
+    = sector.seats.reduce((sum, s) => sum + Math.hypot(s.x + SEAT / 2 - before.cx, s.y + SEAT / 2 - before.cy), 0) / n
+  // Хорда между соседними местами ≥ SEAT+GAP: r ≥ (SEAT+GAP)/2 / sin(π/n).
+  const minRadius = (SEAT + GAP) / 2 / Math.sin(Math.PI / n)
+  const r = Math.max(meanRadius, minRadius)
+  sorted.forEach((s, i) => {
+    const a = -Math.PI / 2 + (i * 2 * Math.PI) / n
+    s.x = Math.round(before.cx + r * Math.cos(a) - SEAT / 2)
+    s.y = Math.round(before.cy + r * Math.sin(a) - SEAT / 2)
+  })
+  const after = tableLayout(sector)
+  sector.tableCx = after.cx
+  sector.tableCy = after.cy
+  sector.tableRing = after.ring
 }
 
 /**
