@@ -95,15 +95,78 @@ $resolveOverlap = static function (float $x, float $y) use (&$occupied): array {
 };
 
 $sectors = [];
+$staticObjects = [];
 $minX = PHP_FLOAT_MAX;
 $minY = PHP_FLOAT_MAX;
 $maxX = 0.0;
 $maxY = 0.0;
 
+/** Учёт габаритов стоячей зоны на канвасе. */
+$extendBounds = static function (float $x, float $y, float $w, float $h) use (&$minX, &$minY, &$maxX, &$maxY): void {
+    $minX = min($minX, $x);
+    $minY = min($minY, $y);
+    $maxX = max($maxX, $x + $w);
+    $maxY = max($maxY, $y + $h);
+};
+
 foreach ($hallplan['levels'] as $level) {
     $seatsIn = $level['seats'] ?? [];
     $rows = $level['rows'] ?? [];
     $rowPrices = [];
+
+    // ── Стоячая зона (admission: true): «мест» нет, есть вместимость ─────
+    // Выражается staticObjects kind 'standing' — InventoryService и
+    // валидатор понимают их и создают пристоечный инвентарь (§54, B7/C1).
+    if (($level['admission'] ?? false) === true || ($rows === [] && $seatsIn !== [])) {
+        $baseY = 640 + count($staticObjects) * 40;
+        $cursorX = 620;
+        foreach (($level['categories'] ?? []) as $ci => $cat) {
+            $capacity = (int) ($cat['availableSeatCount'] ?? 0);
+            if ($capacity <= 0) {
+                continue;
+            }
+            // Цены в КОПЕЙКАХ лежат в верхнем hallplan.categories (у уровневых
+            // priceInfos пуст); берём первую (базовую) цену категории.
+            $price = 0;
+            foreach ($cat['priceInfos'] ?? [] as $pi) {
+                if ((int) ($pi['price']['value'] ?? 0) > 0) {
+                    $price = (int) $pi['price']['value'];
+                    break;
+                }
+            }
+            if ($price <= 0) {
+                foreach (($hallplan['categories'] ?? []) as $topCat) {
+                    if ((string) ($topCat['name'] ?? '') === (string) ($cat['name'] ?? '')) {
+                        foreach ($topCat['priceInfos'] ?? [] as $pi) {
+                            if ((int) ($pi['price']['value'] ?? 0) > 0) {
+                                $price = (int) $pi['price']['value'];
+                                break 2;
+                            }
+                        }
+                    }
+                }
+            }
+            if ($price <= 0) {
+                continue;
+            }
+            $w = 240 + min(260, $capacity);
+            $h = 150;
+            $staticObjects[] = [
+                'kind' => 'standing',
+                'id' => 'standing-' . ($ci + 1),
+                'text' => trim((string) ($cat['name'] ?? 'Стоячая зона')) . ' · ' . $capacity,
+                'x' => $cursorX,
+                'y' => $baseY,
+                'width' => $w,
+                'height' => $h,
+                'capacity' => $capacity,
+                'priceMinor' => $price,
+            ];
+            $extendBounds((float) $cursorX, (float) $baseY, (float) $w, (float) $h);
+            $cursorX += $w + 40;
+        }
+        continue;
+    }
 
     // Анкеры по рядам: place → [x, y, priceMinor], берём из seats[].
     $anchorsByRow = [];
@@ -140,6 +203,183 @@ foreach ($hallplan['levels'] as $level) {
     }
     sort($allStepGaps);
     $step = $allStepGaps === [] ? 20.0 : $allStepGaps[intdiv(count($allStepGaps), 2)];
+
+    // ── Режим столов (Вавилон): каждый «row» — столик на 4–9 мест ────────
+    // Восстановление мест проданных столиков — по шаблонам полных столов
+    // той же вместимости (типовая расстановка повторяется от стола к столу).
+    $maxRowSize = 0;
+    foreach ($rows as $rm) {
+        $maxRowSize = max($maxRowSize, (int) ($rm['seatCount'] ?? 0));
+    }
+    if ($rows !== [] && $maxRowSize > 0 && $maxRowSize <= 12) {
+        // Индекс метаданных рядов — seatCount по каждому «row»-столу.
+        $rowsMeta = [];
+        foreach ($rows as $rm) {
+            $rowsMeta[(string) $rm['row']] = (int) ($rm['seatCount'] ?? 0);
+        }
+
+        // Шаблоны по вместимости.
+        foreach ($anchorsByRow as $rowNo => $anchors) {
+            $n = $rowsMeta[$rowNo] ?? count($anchors);
+            if (count($anchors) < max(2, $n) || isset($tableTemplates[$n])) {
+                continue;
+            }
+            $places = array_keys($anchors);
+            $p1 = $places[0];
+            $offsets = [];
+            foreach ($anchors as $p => $a) {
+                $offsets[$p] = ['x' => $a['x'] - $anchors[$p1]['x'], 'y' => $a['y'] - $anchors[$p1]['y']];
+            }
+            $tableTemplates[$n] = $offsets;
+        }
+
+        foreach ($rows as $rowMeta) {
+            $rowNo = (string) $rowMeta['row'];
+            $count = max(1, (int) $rowMeta['seatCount']);
+            $anchors = $anchorsByRow[$rowNo] ?? [];
+            ksort($anchors);
+            $rowPricesArr = $pricesPerRow[$rowNo] ?? [];
+            sort($rowPricesArr);
+            $rowPrice = $rowPricesArr === [] ? 0 : $rowPricesArr[intdiv(count($rowPricesArr), 2)];
+            $uniform = $rowPricesArr !== [] && count(array_unique($rowPricesArr)) === 1;
+
+            $tableSeats = [];
+            $prices = [];
+            // Стартовая точка стола: поставленное место или rows[].xCoord,yCoord.
+            if ($anchors !== [] && isset($tableTemplates[$count])) {
+                $off = $tableTemplates[$count];
+                $firstPlace = (int) array_key_first($anchors);
+                $base = $anchors[$firstPlace];
+                foreach ($off as $p => $o) {
+                    $px = $base['x'] + $o['x'] - $off[$firstPlace]['x'];
+                    $py = $base['y'] + $o['y'] - $off[$firstPlace]['y'];
+                    [$px, $py] = $resolveOverlap($px, $py);
+                    $tableSeats[] = ['place' => (int) $p, 'x' => (int) round($px), 'y' => (int) round($py)];
+                }
+            } elseif (count($anchors) >= 2) {
+                // Нет шаблона — анкера точны; пропуски (проданные) восполняем
+                // медианным шагом вдоль среднего направления между анкерами.
+                foreach ($anchors as $p => $a) {
+                    $tableSeats[] = ['place' => (int) $p, 'x' => (int) round($a['x']), 'y' => (int) round($a['y'])];
+                }
+                if (count($tableSeats) < $count) {
+                    $knownPlaces = array_column($tableSeats, 'place');
+                    sort($knownPlaces);
+                    $medianX = 0;
+                    $medianY = 0;
+                    $c = 0;
+                    for ($i = 1, $n = count($knownPlaces); $i < $n; $i++) {
+                        $pa = $anchors[$knownPlaces[$i - 1]];
+                        $pb = $anchors[$knownPlaces[$i]];
+                        if ($knownPlaces[$i] - $knownPlaces[$i - 1] === 1) {
+                            $medianX += $pb['x'] - $pa['x'];
+                            $medianY += $pb['y'] - $pa['y'];
+                            $c++;
+                        }
+                    }
+                    if ($c > 0) {
+                        $medianX /= $c;
+                        $medianY /= $c;
+                    } else {
+                        $medianX = $step;
+                        $medianY = 0;
+                    }
+                    $missing = array_diff(range(1, $count), $knownPlaces);
+                    foreach ($missing as $p) {
+                        $prevCandidates = array_filter($knownPlaces, fn (int $q) => $q < $p);
+                        $prev = $prevCandidates === [] ? min($knownPlaces) : max($prevCandidates);
+                        $prevSeat = null;
+                        foreach ($tableSeats as $ts) {
+                            if ($ts['place'] === $prev) {
+                                $prevSeat = $ts;
+                                break;
+                            }
+                        }
+                        $px = ($prevSeat['x'] ?? $rowMeta['xCoord']) + $medianX * ($p - $prev);
+                        $py = ($prevSeat['y'] ?? $rowMeta['yCoord']) + $medianY * ($p - $prev);
+                        [$px, $py] = $resolveOverlap($px, $py);
+                        $tableSeats[] = ['place' => $p, 'x' => (int) round($px), 'y' => (int) round($py)];
+                        $knownPlaces[] = $p;
+                        sort($knownPlaces);
+                    }
+                }
+            } elseif (count($anchors) === 1) {
+                $a = reset($anchors);
+                $tpl = $tableTemplates[$count] ?? null;
+                for ($p = 1; $p <= $count; $p++) {
+                    if ($tpl !== null && isset($tpl[$p])) {
+                        // Смещение от единственного анкера по шаблону того же размера:
+                        // считаем анкер позицией места 1.
+                        $px = $a['x'] + $tpl[$p]['x'];
+                        $py = $a['y'] + $tpl[$p]['y'];
+                    } else {
+                        $px = $a['x'] + $step * ($p - 1);
+                        $py = $a['y'];
+                    }
+                    [$px, $py] = $resolveOverlap($px, $py);
+                    $tableSeats[] = ['place' => $p, 'x' => (int) round($px), 'y' => (int) round($py)];
+                }
+            } else {
+                $bx = (float) ($rowMeta['xCoord'] ?? 0);
+                $by = (float) ($rowMeta['yCoord'] ?? 0);
+                $tpl = $tableTemplates[$count] ?? [];
+                for ($p = 1; $p <= $count; $p++) {
+                    $px = $bx + ($tpl[$p]['x'] ?? $step * ($p - 1));
+                    $py = $by + ($tpl[$p]['y'] ?? 0);
+                    [$px, $py] = $resolveOverlap($px, $py);
+                    $tableSeats[] = ['place' => $p, 'x' => (int) round($px), 'y' => (int) round($py)];
+                }
+            }
+
+            // Цена стола: у анкеров точная; целиком проданный — медиана уровня.
+            $pricesFromAnchors = array_values(array_filter($rowPricesArr, fn (int $v) => $v > 0));
+            $tablePrice = $pricesFromAnchors === []
+                ? 0
+                : $pricesFromAnchors[intdiv(count($pricesFromAnchors), 2)];
+
+            $sectorSeats = [];
+            foreach ($tableSeats as $ts) {
+                $x = (int) round($ts['x'] - $SEAT / 2);
+                $y = (int) round($ts['y'] - $SEAT / 2);
+                $seatPayload = [
+                    'id' => $seatId(),
+                    'row' => 1,
+                    'number' => $ts['place'],
+                    'x' => $x,
+                    'y' => $y,
+                ];
+                if ($rowPrice > 0 && !$uniform) {
+                    $seatPayload['priceMinor'] = $rowPrice;
+                }
+                $sectorSeats[] = $seatPayload;
+                $minX = min($minX, $x);
+                $minY = min($minY, $y);
+                $maxX = max($maxX, $x + $SEAT);
+                $maxY = max($maxY, $y + $SEAT);
+            }
+
+            // Цена сектора — стола: единая для столика.
+            $sectorPrice = $tablePrice > 0
+                ? $tablePrice
+                : ($uniform ? $rowPrice : 0);
+            if ($sectorPrice === 0 && ($level['prices'][0]['value'] ?? 0) > 0) {
+                $sectorPrice = (int) $level['prices'][0]['value'];
+            }
+
+            $sectors[] = [
+                'id' => 'level-' . ($level['id'] ?? 'x') . '-row-' . $rowNo,
+                'name' => 'Стол ' . $rowNo,
+                'x' => 0,
+                'y' => 0,
+                'priceMinor' => $sectorPrice,
+                'type' => 'seated',
+                'shape' => 'table',
+                'seats' => $sectorSeats,
+            ];
+        }
+
+        continue;
+    }
 
     $sectorSeats = [];
 
@@ -328,8 +568,7 @@ if ($sectors === []) {
 }
 
 // Сдвиг всей раскладки в положительный квадрант канваса.
-if ($minX < 40 || $minY < 40) {
-    $dx = $minX < 40 ? 60 - (int) floor($minX) : 0;
+if ($minX < 40 || $minY < 40) {    $dx = $minX < 40 ? 60 - (int) floor($minX) : 0;
     $dy = $minY < 40 ? 60 - (int) floor($minY) : 0;
     foreach ($sectors as &$sector) {
         foreach ($sector['seats'] as &$seat) {
@@ -352,7 +591,7 @@ $schema = [
     'background' => null,
     'backgrounds' => [],
     'sectors' => $sectors,
-    'staticObjects' => [],
+    'staticObjects' => $staticObjects,
 ];
 
 file_put_contents($out, json_encode($schema, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
