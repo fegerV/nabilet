@@ -33,6 +33,14 @@ use Nabilet\Core\Errors\ValidationError;
  * хост жёстко ограничен `afisha.yandex.ru`, схема — только https. Без этого
  * эндпоинт стал бы бесплатным сканером внутренней сети (file://, 169.254.*,
  * localhost-админы) — классическая дыра «import by URL».
+ *
+ * TLS. Связка CA из php.ini есть не везде (Windows-разработка без
+ * curl.cainfo даёт cURL error 60 вместо страницы). Бандл корневых
+ * сертификатов кладётся в `resources/certs/cacert.pem` и подключается к
+ * запросу явно — работает одинаково на любом хосте без правки php.ini.
+ * Любой сбой сети (DNS, таймаут, TLS) — это ожидаемый отказ с конвертом
+ * AFISHA_UNREACHABLE, а не 500: страница Яндекса — внешний мир, его
+ * недоступность не баг приложения.
  */
 class VenueImportController extends Controller
 {
@@ -53,13 +61,28 @@ class VenueImportController extends Controller
         }
 
         // AF-страницы проверяют UA: без него — редирект на капчу/заглушку.
-        $response = Http::timeout(15)
+        $http = Http::timeout(15)
             ->withHeaders([
                 'User-Agent' => 'Mozilla/5.0 (compatible; NabiletVenueImport/1.0)',
                 'Accept' => 'text/html,application/xhtml+xml',
                 'Accept-Language' => 'ru-RU,ru;q=0.9',
-            ])
-            ->get($data['url']);
+            ]);
+
+        $caBundle = base_path('resources/certs/cacert.pem');
+
+        if (is_file($caBundle)) {
+            $http = $http->withOptions(['verify' => $caBundle]);
+        }
+
+        try {
+            $response = $http->get($data['url']);
+        } catch (\Throwable $e) {
+            throw new DomainRuleViolation(
+                'Не удалось загрузить страницу Яндекс.Афиши: сеть или TLS недоступны.',
+                'AFISHA_UNREACHABLE',
+                ['reason' => mb_substr($e->getMessage(), 0, 160)],
+            );
+        }
 
         if ($response->failed()) {
             throw new DomainRuleViolation(
