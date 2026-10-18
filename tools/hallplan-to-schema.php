@@ -29,13 +29,17 @@ declare(strict_types=1);
 $argv = $argv ?? [];
 
 if (PHP_SAPI !== 'cli' || count($argv) < 2) {
-    fwrite(STDERR, "usage: php " . basename(__FILE__) . " hallplan.json [--out schema.json]\n");
+    fwrite(STDERR, "usage: php " . basename(__FILE__) . " hallplan.json [--out schema.json]\n"
+        . "       [--hall <publicId> [--publish]] — сразу черновик (и публикация) зала\n");
     exit(1);
 }
 
 $in = $argv[1];
 $outArgIdx = array_search('--out', $argv, true);
 $out = $outArgIdx !== false && isset($argv[$outArgIdx + 1]) ? $argv[$outArgIdx + 1] : 'schema.json';
+$hallArgIdx = array_search('--hall', $argv, true);
+$hallPublicId = $hallArgIdx !== false && isset($argv[$hallArgIdx + 1]) ? $argv[$hallArgIdx + 1] : null;
+$publish = in_array('--publish', $argv, true);
 
 if (!is_file($in)) {
     fwrite(STDERR, "файл не найден: {$in}\n");
@@ -357,4 +361,33 @@ $places = array_sum(array_map(static fn (array $s): int => count($s['seats']), $
 echo "sectors: " . count($sectors) . ", мест: {$places}\n";
 echo "canvas: {$schema['canvas']['width']}x{$schema['canvas']['height']}\n";
 echo "out: {$out}\n";
-echo "Дальше: конструктор → «Импорт» → сверить → «Опубликовать» (новой версией).\n";
+
+// ── Опционально: сразу черновик (+ публикация) у конкретного зала ─────
+// Одним шагом из JSON до published-версии. Черновик создаётся так же, как
+// сидеры залов (createSchemaDraft → publishSchemaVersion), правки редактора
+// не затрагиваются: published всегда новая версия.
+if ($hallPublicId !== null) {
+    require dirname(__DIR__) . '/vendor/autoload.php';
+    $app = require dirname(__DIR__) . '/bootstrap/app.php';
+    $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+
+    $hall = Nabilet\Modules\Venues\Models\Hall::query()->where('public_id', $hallPublicId)->first();
+    if ($hall === null) {
+        fwrite(STDERR, "зал не найден по public_id: {$hallPublicId}\n");
+        exit(1);
+    }
+
+    $service = app(Nabilet\Modules\Venues\Halls\Services\HallService::class);
+    $userId = (int) (Illuminate\Support\Facades\DB::table('users')->orderBy('id')->value('id') ?? 1);
+
+    $version = $service->createSchemaDraft($hall, $schema, $userId);
+
+    if ($publish) {
+        $service->publishSchemaVersion((int) $version->id, $userId, (string) $hall->public_id);
+        echo "hall {$hall->public_id} «{$hall->name}»: v{$version->version} ОПУБЛИКОВАНА (version id {$version->id})\n";
+    } else {
+        echo "hall {$hall->public_id} «{$hall->name}»: черновик v{$version->version} создан — проверьте в конструкторе и нажмите «Опубликовать»\n";
+    }
+} else {
+    echo "Дальше: конструктор → «Импорт» → сверить → «Опубликовать» (новой версией).\n";
+}
