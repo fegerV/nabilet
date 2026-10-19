@@ -13,6 +13,7 @@ import {
   DANCE_BOX_PAD_X,
   DANCE_LINE_Y,
   danceZoneLayout,
+  danceZonesLayout,
   estimateTextWidth,
 } from '../../../resources/js/lib/danceZone'
 
@@ -93,5 +94,45 @@ describe('danceZoneLayout', () => {
     const a = danceZoneLayout(text({ hint: 'клик' }), { canvasWidth: CANVAS, y: 70 })
     const b = danceZoneLayout(text({ hint: 'клик', price: 'х'.repeat(80) }), { canvasWidth: CANVAS, y: 70 })
     expect(b.w).toBeGreaterThan(a.w)
+  })
+})
+
+/**
+ * Повод — «Вавилон»: у события две admission-категории («Танцпол + ранний
+ * вход» и «Танцпол»), а витрина рисовала только первую (`inventory.find`).
+ * Вторая категория не отображалась, и её билеты нельзя было купить.
+ */
+describe('danceZonesLayout', () => {
+  it('одна зона раскладывается так же, как danceZoneLayout', () => {
+    const single = danceZoneLayout(text(), { canvasWidth: CANVAS, y: 70 })
+    const [box] = danceZonesLayout([text()], { canvasWidth: CANVAS, y: 70 })
+    expect(box.x).toBeCloseTo(single.x, 6)
+    expect(box.w).toBeCloseTo(single.w, 6)
+    expect(box.y).toBe(single.y)
+  })
+
+  it('две зоны делят полосу и не пересекаются', () => {
+    const [a, b] = danceZonesLayout([text({ title: 'Танцпол+ ранний вход · 47' }), text({ title: 'Танцпол · 500' })], {
+      canvasWidth: CANVAS,
+      y: 70,
+      gap: 10,
+    })
+    expect(a.x + a.w).toBeLessThanOrEqual(b.x)
+    expect(a.x).toBeGreaterThanOrEqual(0)
+    expect(b.x + b.w).toBeLessThanOrEqual(CANVAS)
+  })
+
+  it('каждая зона получает свою подпись, а не первую', () => {
+    const boxes = danceZonesLayout([
+      text({ title: 'Танцпол+ ранний вход · 47', price: '3 500 ₽' }),
+      text({ title: 'Танцпол · 500', price: '2 200 ₽' }),
+    ], { canvasWidth: CANVAS, y: 70 })
+    expect(boxes).toHaveLength(2)
+    expect(boxes[0].w).toBeGreaterThan(0)
+    expect(boxes[1].w).toBeGreaterThan(0)
+  })
+
+  it('пустой список зон — пустая раскладка', () => {
+    expect(danceZonesLayout([], { canvasWidth: CANVAS, y: 70 })).toEqual([])
   })
 })

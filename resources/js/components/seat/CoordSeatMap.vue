@@ -17,7 +17,7 @@ import type { InventoryItem } from '@/lib/inventory'
 import { seatStateFromStatus, isSeatPickable } from '@/lib/seatStatus'
 import { buildSeatPricePalette, groupTableSeatPoints, type TableMark } from '@/lib/hall'
 import { fitPoints, fitSeatRadius, projectPoint } from '@/lib/seatViewport'
-import { DANCE_BOX_HEIGHT, danceZoneLayout } from '@/lib/danceZone'
+import { DANCE_BOX_HEIGHT, danceZonesLayout, type DanceZoneText } from '@/lib/danceZone'
 
 /** Палитра состояний — согласована с CSS-классами seat--* и основной легендой. */
 const STATE_FILL: Record<string, string> = {
@@ -145,10 +145,10 @@ const fit = computed(() =>
       height: SVG_H,
       pad: PAD,
       reservedTop: STAGE_H,
-      // Нижняя полоса отдана зоне танцпола (и пикеру количества, когда он
+      // Нижняя полоса отдана зонам танцпола (и пикеру количества, когда он
       // раскрыт) — иначе места ложатся на зону.
-      reservedBottom: dance.value
-        ? DANCE_BOX_HEIGHT + DANCE_GAP + (dancePickerOpen.value ? DANCE_PICKER_RESERVE : 0)
+      reservedBottom: danceZones.value.length > 0
+        ? DANCE_BOX_HEIGHT + DANCE_GAP + (pickerZoneId.value !== null ? DANCE_PICKER_RESERVE : 0)
         : 0,
     },
   ),
@@ -174,45 +174,66 @@ function px(item: InventoryItem): { x: number; y: number; n: number } {
   return { x, y, n: Number(item.seat?.number ?? 0) }
 }
 
-/** Стоячая зона (танцпол). */
-const dance = computed(() => props.inventory.find((i) => i.type === 'standing'))
+/**
+ * Стоячие зоны (танцпол). Их бывает НЕСКОЛЬКО: у «Вавилона» две admission-
+ * категории — «Танцпол + ранний вход» и обычный «Танцпол», с разными ценами и
+ * разными остатками. Раньше бралась только первая (`find`), и вторая
+ * категория не отображалась на витрине вовсе: её билеты было невозможно
+ * купить. Теперь зоны раскладываются рядом в нижней полосе.
+ */
+const danceZones = computed(() => props.inventory.filter((i) => i.type === 'standing'))
+
+/** Суммарный остаток стоячих билетов — для строки-сводки над картой. */
+const standingTotal = computed(() => danceZones.value
+  .reduce((sum, zone) => sum + Number(zone.available_quantity ?? 0), 0))
+
+/** Название зоны: схема зала кладёт имя сектора в метаданные инвентаря. */
+function zoneTitle(zone: InventoryItem): string {
+  const meta = zone.metadata_json
+  const name = meta && typeof meta === 'object' ? (meta as Record<string, unknown>).sector_name : null
+  return name ? String(name) : 'Танцпол'
+}
+
+const isZoneSelected = (zone: InventoryItem): boolean => selectedIds.value.has(String(zone.id))
 
 /**
- * Строки подписи зоны танцпола. Цена и остаток — РАЗНЫЕ строки: раньше они
- * были склеены в одну («5 000 ₽ · 150 билетов»), и её ширина росла с
- * разрядностью чисел, вылезая за жёсткую рамку 150×90.
+ * Строки подписи зоны. Цена и остаток — РАЗНЫЕ строки: раньше они были
+ * склеены в одну («5 000 ₽ · 150 билетов»), и её ширина росла с разрядностью
+ * чисел, вылезая за жёсткую рамку 150×90.
  */
-const danceText = computed(() => {
-  const d = dance.value
-  if (!d) return null
-  const count = Number(d.available_quantity ?? 0)
+function zoneText(zone: InventoryItem): DanceZoneText {
+  const count = Number(zone.available_quantity ?? 0)
   return {
-    title: 'Танцпол',
-    price: money(d.price_amount),
+    title: zoneTitle(zone),
+    price: money(zone.price_amount),
     count: `${count} ${plural(count, 'билет', 'билета', 'билетов')}`,
-    hint: danceSelected.value ? 'выбрано — клик, чтобы убрать' : 'клик — выбрать билеты',
+    hint: isZoneSelected(zone) ? 'выбрано — клик, чтобы убрать' : 'клик — выбрать билеты',
   }
-})
+}
 
 /**
- * Рамка зоны танцпола: размер считается по тексту (см. lib/danceZone.ts), а не
- * задан константой, поэтому подпись всегда помещается внутрь.
+ * Рамки зон: ширина считается по тексту (см. lib/danceZone.ts), полоса
+ * делится на равные слоты, поэтому подпись всегда помещается внутрь.
  */
-const danceRect = computed(() => {
-  const text = danceText.value
-  if (!text) return null
-  // Зона стоит в зарезервированной нижней полосе (см. `fit`), поэтому места
-  // её не перекрывают.
-  return danceZoneLayout(text, { canvasWidth: SVG_W, y: SVG_H - PAD - DANCE_BOX_HEIGHT })
+const zoneBoxes = computed(() => {
+  const zones = danceZones.value
+  const boxes = danceZonesLayout(zones.map(zoneText), {
+    canvasWidth: SVG_W,
+    y: SVG_H - PAD - DANCE_BOX_HEIGHT,
+    gap: 10,
+  })
+  return zones.map((zone, i) => ({
+    zone,
+    box: boxes[i],
+    text: zoneText(zone),
+    selected: isZoneSelected(zone),
+  }))
 })
 
-const danceSelected = computed(() => {
-  const d = dance.value
-  return d !== undefined && selectedIds.value.has(String(d.id))
-})
+/** Пикер количества открыт не более чем у одной зоны: второй некуда поставить. */
+const pickerZoneId = ref<string | null>(null)
 /** Подсветка последнего выбранного количества — локальное состояние пикера. */
 const danceQty = ref(2)
-const dancePickerOpen = ref(false)
 
 /**
  * Сколько билетов можно предложить в пикере.
@@ -220,35 +241,30 @@ const dancePickerOpen = ref(false)
  * Ограничивают три вещи: свободный остаток зоны (`available_quantity`),
  * остаток лимита на заказ и разумный максимум интерфейса (5).
  */
-const danceOptions = computed<number[]>(() => {
-  const d = dance.value
-  if (!d) return []
-  const byCapacity = Number(d.available_quantity)
+function zoneOptions(zone: InventoryItem): number[] {
+  const byCapacity = Number(zone.available_quantity)
   const room = maxTickets.value - selectedTickets.value
   const cap = Math.min(5, Number.isFinite(byCapacity) ? byCapacity : 5, room)
   return Array.from({ length: Math.max(0, Math.floor(cap)) }, (_, i) => i + 1)
-})
+}
 
-function toggleDance(): void {
-  const d = dance.value
-  if (!d) return
+function toggleZone(zone: InventoryItem): void {
   // Повторный клик по уже выбранной зоне — снятие. Раньше здесь стоял
   // `return`: зона оставалась выбранной навсегда, и после удаления её из
   // сводки повторно выбрать танцпол было уже нельзя до перезагрузки.
-  if (danceSelected.value) {
-    emit('toggle', d, 1)
+  if (isZoneSelected(zone)) {
+    pickerZoneId.value = null
+    emit('toggle', zone, 1)
     return
   }
   if (selectedTickets.value >= maxTickets.value) {
     emit('limit')
     return
   }
-  dancePickerOpen.value = true
+  pickerZoneId.value = String(zone.id)
 }
 
-function pickDance(qty: number): void {
-  const d = dance.value
-  if (!d) return
+function pickZone(zone: InventoryItem, qty: number): void {
   // Лимит проверяем ДО отправки: сервер откажет 422-м на quantity > 10, и
   // покупатель увидит техническую ошибку вместо понятного «не больше 10».
   if (selectedTickets.value + qty > maxTickets.value) {
@@ -256,8 +272,8 @@ function pickDance(qty: number): void {
     return
   }
   danceQty.value = qty
-  dancePickerOpen.value = false
-  emit('toggle', d, qty)
+  pickerZoneId.value = null
+  emit('toggle', zone, qty)
 }
 
 /* ── Масштаб и панорама ─────────────────────────────────────────────────
@@ -432,7 +448,7 @@ function isPickable(item: InventoryItem): boolean {
   <div class="overflow-hidden rounded-xl border border-line bg-surface-2">
     <div class="flex flex-col gap-2 border-b border-line px-3 py-2 text-2xs text-subtle">
       <div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-        <span>{{ seats.length }} мест · танцпол {{ dance?.available_quantity ?? 0 }} билетов</span>
+        <span>{{ seats.length }} мест<template v-if="danceZones.length"> · стоячие зоны {{ standingTotal }} билетов</template></span>
         <span class="text-layer flex flex-wrap gap-x-3 gap-y-1">
           <span v-for="item in priceLegend" :key="item.price" class="flex items-center gap-1.5">
             <i class="inline-block size-2.5 rounded-full" :style="{ backgroundColor: item.color }" /> {{ money(item.price) }}
@@ -503,28 +519,28 @@ function isPickable(item: InventoryItem): boolean {
           <rect :x="stage.x" :y="stage.y" :width="stage.w" :height="stage.h" rx="5" fill="#F0F2F5" stroke="#D8DCE3" stroke-width="1" />
           <text :x="SVG_W / 2" :y="stage.y + 21" text-anchor="middle" fill="#596273" font-size="12" font-weight="600" letter-spacing="1.2">СЦЕНА</text>
 
-          <!-- Танцпол -->
-          <g v-if="dance && danceRect">
+          <!-- Стоячие зоны (танцпол). Их может быть несколько — см. danceZones. -->
+          <g v-for="z in zoneBoxes" :key="String(z.zone.id)">
             <rect
-              :x="danceRect.x" :y="danceRect.y" :width="danceRect.w" :height="danceRect.h"
-              rx="14" fill="rgba(240,180,60,0.12)" :stroke="danceSelected ? '#C9A0FF' : '#E8B544'" stroke-width="2" stroke-dasharray="8 5"
+              :x="z.box.x" :y="z.box.y" :width="z.box.w" :height="z.box.h"
+              rx="14" fill="rgba(240,180,60,0.12)" :stroke="z.selected ? '#C9A0FF' : '#E8B544'" stroke-width="2" stroke-dasharray="8 5"
               class="cursor-pointer transition hover:opacity-80"
               role="button"
               tabindex="0"
-              :aria-label="danceSelected ? 'Танцпол выбран, нажмите чтобы убрать' : 'Танцпол: выбрать количество билетов'"
-              :aria-pressed="danceSelected"
-              @click="toggleDance"
-              @keydown.enter.prevent="toggleDance"
-              @keydown.space.prevent="toggleDance"
+              :aria-label="z.selected ? `${z.text.title} выбран, нажмите чтобы убрать` : `${z.text.title}: выбрать количество билетов`"
+              :aria-pressed="z.selected"
+              @click="toggleZone(z.zone)"
+              @keydown.enter.prevent="toggleZone(z.zone)"
+              @keydown.space.prevent="toggleZone(z.zone)"
             />
-            <text :x="SVG_W / 2" :y="danceRect.titleY" text-anchor="middle" fill="#596273" font-size="14" font-weight="700">{{ danceText?.title }}</text>
-            <text :x="SVG_W / 2" :y="danceRect.priceY" text-anchor="middle" fill="#596273" font-size="12">{{ danceText?.price }}</text>
-            <text :x="SVG_W / 2" :y="danceRect.countY" text-anchor="middle" fill="#596273" font-size="12">{{ danceText?.count }}</text>
+            <text :x="z.box.x + z.box.w / 2" :y="z.box.titleY" text-anchor="middle" fill="#596273" font-size="14" font-weight="700">{{ z.text.title }}</text>
+            <text :x="z.box.x + z.box.w / 2" :y="z.box.priceY" text-anchor="middle" fill="#596273" font-size="12">{{ z.text.price }}</text>
+            <text :x="z.box.x + z.box.w / 2" :y="z.box.countY" text-anchor="middle" fill="#596273" font-size="12">{{ z.text.count }}</text>
             <text
-              v-if="!dancePickerOpen"
-              :x="SVG_W / 2" :y="danceRect.hintY" text-anchor="middle"
-              :fill="danceSelected ? '#5B43C6' : '#667181'" font-size="11"
-            >{{ danceText?.hint }}</text>
+              v-if="pickerZoneId !== String(z.zone.id)"
+              :x="z.box.x + z.box.w / 2" :y="z.box.hintY" text-anchor="middle"
+              :fill="z.selected ? '#5B43C6' : '#667181'" font-size="11"
+            >{{ z.text.hint }}</text>
 
             <!-- Селектор количества билетов -->
             <!--
@@ -532,15 +548,15 @@ function isPickable(item: InventoryItem): boolean {
               он уезжал за него (`danceRect.y + danceRect.h + 20` = 390 при
               высоте 400 — половина кружков обрезалась).
             -->
-            <g v-if="dancePickerOpen" :transform="`translate(${SVG_W / 2 - 110}, ${danceRect.y - 26})`">
+            <g v-if="pickerZoneId === String(z.zone.id)" :transform="`translate(${z.box.x + z.box.w / 2 - 110}, ${z.box.y - 26})`">
               <rect x="0" y="-18" width="220" height="44" rx="12" fill="#1a1530" stroke="#F0C060" stroke-width="1" />
-              <g v-for="(q, i) in danceOptions" :key="q" @click="pickDance(q)" class="cursor-pointer">
+              <g v-for="(q, i) in zoneOptions(z.zone)" :key="q" @click="pickZone(z.zone, q)" class="cursor-pointer">
                 <circle :cx="15 + i * 42" cy="4" :r="14" :fill="q === danceQty ? '#F0C060' : '#2a2140'" stroke="#E8B544" stroke-width="1">
                   <title>Купить {{ q }} {{ plural(q, 'билет', 'билета', 'билетов') }}</title>
                 </circle>
                 <text :x="15 + i * 42" :y="8" text-anchor="middle" fill="#1a1530" font-size="13" font-weight="700">{{ q }}</text>
               </g>
-              <text v-if="danceOptions.length === 0" x="110" y="8" text-anchor="middle" fill="#F0C060" font-size="12">свободных билетов нет</text>
+              <text v-if="zoneOptions(z.zone).length === 0" x="110" y="8" text-anchor="middle" fill="#F0C060" font-size="12">свободных билетов нет</text>
             </g>
           </g>
 

@@ -85,6 +85,43 @@ export interface DanceZoneOptions {
   minWidth?: number
 }
 
+export interface DanceZonesOptions extends DanceZoneOptions {
+  /** Горизонтальный зазор между рамками соседних зон (px). */
+  gap?: number
+}
+
+/**
+ * Рамки НЕСКОЛЬКИХ стоячих зон в одной нижней полосе.
+ *
+ * У события бывает больше одной admission-категории: у «Вавилона» это
+ * «Танцпол + ранний вход» и обычный «Танцпол» — разные цены, разные остатки,
+ * обе зоны продаются. Витрина же умела рисовать ровно одну (`inventory.find`)
+ * и вторую категорию не показывала вовсе, то есть её билеты нельзя было
+ * купить. Здесь полоса делится на равные слоты, а рамка каждой зоны
+ * растягивается под свой текст и центрируется в своём слоте — при одной зоне
+ * результат совпадает с `danceZoneLayout`.
+ */
+export function danceZonesLayout(texts: DanceZoneText[], options: DanceZonesOptions): DanceZoneBox[] {
+  const n = texts.length
+  if (n === 0) {
+    return []
+  }
+  const gap = options.gap ?? 10
+  const slot = (options.canvasWidth - gap * (n - 1)) / n
+  const minWidth = Math.min(options.minWidth ?? DANCE_BOX_MIN_WIDTH, slot)
+  return texts.map((text, i) => {
+    const box = danceZoneLayout(text, {
+      canvasWidth: slot,
+      y: options.y,
+      padX: options.padX,
+      minWidth,
+    })
+    // x внутри слота → x на холсте.
+    return { ...box, x: i * (slot + gap) + box.x }
+  })
+}
+
+
 /**
  * Рамка зоны танцпола, растянутая под фактический текст.
  *
