@@ -170,12 +170,18 @@ class InventoryController extends Controller
      * меняется только у свободных позиций (available_quantity = capacity), холды и
      * проданные билеты остаются нетронутыми; открытые корзины синхронизируются.
      * Полная семантика — InventoryService::updateRowPrices().
+     *
+     * `session_only=true` в теле — цены применяются только к инвентарю этого
+     * сеанса, сетка зала (hall_rows / standing_zones) не перезаписывается.
      */
     public function updatePrices(UpdateRowPricesRequest $request, string $sessionId): JsonResponse
     {
+        $validated = $request->validated();
+
         $result = $this->inventoryService->updateRowPrices(
             is_numeric($sessionId) ? (int) $sessionId : $sessionId,
-            $request->validated()['rows']
+            $validated['rows'],
+            (bool) ($validated['session_only'] ?? false)
         );
 
         return response()->json([

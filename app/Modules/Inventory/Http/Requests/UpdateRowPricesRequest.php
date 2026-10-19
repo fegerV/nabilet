@@ -16,11 +16,17 @@ use Nabilet\Core\Errors\ValidationError;
  *     "rows": [
  *       { "row_id": 12, "price_amount": 250000 },          // сидячие ряды (hall_rows.id)
  *       { "standing_zone_id": 7, "price_amount": 300000 }  // стоячие зоны
- *     ]
+ *     ],
+ *     "session_only": true                                   // опционально
  *   }
  *
  * Допускается и плоский вид {"row_id": ..., "price_amount": ...} — один ряд,
  * а также JSON-карта {"12": 250000, "13": 300000}.
+ *
+ * `session_only=true` — цены меняются только в инвентаре сеанса, сетка зала
+ * (hall_rows / standing_zones) остаётся нетронутой. Рекомендуется для разовой
+ * ценовой лесенницы «под конкретный концерт», чтобы будущие сеансы зала
+ * наследовали базовые цены схемы, а не этот прайс-лист.
  *
  * Цена (минорные единицы) обязана быть целой >= 0 — это защищает и
  * CHECK ck_inventory_price (price_amount >= 0), и синхронизацию cart_items.
@@ -74,6 +80,11 @@ class UpdateRowPricesRequest extends FormRequest
     {
         return [
             'rows' => ['required', 'array', 'min:1'],
+            // «Только этот сеанс»: по умолчанию false — цены перeоценивают инвентарь
+            // сеанса И сетку зала (hall_rows / standing_zones), поэтому будущие
+            // сеансы наследуют цену. `session_only=true` оставляет базовую сетку
+            // схемы нетронутой — для разовых цен под конкретный концерт.
+            'session_only' => ['sometimes', 'boolean'],
             'rows.*.price_amount' => ['required', 'integer', 'min:0'],
             // `bail` перед `exists:` — колонки BIGINT, а MySQL приводит строку к
             // числу вместо отказа (`id = '1abc'` совпадает с 1, warning 1292).

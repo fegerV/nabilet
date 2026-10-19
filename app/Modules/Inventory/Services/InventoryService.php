@@ -407,13 +407,18 @@ class InventoryService
      *
      * @param  int   $sessionId  числовой id или public_id сессии (как в CartService)
      * @param  array<int, array{row_id?: int|string, standing_zone_id?: int|string, price_amount: int|string}>  $rows
+     * @param  bool  $sessionOnly  НЕ трогать hall_rows / standing_zones — менять цены
+     *                             только в инвентаре ЭТОГО сеанса. Нужно, когда цены
+     *                             «разовые под конкретный концерт»: со значением true
+     *                             будущие сеансы того же зала наследуют базовую сетку
+     *                             схемы, а не эту лесенку.
      * @return array{session_id:int, rows_updated:int, items_updated:int, cart_items_updated:int, carts_recalculated:int}
      */
-    public function updateRowPrices(int|string $sessionId, array $rows): array
+    public function updateRowPrices(int|string $sessionId, array $rows, bool $sessionOnly = false): array
     {
         $session = Session::findOrFailBySessionId($sessionId);
 
-        return DB::transaction(function () use ($session, $rows): array {
+        return DB::transaction(function () use ($session, $rows, $sessionOnly): array {
             $now = now();
             $rowsUpdated = 0;
             $itemsUpdated = 0;
@@ -438,9 +443,11 @@ class InventoryService
                         ]);
                     }
 
-                    StandingZone::query()
-                        ->whereKey($zoneId)
-                        ->update(['price_amount' => $price, 'updated_at' => $now]);
+                    if (! $sessionOnly) {
+                        StandingZone::query()
+                            ->whereKey($zoneId)
+                            ->update(['price_amount' => $price, 'updated_at' => $now]);
+                    }
                     $rowsUpdated++;
 
                     $touched = InventoryItem::query()
@@ -481,9 +488,11 @@ class InventoryService
                     ]);
                 }
 
-                HallRow::query()
-                    ->whereKey($rowId)
-                    ->update(['price_amount' => $price, 'currency' => 'RUB', 'updated_at' => $now]);
+                if (! $sessionOnly) {
+                    HallRow::query()
+                        ->whereKey($rowId)
+                        ->update(['price_amount' => $price, 'currency' => 'RUB', 'updated_at' => $now]);
+                }
                 $rowsUpdated++;
 
                 $touched = InventoryItem::query()
@@ -516,6 +525,10 @@ class InventoryService
                 'items_updated' => $itemsUpdated,
                 'cart_items_updated' => $cartItemsUpdated,
                 'carts_recalculated' => $cartsRecalculated,
+                // Выводим режим явно: разница «только сеанс» vs «и сетка зала»
+                // не видна по счётчикам, а от неё зависит, унаследуют ли цену
+                // будущие сеансы этого зала.
+                'session_only' => $sessionOnly,
             ];
         });
     }
