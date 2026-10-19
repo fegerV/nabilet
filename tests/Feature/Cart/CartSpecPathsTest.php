@@ -162,4 +162,64 @@ class CartSpecPathsTest extends TestCase
             ])
             ->assertStatus(201);
     }
+
+    /**
+     * Неизвестная корзина — 404, а не 500.
+     *
+     * Найдено на живом стенде при сквозной проверке покупки: `addItemTo()`
+     * разыменовывал `$cart->session_id` без проверки на null. Гость, у которого
+     * в адресе валидный `public_id`, но потерян `X-Cart-Token` (очищенный
+     * localStorage, истёкшая корзина), получал «Something went wrong» и не мог
+     * купить билет вообще. Вполне реальный вход, а не только тест.
+     */
+    public function test_adding_an_item_to_an_unknown_cart_is_404_not_500(): void
+    {
+        [$sessionId, $inventoryItemId] = $this->seedSellable();
+
+        // Совершенно несуществующий public_id.
+        $this->withHeaders($this->authHeaders())
+            ->postJson('/api/v1/carts/01M5ADQYQGYZXNTV67E7ARWZQ0/items', [
+                'inventory_item_id' => $inventoryItemId,
+                'quantity' => 1,
+            ])
+            ->assertStatus(404)
+            ->assertJsonPath('error.code', 'not_found');
+    }
+
+    /**
+     * Корзина есть, но токен чужой/потерян — тоже 404, а не 500.
+     *
+     * `ownedCart()` возвращает null и по «нет такого public_id», и по «не твоя
+     * корзина»; различать их — значит подтверждать существование чужих корзин
+     * по идентификатору (см. `showByPublicId`).
+     */
+    public function test_adding_an_item_with_a_wrong_token_is_404_not_500(): void
+    {
+        [, $inventoryItemId] = $this->seedSellable();
+
+        // Корзина другого покупателя — тот же public_id, другой токен.
+        $otherPublicId = $this->withHeaders([CartToken::HEADER => '99999999-8888-7777-6666-555555555555'])
+            ->postJson('/api/v1/carts', ['session_id' => $this->seedSellable()[0]])
+            ->assertStatus(201)
+            ->json('data.id');
+
+        $this->withHeaders($this->authHeaders())
+            ->postJson('/api/v1/carts/' . $otherPublicId . '/items', [
+                'inventory_item_id' => $inventoryItemId,
+                'quantity' => 1,
+            ])
+            ->assertStatus(404)
+            ->assertJsonPath('error.code', 'not_found');
+    }
+
+    /** Тот же контракт у удаления позиции: 404, а не 500 на null. */
+    public function test_removing_an_item_from_an_unknown_cart_is_404_not_500(): void
+    {
+        [, $inventoryItemId] = $this->seedSellable();
+
+        $this->withHeaders($this->authHeaders())
+            ->deleteJson('/api/v1/carts/01M5ADQYQGYZXNTV67E7ARWZQ0/items/1')
+            ->assertStatus(404)
+            ->assertJsonPath('error.code', 'not_found');
+    }
 }

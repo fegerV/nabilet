@@ -11,6 +11,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import NButton from '@/components/ui/NButton.vue'
+import NCheckbox from '@/components/ui/NCheckbox.vue'
 import NInput from '@/components/ui/NInput.vue'
 import { useUiStore } from '@/stores/ui'
 import { get, send } from '@/lib/api'
@@ -63,6 +64,19 @@ const saving = ref(false)
 const saveError = ref<string | null>(null)
 /** После применения — сводка сервера (rows_updated / items_updated / …). */
 const savedSummary = ref<string | null>(null)
+/**
+ * «Только этот сеанс» — по умолчанию ВКЛ.
+ *
+ * Флаг `session_only` в `PATCH /inventory/sessions/{id}/prices` отвязывает цены
+ * концерта от сетки зала: без него `updateRowPrices()` перезаписывает
+ * `hall_rows.price_amount`, который `generateFromSchema()` берёт источником
+ * истины ряда, и следующая дата в том же зале наследует разовую лесенницу.
+ *
+ * Дефолт именно такой, потому что базовая сетка — цены импорта/схемы, «общие для
+ * зала», а цены конкретного концерта у нас свои. Кто хочет задать цены залу
+ * «на все будущие сеансы» — снимает галочку.
+ */
+const sessionOnly = ref(true)
 
 async function load(): Promise<void> {
   loading.value = true
@@ -176,10 +190,13 @@ async function apply(): Promise<void> {
     // Контракт: PATCH /inventory/sessions/{id}/prices отдаёт { data: {...} };
     // send<D>() уже типизирован как Promise<{ data: D }>, поэтому D — сама статистика.
     const res = await send<{ rows_updated: number; items_updated: number; cart_items_updated: number }>(
-      `/inventory/sessions/${sessionId.value}/prices`, 'PATCH', { rows: payloadRows },
+      `/inventory/sessions/${sessionId.value}/prices`, 'PATCH', { rows: payloadRows, session_only: sessionOnly.value },
     )
     const d = res.data
     savedSummary.value = `Обновлено рядов: ${d.rows_updated}, свободных мест: ${d.items_updated}, позиций в корзинах: ${d.cart_items_updated}.`
+      + (sessionOnly.value
+        ? ' Цены применены только к этому сеансу — сетка зала не тронута.'
+        : ' Цены также записаны в сетку зала и унаследуются будущими сеансами.')
     ui.notify('mint', 'Цены применены', `Сеанс #${sessionId.value}: ${payloadRows.length} рядов`)
     await load()
   } catch (e) {
@@ -224,6 +241,10 @@ onMounted(load)
           Если в ряду цены разные (VIP-место из схемы), цена ряда выровняет их — это видно по диапазону «сейчас».
         </span>
         <button type="button" class="shrink-0 text-sm text-brand-500 hover:underline" @click="fillCurrent">Подставить текущие</button>
+      </div>
+
+      <div class="rounded-xl bg-surface-2/60 px-3.5 py-3">
+        <NCheckbox v-model="sessionOnly" label="Только этот сеанс" description="Цены не записываются в сетку зала — будущие сеансы сохранят базовые цены схемы. Снимите, чтобы задать цены залу «на все даты»." />
       </div>
 
       <div

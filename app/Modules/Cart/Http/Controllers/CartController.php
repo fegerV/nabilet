@@ -259,6 +259,18 @@ class CartController extends Controller
 
         $cart = $this->ownedCart($request, $cart, $token);
 
+        // Корзина не найдена или не принадлежит спрашивающему: чужой `public_id`,
+        // потерянный/битый `X-Cart-Token`, истёкшая корзина. До проверки
+        // `$cart->session_id` разыменовывал null — гость получал 500
+        // «Something went wrong» вместо объяснения. Ответ тот же, что у
+        // `showByPublicId`: различать «нет такой» и «не твоя» — значит
+        // подтверждать существование корзин по их идентификатору.
+        if ($cart === null) {
+            return $this->withTokenHeader(response()->json([
+                'error' => ['code' => 'not_found', 'message' => 'Cart not found.'],
+            ], 404), $token, $isNew);
+        }
+
         $cartItem = $this->cartItems->addItem(
             (string) $cart->session_id,
             (int) $validated['inventory_item_id'],
@@ -282,6 +294,14 @@ class CartController extends Controller
         [$token, $isNew] = $this->resolveToken($request);
 
         $cart = $this->ownedCart($request, $cart, $token);
+
+        // Тот же контракт, что у `addItemTo()`: неизвестная или чужая корзина —
+        // 404, а не 500 на `$cart->session_id`.
+        if ($cart === null) {
+            return $this->withTokenHeader(response()->json([
+                'error' => ['code' => 'not_found', 'message' => 'Cart not found.'],
+            ], 404), $token, $isNew);
+        }
 
         $this->cartItems->removeItem((string) $cart->session_id, $itemId, $token);
 
