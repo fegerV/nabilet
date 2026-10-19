@@ -28,6 +28,7 @@ interface MailSettingsData {
   encryption: string
   from_address: string
   from_name: string
+  order_notify_email: string
   effective_mailer: string
   effective_host: string
 }
@@ -52,6 +53,7 @@ const form = ref({
   encryption: 'tls',
   from_address: '',
   from_name: '',
+  order_notify_email: '',
 })
 
 const testRecipient = ref('')
@@ -78,6 +80,7 @@ async function load(): Promise<void> {
       encryption: data?.encryption || 'tls',
       from_address: data?.from_address ?? '',
       from_name: data?.from_name ?? '',
+      order_notify_email: data?.order_notify_email ?? '',
     }
     passwordSet.value = Boolean(data?.password_set)
     effectiveMailer.value = data?.effective_mailer ?? ''
@@ -104,6 +107,7 @@ async function save(): Promise<void> {
       encryption: form.value.encryption,
       from_address: form.value.from_address.trim(),
       from_name: form.value.from_name.trim(),
+      order_notify_email: form.value.order_notify_email.trim(),
     }
     // Пустая строка означает «не менять», поэтому ключ вообще не отправляем.
     if (form.value.password !== '') {
@@ -222,6 +226,33 @@ async function sendTest(): Promise<void> {
           Удалить пароль
         </button>
       </div>
+
+      <div class="mt-5 flex items-center gap-3">
+        <NButton :disabled="!isDirty || saving" @click="save">
+          {{ saving ? 'Сохранение…' : 'Сохранить' }}
+        </NButton>
+        <span v-if="isDirty" class="text-xs text-sun-400">Есть несохранённые изменения</span>
+      </div>
+    </NCard>
+
+    <!-- Копии писем о заказах -->
+    <NCard
+      v-if="!loading && !error"
+      class="mt-5"
+      title="Копии писем о заказах"
+      description="Каждое письмо покупателю о заказе уходит скрытой копией на e-mail площадки, которой принадлежит мероприятие. Если у площадки своего адреса нет — на адрес ниже. Оставьте пустым, чтобы копии не отправлялись."
+    >
+      <div class="max-w-sm">
+        <NInput
+          v-model="form.order_notify_email"
+          type="email"
+          label="Куда отправлять копии"
+          placeholder="orders@example.ru"
+        />
+      </div>
+      <p class="mt-3 text-xs text-white/40">
+        Покупатель копию не видит — она уходит скрытой (BCC). Свой собственный адрес дублем не считается.
+      </p>
 
       <div class="mt-5 flex items-center gap-3">
         <NButton :disabled="!isDirty || saving" @click="save">

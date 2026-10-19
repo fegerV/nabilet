@@ -40,4 +40,11 @@ return [
         'name' => env('MAIL_FROM_NAME', 'NABILET'),
     ],
 
+    /*
+     * Запасной адресат копий писем о заказах (см. MailSettings::ORDER_NOTIFY_KEY).
+     * Основной адресат копии — e-mail организации-владельца мероприятия;
+     * этот адрес берётся, когда у организации своего нет.
+     */
+    'order_notify_email' => env('MAIL_ORDER_NOTIFY_EMAIL'),
+
 ];

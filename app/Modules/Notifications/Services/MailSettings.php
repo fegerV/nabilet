@@ -44,7 +44,17 @@ class MailSettings
         'encryption',
         'from_address',
         'from_name',
+        self::ORDER_NOTIFY_KEY,
     ];
+
+    /**
+     * Копия писем о заказах.
+     *
+     * Запасной адресат на весь магазин: если у организации-владельца мероприятия
+     * в `organizations.email` адреса нет, письмо о заказе уходит сюда. Заполняется
+     * один раз при настройке почты, а организация — при создании площадки.
+     */
+    public const ORDER_NOTIFY_KEY = 'order_notify_email';
 
     /** Секрет: пишется в `settings.encrypted = 1`, наружу не отдаётся. */
     public const SECRET_KEYS = ['password'];
@@ -128,11 +138,35 @@ class MailSettings
             'encryption' => (string) ($values['encryption'] ?? 'tls'),
             'from_address' => (string) ($values['from_address'] ?? config('mail.from.address', '')),
             'from_name' => (string) ($values['from_name'] ?? config('mail.from.name', '')),
+            'order_notify_email' => $this->orderNotifyEmail(),
             // Что реально уйдёт в транспорт сейчас — чтобы админ видел эффект,
             // а не догадывался, применились ли правки.
             'effective_mailer' => (string) config('mail.default'),
             'effective_host' => (string) config('mail.mailers.smtp.host', ''),
         ];
+    }
+
+    /**
+     * Запасной адресат копий писем о заказах.
+     *
+     * Приоритет у таблицы `settings`: .env — значение для свежей установки, а
+     * запись в таблице — осознанный выбор администратора. Пустая строка в записи
+     * = «копий не надо» и перекрывает .env: стёр поле в форме — перестал
+     * получать копии. Отсутствие записи — дефолт из .env.
+     *
+     * Различие проводится по наличию ключа, а не по пустоте значения, иначе
+     * очистка поля возвращала бы .env-адрес и админ молча продолжал бы
+     * получать копии, которых в интерфейсе уже нет.
+     */
+    public function orderNotifyEmail(): string
+    {
+        $values = $this->storedValues();
+
+        if (array_key_exists(self::ORDER_NOTIFY_KEY, $values)) {
+            return is_string($values[self::ORDER_NOTIFY_KEY]) ? trim($values[self::ORDER_NOTIFY_KEY]) : '';
+        }
+
+        return trim((string) config('mail.order_notify_email', ''));
     }
 
     /**

@@ -91,6 +91,32 @@ class MailSettingsTest extends TestCase
         self::assertSame('log', config('mail.default'));
     }
 
+    /**
+     * Запасной адрес копий писем о заказах.
+     *
+     * ВАЖНО: пустая строка — это «копий нет», и она обязана побеждать дефолт из
+     * .env. Иначе админ, стеревший поле в форме, продолжал бы получать копии,
+     * и молча: в интерфейсе поле пустое, а письма всё равно уходят.
+     */
+    public function test_order_notify_email_is_editable_and_clears_to_no_copies(): void
+    {
+        config(['mail.order_notify_email' => 'from-env@example.ru']);
+        $settings = app(MailSettings::class);
+
+        self::assertSame('from-env@example.ru', $settings->orderNotifyEmail());
+
+        $settings->save(['order_notify_email' => 'orders@example.ru']);
+
+        self::assertSame('orders@example.ru', $settings->orderNotifyEmail());
+        self::assertSame('orders@example.ru', $settings->forAdmin()['order_notify_email']);
+
+        $settings->save(['order_notify_email' => '']);
+
+        // Именно пустая строка, а не значение из .env: админ стёр поле.
+        self::assertSame('', $settings->orderNotifyEmail());
+        self::assertSame('', $settings->forAdmin()['order_notify_email']);
+    }
+
     public function test_admin_endpoints_require_authentication(): void
     {
         $this->getJson('/api/v1/admin/mail/settings')->assertStatus(401);

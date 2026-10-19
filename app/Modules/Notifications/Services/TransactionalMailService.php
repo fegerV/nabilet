@@ -81,13 +81,18 @@ class TransactionalMailService
      *
      * @param  string  $code  код шаблона, например `order.paid`
      * @param  array<string, scalar|Htmlable|null>  $variables
+     * @param  string|null  $bcc  скрытая копия (площадка / владелец магазина).
+     *   Отдельным полем письма, а не второй отправкой: одно SMTP-соединение, один
+     *   Message-ID и гарантия, что копия видит ровно то же письмо, что покупатель.
+     *   Пустая строка и невалидный адрес игнорируются — дефект настройки не
+     *   должен ронять письмо покупателю.
      * @return Notification|null запись из `notifications` — «письмо ушло в
      *   провайдера». `null` — отправки не было: некуда (пустой адрес) или
      *   шаблон выключен. Вызывающему это различие нужно, чтобы связать свой
      *   журнал (`follow_notifications.notification_id`) с конкретной записью
      *   транспорта, а не искать её заново после отправки.
      */
-    public function send(string $code, string $recipient, array $variables, ?int $userId = null): ?Notification
+    public function send(string $code, string $recipient, array $variables, ?int $userId = null, ?string $bcc = null): ?Notification
     {
         if (trim($recipient) === '') {
             // Некуда отправлять — не считаем это ошибкой письма: у заказа может
@@ -117,7 +122,13 @@ class TransactionalMailService
         ]);
 
         try {
-            Mail::to($recipient)->send(new TemplateMail(
+            $pending = Mail::to($recipient);
+
+            if ($this->isUsableAddress($bcc)) {
+                $pending->bcc(trim((string) $bcc));
+            }
+
+            $pending->send(new TemplateMail(
                 subjectLine: $body['subject'],
                 htmlBody: $body['html'],
                 textBody: $body['text'],
@@ -239,6 +250,20 @@ class TransactionalMailService
         }
 
         return $body;
+    }
+
+    /**
+     * Адрес скрытой копии пригоден к использованию.
+     *
+     * Проверка здесь, а не у вызывающего, намеренно: настроечный адрес правит
+     * человек в форме, и «забыл @» не должно стоить покупателю письма. Поэтому
+     * мусор молча отбрасывается, а не роняет отправку.
+     */
+    private function isUsableAddress(?string $address): bool
+    {
+        return is_string($address)
+            && trim($address) !== ''
+            && filter_var(trim($address), FILTER_VALIDATE_EMAIL) !== false;
     }
 
     /**

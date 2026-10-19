@@ -37,6 +37,9 @@ class MailSettingsController extends Controller
             'encryption' => ['sometimes', 'nullable', 'in:tls,ssl,none'],
             'from_address' => ['sometimes', 'nullable', 'email', 'max:255'],
             'from_name' => ['sometimes', 'nullable', 'string', 'max:255'],
+            // Копия писем о заказах. `email`: адрес правит человек в форме, и
+            // опечатка не должна всплыть на проде отсутствием копий.
+            'order_notify_email' => ['sometimes', 'nullable', 'email', 'max:255'],
             'clear_password' => ['sometimes', 'boolean'],
         ]);
 

@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Nabilet\Modules\Notifications\Jobs\SendOrderNotificationJob;
 use Nabilet\Modules\Notifications\Mail\TemplateMail;
+use Nabilet\Modules\Notifications\Services\MailSettings;
 use Nabilet\Modules\Notifications\Services\OrderNotificationData;
 use Nabilet\Modules\Notifications\Services\TransactionalMailService;
 use Nabilet\Modules\Orders\Models\Order;
@@ -127,6 +128,7 @@ class OrderStatusNotificationTest extends TestCase
         (new SendOrderNotificationJob($order->id, OrderStateMachine::PAID))->handle(
             app(TransactionalMailService::class),
             app(OrderNotificationData::class),
+            app(MailSettings::class),
         );
 
         Mail::assertSent(TemplateMail::class, static function (TemplateMail $mail) use ($ticket): bool {
@@ -138,6 +140,161 @@ class OrderStatusNotificationTest extends TestCase
                 && str_contains($mail->htmlBody, 'Открыть билет')
                 // Текстовая версия — тоже с билетом.
                 && str_contains($mail->textBody, (string) $ticket->ticket_number);
+        });
+    }
+
+    /**
+     * Копия письма о заказе — площадке.
+     *
+     * ПОЧЕМУ ЭТО НУЖНО
+     *
+     * Площадка продаёт билеты через платформу, но узнать о проданном билете
+     * должна она: иначе она не контролирует вход и не видит выручку, пока не
+     * зайдёт в админку. Копия уходит СКРЫТОЙ (BCC), поэтому покупатель не видит
+     * чужого адреса в письме, а платформа не раскрывает его контакт.
+     *
+     * Проверяется через `hasBcc()`: `Mail::fake()` пишет bcc в само письмо
+     * (PendingMailFake::fill), поэтому адрес копии observable, в отличие от
+     * «отдельной отправки», где два письма неотличимы в assertSent.
+     */
+    public function test_order_letter_goes_to_the_organization_as_a_hidden_copy(): void
+    {
+        Mail::fake();
+        Bus::fake();
+
+        $this->seed(\Database\Seeders\NotificationTemplateSeeder::class);
+
+        [$organizationId, $eventId, , $inventoryId] = $this->seedSellableSeat(available: 1);
+        DB::table('organizations')->where('id', $organizationId)->update([
+            'email' => 'box-office@venue.test',
+        ]);
+
+        $order = app(OrderService::class)->createOrder([
+            'organization_id' => $organizationId,
+            'customer_email' => 'buyer@example.test',
+            'items' => [['inventory_item_id' => $inventoryId, 'quantity' => 1]],
+        ]);
+        app(OrderService::class)->markAwaitingPayment($order->fresh());
+        $order = app(OrderService::class)->markPaid($order->fresh());
+        app(TicketService::class)->issueTicketsForOrder($order->fresh());
+
+        (new SendOrderNotificationJob($order->id, OrderStateMachine::PAID))->handle(
+            app(TransactionalMailService::class),
+            app(OrderNotificationData::class),
+            app(MailSettings::class),
+        );
+
+        // Письмо ОДНО: копия — скрытая, а не отдельная отправка. Иначе билет
+        // пользовался бы двумя SMTP-соединениями и двумя Message-ID.
+        Mail::assertSentCount(1);
+        Mail::assertSent(TemplateMail::class, static function (TemplateMail $mail): bool {
+            return $mail->hasTo('buyer@example.test')
+                && $mail->hasBcc('box-office@venue.test');
+        });
+    }
+
+    /** У площадки без своего адреса копия уходит на общий адрес из настроек почты. */
+    public function test_copy_falls_back_to_the_global_address_when_organization_has_none(): void
+    {
+        Mail::fake();
+        Bus::fake();
+
+        $this->seed(\Database\Seeders\NotificationTemplateSeeder::class);
+
+        // .env в тестах не читается — значение из конфига и есть дефолт свежей
+        // установки (см. config/mail.php → MAIL_ORDER_NOTIFY_EMAIL).
+        config(['mail.order_notify_email' => 'orders@mall.test']);
+
+        [$organizationId, $eventId, , $inventoryId] = $this->seedSellableSeat(available: 1);
+
+        $order = app(OrderService::class)->createOrder([
+            'organization_id' => $organizationId,
+            'customer_email' => 'buyer@example.test',
+            'items' => [['inventory_item_id' => $inventoryId, 'quantity' => 1]],
+        ]);
+        app(OrderService::class)->markAwaitingPayment($order->fresh());
+        $order = app(OrderService::class)->markPaid($order->fresh());
+
+        (new SendOrderNotificationJob($order->id, OrderStateMachine::PAID))->handle(
+            app(TransactionalMailService::class),
+            app(OrderNotificationData::class),
+            app(MailSettings::class),
+        );
+
+        Mail::assertSent(TemplateMail::class, static function (TemplateMail $mail): bool {
+            return $mail->hasBcc('orders@mall.test');
+        });
+    }
+
+    /**
+     * Ни площадка, ни магазин копий не заказывали — копии нет.
+     *
+     * Проверка на «ни один адрес»: иначе опечатка в настройке тихо оставляла бы
+     * письмо без копии, и площадка узнавала бы о продаже из админки.
+     */
+    public function test_no_copy_when_neither_the_organization_nor_the_shop_is_configured(): void
+    {
+        Mail::fake();
+        Bus::fake();
+
+        $this->seed(\Database\Seeders\NotificationTemplateSeeder::class);
+
+        [$organizationId, $eventId, , $inventoryId] = $this->seedSellableSeat(available: 1);
+
+        $order = app(OrderService::class)->createOrder([
+            'organization_id' => $organizationId,
+            'customer_email' => 'buyer@example.test',
+            'items' => [['inventory_item_id' => $inventoryId, 'quantity' => 1]],
+        ]);
+        app(OrderService::class)->markAwaitingPayment($order->fresh());
+        $order = app(OrderService::class)->markPaid($order->fresh());
+
+        (new SendOrderNotificationJob($order->id, OrderStateMachine::PAID))->handle(
+            app(TransactionalMailService::class),
+            app(OrderNotificationData::class),
+            app(MailSettings::class),
+        );
+
+        Mail::assertSent(TemplateMail::class, static function (TemplateMail $mail): bool {
+            return $mail->bcc === [];
+        });
+    }
+
+    /**
+     * Копия не уходит покупателю самому.
+     *
+     * Площадка и магазин иногда указывают в настройках тот же ящик, с которого
+     * покупают (тест, служебная заявка). Дубль письма на свой адрес выглядит как
+     * сбой платформы.
+     */
+    public function test_copy_is_not_sent_to_the_customer_himself(): void
+    {
+        Mail::fake();
+        Bus::fake();
+
+        $this->seed(\Database\Seeders\NotificationTemplateSeeder::class);
+
+        [$organizationId, $eventId, , $inventoryId] = $this->seedSellableSeat(available: 1);
+        DB::table('organizations')->where('id', $organizationId)->update([
+            'email' => 'buyer@example.test',
+        ]);
+
+        $order = app(OrderService::class)->createOrder([
+            'organization_id' => $organizationId,
+            'customer_email' => 'buyer@example.test',
+            'items' => [['inventory_item_id' => $inventoryId, 'quantity' => 1]],
+        ]);
+        app(OrderService::class)->markAwaitingPayment($order->fresh());
+        $order = app(OrderService::class)->markPaid($order->fresh());
+
+        (new SendOrderNotificationJob($order->id, OrderStateMachine::PAID))->handle(
+            app(TransactionalMailService::class),
+            app(OrderNotificationData::class),
+            app(MailSettings::class),
+        );
+
+        Mail::assertSent(TemplateMail::class, static function (TemplateMail $mail): bool {
+            return $mail->hasTo('buyer@example.test') && $mail->bcc === [];
         });
     }
 }

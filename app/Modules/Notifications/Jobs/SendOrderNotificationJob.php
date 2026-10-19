@@ -8,6 +8,7 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
+use Nabilet\Modules\Notifications\Services\MailSettings;
 use Nabilet\Modules\Notifications\Services\OrderNotificationData;
 use Nabilet\Modules\Notifications\Services\TransactionalMailService;
 use Nabilet\Modules\Notifications\Support\OrderNotificationCodes;
@@ -63,8 +64,11 @@ class SendOrderNotificationJob implements ShouldQueue
         );
     }
 
-    public function handle(TransactionalMailService $mail, OrderNotificationData $data): void
-    {
+    public function handle(
+        TransactionalMailService $mail,
+        OrderNotificationData $data,
+        MailSettings $settings,
+    ): void {
         $order = Order::query()->find($this->orderId);
 
         if ($order === null) {
@@ -85,6 +89,7 @@ class SendOrderNotificationJob implements ShouldQueue
                 recipient: (string) $order->customer_email,
                 variables: $data->build($order),
                 userId: $order->user_id,
+                bcc: $this->copyRecipient($order, $settings),
             );
 
             return;
@@ -105,6 +110,36 @@ class SendOrderNotificationJob implements ShouldQueue
             recipient: (string) $order->customer_email,
             variables: $data->build($order),
             userId: $order->user_id,
+            bcc: $this->copyRecipient($order, $settings),
         );
+    }
+
+    /**
+     * Кому уходит копия письма о заказе.
+     *
+     * Приоритет у площадки: письмо о проданном билете на её мероприятие нужно
+     * ей, а не только владельцу платформы. Поэтому берём `organizations.email`
+     * заказа, и только если у организации адреса нет — общий адрес из настроек
+     * почты (`MailSettings::ORDER_NOTIFY_KEY`). Так одна и та же настройка
+     * закрывает и одиночную площадку без своего ящика, и весь магазин целиком.
+     *
+     * Свой адрес заказа исключаем: иначе покупатель получал бы письмо дважды.
+     */
+    private function copyRecipient(Order $order, MailSettings $settings): ?string
+    {
+        $candidates = [
+            (string) ($order->organization?->email ?? ''),
+            $settings->orderNotifyEmail(),
+        ];
+
+        foreach ($candidates as $candidate) {
+            $candidate = trim($candidate);
+
+            if ($candidate !== '' && filter_var($candidate, FILTER_VALIDATE_EMAIL) !== false) {
+                return strcasecmp($candidate, (string) $order->customer_email) === 0 ? null : $candidate;
+            }
+        }
+
+        return null;
     }
 }
