@@ -439,7 +439,12 @@ async function onFollow(): Promise<void> {
             <span aria-hidden="true" class="mt-0.5 text-base text-brand-400">◈</span>
             <div>
               <dt class="text-2xs uppercase tracking-wide text-subtle">Билеты от</dt>
-              <dd class="text-sm font-semibold tabular-nums text-content">{{ money(event.price_from_minor ?? 0) }}</dd>
+              <!-- Прочерк вместо «0 ₽»: 0 ₽ означает «бесплатно», а неизвестная
+                   цена — «продаж сейчас нет» (цена считается по предстоящим
+                   сеансам, см. EventRepository::minPriceFor). -->
+              <dd class="text-sm font-semibold tabular-nums text-content">
+                {{ event.price_from_minor ? money(event.price_from_minor) : '—' }}
+              </dd>
             </div>
           </div>
         </dl>

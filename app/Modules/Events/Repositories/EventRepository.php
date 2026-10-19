@@ -38,6 +38,7 @@ class EventRepository
             ->paginate($perPage);
 
         $this->hydrateAvailableSeats($paginator->getCollection());
+        $this->hydrateMinPrice($paginator->getCollection());
 
         return $paginator;
     }
@@ -69,6 +70,73 @@ class EventRepository
                 $session->available_seats_count = (int) ($counts[$session->id] ?? 0);
             }
         }
+    }
+
+    /**
+     * Минимальная цена билета у ПРЕДСТОЯЩИХ сеансов — одна группировка на страницу.
+     *
+     * ПОЧЕМУ ЭТО НУЖНО. Витрина подписывает карточку «от N ₽»
+     * (`price_from_minor`), но публичный список событий цену не отдавал вообще:
+     * поля в `EventResource` не было, и Vue подставлял 0. Каждое мероприятие в
+     * афише выглядело как «от 0 ₽» — проверено на живом стенде (CDP, мобильный
+     * кадр 390×844). Цена есть в БД (`inventory_items`), её просто никто не
+     * читал для списка.
+     *
+     * ПОЧЕМУ В РЕПОЗИТОРИИ, А НЕ В РЕСУРСЕ. Ресурс не имеет права ходить в БД, а
+     * цена нужна и списку, и карточке. Здесь выставляется атрибут
+     * `min_price_amount`, `EventResource` только читает его: на путях без
+     * гидратации (админка) значение `null`, и «от __ ₽» не показывается вовсе.
+     *
+     * ПОЧЕМУ ТОЛЬКО ПРЕДСТОЯЩИЕ СЕАНСЫ. «от 3 000 ₽» — цена ближайшей покупки.
+     * У прошедшего сеанса цена была своей, и она бы занижала или завышала цену
+     * будущей. Событие без предстоящих сеансов получает `null` — витрина честно
+     * скажет, что продажи нет.
+     *
+     * @param  Collection<int, Event>  $events
+     */
+    private function hydrateMinPrice(Collection $events): void
+    {
+        $eventIds = $events->modelKeys();
+
+        if ($eventIds === []) {
+            return;
+        }
+
+        $prices = DB::table('inventory_items')
+            ->join('sessions', 'sessions.id', '=', 'inventory_items.session_id')
+            ->whereIn('sessions.event_id', $eventIds)
+            ->where('sessions.starts_at', '>=', now()->toDateTimeString())
+            ->where('inventory_items.status', 'available')
+            ->where('inventory_items.available_quantity', '>', 0)
+            ->groupBy('sessions.event_id')
+            ->select('sessions.event_id', DB::raw('MIN(inventory_items.price_amount) as min_price_amount'))
+            ->pluck('min_price_amount', 'sessions.event_id');
+
+        foreach ($events as $event) {
+            $event->min_price_amount = isset($prices[$event->id]) ? (int) $prices[$event->id] : null;
+        }
+    }
+
+    /**
+     * Минимальная цена для ОДНОГО события (карточка `/events/by-slug/{slug}`).
+     *
+     * Тот же смысл и те же условия, что у `hydrateMinPrice()`, но для единственной
+     * строки: афише нужна одна группировка на страницу, а карточке — одно число.
+     * Отдельный метод, а не установка атрибута у вызывающего: условие «только
+     * предстоящие сеансы, только доступные позиции» живёт в одном месте и не
+     * разъедется между списком и карточкой.
+     */
+    public function minPriceFor(Event $event): ?int
+    {
+        $value = DB::table('inventory_items')
+            ->join('sessions', 'sessions.id', '=', 'inventory_items.session_id')
+            ->where('sessions.event_id', $event->id)
+            ->where('sessions.starts_at', '>=', now()->toDateTimeString())
+            ->where('inventory_items.status', 'available')
+            ->where('inventory_items.available_quantity', '>', 0)
+            ->min('inventory_items.price_amount');
+
+        return $value === null ? null : (int) $value;
     }
 
     /**

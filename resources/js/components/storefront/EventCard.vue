@@ -36,6 +36,18 @@ const posterStyle = computed(() => {
 const nextSession = computed(() => props.event.sessions?.[0])
 
 /**
+ * Минимальная цена билета в копейках или `null`, если цена неизвестна.
+ *
+ * Ровно `null`, а не 0: нуль на витрине означает «бесплатно», и покупатель
+ * имеет право прийти на бесплатный концерт. Неизвестная цена — другой случай,
+ * и путать их нельзя.
+ */
+const priceFromMinor = computed<number | null>(() => {
+  const raw = props.event.price_from_minor ?? props.event.priceFromMinor
+  return typeof raw === 'number' && raw >= 0 ? raw : null
+})
+
+/**
  * «Нет мест» — по реальному признаку, а не по `status`.
  *
  * Здесь стояло `props.event.status === 'sold_out'`, и сравнение было МЁРТВЫМ:
@@ -162,7 +174,20 @@ async function onFavorite(): Promise<void> {
             <div class="mt-auto flex items-end justify-between gap-3 border-t border-line pt-3">
               <div>
                 <p class="text-2xs uppercase tracking-wide text-subtle">от</p>
-                <p class="text-base font-semibold tabular-nums text-content">{{ money(event.price_from_minor ?? event.priceFromMinor ?? 0) }}</p>
+                <!--
+                  «от 0 ₽» было нормой, пока публичный список событий не отдавал
+                  цену: поле в EventResource отсутствовало, и `?? 0` молча
+                  подставляло ноль на КАЖДУЮ карточку афиши (проверено на живом
+                  стенде). Теперь цена приходит как `price_from_minor`, а её
+                  отсутствие — это «продаж нет»: рисуем прочерк, а не нуль.
+                -->
+                <p
+                  v-if="priceFromMinor !== null"
+                  class="text-base font-semibold tabular-nums text-content"
+                >
+                  {{ money(priceFromMinor) }}
+                </p>
+                <p v-else class="text-base font-semibold text-subtle">—</p>
               </div>
 
         <span

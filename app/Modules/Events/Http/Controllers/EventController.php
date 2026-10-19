@@ -11,6 +11,7 @@ use Nabilet\Modules\Events\Http\Requests\StoreEventRequest;
 use Nabilet\Modules\Events\Http\Requests\UpdateEventRequest;
 use Nabilet\Modules\Events\Http\Resources\EventResource;
 use Nabilet\Modules\Events\Models\Event;
+use Nabilet\Modules\Events\Repositories\EventRepository;
 use Nabilet\Modules\Events\Services\EventPublicationService;
 use Nabilet\Modules\Events\Services\EventService;
 use Nabilet\Modules\Seo\Services\RedirectResolver;
@@ -25,6 +26,7 @@ class EventController extends Controller
         private readonly EventService $eventService,
         private readonly EventPublicationService $publication,
         private readonly RedirectResolver $redirects,
+        private readonly EventRepository $eventRepository,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -119,6 +121,11 @@ class EventController extends Controller
                 }
 
                 $event->load(['category', 'translations', 'sessions.hall', 'organization', 'galleryLinks.mediaAsset', 'artists']);
+
+                // «от N ₽» на карточке: минимум по предстоящим сеансам. Без
+                // этого поле в ответе отсутствует и витрина рисует «от 0 ₽» —
+                // проверено на живом стенде.
+                $event->min_price_amount = $this->eventRepository->minPriceFor($event);
 
                         $resource = new EventResource($event);
                         $data = $resource->toArray(request());

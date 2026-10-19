@@ -55,6 +55,13 @@ class EventResource extends JsonResource
                 'name' => $venue->name,
                 'city' => $venue->city ?? null,
             ] : null,
+            // «от N ₽» на карточке витрины. Значение приходит атрибутом
+            // `min_price_amount` от `EventRepository` (список афиши) или
+            // `EventRepository::minPriceFor()` (карточка по slug). На путях без
+            // расчёта (админка) — `null`: витрина отличает «цена есть» от
+            // «цены нет» и показывает прочерк, а не 0 ₽.
+            'price_from_minor' => $this->min_price_amount ?? null,
+            'priceFromMinor' => $this->min_price_amount ?? null,
             'sessions' => $this->whenLoaded('sessions', fn() => $this->sessions
                 ->map(fn ($s) => [
                     'id' => $s->id,
