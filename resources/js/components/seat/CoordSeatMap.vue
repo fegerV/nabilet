@@ -18,7 +18,7 @@
  *  плюс невидимая зона нажатия крупнее видимого кружка (`fitSeatHitRadius`) —
  *  тап по месту работает и без предварительного зума.
  */
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { money, plural } from '@/lib/format'
 import type { InventoryItem } from '@/lib/inventory'
 import { seatStateFromStatus, isSeatPickable } from '@/lib/seatStatus'
@@ -205,6 +205,19 @@ function selectPriceChip(price: number | null): void {
   activePrice.value = price === activePrice.value ? null : price
   focusPriceChip(activePrice.value)
 }
+
+/**
+ * Инвентарь подгружается асинхронно и обновляется после каждого удержания. Если
+ * активной категории в новом наборе нет (сеанс переключили, цену поменяли), фильтр
+ * обязан сняться: иначе затемнены ВСЕ места и выбрать нельзя ничего.
+ */
+watch(priceChips, (chips) => {
+  if (activePrice.value === null) return
+  if (!chips.some((chip) => chip.price === activePrice.value)) {
+    activePrice.value = null
+    resetView()
+  }
+})
 
 /** Центр и номер банкетного стола вычисляются из кольца мест — отдельная геометрия API не нужна. */
 const tableMarks = computed(() => groupTableSeatPoints(
