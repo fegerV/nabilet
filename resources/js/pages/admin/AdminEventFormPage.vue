@@ -40,7 +40,12 @@ import { useUiStore } from '@/stores/ui'
 import { ApiError, get, request, send, upload } from '@/lib/api'
 import { storageSrc } from '@/lib/mediaLibrary'
 import { dateFull, time } from '@/lib/format'
-import type { SessionRecord } from '@/lib/sessionForm'
+import {
+  buildSessionPayload,
+  emptySessionForm,
+  type SessionFormState,
+  type SessionRecord,
+} from '@/lib/sessionForm'
 import type { MediaAsset } from '@/lib/mediaLibrary'
 
 const route = useRoute()
@@ -73,6 +78,29 @@ const form = ref({
   // при правке сбросит назначение (`ticket_template_id = NULL`, сработает фолбэк резолвера).
   ticket_template_id: '',
 })
+
+/* ── Черновик сеанса для режима создания (дефолт 1:1 = концерт + сеанс сразу) ──
+ * Концерт обычно однократен: одна дата, одна площадка, один зал. Поэтому сеанс
+ * создаём прямо из формы создания мероприятия, вместе с ним — один экран, один
+ * клик. Справочники площадок/залов нужны только для этого блока.
+ */
+interface VenueOption {
+  id: number
+  name: string
+}
+interface HallOption {
+  id: number
+  name: string
+  venue_id?: number | null
+  public_id?: string
+}
+
+const venues = ref<VenueOption[]>([])
+const halls = ref<HallOption[]>([])
+/** На создании сеанс создаётся вместе с мероприятием — 1:1 дефолт. */
+const createSessionEnabled = ref(true)
+const sessionDraft = ref<SessionFormState>(emptySessionForm({ status: 'scheduled' }))
+const sessionFormError = ref<string | null>(null)
 
 /* ── Факты, которые форма не редактирует ────────────────────────────────────
  * Читаются с сервера и показываются как есть. Держать их в `form` нельзя:
@@ -405,6 +433,84 @@ function scrollToSessions(): void {
   sessionsSection.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 
+/* ── Встроенный сеанс при создании (дефолт 1:1) ────────────────────────────
+ * Концерт обычно однократен: одна дата, одна площадка, один зал. Поэтому сеанс
+ * создаём прямо из формы создания мероприятия вместе с ним — один экран, один
+ * клик. Справочники площадок/залов грузим параллельно с прочим.
+ */
+const SESSION_STATUS_OPTIONS = [
+  { value: 'scheduled', label: 'Запланирован' },
+  { value: 'on_sale', label: 'В продаже' },
+  { value: 'held', label: 'Проведён' },
+  { value: 'completed', label: 'Завершён' },
+  { value: 'cancelled', label: 'Отменён' },
+]
+
+/** Мероприятие уже создано, а сеанс — нет: храним id для ссылки на карточку. */
+const eventCreatedId = ref<number | null>(null)
+
+function unwrapList<T>(payload: unknown): T[] {
+  if (Array.isArray(payload)) return payload as T[]
+  const inner = (payload as { data?: unknown } | null)?.data
+  return Array.isArray(inner) ? (inner as T[]) : []
+}
+
+async function loadVenueHalls(): Promise<void> {
+  try {
+    const [venuesRes, hallsRes] = await Promise.all([
+      get<unknown>('/venues'),
+      get<unknown>('/halls'),
+    ])
+    venues.value = unwrapList<VenueOption>((venuesRes as { data: unknown }).data)
+    halls.value = unwrapList<HallOption>((hallsRes as { data: unknown }).data)
+  } catch {
+    venues.value = []
+    halls.value = []
+  }
+}
+
+const venueOptions = computed<Array<{ value: string; label: string }>>(() => [
+  { value: '', label: '— выберите площадку —' },
+  ...venues.value.map((v) => ({ value: String(v.id), label: v.name })),
+])
+
+const hallOptions = computed<Array<{ value: string; label: string }>>(() => {
+  const venueId = sessionDraft.value.venue_id
+  const list = venueId ? halls.value.filter((h) => String(h.venue_id ?? '') === venueId) : []
+  if (!venueId) return [{ value: '', label: '— сначала выберите площадку —' }]
+  if (list.length === 0) return [{ value: '', label: '— у этой площадки нет залов —' }]
+  return [
+    { value: '', label: '— выберите зал —' },
+    ...list.map((h) => ({ value: String(h.id), label: h.name })),
+  ]
+})
+
+const venueHasNoHalls = computed(
+  () => sessionDraft.value.venue_id !== '' && hallOptions.value.length === 1,
+)
+
+function onVenueChangeDraft(): void {
+  // Зал принадлежит площадке — при её смене зал сбрасывается, чтобы не уйти
+  // на сервер с несогласованной парой «площадка + зал».
+  sessionDraft.value.hall_id = ''
+  sessionDraft.value.schema_version_id = ''
+}
+
+/**
+ * Создать сеанс для только что сохранённого мероприятия.
+ *
+ * Сеанс несёт площадку, зал и дату — их нет в `events`. Бэкенд сам доберёт
+ * площадку из зала и схему зала, если их не прислать, но мы шлём явно, чтобы
+ * проверка пары «площадка + зал» сработала на осмысленном значении, а не на
+ * выведенном.
+ */
+async function saveSessionDraft(eventId: number): Promise<number> {
+  const draft = { ...sessionDraft.value, event_id: String(eventId) }
+  const payload = buildSessionPayload(draft, { includeEvent: true })
+  const res = await send<{ id: number }>('/sessions', 'POST', payload)
+  return (res as unknown as { data: { id: number } }).data.id
+}
+
 async function load(): Promise<void> {
   setPosterFile(null)
   fieldErrors.value = {}
@@ -412,6 +518,7 @@ async function load(): Promise<void> {
   // Справочник шаблонов нужен обеим веткам, поэтому грузится параллельно и
   // не блокирует показ формы: `templatesLoading` рисует состояние в самом поле.
   void loadTemplates()
+  void loadVenueHalls()
   // Сеансы — тоже параллельно: они нужны и для списка «где и когда», и для
   // счётчика готовности, но форма не должна их ждать.
   void loadSessions()
@@ -423,6 +530,13 @@ async function load(): Promise<void> {
     // как было»: переход из карточки существующего события в «Новое» не должен
     // показывать чужие два сеанса.
     sessionCount.value = 0
+    // Сброс встроенного сеанса (дефолт 1:1): новый черновик, чекбокс вкл,
+    // прошлые ошибки и «уже создано» — чисто, чтобы повторное открытие формы
+    // не показывало старый сеанс или мёртвую ссылку на прошлое событие.
+    eventCreatedId.value = null
+    sessionFormError.value = null
+    createSessionEnabled.value = true
+    sessionDraft.value = emptySessionForm({ status: 'scheduled' })
     loading.value = false
     return
   }
@@ -502,7 +616,7 @@ function fillFields(set: (k: string, v: string | null) => void): void {
  * @returns true, если запись действительно прошла — на это опирается
  *          `publishFlow()`, который иначе публиковал бы несохранённую карточку.
  */
-async function save(goToSessions = false, notify = true): Promise<boolean> {
+async function save(notify = true): Promise<boolean> {
   if (saving.value) return false
   error.value = null
   if (!validate()) {
@@ -510,6 +624,7 @@ async function save(goToSessions = false, notify = true): Promise<boolean> {
     return false
   }
   saving.value = true
+  let savedId = 0
   try {
     let res: { data: SavedEvent }
     if (posterFile.value) {
@@ -533,17 +648,9 @@ async function save(goToSessions = false, notify = true): Promise<boolean> {
         ? await send<SavedEvent>(`/events/${eventId.value}`, 'PATCH', payload)
         : await send<SavedEvent>('/events', 'POST', payload)
     }
-    const savedId = res.data.id
+    savedId = res.data.id
     const title = form.value.title.trim()
     if (notify) ui.notify('mint', isEdit.value ? 'Мероприятие обновлено' : 'Мероприятие создано', title)
-    if (goToSessions) {
-      router.push(`/admin/sessions?event=${savedId}`)
-      return true
-    }
-    if (!isEdit.value) {
-      router.push(`/admin/events/${savedId}`)
-    }
-    return true
   } catch (err) {
     if (err instanceof ApiError && err.details) {
       const mapped: Record<string, string> = {}
@@ -561,6 +668,38 @@ async function save(goToSessions = false, notify = true): Promise<boolean> {
   } finally {
     saving.value = false
   }
+
+  // ── Создание: мероприятие сохранено, теперь сеанс (дефолт 1:1) ──
+  // Правка сюда не доходит: там сеансы ведут себя как список (может быть
+  // несколько — редкий прогон спектакля или тур), и ими управляют отдельно.
+  if (isEdit.value) return true
+
+  // Мероприятие уже есть. Запоминаем id на случай, если сеанс не создастся, —
+  // тогда покажем ссылку на карточку и не потеряем событие.
+  eventCreatedId.value = savedId
+
+  if (createSessionEnabled.value) {
+    saving.value = true
+    try {
+      const sessionId = await saveSessionDraft(savedId)
+      ui.notify('mint', 'Сеанс создан', 'Назначьте цены на ряды и опубликуйте мероприятие.')
+      // Следующий логичный шаг после сеанса — назначение цен на ряды/столики.
+      router.push(`/admin/sessions/${sessionId}/prices`)
+    } catch (err) {
+      // Мероприятие создано, сеанс — нет. Остаёмся на форме, помечаем ошибку и
+      // показываем ссылку на карточку: повторное «Создать» запретили бы, чтобы
+      // не плодить дубликаты события, поэтому зрителя уводим туда, где сеанс
+      // добавить вручную через «Добавить сеанс».
+      sessionFormError.value = err instanceof Error ? err.message : String(err)
+      ui.notify('sun', 'Мероприятие создано, сеанс — нет', sessionFormError.value)
+    } finally {
+      saving.value = false
+    }
+    return true
+  }
+
+  router.push(`/admin/events/${savedId}`)
+  return true
 }
 
 /* ── Готовность к продаже и переходы состояния ──────────────────────────── */
@@ -731,7 +870,7 @@ async function publishFlow(): Promise<void> {
   if (publishing.value || saving.value) return
   // `notify = false`: одно действие — одно уведомление. Второе придёт от
   // `changePublication()` и будет про публикацию, а не про сохранение.
-  if (!(await save(false, false))) return
+  if (!(await save(false))) return
   await changePublication('publish')
 }
 
@@ -765,14 +904,14 @@ const publishedAtText = computed<string | null>(() => {
       <button type="button" class="text-sm text-muted hover:text-content" @click="router.push('/admin/events')">← Мероприятия</button>
       <h1 class="mt-1 text-2xl font-bold tracking-tight text-content">{{ isEdit ? 'Редактировать мероприятие' : 'Новое мероприятие' }}</h1>
       <p v-if="!isEdit" class="mt-1 text-sm text-muted">
-        Заполните карточку. Сеансы — площадка, зал и дата — появятся здесь же после сохранения.
+        Заполните карточку и сразу укажите площадку, зал и дату сеанса — концерт создастся одним кликом, сеанс появится автоматически.
       </p>
     </div>
 
     <div v-if="error" class="surface-card mb-4 border-rose-500/30 px-4 py-3 text-sm text-rose-400">{{ error }}</div>
     <div v-if="loading" class="surface-card px-4 py-6 text-center text-sm text-muted">Загрузка…</div>
 
-    <form v-else class="surface-card space-y-6 p-5" @submit.prevent="save(false)">
+    <form v-else class="surface-card space-y-6 p-5" @submit.prevent="save()">
       <!-- ── Основное ── -->
       <section>
         <h2 class="mb-3 text-xs font-semibold uppercase tracking-wide text-subtle">Основное</h2>
@@ -845,6 +984,74 @@ const publishedAtText = computed<string | null>(() => {
             <button v-if="posterShown" type="button" class="block text-xs text-rose-400 hover:underline" @click="clearPoster">Убрать афишу</button>
           </div>
         </div>
+      </section>
+
+      <!--
+        ── Сеанс: где и когда (только при создании) ──
+        Дефолт 1:1: концерт обычно однократен — одна дата, одна площадка, один
+        зал. Поэтому сеанс правим прямо здесь, вместе с мероприятием, одним
+        кликом «Создать концерт». На правке мероприятие уже существует, и там
+        сеансы ведут себя как список (может быть несколько — редкий прогон
+        спектакля или тур), поэтому блок скрыт, а добавление — кнопкой выше.
+      -->
+      <section v-if="!isEdit" class="rounded-xl border border-line p-4">
+        <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h2 class="text-xs font-semibold uppercase tracking-wide text-subtle">Сеанс — где и когда</h2>
+          <label class="flex items-center gap-2 text-xs text-muted">
+            <input type="checkbox" v-model="createSessionEnabled" class="h-4 w-4 rounded border-line" />
+            Создать сеанс сразу
+          </label>
+        </div>
+
+        <p class="mb-3 text-xs leading-relaxed text-subtle">
+          Концерт обычно проходит один раз — одна дата, одна площадка и один зал. Укажите их здесь:
+          при сохранении мероприятия его сеанс создастся автоматически, и вы сразу попадёте к назначению цен.
+        </p>
+
+        <div v-if="createSessionEnabled" class="space-y-4">
+          <NSelect v-model="sessionDraft.venue_id" label="Площадка" :options="venueOptions" @update:model-value="onVenueChangeDraft" />
+
+          <div v-if="venueHasNoHalls" class="rounded-lg border border-sun-500/30 bg-sun-500/10 px-3 py-2 text-xs leading-relaxed text-sun-400">
+            У этой площадки нет залов — сеанс создать нельзя. Добавьте зал на странице площадки.
+          </div>
+
+          <NSelect v-model="sessionDraft.hall_id" label="Зал" :options="hallOptions" :disabled="!sessionDraft.venue_id || venueHasNoHalls" />
+
+          <NSelect
+            v-model="sessionDraft.schema_version_id"
+            label="Схема зала"
+            :options="[{ value: '', label: 'Авто (последняя опубликованная)' }]"
+            hint="Из схемы создаются места. Оставьте «Авто» — система возьмёт последнюю опубликованную схему зала."
+          />
+
+          <div class="grid gap-4 sm:grid-cols-2">
+            <NInput v-model="sessionDraft.starts_at" label="Дата *" type="date" />
+            <NInput v-model="sessionDraft.starts_time" label="Время начала *" placeholder="19:00" />
+          </div>
+
+          <details class="rounded-lg border border-line p-3 text-sm">
+            <summary class="cursor-pointer font-medium text-content">Окно продаж и статус <span class="text-xs font-normal text-subtle">(необязательно)</span></summary>
+            <div class="mt-3 grid gap-4 sm:grid-cols-2">
+              <NInput v-model="sessionDraft.sales_start_at" label="Старт продаж (дата)" type="date" />
+              <NInput v-model="sessionDraft.sales_start_time" label="Старт продаж (время)" placeholder="00:00" />
+              <NInput v-model="sessionDraft.sales_end_at" label="Окончание продаж (дата)" type="date" />
+              <NInput v-model="sessionDraft.sales_end_time" label="Окончание продаж (время)" placeholder="23:59" />
+            </div>
+            <div class="mt-3">
+              <NSelect v-model="sessionDraft.status" label="Статус" :options="SESSION_STATUS_OPTIONS" />
+            </div>
+          </details>
+        </div>
+
+        <p
+          v-if="eventCreatedId !== null && sessionFormError"
+          class="mt-3 rounded-lg border border-sun-500/30 bg-sun-500/10 px-3 py-2 text-sm leading-relaxed text-sun-400"
+        >
+          Мероприятие создано (№{{ eventCreatedId }}), но сеанс не вышло: {{ sessionFormError }}.
+          <button type="button" class="underline" @click="router.push(`/admin/events/${eventCreatedId}`)">
+            Открыть мероприятие и добавить сеанс вручную
+          </button>.
+        </p>
       </section>
 
       <!--
@@ -1075,8 +1282,12 @@ const publishedAtText = computed<string | null>(() => {
       <div class="flex flex-wrap items-center justify-end gap-2 border-t border-line pt-4">
         <NButton variant="secondary" @click="router.push('/admin/events')">Отмена</NButton>
         <NButton v-if="isEdit" variant="ghost" @click="router.push(`/admin/sessions?event=${eventId}`)">К сеансам →</NButton>
-        <NButton type="submit" variant="accent" :loading="saving">{{ isEdit ? 'Сохранить' : 'Создать' }}</NButton>
-        <NButton v-if="!isEdit" variant="primary" :loading="saving" @click.prevent="save(true)">Создать и настроить сеанс →</NButton>
+        <NButton
+          type="submit"
+          variant="accent"
+          :loading="saving"
+          :disabled="saving || (eventCreatedId !== null && !isEdit)"
+        >{{ isEdit ? 'Сохранить' : 'Создать концерт' }}</NButton>
       </div>
     </form>
 
