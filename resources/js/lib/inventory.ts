@@ -44,6 +44,13 @@ export interface InventoryItem {
   available_quantity?: number
   status: InventoryStatus
   metadata_json?: Record<string, unknown> | string | null
+  /**
+   * Стоячая зона (`standing_zones`), подгружается `InventoryController::index()`.
+   * Имя зоны живёт здесь, а не в `metadata_json`: в `metadata_json` лежит
+   * снимок `sector_name` на момент генерации, и после переименования сектора
+   * он устаревает.
+   */
+  standing_zone?: { id: number; name?: string | null } | null
   seat?: {
     id: number
     row_id?: number

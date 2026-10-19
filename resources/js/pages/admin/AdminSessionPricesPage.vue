@@ -38,9 +38,18 @@ interface RowEntry {
   id: number
   kind: 'seat' | 'standing'
   label: string
+  /** Сектор/стол из схемы — нужен для сортировки и подписи. */
+  sector: string
+  /** Настоящий номер ряда (`hall_rows.number`), а не внутренний row_id. */
+  rowNumber: string
   seatsCount: number
   /** Текущая цена ряда с сервера (минорные единицы). */
   currentMinor: number
+  /** Минимум/максимум по ряду: в ряду бывают VIP-места с индивидуальной ценой. */
+  minMinor: number
+  maxMinor: number
+  /** Цены внутри ряда различаются — единая цена ряда их выровняет. */
+  mixed: boolean
   /** Введленная цена в рублях ('' — не менять). */
   priceRub: string
 }
@@ -69,6 +78,13 @@ async function load(): Promise<void> {
     session.value = sesRes.data
 
     // Группировка мест по рядам / стоячим зонам.
+    //
+    // ПОДПИСЬ РЯДА — ПО СЕКТОРУ И НОМЕРУ РЯДА, А НЕ ПО `seat.label`.
+    //   В залах-«столах» (Вавилон) у каждого стола своя схема с одним рядом
+    //   «Ряд 1», поэтому `seat.label` у ВСЕХ 54 столов одинаковый — список
+    //   превращался в 54 неотличимые строки «Ряд 1 Место 1», и админ правил
+    //   цену наугад. `InventoryController::index()` уже добавляет к `seat`
+    //   `sector_name` и `row_number` именно для этого.
     const byKey = new Map<string, RowEntry>()
     for (const item of inv.items as InventoryItem[]) {
       const isStanding = item.type === 'standing' || item.standing_zone_id != null
@@ -76,26 +92,49 @@ async function load(): Promise<void> {
       if (!keyId) continue
       const key = `${isStanding ? 'z' : 'r'}${keyId}`
       const price = Number(item.price_amount ?? 0)
+      const meta = (item.metadata_json ?? null) as { zone_name?: string; sector_name?: string } | null
+      const sector = String(item.seat?.sector_name ?? meta?.sector_name ?? '')
+      const rowNumber = String(item.seat?.row_number ?? item.seat?.row_id ?? keyId)
       const existing = byKey.get(key)
       if (existing) {
         existing.seatsCount += 1
-        // Если цены внутри ряда разошлись — показываем любую; редактирование выставит единую.
+        existing.minMinor = Math.min(existing.minMinor, price)
+        existing.maxMinor = Math.max(existing.maxMinor, price)
+        // Разные цены внутри ряда — это VIP-место из схемы, а не ошибка.
+        // Показываем диапазон, чтобы применение цены ряда не выровняло его молча.
+        if (price !== existing.currentMinor) existing.mixed = true
         continue
       }
       byKey.set(key, {
         id: keyId,
         kind: isStanding ? 'standing' : 'seat',
         label: isStanding
-          ? String((item.metadata_json as { zone_name?: string } | null)?.zone_name ?? `Стоячая зона #${keyId}`)
-          : `Ряд ${item.seat?.label ? item.seat.label.replace(/^.*ряд\s*/i, '') : keyId}`,
+          ? String(item.standing_zone?.name ?? meta?.zone_name ?? meta?.sector_name ?? `Стоячая зона #${keyId}`)
+          : sector
+            ? `${sector} · ряд ${rowNumber}`
+            : `Ряд ${rowNumber}`,
+        sector,
+        rowNumber,
         seatsCount: 1,
         currentMinor: price,
+        minMinor: price,
+        maxMinor: price,
+        mixed: false,
         priceRub: '',
       })
     }
-    rows.value = [...byKey.values()].sort(
-      (a, b) => (a.kind === b.kind ? a.id - b.id : a.kind === 'seat' ? -1 : 1),
-    )
+    // Порядок как в зале: сначала сектора/столы (натуральная сортировка, чтобы
+    // «Стол 9» стоял до «Стол 44»), внутри — по номеру ряда. По `id` список
+    // шёл в порядке генерации инвентаря и не совпадал ни с чем на канвасе.
+    rows.value = [...byKey.values()].sort((a, b) => {
+      if (a.kind !== b.kind) return a.kind === 'seat' ? -1 : 1
+      const bySector = a.sector.localeCompare(b.sector, 'ru', { numeric: true })
+      if (bySector !== 0) return bySector
+      const an = Number(a.rowNumber)
+      const bn = Number(b.rowNumber)
+      if (Number.isFinite(an) && Number.isFinite(bn) && an !== bn) return an - bn
+      return a.id - b.id
+    })
     if (inv.truncated) {
       loadError.value = 'Инвентарь обрезан по лимиту страниц — список рядов может быть неполным.'
     }
@@ -179,9 +218,12 @@ onMounted(load)
     </div>
 
     <form v-else class="surface-card space-y-3 p-5" @submit.prevent="apply">
-      <div class="flex items-center justify-between">
-        <span class="text-sm text-muted">Цены в рублях. Пустое поле — не менять. Холды и проданные билеты сохраняют свою цену.</span>
-        <button type="button" class="text-sm text-brand-500 hover:underline" @click="fillCurrent">Подставить текущие</button>
+      <div class="flex items-start justify-between gap-4">
+        <span class="text-sm text-muted">
+          Цены в рублях. Пустое поле — не менять. Холды и проданные билеты сохраняют свою цену.
+          Если в ряду цены разные (VIP-место из схемы), цена ряда выровняет их — это видно по диапазону «сейчас».
+        </span>
+        <button type="button" class="shrink-0 text-sm text-brand-500 hover:underline" @click="fillCurrent">Подставить текущие</button>
       </div>
 
       <div
@@ -194,7 +236,12 @@ onMounted(load)
             {{ r.label }}
             <span class="ml-1 text-xs text-subtle">({{ r.kind === 'standing' ? 'стоячая зона' : `${r.seatsCount} мест` }})</span>
           </div>
-          <div class="text-xs text-muted tabular-nums">сейчас: {{ money(r.currentMinor) }}</div>
+          <div class="text-xs text-muted tabular-nums">
+            сейчас:
+            <template v-if="r.mixed">{{ money(r.minMinor) }} — {{ money(r.maxMinor) }}</template>
+            <template v-else>{{ money(r.currentMinor) }}</template>
+            <span v-if="r.mixed" class="ml-1 text-amber-500">разные цены</span>
+          </div>
         </div>
         <NInput v-model="r.priceRub" label="Новая цена, ₽" type="number" min="0" step="0.01" placeholder="не менять" class="w-40" />
       </div>
