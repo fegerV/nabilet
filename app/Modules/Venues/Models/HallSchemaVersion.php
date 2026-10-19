@@ -124,6 +124,18 @@ class HallSchemaVersion extends Model
                             if ($cap === 0) {
                                 continue;
                             }
+                            // ВАЖНО: поднимаем тип на самом секторе, а не только в
+                            // локальной `$type`. Иначе ниже `withShapeAndTable`
+                            // сохраняет сектор как `seated` с рядами из
+                            // standing-«мест» — и InventoryService пытается
+                            // вставить их в `seats` с type='standing', нарываясь
+                            // на ck_seats_type (допустимы только
+                            // standard/vip/wheelchair/companion/custom). Плюс
+                            // нижний цикл по staticObjects тогда видит «чужую»
+                            // standing-зону и дублирует её вторым pseudo-сектором.
+                            // С type='standing' на секторе он же закроет
+                            // `alreadyCovered` и второй зоны не будет.
+                            $sector['type'] = 'standing';
                             $type = 'standing';
                             $sector['rows'] = [[
                                 'number' => '1',

@@ -106,4 +106,44 @@ class HallSchemaVersionToInventoryTest extends TestCase
         $this->assertSame(299900, $out[0]['rows'][0]['price_amount']);
         $this->assertSame(30, $out[0]['rows'][0]['seats'][0]['x']);
     }
+
+    /**
+     * Регрессия: пустой seated-сектор + стоячая зона в staticObjects.
+     *
+     * Раньше подъём зоны проставлял локальный $type='standing', но не
+     * записывал его в $sector['type'] — сектор уходил как 'seated' с рядами из
+     * standing-«мест», а нижний цикл по staticObjects дублировал зону вторым
+     * pseudo-сектором. generateFromSchema тогда пытался вставить эти «места» в
+     * `seats` с type='standing' → нарывался на ck_seats_type и 500-л на сеансе.
+     */
+    public function test_standing_zone_from_static_object_is_single_standing_sector(): void
+    {
+        $v = $this->makeVersion([
+            'version' => '1.0',
+            'canvas' => ['width' => 760, 'height' => 520],
+            'sectors' => [[
+                'name' => 'Манеж', 'type' => 'seated', 'shape' => 'grid',
+                // намеренно БЕЗ мест — зона «поднимается» из staticObjects
+            ]],
+            'staticObjects' => [[
+                'kind' => 'standing', 'text' => 'Манеж',
+                'capacity' => 800, 'priceMinor' => 120000,
+                'x' => 40, 'y' => 40, 'width' => 680, 'height' => 380,
+            ]],
+        ]);
+
+        $out = $v->toInventoryFormat();
+
+        // Одна зона, без дубля.
+        $this->assertCount(1, $out);
+        // Тип — standing, иначе InventoryService создаст Seat с type='standing'
+        // и упадёт на ck_seats_type.
+        $this->assertSame('standing', $out[0]['type']);
+        $this->assertSame('Манеж', $out[0]['name']);
+        $this->assertCount(1, $out[0]['rows']);
+        $this->assertSame(120000, $out[0]['rows'][0]['price_amount']);
+        // Вместимость зоны живёт в количестве «мест» ряда.
+        $this->assertCount(800, $out[0]['rows'][0]['seats']);
+        $this->assertSame('standing', $out[0]['rows'][0]['seats'][0]['type']);
+    }
 }
