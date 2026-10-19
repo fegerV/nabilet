@@ -132,6 +132,40 @@ export function projectPoint(
 }
 
 /**
+ * Ближайшее расстояние между точками в ЭКРАННЫХ единицах полотна.
+ *
+ * Раньше это была внутренняя арифметика `fitSeatRadius`. Вынесена отдельно,
+ * потому что у неё появился второй потребитель: радиус невидимой зоны нажатия
+ * (`fitSeatHitRadius`). Зону нажатия делаем крупнее видимого кружка — иначе на
+ * телефоне палец не попадает по месту, — но она не должна перекрывать соседей,
+ * иначе выбор уедет на чужое место.
+ */
+export function nearestPointDistance(
+  points: readonly { x: number; y: number }[],
+  scale: number,
+): number {
+  const sorted = points
+    .filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y))
+    .map((point) => ({ x: point.x, y: point.y }))
+    .sort((a, b) => a.x - b.x || a.y - b.y)
+  if (sorted.length < 2) return Number.POSITIVE_INFINITY
+
+  let nearest = Number.POSITIVE_INFINITY
+
+  for (let i = 0; i < sorted.length - 1; i += 1) {
+    for (let j = i + 1; j < Math.min(sorted.length, i + 24); j += 1) {
+      const dx = (sorted[j].x - sorted[i].x) * scale
+      if (dx > 24) break
+      const dy = (sorted[j].y - sorted[i].y) * scale
+      const distance = Math.hypot(dx, dy)
+      if (distance > 0 && distance < nearest) nearest = distance
+    }
+  }
+
+  return nearest
+}
+
+/**
  * Подбирать радиус точки по фактическому шагу после вписывания координат.
  * Импортёр Афиши может нормировать очень большой план до диапазона 0..60;
  * постоянный радиус 6 тогда больше расстояния между креслами и сливает ряды.
@@ -142,23 +176,104 @@ export function fitSeatRadius(
   maxRadius = 6,
   minRadius = 2,
 ): number {
-  const sorted = points
-    .filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y))
-    .map((point) => ({ x: point.x, y: point.y }))
-    .sort((a, b) => a.x - b.x || a.y - b.y)
-  if (sorted.length < 2) return maxRadius
-
-  let nearest = Number.POSITIVE_INFINITY
-  for (let i = 0; i < sorted.length - 1; i += 1) {
-    for (let j = i + 1; j < Math.min(sorted.length, i + 24); j += 1) {
-      const dx = (sorted[j].x - sorted[i].x) * scale
-      if (dx > maxRadius * 2) break
-      const dy = (sorted[j].y - sorted[i].y) * scale
-      const distance = Math.hypot(dx, dy)
-      if (distance > 0 && distance < nearest) nearest = distance
-    }
-  }
-
+  const nearest = nearestPointDistance(points, scale)
   if (!Number.isFinite(nearest)) return maxRadius
   return Math.min(maxRadius, Math.max(minRadius, nearest * 0.34))
+}
+
+/**
+ * Радиус НЕВИДИМОЙ зоны нажатия на место.
+ *
+ * Зачем. На телефоне схема зала вписывается целиком, и видимый кружок места
+ * получается ~2–3 CSS px — палец по нему не попадает. Крутить зум перед каждым
+ * выбором некомфортно, поэтому под каждым местом лежит прозрачный кружок
+ * побольше, и тап ловится он.
+ *
+ * Почему не «максимально большой». Зона нажатия — конкурентный захват:
+ * перекрытие двух соседей означает, что выбор уедет на чужое место, а это хуже
+ * промаха. Потолок — 45% шага между местами (видимый кружок занимает 34%) и 12
+ * единиц полотна.
+ */
+export function fitSeatHitRadius(
+  points: readonly { x: number; y: number }[],
+  scale: number,
+  maxRadius = 12,
+): number {
+  const visible = fitSeatRadius(points, scale)
+  const nearest = nearestPointDistance(points, scale)
+  if (!Number.isFinite(nearest)) return Math.min(maxRadius, visible + 1.5)
+  return Math.min(maxRadius, Math.max(visible + 1.5, nearest * 0.45))
+}
+
+/* ── Приближение к участку зала ───────────────────────────────────────────
+ * «Показать весь зал» удобен для ориентира, но на телефоне вписанный целиком
+ * амфитеатр даёт точки по 2–3 px. Как это решает Яндекс Афиша (проверено на
+ * widget.afisha.yandex.ru, экран 390×844): над схемой стоят чипы ценовых
+ * категорий, выбор чипа оставляет на карте только свои места, а масштаб при этом
+ * подтягивается к ним — затем место тапается без предварительного зума. Ниже —
+ * ровно эта математика, вынесенная из компонента, чтобы её можно было проверить
+ * тестом, а не скриншотом живого стенда.
+ */
+
+/** CSS-бокс, в который вписан SVG (сам вьюпорт карты). */
+export interface ElementBox {
+  width: number
+  height: number
+}
+
+/**
+ * Как viewBox ложится в CSS-бокс при `preserveAspectRatio="xMidYMid meet"`.
+ *
+ * Считается, а не измеряется: viewBox — константа компонента, а бокс известен,
+ * поэтому лишний `getBoundingClientRect()` не нужен.
+ */
+export function meetFit(
+  box: ElementBox,
+  viewBox: { width: number; height: number },
+): { scale: number; offsetX: number; offsetY: number } {
+  const scale = Math.min(box.width / viewBox.width, box.height / viewBox.height)
+  return {
+    scale,
+    offsetX: (box.width - viewBox.width * scale) / 2,
+    offsetY: (box.height - viewBox.height * scale) / 2,
+  }
+}
+
+/**
+ * Масштаб и панорама, при которых участок зала занимает долю `fill` вьюпорта.
+ *
+ * Габариты `bounds` задаются в единицах viewBox (после `projectPoint`), потому
+ * что трансформ `translate() scale()` применяется к SVG-элементу, а не к данным
+ * зала. Возвращаемые `panX/panY` совместимы с `zoomBy`/`resetView`: те же
+ * `panX/panY`, тот же `transform-origin: top left`.
+ */
+export function focusTransform(
+  bounds: PointBounds,
+  box: ElementBox,
+  viewBox: { width: number; height: number },
+  options: { minZoom?: number; maxZoom?: number; fill?: number } = {},
+): { zoom: number; panX: number; panY: number } {
+  const { minZoom = 0.6, maxZoom = 6, fill = 0.8 } = options
+  const meet = meetFit(box, viewBox)
+
+  // На зуме k один юнит viewBox занимает meet.scale * k CSS px, значит вьюпорт
+  // показывает box.width / (meet.scale * k) юнитов.
+  const spanX = Math.max(1e-6, bounds.maxX - bounds.minX)
+  const spanY = Math.max(1e-6, bounds.maxY - bounds.minY)
+  const zoomX = (box.width * fill) / (spanX * meet.scale)
+  const zoomY = (box.height * fill) / (spanY * meet.scale)
+  const zoom = Math.min(maxZoom, Math.max(minZoom, Math.min(zoomX, zoomY)))
+
+  // Точка viewBox в координатах элемента: letterbox плюс масштаб meet.
+  const cx = (bounds.minX + bounds.maxX) / 2
+  const cy = (bounds.minY + bounds.maxY) / 2
+  const px = meet.offsetX + meet.scale * cx
+  const py = meet.offsetY + meet.scale * cy
+
+  // Центр участка должен встать в центр вьюпорта после translate + scale.
+  return {
+    zoom,
+    panX: box.width / 2 - zoom * px,
+    panY: box.height / 2 - zoom * py,
+  }
 }

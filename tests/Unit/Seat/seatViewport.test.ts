@@ -11,7 +11,11 @@ import { describe, expect, it } from 'vitest'
 import {
   EMPTY_BOUNDS,
   fitPoints,
+  fitSeatHitRadius,
   fitSeatRadius,
+  focusTransform,
+  meetFit,
+  nearestPointDistance,
   pointBounds,
   projectPoint,
 } from '../../../resources/js/lib/seatViewport'
@@ -103,6 +107,142 @@ describe('fitSeatRadius', () => {
   it('uses the maximum dot size for sparse maps and a single point', () => {
     expect(fitSeatRadius([{ x: 0, y: 0 }, { x: 100, y: 100 }], 1)).toBe(6)
     expect(fitSeatRadius([{ x: 2, y: 4 }], 1)).toBe(6)
+  })
+})
+
+describe('nearestPointDistance', () => {
+  it('считает расстояние в экранных единицах, а не в единицах зала', () => {
+    // 0.5 юнита зала при масштабе 6 = 3 экранных.
+    expect(nearestPointDistance([{ x: 10, y: 8 }, { x: 10.5, y: 8 }], 6)).toBeCloseTo(3, 6)
+  })
+
+  it('для одной точки расстояния нет — иначе нельзя отличить от разреженной карты', () => {
+    expect(nearestPointDistance([{ x: 1, y: 1 }], 5)).toBe(Number.POSITIVE_INFINITY)
+    expect(nearestPointDistance([], 5)).toBe(Number.POSITIVE_INFINITY)
+  })
+
+  it('не ищет «соседа» через ползала: обход ограничен шагом 24', () => {
+    // Место в начале зала и место в конце: 225 юнитов при масштабе 1. Обход
+    // рвётся на `dx > 24`, поэтому такой пары не существует — иначе радиус
+    // считался бы по всемвозможным дальним парам и занижался.
+    expect(nearestPointDistance([{ x: 0, y: 0 }, { x: 225, y: 0 }], 1)).toBe(Number.POSITIVE_INFINITY)
+  })
+})
+
+/*
+ * Зона нажатия — единственная защита выбора места на телефоне.
+ *
+ * Замер живого стенда (390×844): видимый кружок = 2.3 CSS px, палец по нему не
+ * попадает. Зона обязана быть крупнее, но НЕ перекрывать соседа: перекрытие —
+ * это выбор чужого места, что хуже промаха.
+ */
+describe('fitSeatHitRadius', () => {
+  it('крупнее видимого кружка на плотной сетке', () => {
+    const points = [{ x: 10, y: 8 }, { x: 10.5, y: 8 }]
+    const radius = fitSeatHitRadius(points, 6)
+
+    expect(radius).toBeGreaterThan(fitSeatRadius(points, 6))
+  })
+
+  it('не перекрывает соседей: потолок — 45% шага', () => {
+    const points = [{ x: 0, y: 0 }, { x: 20, y: 0 }, { x: 40, y: 0 }]
+    const hit = fitSeatHitRadius(points, 1)
+    const pitch = nearestPointDistance(points, 1)
+
+    expect(hit).toBeLessThanOrEqual(pitch * 0.45)
+    // Две зоны нажатия соседей не пересекаются: 2*hit < pitch.
+    expect(hit * 2).toBeLessThan(pitch)
+  })
+
+  it('не раздувается на разрежённой карте', () => {
+    const points = [{ x: 0, y: 0 }, { x: 500, y: 500 }]
+
+    expect(fitSeatHitRadius(points, 1)).toBeLessThanOrEqual(12)
+  })
+
+  it('одно место — зона всё равно крупнее кружка', () => {
+    expect(fitSeatHitRadius([{ x: 3, y: 3 }], 1)).toBeGreaterThan(fitSeatRadius([{ x: 3, y: 3 }], 1))
+  })
+})
+
+/*
+ * Приближение к группе мест после тапа по чипу цены (паттерн Яндекс Афиши).
+ * Проверяем ровно ту арифметику, ошибка в которой незаметна глазом: точка
+ * уезжает из центра вьюпорта, и масштаб не подтягивается.
+ */
+describe('meetFit', () => {
+  it('узкий вьюпорт масштабирует по ширине и центрирует letterbox по вертикали', () => {
+    const fit = meetFit({ width: 390, height: 460 }, { width: 620, height: 400 })
+
+    expect(fit.scale).toBeCloseTo(390 / 620, 6)
+    expect(fit.offsetX).toBe(0)
+    expect(fit.offsetY).toBeCloseTo((460 - 400 * (390 / 620)) / 2, 6)
+  })
+
+  it('широкий вьюпорт масштабирует по высоте и центрирует по горизонтали', () => {
+    const fit = meetFit({ width: 1200, height: 300 }, { width: 620, height: 400 })
+
+    expect(fit.scale).toBeCloseTo(300 / 400, 6)
+    expect(fit.offsetY).toBe(0)
+    expect(fit.offsetX).toBeCloseTo((1200 - 620 * 0.75) / 2, 6)
+  })
+})
+
+describe('focusTransform', () => {
+  const VIEWBOX = { width: 620, height: 400 }
+
+  it('на зуме 1 центр зала стоит в центре вьюпорта (паритет со «весь зал»)', () => {
+    const bounds = { minX: 30, maxX: 590, minY: 76, maxY: 330 }
+    const box = { width: 390, height: 460 }
+    const { zoom, panX, panY } = focusTransform(
+      { ...bounds },
+      box,
+      VIEWBOX,
+      { minZoom: 1, maxZoom: 1 },
+    )
+    const meet = meetFit(box, VIEWBOX)
+
+    const centerX = meet.offsetX + meet.scale * ((bounds.minX + bounds.maxX) / 2)
+    const centerY = meet.offsetY + meet.scale * ((bounds.minY + bounds.maxY) / 2)
+
+    // pan + zoom * точка = центр вьюпорта.
+    expect(panX + zoom * centerX).toBeCloseTo(box.width / 2, 6)
+    expect(panY + zoom * centerY).toBeCloseTo(box.height / 2, 6)
+  })
+
+  it('участок занимает заданную долю SmallerSide — тап по месту достижим', () => {
+    // Один ряд из 5 мест шириной 100 юнитов viewBox.
+    const bounds = pointBounds([
+      { x: 100, y: 200 },
+      { x: 200, y: 200 },
+    ])
+    const box = { width: 390, height: 460 }
+    const { zoom } = focusTransform(bounds, box, VIEWBOX, { fill: 0.8, maxZoom: 8 })
+    const meet = meetFit(box, VIEWBOX)
+
+    // Видимая ширина в юнитах viewBox на этом зуме:
+    const visibleUnits = box.width / (meet.scale * zoom)
+
+    expect(visibleUnits).toBeCloseTo(100 / 0.8, 6)
+  })
+
+  it('не выходит за разрешённые границы зума', () => {
+    const huge = { minX: 0, maxX: 600, minY: 0, maxY: 400 }
+    const tiny = { minX: 100, maxX: 101, minY: 100, maxY: 101 }
+
+    expect(focusTransform(huge, { width: 390, height: 460 }, VIEWBOX, { minZoom: 0.6, maxZoom: 8 }).zoom).toBeGreaterThanOrEqual(0.6)
+    expect(focusTransform(tiny, { width: 390, height: 460 }, VIEWBOX, { minZoom: 0.6, maxZoom: 8 }).zoom).toBeLessThanOrEqual(8)
+  })
+
+  it('зум ограничивается высотой: высокий узкий участок не растягивается на всю ширину', () => {
+    // Габариты 10×380 юнитов: по ширине зум был бы 49, по высоте — 1.5. Берётся
+    // меньший, иначе участок вылезал бы за нижнюю границу вьюпорта.
+    const bounds = { minX: 300, maxX: 310, minY: 20, maxY: 400 }
+    const box = { width: 390, height: 460 }
+    const { zoom } = focusTransform(bounds, box, VIEWBOX, { fill: 0.8, maxZoom: 8 })
+    const meet = meetFit(box, VIEWBOX)
+
+    expect(box.height / (meet.scale * zoom)).toBeCloseTo(380 / 0.8, 6)
   })
 })
 

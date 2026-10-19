@@ -10,13 +10,27 @@
  *  это есть. Для плотного зала без приближения кружки неразличимы, а без
  *  `tabindex` экран недостижим с клавиатуры. Теперь паритет: pinch-zoom,
  *  перетаскивание, колесо, кнопки масштаба и фокус по Tab + Enter/Space.
+ *
+ *  Мобильный выбор места (проверено на 390 px). Вписанный целиком зал даёт кружок
+ *  ~2.3 CSS px — палец по нему не попадает. Яндекс Афиша в той же ситуации не
+ *  увеличивает точки, а ставит над схемой чипы ценовых категорий: тап по чипу
+ *  оставляет на карте свои места и подтягивает масштаб к ним. Здесь то же самое
+ *  плюс невидимая зона нажатия крупнее видимого кружка (`fitSeatHitRadius`) —
+ *  тап по месту работает и без предварительного зума.
  */
 import { computed, ref } from 'vue'
 import { money, plural } from '@/lib/format'
 import type { InventoryItem } from '@/lib/inventory'
 import { seatStateFromStatus, isSeatPickable } from '@/lib/seatStatus'
 import { buildSeatPricePalette, groupTableSeatPoints, type TableMark } from '@/lib/hall'
-import { fitPoints, fitSeatRadius, projectPoint } from '@/lib/seatViewport'
+import {
+  focusTransform,
+  fitPoints,
+  fitSeatRadius,
+  fitSeatHitRadius,
+  pointBounds,
+  projectPoint,
+} from '@/lib/seatViewport'
 import { DANCE_BOX_HEIGHT, danceZonesLayout, type DanceZoneText } from '@/lib/danceZone'
 
 /** Палитра состояний — согласована с CSS-классами seat--* и основной легендой. */
@@ -103,7 +117,94 @@ const seats = computed(() =>
 )
 
 const priceColors = computed(() => buildSeatPricePalette(seats.value.map((item) => Number(item.price_amount ?? 0))))
-const priceLegend = computed(() => [...priceColors.value].map(([price, color]) => ({ price, color })))
+
+/**
+ * Чипы ценовых категорий — цветовой легендой, которой можно тапать.
+ *
+ * Зачем. Проверено на виджете Яндекс Афиши (экран 390×844): вписанная целиком
+ * схема даёт точки ~3 CSS px, и палец по такому месту не попадает. Яндекс не
+ * увеличивает точки, а предлагает выбрать ценовую категорию: тап по чипу оставляет
+ * на карте только свои места и подтягивает масштаб к ним. Тем же занимаемся и мы:
+ * чип = фильтр + приближение, а «Все цены» возвращает весь зал.
+ *
+ * На десктопе чипы остаются обычной легендой: там курсор мыши попадает и по
+ * мелкой точке, а фильтр — приятная необязательность.
+ */
+const priceChips = computed(() => {
+  const counts = new Map<number, number>()
+  for (const seat of seats.value) {
+    const price = Math.round(Number(seat.price_amount ?? 0))
+    counts.set(price, (counts.get(price) ?? 0) + 1)
+  }
+  return [...counts.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([price, count]) => ({
+      price,
+      count,
+      color: priceColors.value.get(price) ?? STATE_FILL.free,
+    }))
+})
+
+/** Выбранная ценовая категория: `null` — показываем весь зал. */
+const activePrice = ref<number | null>(null)
+
+/** Цена места в том же округлении, что и в палитре чипов. */
+function seatPrice(item: InventoryItem): number {
+  return Math.round(Number(item.price_amount ?? 0))
+}
+
+/**
+ * Место не из активной категории затемняется и перестаёт быть кликабельным.
+ *
+ * Затемнение, а не скрытие: покупатель должен видеть, где в зале находятся
+ * отфильтрованные места, иначе он теряет ориентир. Кликабельность снимаем, чтобы
+ * промах мимо мелкой точки не выбирал место «не той цены» — при активном фильтре
+ * это была бы неожиданность.
+ */
+function isDimmed(item: InventoryItem): boolean {
+  return activePrice.value !== null && seatPrice(item) !== activePrice.value
+}
+
+/**
+ * Приблизить карту к местам выбранной категории.
+ *
+ * Считается по габаритам ТОЛЬКО этих мест, поэтому после тапа по чипу масштаб
+ * подтягивается ровно к ним, а не к залу целиком. Когда чип снят — прежний
+ * `resetView()`.
+ */
+function focusPriceChip(price: number | null): void {
+  if (price === null) {
+    resetView()
+    return
+  }
+  const element = viewport.value
+  if (!element) return
+
+  const matching = seats.value.filter((seat) => seatPrice(seat) === price)
+  if (matching.length === 0) return
+
+  const projected = matching.map((seat) => projectPoint(
+    Number(seat.seat?.x ?? 0),
+    Number(seat.seat?.y ?? 0),
+    fit.value,
+  ))
+
+  const focus = focusTransform(
+    pointBounds(projected),
+    { width: element.clientWidth, height: element.clientHeight },
+    { width: SVG_W, height: SVG_H },
+    { minZoom: MIN_ZOOM, maxZoom: MAX_ZOOM, fill: 0.78 },
+  )
+
+  zoom.value = clampZoom(focus.zoom)
+  panX.value = Math.round(focus.panX)
+  panY.value = Math.round(focus.panY)
+}
+
+function selectPriceChip(price: number | null): void {
+  activePrice.value = price === activePrice.value ? null : price
+  focusPriceChip(activePrice.value)
+}
 
 /** Центр и номер банкетного стола вычисляются из кольца мест — отдельная геометрия API не нужна. */
 const tableMarks = computed(() => groupTableSeatPoints(
@@ -154,6 +255,19 @@ const fit = computed(() =>
   ),
 )
 const seatRadius = computed(() => fitSeatRadius(
+  seats.value.map((item) => ({ x: Number(item.seat?.x ?? 0), y: Number(item.seat?.y ?? 0) })),
+  fit.value.scale,
+))
+
+/**
+ * Радиус прозрачной зоны нажатия — крупнее видимого кружка, но без перекрытия
+ * соседей (потолок 45% шага между местами, см. `fitSeatHitRadius`).
+ *
+ * Без неё на 390 px кружок = 2.3 CSS px, и тап по месту — лотерея. Зона
+ * нажатия рисуется ПОД видимым кружком, а видимому выставляется
+ * `pointer-events: none`, поэтому весь тап по месту ловится ею.
+ */
+const hitRadius = computed(() => fitSeatHitRadius(
   seats.value.map((item) => ({ x: Number(item.seat?.x ?? 0), y: Number(item.seat?.y ?? 0) })),
   fit.value.scale,
 ))
@@ -279,9 +393,14 @@ function pickZone(zone: InventoryItem, qty: number): void {
 /* ── Масштаб и панорама ─────────────────────────────────────────────────
  * `transform-origin: top left` (как в SeatMap): при таком origin математика
  * зума и панорамы линейна и не зависит от размеров вьюпорта.
+ *
+ * Верхняя граница 8, а не 3: после тапа по чипу цены масштаб подтягивается к
+ * местам одной категории (`focusPriceChip`), а их габариты могут быть втрое
+ * меньше зала. При потолке 3 масштаб не дотягивался, и точки оставались
+ * мелкими — то есть чип не решал задачу, ради которой появился.
  */
 const MIN_ZOOM = 0.6
-const MAX_ZOOM = 3
+const MAX_ZOOM = 8
 
 const viewport = ref<HTMLElement | null>(null)
 const zoom = ref(1)
@@ -449,12 +568,43 @@ function isPickable(item: InventoryItem): boolean {
     <div class="flex flex-col gap-2 border-b border-line px-3 py-2 text-2xs text-subtle">
       <div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
         <span>{{ seats.length }} мест<template v-if="danceZones.length"> · стоячие зоны {{ standingTotal }} билетов</template></span>
-        <span class="text-layer flex flex-wrap gap-x-3 gap-y-1">
-          <span v-for="item in priceLegend" :key="item.price" class="flex items-center gap-1.5">
-            <i class="inline-block size-2.5 rounded-full" :style="{ backgroundColor: item.color }" /> {{ money(item.price) }}
-          </span>
-        </span>
       </div>
+
+      <!--
+        Чипы цен: легенда, которой можно тапать. На 390 px вписанный целиком зал
+        даёт кружок места ~2.3 CSS px — палец не попадает. Как в Яндекс Афише:
+        выбираешь ценовую категорию, карта оставляет её места и подтягивает к ним
+        масштаб; «Все цены» возвращает весь зал. Число справа — сколько мест в
+        категории, чтобы не тапать вслепую.
+      -->
+      <div v-if="priceChips.length > 1" class="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          class="flex min-h-[36px] items-center gap-1.5 rounded-full border px-3 py-1 text-2xs font-medium transition-colors"
+          :class="activePrice === null
+            ? 'border-transparent bg-surface-3 text-content'
+            : 'border-line bg-surface text-subtle hover:text-content'"
+          :aria-pressed="activePrice === null"
+          @click="selectPriceChip(null)"
+        >Все цены</button>
+        <button
+          v-for="chip in priceChips"
+          :key="chip.price"
+          type="button"
+          class="flex min-h-[36px] items-center gap-1.5 rounded-full border px-3 py-1 text-2xs font-medium transition-colors"
+          :class="activePrice === chip.price
+            ? 'border-transparent bg-surface-3 text-content'
+            : 'border-line bg-surface text-subtle hover:text-content'"
+          :aria-pressed="activePrice === chip.price"
+          :title="`Показать только места за ${money(chip.price)}`"
+          @click="selectPriceChip(chip.price)"
+        >
+          <i class="inline-block size-2.5 shrink-0 rounded-full" :style="{ backgroundColor: chip.color }" />
+          {{ money(chip.price) }}
+          <span class="text-layer">· {{ chip.count }}</span>
+        </button>
+      </div>
+
       <div class="flex flex-wrap gap-x-3 gap-y-1 text-layer">
         <span v-for="l in LEGEND_ITEMS" :key="l.state" class="flex items-center gap-1.5">
           <i class="inline-block size-2.5 rounded-full" :style="{ background: STATE_FILL[l.state] }" /> {{ l.label }}
@@ -463,23 +613,27 @@ function isPickable(item: InventoryItem): boolean {
     </div>
 
     <div class="relative">
-      <!-- Масштаб: паритет с SeatMap (там кнопки есть, здесь их не было). -->
-      <div class="absolute right-3 top-3 z-20 flex flex-col gap-1.5">
+      <!--
+        Масштаб: паритет с SeatMap (там кнопки есть, здесь их не было).
+        Размер 44 px, а не 32: это единственный способ приблизить зал на телефоне
+        без щипка, а 32 px — мимо пальцем. Рекомендация тапа — не меньше 44.
+      -->
+      <div class="absolute right-3 top-3 z-20 flex flex-col gap-2">
         <button
           type="button"
-          class="grid h-8 w-8 place-items-center rounded-md border border-line bg-surface text-sm text-muted shadow-sm transition-colors hover:text-content"
+          class="grid h-11 w-11 place-items-center rounded-full border border-line bg-surface text-lg font-semibold text-muted shadow-sm transition-colors hover:text-content"
           aria-label="Приблизить"
           @click="zoomBy(1.25)"
         >+</button>
         <button
           type="button"
-          class="grid h-8 w-8 place-items-center rounded-md border border-line bg-surface text-sm text-muted shadow-sm transition-colors hover:text-content"
+          class="grid h-11 w-11 place-items-center rounded-full border border-line bg-surface text-lg font-semibold text-muted shadow-sm transition-colors hover:text-content"
           aria-label="Отдалить"
           @click="zoomBy(0.8)"
         >−</button>
         <button
           type="button"
-          class="grid h-8 w-8 place-items-center rounded-md border border-line bg-surface text-2xs text-muted shadow-sm transition-colors hover:text-content"
+          class="grid h-11 w-11 place-items-center rounded-full border border-line bg-surface text-2xs text-muted shadow-sm transition-colors hover:text-content"
           aria-label="Показать весь зал"
           @click="resetView"
         >⤢</button>
@@ -582,24 +736,49 @@ function isPickable(item: InventoryItem): boolean {
           </g>
 
           <!-- Места -->
-          <g v-for="s in seats" :key="String(s.id)">
+          <g v-for="s in seats" :key="String(s.id)" class="seat-cell">
+            <!--
+              Прозрачная зона нажатия — ПОД видимым кружком. На 390 px кружок
+              равен 2.3 CSS px, палец по нему не попадает; зона крупнее (потолок
+              45% шага до соседа), поэтому тап по месту работает без зума.
+              У затемнённых (не из активной ценовой категории) мест зоны нет
+              вовсе: промах не должен выбирать место «не той цены».
+            -->
             <circle
-              :cx="px(s).x" :cy="px(s).y" :r="seatRadius"
-              :fill="seatFill(s)"
-              :stroke="focusedId === String(s.id) ? '#ffffff' : 'none'"
-              :stroke-width="focusedId === String(s.id) ? 2.5 : 0"
-              :class="isPickable(s) ? 'seat-dot cursor-pointer transition hover:scale-125' : 'seat-dot cursor-not-allowed'"
-              role="button"
-              tabindex="0"
-              :aria-label="seatTitle(s)"
-              :aria-pressed="selectedIds.has(String(s.id))"
+              v-if="!isDimmed(s)"
+              :cx="px(s).x"
+              :cy="px(s).y"
+              :r="hitRadius"
+              fill="transparent"
+              class="seat-hit"
               @click="toggleSeat(s)"
-              @keydown="activateByKey($event, s)"
-              @focus="focusedId = String(s.id)"
-              @blur="focusedId = null"
             >
               <title>{{ seatTitle(s) }}</title>
             </circle>
+            <!--
+              Видимый кружок больше не принимает события: всё ловит зона под ним.
+              Поэтому hover-подсветку рисуем с родительской ячейки — иначе
+              `pointer-events: none` отменил бы и эффект наведения.
+            -->
+            <circle
+              :cx="px(s).x"
+              :cy="px(s).y"
+              :r="seatRadius"
+              :fill="seatFill(s)"
+              :stroke="focusedId === String(s.id) ? '#ffffff' : 'none'"
+              :stroke-width="focusedId === String(s.id) ? 2.5 : 0"
+              :class="[
+                'seat-dot',
+                isDimmed(s) ? 'seat-dot--dim' : (isPickable(s) ? 'seat-dot--live' : 'seat-dot--off'),
+              ]"
+              role="button"
+              :tabindex="isDimmed(s) ? -1 : 0"
+              :aria-label="seatTitle(s)"
+              :aria-pressed="selectedIds.has(String(s.id))"
+              @keydown="activateByKey($event, s)"
+              @focus="focusedId = String(s.id)"
+              @blur="focusedId = null"
+            />
           </g>
 
           <defs>
@@ -619,6 +798,7 @@ function isPickable(item: InventoryItem): boolean {
 
       <p class="border-t border-line px-3 py-1.5 text-2xs text-subtle">
         Перетаскивание и щипок — приблизить зал. Кнопки справа — масштаб.
+        <template v-if="priceChips.length > 1">Тап по цене сверху оставляет на схеме только её места и приближает их.</template>
       </p>
     </div>
   </div>
@@ -628,5 +808,32 @@ function isPickable(item: InventoryItem): boolean {
 /* Видимый фокус для клавиатуры: SVG-кружок иначе «невидим» при Tab. */
 .seat-dot:focus {
   outline: none;
+}
+
+/*
+ * Масштаб при наведении считается от ЦЕНТРА кружка.
+ *
+ * Без `transform-box: fill-box` и `transform-origin: center` трансформ SVG-
+ * элемента берёт начало от начала системы координат viewBox, и `scale(1.3)`
+ * отбрасывал кружок прочь от центра — эффект наведения был не «приподнять», а
+ * «убежать». С `fill-box` масштаб идёт от самой фигуры, центр не смещается.
+ */
+.seat-cell .seat-dot {
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: transform 120ms ease, opacity 120ms ease;
+}
+
+.seat-cell:hover .seat-dot--live {
+  transform: scale(1.3);
+}
+
+/* Места не из активной ценовой категории: видны, но не участвуют. */
+.seat-dot--dim {
+  opacity: 0.22;
+}
+
+.seat-dot--off {
+  cursor: not-allowed;
 }
 </style>
