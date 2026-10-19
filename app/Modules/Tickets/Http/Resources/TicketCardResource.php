@@ -6,6 +6,7 @@ namespace Nabilet\Modules\Tickets\Http\Resources;
 
 use Illuminate\Http\Resources\Json\JsonResource;
 use Nabilet\Modules\Tickets\Models\Ticket;
+use Nabilet\Modules\Tickets\Services\TicketTemplateResolver;
 
 /**
  * Карточка билета покупателя (витрина «Мои билеты»).
@@ -52,6 +53,20 @@ class TicketCardResource extends JsonResource
      * абсолютного позиционирования: размеры, фон (сплошной или градиент) и
      * элементы. `null` — макет не назначен, фронт показывает семантическую карточку.
      *
+     * ПОЧЕМУ РЕЗОЛВЕР, А НЕ `$ticket->event?->ticketTemplate`
+     *
+     * Здесь читалось только назначение мероприятия, и мероприятие без явного
+     * макета получало `null`: «стандартный» билет уходил в письме
+     * (`TicketPdfRenderer`), а на витрине превращался в простую карточку с
+     * прочерками. Покупатель видел два разных билета на одно и то же
+     * мероприятие — в почте и в кабинете.
+     *
+     * Теперь цепочка ровно та же, что у письма: назначенный макет, иначе первый
+     * активный макет организации (`TicketTemplateResolver`). Резолвер берём из
+     * контейнера, потому что ресурс создаётся через `::collection()`, минуя
+     * конструкторный DI; зависимостей у него нет (тот же приём, что в
+     * `TicketGeneratorService::templates()`).
+     *
      * ТИП АРГУМЕНТА БЫЛ НЕРАЗРЕШИМ. Здесь стояло `Ticket $ticket` без импорта, а
      * класс объявлен в пространстве `…\Http\Resources`, где никакого `Ticket` нет.
      * PHP поэтому ждал `Nabilet\Modules\Tickets\Http\Resources\Ticket` и падал с
@@ -63,7 +78,7 @@ class TicketCardResource extends JsonResource
      */
     private function resolveTemplate(Ticket $ticket): ?array
     {
-        $template = $ticket->event?->ticketTemplate;
+        $template = app(TicketTemplateResolver::class)->resolveForTicket($ticket);
 
         if ($template === null) {
             return null;

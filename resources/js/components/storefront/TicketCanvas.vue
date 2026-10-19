@@ -32,6 +32,10 @@ const props = defineProps<{
     holder?: string
     qrPayload: string
     status: string
+    /** Цена в минорных единицах — для переменной `{{ticket.price}}`. */
+    priceMinor?: number
+    /** Номер заказа — для `{{order.id}}` в футере макета. */
+    orderId?: number | string
   }
 }>()
 
@@ -67,6 +71,10 @@ const variables = computed<TicketVariables>(() => ({
   ticket: {
     number: props.ticket.code,
     holder: props.ticket.holder ?? '',
+    // Символ валюты отдельной переменной: макет сам решает, ставить ли его
+    // рядом с числом. Формат числа — как на витрине (пробел между разрядами).
+    price: new Intl.NumberFormat('ru-RU').format((props.ticket.priceMinor ?? 0) / 100),
+    currency: '₽',
   },
   seat: {
     row: props.ticket.row ? String(props.ticket.row) : '',
@@ -77,6 +85,7 @@ const variables = computed<TicketVariables>(() => ({
       props.ticket.seat ? `Место ${props.ticket.seat}` : '',
     ].filter(Boolean).join(', '),
   },
+  order: { id: props.ticket.orderId != null ? String(props.ticket.orderId) : '' },
 }))
 
 const background = computed(() => {

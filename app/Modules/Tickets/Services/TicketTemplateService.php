@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Tickets\Services;
 
+use Nabilet\Modules\Tickets\Domain\TicketTemplateDefaults;
 use Nabilet\Modules\Tickets\Models\TicketTemplate;
 
 /**
@@ -21,35 +22,16 @@ use Nabilet\Modules\Tickets\Models\TicketTemplate;
  * кто-то не соберёт первый шаблон вручную, — а первое мероприятие обычно и
  * создаётся раньше первого шаблона.
  *
- * Заготовка — зеркало `BUILT_IN_LAYOUTS['classic-concert']` из
- * `resources/js/components/TicketBuilder.vue`. Две копии намеренно: фронт
- * рисует холст, бэк — сидирует строку, и общего формата обмена между PHP и
- * Vue в проекте нет. При правке заготовки править обе.
+ * ЗАГОТОВКА — ИЗ `TicketTemplateDefaults`, А НЕ СВОЯ. Раньше здесь лежала своя
+ * копия макета (600×400, тёмная), и на чистой базе, где сидер ещё не
+ * отработал, мероприятие получало её вместо вертикального стандарта: письмо
+ * (`TicketPdfRenderer::defaultConfig()`), конструктор (`BUILT_IN_LAYOUTS`) и
+ * витрина показывали три разных «билета по умолчанию». Теперь источник один.
  */
 class TicketTemplateService
 {
-    public const DEFAULT_TEMPLATE_NAME = 'Стандартный';
-
     /**
-     * @return array{backgroundColor: string, elements: list<array<string, mixed>>}
-     */
-    public static function defaultLayout(): array
-    {
-        return [
-            'backgroundColor' => '#1a1a2e',
-            'elements' => [
-                ['id' => 1, 'type' => 'rectangle', 'x' => 0, 'y' => 0, 'width' => 600, 'height' => 400, 'fill' => '#1a1a2e'],
-                ['id' => 2, 'type' => 'text', 'x' => 50, 'y' => 50, 'content' => '{{event.name}}', 'fontSize' => 32, 'fontWeight' => 'bold', 'color' => '#ffffff'],
-                ['id' => 3, 'type' => 'text', 'x' => 50, 'y' => 100, 'content' => '{{event.date}}', 'fontSize' => 18, 'color' => '#e94560'],
-                ['id' => 4, 'type' => 'text', 'x' => 50, 'y' => 150, 'content' => '{{event.venue}}', 'fontSize' => 16, 'color' => '#cccccc'],
-                ['id' => 5, 'type' => 'qr', 'x' => 400, 'y' => 250, 'size' => 120],
-                ['id' => 6, 'type' => 'text', 'x' => 50, 'y' => 350, 'content' => '{{seat.info}}', 'fontSize' => 14, 'color' => '#ffffff'],
-            ],
-        ];
-    }
-
-    /**
-     * Первый активный макет организации, либо созданный «Стандартный».
+     * Первый активный макет организации, либо созданный стандартный.
      *
      * Выключенные макеты (`active = 0`) пропуском не назначаются: именно это
      * проверяет `TicketEmailTemplateTest::test_a_disabled_default_template_is_not_used`
@@ -67,13 +49,15 @@ class TicketTemplateService
             return $existing;
         }
 
+        $config = TicketTemplateDefaults::config();
+
         return TicketTemplate::query()->create([
             'organization_id' => $organizationId,
-            'name' => self::DEFAULT_TEMPLATE_NAME,
-            'format' => 'mobile',
-            'width' => 600,
-            'height' => 400,
-            'template_json' => self::defaultLayout(),
+            'name' => TicketTemplateDefaults::NAME,
+            'format' => TicketTemplateDefaults::FORMAT,
+            'width' => $config['width'],
+            'height' => $config['height'],
+            'template_json' => $config,
             'active' => true,
         ]);
     }

@@ -18,7 +18,8 @@ use Tests\TestCase;
  *
  * 1. Новое мероприятие без выбранного макета получает макет по умолчанию
  *    (`EventController::store` → `TicketTemplateService::ensureDefaultTemplate()`),
- *    а не NULL. Если макетов у организации нет вообще — создаётся «Стандартный».
+ *    а не NULL. Если макетов у организации нет вообще — создаётся стандартный
+ *    вертикальный (см. `TicketTemplateDefaults`).
  * 2. Явный выбор администратора не перетирается.
  * 3. `POST /ticket-templates/{id}/duplicate` копирует макет целиком
  *    (типографика и фон — это `template_json`) и по `event_id` сразу
@@ -43,10 +44,16 @@ class TicketTemplateEventFlowTest extends TestCase
 
         $template = TicketTemplate::query()->findOrFail((int) $templateId);
 
-        $this->assertSame('Стандартный', $template->name);
+        $this->assertSame(
+            \Nabilet\Modules\Tickets\Domain\TicketTemplateDefaults::NAME,
+            $template->name,
+            'создаётся тот же стандартный макет, что и в письме/конструкторе'
+        );
         $this->assertTrue((bool) $template->active);
         $this->assertSame($orgId, (int) $template->organization_id);
         $this->assertNotEmpty($template->template_json['elements'] ?? []);
+        $this->assertSame(400, (int) $template->width);
+        $this->assertSame(600, (int) $template->height);
     }
 
     public function test_creating_an_event_reuses_the_first_active_template(): void

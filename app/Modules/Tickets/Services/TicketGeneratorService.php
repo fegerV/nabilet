@@ -97,9 +97,23 @@ class TicketGeneratorService
         $session = $ticket->session;
         $seat = $ticket->seat;
         $standingZone = $ticket->standingZone;
-        $seatLabel = $seat !== null
-            ? trim(($seat->row?->name ? $seat->row->name . ' / ' : '') . ($seat->label ?: 'Место ' . $seat->number))
-            : ($standingZone?->name ?? 'Свободная рассадка');
+        // Подпись места без дублирования ряда.
+        //
+        // `seat.label` в схеме зала часто уже содержит ряд («Ряд 2 Место 1»),
+        // и прежняя склейка «имя ряда / label» давала на билете «Ряд 2 / Ряд 2
+        // Место 1». Сравниваем по вхождению: если ряд уже назван в подписи —
+        // префикс не нужен.
+        $seatLabel = 'Свободная рассадка';
+
+        if ($seat !== null) {
+            $rowName = (string) ($seat->row?->name ?? '');
+            $label = (string) ($seat->label !== null && $seat->label !== '' ? $seat->label : 'Место ' . $seat->number);
+            $needsRow = $rowName !== '' && ! str_contains($label, $rowName);
+
+            $seatLabel = $needsRow ? $rowName . ' / ' . $label : $label;
+        } elseif ($standingZone !== null) {
+            $seatLabel = (string) $standingZone->name;
+        }
 
         $minorAmount = (int) ($ticket->orderItem?->unit_price ?? 0);
 
@@ -114,8 +128,16 @@ class TicketGeneratorService
             'ticket_number' => (string) $ticket->ticket_number,
             'event_name' => (string) ($event?->title ?? 'Мероприятие'),
             'event_date' => $session?->starts_at?->format('d.m.Y H:i') ?? '',
+            // Время отдельной строкой: конструктор предлагает `{{event.time}}`, и
+            // без этого поля переменная подставлялась пустой строкой — дизайнер
+            // видел на макете время, а покупатель не видел ничего.
+            'event_time' => $session?->starts_at?->format('H:i') ?? '',
             'venue_name' => (string) ($session?->venue?->name ?? ''),
             'seats' => $seatLabel,
+            // Ряд и место по отдельности — для макетов, где они стоят в разных
+            // блоках. `seats` остаётся склеенной строкой для «одной строкой».
+            'seat_row' => (string) ($seat?->row?->name ?? ''),
+            'seat_number' => (string) ($seat?->number ?? ''),
             'price' => $minorAmount / 100,
             'currency' => (string) ($order->currency ?? 'RUB'),
             'customer_name' => (string) ($order->customer_name ?? $order->user?->name ?? 'Покупатель'),

@@ -30,7 +30,11 @@ interface TicketTemplate {
   format: string
   width: number
   height: number
-  template_json: { backgroundColor?: string; elements?: unknown[] }
+  template_json: {
+    backgroundColor?: string
+    backgroundGradient?: { from?: string; to?: string; direction?: string } | null
+    elements?: unknown[]
+  }
   active: boolean
   events?: TicketTemplateEvent[]
   updated_at: string | null
@@ -126,6 +130,104 @@ async function removeFromList(template: TicketTemplate): Promise<void> {
 }
 
 /**
+ * Миниатюра макета в карточке списка.
+ *
+ * Раньше карточка рисовала КАЖДЫЙ прямоугольник как 40%×30% контейнера и не
+ * смотрела на координаты — то есть показывала не макет, а цветные пятна.
+ * С вертикальным билетом это особенно заметно: шапка на всю ширину выглядела
+ * маленьким квадратиком в углу, и выбрать макет глазами было нельзя.
+ *
+ * Считаем в пикселях от высоты превью: контейнер держит пропорции макета
+ * (`aspect-ratio`), поэтому масштаб по высоте верен и по ширине.
+ */
+const MINI_HEIGHT = 144
+
+/** Фон миниатюры: сплошной цвет либо градиент из `template_json`. */
+function templateBackground(template: TicketTemplate): string {
+  const gradient = template.template_json?.backgroundGradient
+
+  if (gradient?.from) {
+    return `linear-gradient(${gradient.direction || 'to bottom'}, ${gradient.from}, ${gradient.to || '#1e293b'})`
+  }
+
+  return template.template_json?.backgroundColor || '#ffffff'
+}
+
+function miniStyle(el: Record<string, unknown>, template: TicketTemplate): Record<string, string> {
+  const scale = MINI_HEIGHT / Math.max(1, template.height)
+  const num = (value: unknown, fallback = 0): number =>
+    typeof value === 'number' && Number.isFinite(value) ? value : fallback
+
+  const style: Record<string, string> = {
+    left: `${num(el.x) * scale}px`,
+    top: `${num(el.y) * scale}px`,
+  }
+
+  switch (el.type) {
+    case 'text':
+      return {
+        ...style,
+        width: el.width ? `${num(el.width) * scale}px` : 'auto',
+        color: typeof el.color === 'string' ? el.color : '#334155',
+        fontSize: `${Math.max(4, num(el.fontSize, 12) * scale)}px`,
+        fontWeight: el.fontWeight === 'bold' ? 'bold' : 'normal',
+        lineHeight: '1.2',
+        whiteSpace: el.width ? 'pre-wrap' : 'nowrap',
+        overflow: 'hidden',
+      }
+    case 'rectangle':
+    case 'image':
+    case 'barcode':
+      return {
+        ...style,
+        width: `${num(el.width, 100) * scale}px`,
+        height: `${num(el.height, 100) * scale}px`,
+        background: typeof el.fill === 'string' ? el.fill : 'transparent',
+        border: typeof el.stroke === 'string' && el.stroke !== 'transparent'
+          ? `${Math.max(1, num(el.strokeWidth, 1) * scale)}px solid ${el.stroke}`
+          : 'none',
+        borderRadius: `${num(el.borderRadius) * scale}px`,
+      }
+    case 'qr': {
+      const size = num(el.size, 100) * scale
+      return {
+        ...style,
+        width: `${size}px`,
+        height: `${size}px`,
+        // Шахматка вместо картинки: узнаваемый «QR» без генерации кода на
+        // каждую карточку списка.
+        background: 'repeating-conic-gradient(#0f172a 0% 25%, #ffffff 0% 50%) 0 0 / 25% 25%',
+      }
+    }
+    case 'circle': {
+      const d = num(el.r, 50) * 2 * scale
+      return {
+        ...style,
+        width: `${d}px`,
+        height: `${d}px`,
+        borderRadius: '50%',
+        background: typeof el.fill === 'string' ? el.fill : 'transparent',
+      }
+    }
+    case 'line': {
+      const x2 = num(el.x2, num(el.x) + num(el.width, 200))
+      const y2 = num(el.y2, num(el.y))
+      const length = Math.max(1, Math.hypot(x2 - num(el.x), y2 - num(el.y)) * scale)
+      return {
+        ...style,
+        width: `${length}px`,
+        height: `${Math.max(1, num(el.strokeWidth, 1) * scale)}px`,
+        background: typeof el.stroke === 'string' ? el.stroke : '#000000',
+        transformOrigin: '0 0',
+        transform: `rotate(${Math.atan2(y2 - num(el.y), x2 - num(el.x))}rad)`,
+      }
+    }
+    default:
+      return style
+  }
+}
+
+/**
  * Дублировать макет — «свой билет» с другой типографикой/фоном, не трогая
  * исходник. Сразу открываем копию в конструкторе, чтобы администратор правил
  * именно её.
@@ -201,37 +303,29 @@ async function duplicateFromList(template: TicketTemplate): Promise<void> {
           :key="template.id"
           class="surface-card flex flex-col overflow-hidden p-0"
         >
-          <!-- Миниатюра: те же элементы, что на холсте, в масштабе карточки -->
+          <!-- Миниатюра: реальная раскладка макета в масштабе карточки.
+               Контейнер держит пропорции билета, поэтому элементы встают на
+               свои места, а не превращаются в пятна 40%×30%. -->
           <button
             type="button"
             class="relative block h-36 w-full overflow-hidden border-b border-line text-left"
-            :style="{ background: template.template_json?.backgroundColor || '#ffffff' }"
+            :style="{ background: templateBackground(template) }"
             @click="openTemplate(template.id)"
           >
-            <span
-              v-for="(el, i) in (template.template_json?.elements ?? []).slice(0, 12)"
-              :key="i"
-              class="absolute"
-              :style="{
-                left: `${((el as any).x / template.width) * 100}%`,
-                top: `${((el as any).y / template.height) * 100}%`,
-                width: (el as any).type === 'rectangle' ? '40%' : 'auto',
-                height: (el as any).type === 'rectangle' ? '30%' : 'auto',
-                background: (el as any).type === 'rectangle' ? ((el as any).fill ?? 'transparent') : 'transparent',
-                border: (el as any).type === 'rectangle' && (el as any).stroke ? `1px solid ${(el as any).stroke}` : 'none',
-                color: (el as any).color || '#334155',
-                fontSize: '9px',
-                fontWeight: (el as any).fontWeight || 'normal',
-                whiteSpace: 'nowrap',
-              }"
-            >
-              <template v-if="(el as any).type === 'text'">
-                {{ String((el as any).content || '').slice(0, 18) }}
-              </template>
+            <span class="absolute inset-0 grid place-items-center">
               <span
-                v-else-if="(el as any).type === 'qr'"
-                class="grid h-8 w-8 place-items-center bg-white/90 text-[8px] text-slate-700"
-              >QR</span>
+                class="relative block h-full overflow-hidden"
+                :style="{ aspectRatio: `${template.width} / ${template.height}` }"
+              >
+                <span
+                  v-for="(el, i) in (template.template_json?.elements ?? [])"
+                  :key="i"
+                  class="absolute"
+                  :style="miniStyle(el as Record<string, unknown>, template)"
+                >
+                  <template v-if="(el as any).type === 'text'">{{ String((el as any).content || '') }}</template>
+                </span>
+              </span>
             </span>
           </button>
 

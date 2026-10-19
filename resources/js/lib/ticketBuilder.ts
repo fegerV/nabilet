@@ -31,8 +31,10 @@ export interface CanvasConfig {
 
 export interface TicketVariables {
   event: { name: string; date: string; time: string; venue: string }
-  ticket: { number: string; holder: string }
+  ticket: { number: string; holder: string; price: string; currency: string }
   seat: { row: string; number: string; info: string }
+  /** Номер заказа: печатается в футере билета рядом с номером билета. */
+  order: { id: string }
 }
 
 /** Пресеты размера холста — единственный источник истины для select в тулбаре. */
@@ -61,8 +63,9 @@ export const FONT_STACKS: ReadonlyArray<{ key: string; label: string; css: strin
 
 export const DEFAULT_TICKET_VARIABLES: TicketVariables = {
   event: { name: 'Название события', date: '01.01.2024', time: '19:00', venue: 'Концертный зал' },
-  ticket: { number: 'A001234', holder: 'Иван Иванов' },
+  ticket: { number: 'A001234', holder: 'Иван Иванов', price: '3 500', currency: '₽' },
   seat: { row: '5', number: '12', info: 'Ряд 5, Место 12' },
+  order: { id: '1042' },
 }
 
 /**
@@ -166,6 +169,18 @@ export function syncDerivedCoordinates(el: BuilderElement): void {
 }
 
 /**
+ * Счётчик автоматических id для элементов, пришедших без него.
+ *
+ * Строковый префикс, а не число: `Date.now()` у соседних элементов совпадает,
+ * а коллизия id означала бы «выделение одного — подсветка другого».
+ */
+let autoIdSeq = 0
+function nextAutoId(): string {
+  autoIdSeq += 1
+  return `auto-${autoIdSeq}`
+}
+
+/**
  * Дефолты элемента, загруженного из БД.
  *
  * Старые и ручные записи `template_json` могут не содержать полей, которые
@@ -177,6 +192,13 @@ export function syncDerivedCoordinates(el: BuilderElement): void {
 export function ensureElementDefaults(el: BuilderElement): BuilderElement {
   if (el.rotation === undefined) el.rotation = 0
   if (el.opacity === undefined) el.opacity = 1
+  // У элемента из `template_json` может не быть `id`: макет собирают и сидером,
+  // и руками в JSON. Без id выделение ломалось — `selectedElement?.id` давал
+  // `undefined`, `element.id` тоже, и ВСЕ элементы сразу выглядели выбранными
+  // (синяя обводка на каждом блоке). Присваиваем при загрузке.
+  if (el.id === undefined || el.id === null || el.id === '') {
+    el.id = nextAutoId()
+  }
 
   switch (el.type) {
     case 'text': {
@@ -459,9 +481,14 @@ export function flattenVariables(vars: TicketVariables): Record<string, string> 
     'event.venue': vars.event.venue,
     'ticket.number': vars.ticket.number,
     'ticket.holder': vars.ticket.holder,
+    // Цена и валюта — раздельно: «3 500» + «₽» позволяет поставить символ
+    // отдельным блоком или вовсе убрать его, не трогая число.
+    'ticket.price': vars.ticket.price,
+    'ticket.currency': vars.ticket.currency,
     'seat.row': vars.seat.row,
     'seat.number': vars.seat.number,
     'seat.info': vars.seat.info,
+    'order.id': vars.order.id,
   }
 }
 

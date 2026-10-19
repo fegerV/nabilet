@@ -267,6 +267,7 @@ const elementCategories = [
             { type: 'text', label: 'Переменная: Событие', defaultData: { content: '{{event.name}}', fontSize: 16, color: '#000000', isVariable: true } },
             { type: 'text', label: 'Переменная: Дата', defaultData: { content: '{{event.date}}', fontSize: 14, color: '#666666', isVariable: true } },
             { type: 'text', label: 'Переменная: Место', defaultData: { content: '{{seat.info}}', fontSize: 14, color: '#666666', isVariable: true } },
+            { type: 'text', label: 'Переменная: Цена', defaultData: { content: '{{ticket.price}} {{ticket.currency}}', fontSize: 18, fontWeight: 'bold', color: '#0f766e', isVariable: true } },
             { type: 'text', label: 'Переменная: Билет №', defaultData: { content: '{{ticket.number}}', fontSize: 14, color: '#666666', isVariable: true } }
         ]
     },
@@ -305,6 +306,8 @@ function selectElement(element) {
 
 // Начало перетаскивания
 function startDrag(event, element) {
+    // В предпросмотре жест не должен ничего двигать: макет только смотрят.
+    if (previewMode.value) return;
     isDragging.value = true;
     selectedElement.value = element;
     
@@ -943,9 +946,12 @@ onMounted(() => {
                             <li><code>{{event.venue}}</code> - Место проведения</li>
                             <li><code>{{ticket.number}}</code> - Номер билета</li>
                             <li><code>{{ticket.holder}}</code> - Владелец</li>
+                            <li><code>{{ticket.price}}</code> - Цена (без символа валюты)</li>
+                            <li><code>{{ticket.currency}}</code> - Символ валюты</li>
                             <li><code>{{seat.row}}</code> - Ряд</li>
                             <li><code>{{seat.number}}</code> - Место</li>
                             <li><code>{{seat.info}}</code> - Информация о месте</li>
+                            <li><code>{{order.id}}</code> - Номер заказа</li>
                         </ul>
                     </div>
                 </div>
@@ -1074,9 +1080,10 @@ onMounted(() => {
                     @mouseup="stopDrag"
                     @mouseleave="stopDrag"
                 >
-                    <div 
+                    <div
                         class="canvas-inner"
-                        :style="{ 
+                        :class="{ 'is-preview': previewMode }"
+                        :style="{
                             width: `${canvasWidth}px`,
                             height: `${canvasHeight}px`,
                             transform: `scale(${zoom / 100})`,
@@ -1089,7 +1096,7 @@ onMounted(() => {
                             v-for="element in elements" 
                             :key="element.id"
                             class="canvas-element"
-                            :class="{ selected: selectedElement?.id === element.id }"
+                            :class="{ selected: !!selectedElement && selectedElement.id === element.id }"
                             :style="{
                                 left: `${element.x}px`,
                                 top: `${element.y}px`,
@@ -1108,7 +1115,15 @@ onMounted(() => {
                                     fontWeight: element.fontWeight,
                                     fontFamily: element.fontFamily || undefined,
                                     color: element.color,
-                                    width: 'auto'
+                                    // Ширина из макета — та же, что уходит в PDF.
+                                    // Пока холст игнорировал `width` и рисовал
+                                    // `white-space: nowrap`, длинное название
+                                    // события вылезало за билет в редакторе и
+                                    // переносилось в письме — то есть WYSIWYG
+                                    // врал ровно там, где это заметно.
+                                    width: element.width ? `${element.width}px` : 'auto',
+                                    whiteSpace: element.width ? 'pre-wrap' : 'nowrap',
+                                    wordBreak: 'break-word'
                                 }"
                             >
                                 {{ displayContent(element) }}
@@ -1123,7 +1138,12 @@ onMounted(() => {
                                     height: `${element.height}px`,
                                     backgroundColor: element.fill,
                                     border: element.strokeWidth > 0 ? `${element.strokeWidth}px solid ${element.stroke}` : 'none',
-                                    borderRadius: element.borderRadius || '0px'
+                                    // `borderRadius` в модели — число, а CSS ждёт
+                                    // единицу: без «px» браузер отбрасывал
+                                    // `border-radius: 12` как некорректное, и
+                                    // скругления не было ни в редакторе, ни в
+                                    // панели свойств.
+                                    borderRadius: element.borderRadius ? `${element.borderRadius}px` : '0px'
                                 }"
                             ></div>
                             
@@ -1976,6 +1996,24 @@ onMounted(() => {
 .canvas-element.selected {
     outline: 2px solid #3b82f6;
     outline-offset: 2px;
+}
+
+/* Предпросмотр: убираем всё, что относится только к редактированию —
+   сетку выравнивания, ручки ресайза, синие обводки hover/selected.
+   Иначе покупателю (и владельцу в режиме проверки) показывают макет с
+   разметкой конструктора, а не билет. */
+.canvas-inner.is-preview .grid-overlay,
+.canvas-inner.is-preview .resize-handle {
+    display: none;
+}
+
+.canvas-inner.is-preview .canvas-element:hover,
+.canvas-inner.is-preview .canvas-element.selected {
+    outline: none;
+}
+
+.canvas-inner.is-preview {
+    cursor: default;
 }
 
 /* Ручки ресайза по углам выбранного элемента.

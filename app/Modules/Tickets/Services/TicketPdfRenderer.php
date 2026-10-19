@@ -7,6 +7,7 @@ namespace Nabilet\Modules\Tickets\Services;
 use Illuminate\Support\Facades\Log;
 use Nabilet\Modules\Tickets\Domain\Qr\QrEncoder;
 use Nabilet\Modules\Tickets\Domain\Qr\QrPngRenderer;
+use Nabilet\Modules\Tickets\Domain\TicketTemplateDefaults;
 use Nabilet\Modules\Tickets\Models\Ticket;
 use Nabilet\Modules\Tickets\Models\TicketTemplate;
 
@@ -213,13 +214,33 @@ HTML;
         return match ($type) {
             'text' => $this->textElement($el, $data),
             'qr' => $this->qrElement($el, $data),
-            'rectangle' => $this->shapeElement($el, $x, $y, '0'),
+            'rectangle' => $this->shapeElement($el, $x, $y, $this->radiusValue($el['borderRadius'] ?? null)),
             'circle' => $this->shapeElement($el, $x, $y, '50%'),
             'line' => $this->lineElement($el, $x, $y),
             'image' => $this->placeholderElement($el, $x, $y, 'IMG'),
             'barcode' => $this->placeholderElement($el, $x, $y, '||  ||  ||'),
             default => $this->shapeElement($el, $x, $y, '0'),
         };
+    }
+
+    /**
+     * Скругление прямоугольника из конструктора (`borderRadius`).
+     *
+     * Конструктор рисует `borderRadius || '0px'` — без этого метода PDF выводил
+     * скругления нулём, и макет с «мягкими» карточками в письме выглядел
+     * угловатым. Значение санитизируется: только число в пикселях, иначе 0 —
+     * строка из `template_json` попадает в атрибут стиля, а разрывать его
+     * нельзя (та же причина, что у `safeColor`).
+     */
+    private function radiusValue(mixed $value): string
+    {
+        if (! is_numeric($value)) {
+            return '0';
+        }
+
+        $radius = max(0.0, min(999.0, (float) $value));
+
+        return $radius > 0 ? $radius . 'px' : '0';
     }
 
     /**
@@ -253,8 +274,11 @@ HTML;
      */
     private function qrElement(array $el, array $data): string
     {
-        $w = (float) ($el['width'] ?? 140);
-        $h = (float) ($el['height'] ?? 140);
+        // Конструктор хранит размер QR в `size` (см. `ensureElementDefaults()`),
+        // а не в `width`/`height`. Пока рендер читал только `width`, любой QR из
+        // макета печатался дефолтными 140 px и уезжал из своей панели.
+        $w = (float) ($el['width'] ?? $el['size'] ?? 140);
+        $h = (float) ($el['height'] ?? $el['size'] ?? 140);
 
         $uri = $data['qr_data_uri'] ?? '';
         if (! is_string($uri) || $uri === '') {
@@ -341,18 +365,36 @@ HTML;
 
     /**
      * Подстановка {{переменных}} в текст элемента.
+     *
+     * Набор переменных совпадает с тем, что предлагает конструктор
+     * (`flattenVariables()` в `@/lib/ticketBuilder`): разойдись они — дизайнер
+     * поставил бы на макет переменную, которая в PDF осталась бы сырым
+     * `{{...}}`, и увидел бы это только покупатель.
+     *
+     * `ticket.price` отдаётся уже отформатированным («3 500»), а не числом:
+     * разделитель разрядов и запятая копеек — часть оформления билета, и
+     * конструктор не должен собирать их вручную из двух переменных.
      */
     private function renderText(string $content, array $data): string
     {
+        $price = is_numeric($data['price'] ?? null) ? (float) $data['price'] : 0.0;
+        $currency = strtoupper((string) ($data['currency'] ?? 'RUB'));
+
         $flat = [
             'event.name' => (string) ($data['event_name'] ?? ''),
             'event.date' => (string) ($data['event_date'] ?? ''),
-            'event.time' => '',
+            'event.time' => (string) ($data['event_time'] ?? ''),
             'event.venue' => (string) ($data['venue_name'] ?? ''),
             'ticket.number' => (string) ($data['ticket_number'] ?? ''),
             'ticket.holder' => (string) ($data['customer_name'] ?? ''),
-            'seat.row' => '',
-            'seat.number' => '',
+            // «3 500» — без копеек, если они нулевые: на билете они не нужны, а
+            // «3 500,00» занимает место и читается хуже.
+            'ticket.price' => fmod($price, 1.0) === 0.0
+                ? number_format($price, 0, ',', ' ')
+                : number_format($price, 2, ',', ' '),
+            'ticket.currency' => $currency === 'RUB' ? '₽' : $currency,
+            'seat.row' => (string) ($data['seat_row'] ?? ''),
+            'seat.number' => (string) ($data['seat_number'] ?? ''),
             'seat.info' => (string) ($data['seats'] ?? ''),
             'order.id' => (string) ($data['order_id'] ?? ''),
         ];
@@ -464,48 +506,19 @@ HTML;
     }
 
     /**
-     * Макет по умолчанию (мероприятию не назначен шаблон). Вертикальный 400×600,
-     * с фирменной плашкой из палитры — чтобы у билета был узнаваемый вид даже
-     * без конструктора.
+     * Макет по умолчанию (мероприятию не назначен шаблон, либо назначенный
+     * удалили). Один и тот же дизайн с сидером и заготовкой конструктора —
+     * `TicketTemplateDefaults`: иначе «билет по умолчанию» выглядел бы по-разному
+     * в зависимости от того, есть ли строка в `ticket_templates`.
+     *
+     * Акцент берём из палитры мероприятия: если шаблон был и его удалили,
+     * билет сохраняет фирменный цвет, а не становится чужим.
      */
     private function defaultConfig(array $data): array
     {
-        $accent = (string) ($data['template']['accent_color'] ?? '#0f766e');
-        $bg = (string) ($data['template']['background_color'] ?? '#f9fafb');
+        $accent = $this->safeColor($data['template']['accent_color'] ?? null, TicketTemplateDefaults::ACCENT);
 
-        return [
-            'backgroundColor' => $bg,
-            'width' => 400,
-            'height' => 600,
-            'elements' => [
-                ['type' => 'rectangle', 'x' => 0, 'y' => 0, 'width' => 400, 'height' => 130, 'fill' => $accent],
-                ['type' => 'text', 'x' => 24, 'y' => 26, 'width' => 352, 'height' => 56, 'fontSize' => 22, 'fontWeight' => 'bold', 'color' => '#ffffff', 'content' => '{{event.name}}'],
-                ['type' => 'text', 'x' => 24, 'y' => 84, 'width' => 352, 'height' => 22, 'fontSize' => 14, 'color' => '#ffffff', 'content' => '{{event.date}}'],
-                ['type' => 'text', 'x' => 24, 'y' => 108, 'width' => 352, 'height' => 18, 'fontSize' => 12, 'color' => '#ffffff', 'content' => '{{event.venue}}'],
-                ['type' => 'text', 'x' => 24, 'y' => 150, 'width' => 352, 'height' => 18, 'fontSize' => 11, 'color' => '#6b7280', 'content' => 'БИЛЕТ ДЛЯ'],
-                ['type' => 'text', 'x' => 24, 'y' => 168, 'width' => 352, 'height' => 26, 'fontSize' => 18, 'fontWeight' => 'bold', 'color' => '#111827', 'content' => '{{ticket.holder}}'],
-                ['type' => 'text', 'x' => 24, 'y' => 206, 'width' => 352, 'height' => 18, 'fontSize' => 11, 'color' => '#6b7280', 'content' => 'МЕСТА'],
-                ['type' => 'text', 'x' => 24, 'y' => 224, 'width' => 352, 'height' => 24, 'fontSize' => 16, 'fontWeight' => 'bold', 'color' => '#0f766e', 'content' => '{{seat.info}}'],
-                ['type' => 'text', 'x' => 24, 'y' => 262, 'width' => 200, 'height' => 18, 'fontSize' => 11, 'color' => '#6b7280', 'content' => 'СУММА'],
-                ['type' => 'text', 'x' => 24, 'y' => 280, 'width' => 352, 'height' => 26, 'fontSize' => 20, 'fontWeight' => 'bold', 'color' => '#16a34a', 'content' => $this->priceLabel($data)],
-                ['type' => 'qr', 'x' => 130, 'y' => 320, 'width' => 140, 'height' => 140],
-                ['type' => 'text', 'x' => 24, 'y' => 472, 'width' => 352, 'height' => 18, 'fontSize' => 11, 'color' => '#111827', 'content' => 'Билет {{ticket.number}} · Заказ №{{order.id}}'],
-                ['type' => 'text', 'x' => 24, 'y' => 496, 'width' => 352, 'height' => 40, 'fontSize' => 10, 'color' => '#9ca3af', 'content' => 'Сохраните билет на устройстве или распечатайте. Предъявите QR на входе.'],
-            ],
-        ];
-    }
-
-    /**
-     * Цена в формате «3 500,00 RUB» (русская локаль).
-     *
-     * @param  array<string, mixed>  $data
-     */
-    private function priceLabel(array $data): string
-    {
-        $amount = is_numeric($data['price'] ?? null) ? (float) $data['price'] : 0.0;
-        $currency = (string) ($data['currency'] ?? 'RUB');
-
-        return number_format($amount, 2, ',', ' ') . ' ' . $currency;
+        return TicketTemplateDefaults::config($accent);
     }
 
     /**
