@@ -74,12 +74,16 @@ class EventResource extends JsonResource
                     // но агрегат не считался (админские сценарии).
                     'available_seats' => $s->available_seats_count
                         ?? $s->inventoryItems
-                            ->filter(fn ($i) => $i->status === 'available' && ($i->available_quantity ?? 0) > 0)
-                            ->count(),
+                            ->filter(fn ($i) => ($i->available_quantity ?? 0) > 0
+                                && ($i->status === 'available'
+                                    || ($i->type === 'standing' && ! in_array($i->status, ['disabled', 'blocked'], true))))
+                            ->sum(fn ($i) => (int) ($i->available_quantity ?? 0)),
                     'availableSeats' => $s->available_seats_count
                         ?? $s->inventoryItems
-                            ->filter(fn ($i) => $i->status === 'available' && ($i->available_quantity ?? 0) > 0)
-                            ->count(),
+                            ->filter(fn ($i) => ($i->available_quantity ?? 0) > 0
+                                && ($i->status === 'available'
+                                    || ($i->type === 'standing' && ! in_array($i->status, ['disabled', 'blocked'], true))))
+                            ->sum(fn ($i) => (int) ($i->available_quantity ?? 0)),
                 ])
                 ->toArray()),
             'created_at' => $this->created_at?->toIso8601String(),

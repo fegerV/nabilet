@@ -59,10 +59,23 @@ class EventRepository
         $counts = DB::table('inventory_items')
             ->join('sessions', 'sessions.id', '=', 'inventory_items.session_id')
             ->whereIn('sessions.event_id', $eventIds)
-            ->where('inventory_items.status', 'available')
             ->where('inventory_items.available_quantity', '>', 0)
+            // Стоячая зона после первой продажи получает статус `sold` — это
+            // статус позиции, а не «распродано целиком» (см.
+            // InventorySoldOnPaymentTest). Для неё решает остаток, иначе
+            // «Танцпол» на 800 человек выпадал из продажи после первого заказа.
+            ->where(function ($q) {
+                $q->where('inventory_items.status', 'available')
+                    ->orWhere(function ($standing) {
+                        $standing->where('inventory_items.type', 'standing')
+                            ->whereNotIn('inventory_items.status', ['disabled', 'blocked']);
+                    });
+            })
             ->groupBy('inventory_items.session_id')
-            ->select('inventory_items.session_id', DB::raw('COUNT(*) as available_seats_count'))
+            // Сумма остатков, а не число строк: место — это 1, а стоячая зона —
+            // одна строка на всю вместимость. С COUNT зона на 800 человек
+            // давала «1 место», и карточка каталога писала «Нет мест».
+            ->select('inventory_items.session_id', DB::raw('SUM(inventory_items.available_quantity) as available_seats_count'))
             ->pluck('available_seats_count', 'inventory_items.session_id');
 
         foreach ($events as $event) {

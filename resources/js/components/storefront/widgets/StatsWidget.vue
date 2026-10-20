@@ -46,14 +46,19 @@ const items = computed(() => {
 </script>
 
 <template>
-  <dl v-if="items.length" class="grid gap-3 sm:grid-cols-3">
+  <!--
+    На телефоне блок остаётся СТРОКОЙ из трёх колонок, а не столбиком:
+    столбик из трёх карточек по ~100px отодвигал афишу за пределы первого
+    экрана — витрина открывалась цифрами вместо мероприятий.
+  -->
+  <dl v-if="items.length" class="grid grid-cols-3 gap-2 sm:gap-3">
     <div
       v-for="item in items"
       :key="item.label"
-      class="rounded-xl border border-line bg-surface px-4 py-5 text-center"
+      class="rounded-xl border border-line bg-surface px-2 py-3 text-center sm:px-4 sm:py-5"
     >
-      <dt class="text-2xs uppercase tracking-wide text-subtle">{{ item.label }}</dt>
-      <dd class="mt-1 bg-brand-gradient bg-clip-text text-3xl font-bold tabular-nums text-transparent sm:text-4xl">
+      <dt class="text-[10px] uppercase leading-tight tracking-wide text-subtle sm:text-2xs">{{ item.label }}</dt>
+      <dd class="mt-0.5 bg-brand-gradient bg-clip-text text-2xl font-bold tabular-nums text-transparent sm:mt-1 sm:text-4xl">
         {{ item.value }}
       </dd>
     </div>

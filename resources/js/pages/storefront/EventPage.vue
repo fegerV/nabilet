@@ -19,8 +19,7 @@ import { money, dateFull, time, seatsLabel } from '@/lib/format'
 import { cn } from '@/lib/cn'
 import { useUiStore } from '@/stores/ui'
 import { useLoyaltyStore } from '@/stores/loyalty'
-import type { EventStatus, SeatState } from '@/lib/types'
-import { SEAT_LEGEND } from '@/lib/hall'
+import type { EventStatus } from '@/lib/types'
 
 const route = useRoute()
 const router = useRouter()
@@ -237,30 +236,219 @@ const fewLeft = computed(() => {
   return left > 0 && left <= 50
 })
 
-/* Предпросмотр зала: не интерактивная копия карты, а намёк на неё. */
-const previewRows = Array.from({ length: 7 }, (_, r) =>
-  Array.from({ length: 20 }, (_, n) => {
-    const roll = (r * 31 + n * 17) % 10
-    const state: SeatState = roll < 3 ? 'sold' : roll === 3 ? 'held' : 'free'
-    return { key: `${r}-${n}`, state }
-  }),
-)
-
-const PREVIEW_STATE: Record<SeatState, string> = {
-  free: 'seat',
-  selected: 'seat seat--selected',
-  held: 'seat seat--held',
-  sold: 'seat seat--sold',
-  unavailable: 'seat seat--unavailable',
-  vip: 'seat seat--vip',
-  accessible: 'seat seat--accessible',
+/* Предпросмотр зала: реальные сектора и зоны из инвентаря выбранного сеанса.
+ * Раньше на этом месте стояла СИНТЕТИЧЕСКАЯ сетка 7×20 — «места», которых
+ * на нашей схеме никогда не существовало. Жалоба пользователя «не
+ * использовал реальные схемы залов» относилась сюда: витрина показывала
+ * фейк вместо настоящего зала. Теперь грузим `/inventory?session_id=…` и
+ * рисуем то, что на самом деле продаётся: по сектору/зоне — название,
+ * тип, вместимость, минимальная цена и сколько мест свободно.
+ */
+type InvItem = {
+  id: number
+  type: 'seat' | 'standing'
+  sector_name?: string | null
+  row_label?: string | null
+  seat_number?: string | number | null
+  price_amount: number
+  price_minor?: number
+  currency?: string
+  capacity?: number
+  available_quantity?: number
+  status: string
+  /* Геометрия места из схемы зала. Именно она делает предпросмотр
+   * настоящей картой: x/y/width/height — координаты, в которых
+   * нарисован зал (те же, что использует интерактивная схема). */
+  seat?: {
+    x?: number | string | null
+    y?: number | string | null
+    width?: number | string | null
+    height?: number | string | null
+    rotation?: number | string | null
+    row_number?: number | string | null
+    number?: number | string | null
+    sector_name?: string | null
+  } | null
+  metadata_json?: { sector_name?: string; row_label?: string; seat_number?: string | number | null } | null
 }
 
-const legend = SEAT_LEGEND.filter((l) => ['free', 'sold', 'held'].includes(l.state))
+type SectorSummary = {
+  name: string
+  kind: 'seat' | 'standing'
+  total: number
+  available: number
+  prices: number[]
+}
+
+const inventory = ref<{ items: InvItem[]; loading: boolean }>({ items: [], loading: false })
+
+async function loadInventory(): Promise<void> {
+  const sid = activeSession.value?.id
+  if (!sid) {
+    inventory.value = { items: [], loading: false }
+    return
+  }
+  inventory.value.loading = true
+  try {
+    // /api/v1/inventory отдаёт всю развёрнутую позицию: цены,
+    // остатки, ссылку на зал и сектор. Стоячие зоны приходят как
+    // type='standing' с ёмкостью; места — type='seat' с координатами.
+    const res = await get<{ data?: { data?: InvItem[] } | InvItem[] }>(
+      `/inventory?session_id=${encodeURIComponent(sid)}&per_page=500`,
+    )
+    const payload = res.data
+    const items: InvItem[] = Array.isArray(payload?.data)
+      ? (payload!.data as InvItem[])
+      : Array.isArray(payload)
+        ? (payload as InvItem[])
+        : []
+    inventory.value = { items, loading: false }
+  } catch {
+    inventory.value = { items: [], loading: false }
+  }
+}
+
+watch(activeSession, loadInventory, { immediate: true })
+watch(() => activeSession.value?.id, loadInventory)
+
+function nameOf(item: InvItem): string {
+  const fromMeta = item.metadata_json?.sector_name ?? item.sector_name
+  if (fromMeta && fromMeta !== '') return fromMeta
+  return item.type === 'standing' ? 'Танцпол' : 'Сектор'
+}
+
+/**
+ * Группируем инвентарь по секторам/зонам. Для каждой зоны считаем
+ * ёмкость, сколько реально свободно и какой диапазон цен.
+ */
+const sectors = computed<SectorSummary[]>(() => {
+  const groups = new Map<string, SectorSummary>()
+  for (const item of inventory.value.items) {
+    const name = nameOf(item) || 'Без названия'
+    const price = item.price_amount ?? item.price_minor ?? 0
+    if (!groups.has(name)) {
+      groups.set(name, {
+        name,
+        kind: item.type,
+        total: 0,
+        available: 0,
+        prices: [],
+      })
+    }
+    const g = groups.get(name)!
+    if (item.type === 'standing') {
+      g.total += item.capacity ?? 0
+      g.available += item.available_quantity ?? 0
+    } else {
+      g.total += 1
+      // «Свободно» = позиция существует, не в холде и не продана.
+      if (item.status === 'available') g.available += 1
+    }
+    if (price > 0) g.prices.push(price)
+  }
+  return [...groups.values()].sort((a, b) => a.name.localeCompare(b.name, 'ru'))
+})
+
+const totalSeats = computed(() => sectors.value.reduce((s, x) => s + x.total, 0))
+const totalAvailable = computed(() => sectors.value.reduce((s, x) => s + x.available, 0))
+const priceRange = computed(() => {
+  const all = sectors.value.flatMap((s) => s.prices)
+  if (!all.length) return null
+  const min = Math.min(...all)
+  const max = Math.max(...all)
+  return { min, max }
+})
+
+/**
+ * Настоящая карта зала для предпросмотра.
+ *
+ * Координаты берём из `inventory_items.seat` — это ровно та геометрия, по
+ * которой нарисована интерактивная схема (`CoordSeatMap`), а не отдельная
+ * «похожая» сетка. Поэтому предпросмотр совпадает с тем, что человек увидит
+ * на странице выбора мест: те же ряды, те же проходы, те же секторы.
+ *
+ * `null`, когда мест нет вовсе (стоячие зоны вроде «Танцпола»): у зоны
+ * координат нет, рисовать нечего — там показываем список секторов.
+ */
+const seatMap = computed(() => {
+  const items = inventory.value.items.filter((i) => i.type === 'seat' && i.seat)
+  if (items.length === 0) return null
+
+  const num = (v: unknown, fallback = 0): number => {
+    const n = typeof v === 'number' ? v : Number(v)
+    return Number.isFinite(n) ? n : fallback
+  }
+
+  type Dot = { key: number; cx: number; cy: number; r: number; free: boolean }
+  const dots: Dot[] = []
+  let minX = Number.POSITIVE_INFINITY
+  let minY = Number.POSITIVE_INFINITY
+  let maxX = Number.NEGATIVE_INFINITY
+  let maxY = Number.NEGATIVE_INFINITY
+
+  for (const item of items) {
+    const s = item.seat!
+    const w = num(s.width, 0) || 2
+    const h = num(s.height, 0) || 2
+    const x = num(s.x)
+    const y = num(s.y)
+    dots.push({
+      key: item.id,
+      cx: x + w / 2,
+      cy: y + h / 2,
+      // Немного меньше самого места — между соседями остаётся волосяной
+      // зазор, иначе на маленьком предпросмотре ряд сливается в полосу.
+      r: Math.max(Math.min(w, h) * 0.44, 0.35),
+      free: item.status === 'available',
+    })
+    if (x < minX) minX = x
+    if (y < minY) minY = y
+    if (x + w > maxX) maxX = x + w
+    if (y + h > maxY) maxY = y + h
+  }
+
+  const spanX = Math.max(maxX - minX, 1)
+  const spanY = Math.max(maxY - minY, 1)
+  const pad = Math.max(spanX * 0.03, 1)
+
+  return {
+    dots,
+    viewBox: `${minX - pad} ${minY - pad} ${spanX + pad * 2} ${spanY + pad * 2}`,
+    /* Соотношение сторон зала для CSS `aspect-ratio`. Зажимаем: вытянутый
+     * в нитку зал иначе превратил бы предпросмотр в полоску или в башню. */
+    ratio: Math.min(Math.max(spanY / spanX, 0.2), 1.05),
+  }
+})
+
+function openSeats(): void {
+  if (!event.value || !activeSession.value) return
+  router.push({
+    path: `/event/${event.value.slug}/seats`,
+    query: { session: activeSession.value.id },
+  })
+}
 
 function buy(): void {
   if (soldOut.value || !activeSession.value || !event.value) return
   router.push({ path: `/event/${event.value.slug}/seats`, query: { session: activeSession.value.id } })
+}
+
+/**
+ * Достаточно ли крупная афиша, чтобы растянуть её на весь hero.
+ *
+ * Часть афиш Касса-Югры отдаёт в 216×306 — в полосе 1280×448 такая картинка
+ * растягивается в шесть раз и превращается в мыло. Для мелких исходников
+ * hero собирается иначе: размытая копия на фоне + резкая афиша по центру
+ * (`object-contain`). Порог 600px по ширине: 710×1000 и 904×1280
+ * отрисовываются обычным `object-cover` и выглядят хорошо, а 216×306 — нет.
+ * Флаг ставится по `naturalWidth` после загрузки, поэтому решение
+ * принимается по реальному файлу, а не по имени события.
+ */
+const posterIsLarge = ref(false)
+
+function onPosterLoad(e: Event): void {
+  const img = e.target as HTMLImageElement | null
+  posterIsLarge.value = (img?.naturalWidth ?? 0) >= 600
 }
 
 /* ── «Клуб зрителей»: ♡ избранное, 🔔 подписка ─────────────────────────────
@@ -338,25 +526,35 @@ async function onFollow(): Promise<void> {
         `v-if` на <img> не оставляет пустого тега без src (это ошибка вёрстки,
         браузер покажет рамку сломанного изображения).
       -->
-      <div class="relative h-56 overflow-hidden sm:h-72">
+      <div class="relative h-72 overflow-hidden sm:h-96 lg:h-[28rem]">
         <div
           class="absolute inset-0"
           :style="{ background: 'linear-gradient(145deg, #7C3AED 0%, #FF5C22 100%)' }"
           aria-hidden="true"
         />
+        <!--
+          Мелкая афиша не растягивается на всю полосу: под ней лежит её же
+          размытая копия, а сама она показывается целиком по центру. Иначе
+          картинка 216×306 в блоке 1280×448 — это шестикратное увеличение.
+        -->
+        <img
+          v-if="event?.poster && !posterIsLarge"
+          :src="event.poster"
+          class="absolute inset-0 h-full w-full scale-125 object-cover blur-2xl"
+          alt=""
+          aria-hidden="true"
+          decoding="async"
+        >
         <img
           v-if="event?.poster"
           :src="event.poster"
           :alt="posterAlt"
-          class="absolute inset-0 h-full w-full object-cover"
+          class="absolute inset-0 h-full w-full"
+          :class="posterIsLarge ? 'object-cover object-top' : 'object-contain'"
           decoding="async"
+          @load="onPosterLoad"
         >
-        <span
-          class="pointer-events-none absolute -left-10 top-10 h-56 w-56 rounded-full opacity-40 blur-3xl"
-          :style="{ background: '#FFC53D' }"
-          aria-hidden="true"
-        />
-        <div class="absolute inset-0 bg-gradient-to-t from-canvas via-canvas/20 to-transparent" />
+        <div class="absolute inset-0 bg-gradient-to-t from-canvas via-canvas/30 to-transparent" />
       </div>
 
       <div v-if="loading" class="mx-auto max-w-content px-4 py-8 text-sm text-subtle">
@@ -367,7 +565,19 @@ async function onFollow(): Promise<void> {
         Не удалось загрузить событие: {{ loadError }}
       </div>
 
-      <div v-else-if="event" class="mx-auto -mt-20 max-w-content px-4 sm:px-6">
+      <!--
+        `relative z-10` обязателен: hero выше — позиционированный блок, а
+        этот контейнер подтянут к нему отрицательным отступом и сам по себе
+        статический. Позиционированные элементы рисуются ПОВЕРХ статических,
+        поэтому без z-index hero перекрывал верхнюю часть заголовка.
+
+        Отступ ровно `-mt-10` (40px = высота строки бейджей): бейджи «В
+        продаже / В избранное / Следить» ложатся на нижнюю кромку афиши, а
+        сам заголовок начинается уже на фоне страницы. При большем нахлёсте
+        тёмный текст попадал на тёмную афишу и первая строка названия
+        становилась нечитаемой.
+      -->
+      <div v-else-if="event" class="relative z-10 mx-auto -mt-10 max-w-content px-4 sm:px-6">
         <div class="flex flex-wrap items-center gap-2">
           <NBadge tone="brand">{{ catName }}</NBadge>
           <NStatusBadge kind="event" :status="event.status" size="md" />
@@ -516,28 +726,106 @@ async function onFollow(): Promise<void> {
           </section>
 
                     <h2 class="mt-8 text-lg font-semibold text-content">Схема зала</h2>
-                    <p class="mt-1 text-sm text-muted">{{ activeSession ? hallOf(activeSession) : '' }}</p>
+                    <p class="mt-1 text-sm text-muted">
+                      {{ activeSession ? hallOf(activeSession) : '' }}
+                      <span v-if="!inventory.loading && sectors.length" class="text-subtle"> · {{ totalSeats }} мест, свободно {{ totalAvailable }}</span>
+                    </p>
 
-          <div class="surface-card mt-3 p-4">
-            <div class="stage-bar mx-auto mb-5 h-8 w-52 rounded-b-xl rounded-t-sm text-center text-2xs font-semibold uppercase tracking-[0.2em] leading-8 text-white">
-              Сцена
+          <div class="surface-card mt-3 overflow-hidden">
+            <div class="border-b border-line px-4 py-3">
+              <p class="text-2xs uppercase tracking-wide text-subtle">Зал сеанса</p>
+              <p class="mt-1 text-base font-semibold text-content">
+                {{ activeSession ? hallOf(activeSession) : '—' }}
+              </p>
+              <p v-if="priceRange" class="mt-0.5 text-xs text-muted">
+                от {{ money(priceRange.min) }}<template v-if="priceRange.max !== priceRange.min"> до {{ money(priceRange.max) }}</template>
+              </p>
             </div>
-            <div class="flex flex-col items-center gap-1.5">
-              <div v-for="(row, r) in previewRows" :key="r" class="flex gap-1.5">
-                <span
-                  v-for="seat in row"
-                  :key="seat.key"
-                  :class="PREVIEW_STATE[seat.state]"
-                  class="h-3.5 w-3.5 !rounded-[3px] hover:transform-none"
-                  aria-hidden="true"
+
+            <!--
+              Настоящая схема зала: каждая точка — реальное место из
+              `inventory_items`, поставленное по своим координатам из схемы.
+              Это не «декоративная сетка»: расположение рядов, проходов и
+              секторов совпадает с интерактивной схемой выбора мест.
+            -->
+            <div v-if="seatMap" class="border-b border-line bg-surface-2/40 px-4 py-4">
+              <svg
+                :viewBox="seatMap.viewBox"
+                :style="{ aspectRatio: String(1 / seatMap.ratio) }"
+                class="mx-auto block h-auto w-full max-w-sm"
+                preserveAspectRatio="xMidYMid meet"
+                role="img"
+                :aria-label="`Схема зала: всего ${totalSeats} мест, свободно ${totalAvailable}`"
+              >
+                <circle
+                  v-for="dot in seatMap.dots"
+                  :key="dot.key"
+                  :cx="dot.cx"
+                  :cy="dot.cy"
+                  :r="dot.r"
+                  :fill="dot.free ? 'rgb(var(--brand-500))' : 'rgb(var(--surface-3))'"
                 />
+              </svg>
+              <div class="mt-3 flex items-center justify-center gap-4 text-2xs text-subtle">
+                <span class="flex items-center gap-1.5">
+                  <span class="h-2 w-2 rounded-full bg-brand-500" aria-hidden="true" />
+                  свободно
+                </span>
+                <span class="flex items-center gap-1.5">
+                  <span class="h-2 w-2 rounded-full bg-surface-3" aria-hidden="true" />
+                  продано
+                </span>
               </div>
             </div>
-            <div class="mt-4 flex flex-wrap gap-3 border-t border-line pt-3 text-2xs text-subtle">
-              <span v-for="item in legend" :key="item.state" class="flex items-center gap-1.5">
-                <span :class="PREVIEW_STATE[item.state]" class="h-3 w-3 !rounded-[3px] hover:transform-none" aria-hidden="true" />
-                {{ item.label }}
-              </span>
+
+            <div v-if="inventory.loading" class="px-4 py-6 text-sm text-subtle">
+              Загружаем схему…
+            </div>
+
+            <div v-else-if="!sectors.length" class="px-4 py-6 text-sm text-subtle">
+              Для этого сеанса пока нет опубликованной схемы зала.
+            </div>
+
+            <ul v-else class="divide-y divide-line">
+              <li v-for="sector in sectors" :key="sector.name" class="flex items-center gap-3 px-4 py-3">
+                <span
+                  class="grid h-9 w-9 flex-none place-items-center rounded-md"
+                  :class="sector.kind === 'standing' ? 'bg-accent-500/15 text-accent-400' : 'bg-brand-500/15 text-brand-400'"
+                  aria-hidden="true"
+                >
+                  <span class="text-base font-semibold">{{ sector.kind === 'standing' ? '◳' : '⌗' }}</span>
+                </span>
+                <div class="min-w-0 flex-1">
+                  <p class="truncate text-sm font-medium text-content">{{ sector.name }}</p>
+                  <p class="text-2xs text-subtle">
+                    {{ sector.kind === 'standing' ? 'Стоячая зона' : 'Места' }}
+                    · всего {{ sector.total }}
+                  </p>
+                </div>
+                <div class="flex-none text-right">
+                  <p class="text-sm font-semibold tabular-nums text-content">
+                    {{ sector.available > 0 ? sector.available : 0 }}
+                  </p>
+                  <p class="text-2xs text-subtle">свободно</p>
+                </div>
+                <div v-if="sector.prices.length" class="flex-none text-right">
+                  <p class="text-sm tabular-nums text-muted">
+                    {{ money(Math.min(...sector.prices)) }}
+                  </p>
+                  <p class="text-2xs text-subtle">от</p>
+                </div>
+              </li>
+            </ul>
+
+            <div class="border-t border-line px-4 py-3">
+              <button
+                type="button"
+                class="w-full rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-brand-400 disabled:cursor-not-allowed disabled:bg-surface-3 disabled:text-subtle"
+                :disabled="soldOut || !activeSession"
+                @click="openSeats"
+              >
+                {{ soldOut ? 'Билетов нет' : 'Открыть схему зала' }}
+              </button>
             </div>
           </div>
         </div>

@@ -50,10 +50,16 @@ watch(fixedCategory, (value) => {
 
 onMounted(() => catalog.load())
 
+/*
+ * На телефоне афиша идёт в ДВЕ колонки. В одну колонку вертикальный постер
+ * занимал весь экран: на 390px ширины карточка выходила ~585px высотой, и
+ * вместо списка мероприятий человек видел одно. Две колонки — это ~180px на
+ * постер, как в афишах Касса-Югры и Яндекс Афиши.
+ */
 const GRID_COLS: Record<number, string> = {
-  2: 'sm:grid-cols-2',
-  3: 'sm:grid-cols-2 lg:grid-cols-3',
-  4: 'sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4',
+  2: 'grid-cols-2',
+  3: 'grid-cols-2 lg:grid-cols-3',
+  4: 'grid-cols-2 lg:grid-cols-3 xl:grid-cols-4',
 }
 
 const filtered = computed(() => {

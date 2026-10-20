@@ -20,19 +20,6 @@ const router = useRouter()
 const route = useRoute()
 const loyalty = useLoyaltyStore()
 
-/* Постер из API (если есть) или дефолтный градиент. */
-const posterStyle = computed(() => {
-  const poster = props.event.poster
-  if (poster) {
-    return { backgroundImage: `url(${poster})` }
-  }
-  // Запасной градиент — из бренд-кистей площадки, а не из зашитого фиолета:
-  // иначе витрина с зелёным брендом показывает фиолетовые обложки.
-  return {
-    background: `linear-gradient(145deg, ${props.event.posterFrom ?? 'rgb(var(--brand-500))'} 0%, ${props.event.posterTo ?? 'rgb(var(--accent-500))'} 100%)`,
-  }
-})
-
 const nextSession = computed(() => props.event.sessions?.[0])
 
 /**
@@ -121,93 +108,97 @@ async function onFavorite(): Promise<void> {
   <article
     class="group relative flex flex-col overflow-hidden rounded-xl border border-line bg-surface transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-brand-500/40 hover:shadow-lg"
   >
-    <!-- Постер -->
-    <div class="relative aspect-[16/10] overflow-hidden" :style="posterStyle">
-      <span
-        class="pointer-events-none absolute -right-6 -top-8 h-32 w-32 rounded-full opacity-40 blur-2xl"
-        :style="{ background: event.posterAccent }"
+    <!--
+      Постер занимает всю ширину и большую часть высоты карточки.
+      Афиша идёт вертикальной стопкой, текст — под ней: так карточка читается
+      как фотография, а не как «описание события с фоном». Это ориентир
+      дизайна kassa-ugra: витрина = афиша + короткая подпись, а не карточка
+      с тремя строками наложенного текста.
+    -->
+    <div class="relative aspect-[2/3] w-full overflow-hidden bg-surface-2">
+      <div
+        v-if="!event.poster"
+        class="absolute inset-0"
+        :style="{ background: `linear-gradient(145deg, ${event.posterFrom ?? 'rgb(var(--brand-500))'} 0%, ${event.posterTo ?? 'rgb(var(--accent-500))'} 100%)` }"
         aria-hidden="true"
       />
+      <img
+        v-else
+        :src="event.poster"
+        :alt="event.title ? `${event.title} — афиша` : 'Афиша'"
+        class="absolute inset-0 h-full w-full object-cover"
+        loading="lazy"
+        decoding="async"
+      >
 
-      <div class="absolute inset-x-0 top-0 flex items-start justify-between p-3">
-              <NBadge tone="brand" class="backdrop-blur">{{ categoryName }}</NBadge>
-              <div class="flex flex-none items-center gap-2">
-                <!--
-                  Сердце лежит ПОВЕРХ ссылки-оверлея карточки (`relative z-10`):
-                  без z-index клик уходил бы в RouterLink и открывал страницу
-                  события вместо того, чтобы ставить отметку.
-                -->
-                <button
-                  v-if="event.public_id"
-                  type="button"
-                  class="relative z-10 grid h-8 w-8 place-items-center rounded-lg bg-overlay/60 text-base backdrop-blur transition-colors"
-                  :class="favoriteOn ? 'text-rose-400' : 'text-white/80 hover:text-white'"
-                  :aria-label="favoriteOn ? 'Убрать из избранного' : 'Добавить в избранное'"
-                  :aria-pressed="favoriteOn"
-                  @click="onFavorite"
-                >
-                  <span aria-hidden="true">{{ favoriteOn ? '♥' : '♡' }}</span>
-                </button>
-                <NStatusBadge kind="event" :status="event.status" />
-              </div>
-            </div>
+      <!--
+        Лёгкая подложка снизу для контраста — нужна, чтобы на светлых
+        постерах (Руки Вверх, Пельмени) читалась дата и «от X ₽», но без
+        крупного заголовка поверх фотографии.
+      -->
+      <div class="pointer-events-none absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/70 via-black/25 to-transparent" aria-hidden="true" />
 
-      <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-overlay/85 to-transparent p-3 pt-10">
-              <h3 class="text-balance text-base font-semibold leading-snug text-white">{{ event.title }}</h3>
-              <p class="mt-0.5 truncate text-xs text-white/70">{{ event.subtitle ?? event.short_description ?? '' }}</p>
-            </div>
-    </div>
-
-    <!-- Метаданные -->
-    <div class="flex flex-1 flex-col gap-2.5 p-3.5">
-      <div class="flex items-center gap-2 text-xs text-muted">
-        <span aria-hidden="true">◷</span>
-        <span v-if="nextSession">{{ dateFull(sessionStartsAt) }} · {{ time(sessionStartsAt) }}</span>
-        <span v-else>Расписание уточняется</span>
+      <div class="absolute inset-x-0 top-0 flex items-start justify-between gap-2 p-3">
+        <NBadge tone="brand" class="backdrop-blur">{{ categoryName }}</NBadge>
+        <div class="flex flex-none items-center gap-2">
+          <button
+            v-if="event.public_id"
+            type="button"
+            class="relative z-10 grid h-8 w-8 place-items-center rounded-lg bg-black/40 text-base text-white/90 backdrop-blur transition-colors hover:bg-black/60"
+            :class="favoriteOn ? 'text-rose-400' : ''"
+            :aria-label="favoriteOn ? 'Убрать из избранного' : 'Добавить в избранное'"
+            :aria-pressed="favoriteOn"
+            @click="onFavorite"
+          >
+            <span aria-hidden="true">{{ favoriteOn ? '♥' : '♡' }}</span>
+          </button>
+          <NStatusBadge kind="event" :status="event.status" />
+        </div>
       </div>
 
-      <div class="flex items-center gap-2 text-xs text-muted">
-              <span aria-hidden="true">⌖</span>
-              <span class="truncate">{{ venueName }}{{ venueCity ? `, ${venueCity}` : '' }}</span>
-            </div>
+      <div v-if="nextSession" class="absolute inset-x-0 bottom-0 p-3 text-white">
+        <p class="text-2xs font-medium uppercase tracking-wide text-white/80">
+          {{ dateFull(sessionStartsAt) }} · {{ time(sessionStartsAt) }}
+        </p>
+        <p v-if="priceFromMinor !== null" class="mt-0.5 text-base font-semibold tabular-nums">
+          от {{ money(priceFromMinor) }}
+        </p>
+      </div>
+    </div>
 
-            <div class="mt-auto flex items-end justify-between gap-3 border-t border-line pt-3">
-              <div>
-                <p class="text-2xs uppercase tracking-wide text-subtle">от</p>
-                <!--
-                  «от 0 ₽» было нормой, пока публичный список событий не отдавал
-                  цену: поле в EventResource отсутствовало, и `?? 0` молча
-                  подставляло ноль на КАЖДУЮ карточку афиши (проверено на живом
-                  стенде). Теперь цена приходит как `price_from_minor`, а её
-                  отсутствие — это «продаж нет»: рисуем прочерк, а не нуль.
-                -->
-                <p
-                  v-if="priceFromMinor !== null"
-                  class="text-base font-semibold tabular-nums text-content"
-                >
-                  {{ money(priceFromMinor) }}
-                </p>
-                <p v-else class="text-base font-semibold text-subtle">—</p>
-              </div>
+    <!-- Подпись: название + площадка. Не дублируем дату и цену — они уже на постере. -->
+    <div class="flex flex-col gap-1 p-3.5">
+      <h3 class="text-balance text-sm font-semibold leading-snug text-content line-clamp-2">
+        {{ event.title }}
+      </h3>
+      <p class="truncate text-xs text-muted">
+        {{ venueName }}{{ venueCity ? `, ${venueCity}` : '' }}
+      </p>
 
+      <div class="mt-2 flex items-center justify-between gap-2">
         <span
-          class="rounded-lg px-3 py-2 text-sm font-medium transition-colors"
-          :class="
-            soldOut
-              ? 'cursor-not-allowed bg-surface-3 text-subtle'
-              : 'bg-brand-500 text-white group-hover:bg-brand-400'
-          "
+          v-if="soldOut"
+          class="rounded-md bg-surface-3 px-2.5 py-1 text-2xs font-medium uppercase tracking-wide text-subtle"
         >
-          {{ soldOut ? 'Нет мест' : 'Выбрать' }}
+          Нет мест
+        </span>
+        <span v-else class="text-2xs uppercase tracking-wide text-mint-400">
+          В продаже
+        </span>
+        <span
+          class="rounded-md px-3 py-1.5 text-sm font-medium transition-colors"
+          :class="soldOut ? 'bg-surface-3 text-subtle' : 'bg-brand-500 text-white group-hover:bg-brand-400'"
+        >
+          {{ soldOut ? 'Подробнее' : 'Выбрать' }}
         </span>
       </div>
     </div>
 
     <!-- Вся карточка — ссылка: кликабельная область не должна быть только текстом -->
     <RouterLink
-          :to="`/event/${event.slug || event.id}`"
-          class="absolute inset-0 rounded-xl"
-          :aria-label="`Открыть событие ${event.title}`"
-        />
+      :to="`/event/${event.slug || event.id}`"
+      class="absolute inset-0 rounded-xl"
+      :aria-label="`Открыть событие ${event.title}`"
+    />
   </article>
 </template>

@@ -135,13 +135,29 @@ class EventController extends Controller
                 // Доступность считает ОДИН сгруппированный запрос (аудит 1.2):
                 // раньше здесь грузились ВСЕ строки инвентаря каждого сеанса,
                 // а число уже вычислялось фильтром в PHP.
+                //
+                // Считаем СУММУ `available_quantity`, а не COUNT строк: у места
+                // это 1 и разницы нет, но стоячая зона — одна строка на N
+                // билетов. С COUNT «Танцпол» на 800 человек давал «1 место».
+                //
+                // Статус стоячей зоны после первой продажи становится `sold`
+                // (это статус ПОЗИЦИИ, а не признак «распродано» — см.
+                // InventorySoldOnPaymentTest), поэтому для неё решает остаток,
+                // а не `status = available`. Служебные `disabled`/`blocked`
+                // не считаем никогда: такой зоны для сеанса не существует.
                 $availableBySession = \Illuminate\Support\Facades\DB::table('inventory_items')
                     ->join('sessions', 'sessions.id', '=', 'inventory_items.session_id')
                     ->where('sessions.event_id', $event->id)
-                    ->where('inventory_items.status', 'available')
                     ->where('inventory_items.available_quantity', '>', 0)
+                    ->where(function ($q) {
+                        $q->where('inventory_items.status', 'available')
+                            ->orWhere(function ($standing) {
+                                $standing->where('inventory_items.type', 'standing')
+                                    ->whereNotIn('inventory_items.status', ['disabled', 'blocked']);
+                            });
+                    })
                     ->groupBy('inventory_items.session_id')
-                    ->selectRaw('inventory_items.session_id as session_id, COUNT(*) as available_seats')
+                    ->selectRaw('inventory_items.session_id as session_id, SUM(inventory_items.available_quantity) as available_seats')
                     ->pluck('available_seats', 'session_id');
 
                         $data['sessions'] = $event->sessions

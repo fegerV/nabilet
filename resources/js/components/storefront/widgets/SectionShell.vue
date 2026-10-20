@@ -21,7 +21,12 @@ withDefaults(
 </script>
 
 <template>
-  <section :class="['relative', tight ? 'py-6 sm:py-8' : 'py-10 sm:py-14']">
+  <!--
+    Вертикальные отступы сжаты: было `py-10 sm:py-14` (112px между секциями),
+    и между hero и афишей получалась полоса пустоты в треть экрана. Витрина
+    должна листаться от постера к постеру, а не от отступа к отступу.
+  -->
+  <section :class="['relative', tight ? 'py-5 sm:py-7' : 'py-8 sm:py-12']">
     <div v-if="flush"><slot /></div>
     <div v-else class="mx-auto max-w-content px-4 sm:px-6">
       <header v-if="title || subtitle" class="mb-5 flex flex-wrap items-end justify-between gap-3">

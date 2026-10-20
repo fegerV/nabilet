@@ -27,10 +27,12 @@ const align = computed(() => setting<'left' | 'center'>(props.section.settings, 
 const height = computed(() => setting<'compact' | 'medium' | 'tall'>(props.section.settings, 'height', 'medium'))
 const showSearch = computed(() => setting<boolean>(props.section.settings, 'showSearch', false))
 
+// Вертикальные отступы на телефоне срезаны: hero — это «шапка» витрины, и
+// при прежних 56–80px сверху и снизу афиша не попадала в первый экран.
 const HEIGHTS: Record<string, string> = {
-  compact: 'py-10 sm:py-14',
-  medium: 'py-14 sm:py-20',
-  tall: 'py-20 sm:py-28',
+  compact: 'py-7 sm:py-14',
+  medium: 'py-9 sm:py-20',
+  tall: 'py-12 sm:py-28',
 }
 
 const search = ref('')
