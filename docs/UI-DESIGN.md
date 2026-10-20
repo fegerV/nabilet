@@ -118,8 +118,8 @@ rounded-3xl: 34  — hero-блоки витрины
 | Маршрут | Назначение | Файл |
 |---|---|---|
 | `/` | Каталог событий с фильтром по категориям | `pages/storefront/CatalogPage.vue` |
-| `/event/:id` | Карточка события + выбор сеанса | `pages/storefront/EventPage.vue` |
-| `/event/:id/seats` | Схема зала + hold + корзина | `pages/storefront/SeatSelectionPage.vue` |
+| `/event/:id` | Афиша слева, покупка справа: схема зала, выбор мест, «Далее» → контакты и оплата на этом же экране | `pages/storefront/EventPage.vue` + `components/storefront/PurchaseWidget.vue` |
+| `/event/:id/seats` | Редирект на `/event/:id` (ссылка сохранена для закладок и писем; `?session=` переносится) | `router/index.ts` |
 | `/checkout` | Оформление, контакты, оплата | `pages/storefront/CheckoutPage.vue` |
 | `/payment/:result` | Экран успеха / ошибки оплаты | `pages/storefront/PaymentResultPage.vue` |
 | `/tickets` | Активные и прошедшие билеты | `pages/storefront/TicketsPage.vue` |
@@ -197,7 +197,11 @@ Checkout
 
 ## 5. Карта зала — самый ответственный экран
 
-**Файл:** `pages/storefront/SeatSelectionPage.vue`, `components/seat/SeatMap.vue`.
+**Файл:** `components/storefront/PurchaseWidget.vue`, `components/seat/CoordSeatMap.vue`.
+
+Карта живёт НА странице события: покупатель выбирает места там же, где читает о
+концерте. Отдельного экрана выбора нет — переход на другую страницу был лишним
+шагом («купить должно быть легко, а не 10 страниц загружать»).
 
 Принципы:
 

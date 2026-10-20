@@ -22,10 +22,18 @@ const routes: RouteRecordRaw[] = [
       { path: '', name: 'catalog', component: () => import('@/pages/storefront/CatalogPage.vue'), meta: { title: 'Афиша мероприятий' } },
       { path: 'event/:slug', name: 'event', component: () => import('@/pages/storefront/EventPage.vue'), meta: { title: 'Мероприятие' } },
       {
+        /*
+         * Отдельного экрана выбора мест больше нет: покупка происходит на
+         * странице события (`PurchaseWidget`), без переходов. Сам маршрут
+         * оставлен РЕДИРЕКТОМ, а не удалён: ссылки `/event/{slug}/seats`
+         * сидят в письмах, закладках и в поисковой выдаче, а `?session=`
+         * переносится — страница события открывает тот же сеанс, который
+         * человек выбирал раньше. Удалённый маршрут отдал бы «страницу не
+         * найдена» на ровном месте.
+         */
         path: 'event/:slug/seats',
         name: 'seats',
-        component: () => import('@/pages/storefront/SeatSelectionPage.vue'),
-        meta: { title: 'Выбор мест' },
+        redirect: (to) => ({ path: `/event/${String(to.params.slug)}`, query: to.query }),
       },
       { path: 'checkout', name: 'checkout', component: () => import('@/pages/storefront/CheckoutPage.vue'), meta: { title: 'Оформление заказа' } },
       {

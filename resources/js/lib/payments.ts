@@ -92,6 +92,13 @@ export function newIdempotencyKey(): string {
  * Подтвердить демо-платёж — симулятор ЮKassa, работает только при
  * `PAYMENT_DEMO_MODE=true` (иначе сервер отвечает 403 `DEMO_DISABLED`).
  *
+ * ВАЖНО: `payment_id` здесь — это `provider_payment_id` («demo_…»), то самое
+ * значение, которое сервер сам положил в `confirmation_url`. Не `public_id` и
+ * не числовой `id`: `PaymentService::confirmDemoPayment()` требует префикс
+ * `demo_` и ищёт платёж по `provider_payment_id`. Отправка `public_id` давала
+ * 422 `NOT_DEMO_PAYMENT` — покупка проходила все шаги и рассыпалась на
+ * последнем. Берите значение через `demoPaymentId()`, а не из ресурса.
+ *
  * В реальном режиме этот вызов не используется: подтверждение приходит
  * вебхуком от провайдера, а покупатель просто возвращается на `return_url`.
  */
@@ -99,6 +106,33 @@ export async function confirmDemoPayment(paymentId: string): Promise<PaymentReso
   const res = await send<PaymentResource>('/payments/demo-pay', 'POST', { payment_id: paymentId })
 
   return res.data
+}
+
+/**
+ * Идентификатор платежа для демо-подтверждения — ИЗ ССЫЛКИ, не из ресурса.
+ *
+ * Ссылку собирает сервер, и именно в ней лежит тот идентификатор, который
+ * принимает `POST /payments/demo-pay` (`provider_payment_id`, см.
+ * `PaymentService::confirmDemoPayment()`). Ресурс отдаёт ещё и `public_id` с
+ * числовым `id` — оба для этого вызова неверны, и путаница между ними стоила
+ * целой покупки: 422 вместо выданного билета.
+ *
+ * Фолбэк на `provider_payment_id` ресурса — на случай ссылки без параметра.
+ */
+export function demoPaymentId(
+  confirmationUrl: string | null | undefined,
+  payment?: PaymentResource | null,
+): string {
+  if (confirmationUrl) {
+    try {
+      const fromUrl = new URL(confirmationUrl, window.location.origin).searchParams.get('payment_id')
+      if (fromUrl) return fromUrl
+    } catch {
+      /* ссылка некорректна — пробуем ресурс */
+    }
+  }
+
+  return String(payment?.provider_payment_id ?? '')
 }
 
 /* ── Авторитетный статус (C2) ───────────────────────────────────────────────
@@ -144,6 +178,39 @@ export function recallPaymentId(): string | null {
 }
 
 /**
+ * Хэш нашей собственной страницы-симулятора оплаты.
+ *
+ * Маршрут `checkout/demo-pay` (`DemoPayPage`) — это не платежная страница
+ * провайдера, а ЗАГЛУШКА на время отсутствия ключей ЮKassa: она существует
+ * только при `PAYMENT_DEMO_MODE=true`. Отличить её от настоящего адреса
+ * провайдера обязательно: на чужой сайт подтверждаться нельзя, а наш
+ * собственный симулятор можно вызвать и прямо из виджета покупки, не заставляя
+ * покупателя уходить со страницы (см. `usePurchaseFlow`).
+ *
+ * Один источник правды на оба места: `anchorDemoUrl()` переписывает адрес,
+ * `isDemoConfirmation()` отвечает на вопрос «это наш симулятор?». Разъешись
+ * они — заглушка увозила бы покупателя на полную навигацию без причины.
+ */
+export const DEMO_CONFIRM_HASH = '#/checkout/demo-pay'
+
+/**
+ * Ссылка подтверждения ведёт на НАШ демо-симулятор, а не к провайдеру.
+ *
+ * Без этого вопрос приходилось решать сравнением строк на каждом новом месте,
+ * и первая же правка маршрута (`/checkout/demo-pay` → `/demo-pay`) молча
+ * ломала покупку в один экран.
+ */
+export function isDemoConfirmation(confirmationUrl: string | null | undefined): boolean {
+  if (!confirmationUrl) return false
+
+  try {
+    return new URL(confirmationUrl, window.location.origin).hash.startsWith(DEMO_CONFIRM_HASH)
+  } catch {
+    return false
+  }
+}
+
+/**
  * Привести демо-ссылку подтверждения к текущему origin.
  *
  * Сервер собирает её из origin запроса, но если сайт открыт через другой
@@ -164,7 +231,7 @@ export function anchorDemoUrl(confirmationUrl: string | null): string | null {
     return confirmationUrl
   }
 
-  if (parsed.hash.startsWith('#/checkout/demo-pay')) {
+  if (isDemoConfirmation(confirmationUrl)) {
     return `${window.location.origin}${parsed.pathname}${parsed.search}${parsed.hash}`
   }
 
