@@ -767,7 +767,9 @@ async function onFollow(): Promise<void> {
 
                     <h2 class="mt-8 text-lg font-semibold text-content">Схема зала</h2>
                     <p class="mt-1 text-sm text-muted">
-                      {{ activeSession ? hallOf(activeSession) : '' }}
+                      <!-- Площадка + зал: «Основной зал» сам по себе ничего не
+                           говорит — он есть у каждой площадки. -->
+                      <template v-if="event?.venue?.name">{{ event.venue.name }} · </template>{{ activeSession ? hallOf(activeSession) : '' }}
                       <span v-if="!inventory.loading && sectors.length" class="text-subtle"> · {{ totalSeats }} мест, свободно {{ totalAvailable }}</span>
                     </p>
 
@@ -776,6 +778,9 @@ async function onFollow(): Promise<void> {
               <p class="text-2xs uppercase tracking-wide text-subtle">Зал сеанса</p>
               <p class="mt-1 text-base font-semibold text-content">
                 {{ activeSession ? hallOf(activeSession) : '—' }}
+              </p>
+              <p v-if="event?.venue?.name" class="mt-0.5 text-xs text-muted">
+                {{ event.venue.name }}<template v-if="event.venue.city">, {{ event.venue.city }}</template>
               </p>
               <p v-if="priceRange" class="mt-0.5 text-xs text-muted">
                 от {{ money(priceRange.min) }}<template v-if="priceRange.max !== priceRange.min"> до {{ money(priceRange.max) }}</template>

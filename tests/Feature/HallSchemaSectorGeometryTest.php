@@ -154,20 +154,32 @@ final class HallSchemaSectorGeometryTest extends TestCase
         foreach ($sectors as $sector) {
             $row = $sector['rows'][0];
             $xs[$sector['name']] = array_map(
-                static fn (array $seat): int => (int) $seat['x'],
+                static fn (array $seat): float => (float) $seat['x'],
                 $row['seats'],
             );
         }
 
-        // Партер: (80 + 0..110) / 900 * 60 → 5..13
-        self::assertSame(5, min($xs['Партер']));
-        self::assertSame(13, max($xs['Партер']));
-        // Балкон: (600 + 0..110) / 900 * 60 → 40..47 — без смещения сектора он
-        // получил бы те же 5..13 и лёг бы на партер.
-        self::assertSame(40, min($xs['Балкон']));
-        self::assertSame(47, max($xs['Балкон']));
+        // Партер: (80 + 0..110) / 900 * 60 → 5.333..12.667
+        self::assertSame(5.333, min($xs['Партер']));
+        self::assertSame(12.667, max($xs['Партер']));
+        // Балкон: (600 + 0..110) / 900 * 60 → 40..47.333 — без смещения сектора он
+        // получил бы те же 5.333..12.667 и лёг бы на партер.
+        self::assertSame(40.0, min($xs['Балкон']));
+        self::assertSame(47.333, max($xs['Балкон']));
 
         self::assertGreaterThan(max($xs['Партер']), min($xs['Балкон']));
+
+        // Ряды идут с одинаковым шагом: нормировка не должна «рвать» зазоры
+        // (округление до целых давало шаги 1 и 2 единицы вперемешку — из-за этого
+        // на витрине места выглядели рассыпанными, а не рядами). Допуск 0.005
+        // единицы covers накопление округления до третьего знака.
+        $steps = [];
+        for ($i = 1; $i < count($xs['Партер']); $i += 1) {
+            $steps[] = $xs['Партер'][$i] - $xs['Партер'][$i - 1];
+        }
+        self::assertCount(5, $steps);
+        self::assertEqualsWithDelta(22 / 900 * 60, array_sum($steps) / count($steps), 0.005);
+        self::assertLessThan(0.005, max($steps) - min($steps));
     }
 
     public function test_banquet_table_sector_becomes_sellable_seats(): void

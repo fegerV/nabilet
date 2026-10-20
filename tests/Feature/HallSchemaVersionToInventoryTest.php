@@ -44,13 +44,14 @@ class HallSchemaVersionToInventoryTest extends TestCase
         $this->assertSame('Партер', $out[0]['name']);
         $this->assertSame(2, count($out[0]['rows']));
 
-        // Ряд 1: 2 места, цена из priceMinor, координаты нормализованы в 60×40
+        // Ряд 1: 2 места, цена из priceMinor, координаты нормализованы в 60 единиц
+        // по горизонту с ОБЩИМ масштабом (см. HallSchemaVersion::toInventoryFormat).
         $r1 = $out[0]['rows'][0];
         $this->assertSame('1', $r1['number']);
         $this->assertSame(500000, $r1['price_amount']);
         $this->assertSame(2, count($r1['seats']));
-        $this->assertSame(7, $r1['seats'][0]['x']);  // 100/900*60 ≈ 7
-        $this->assertSame(4, $r1['seats'][0]['y']);  // 50/520*40 ≈ 4
+        $this->assertSame(6.667, $r1['seats'][0]['x']);  // 100/900*60
+        $this->assertSame(3.333, $r1['seats'][0]['y']);  // 50/900*60 — та же единица
         $this->assertSame(1, $r1['seats'][0]['id']); // числовой id (BIGINT seat_id)
 
         // Ряд 2: 1 место, vip

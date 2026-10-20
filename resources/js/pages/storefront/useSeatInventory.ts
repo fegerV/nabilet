@@ -12,6 +12,7 @@
 import { computed, ref, type Ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { useCartStore } from '@/stores/cart'
+import { get } from '@/lib/api'
 import {
   fetchInventory,
   MAX_TICKETS_PER_ORDER,
@@ -73,6 +74,13 @@ export function useSeatInventory() {
   const eventTitle = ref('Мероприятие')
   const sessionStartsAt = ref('')
   const sessionHall = ref('')
+  /**
+   * Площадка сеанса. Раньше в подписи был только зал («Основной зал»), а это
+   * ничего не говорит покупателю: у разных площадок основной зал свой. Название
+   * площадки живёт на самом событии (`venue`), зала — на сеансе (`hall`).
+   */
+  const sessionVenue = ref('')
+  const sessionVenueCity = ref('')
 
   /**
    * Загрузить инвентарь сессии. Метрика `seatmap_open` — цель воронки
@@ -92,27 +100,51 @@ export function useSeatInventory() {
   /**
    * Подтянуть заголовок события и данные сеанса по slug из URL. Не критично:
    * при сбое заголовки остаются дефолтными, схема зала уже загружена.
+   *
+   * ПОЧЕМУ СТАТИЧЕСКИЙ ИМПОРТ. Здесь стоял
+   * `await import('@/lib/api').then((m) => m.get(...))`, и сборка ломала его
+   * молча: `__vitePreload` поднимал `.then(D => D.aT)` вовнутрь обёртки, а
+   * внешний `.then(h => h.get(url))` получал уже не модуль, а `{ data: … }` —
+   * отсюда `TypeError: h.get is not a function`. Ошибка глоталась `catch`,
+   * поэтому витрина показывала заголовок «Мероприятие» вместо названия
+   * концерта и не сообщала никуда. `EventPage.vue` импортирует `get`
+   * статически и работает; чанк `@/lib/api` грузится и так, поэтому
+   * динамический импорт не экономил ничего.
    */
   async function loadEventContext(sid: string): Promise<void> {
     const slug = String(route.params.slug ?? '')
     if (!slug) return
 
     try {
-      const { data } = await import('@/lib/api').then((m) => m.get(`/events/by-slug/${encodeURIComponent(slug)}`))
-      const ev = (data as { title?: string; sessions?: Array<{ id: string; starts_at?: string; hall?: string }> }).sessions ?? []
-      const s = ev.find((x: { id: string }) => String(x.id) === sid)
+      const { data } = await get<{
+        title?: string
+        venue?: { name?: string; city?: string } | string | null
+        sessions?: Array<{ id: string; starts_at?: string; hall?: string }>
+      }>(`/events/by-slug/${encodeURIComponent(slug)}`)
 
-      eventTitle.value = (data as { title?: string }).title ?? eventTitle.value
+      const ev = data.sessions ?? []
+      const s = ev.find((x) => String(x.id) === sid)
+
+      eventTitle.value = data.title ?? eventTitle.value
       sessionStartsAt.value = s?.starts_at ?? ''
       sessionHall.value = s?.hall ?? ''
-    } catch {
-      /* не критично — заголовки останутся дефолтными */
+
+      const venue = data.venue
+      sessionVenue.value = (typeof venue === 'string' ? venue : venue?.name) ?? ''
+      sessionVenueCity.value = typeof venue === 'object' && venue !== null ? (venue.city ?? '') : ''
+    } catch (e) {
+      // Логируем, а не только молчим: ровно такая ошибка уже жила здесь
+      // незамеченной — страница показывала «Мероприятие» вместо названия.
+      console.error('[seats] контекст события не загрузился', e)
     }
   }
 
   const sessionLabel = computed(() => {
-    if (!sessionStartsAt.value) return ''
-    return `${dateFull(sessionStartsAt.value)}, ${time(sessionStartsAt.value)}${sessionHall.value ? ` · ${sessionHall.value}` : ''}`
+    const where = [sessionVenue.value, sessionHall.value].filter(Boolean).join(', ')
+    const when = sessionStartsAt.value
+      ? `${dateFull(sessionStartsAt.value)}, ${time(sessionStartsAt.value)}`
+      : ''
+    return [where, when].filter(Boolean).join(' · ')
   })
 
   /**
@@ -205,6 +237,8 @@ export function useSeatInventory() {
     eventTitle,
     sessionStartsAt,
     sessionHall,
+    sessionVenue,
+    sessionVenueCity,
     sessionLabel,
     hall,
     useCoordMap,
