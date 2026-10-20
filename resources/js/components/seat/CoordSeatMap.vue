@@ -571,6 +571,59 @@ function seatTitle(item: InventoryItem): string {
   return `Ряд ${row}, место ${n} — ${labels[seatState(item)] ?? 'недоступно'}`
 }
 
+/*
+ * Подсказка при наведении: сектор, ряд, место и цена.
+ *
+ * Раньше единственной подсказкой был нативный `<title>` внутри SVG: браузер
+ * показывает его через секунду ожидания, системным шрифтом и поверх курсора —
+ * на схеме из пятисот мест это бесполезно. Здесь подсказка появляется сразу,
+ * едет за курсором и показывает то, по чему человек принимает решение:
+ * «Партер · ряд 6 · место 1» и «свободно · 2 800 ₽».
+ *
+ * Координаты считаем от рамки карты (`mapBox`), а не от SVG: SVG
+ * трансформируется зумом и перетаскиванием, а подсказка живёт в обычном
+ * слое над ним.
+ */
+const mapBox = ref<HTMLElement | null>(null)
+const tip = ref<{ main: string; sub: string; x: number; y: number } | null>(null)
+
+function tipFor(item: InventoryItem): { main: string; sub: string } {
+  const sector = item.seat?.sector_name ?? ''
+  const row = item.seat?.row_number ?? item.seat?.row_id ?? '?'
+  const n = item.seat?.number ?? 0
+  const price = money(Number(item.price_amount ?? 0))
+  const labels: Record<string, string> = {
+    free: 'свободно',
+    selected: 'выбрано',
+    held: 'держит другой покупатель',
+    sold: 'продано',
+    unavailable: 'недоступно',
+  }
+  const state = seatState(item)
+  return {
+    main: [sector, `ряд ${row}`, `место ${n}`].filter((p) => p !== '').join(' · '),
+    sub: `${labels[state] ?? 'недоступно'} · ${price}`,
+  }
+}
+
+function showTip(e: MouseEvent, item: InventoryItem): void {
+  const box = mapBox.value
+  if (box === null) return
+  const r = box.getBoundingClientRect()
+  tip.value = { ...tipFor(item), x: e.clientX - r.left, y: e.clientY - r.top }
+}
+
+function moveTip(e: MouseEvent): void {
+  const box = mapBox.value
+  if (box === null || tip.value === null) return
+  const r = box.getBoundingClientRect()
+  tip.value = { ...tip.value, x: e.clientX - r.left, y: e.clientY - r.top }
+}
+
+function hideTip(): void {
+  tip.value = null
+}
+
 function isPickable(item: InventoryItem): boolean {
   return isSeatPickable(item.status, item.available_quantity) || selectedIds.value.has(String(item.id))
 }
@@ -625,7 +678,7 @@ function isPickable(item: InventoryItem): boolean {
       </div>
     </div>
 
-    <div class="relative">
+    <div ref="mapBox" class="relative">
       <!--
         Масштаб: паритет с SeatMap (там кнопки есть, здесь их не было).
         Размер 44 px, а не 32: это единственный способ приблизить зал на телефоне
@@ -765,9 +818,10 @@ function isPickable(item: InventoryItem): boolean {
               fill="transparent"
               class="seat-hit"
               @click="toggleSeat(s)"
-            >
-              <title>{{ seatTitle(s) }}</title>
-            </circle>
+              @mouseenter="showTip($event, s)"
+              @mousemove="moveTip($event)"
+              @mouseleave="hideTip"
+            />
             <!--
               Видимый кружок больше не принимает события: всё ловит зона под ним.
               Поэтому hover-подсветку рисуем с родительской ячейки — иначе
@@ -809,6 +863,22 @@ function isPickable(item: InventoryItem): boolean {
         </svg>
       </div>
 
+      <!--
+        Подсказка живёт вне вьюпорта (у него `overflow-hidden`, иначе её
+        срезало бы на границе карты) и не перехватывает мышь: иначе она сама
+        становилась бы «местом» под курсором и гасила hover.
+      -->
+      <div
+        v-if="tip"
+        class="pointer-events-none absolute z-30 -translate-x-1/2 -translate-y-[calc(100%+10px)] whitespace-nowrap rounded-lg border border-line bg-surface px-2.5 py-1.5 shadow-lg"
+        :style="{ left: `${tip.x}px`, top: `${tip.y}px` }"
+        role="status"
+        aria-live="polite"
+      >
+        <p class="text-2xs font-semibold text-content">{{ tip.main }}</p>
+        <p class="text-2xs text-muted">{{ tip.sub }}</p>
+      </div>
+
       <p class="border-t border-line px-3 py-1.5 text-2xs text-subtle">
         Перетаскивание и щипок — приблизить зал. Кнопки справа — масштаб.
         <template v-if="priceChips.length > 1">Тап по цене сверху оставляет на схеме только её места и приближает их.</template>
@@ -821,6 +891,22 @@ function isPickable(item: InventoryItem): boolean {
 /* Видимый фокус для клавиатуры: SVG-кружок иначе «невидим» при Tab. */
 .seat-dot:focus {
   outline: none;
+}
+
+/*
+ * Видимый кружок обязан ПРОПУСКАТЬ события.
+ *
+ * Прозрачная зона нажатия (`circle.seat-hit`) лежит под ним, а видимый кружок
+ * рисуется поверх и по умолчанию принимает клики сам. Обработчика на нём нет —
+ * поэтому реальный клик мышью или пальцем не выбирал место: событие уходило в
+ * кружок и там умирало. Синтетический `dispatchEvent` по зоне работал, из-за
+ * чего баг не ловился автотестами, но живой покупатель не мог ничего купить.
+ *
+ * Наведение при этом не страдает: его ловит родительская группа `.seat-cell`
+ * (у неё в потомках зона нажатия), а эффект масштаба висит на ней же.
+ */
+.seat-dot {
+  pointer-events: none;
 }
 
 /*

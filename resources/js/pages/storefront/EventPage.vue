@@ -16,6 +16,9 @@ import { customerUser, isCustomerSession } from '@/lib/customer'
 import { trackEvent } from '@/lib/metrika'
 import { useSeo } from '@/lib/seo'
 import { money, dateFull, time, seatsLabel } from '@/lib/format'
+// Радиус точки в предпросмотре считаем той же формулой, что интерактивная
+// схема зала: иначе кружки налезают друг на друга и зал читается как пятно.
+import { nearestPointDistance } from '@/lib/seatViewport'
 import { cn } from '@/lib/cn'
 import { useUiStore } from '@/stores/ui'
 import { useLoyaltyStore } from '@/stores/loyalty'
@@ -379,8 +382,8 @@ const seatMap = computed(() => {
     return Number.isFinite(n) ? n : fallback
   }
 
-  type Dot = { key: number; cx: number; cy: number; r: number; free: boolean }
-  const dots: Dot[] = []
+  type Raw = { key: number; cx: number; cy: number; free: boolean; label: string }
+  const raw: Raw[] = []
   let minX = Number.POSITIVE_INFINITY
   let minY = Number.POSITIVE_INFINITY
   let maxX = Number.NEGATIVE_INFINITY
@@ -392,20 +395,35 @@ const seatMap = computed(() => {
     const h = num(s.height, 0) || 2
     const x = num(s.x)
     const y = num(s.y)
-    dots.push({
+    const sector = s.sector_name ?? ''
+    const row = s.row_number ?? '?'
+    const n = s.number ?? 0
+    raw.push({
       key: item.id,
       cx: x + w / 2,
       cy: y + h / 2,
-      // Немного меньше самого места — между соседями остаётся волосяной
-      // зазор, иначе на маленьком предпросмотре ряд сливается в полосу.
-      r: Math.max(Math.min(w, h) * 0.44, 0.35),
       free: item.status === 'available',
+      label: [sector, `ряд ${row}`, `место ${n}`].filter((p) => p !== '').join(' · '),
     })
     if (x < minX) minX = x
     if (y < minY) minY = y
     if (x + w > maxX) maxX = x + w
     if (y + h > maxY) maxY = y + h
   }
+
+  /*
+   * Радиус ОДИН на весь зал и считается от фактического шага между местами —
+   * той же формулой, что интерактивная схема (`fitSeatRadius`): 34% от
+   * ближайшего расстояния. Раньше радиус брался от размера самого места, и
+   * кружки налезали друг на друга — зал читался как «какие-то рандомные
+   * кружки», а не как ряды кресел.
+   */
+  const nearest = nearestPointDistance(
+    raw.map((d) => ({ x: d.cx, y: d.cy })),
+    1,
+  )
+  const radius = Number.isFinite(nearest) ? nearest * 0.34 : 2
+  const dots = raw.map((d) => ({ key: d.key, cx: d.cx, cy: d.cy, r: radius, free: d.free, label: d.label }))
 
   const spanX = Math.max(maxX - minX, 1)
   const spanY = Math.max(maxY - minY, 1)
@@ -419,6 +437,28 @@ const seatMap = computed(() => {
     ratio: Math.min(Math.max(spanY / spanX, 0.2), 1.05),
   }
 })
+
+/* Подсказка над предпросмотром: сектор, ряд, место. */
+const mapBox = ref<HTMLElement | null>(null)
+const mapTip = ref<{ label: string; x: number; y: number } | null>(null)
+
+function showMapTip(e: MouseEvent, label: string): void {
+  const box = mapBox.value
+  if (box === null) return
+  const r = box.getBoundingClientRect()
+  mapTip.value = { label, x: e.clientX - r.left, y: e.clientY - r.top }
+}
+
+function moveMapTip(e: MouseEvent): void {
+  const box = mapBox.value
+  if (box === null || mapTip.value === null) return
+  const r = box.getBoundingClientRect()
+  mapTip.value = { ...mapTip.value, x: e.clientX - r.left, y: e.clientY - r.top }
+}
+
+function hideMapTip(): void {
+  mapTip.value = null
+}
 
 function openSeats(): void {
   if (!event.value || !activeSession.value) return
@@ -748,11 +788,11 @@ async function onFollow(): Promise<void> {
               Это не «декоративная сетка»: расположение рядов, проходов и
               секторов совпадает с интерактивной схемой выбора мест.
             -->
-            <div v-if="seatMap" class="border-b border-line bg-surface-2/40 px-4 py-4">
+            <div v-if="seatMap" ref="mapBox" class="relative border-b border-line bg-surface-2/40 px-4 py-4">
               <svg
                 :viewBox="seatMap.viewBox"
                 :style="{ aspectRatio: String(1 / seatMap.ratio) }"
-                class="mx-auto block h-auto w-full max-w-sm"
+                class="mx-auto block h-auto max-h-[460px] w-full"
                 preserveAspectRatio="xMidYMid meet"
                 role="img"
                 :aria-label="`Схема зала: всего ${totalSeats} мест, свободно ${totalAvailable}`"
@@ -764,8 +804,22 @@ async function onFollow(): Promise<void> {
                   :cy="dot.cy"
                   :r="dot.r"
                   :fill="dot.free ? 'rgb(var(--brand-500))' : 'rgb(var(--surface-3))'"
+                  @mouseenter="showMapTip($event, dot.label)"
+                  @mousemove="moveMapTip($event)"
+                  @mouseleave="hideMapTip"
                 />
               </svg>
+
+              <div
+                v-if="mapTip"
+                class="pointer-events-none absolute z-20 -translate-x-1/2 -translate-y-[calc(100%+8px)] whitespace-nowrap rounded-lg border border-line bg-surface px-2.5 py-1.5 text-2xs font-semibold text-content shadow-lg"
+                :style="{ left: `${mapTip.x}px`, top: `${mapTip.y}px` }"
+                role="status"
+                aria-live="polite"
+              >
+                {{ mapTip.label }}
+              </div>
+
               <div class="mt-3 flex items-center justify-center gap-4 text-2xs text-subtle">
                 <span class="flex items-center gap-1.5">
                   <span class="h-2 w-2 rounded-full bg-brand-500" aria-hidden="true" />

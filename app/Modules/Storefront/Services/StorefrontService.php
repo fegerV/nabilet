@@ -90,23 +90,20 @@ final class StorefrontService
                 ],
                 'social' => [],
             ],
+            /*
+             * Порядок секций по умолчанию: сразу афиша.
+             *
+             * Раньше первым шёл `hero` — крупный баннер с заголовком во всю
+             * ширину. На телефоне он вместе со счётчиками занимал первый
+             * экран целиком, и покупатель видел текст «Выберите событие —
+             * место найдём на схеме зала» вместо самих событий. Витрина
+             * билетов должна начинаться с постера, который можно открыть;
+             * поиск и так живёт в шапке.
+             *
+             * `hero` и `featured` остаются доступными типами секций в
+             * конструкторе админки — их можно добавить вручную.
+             */
             'sections' => [
-                $this->defaultSection('hero', [
-                    'badge' => 'Билеты без наценки за кассу',
-                    'title' => 'Выберите событие — место найдём на схеме зала',
-                    'subtitle' => 'Реальная рассадка, честные цены и билет с QR, который контролёр считает даже без интернета.',
-                    'ctaLabel' => 'Смотреть афишу',
-                    'ctaLink' => '/',
-                    'image' => '',
-                    'align' => 'left',
-                    'height' => 'medium',
-                    'showSearch' => true,
-                ]),
-                $this->defaultSection('categories', [
-                    'source' => 'auto',
-                    'style' => 'chips',
-                    'items' => [],
-                ], ['title' => 'Куда пойти']),
                 $this->defaultSection('posters', [
                     'layout' => 'grid',
                     'columns' => 3,
@@ -115,12 +112,11 @@ final class StorefrontService
                     'category' => '',
                     'showFilters' => true,
                 ], ['title' => 'Афиша', 'subtitle' => 'Ближайшие мероприятия']),
-                $this->defaultSection('featured', [
-                    'source' => 'upcoming',
-                    'limit' => 6,
-                    'layout' => 'carousel',
-                    'ids' => [],
-                ], ['title' => 'Рекомендуем', 'subtitle' => 'То, что стоит увидеть']),
+                $this->defaultSection('categories', [
+                    'source' => 'auto',
+                    'style' => 'chips',
+                    'items' => [],
+                ], ['title' => 'Куда пойти']),
                 $this->defaultSection('promo', [
                     'tone' => 'brand',
                     'title' => 'Организаторам',
