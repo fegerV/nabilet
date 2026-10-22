@@ -51,7 +51,9 @@ function toAccount(): void {
 <template>
   <div class="mx-auto max-w-content px-4 py-6 sm:px-6">
     <div class="surface-card relative overflow-hidden p-6 sm:p-8">
-      <div class="absolute inset-0 bg-gradient-stage opacity-60" aria-hidden="true" />
+      <!-- `bg-stage`, а не `bg-gradient-stage`: в конфиге ключ называется
+           `stage`, и второй вариант не даёт класса — подсветки просто нет. -->
+      <div class="absolute inset-0 bg-stage opacity-60" aria-hidden="true" />
 
       <div class="relative max-w-xl">
         <NBadge tone="brand" size="md">Приглашение</NBadge>

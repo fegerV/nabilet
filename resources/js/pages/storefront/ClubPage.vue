@@ -52,18 +52,45 @@ const displayName = computed(() => {
 /* ── Уровень клуба: РЕАЛЬНЫЙ, из `/me/loyalty-level` (фаза 3 плана) ─────────
  * Демо-арифметика (бриф §4) заменена на данные сервера: уровень — производное
  * от числа оплаченных заказов, пересчитываемое обсервером при смене статуса
- * заказа. До загрузки показываем «Старт» и 100% заполнения, чтобы прогресс-бар
- * не дёргался на пустом состоянии. */
+ * заказа.
+ *
+ * ЧЕГО НЕ БЫЛО: ЧЕСТНОГО ПУСТОГО СОСТОЯНИЯ
+ *   Раньше до загрузки (и при отказе) подставлялись «Старт», 100% заполнения и
+ *   `orders_to_next = 0`. Вместе это давало в шапке «Максимальный уровень — вы
+ *   легенда зала» — то есть покупатель с истёкшей сессией получал поздравление
+ *   вместо просьбы войти заново, а баланс показывался нулём, хотя сервер его не
+ *   присылал (ноль — это «счёт есть и он пуст», а не «неизвестно»). Теперь
+ *   неизвестное показывается прочерком, а незагруженный уровень — 0% и
+ *   подписью о том, что данные не пришли.
+ */
 const level = computed(() => loyalty.loyaltyLevel)
-const levelName = computed(() => level.value?.name ?? 'Старт')
+const levelName = computed(() => level.value?.name ?? '—')
 const paidOrders = computed(() => level.value?.paid_orders ?? 0)
 const levelNext = computed(() => level.value?.next_level ?? null)
 const levelPct = computed(() => {
   const lv = level.value
-  if (!lv || !lv.next_level) return 100
+  // `null` — не «максимум», а «неизвестно»: бар пуст, а не полон.
+  if (!lv) return 0
+  if (!lv.next_level) return 100
   return Math.min(100, Math.round((lv.paid_orders / lv.next_level.min_paid_orders) * 100))
 })
 const levelRemaining = computed(() => level.value?.orders_to_next ?? 0)
+
+/**
+ * Тексты шапки. Баланс и число заказов известны только после ответа `/me/*`:
+ * до него — прочерк. Ноль здесь был бы утверждением о счёте, которого мы не
+ * проверяли.
+ */
+const bonusText = computed(() =>
+  loyalty.bonus === null
+    ? '—'
+    : `${loyalty.bonusesCount} ${plural(loyalty.bonusesCount, 'бонус', 'бонуса', 'бонусов')}`,
+)
+const ordersText = computed(() =>
+  level.value === null
+    ? '—'
+    : `${paidOrders.value} ${plural(paidOrders.value, 'оплаченный заказ', 'оплаченных заказа', 'оплаченных заказов')}`,
+)
 
 const earnedCount = computed(() => ACHIEVEMENTS.filter((a) => a.status === 'earned').length)
 const totalCount = ACHIEVEMENTS.length
@@ -204,12 +231,18 @@ function recommendedHref(event: RecommendedEvent): string | null {
 
 <template>
   <div class="mx-auto max-w-content px-4 py-6 sm:px-6">
-    <!-- Шапка клуба: градиент «сцена», уровень, бонусы, прогресс -->
+    <!-- Шапка клуба: градиент «сцена», уровень, бонусы, прогресс.
+         Имя класса — `bg-brand-gradient`, а НЕ `bg-gradient-brand`: в
+         `tailwind.config.ts` ключ называется `brand-gradient`, и обратный
+         порядок слов не даёт никакого класса вообще. Здесь стоял именно
+         обратный, поэтому градиента не было: белый текст лежал прямо на
+         светлом фоне страницы, и в светлой теме шапка клуба была нечитаема
+         (тёмная тема это маскировала — там белое на почти чёрном видно). -->
     <section
-      class="relative overflow-hidden rounded-2xl bg-gradient-brand p-6 text-white shadow-lg sm:p-8"
+      class="relative overflow-hidden rounded-2xl bg-brand-gradient p-6 text-white shadow-lg sm:p-8"
       aria-label="Клуб зрителей"
     >
-      <div class="absolute inset-0 bg-gradient-stage" aria-hidden="true" />
+      <div class="absolute inset-0 bg-stage" aria-hidden="true" />
       <div class="relative">
         <p class="text-2xs font-semibold uppercase tracking-[0.18em] text-white/70">Клуб зрителей</p>
         <h1 class="mt-1 font-display text-2xl font-bold tracking-tight sm:text-3xl">
@@ -224,11 +257,11 @@ function recommendedHref(event: RecommendedEvent): string | null {
           </span>
           <span class="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1.5 text-sm font-semibold backdrop-blur">
             <span class="text-base leading-none">✦</span>
-            {{ loyalty.bonusesCount }} {{ plural(loyalty.bonusesCount, 'бонус', 'бонуса', 'бонусов') }}
+            {{ bonusText }}
           </span>
           <span class="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1.5 text-sm font-semibold backdrop-blur">
             <span class="text-base leading-none">🎟</span>
-            {{ paidOrders }} {{ plural(paidOrders, 'оплаченный заказ', 'оплаченных заказа', 'оплаченных заказов') }}
+            {{ ordersText }}
           </span>
         </div>
 
@@ -237,7 +270,9 @@ function recommendedHref(event: RecommendedEvent): string | null {
             <div class="h-full rounded-full bg-white/90 transition-all duration-320 ease-out" :style="{ width: levelPct + '%' }" />
           </div>
           <p class="mt-1.5 text-2xs text-white/75">
-            <template v-if="levelRemaining > 0">
+            <template v-if="!level && loyalty.loading">Загружаем уровень…</template>
+            <template v-else-if="!level">Уровень не загрузился — обновите страницу или войдите заново.</template>
+            <template v-else-if="levelRemaining > 0">
               Ещё {{ levelRemaining }} {{ plural(levelRemaining, 'оплаченный заказ', 'оплаченных заказа', 'оплаченных заказов') }} — и вы на уровень «{{ levelNext?.name }}»
             </template>
             <template v-else>Максимальный уровень — вы легенда зала.</template>
@@ -258,14 +293,14 @@ function recommendedHref(event: RecommendedEvent): string | null {
       <div class="surface-card flex items-center gap-3 p-4">
         <span class="grid h-10 w-10 flex-none place-items-center rounded-lg bg-mint-500/10 text-lg text-mint-400">✦</span>
         <div>
-          <p class="text-lg font-bold tabular-nums text-content">{{ loyalty.bonusesCount }}</p>
+          <p class="text-lg font-bold tabular-nums text-content">{{ loyalty.bonus === null ? '—' : loyalty.bonusesCount }}</p>
           <p class="text-2xs text-subtle">бонусов на счету</p>
         </div>
       </div>
       <div class="surface-card flex items-center gap-3 p-4">
         <span class="grid h-10 w-10 flex-none place-items-center rounded-lg bg-accent-500/10 text-lg text-accent-400">🏅</span>
         <div>
-          <p class="text-lg font-bold tabular-nums text-content">{{ earnedCount }}<span class="text-content-subtle">/{{ totalCount }}</span></p>
+          <p class="text-lg font-bold tabular-nums text-content">{{ earnedCount }}<span class="text-subtle">/{{ totalCount }}</span></p>
           <p class="text-2xs text-subtle">медалей получено</p>
         </div>
       </div>
@@ -521,7 +556,9 @@ function recommendedHref(event: RecommendedEvent): string | null {
           </span>
           <h3 class="mt-4 font-display text-lg font-bold text-content">{{ celebrate.name }}</h3>
           <p class="mt-1 text-sm text-muted">{{ celebrate.description }}</p>
-          <p class="mt-3 inline-flex items-center gap-1.5 rounded-full bg-mint-500/12 px-3 py-1 text-xs font-medium text-mint-400">
+          <!-- Прозрачность — кратно 5: модификатор `/12` вне шкалы прозрачности
+               Tailwind выбрасывает молча, и плашка награды оставалась без фона. -->
+          <p class="mt-3 inline-flex items-center gap-1.5 rounded-full bg-mint-500/15 px-3 py-1 text-xs font-medium text-mint-400">
             <span aria-hidden="true">🎁</span> {{ celebrate.reward }}
           </p>
           <p class="mt-4 text-xs text-subtle">Примените бонусы к следующей покупке или найдите новое событие.</p>
