@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace Nabilet\Core\Http\Middleware;
 
 use Closure;
+use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Nabilet\Core\Tenancy\OrganizationContext;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -51,7 +53,7 @@ final class ResolveOrganizationContext
 
     private function resolveFromUser(Request $request): ?string
     {
-        $user = $request->user();
+        $user = $request->user() ?? $this->apiGuardUser($request);
 
         if ($user === null) {
             return null;
@@ -59,7 +61,51 @@ final class ResolveOrganizationContext
 
         $organizationId = $user->organization_id ?? null;
 
-        return $organizationId === null ? null : (string) $organizationId;
+        if ($organizationId !== null) {
+            return (string) $organizationId;
+        }
+
+        // В таблице `users` колонки `organization_id` НЕТ: членство сотрудника
+        // живёт в связке `user_organization` (установщик привязывает админа
+        // именно туда — см. `InstallerController::bootstrapOrganization()`, а
+        // его докблок прямо обещает, что «ResolveOrganizationContext resolves
+        // the active org from the user's membership»).
+        //
+        // Пока читалась только несуществующая колонка, контекст у сотрудника
+        // оставался пустым ВСЕГДА, и любой tenant-scoped админский путь падал
+        // 500 `TenantContextMissingError` — например весь CRUD /promo-codes.
+        //
+        // Покупатель членства не имеет (он не сотрудник), поэтому для витрины
+        // поведение не меняется: контекст так и остаётся пустым.
+        $membership = DB::table('user_organization')
+            ->where('user_id', $user->getKey())
+            ->orderBy('organization_id')
+            ->value('organization_id');
+
+        return $membership === null ? null : (string) $membership;
+    }
+
+    /**
+     * Пользователь bearer-токена API.
+     *
+     * ПОЧЕМУ НЕ ТОЛЬКО `$request->user()`. Этот middleware стоит в ГЛОБАЛЬНОМ
+     * стеке — то есть раньше маршрутного `auth:api`. `$request->user()` смотрит
+     * в guard по умолчанию (`web`, сессия браузера), а публичный API
+     * авторизуется заголовком `Authorization: Bearer …` через guard `api`
+     * (`session_token`). Поэтому для API-запроса `$request->user()` возвращал
+     * null даже с валидным токеном, и организация сотрудника не резолвилась
+     * НИКОГДА — со всеми последствиями вроде 500 на админском CRUD.
+     *
+     * Обращаемся к guard явно и только когда токен вообще есть: без заголовка
+     * это лишний запрос к `user_sessions` на каждом публичном запросе витрины.
+     */
+    private function apiGuardUser(Request $request): ?Authenticatable
+    {
+        if ($request->bearerToken() === null) {
+            return null;
+        }
+
+        return auth('api')->user();
     }
 
     /**

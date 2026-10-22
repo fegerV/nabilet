@@ -15,6 +15,7 @@ use Nabilet\Modules\Cart\Models\Cart;
 use Nabilet\Modules\Orders\Models\PromoCode;
 use Nabilet\Modules\Pricing\Http\Resources\PromoCodeResource;
 use Nabilet\Modules\Pricing\Services\PromoCodeService;
+use Nabilet\Modules\Sessions\Models\Session;
 
 /**
  * Промокоды: админский CRUD + публичная валидация против корзины.
@@ -125,11 +126,24 @@ class PromoCodeController extends Controller
      *
      * АРЕНДАТОР. Путь публичный: `ResolveOrganizationContext` заполняет контекст
      * только из аутентифицированного пользователя или host-маппинга, поэтому
-     * здесь он может быть пуст. Молчаливый откат «на первую организацию в БД»
-     * означал бы, что покупатель с кодом чужой организации получает её цены и
-     * существование её кодов (oracle), а админ без контекста начал бы работать
-     * с чужим tenant'ом. Поэтому контекст обязателен: без него — честный
-     * TENANT_CONTEXT_MISSING, а не угадывание.
+     * у покупателя витрины он ПУСТ. Молчаливый откат «на первую организацию в
+     * БД» означал бы, что покупатель с кодом чужой организации получает её
+     * цены и существование её кодов (oracle), а админ без контекста начал бы
+     * работать с чужим tenant'ом.
+     *
+     * Поэтому организация берётся из КОРЗИНЫ — она и есть доказательство того,
+     * в чьём мероприятии покупатель собирается платить: `cart.session_id →
+     * sessions.event_id → events.organization_id`. Это не угадывание: корзина
+     * создаётся сервером при выборе места и её сеанс уже привязан к
+     * организатору. Контекст запроса (если он есть — вошёл сотрудник) остаётся
+     * приоритетным.
+     *
+     * Без корзины организацию взять неоткуда: `order_amount` — это только
+     * сумма, по ней нельзя понять, чьи коды применяются. Раньше такой вызов
+     * падал 500 `TenantContextMissingError` (публичный эндпоинт отвечал
+     * «внутренней ошибкой» на штатный запрос) — теперь честный 422 с
+     * объяснением, какого поля не хватает. Контракт 422 на этой операции уже
+     * описан (openapi.yaml, `validatePromoCode`).
      *
      * Имя метода — `check`, а не `validate`: Illuminate Controller уже имеет
      * финальный `validate(Validator)` для трейта AuthorizesRequests, и метод с
@@ -143,7 +157,9 @@ class PromoCodeController extends Controller
             throw new ValidationError(['code' => ['The code field is required.']], 'Promo code is required.');
         }
 
-        $promo = $this->promos->findByCode($this->organizationId(), $code);
+        $cart = $this->resolveCart($request);
+
+        $promo = $this->promos->findByCode($this->organizationIdFor($cart), $code);
 
         if ($promo === null) {
             // Не «не найден», а «не применим»: контракт описывает ответ 200 с
@@ -155,8 +171,6 @@ class PromoCodeController extends Controller
                 'rejection_reason' => 'not_found',
             ]]);
         }
-
-        $cart = $this->resolveCart($request);
 
         if ($cart !== null) {
             return response()->json(['data' => $this->promos->validateForCart($promo, $cart)]);
@@ -280,5 +294,57 @@ class PromoCodeController extends Controller
         }
 
         return (int) $contextId;
+    }
+
+    /**
+     * Организация для ПУБЛИЧНОЙ проверки кода: контекст запроса, иначе корзина.
+     *
+     * Порядок именно такой: если сотрудник вошёл и проверяет код из админки,
+     * его организация главнее. Для покупателя контекста нет вообще (гость на
+     * витрине), и единственный неоспоримый источник арендатора — его корзина.
+     *
+     * Отдельный метод, а не ослабление `organizationId()`: админский CRUD
+     * обязан оставаться строго fail-closed — там корзины нет и подставлять
+     * вместо неё нечего.
+     */
+    private function organizationIdFor(?Cart $cart): int
+    {
+        $contextId = $this->context->tryId();
+
+        if ($contextId !== null && ctype_digit($contextId)) {
+            return (int) $contextId;
+        }
+
+        $fromCart = $cart === null ? null : $this->organizationOfCart($cart);
+
+        if ($fromCart !== null) {
+            return $fromCart;
+        }
+
+        throw new ValidationError(
+            ['cart_id' => ['Provide cart_id (or cart_token) — the cart identifies the organizer whose promo codes apply.']],
+            'Promo code validation needs a cart to resolve the organizer.'
+        );
+    }
+
+    /**
+     * Организатор, в чьём мероприятии лежит корзина.
+     *
+     * `cart.session_id` хранится числом, но `Session::findOrFailBySessionId()`
+     * в остальном коде допускает и public_id — повторяем ту же терпимость,
+     * чтобы проверка кода не разошлась с checkout'ом на этом месте.
+     */
+    private function organizationOfCart(Cart $cart): ?int
+    {
+        $sessionId = (string) $cart->session_id;
+
+        $session = Session::query()
+            ->where('id', $sessionId)
+            ->orWhere('public_id', $sessionId)
+            ->first();
+
+        $organizationId = $session?->event?->organization_id;
+
+        return $organizationId === null ? null : (int) $organizationId;
     }
 }

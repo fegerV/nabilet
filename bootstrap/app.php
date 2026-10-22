@@ -29,6 +29,21 @@ use Nabilet\Core\Http\ApiExceptionRenderer;
  *     stack traces and internal messages must never reach a client.
  */
 return Application::configure(basePath: dirname(__DIR__))
+    // Контекст арендатора ОБЯЗАН быть одним объектом на запрос.
+    //
+    // `NabiletServiceProvider` объявляет его singleton'ом, но сам не
+    // зарегистрирован (он бутит все модули разом и вернул бы маршруты вне
+    // /api/v1 — см. предупреждение ниже). Без биндинга контейнер отдавал
+    // КАЖДОМУ потребителю новый экземпляр: `ResolveOrganizationContext` писал
+    // организацию в свой, а контроллер читал пустой. Следствие — админские
+    // tenant-scoped пути отвечали 500 `TenantContextMissingError` (например
+    // весь CRUD /promo-codes), хотя организация у сотрудника есть.
+    //
+    // `withSingletons` — официальный способ Laravel 11+; биндинг создаётся
+    // при регистрации провайдеров, то есть до разбора запроса.
+    ->withSingletons([
+        \Nabilet\Core\Tenancy\OrganizationContext::class => \Nabilet\Core\Tenancy\OrganizationContext::class,
+    ])
     // Providers here are kept explicit and minimal on purpose (see the note below).
     // The Installer provider is registered so its Blade view namespace (`installer::`)
     // is mounted — without it `GET /install` would 500 with "view not found". It no
