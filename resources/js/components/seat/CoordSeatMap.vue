@@ -730,11 +730,18 @@ function isPickable(item: InventoryItem): boolean {
         >⤢</button>
       </div>
 
+      <!--
+        Высота вьюпорта. Раньше был жёсткий `min(58vh, 460px)`, и это
+        ограничивало РАЗМЕР ЗАЛА, а не только высоту карты: SVG вписывается
+        через `meet`, поэтому при ширине карты 800+ px масштаб упирался в
+        высоту (460/400 = 1.15) и по бокам оставались пустые поля — зал не
+        рос, хотя место на странице было. На широком экране карта теперь
+        занимает всю ширину фрейма и получает высоту под неё.
+      -->
       <div
         ref="viewport"
-        class="touch-none overflow-hidden"
+        class="h-[min(58vh,460px)] touch-none overflow-hidden lg:h-[min(70vh,660px)]"
         :class="dragging ? 'cursor-grabbing' : 'cursor-grab'"
-        style="height: min(58vh, 460px)"
         @pointerdown="onPointerDown"
         @pointermove="onPointerMove"
         @pointerup="onPointerUp"

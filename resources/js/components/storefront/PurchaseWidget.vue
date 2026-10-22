@@ -24,6 +24,15 @@
  *   показывала бы места другого сеанса, а checkout отвечал бы «корзина пуста».
  *   Обратный порядок (снять после) слал бы DELETE по новому session_id и
  *   получал 404.
+ *
+ * РАСКЛАДКА: СХЕМА ВО ВСЮ ШИРИНУ
+ *   Было две колонки — схема и сводка 340 px рядом. На витрине виджет и так
+ *   стоит в правой колонке карточки события, поэтому схема получала треть
+ *   трети: точки мест мельче ногтя, выбор только через зум. Теперь на шаге
+ *   выбора колонки нет вовсе: схема занимает всю ширину, а сводка живёт
+ *   нижней полосой ВНУТРИ её рамки — места чипами, сумма, «Далее». Колонка
+ *   возвращается на шаге контактов, где она не мешает: пока человек заполняет
+ *   форму, ему полезно видеть выбранные места и таймер удержания.
  */
 import { computed, onUnmounted, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
@@ -32,7 +41,7 @@ import NInput from '@/components/ui/NInput.vue'
 import NCheckbox from '@/components/ui/NCheckbox.vue'
 import NCountdown from '@/components/ui/NCountdown.vue'
 import CoordSeatMap from '@/components/seat/CoordSeatMap.vue'
-import OrderSummary from '@/components/seat/OrderSummary.vue'
+import SeatMap from '@/components/seat/SeatMap.vue'
 import { seatLineLabel, seatLineTotal, useCartStore } from '@/stores/cart'
 import { useLoyaltyStore } from '@/stores/loyalty'
 import { useUiStore } from '@/stores/ui'
@@ -61,17 +70,12 @@ export interface WidgetSession {
   status?: string
 }
 
-const props = withDefaults(
-  defineProps<{
-    /** Сеансы события: из них покупатель выбирает дату и время. */
-    sessions: WidgetSession[]
-    /** Активный сеанс (v-model). */
-    sessionId: string
-    /** Название площадки — в подписи над схемой («Театр СурГУ, Основной зал»). */
-    venueName?: string
-  }>(),
-  { venueName: '' },
-)
+const props = defineProps<{
+  /** Сеансы события: из них покупатель выбирает дату и время. */
+  sessions: WidgetSession[]
+  /** Активный сеанс (v-model). */
+  sessionId: string
+}>()
 
 const emit = defineEmits<{ 'update:sessionId': [id: string] }>()
 
@@ -84,7 +88,6 @@ const activeId = ref(props.sessionId)
 
 const startsAtOf = (s: WidgetSession): string => s.starts_at ?? s.startsAt ?? ''
 const availableOf = (s: WidgetSession): number => s.available_seats ?? s.availableSeats ?? 0
-const hallOf = (s: WidgetSession): string => s.hall_name ?? s.hall ?? ''
 
 const activeSession = computed<WidgetSession | undefined>(
   () => props.sessions.find((s) => s.id === activeId.value),
@@ -98,6 +101,7 @@ const {
   totalSeats,
   maxTickets,
   stageSide,
+  hall,
   useCoordMap,
   fetchSeats,
 } = useSeatInventory()
@@ -135,7 +139,7 @@ const {
   bonusHint,
 } = purchase
 
-const { hydrateCart, onToggleCoord, onLimit, remove } = useSeatHolds({
+const { hydrateCart, onToggle, onToggleCoord, onLimit, remove } = useSeatHolds({
   sessionId,
   inventory,
   maxTickets,
@@ -226,20 +230,10 @@ const sessionsSorted = computed(() =>
 )
 
 /**
- * Подпись над схемой: площадка, зал, дата и время.
- *
- * «Основной зал» сам по себе ничего не говорит — он есть у каждой площадки,
- * поэтому зал идёт вслед за её названием, а не вместо него.
+ * «Всё распродано» — по счётчику сеанса, а не по загруженным местам: пагинация
+ * могла не дотянуть часть инвентаря, и по ней вывод о распроданности был бы
+ * неверным.
  */
-const schemaCaption = computed(() => {
-  const s = activeSession.value
-  const parts: string[] = []
-  if (props.venueName) parts.push(props.venueName)
-  if (s) parts.push(hallOf(s))
-  if (s && startsAtOf(s)) parts.push(`${dateFull(startsAtOf(s))}, ${time(startsAtOf(s))}`)
-  return parts.filter(Boolean).join(' · ')
-})
-
 const soldOut = computed(() => {
   const s = activeSession.value
   return !s || availableOf(s) === 0
@@ -324,41 +318,73 @@ async function signOut(): Promise<void> {
       </button>
     </div>
 
-    <div class="mt-4 grid gap-4 lg:grid-cols-[1fr_340px]">
+    <!--
+      ── Одна рамка: схема зала, а итог — ВНУТРИ неё, нижней полосой ──
+
+      Раньше рядом со схемой стояла отдельная колонка 340 px, и карта получала
+      треть ширины: точки мест были мельче ногтя, а попасть в нужное место
+      можно было только зумом. Теперь схема занимает всю ширину фрейма, а
+      «Ваш выбор» — полоса под ней: места чипами, сумма и «Далее». Колонка
+      остаётся только у формы контактов, где она уместна и не отнимает место
+      у схемы.
+
+      Подписи «Театр СурГУ · Основной зал · вт, 20 октября, 21:00 · всего 512»
+      здесь больше нет: дата и площадка уже в шапке события, а число мест —
+      в шапке самой схемы. Три раза одно и то же — это не подсказка, а шум.
+    -->
+    <!-- Шаг 3. Готово. Схема здесь больше не нужна — билеты уже проданы. -->
+    <div v-if="step === 'done'" class="surface-card mx-auto mt-4 max-w-md p-5 text-center">
+      <p class="text-2xl" aria-hidden="true">✓</p>
+      <h2 class="mt-2 text-base font-semibold text-content">Оплата прошла</h2>
+      <p class="mt-1 text-sm text-muted">
+        Заказ №{{ outcome?.orderId }} на {{ money(outcome?.totalMinor ?? 0) }} оплачен.
+        Билеты отправлены на {{ outcome?.email }}.
+      </p>
+      <div class="mt-4 flex flex-col gap-2">
+        <RouterLink
+          to="/tickets"
+          class="block w-full rounded-lg bg-accent-gradient px-4 py-3 text-center text-base font-semibold text-white shadow-accent transition hover:brightness-110"
+        >
+          Мои билеты
+        </RouterLink>
+        <NButton variant="secondary" block @click="purchase.reset()">
+          Купить ещё
+        </NButton>
+      </div>
+    </div>
+
+    <div
+      v-else
+      class="mt-4"
+      :class="step === 'contacts' ? 'grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_380px]' : ''"
+    >
       <!-- ── Схема зала ────────────────────────────────────────────────────
            Настоящая схема: каждая точка — реальное место из `inventory_items`,
            поставленное по своим координатам. Клик по месту = ВЫБОР, а не
            «добавить в корзину»: холд ставится тут же, но покупатель остаётся
            на этом же экране. -->
       <div class="min-w-0">
-        <div class="flex flex-wrap items-center justify-between gap-2">
-          <h2 class="text-sm font-semibold text-content">Выберите места</h2>
-          <p class="text-xs text-subtle">
-            {{ schemaCaption }}
-            <template v-if="!loading && totalSeats"> · всего {{ totalSeats }}</template>
-          </p>
-        </div>
-
-        <p v-if="truncated && !loading && !loadError" class="mt-2 text-xs text-sun-500" role="alert">
+        <p v-if="truncated && !loading && !loadError" class="mb-2 text-xs text-sun-500" role="alert">
           Показаны не все места: загружено {{ inventory.length }} из {{ totalSeats }}. Выберите другой сеанс или обновите страницу.
         </p>
 
-        <div v-if="loading" class="surface-card mt-3 px-4 py-10 text-center text-sm text-subtle">
+        <div v-if="loading" class="surface-card px-4 py-10 text-center text-sm text-subtle">
           Загружаем схему зала…
         </div>
 
-        <div v-else-if="loadError" class="surface-card mt-3 flex flex-col items-center gap-3 px-4 py-10 text-center">
+        <div v-else-if="loadError" class="surface-card flex flex-col items-center gap-3 px-4 py-10 text-center">
           <p class="text-sm text-danger-500">Не удалось загрузить места: {{ loadError }}</p>
           <NButton variant="secondary" size="sm" @click="load">Повторить</NButton>
         </div>
 
-        <div v-else-if="inventory.length === 0" class="surface-card mt-3 px-4 py-6 text-center text-sm text-subtle">
+        <div v-else-if="inventory.length === 0" class="surface-card px-4 py-6 text-center text-sm text-subtle">
           Для этого сеанса пока нет опубликованной схемы зала.
         </div>
 
-        <div v-else class="mt-3">
+        <div v-else class="overflow-hidden rounded-xl border border-line bg-surface">
           <CoordSeatMap
             v-if="useCoordMap"
+            class="!rounded-none !border-0"
             :inventory="inventory"
             :selected="[...cart.selectedIds]"
             :selected-count="cart.ticketsCount"
@@ -367,12 +393,81 @@ async function signOut(): Promise<void> {
             @toggle="onToggleCoord"
             @limit="onLimit"
           />
+          <!--
+            Зал без координат — рядная карта. Раньше на этом месте стоял
+            пустой `v-else`: схема не рисовалась вообще, и билет было купить
+            нечем (ни одного места на экране).
+          -->
+          <SeatMap
+            v-else
+            class="!rounded-none !border-0"
+            :selected="[...cart.selectedIds]"
+            :max-selection="maxTickets"
+            :sectors="hall"
+            @toggle="onToggle"
+            @limit="onLimit"
+          />
 
-          <div class="mt-2 flex flex-wrap items-center justify-between gap-2">
-            <p class="text-2xs text-subtle">Нажмите на место, чтобы выбрать его</p>
-            <p v-if="cart.count > 0" class="text-2xs text-subtle">
-              выбрано {{ ticketsLabel(cart.ticketsCount) }} · {{ money(cart.totalMinor) }}
-            </p>
+          <!-- Шаг 1. Выбор: итог живёт в рамке схемы, а не в отдельной колонке. -->
+          <div v-if="step === 'seats'" data-summary class="border-t border-line px-3 py-3 sm:px-4">
+            <NCountdown
+              v-if="cart.holdSecondsLeft > 0"
+              :seconds-left="cart.holdSecondsLeft"
+              :total="900"
+              class="mb-2.5 max-w-sm"
+              @extend="cart.extendHold()"
+            />
+
+            <div class="flex flex-wrap items-center gap-x-4 gap-y-2.5">
+              <div class="min-w-0 flex-1">
+                <p v-if="selectedSeats.length === 0" class="text-sm text-subtle">
+                  Нажмите на место на схеме — оно появится здесь
+                </p>
+                <ul v-else class="flex flex-wrap items-center gap-1.5">
+                  <li
+                    v-for="seat in selectedSeats"
+                    :key="seat.id"
+                    class="flex items-center gap-2 rounded-lg border border-line bg-surface-2 py-1 pl-2.5 pr-1 text-xs"
+                  >
+                    <span class="max-w-[14rem] truncate text-content">{{ seatLineLabel(seat) }}</span>
+                    <span class="flex-none tabular-nums text-muted">{{ money(seatLineTotal(seat)) }}</span>
+                    <button
+                      type="button"
+                      class="grid size-5 flex-none place-items-center rounded text-subtle transition-colors hover:text-rose-400"
+                      :aria-label="`Убрать: ${seatLineLabel(seat)}`"
+                      @click="remove(seat.id)"
+                    >✕</button>
+                  </li>
+                  <li v-if="cart.discountMinor > 0" class="text-2xs text-mint-400">
+                    −{{ money(cart.discountMinor) }} по промокоду
+                  </li>
+                  <li>
+                    <button
+                      type="button"
+                      class="px-1 text-2xs text-subtle underline transition-colors hover:text-content"
+                      @click="cart.clear()"
+                    >Очистить</button>
+                  </li>
+                </ul>
+              </div>
+
+              <div class="ml-auto flex flex-none items-center gap-3">
+                <!-- Пока ничего не выбрано, «0 билетов · 0 ₽» — шум: места ещё
+                     нет, и сумма ничего не значит. -->
+                <div v-if="cart.count > 0" class="text-right leading-tight">
+                  <p class="text-2xs text-subtle">{{ ticketsLabel(cart.ticketsCount) }}</p>
+                  <p class="text-lg font-semibold tabular-nums text-content">{{ money(cart.totalMinor) }}</p>
+                </div>
+                <NButton
+                  variant="accent"
+                  size="lg"
+                  :disabled="cart.count === 0 || soldOut"
+                  @click="purchase.openContacts()"
+                >
+                  Далее
+                </NButton>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -381,27 +476,12 @@ async function signOut(): Promise<void> {
         </p>
       </div>
 
-      <!-- ── Правая колонка: итог → контакты → готово ───────────────────────
-           Один и тот же столбец на все шаги: покупатель не меняет экран, а
-           меняется содержимое панели рядом со схемой. -->
-      <aside class="min-w-0 lg:sticky lg:top-24 lg:self-start">
-        <!-- Шаг 1. Выбор -->
-        <OrderSummary
-          v-if="step === 'seats'"
-          :seats="selectedSeats"
-          :subtotal-minor="cart.subtotalMinor"
-          :discount-minor="cart.discountMinor"
-          :hold-seconds-left="cart.holdSecondsLeft"
-          cta-label="Далее"
-          :disabled="cart.count === 0 || soldOut"
-          @remove="remove"
-          @extend="cart.extendHold()"
-          @clear="cart.clear()"
-          @submit="purchase.openContacts()"
-        />
-
-        <!-- Шаг 2. Контакты и оплата — прямо в этой же рамке -->
-        <div v-else-if="step === 'contacts'" class="surface-card p-4">
+      <!-- ── Шаг 2. Контакты и оплата ───────────────────────────────────────
+           Колонка рядом со схемой появляется ТОЛЬКО здесь: заполняя форму,
+           полезно видеть выбранные места и время удержания. На шаге выбора
+           этой колонки нет — она отнимала у схемы треть ширины. -->
+      <aside v-if="step === 'contacts'" class="min-w-0">
+        <div class="surface-card p-4">
           <div class="flex items-center justify-between gap-2">
             <h2 class="text-sm font-semibold text-content">Оформление</h2>
             <button
@@ -576,27 +656,6 @@ async function signOut(): Promise<void> {
             <p class="text-center text-2xs text-subtle">
               Оплата проходит через ЮKassa. Статус заказа подтверждает сервер, а не редирект.
             </p>
-          </div>
-        </div>
-
-        <!-- Шаг 3. Готово -->
-        <div v-else class="surface-card p-5 text-center">
-          <p class="text-2xl" aria-hidden="true">✓</p>
-          <h2 class="mt-2 text-base font-semibold text-content">Оплата прошла</h2>
-          <p class="mt-1 text-sm text-muted">
-            Заказ №{{ outcome?.orderId }} на {{ money(outcome?.totalMinor ?? 0) }} оплачен.
-            Билеты отправлены на {{ outcome?.email }}.
-          </p>
-          <div class="mt-4 flex flex-col gap-2">
-            <RouterLink
-              to="/tickets"
-              class="block w-full rounded-lg bg-accent-gradient px-4 py-3 text-center text-base font-semibold text-white shadow-accent transition hover:brightness-110"
-            >
-              Мои билеты
-            </RouterLink>
-            <NButton variant="secondary" block @click="purchase.reset()">
-              Купить ещё
-            </NButton>
           </div>
         </div>
       </aside>
