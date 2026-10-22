@@ -9,8 +9,8 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Log;
-use Nabilet\Core\Logging\RedactSensitiveData;
 use Nabilet\Modules\System\Services\HealthProbe;
+use Nabilet\Modules\System\Services\LogReader;
 
 /**
  * Админская диагностика установки: состояние, просмотр логов, очистка кэша.
@@ -98,58 +98,64 @@ class SystemStatusController extends Controller
     }
 
     /**
-     * Просмотр последних строк лога.
+     * Записи лога для админской страницы «Логи».
      *
-     * Файл на диске уже прошёл фильтр `RedactSensitiveData` (каналы `daily` и
-     * `security`), но здесь строки проходят его ЕЩЁ РАЗ и это не избыточно:
-     * в файле лежат записи, сделанные до появления фильтра, и отдать их из
-     * админки как есть — значит воспроизвести утечку через интерфейс.
+     * Раньше метод отдавал «последние N строк» плоским списком: ни уровня, ни
+     * даты, ни поиска — по такому ответу нельзя было ни отфильтровать ошибки,
+     * ни найти запись по номеру заказа, а многострочный стектрейс выглядел как
+     * десяток независимых строк. Теперь ответ — список ЗАПИСЕЙ (дата, уровень,
+     * сообщение, контекст, стектрейс) с фильтрами и постраничностью.
+     *
+     * Параметры:
+     *   - `file`   — имя файла из `files` (по умолчанию самый свежий);
+     *   - `level`  — уровень или список через запятую (`ERROR`, `ERROR,WARNING`);
+     *   - `search` — подстрока без учёта регистра по сообщению/контексту/трейсу;
+     *   - `lines`  — размер страницы (1..500, по умолчанию 100);
+     *   - `offset` — сколько подходящих записей пропустить.
+     *
+     * Разбор, обрезка хвоста и повторная чистка секретов живут в `LogReader`:
+     * контроллер отвечает только за форму ответа. Повторная чистка не
+     * избыточна — в файле лежат записи, сделанные до появления фильтра, и
+     * отдать их из админки как есть значило бы воспроизвести утечку через
+     * интерфейс.
      */
-    public function viewLogs(Request $request, RedactSensitiveData $redactor): JsonResponse
+    public function viewLogs(Request $request, LogReader $reader): JsonResponse
     {
-        $lines = max(1, min(2000, (int) $request->get('lines', 100)));
+        $lines = max(1, min(500, (int) $request->get('lines', 100)));
+        $offset = max(0, (int) $request->get('offset', 0));
 
-        // Канал `daily` пишет в `laravel-YYYY-MM-DD.log`; файла `laravel.log`
-        // в проекте нет, поэтому прежний код всегда отвечал «Log file not
-        // found» и логи нельзя было посмотреть вообще. Берём самый свежий по
-        // mtime.
-        $candidates = glob(storage_path('logs/laravel*.log')) ?: [];
-        $logPath = null;
-        $newest = -1;
+        $levels = array_values(array_filter(array_map(
+            static fn (string $level): string => strtoupper(trim($level)),
+            explode(',', (string) $request->get('level', ''))
+        ), static fn (string $level): bool => in_array($level, LogReader::LEVELS, true)));
 
-        foreach ($candidates as $candidate) {
-            $mtime = @filemtime($candidate);
-            if ($mtime !== false && $mtime > $newest) {
-                $newest = $mtime;
-                $logPath = $candidate;
-            }
+        $search = $request->get('search');
+        $search = is_string($search) ? $search : null;
+
+        $file = $request->get('file');
+        $result = $reader->read(is_string($file) ? $file : null, $levels, $search, $lines, $offset);
+
+        if ($result === null) {
+            // Файл не найден или имя недопустимо — не 404: страница должна
+            // остаться рабочей и показать список того, что есть.
+            return response()->json([
+                'file' => null,
+                'entries' => [],
+                'matched' => 0,
+                'total_entries' => 0,
+                'limit' => $lines,
+                'offset' => $offset,
+                'truncated' => false,
+                'levels_present' => [],
+                'levels' => LogReader::LEVELS,
+                'files' => $reader->files(),
+                'message' => 'Файл лога не найден.',
+            ]);
         }
 
-        if ($logPath === null) {
-            return response()->json(['logs' => [], 'message' => 'Log file not found']);
-        }
-
-        $file = new \SplFileObject($logPath);
-        $file->seek(PHP_INT_MAX);
-        $totalLines = $file->key() + 1;
-
-        $startLine = max(0, $totalLines - $lines);
-        $logs = [];
-
-        $file->seek($startLine);
-        while (! $file->eof()) {
-            $line = $file->current();
-            if (! empty(trim($line))) {
-                $logs[] = $redactor->scrubText($line);
-            }
-            $file->next();
-        }
-
-        return response()->json([
-            'logs' => array_reverse($logs),
-            'total_lines' => $totalLines,
-            'showing_from' => $startLine,
-            'file' => basename($logPath),
+        return response()->json($result + [
+            'levels' => LogReader::LEVELS,
+            'files' => $reader->files(),
         ]);
     }
 

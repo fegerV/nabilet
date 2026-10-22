@@ -240,6 +240,9 @@ const routes: RouteRecordRaw[] = [
       // удалённый Synapse. Объявлен до :section по той же причине, что и
       // raffles — иначе catch-all показывал бы «Раздел не найден».
       { path: 'matrix', name: 'admin-matrix', component: () => import('@/pages/admin/AdminMatrixSettingsPage.vue') },
+      // Логи приложения: записи с уровнями, поиском и стектрейсами. Объявлен
+      // до :section — иначе catch-all съедал бы путь и показывал заглушку.
+      { path: 'logs', name: 'admin-logs', component: () => import('@/pages/admin/AdminLogsPage.vue') },
       // Catch-all для неизвестных адресов админки. Разделов-заглушек больше нет:
       // все пункты меню ведут на реальные экраны, поэтому единственное, чем может
       // быть этот маршрут, — опечатка в URL. Он отдаёт честный «Раздел не найден»

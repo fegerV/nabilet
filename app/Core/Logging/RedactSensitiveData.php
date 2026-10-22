@@ -155,6 +155,38 @@ final class RedactSensitiveData implements ProcessorInterface
     /** 13–19 цифр, допускаются пробелы и дефисы группами. Проверяется по Луну. */
     private const CARD_PATTERN = '/\b\d{4}[\s\-]?\d{4}[\s\-]?\d{4}[\s\-]?\d{1,7}\b/u';
 
+    /**
+     * Пара «ключ: значение» в тексте JSON.
+     *
+     * 1 — ключ, 2 — двоеточие с пробелами, 3 — значение, 4 — пробелы/переводы
+     * строк перед разделителем, 5 — разделитель. Пробелы вынесены в отдельную
+     * группу, потому что контекст в админке показывается уже разложенным по
+     * строкам: без их сохранения форматирование разваливалось бы в одну строку.
+     */
+    private const JSON_SECRET_PATTERN = '/"([A-Za-z0-9_\-]{1,64})"(\s*:\s*)("(?:[^"\\\\]|\\\\.)*"|[^,{}\[\]]*?)(\s*)([,}\]])/u';
+
+    /** Ключи, значение которых в тексте лога маскируется целиком. */
+    private const JSON_SECRET_KEYS = [
+        'password',
+        'passwd',
+        'secret',
+        'token',
+        'api_key',
+        'apikey',
+        'authorization',
+        'auth_header',
+        'cookie',
+        'remember',
+        'cvv',
+        'cvc',
+        'iban',
+        'passport',
+        'snils',
+        'inn',
+        'birth',
+        'msisdn',
+    ];
+
     /** Строка кадра трассы PHP: `#0 /path/file.php(42): func(...)`. */
     private const TRACE_FRAME_PATTERN = '/^#\d+ .*$/m';
 
@@ -182,6 +214,47 @@ final class RedactSensitiveData implements ProcessorInterface
     public function scrubText(string $text): string
     {
         return $this->scrubString($text);
+    }
+
+    /**
+     * Маскирование JSON-контекста, прочитанного из лога КАК СТРОКА.
+     *
+     * `scrubText()` маскирует значения по формату (адрес, телефон, карта), но
+     * не по ключу: маскирование по ключу делает процессор Monolog, разбирая
+     * `$context` как массив. В админском просмотре логов массив уже потерян —
+     * в файле лежит текст `{"password":"hunter2"}`, — и без этой функции
+     * пароль показывался бы в интерфейсе открытым, хотя в новом логе он
+     * замаскирован. То есть админка стала бы способом прочитать то, что фильтр
+     * специально спрятал.
+     *
+     * Ключи здесь уже, чем в `SENSITIVE_KEY_PARTS`: проверка подстроки по
+     * тексту JSON даёт ложные срабатывания, которых нет при точном имени ключа
+     * (`"expand"` содержит `pan`). Адреса и телефоны не перечислены — их
+     * маскирует `scrubText()` по значению, и она вызывается здесь же.
+     */
+    public function scrubJsonText(string $text): string
+    {
+        $text = $this->scrubString($text);
+
+        if (! str_contains($text, ':')) {
+            return $text;
+        }
+
+        return preg_replace_callback(
+            self::JSON_SECRET_PATTERN,
+            static function (array $m): string {
+                $key = strtolower($m[1]);
+
+                foreach (self::JSON_SECRET_KEYS as $part) {
+                    if (str_contains($key, $part)) {
+                        return '"' . $m[1] . '"' . $m[2] . '"' . self::MASK . '"' . $m[4] . $m[5];
+                    }
+                }
+
+                return $m[0];
+            },
+            $text
+        ) ?? $text;
     }
 
     /**
