@@ -64,6 +64,16 @@ const props = defineProps<{
    */
   selectedCount?: number
   maxQuantity?: number
+  /**
+   * С какой стороны полотна сцена: `top` (по умолчанию) или `bottom`.
+   *
+   * Раньше полоса «СЦЕНА» рисовалась всегда сверху. Для зала, где места идут
+   * от сцены ВВЕРХ (у «Театра СурГУ» ряд 1 внизу, ряд 16 у задней стены),
+   * подпись оказывалась с противоположной стороны — витрина показывала сцену
+   * за спиной зрителя. Направление приходит из схемы зала через
+   * `meta.stage_side` инвентаря: по местам его не угадать.
+   */
+  stageSide?: 'top' | 'bottom'
 }>()
 
 const emit = defineEmits<{ toggle: [item: InventoryItem, qty: number]; limit: [] }>()
@@ -109,7 +119,20 @@ const DANCE_GAP = 14
 const DANCE_PICKER_RESERVE = 52
 
 /** Сцена — сверху по центру. */
-const stage = { x: (SVG_W - 200) / 2, y: 12, w: 200, h: 30 }
+const stageAtBottom = computed(() => props.stageSide === 'bottom')
+
+/**
+ * Полоса сцены. Положение зависит от зала: у одних схем места уходят вверх от
+ * сцены (сцена снизу), у других — вниз (сцена сверху). Источник истины —
+ * статичный объект `kind: "stage"` в `schema_json`; сервер сводит его в
+ * `meta.stage_side`, потому что витрине инвентарь приходит без схемы зала.
+ */
+const stage = computed(() => ({
+  x: (SVG_W - 200) / 2,
+  y: stageAtBottom.value ? SVG_H - 12 - 30 : 12,
+  w: 200,
+  h: 30,
+}))
 
 /** Места (seat) с координатами. */
 const seats = computed(() =>
@@ -258,12 +281,14 @@ const fit = computed(() =>
       width: SVG_W,
       height: SVG_H,
       pad: PAD,
-      reservedTop: STAGE_H,
+      // Полоса сцены резервируется с той стороны, где она нарисована: иначе
+      // места либо заезжают на подпись, либо половина полотна пустует.
+      reservedTop: stageAtBottom.value ? 0 : STAGE_H,
       // Нижняя полоса отдана зонам танцпола (и пикеру количества, когда он
       // раскрыт) — иначе места ложатся на зону.
-      reservedBottom: danceZones.value.length > 0
+      reservedBottom: (stageAtBottom.value ? STAGE_H : 0) + (danceZones.value.length > 0
         ? DANCE_BOX_HEIGHT + DANCE_GAP + (pickerZoneId.value !== null ? DANCE_PICKER_RESERVE : 0)
-        : 0,
+        : 0),
     },
   ),
 )

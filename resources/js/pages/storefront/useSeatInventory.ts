@@ -70,6 +70,15 @@ export function useSeatInventory() {
    */
   const maxTickets = ref(MAX_TICKETS_PER_ORDER)
 
+  /**
+   * С какой стороны полотна сцена (`meta.stage_side`).
+   *
+   * Сервер считает это по статичному объекту `kind: "stage"` схемы зала.
+   * По местам направление не угадать: у «СурГУ» ряд 1 стоит внизу (у сцены),
+   * у других залов — сверху, и «сцена всегда сверху» показывала её за спиной.
+   */
+  const stageSide = ref<'top' | 'bottom'>('top')
+
   /* Событие и сессия приходят из API (передаём через query от EventPage). */
   const eventTitle = ref('Мероприятие')
   const sessionStartsAt = ref('')
@@ -93,6 +102,7 @@ export function useSeatInventory() {
     totalSeats.value = result.total || result.items.length
     truncated.value = result.truncated
     maxTickets.value = result.maxTicketsPerOrder
+    stageSide.value = result.stageSide
 
     void trackEvent('seatmap_open').catch(() => {})
   }
@@ -234,6 +244,7 @@ export function useSeatInventory() {
     truncated,
     totalSeats,
     maxTickets,
+    stageSide,
     eventTitle,
     sessionStartsAt,
     sessionHall,

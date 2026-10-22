@@ -7,6 +7,7 @@ namespace Nabilet\Modules\Inventory\Http\Controllers;
 use Nabilet\Modules\Inventory\Http\Requests\UpdateRowPricesRequest;
 use Nabilet\Modules\Inventory\Models\InventoryItem;
 use Nabilet\Modules\Inventory\Services\InventoryService;
+use Nabilet\Modules\Sessions\Models\Session;
 use Nabilet\Modules\Tickets\Models\Ticket;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -84,8 +85,86 @@ class InventoryController extends Controller
                 // покупатель видел техническую ошибку вместо понятного
                 // «не больше N билетов». Теперь клиент не угадывает.
                 'max_tickets_per_order' => max(1, (int) config('nabilet.checkout.max_items_per_order', 10)),
+                // С какой стороны полотна рисовать сцену — см. `stageSide()`.
+                'stage_side' => $this->stageSide($validated['session_id'] ?? null),
             ],
         ]);
+    }
+
+    /**
+     * С какой стороны полотна нарисована сцена: `top` или `bottom`.
+     *
+     * ЗАЧЕМ СЕРВЕРУ ЭТО ЗНАНИЕ. `CoordSeatMap` рисовал полосу «СЦЕНА» жёстко
+     * сверху. Для зала, где места идут от сцены вверх, подпись оказывалась на
+     * противоположной стороне: у «Театра СурГУ» ряд 1 стоит внизу (рядом со
+     * сценой), ряд 16 — у задней стены, и витрина показывала сцену за спиной
+     * зрителя. По самим местам направление не угадывается — оно лежит в схеме
+     * зала, в статичном объекте `kind: "stage"`, и больше нигде.
+     *
+     * Сравниваем центр сцены с медианой Y мест: медиана, а не среднее — в
+     * залах с боковыми блоками и балконом среднее уезжает от реальной
+     * середины партера. Нет сцены в схеме (танцпол, клуб) — остаётся `top`,
+     * как было.
+     */
+    private function stageSide(?string $sessionId): string
+    {
+        if ($sessionId === null || $sessionId === '') {
+            return 'top';
+        }
+
+        // `session_id` валидирован как integer (см. выше), поэтому ищем по id;
+        // `orWhere` по public_id оставлен на случай, если фильтр когда-нибудь
+        // расширят — стоимость нулевая.
+        $session = Session::query()
+            ->where('id', $sessionId)
+            ->orWhere('public_id', $sessionId)
+            ->first();
+
+        $schema = $session?->schemaVersion?->schema_json;
+
+        if (! is_array($schema)) {
+            return 'top';
+        }
+
+        $stage = null;
+
+        foreach ((array) ($schema['staticObjects'] ?? []) as $object) {
+            if (is_array($object) && ($object['kind'] ?? null) === 'stage') {
+                $stage = $object;
+                break;
+            }
+        }
+
+        if ($stage === null) {
+            return 'top';
+        }
+
+        $seatYs = [];
+
+        foreach ((array) ($schema['sectors'] ?? []) as $sector) {
+            if (! is_array($sector)) {
+                continue;
+            }
+
+            $offsetY = (float) ($sector['y'] ?? 0);
+
+            foreach ((array) ($sector['seats'] ?? []) as $seat) {
+                if (is_array($seat)) {
+                    $seatYs[] = $offsetY + (float) ($seat['y'] ?? 0);
+                }
+            }
+        }
+
+        if ($seatYs === []) {
+            return 'top';
+        }
+
+        sort($seatYs);
+        $medianY = $seatYs[intdiv(count($seatYs), 2)];
+
+        $stageCenterY = (float) ($stage['y'] ?? 0) + (float) ($stage['height'] ?? 0) / 2;
+
+        return $stageCenterY > $medianY ? 'bottom' : 'top';
     }
 
     public function show(InventoryItem $inventoryItem): JsonResponse

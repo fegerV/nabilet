@@ -97,6 +97,7 @@ const {
   truncated,
   totalSeats,
   maxTickets,
+  stageSide,
   useCoordMap,
   fetchSeats,
 } = useSeatInventory()
@@ -362,6 +363,7 @@ async function signOut(): Promise<void> {
             :selected="[...cart.selectedIds]"
             :selected-count="cart.ticketsCount"
             :max-quantity="maxTickets"
+            :stage-side="stageSide"
             @toggle="onToggleCoord"
             @limit="onLimit"
           />

@@ -78,6 +78,14 @@ export interface InventoryResult {
    * Фолбэк — `MAX_TICKETS_PER_ORDER`, если поле не пришло.
    */
   maxTicketsPerOrder: number
+  /**
+   * С какой стороны полотна сцена (`meta.stage_side`).
+   *
+   * Считается на сервере по статичному объекту `kind: "stage"` схемы зала:
+   * витрина получает инвентарь без самой схемы, поэтому по местам направление
+   * не восстановить. Фолбэк — `top`, как рисовалось раньше.
+   */
+  stageSide: 'top' | 'bottom'
 }
 
 const INVENTORY_PAGE_SIZE = 500
@@ -97,16 +105,17 @@ export async function fetchInventory(sessionId: number | string): Promise<Invent
   // Лимит приходит вместе с первой страницей; если сервер его не отдал
   // (старая сборка API) — остаётся фолбэк-константа.
   let maxTicketsPerOrder = MAX_TICKETS_PER_ORDER
+  let stageSide: 'top' | 'bottom' = 'top'
 
   for (;;) {
     const res = await get<
       InventoryItem[],
-      { current_page: number; per_page: number; total: number; last_page: number; max_tickets_per_order?: number }
+      { current_page: number; per_page: number; total: number; last_page: number; max_tickets_per_order?: number; stage_side?: string }
     >(`/inventory?session_id=${sessionId}&per_page=${INVENTORY_PAGE_SIZE}&page=${page}`)
     // Laravel paginator: { data: [...], meta: {...} }. Иначе data — уже массив.
     const maybe = res as unknown as {
       data: InventoryItem[] | { data?: InventoryItem[] }
-      meta?: { total?: number; last_page?: number; max_tickets_per_order?: number }
+      meta?: { total?: number; last_page?: number; max_tickets_per_order?: number; stage_side?: string }
     }
     const inner = maybe.data
     const list = Array.isArray(inner) ? inner : ((inner as { data?: InventoryItem[] })?.data ?? [])
@@ -116,11 +125,12 @@ export async function fetchInventory(sessionId: number | string): Promise<Invent
     lastPage = Number(maybe.meta?.last_page ?? 1) || 1
     const serverLimit = Number(maybe.meta?.max_tickets_per_order)
     if (Number.isFinite(serverLimit) && serverLimit >= 1) maxTicketsPerOrder = Math.floor(serverLimit)
+    if (maybe.meta?.stage_side === 'bottom') stageSide = 'bottom'
     if (list.length === 0 || page >= lastPage || page >= INVENTORY_MAX_PAGES) break
     page += 1
   }
 
-  return { items, total, truncated: items.length < total, maxTicketsPerOrder }
+  return { items, total, truncated: items.length < total, maxTicketsPerOrder, stageSide }
 }
 
 /** Ответ addItem/GET /cart — форма корзины, которую понимает клиент. */
