@@ -136,6 +136,50 @@ jobs:
         run: composer validate --no-check-publish --no-check-lock
 
   # ───────────────────────────────────────────────────────────────────────────
+  # Static analysis. Deliberately its own job: the `verify` job above runs
+  # without Composer, and that separation is the point — a broken install must
+  # not stop the invariants from being enforced. PHPStan needs vendor/, so it
+  # lives here.
+  #
+  # The gate was absent for a long time, and the reason was that it was red:
+  # 1632 findings, 1287 of them one class of false positive (Eloquent columns
+  # declared in migrations, not PHP). A gate that is red is a gate nobody runs,
+  # so real findings had no way to surface either.
+  #
+  # What made it green (phpstan.neon and phpstan-baseline.neon carry the full
+  # reasoning): `universalObjectCratesClasses` for Model and JsonResource removes
+  # 1450 false positives; the remaining 344 are a ratchet in the baseline and
+  # may only shrink. Larastan is the proper fix for the first part, but it
+  # requires illuminate/console ≤12 and this project is on Laravel 13, so no
+  # released version installs — see the comment in phpstan.neon.
+  # ───────────────────────────────────────────────────────────────────────────
+  static:
+    name: Static analysis
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: json, mbstring, openssl, pdo
+          coverage: none
+          tools: none
+
+      - name: Install dependencies from the lock
+        run: composer install --prefer-dist --no-interaction --no-progress --no-scripts
+
+      - name: Dump the autoloader
+        run: composer dump-autoload --optimize --no-scripts
+
+      # No database is needed: PHPStan reads code, and `--no-scripts` above
+      # avoids `package:discover` booting the app.
+      - name: PHPStan level 5
+        run: php -d memory_limit=2G vendor/bin/phpstan analyse --no-progress --no-interaction
+
+  # ───────────────────────────────────────────────────────────────────────────
   # The container files, checked where Docker actually works.
   #
   # Neither the Dockerfile nor docker-compose.yml can be exercised on the machine

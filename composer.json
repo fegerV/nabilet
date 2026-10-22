@@ -69,6 +69,12 @@
             "php tools/verify-openapi.php",
             "php tools/verify-migrations.php",
             "php tools/verify-state-machines.php"
+        ],
+        "verify:live": [
+            "php tools/verify-live.php"
+        ],
+        "analyse": [
+            "php -d memory_limit=2G vendor/bin/phpstan analyse --no-progress"
         ]
     },
     "extra": {

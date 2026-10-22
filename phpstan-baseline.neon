@@ -1,0 +1,1362 @@
+# Что это за файл.
+#
+# 344 находки PHPStan уровня 5, зафиксированные как ratchet: гейт падает только
+# на НОВЫХ. Список может сокращаться, но не расти — это и есть смысл baseline.
+#
+# Почему 344, а не 1632. Из 1632 ошибок 1287 были `property.notFound` на
+# Eloquent-моделях и JsonResource: колонки объявлены в миграциях, а не в PHP,
+# поэтому анализатор их не видит. Лечится Larastan — но он требует
+# `illuminate/console` не выше ^12, а проект на Laravel 13, и ни одна
+# выпущенная версия не ставится. Вместо него в phpstan.neon объявлены
+# universalObjectCratesClasses (Model, JsonResource) — это снимает 1287+163
+# ложных срабатывания. Остальные 344 — не ложные, а следствия отсутствия
+# Larastan: PHPStan не знает, что `Order::query()` возвращает Eloquent\Builder,
+# что `$session->event()` — отношение, что `getReturnType()` вернёт
+# ReflectionNamedType. Проверено выборочно: в рантайме все они работают.
+#
+# Как обновлять. Удаляйте записи, которые перестали воспроизводиться: PHPStan
+# сам сообщает «Ignored error pattern … was not matched», и это падение, а не
+# предупреждение — так мёртвые записи не накапливаются. Добавлять новые НЕЛЬЗЯ:
+# если появилась ошибка, её чинят. Пересобрать файл целиком:
+#   php vendor/bin/phpstan analyse --generate-baseline
+parameters:
+	ignoreErrors:
+		-
+			message: "#^Result of \\|\\| is always false\\.$#"
+			count: 1
+			path: app/Core/Http/ApiExceptionRenderer.php
+
+		-
+			message: "#^Strict comparison using \\=\\=\\= between class\\-string\\<Illuminate\\\\Database\\\\Eloquent\\\\Model\\> and '' will always evaluate to false\\.$#"
+			count: 1
+			path: app/Core/Http/ApiExceptionRenderer.php
+
+		-
+			message: "#^Strict comparison using \\=\\=\\= between class\\-string\\<Illuminate\\\\Database\\\\Eloquent\\\\Model\\> and null will always evaluate to false\\.$#"
+			count: 1
+			path: app/Core/Http/ApiExceptionRenderer.php
+
+		-
+			message: "#^Method Nabilet\\\\Core\\\\Http\\\\Middleware\\\\ApplySecurityHeaders\\:\\:nonce\\(\\) is unused\\.$#"
+			count: 1
+			path: app/Core/Http/Middleware/ApplySecurityHeaders.php
+
+		-
+			message: "#^Access to an undefined property object\\:\\:\\$roles\\.$#"
+			count: 1
+			path: app/Core/Support/StaffRole.php
+
+		-
+			message: "#^Call to an undefined method Illuminate\\\\Contracts\\\\Auth\\\\Factory\\:\\:user\\(\\)\\.$#"
+			count: 1
+			path: app/Models/Event.php
+
+		-
+			message: "#^Method App\\\\Models\\\\Event\\:\\:getNextDateAttribute\\(\\) should return App\\\\Models\\\\EventDate\\|null but returns Illuminate\\\\Database\\\\Eloquent\\\\Model\\|null\\.$#"
+			count: 1
+			path: app/Models/Event.php
+
+		-
+			message: "#^Method App\\\\Models\\\\Event\\:\\:upcomingDates\\(\\) should return Illuminate\\\\Database\\\\Eloquent\\\\Relations\\\\HasMany but returns Illuminate\\\\Database\\\\Query\\\\Builder\\.$#"
+			count: 1
+			path: app/Models/Event.php
+
+		-
+			message: "#^Method App\\\\Models\\\\EventArtist\\:\\:scopeOrdered\\(\\) should return Illuminate\\\\Database\\\\Eloquent\\\\Builder but returns Illuminate\\\\Database\\\\Query\\\\Builder\\.$#"
+			count: 1
+			path: app/Models/EventArtist.php
+
+		-
+			message: "#^Method App\\\\Models\\\\EventFaq\\:\\:scopeOrdered\\(\\) should return Illuminate\\\\Database\\\\Eloquent\\\\Builder but returns Illuminate\\\\Database\\\\Query\\\\Builder\\.$#"
+			count: 1
+			path: app/Models/EventFaq.php
+
+		-
+			message: "#^Method App\\\\Models\\\\EventScheduleItem\\:\\:scopeOrdered\\(\\) should return Illuminate\\\\Database\\\\Eloquent\\\\Builder but returns Illuminate\\\\Database\\\\Query\\\\Builder\\.$#"
+			count: 1
+			path: app/Models/EventScheduleItem.php
+
+		-
+			message: "#^Method App\\\\Models\\\\EventSpeaker\\:\\:scopeOrdered\\(\\) should return Illuminate\\\\Database\\\\Eloquent\\\\Builder but returns Illuminate\\\\Database\\\\Query\\\\Builder\\.$#"
+			count: 1
+			path: app/Models/EventSpeaker.php
+
+		-
+			message: "#^Method App\\\\Models\\\\EventSponsor\\:\\:scopeOrdered\\(\\) should return Illuminate\\\\Database\\\\Eloquent\\\\Builder but returns Illuminate\\\\Database\\\\Query\\\\Builder\\.$#"
+			count: 1
+			path: app/Models/EventSponsor.php
+
+		-
+			message: "#^Property App\\\\Models\\\\RolePermission\\:\\:\\$primaryKey \\(string\\) does not accept default value of type array\\<int, string\\>\\.$#"
+			count: 1
+			path: app/Models/RolePermission.php
+
+		-
+			message: "#^Property App\\\\Models\\\\UserOrganization\\:\\:\\$primaryKey \\(string\\) does not accept default value of type array\\<int, string\\>\\.$#"
+			count: 1
+			path: app/Models/UserOrganization.php
+
+		-
+			message: "#^Call to an undefined method Illuminate\\\\Contracts\\\\Auth\\\\Factory\\:\\:user\\(\\)\\.$#"
+			count: 1
+			path: app/Models/Venue.php
+
+		-
+			message: "#^Call to static method table\\(\\) on an unknown class DB\\.$#"
+			count: 3
+			path: app/Modules/Analytics/Services/MetrikaSettings.php
+
+		-
+			message: "#^Method Nabilet\\\\Modules\\\\Auth\\\\Http\\\\Controllers\\\\AuthController\\:\\:logout\\(\\) should return Illuminate\\\\Http\\\\Response but returns Illuminate\\\\Contracts\\\\Routing\\\\ResponseFactory\\.$#"
+			count: 1
+			path: app/Modules/Auth/Http/Controllers/AuthController.php
+
+		-
+			message: "#^Call to an undefined method Nabilet\\\\Modules\\\\Auth\\\\Http\\\\Resources\\\\AuthResource\\:\\:relationLoaded\\(\\)\\.$#"
+			count: 1
+			path: app/Modules/Auth/Http/Resources/AuthResource.php
+
+		-
+			message: "#^Call to an undefined method Nabilet\\\\Modules\\\\Cart\\\\Http\\\\Resources\\\\CartResource\\:\\:relationLoaded\\(\\)\\.$#"
+			count: 1
+			path: app/Modules/Cart/Http/Resources/CartResource.php
+
+		-
+			message: "#^Call to an undefined method Illuminate\\\\Database\\\\Eloquent\\\\Model\\:\\:event\\(\\)\\.$#"
+			count: 1
+			path: app/Modules/Cart/Services/CartCheckoutService.php
+
+		-
+			message: "#^Call to an undefined method Illuminate\\\\Database\\\\Query\\\\Builder\\:\\:with\\(\\)\\.$#"
+			count: 1
+			path: app/Modules/Cart/Services/CartCheckoutService.php
+
+		-
+			message: "#^Call to an undefined static method Nabilet\\\\Modules\\\\Orders\\\\Models\\\\Order\\:\\:create\\(\\)\\.$#"
+			count: 1
+			path: app/Modules/Cart/Services/CartCheckoutService.php
+
+		-
+			message: "#^Call to an undefined static method Nabilet\\\\Modules\\\\Orders\\\\Models\\\\OrderItem\\:\\:create\\(\\)\\.$#"
+			count: 1
+			path: app/Modules/Cart/Services/CartCheckoutService.php
+
+		-
+			message: "#^Method Nabilet\\\\Modules\\\\Cart\\\\Services\\\\CartCheckoutService\\:\\:lockOwnedByPublicId\\(\\) should return Nabilet\\\\Modules\\\\Cart\\\\Models\\\\Cart but returns stdClass\\.$#"
+			count: 1
+			path: app/Modules/Cart/Services/CartCheckoutService.php
+
+		-
+			message: "#^Parameter \\#1 \\$cart of method Nabilet\\\\Modules\\\\Cart\\\\Services\\\\CartCheckoutService\\:\\:convert\\(\\) expects Nabilet\\\\Modules\\\\Cart\\\\Models\\\\Cart, stdClass given\\.$#"
+			count: 1
+			path: app/Modules/Cart/Services/CartCheckoutService.php
+
+		-
+			message: "#^Call to an undefined method Illuminate\\\\Support\\\\Collection\\<int, stdClass\\>\\:\\:modelKeys\\(\\)\\.$#"
+			count: 1
+			path: app/Modules/Cart/Services/CartItemService.php
+
+		-
+			message: "#^Call to an undefined static method Nabilet\\\\Modules\\\\Cart\\\\Models\\\\CartItem\\:\\:create\\(\\)\\.$#"
+			count: 1
+			path: app/Modules/Cart/Services/CartItemService.php
+
+		-
+			message: "#^Call to an undefined static method Nabilet\\\\Modules\\\\Cart\\\\Models\\\\CartItem\\:\\:where\\(\\)\\.$#"
+			count: 1
+			path: app/Modules/Cart/Services/CartItemService.php
+
+		-
+			message: "#^Call to an undefined static method Nabilet\\\\Modules\\\\Orders\\\\Models\\\\SeatHold\\:\\:create\\(\\)\\.$#"
+			count: 1
+			path: app/Modules/Cart/Services/CartItemService.php
+
+		-
+			message: "#^Call to protected method increment\\(\\) of class Illuminate\\\\Database\\\\Eloquent\\\\Model\\.$#"
+			count: 2
+			path: app/Modules/Cart/Services/CartItemService.php
+
+		-
+			message: "#^Cannot call method fresh\\(\\) on stdClass\\.$#"
+			count: 1
+			path: app/Modules/Cart/Services/CartItemService.php
+
+		-
+			message: "#^Cannot call method items\\(\\) on stdClass\\.$#"
+			count: 1
+			path: app/Modules/Cart/Services/CartItemService.php
+
+		-
+			message: "#^Cannot call method update\\(\\) on stdClass\\.$#"
+			count: 6
+			path: app/Modules/Cart/Services/CartItemService.php
+
+		-
+			message: "#^Parameter \\#2 \\$inventoryItem of method Nabilet\\\\Modules\\\\Cart\\\\Services\\\\CartItemService\\:\\:createHold\\(\\) expects Nabilet\\\\Modules\\\\Inventory\\\\Models\\\\InventoryItem, stdClass given\\.$#"
+			count: 1
+			path: app/Modules/Cart/Services/CartItemService.php
+
+		-
+			message: "#^Parameter \\#2 \\$inventoryItem of method Nabilet\\\\Modules\\\\Cart\\\\Services\\\\CartItemService\\:\\:growHold\\(\\) expects Nabilet\\\\Modules\\\\Inventory\\\\Models\\\\InventoryItem, stdClass given\\.$#"
+			count: 1
+			path: app/Modules/Cart/Services/CartItemService.php
+
+		-
+			message: "#^Call to an undefined static method Nabilet\\\\Modules\\\\Cart\\\\Models\\\\Cart\\:\\:create\\(\\)\\.$#"
+			count: 1
+			path: app/Modules/Cart/Services/CartService.php
+
+		-
+			message: "#^Call to an undefined static method Nabilet\\\\Modules\\\\Cart\\\\Models\\\\CartItem\\:\\:where\\(\\)\\.$#"
+			count: 1
+			path: app/Modules/Cart/Services/CartService.php
+
+		-
+			message: "#^Parameter \\#2 \\$default of method Illuminate\\\\Http\\\\Request\\:\\:query\\(\\) expects array\\|string\\|null, int given\\.$#"
+			count: 1
+			path: app/Modules/Checkin/Http/Controllers/Admin/CheckinDeviceController.php
+
+		-
+			message: "#^Parameter \\#2 \\$default of method Illuminate\\\\Http\\\\Request\\:\\:query\\(\\) expects array\\|string\\|null, int given\\.$#"
+			count: 1
+			path: app/Modules/Checkin/Http/Controllers/Admin/CheckinScanReportController.php
+
+		-
+			message: "#^Parameter \\#2 \\$default of method Illuminate\\\\Http\\\\Request\\:\\:query\\(\\) expects array\\|string\\|null, int given\\.$#"
+			count: 1
+			path: app/Modules/Checkin/Http/Controllers/Admin/OfflineBundleController.php
+
+		-
+			message: "#^Offset 'result' on array\\{client_scan_id\\: string, ticket_id\\: mixed, scanned_at\\: string, result\\: string\\} on left side of \\?\\? always exists and is not nullable\\.$#"
+			count: 1
+			path: app/Modules/Checkin/Http/Controllers/CheckerController.php
+
+		-
+			message: "#^Call to an undefined static method Nabilet\\\\Modules\\\\Tickets\\\\Models\\\\CheckinDevice\\:\\:create\\(\\)\\.$#"
+			count: 1
+			path: app/Modules/Checkin/Services/DeviceTokenIssuer.php
+
+		-
+			message: "#^Call to an undefined static method Nabilet\\\\Modules\\\\Tickets\\\\Models\\\\OfflineBundle\\:\\:create\\(\\)\\.$#"
+			count: 1
+			path: app/Modules/Checkin/Services/OfflineBundleService.php
+
+		-
+			message: "#^Cannot call abstract static method Carbon\\\\CarbonInterface\\:\\:instance\\(\\)\\.$#"
+			count: 1
+			path: app/Modules/Checkin/Services/OfflineBundleService.php
+
+		-
+			message: "#^Parameter \\#1 \\$callback of method Illuminate\\\\Support\\\\Collection\\<int,stdClass\\>\\:\\:map\\(\\) expects callable\\(stdClass, int\\)\\: Nabilet\\\\Modules\\\\Checkin\\\\Domain\\\\BundleTicket, Closure\\(Nabilet\\\\Modules\\\\Tickets\\\\Models\\\\Ticket\\)\\: Nabilet\\\\Modules\\\\Checkin\\\\Domain\\\\BundleTicket given\\.$#"
+			count: 2
+			path: app/Modules/Checkin/Services/OfflineBundleService.php
+
+		-
+			message: "#^Using nullsafe method call on non\\-nullable type Carbon\\\\CarbonImmutable\\. Use \\-\\> instead\\.$#"
+			count: 1
+			path: app/Modules/Content/Services/PageService.php
+
+		-
+			message: "#^Call to an undefined method Nabilet\\\\Modules\\\\Core\\\\Organizations\\\\Models\\\\Organization\\:\\:create\\(\\)\\.$#"
+			count: 1
+			path: app/Modules/Core/Organizations/Repositories/OrganizationRepository.php
+
+		-
+			message: "#^Call to an undefined method Nabilet\\\\Modules\\\\Core\\\\Organizations\\\\Models\\\\Organization\\:\\:where\\(\\)\\.$#"
+			count: 2
+			path: app/Modules/Core/Organizations/Repositories/OrganizationRepository.php
+
+		-
+			message: "#^Call to an undefined method Nabilet\\\\Modules\\\\Core\\\\Users\\\\Models\\\\User\\:\\:create\\(\\)\\.$#"
+			count: 1
+			path: app/Modules/Core/Users/Repositories/UserRepository.php
+
+		-
+			message: "#^Call to an undefined method Nabilet\\\\Modules\\\\Core\\\\Users\\\\Models\\\\User\\:\\:where\\(\\)\\.$#"
+			count: 3
+			path: app/Modules/Core/Users/Repositories/UserRepository.php
+
+		-
+			message: "#^Call to an undefined static method Nabilet\\\\Modules\\\\Core\\\\Users\\\\Models\\\\User\\:\\:create\\(\\)\\.$#"
+			count: 1
+			path: app/Modules/Core/Users/Services/CustomerAccountService.php
+
+		-
+			message: "#^Parameter \\#1 \\$callback of method Illuminate\\\\Support\\\\Collection\\<int,stdClass\\>\\:\\:map\\(\\) expects callable\\(stdClass, int\\)\\: array\\{id\\: mixed, session_id\\: mixed, type\\: mixed, seat_id\\: mixed, standing_zone_id\\: mixed, price_amount\\: mixed, currency\\: mixed, capacity\\: mixed, available_quantity\\: mixed, status\\: mixed\\}, Closure\\(Nabilet\\\\Modules\\\\Inventory\\\\Models\\\\InventoryItem\\)\\: array\\{id\\: mixed, session_id\\: mixed, type\\: mixed, seat_id\\: mixed, standing_zone_id\\: mixed, price_amount\\: mixed, currency\\: mixed, capacity\\: mixed, available_quantity\\: mixed, status\\: mixed\\} given\\.$#"
+			count: 1
+			path: app/Modules/Embed/Http/Controllers/EmbedController.php
+
+		-
+			message: "#^Using nullsafe method call on non\\-nullable type Carbon\\\\CarbonImmutable\\. Use \\-\\> instead\\.$#"
+			count: 1
+			path: app/Modules/Embed/Http/Controllers/EmbedController.php
+
+		-
+			message: "#^Method Nabilet\\\\Modules\\\\Events\\\\Console\\\\SyncEventStatusCommand\\:\\:pastEvents\\(\\) should return Illuminate\\\\Database\\\\Eloquent\\\\Builder\\<Nabilet\\\\Modules\\\\Events\\\\Models\\\\Event\\> but returns Illuminate\\\\Database\\\\Query\\\\Builder\\.$#"
+			count: 1
+			path: app/Modules/Events/Console/SyncEventStatusCommand.php
+
+		-
+			message: "#^Method Nabilet\\\\Modules\\\\Events\\\\Http\\\\Controllers\\\\EventPageController\\:\\:gone\\(\\) never returns Illuminate\\\\Http\\\\JsonResponse so it can be removed from the return type\\.$#"
+			count: 1
+			path: app/Modules/Events/Http/Controllers/EventPageController.php
+
+		-
+			message: "#^Method Nabilet\\\\Modules\\\\Events\\\\Http\\\\Controllers\\\\EventPageController\\:\\:notFound\\(\\) never returns Illuminate\\\\Http\\\\JsonResponse so it can be removed from the return type\\.$#"
+			count: 1
+			path: app/Modules/Events/Http/Controllers/EventPageController.php
+
+		-
+			message: "#^Method Nabilet\\\\Modules\\\\Events\\\\Http\\\\Controllers\\\\EventPageController\\:\\:storefrontNotBuilt\\(\\) never returns Illuminate\\\\Http\\\\Response so it can be removed from the return type\\.$#"
+			count: 1
+			path: app/Modules/Events/Http/Controllers/EventPageController.php
+
+		-
+			message: "#^Property Nabilet\\\\Modules\\\\Events\\\\Http\\\\Controllers\\\\EventPageController\\:\\:\\$eventService is never read, only written\\.$#"
+			count: 1
+			path: app/Modules/Events/Http/Controllers/EventPageController.php
+
+		-
+			message: "#^Cannot access property \\$id on object\\|string\\.$#"
+			count: 2
+			path: app/Modules/Events/Http/Requests/UpdateEventRequest.php
+
+		-
+			message: "#^Call to an undefined method Nabilet\\\\Modules\\\\Events\\\\Models\\\\EventCategory\\:\\:getTranslation\\(\\)\\.$#"
+			count: 2
+			path: app/Modules/Events/Http/Resources/EventCategoryResource.php
+
+		-
+			message: "#^Call to an undefined method Nabilet\\\\Modules\\\\Events\\\\Models\\\\Event\\:\\:whenLoaded\\(\\)\\.$#"
+			count: 3
+			path: app/Modules/Events/Http/Resources/EventResource.php
+
+		-
+			message: "#^Call to an undefined method Illuminate\\\\Database\\\\Eloquent\\\\Builder\\<Nabilet\\\\Modules\\\\Events\\\\Models\\\\Artist\\>\\:\\:withPivot\\(\\)\\.$#"
+			count: 1
+			path: app/Modules/Events/Models/Event.php
+
+		-
+			message: "#^Method Nabilet\\\\Modules\\\\Events\\\\Models\\\\Event\\:\\:galleryLinks\\(\\) should return Illuminate\\\\Database\\\\Eloquent\\\\Relations\\\\HasMany but returns Illuminate\\\\Database\\\\Query\\\\Builder\\.$#"
+			count: 1
+			path: app/Modules/Events/Models/Event.php
+
+		-
+			message: "#^Call to an undefined method Illuminate\\\\Database\\\\Eloquent\\\\Builder\\<Nabilet\\\\Modules\\\\Events\\\\Models\\\\Event\\>\\:\\:onlyTrashed\\(\\)\\.$#"
+			count: 1
+			path: app/Modules/Events/Repositories/EventRepository.php
+
+		-
+			message: "#^Method Nabilet\\\\Modules\\\\Events\\\\Repositories\\\\EventRepository\\:\\:all\\(\\) should return Illuminate\\\\Database\\\\Eloquent\\\\Collection\\<int, Nabilet\\\\Modules\\\\Events\\\\Models\\\\Event\\> but returns Illuminate\\\\Database\\\\Eloquent\\\\Collection\\<int, Illuminate\\\\Database\\\\Eloquent\\\\Model\\>\\.$#"
+			count: 1
+			path: app/Modules/Events/Repositories/EventRepository.php
+
+		-
+			message: "#^Call to an undefined static method Nabilet\\\\Modules\\\\Core\\\\Users\\\\Models\\\\User\\:\\:create\\(\\)\\.$#"
+			count: 1
+			path: app/Modules/Installer/Http/Controllers/InstallerController.php
+
+		-
+			message: "#^Offset 'errors' on array\\{released\\: int, orders_expired\\: int, errors\\: array\\} on left side of \\?\\? always exists and is not nullable\\.$#"
+			count: 1
+			path: app/Modules/Inventory/Console/ClearExpiredHoldsCommand.php
+
+		-
+			message: "#^Offset 'released' on array\\{released\\: int, orders_expired\\: int, errors\\: array\\} on left side of \\?\\? always exists and is not nullable\\.$#"
+			count: 1
+			path: app/Modules/Inventory/Console/ClearExpiredHoldsCommand.php
+
+		-
+			message: "#^Call to an undefined method Nabilet\\\\Modules\\\\Inventory\\\\Models\\\\InventoryItem\\:\\:create\\(\\)\\.$#"
+			count: 1
+			path: app/Modules/Inventory/Repositories/InventoryItemRepository.php
+
+		-
+			message: "#^Call to an undefined method Nabilet\\\\Modules\\\\Inventory\\\\Models\\\\InventoryItem\\:\\:insert\\(\\)\\.$#"
+			count: 1
+			path: app/Modules/Inventory/Repositories/InventoryItemRepository.php
+
+		-
+			message: "#^Call to an undefined method Nabilet\\\\Modules\\\\Inventory\\\\Models\\\\InventoryItem\\:\\:where\\(\\)\\.$#"
+			count: 3
+			path: app/Modules/Inventory/Repositories/InventoryItemRepository.php
+
+		-
+			message: "#^Call to protected method decrement\\(\\) of class Illuminate\\\\Database\\\\Eloquent\\\\Model\\.$#"
+			count: 1
+			path: app/Modules/Inventory/Repositories/InventoryItemRepository.php
+
+		-
+			message: "#^Call to protected method increment\\(\\) of class Illuminate\\\\Database\\\\Eloquent\\\\Model\\.$#"
+			count: 1
+			path: app/Modules/Inventory/Repositories/InventoryItemRepository.php
+
+		-
+			message: "#^Call to an undefined method Illuminate\\\\Database\\\\Query\\\\Builder\\:\\:whereHas\\(\\)\\.$#"
+			count: 1
+			path: app/Modules/Inventory/Services/InventoryService.php
+
+		-
+			message: "#^Call to an undefined static method Nabilet\\\\Modules\\\\Inventory\\\\Models\\\\InventoryItem\\:\\:where\\(\\)\\.$#"
+			count: 2
+			path: app/Modules/Inventory/Services/InventoryService.php
+
+		-
+			message: "#^Call to an undefined static method Nabilet\\\\Modules\\\\Venues\\\\Models\\\\HallRow\\:\\:create\\(\\)\\.$#"
+			count: 1
+			path: app/Modules/Inventory/Services/InventoryService.php
+
+		-
+			message: "#^Call to an undefined static method Nabilet\\\\Modules\\\\Venues\\\\Models\\\\HallRow\\:\\:find\\(\\)\\.$#"
+			count: 1
+			path: app/Modules/Inventory/Services/InventoryService.php
+
+		-
+			message: "#^Call to an undefined static method Nabilet\\\\Modules\\\\Venues\\\\Models\\\\HallTable\\:\\:create\\(\\)\\.$#"
+			count: 1
+			path: app/Modules/Inventory/Services/InventoryService.php
+
+		-
+			message: "#^Call to an undefined static method Nabilet\\\\Modules\\\\Venues\\\\Models\\\\Seat\\:\\:create\\(\\)\\.$#"
+			count: 1
+			path: app/Modules/Inventory/Services/InventoryService.php
+
+		-
+			message: "#^Call to an undefined static method Nabilet\\\\Modules\\\\Venues\\\\Models\\\\Sector\\:\\:create\\(\\)\\.$#"
+			count: 1
+			path: app/Modules/Inventory/Services/InventoryService.php
+
+		-
+			message: "#^Call to an undefined static method Nabilet\\\\Modules\\\\Venues\\\\Models\\\\StandingZone\\:\\:create\\(\\)\\.$#"
+			count: 1
+			path: app/Modules/Inventory/Services/InventoryService.php
+
+		-
+			message: "#^Method Nabilet\\\\Modules\\\\Inventory\\\\Services\\\\InventoryService\\:\\:existingGeometry\\(\\) never returns array\\<int, Nabilet\\\\Modules\\\\Venues\\\\Models\\\\Sector\\> so it can be removed from the return type\\.$#"
+			count: 1
+			path: app/Modules/Inventory/Services/InventoryService.php
+
+		-
+			message: "#^Method Nabilet\\\\Modules\\\\Inventory\\\\Services\\\\InventoryService\\:\\:existingGeometry\\(\\) should return array\\<int, Nabilet\\\\Modules\\\\Venues\\\\Models\\\\Sector\\>\\|null but returns array\\<int, stdClass\\>\\.$#"
+			count: 1
+			path: app/Modules/Inventory/Services/InventoryService.php
+
+		-
+			message: "#^Instantiated class Nabilet\\\\Modules\\\\Core\\\\Errors\\\\NotFoundError not found\\.$#"
+			count: 1
+			path: app/Modules/Loyalty/Http/Controllers/AdminRaffleController.php
+
+		-
+			message: "#^Parameter \\#1 \\$callback of method Illuminate\\\\Support\\\\Collection\\<int,stdClass\\>\\:\\:map\\(\\) expects callable\\(stdClass, int\\)\\: array\\{public_id\\: mixed, title\\: mixed, status\\: mixed, starts_at\\: mixed, ends_at\\: mixed, drawn_at\\: mixed, prizes_count\\: int, entries_count\\: int, winners_count\\: int, created_at\\: mixed\\}, Closure\\(Nabilet\\\\Modules\\\\Loyalty\\\\Models\\\\Raffle\\)\\: array\\{public_id\\: mixed, title\\: mixed, status\\: mixed, starts_at\\: mixed, ends_at\\: mixed, drawn_at\\: mixed, prizes_count\\: int, entries_count\\: int, winners_count\\: int, created_at\\: mixed\\} given\\.$#"
+			count: 1
+			path: app/Modules/Loyalty/Http/Controllers/AdminRaffleController.php
+
+		-
+			message: "#^Throwing object of an unknown class Nabilet\\\\Modules\\\\Core\\\\Errors\\\\NotFoundError\\.$#"
+			count: 1
+			path: app/Modules/Loyalty/Http/Controllers/AdminRaffleController.php
+
+		-
+			message: "#^Call to an undefined method Illuminate\\\\Database\\\\Eloquent\\\\Builder\\<Nabilet\\\\Modules\\\\Loyalty\\\\Models\\\\BonusTransaction\\>\\:\\:forUser\\(\\)\\.$#"
+			count: 1
+			path: app/Modules/Loyalty/Http/Controllers/BonusController.php
+
+		-
+			message: "#^Parameter \\#2 \\$default of method Illuminate\\\\Http\\\\Request\\:\\:query\\(\\) expects array\\|string\\|null, int given\\.$#"
+			count: 1
+			path: app/Modules/Loyalty/Http/Controllers/RecommendationController.php
+
+		-
+			message: "#^PHPDoc tag @param references unknown parameter\\: \\$resource$#"
+			count: 1
+			path: app/Modules/Loyalty/Http/Resources/BonusBalanceResource.php
+
+		-
+			message: "#^PHPDoc tag @param references unknown parameter\\: \\$resource$#"
+			count: 1
+			path: app/Modules/Loyalty/Http/Resources/LoyaltyLevelStatusResource.php
+
+		-
+			message: "#^Call to an undefined method Illuminate\\\\Database\\\\Eloquent\\\\Builder\\<Nabilet\\\\Modules\\\\Loyalty\\\\Models\\\\EventFollow\\>\\:\\:forEvent\\(\\)\\.$#"
+			count: 1
+			path: app/Modules/Loyalty/Jobs/NotifyFollowersOfNewSessionJob.php
+
+		-
+			message: "#^Call to an undefined static method Nabilet\\\\Modules\\\\Loyalty\\\\Models\\\\BonusAccount\\:\\:create\\(\\)\\.$#"
+			count: 1
+			path: app/Modules/Loyalty/Models/BonusAccount.php
+
+		-
+			message: "#^Method Nabilet\\\\Modules\\\\Loyalty\\\\Models\\\\BonusTransaction\\:\\:scopeForUser\\(\\) should return Illuminate\\\\Database\\\\Eloquent\\\\Builder\\<Nabilet\\\\Modules\\\\Loyalty\\\\Models\\\\BonusTransaction\\> but returns Illuminate\\\\Database\\\\Query\\\\Builder\\.$#"
+			count: 1
+			path: app/Modules/Loyalty/Models/BonusTransaction.php
+
+		-
+			message: "#^Call to an undefined static method Nabilet\\\\Modules\\\\Loyalty\\\\Models\\\\EventFavorite\\:\\:create\\(\\)\\.$#"
+			count: 1
+			path: app/Modules/Loyalty/Models/EventFavorite.php
+
+		-
+			message: "#^Call to an undefined static method Nabilet\\\\Modules\\\\Loyalty\\\\Models\\\\EventFollow\\:\\:create\\(\\)\\.$#"
+			count: 1
+			path: app/Modules/Loyalty/Models/EventFollow.php
+
+		-
+			message: "#^Call to an undefined static method Nabilet\\\\Modules\\\\Loyalty\\\\Models\\\\FollowNotification\\:\\:create\\(\\)\\.$#"
+			count: 1
+			path: app/Modules/Loyalty/Models/FollowNotification.php
+
+		-
+			message: "#^Method Nabilet\\\\Modules\\\\Loyalty\\\\Models\\\\LoyaltyLevel\\:\\:scopeOrdered\\(\\) should return Illuminate\\\\Database\\\\Eloquent\\\\Builder\\<Nabilet\\\\Modules\\\\Loyalty\\\\Models\\\\LoyaltyLevel\\> but returns Illuminate\\\\Database\\\\Query\\\\Builder\\.$#"
+			count: 1
+			path: app/Modules/Loyalty/Models/LoyaltyLevel.php
+
+		-
+			message: "#^Method Nabilet\\\\Modules\\\\Loyalty\\\\Models\\\\Raffle\\:\\:orderedPrizes\\(\\) should return Illuminate\\\\Database\\\\Eloquent\\\\Relations\\\\HasMany\\<Nabilet\\\\Modules\\\\Loyalty\\\\Models\\\\RafflePrize, \\$this\\(Nabilet\\\\Modules\\\\Loyalty\\\\Models\\\\Raffle\\)\\> but returns Illuminate\\\\Database\\\\Query\\\\Builder\\.$#"
+			count: 1
+			path: app/Modules/Loyalty/Models/Raffle.php
+
+		-
+			message: "#^Method Nabilet\\\\Modules\\\\Loyalty\\\\Models\\\\Raffle\\:\\:scopeVisible\\(\\) should return Illuminate\\\\Database\\\\Eloquent\\\\Builder\\<Nabilet\\\\Modules\\\\Loyalty\\\\Models\\\\Raffle\\> but returns Illuminate\\\\Database\\\\Query\\\\Builder\\.$#"
+			count: 1
+			path: app/Modules/Loyalty/Models/Raffle.php
+
+		-
+			message: "#^Call to an undefined static method Nabilet\\\\Modules\\\\Loyalty\\\\Models\\\\RaffleEntry\\:\\:create\\(\\)\\.$#"
+			count: 1
+			path: app/Modules/Loyalty/Models/RaffleEntry.php
+
+		-
+			message: "#^Method Nabilet\\\\Modules\\\\Loyalty\\\\Models\\\\RaffleWinner\\:\\:scopePendingNotification\\(\\) should return Illuminate\\\\Database\\\\Eloquent\\\\Builder\\<Nabilet\\\\Modules\\\\Loyalty\\\\Models\\\\RaffleWinner\\> but returns Illuminate\\\\Database\\\\Query\\\\Builder\\.$#"
+			count: 1
+			path: app/Modules/Loyalty/Models/RaffleWinner.php
+
+		-
+			message: "#^Call to an undefined static method Nabilet\\\\Modules\\\\Loyalty\\\\Models\\\\Referral\\:\\:create\\(\\)\\.$#"
+			count: 1
+			path: app/Modules/Loyalty/Models/Referral.php
+
+		-
+			message: "#^Method Nabilet\\\\Modules\\\\Loyalty\\\\Models\\\\Referral\\:\\:scopeAwaitingReward\\(\\) should return Illuminate\\\\Database\\\\Eloquent\\\\Builder\\<Nabilet\\\\Modules\\\\Loyalty\\\\Models\\\\Referral\\> but returns Illuminate\\\\Database\\\\Query\\\\Builder\\.$#"
+			count: 1
+			path: app/Modules/Loyalty/Models/Referral.php
+
+		-
+			message: "#^Call to an undefined static method Nabilet\\\\Modules\\\\Loyalty\\\\Models\\\\ReferralCode\\:\\:create\\(\\)\\.$#"
+			count: 2
+			path: app/Modules/Loyalty/Models/ReferralCode.php
+
+		-
+			message: "#^Call to an undefined static method Nabilet\\\\Modules\\\\Core\\\\Users\\\\Models\\\\User\\:\\:find\\(\\)\\.$#"
+			count: 1
+			path: app/Modules/Loyalty/Observers/OrderLoyaltyObserver.php
+
+		-
+			message: "#^Call to an undefined method Illuminate\\\\Database\\\\Eloquent\\\\Builder\\<Nabilet\\\\Modules\\\\Loyalty\\\\Models\\\\BonusAccount\\>\\:\\:forUser\\(\\)\\.$#"
+			count: 3
+			path: app/Modules/Loyalty/Services/BonusService.php
+
+		-
+			message: "#^Call to an undefined static method Nabilet\\\\Modules\\\\Loyalty\\\\Models\\\\BonusTransaction\\:\\:create\\(\\)\\.$#"
+			count: 4
+			path: app/Modules/Loyalty/Services/BonusService.php
+
+		-
+			message: "#^Call to an undefined static method Nabilet\\\\Modules\\\\Loyalty\\\\Models\\\\LoyaltyLevel\\:\\:ordered\\(\\)\\.$#"
+			count: 1
+			path: app/Modules/Loyalty/Services/LoyaltyLevelService.php
+
+		-
+			message: "#^Call to an undefined static method Nabilet\\\\Modules\\\\Loyalty\\\\Models\\\\LoyaltyLevel\\:\\:where\\(\\)\\.$#"
+			count: 1
+			path: app/Modules/Loyalty/Services/LoyaltyLevelService.php
+
+		-
+			message: "#^Call to an undefined method Illuminate\\\\Database\\\\Eloquent\\\\Builder\\<Nabilet\\\\Modules\\\\Loyalty\\\\Models\\\\Raffle\\>\\:\\:visible\\(\\)\\.$#"
+			count: 1
+			path: app/Modules/Loyalty/Services/RaffleService.php
+
+		-
+			message: "#^Call to an undefined method Illuminate\\\\Database\\\\Eloquent\\\\Builder\\<Nabilet\\\\Modules\\\\Loyalty\\\\Models\\\\RaffleEntry\\>\\:\\:forUser\\(\\)\\.$#"
+			count: 1
+			path: app/Modules/Loyalty/Services/RaffleService.php
+
+		-
+			message: "#^Call to an undefined method Illuminate\\\\Database\\\\Eloquent\\\\Builder\\<Nabilet\\\\Modules\\\\Loyalty\\\\Models\\\\RaffleWinner\\>\\:\\:pendingNotification\\(\\)\\.$#"
+			count: 1
+			path: app/Modules/Loyalty/Services/RaffleService.php
+
+		-
+			message: "#^Method Nabilet\\\\Modules\\\\Loyalty\\\\Services\\\\RaffleService\\:\\:acceptingRaffles\\(\\) should return Illuminate\\\\Support\\\\Collection\\<int, Nabilet\\\\Modules\\\\Loyalty\\\\Models\\\\Raffle\\> but returns Illuminate\\\\Support\\\\Collection\\<int, stdClass\\>\\.$#"
+			count: 1
+			path: app/Modules/Loyalty/Services/RaffleService.php
+
+		-
+			message: "#^Parameter \\#1 \\$callback of method Illuminate\\\\Support\\\\Collection\\<int,stdClass\\>\\:\\:filter\\(\\) expects \\(callable\\(stdClass, int\\)\\: bool\\)\\|null, Closure\\(Nabilet\\\\Modules\\\\Loyalty\\\\Models\\\\Raffle\\)\\: bool given\\.$#"
+			count: 1
+			path: app/Modules/Loyalty/Services/RaffleService.php
+
+		-
+			message: "#^Call to an undefined method Illuminate\\\\Database\\\\Query\\\\Builder\\:\\:whereHas\\(\\)\\.$#"
+			count: 1
+			path: app/Modules/Loyalty/Services/RecommendationService.php
+
+		-
+			message: "#^Call to an undefined method Illuminate\\\\Database\\\\Eloquent\\\\Builder\\<Nabilet\\\\Modules\\\\Loyalty\\\\Models\\\\Referral\\>\\:\\:awaitingReward\\(\\)\\.$#"
+			count: 1
+			path: app/Modules/Loyalty/Services/ReferralService.php
+
+		-
+			message: "#^Call to an undefined method Illuminate\\\\Database\\\\Eloquent\\\\Builder\\<Nabilet\\\\Modules\\\\Loyalty\\\\Models\\\\Referral\\>\\:\\:forInviter\\(\\)\\.$#"
+			count: 2
+			path: app/Modules/Loyalty/Services/ReferralService.php
+
+		-
+			message: "#^Call to an undefined method Illuminate\\\\Database\\\\Eloquent\\\\Builder\\<Nabilet\\\\Modules\\\\Loyalty\\\\Models\\\\Referral\\>\\:\\:rewarded\\(\\)\\.$#"
+			count: 1
+			path: app/Modules/Loyalty/Services/ReferralService.php
+
+		-
+			message: "#^Call to an undefined method Illuminate\\\\Database\\\\Eloquent\\\\Builder\\<Nabilet\\\\Modules\\\\Loyalty\\\\Models\\\\ReferralCode\\>\\:\\:withCode\\(\\)\\.$#"
+			count: 1
+			path: app/Modules/Loyalty/Services/ReferralService.php
+
+		-
+			message: "#^Call to an undefined method Illuminate\\\\Support\\\\Collection\\<int, mixed\\>\\:\\:load\\(\\)\\.$#"
+			count: 1
+			path: app/Modules/Media/Http/Controllers/MediaController.php
+
+		-
+			message: "#^Method Nabilet\\\\Modules\\\\Media\\\\Models\\\\MediaLink\\:\\:scopeForEntity\\(\\) should return Illuminate\\\\Database\\\\Eloquent\\\\Builder but returns Illuminate\\\\Database\\\\Query\\\\Builder\\.$#"
+			count: 1
+			path: app/Modules/Media/Models/MediaLink.php
+
+		-
+			message: "#^Call to an undefined method Illuminate\\\\Database\\\\Eloquent\\\\Builder\\<Nabilet\\\\Modules\\\\Media\\\\Models\\\\MediaLink\\>\\:\\:forEntity\\(\\)\\.$#"
+			count: 1
+			path: app/Modules/Media/Services/MediaService.php
+
+		-
+			message: "#^Parameter \\#1 \\$callback of method Illuminate\\\\Support\\\\Collection\\<int,stdClass\\>\\:\\:map\\(\\) expects callable\\(stdClass, int\\)\\: array\\{id\\: int, code\\: string, channel\\: string, locale\\: string, subject\\: string\\|null, body_html\\: string\\|null, body_text\\: string\\|null, active\\: bool\\}, Closure\\(App\\\\Models\\\\NotificationTemplate\\)\\: array\\{id\\: int, code\\: string, channel\\: string, locale\\: string, subject\\: string\\|null, body_html\\: string\\|null, body_text\\: string\\|null, active\\: bool\\} given\\.$#"
+			count: 1
+			path: app/Modules/Notifications/Http/Controllers/NotificationTemplateController.php
+
+		-
+			message: "#^Offset 'qr_payload' on array\\{order_id\\: int, ticket_number\\: string, event_name\\: string, event_date\\: string, venue_name\\: string, seats\\: string, price\\: float, currency\\: string, \\.\\.\\.\\} on left side of \\?\\? always exists and is not nullable\\.$#"
+			count: 1
+			path: app/Modules/Notifications/Services/OrderNotificationData.php
+
+		-
+			message: "#^Offset 'seats' on array\\{order_id\\: int, ticket_number\\: string, event_name\\: string, event_date\\: string, venue_name\\: string, seats\\: string, price\\: float, currency\\: string, \\.\\.\\.\\} on left side of \\?\\? always exists and is not nullable\\.$#"
+			count: 1
+			path: app/Modules/Notifications/Services/OrderNotificationData.php
+
+		-
+			message: "#^Offset 'ticket_number' on array\\{order_id\\: int, ticket_number\\: string, event_name\\: string, event_date\\: string, venue_name\\: string, seats\\: string, price\\: float, currency\\: string, \\.\\.\\.\\} on left side of \\?\\? always exists and is not nullable\\.$#"
+			count: 1
+			path: app/Modules/Notifications/Services/OrderNotificationData.php
+
+		-
+			message: "#^Offset 'ticket_url' on array\\{order_id\\: int, ticket_number\\: string, event_name\\: string, event_date\\: string, venue_name\\: string, seats\\: string, price\\: float, currency\\: string, \\.\\.\\.\\} on left side of \\?\\? always exists and is not nullable\\.$#"
+			count: 1
+			path: app/Modules/Notifications/Services/OrderNotificationData.php
+
+		-
+			message: "#^Match arm is unreachable because previous comparison is always true\\.$#"
+			count: 2
+			path: app/Modules/Notifications/Services/TransactionalMailService.php
+
+		-
+			message: "#^Parameter \\#1 \\$payment of method Nabilet\\\\Modules\\\\Payments\\\\Services\\\\RefundService\\:\\:refund\\(\\) expects Nabilet\\\\Modules\\\\Payments\\\\Models\\\\Payment, stdClass given\\.$#"
+			count: 1
+			path: app/Modules/Orders/Http/Controllers/OrderController.php
+
+		-
+			message: "#^Cannot call method isPast\\(\\) on string\\.$#"
+			count: 1
+			path: app/Modules/Orders/Models/SeatHold.php
+
+		-
+			message: "#^Parameter \\#1 \\$expiresAt of static method Nabilet\\\\Core\\\\Support\\\\HoldGrace\\:\\:isWithinGrace\\(\\) expects Carbon\\\\CarbonInterface, string given\\.$#"
+			count: 1
+			path: app/Modules/Orders/Models/SeatHold.php
+
+		-
+			message: "#^Call to an undefined method Nabilet\\\\Modules\\\\Orders\\\\Models\\\\Order\\:\\:create\\(\\)\\.$#"
+			count: 1
+			path: app/Modules/Orders/Repositories/OrderRepository.php
+
+		-
+			message: "#^Call to an undefined method Nabilet\\\\Modules\\\\Orders\\\\Models\\\\Order\\:\\:where\\(\\)\\.$#"
+			count: 4
+			path: app/Modules/Orders/Repositories/OrderRepository.php
+
+		-
+			message: "#^Call to static method raw\\(\\) on an unknown class DB\\.$#"
+			count: 1
+			path: app/Modules/Orders/Repositories/OrderRepository.php
+
+		-
+			message: "#^Method Nabilet\\\\Modules\\\\Orders\\\\Repositories\\\\OrderRepository\\:\\:addItem\\(\\) should return Nabilet\\\\Modules\\\\Orders\\\\Models\\\\OrderItem but returns Illuminate\\\\Database\\\\Eloquent\\\\Model\\.$#"
+			count: 1
+			path: app/Modules/Orders/Repositories/OrderRepository.php
+
+		-
+			message: "#^Method Nabilet\\\\Modules\\\\Orders\\\\Services\\\\EventOrderRefunder\\:\\:refundEventOrders\\(\\) should return array\\{refunded\\: int, refund_failures\\: array\\<int, array\\{order\\: string, error\\: string\\}\\>\\} but returns array\\{refunded\\: int\\<0, max\\>, refund_failures\\: array\\<int\\<0, max\\>, array\\{order\\: string, code\\: string, message\\: string\\}\\>\\}\\.$#"
+			count: 1
+			path: app/Modules/Orders/Services/EventOrderRefunder.php
+
+		-
+			message: "#^Parameter \\#1 \\$payment of method Nabilet\\\\Modules\\\\Payments\\\\Services\\\\RefundService\\:\\:refund\\(\\) expects Nabilet\\\\Modules\\\\Payments\\\\Models\\\\Payment, stdClass given\\.$#"
+			count: 1
+			path: app/Modules/Orders/Services/EventOrderRefunder.php
+
+		-
+			message: "#^Anonymous function has an unused use \\$payment\\.$#"
+			count: 1
+			path: app/Modules/Orders/Services/OrderService.php
+
+		-
+			message: "#^Anonymous function has an unused use \\$reason\\.$#"
+			count: 1
+			path: app/Modules/Orders/Services/OrderService.php
+
+		-
+			message: "#^Cannot call method decrement\\(\\) on stdClass\\.$#"
+			count: 1
+			path: app/Modules/Orders/Services/OrderService.php
+
+		-
+			message: "#^Call to an undefined static method Nabilet\\\\Modules\\\\Cart\\\\Models\\\\Cart\\:\\:find\\(\\)\\.$#"
+			count: 1
+			path: app/Modules/Orders/Services/StaleOrderExpirer.php
+
+		-
+			message: "#^Cannot call method update\\(\\) on stdClass\\.$#"
+			count: 1
+			path: app/Modules/Orders/Services/StaleOrderExpirer.php
+
+		-
+			message: "#^Cannot call method forceFill\\(\\) on stdClass\\.$#"
+			count: 1
+			path: app/Modules/Orders/Services/UnpaidOrderReminderSweeper.php
+
+		-
+			message: "#^Parameter \\#1 \\$order of method Nabilet\\\\Modules\\\\Orders\\\\Services\\\\UnpaidOrderReminderSweeper\\:\\:mailFor\\(\\) expects Nabilet\\\\Modules\\\\Orders\\\\Models\\\\Order, stdClass given\\.$#"
+			count: 1
+			path: app/Modules/Orders/Services/UnpaidOrderReminderSweeper.php
+
+		-
+			message: "#^Method Nabilet\\\\Modules\\\\Payments\\\\Providers\\\\YooKassaProvider\\:\\:createPayment\\(\\) should return array\\{payment_id\\: string, status\\: string, confirmation_url\\?\\: string, confirmation_token\\?\\: string, provider_data\\: array\\} but returns array\\{payment_id\\: non\\-falsy\\-string, status\\: 'pending', confirmation_url\\: non\\-falsy\\-string, confirmation_token\\: null, provider_data\\: array\\{id\\: non\\-falsy\\-string, status\\: 'pending', demo\\: true\\}\\}\\.$#"
+			count: 1
+			path: app/Modules/Payments/Providers/YooKassaProvider.php
+
+		-
+			message: "#^Offset 'amount' on array\\{amount\\: int, currency\\: string, order_id\\: int, description\\: string, customer_email\\?\\: string, success_url\\?\\: string, failure_url\\?\\: string\\} on left side of \\?\\? always exists and is not nullable\\.$#"
+			count: 1
+			path: app/Modules/Payments/Providers/YooKassaProvider.php
+
+		-
+			message: "#^Offset 'description' on array\\{amount\\: int, currency\\: string, order_id\\: int, description\\: string, customer_email\\?\\: string, success_url\\?\\: string, failure_url\\?\\: string\\} on left side of \\?\\? always exists and is not nullable\\.$#"
+			count: 1
+			path: app/Modules/Payments/Providers/YooKassaProvider.php
+
+		-
+			message: "#^Offset 'idempotency_key' on array\\{amount\\: int, currency\\: string, order_id\\: int, description\\: string, customer_email\\?\\: string, success_url\\?\\: string, failure_url\\?\\: string\\} on left side of \\?\\? does not exist\\.$#"
+			count: 1
+			path: app/Modules/Payments/Providers/YooKassaProvider.php
+
+		-
+			message: "#^Offset 'idempotency_key' on array\\{payment_id\\: string, amount\\: int, currency\\: string, reason\\?\\: string\\} on left side of \\?\\? does not exist\\.$#"
+			count: 1
+			path: app/Modules/Payments/Providers/YooKassaProvider.php
+
+		-
+			message: "#^Offset 'order_id' on array\\{amount\\: int, currency\\: string, order_id\\: int, description\\: string, customer_email\\?\\: string, success_url\\?\\: string, failure_url\\?\\: string\\} on left side of \\?\\? always exists and is not nullable\\.$#"
+			count: 1
+			path: app/Modules/Payments/Providers/YooKassaProvider.php
+
+		-
+			message: "#^Call to an undefined method Nabilet\\\\Modules\\\\Payments\\\\Models\\\\Payment\\:\\:create\\(\\)\\.$#"
+			count: 1
+			path: app/Modules/Payments/Repositories/PaymentRepository.php
+
+		-
+			message: "#^Call to an undefined method Nabilet\\\\Modules\\\\Payments\\\\Models\\\\Payment\\:\\:where\\(\\)\\.$#"
+			count: 3
+			path: app/Modules/Payments/Repositories/PaymentRepository.php
+
+		-
+			message: "#^Call to an undefined method Nabilet\\\\Modules\\\\Payments\\\\Models\\\\Payment\\:\\:whereHas\\(\\)\\.$#"
+			count: 2
+			path: app/Modules/Payments/Repositories/PaymentRepository.php
+
+		-
+			message: "#^Call to static method raw\\(\\) on an unknown class DB\\.$#"
+			count: 1
+			path: app/Modules/Payments/Repositories/PaymentRepository.php
+
+		-
+			message: "#^Method Nabilet\\\\Modules\\\\Payments\\\\Repositories\\\\PaymentRepository\\:\\:addTransaction\\(\\) should return Nabilet\\\\Modules\\\\Payments\\\\Models\\\\PaymentTransaction but returns Illuminate\\\\Database\\\\Eloquent\\\\Model\\.$#"
+			count: 1
+			path: app/Modules/Payments/Repositories/PaymentRepository.php
+
+		-
+			message: "#^Call to an undefined static method Nabilet\\\\Modules\\\\Orders\\\\Models\\\\Order\\:\\:findOrFail\\(\\)\\.$#"
+			count: 2
+			path: app/Modules/Payments/Services/PaymentService.php
+
+		-
+			message: "#^Call to an undefined static method Nabilet\\\\Modules\\\\Orders\\\\Models\\\\Order\\:\\:whereKey\\(\\)\\.$#"
+			count: 2
+			path: app/Modules/Payments/Services/PaymentService.php
+
+		-
+			message: "#^Call to an undefined static method Nabilet\\\\Modules\\\\Orders\\\\Models\\\\SeatHold\\:\\:where\\(\\)\\.$#"
+			count: 2
+			path: app/Modules/Payments/Services/PaymentService.php
+
+		-
+			message: "#^Call to an undefined static method Nabilet\\\\Modules\\\\Payments\\\\Models\\\\Payment\\:\\:where\\(\\)\\.$#"
+			count: 5
+			path: app/Modules/Payments/Services/PaymentService.php
+
+		-
+			message: "#^Call to an undefined static method Nabilet\\\\Modules\\\\Payments\\\\Models\\\\Refund\\:\\:where\\(\\)\\.$#"
+			count: 2
+			path: app/Modules/Payments/Services/PaymentService.php
+
+		-
+			message: "#^Call to an undefined static method Nabilet\\\\Modules\\\\Tickets\\\\Models\\\\Ticket\\:\\:where\\(\\)\\.$#"
+			count: 1
+			path: app/Modules/Payments/Services/PaymentService.php
+
+		-
+			message: "#^Offset 'metadata' on array\\{provider\\?\\: string, provider_payment_id\\?\\: string\\|null, amount\\?\\: int\\|null, currency\\?\\: string\\|null, payment_url\\?\\: string\\|null, idempotency_key\\?\\: string\\|null\\} on left side of \\?\\? does not exist\\.$#"
+			count: 1
+			path: app/Modules/Payments/Services/PaymentService.php
+
+		-
+			message: "#^Parameter \\#1 \\$paymentData of method Nabilet\\\\Modules\\\\Payments\\\\Providers\\\\PaymentProviderInterface\\:\\:createPayment\\(\\) expects array\\{amount\\: int, currency\\: string, order_id\\: int, description\\: string, customer_email\\?\\: string, success_url\\?\\: string, failure_url\\?\\: string\\}, array\\{order_id\\: numeric\\-string, amount\\: int, currency\\: mixed, description\\: non\\-falsy\\-string, success_url\\: string, idempotency_key\\: string\\} given\\.$#"
+			count: 1
+			path: app/Modules/Payments/Services/PaymentService.php
+
+		-
+			message: "#^Call to an undefined static method Nabilet\\\\Modules\\\\Tickets\\\\Models\\\\Ticket\\:\\:where\\(\\)\\.$#"
+			count: 1
+			path: app/Modules/Payments/Services/RefundService.php
+
+		-
+			message: "#^Cannot call method fresh\\(\\) on stdClass\\.$#"
+			count: 1
+			path: app/Modules/Payments/Services/RefundService.php
+
+		-
+			message: "#^Cannot call method refunds\\(\\) on stdClass\\.$#"
+			count: 2
+			path: app/Modules/Payments/Services/RefundService.php
+
+		-
+			message: "#^Offset 'refund_id' on array\\{refund_id\\: string, status\\: string, amount\\: int, provider_data\\: array\\} on left side of \\?\\? always exists and is not nullable\\.$#"
+			count: 1
+			path: app/Modules/Payments/Services/RefundService.php
+
+		-
+			message: "#^Parameter \\#1 \\$payment of method Nabilet\\\\Modules\\\\Payments\\\\Repositories\\\\PaymentRepository\\:\\:addTransaction\\(\\) expects Nabilet\\\\Modules\\\\Payments\\\\Models\\\\Payment, stdClass given\\.$#"
+			count: 1
+			path: app/Modules/Payments/Services/RefundService.php
+
+		-
+			message: "#^PHPDoc tag @param references unknown parameter\\: \\$resource$#"
+			count: 1
+			path: app/Modules/Pricing/Http/Resources/PromoCodeResource.php
+
+		-
+			message: "#^Call to an undefined static method Nabilet\\\\Modules\\\\Orders\\\\Models\\\\PromoCode\\:\\:create\\(\\)\\.$#"
+			count: 1
+			path: app/Modules/Pricing/Services/PromoCodeService.php
+
+		-
+			message: "#^Call to an undefined static method Nabilet\\\\Modules\\\\Orders\\\\Models\\\\PromoCodeRedemption\\:\\:create\\(\\)\\.$#"
+			count: 1
+			path: app/Modules/Pricing/Services/PromoCodeService.php
+
+		-
+			message: "#^Offset 'past' on array\\{title\\: string, url\\: string, date\\: string\\|null, venue\\: string\\|null, price\\: string\\|null, past\\: bool\\} on left side of \\?\\? always exists and is not nullable\\.$#"
+			count: 2
+			path: app/Modules/Seo/Domain/LandingPage.php
+
+		-
+			message: "#^Parameter \\#2 \\$default of method Illuminate\\\\Http\\\\Request\\:\\:query\\(\\) expects array\\|string\\|null, int given\\.$#"
+			count: 1
+			path: app/Modules/Seo/Http/Controllers/LandingController.php
+
+		-
+			message: "#^Parameter \\#2 \\$default of method Illuminate\\\\Http\\\\Request\\:\\:query\\(\\) expects array\\|string\\|null, int given\\.$#"
+			count: 1
+			path: app/Modules/Seo/Http/Controllers/SitemapController.php
+
+		-
+			message: "#^Call to an undefined method Illuminate\\\\Database\\\\Query\\\\Builder\\:\\:with\\(\\)\\.$#"
+			count: 1
+			path: app/Modules/Seo/Services/CatalogService.php
+
+		-
+			message: "#^Method Nabilet\\\\Modules\\\\Seo\\\\Services\\\\CatalogService\\:\\:publicEvents\\(\\) should return Illuminate\\\\Database\\\\Eloquent\\\\Builder but returns Illuminate\\\\Database\\\\Query\\\\Builder\\.$#"
+			count: 1
+			path: app/Modules/Seo/Services/CatalogService.php
+
+		-
+			message: "#^Parameter \\#1 \\$query of method Nabilet\\\\Modules\\\\Seo\\\\Services\\\\CatalogService\\:\\:paginate\\(\\) expects Illuminate\\\\Database\\\\Eloquent\\\\Builder\\<Nabilet\\\\Modules\\\\Events\\\\Models\\\\Event\\>, Illuminate\\\\Database\\\\Query\\\\Builder given\\.$#"
+			count: 3
+			path: app/Modules/Seo/Services/CatalogService.php
+
+		-
+			message: "#^Offset 'url' on array\\{name\\: string, url\\: string\\} on left side of \\?\\? always exists and is not nullable\\.$#"
+			count: 1
+			path: app/Modules/Seo/Services/LandingPageRenderer.php
+
+		-
+			message: "#^Call to an undefined method Illuminate\\\\Contracts\\\\Pagination\\\\LengthAwarePaginator\\<int, Nabilet\\\\Modules\\\\Events\\\\Models\\\\Event\\>\\:\\:getCollection\\(\\)\\.$#"
+			count: 6
+			path: app/Modules/Seo/Services/LandingPageService.php
+
+		-
+			message: "#^Call to an undefined method Illuminate\\\\Contracts\\\\Pagination\\\\LengthAwarePaginator\\:\\:getCollection\\(\\)\\.$#"
+			count: 1
+			path: app/Modules/Seo/Services/SitemapService.php
+
+		-
+			message: "#^Method Nabilet\\\\Modules\\\\Seo\\\\Services\\\\StructuredDataService\\:\\:buildOffers\\(\\) should return array\\<string, mixed\\> but returns array\\<int, array\\<string, mixed\\>\\>\\.$#"
+			count: 1
+			path: app/Modules/Seo/Services/StructuredDataService.php
+
+		-
+			message: "#^Offset 'name' on array\\{name\\: string, url\\?\\: string\\|null\\} on left side of \\?\\? always exists and is not nullable\\.$#"
+			count: 1
+			path: app/Modules/Seo/Services/StructuredDataService.php
+
+		-
+			message: "#^Call to an undefined static method Nabilet\\\\Modules\\\\Sessions\\\\Models\\\\Session\\:\\:create\\(\\)\\.$#"
+			count: 1
+			path: app/Modules/Sessions/Http/Controllers/SessionController.php
+
+		-
+			message: "#^Call to an undefined static method Nabilet\\\\Modules\\\\Venues\\\\Models\\\\HallSchemaVersion\\:\\:findOrFail\\(\\)\\.$#"
+			count: 1
+			path: app/Modules/Sessions/Http/Controllers/SessionController.php
+
+		-
+			message: "#^Method Nabilet\\\\Modules\\\\Storefront\\\\Services\\\\StorefrontService\\:\\:findRow\\(\\) should return Nabilet\\\\Modules\\\\Storefront\\\\Models\\\\StorefrontSetting\\|null but returns stdClass\\|null\\.$#"
+			count: 1
+			path: app/Modules/Storefront/Services/StorefrontService.php
+
+		-
+			message: "#^Offset 'order_item_id' on array\\{order_item_id\\: int, quantity\\: int\\} on left side of \\?\\? always exists and is not nullable\\.$#"
+			count: 1
+			path: app/Modules/Tickets/Domain/TicketIssuance.php
+
+		-
+			message: "#^Offset 'quantity' on array\\{order_item_id\\: int, quantity\\: int\\} on left side of \\?\\? always exists and is not nullable\\.$#"
+			count: 1
+			path: app/Modules/Tickets/Domain/TicketIssuance.php
+
+		-
+			message: "#^Offset 'order_item_id' on array\\{order_item_id\\: int, quantity\\: int\\} on left side of \\?\\? always exists and is not nullable\\.$#"
+			count: 1
+			path: app/Modules/Tickets/Domain/TicketRevocation.php
+
+		-
+			message: "#^Offset 'quantity' on array\\{order_item_id\\: int, quantity\\: int\\} on left side of \\?\\? always exists and is not nullable\\.$#"
+			count: 1
+			path: app/Modules/Tickets/Domain/TicketRevocation.php
+
+		-
+			message: "#^Call to an undefined static method Nabilet\\\\Modules\\\\Tickets\\\\Models\\\\Ticket\\:\\:where\\(\\)\\.$#"
+			count: 1
+			path: app/Modules/Tickets/Http/Controllers/CheckinController.php
+
+		-
+			message: "#^Call to an undefined method Illuminate\\\\Contracts\\\\Auth\\\\Authenticatable\\:\\:getKey\\(\\)\\.$#"
+			count: 1
+			path: app/Modules/Tickets/Http/Controllers/TicketController.php
+
+		-
+			message: "#^Call to an undefined method Nabilet\\\\Modules\\\\Tickets\\\\Models\\\\Ticket\\:\\:create\\(\\)\\.$#"
+			count: 1
+			path: app/Modules/Tickets/Repositories/TicketRepository.php
+
+		-
+			message: "#^Call to an undefined method Nabilet\\\\Modules\\\\Tickets\\\\Models\\\\Ticket\\:\\:where\\(\\)\\.$#"
+			count: 6
+			path: app/Modules/Tickets/Repositories/TicketRepository.php
+
+		-
+			message: "#^Method Nabilet\\\\Modules\\\\Tickets\\\\Repositories\\\\TicketRepository\\:\\:recordScan\\(\\) should return Nabilet\\\\Modules\\\\Tickets\\\\Models\\\\TicketScan but returns Illuminate\\\\Database\\\\Eloquent\\\\Model\\.$#"
+			count: 1
+			path: app/Modules/Tickets/Repositories/TicketRepository.php
+
+		-
+			message: "#^PHPDoc tag @param references unknown parameter\\: \\$config$#"
+			count: 1
+			path: app/Modules/Tickets/Services/TicketPdfRenderer.php
+
+		-
+			message: "#^PHPDoc tag @param references unknown parameter\\: \\$data$#"
+			count: 1
+			path: app/Modules/Tickets/Services/TicketPdfRenderer.php
+
+		-
+			message: "#^Cannot call method fresh\\(\\) on stdClass\\.$#"
+			count: 1
+			path: app/Modules/Tickets/Services/TicketScanService.php
+
+		-
+			message: "#^Cannot call method update\\(\\) on stdClass\\.$#"
+			count: 2
+			path: app/Modules/Tickets/Services/TicketScanService.php
+
+		-
+			message: "#^Parameter \\#1 \\$ticket of method Nabilet\\\\Modules\\\\Tickets\\\\Repositories\\\\TicketRepository\\:\\:recordScan\\(\\) expects Nabilet\\\\Modules\\\\Tickets\\\\Models\\\\Ticket, stdClass given\\.$#"
+			count: 2
+			path: app/Modules/Tickets/Services/TicketScanService.php
+
+		-
+			message: "#^Parameter \\#1 \\$ticket of method Nabilet\\\\Modules\\\\Tickets\\\\Repositories\\\\TicketRepository\\:\\:revoke\\(\\) expects Nabilet\\\\Modules\\\\Tickets\\\\Models\\\\Ticket, stdClass given\\.$#"
+			count: 1
+			path: app/Modules/Tickets/Services/TicketScanService.php
+
+		-
+			message: "#^Parameter \\#1 \\$ticket of method Nabilet\\\\Modules\\\\Tickets\\\\Services\\\\TicketScanService\\:\\:snapshot\\(\\) expects Nabilet\\\\Modules\\\\Tickets\\\\Models\\\\Ticket, stdClass given\\.$#"
+			count: 2
+			path: app/Modules/Tickets/Services/TicketScanService.php
+
+		-
+			message: "#^Call to an undefined static method Nabilet\\\\Modules\\\\Inventory\\\\Models\\\\InventoryItem\\:\\:find\\(\\)\\.$#"
+			count: 1
+			path: app/Modules/Tickets/Services/TicketService.php
+
+		-
+			message: "#^Call to an undefined static method Nabilet\\\\Modules\\\\Tickets\\\\Models\\\\Ticket\\:\\:create\\(\\)\\.$#"
+			count: 1
+			path: app/Modules/Tickets/Services/TicketService.php
+
+		-
+			message: "#^Call to an undefined static method Nabilet\\\\Modules\\\\Tickets\\\\Models\\\\Ticket\\:\\:where\\(\\)\\.$#"
+			count: 1
+			path: app/Modules/Tickets/Services/TicketService.php
+
+		-
+			message: "#^Method Nabilet\\\\Modules\\\\Tickets\\\\Services\\\\TicketTemplateResolver\\:\\:defaultTemplate\\(\\) never returns Nabilet\\\\Modules\\\\Tickets\\\\Models\\\\TicketTemplate so it can be removed from the return type\\.$#"
+			count: 1
+			path: app/Modules/Tickets/Services/TicketTemplateResolver.php
+
+		-
+			message: "#^Method Nabilet\\\\Modules\\\\Tickets\\\\Services\\\\TicketTemplateResolver\\:\\:defaultTemplate\\(\\) should return Nabilet\\\\Modules\\\\Tickets\\\\Models\\\\TicketTemplate\\|null but returns stdClass\\|null\\.$#"
+			count: 1
+			path: app/Modules/Tickets/Services/TicketTemplateResolver.php
+
+		-
+			message: "#^Method Nabilet\\\\Modules\\\\Tickets\\\\Services\\\\TicketTemplateService\\:\\:ensureDefaultTemplate\\(\\) should return Nabilet\\\\Modules\\\\Tickets\\\\Models\\\\TicketTemplate but returns stdClass\\.$#"
+			count: 1
+			path: app/Modules/Tickets/Services/TicketTemplateService.php
+
+		-
+			message: "#^Call to an undefined method Nabilet\\\\Modules\\\\Venues\\\\Models\\\\Hall\\:\\:create\\(\\)\\.$#"
+			count: 1
+			path: app/Modules/Venues/Halls/Repositories/HallRepository.php
+
+		-
+			message: "#^Call to an undefined method Nabilet\\\\Modules\\\\Venues\\\\Models\\\\Hall\\:\\:where\\(\\)\\.$#"
+			count: 2
+			path: app/Modules/Venues/Halls/Repositories/HallRepository.php
+
+		-
+			message: "#^Method Nabilet\\\\Modules\\\\Venues\\\\Halls\\\\Repositories\\\\HallRepository\\:\\:createSchemaVersion\\(\\) should return Nabilet\\\\Modules\\\\Venues\\\\Models\\\\HallSchemaVersion but returns Illuminate\\\\Database\\\\Eloquent\\\\Model\\.$#"
+			count: 1
+			path: app/Modules/Venues/Halls/Repositories/HallRepository.php
+
+		-
+			message: "#^Method Nabilet\\\\Modules\\\\Venues\\\\Halls\\\\Repositories\\\\HallRepository\\:\\:getSchemaVersions\\(\\) should return Illuminate\\\\Database\\\\Eloquent\\\\Collection but returns Illuminate\\\\Support\\\\Collection\\<int, stdClass\\>\\.$#"
+			count: 1
+			path: app/Modules/Venues/Halls/Repositories/HallRepository.php
+
+		-
+			message: "#^Anonymous function has an unused use \\$userId\\.$#"
+			count: 2
+			path: app/Modules/Venues/Halls/Services/HallService.php
+
+		-
+			message: "#^Cannot call method schemaVersions\\(\\) on stdClass\\.$#"
+			count: 6
+			path: app/Modules/Venues/Halls/Services/HallService.php
+
+		-
+			message: "#^Method Nabilet\\\\Modules\\\\Venues\\\\Halls\\\\Services\\\\HallService\\:\\:getPublishedSchemaVersion\\(\\) should return Nabilet\\\\Modules\\\\Venues\\\\Models\\\\HallSchemaVersion\\|null but returns stdClass\\|null\\.$#"
+			count: 1
+			path: app/Modules/Venues/Halls/Services/HallService.php
+
+		-
+			message: "#^Parameter \\#1 \\$hall of method Nabilet\\\\Modules\\\\Venues\\\\Halls\\\\Repositories\\\\HallRepository\\:\\:createSchemaVersion\\(\\) expects Nabilet\\\\Modules\\\\Venues\\\\Models\\\\Hall, stdClass given\\.$#"
+			count: 1
+			path: app/Modules/Venues/Halls/Services/HallService.php
+
+		-
+			message: "#^Parameter \\#1 \\$hall of method Nabilet\\\\Modules\\\\Venues\\\\Halls\\\\Repositories\\\\HallRepository\\:\\:delete\\(\\) expects Nabilet\\\\Modules\\\\Venues\\\\Models\\\\Hall, stdClass given\\.$#"
+			count: 1
+			path: app/Modules/Venues/Halls/Services/HallService.php
+
+		-
+			message: "#^Call to an undefined static method Nabilet\\\\Modules\\\\Venues\\\\Models\\\\Venue\\:\\:create\\(\\)\\.$#"
+			count: 1
+			path: app/Modules/Venues/Http/Controllers/VenueController.php
+
+		-
+			message: "#^Call to an undefined static method Nabilet\\\\Modules\\\\Venues\\\\Models\\\\Venue\\:\\:where\\(\\)\\.$#"
+			count: 1
+			path: app/Modules/Venues/Http/Controllers/VenueController.php
+
+		-
+			message: "#^Method Nabilet\\\\Modules\\\\Venues\\\\Models\\\\Hall\\:\\:currentSchemaVersion\\(\\) should return Illuminate\\\\Database\\\\Eloquent\\\\Relations\\\\HasOne but returns Illuminate\\\\Database\\\\Query\\\\Builder\\.$#"
+			count: 1
+			path: app/Modules/Venues/Models/Hall.php
+
+		-
+			message: "#^Call to static method error\\(\\) on an unknown class Log\\.$#"
+			count: 2
+			path: app/Modules/Webhooks/Http/Controllers/WebhookController.php
+
+		-
+			message: "#^Parameter \\#1 \\$callback of method Illuminate\\\\Support\\\\Collection\\<int,stdClass\\>\\:\\:map\\(\\) expects callable\\(stdClass, int\\)\\: array\\<string, mixed\\>, Closure\\(App\\\\Models\\\\Webhook\\)\\: array\\<string, mixed\\> given\\.$#"
+			count: 1
+			path: app/Modules/Webhooks/Http/Controllers/WebhookSubscriptionController.php
+
+		-
+			message: "#^Parameter \\#1 \\$callback of method Illuminate\\\\Support\\\\Collection\\<int,stdClass\\>\\:\\:map\\(\\) expects callable\\(stdClass, int\\)\\: array\\{id\\: int, delivery_id\\: string, event_name\\: string, status_code\\: int\\|null, attempt\\: int, error_message\\: string\\|null, delivered_at\\: string\\|null, next_retry_at\\: string\\|null, created_at\\: string\\}, Closure\\(App\\\\Models\\\\WebhookDelivery\\)\\: array\\{id\\: int, delivery_id\\: string, event_name\\: string, status_code\\: int\\|null, attempt\\: int, error_message\\: string\\|null, delivered_at\\: string\\|null, next_retry_at\\: string\\|null, created_at\\: string\\} given\\.$#"
+			count: 1
+			path: app/Modules/Webhooks/Http/Controllers/WebhookSubscriptionController.php
+
+		-
+			message: "#^Using nullsafe method call on non\\-nullable type Carbon\\\\Carbon\\. Use \\-\\> instead\\.$#"
+			count: 1
+			path: app/Modules/Webhooks/Http/Controllers/WebhookSubscriptionController.php
+
+		-
+			message: "#^Variable \\$responseBody might not be defined\\.$#"
+			count: 1
+			path: app/Modules/Webhooks/Jobs/SendWebhookDeliveryJob.php
+
+		-
+			message: "#^Variable \\$statusCode might not be defined\\.$#"
+			count: 2
+			path: app/Modules/Webhooks/Jobs/SendWebhookDeliveryJob.php
+
+		-
+			message: "#^Using nullsafe method call on non\\-nullable type Illuminate\\\\Console\\\\Command\\. Use \\-\\> instead\\.$#"
+			count: 3
+			path: database/seeders/HallSchemaSeeder.php
+
+		-
+			message: "#^Using nullsafe method call on non\\-nullable type Illuminate\\\\Console\\\\Command\\. Use \\-\\> instead\\.$#"
+			count: 1
+			path: database/seeders/NabiletAdminSeeder.php
+
+		-
+			message: "#^Using nullsafe method call on non\\-nullable type Illuminate\\\\Console\\\\Command\\. Use \\-\\> instead\\.$#"
+			count: 1
+			path: database/seeders/NotificationTemplateSeeder.php
+
+		-
+			message: "#^Using nullsafe method call on non\\-nullable type Illuminate\\\\Console\\\\Command\\. Use \\-\\> instead\\.$#"
+			count: 2
+			path: database/seeders/SurgutVenuesSeeder.php
+
+		-
+			message: "#^Strict comparison using \\=\\=\\= between int\\|false and null will always evaluate to false\\.$#"
+			count: 1
+			path: routes/web.php
+
+		-
+			message: "#^Anonymous function has an unused use \\$user\\.$#"
+			count: 1
+			path: tests/Feature/Auth/AccountRecoveryTest.php
+
+		-
+			message: "#^Constant Tests\\\\Feature\\\\Events\\\\EventCancellationCascadeTest\\:\\:PRICE is unused\\.$#"
+			count: 1
+			path: tests/Feature/Events/EventCancellationCascadeTest.php
+
+		-
+			message: "#^PHPDoc tag @param for parameter \\$socialLinks with type mixed is not subtype of native type array\\|string\\|null\\.$#"
+			count: 1
+			path: tests/Feature/Events/SyncArtistsCommandTest.php
+
+		-
+			message: "#^Call to an undefined static method Nabilet\\\\Modules\\\\Venues\\\\Models\\\\HallSchemaVersion\\:\\:create\\(\\)\\.$#"
+			count: 2
+			path: tests/Feature/HallSchemaSingleLiveVersionTest.php
+
+		-
+			message: "#^Call to an undefined static method Nabilet\\\\Modules\\\\Venues\\\\Models\\\\HallSchemaVersion\\:\\:create\\(\\)\\.$#"
+			count: 1
+			path: tests/Feature/HallTableGeometryTest.php
+
+		-
+			message: "#^Call to an undefined static method Illuminate\\\\Support\\\\Facades\\\\Log\\:\\:shouldNotHaveReceived\\(\\)\\.$#"
+			count: 1
+			path: tests/Feature/Inventory/InventorySoldOnPaymentTest.php
+
+		-
+			message: "#^Call to an undefined static method Nabilet\\\\Modules\\\\Venues\\\\Models\\\\HallSchemaVersion\\:\\:create\\(\\)\\.$#"
+			count: 1
+			path: tests/Feature/Inventory/SessionRowPricesTest.php
+
+		-
+			message: "#^Offset 'session_only' does not exist on array\\{session_id\\: int, rows_updated\\: int, items_updated\\: int, cart_items_updated\\: int, carts_recalculated\\: int\\}\\.$#"
+			count: 2
+			path: tests/Feature/Inventory/SessionRowPricesTest.php
+
+		-
+			message: "#^Call to an undefined static method Nabilet\\\\Modules\\\\Venues\\\\Models\\\\HallSchemaVersion\\:\\:create\\(\\)\\.$#"
+			count: 1
+			path: tests/Feature/InventoryAvailabilityCountingTest.php
+
+		-
+			message: "#^Call to protected method decrement\\(\\) of class Illuminate\\\\Database\\\\Eloquent\\\\Model\\.$#"
+			count: 1
+			path: tests/Feature/InventoryAvailabilityCountingTest.php
+
+		-
+			message: "#^Call to an undefined method ReflectionType\\:\\:getName\\(\\)\\.$#"
+			count: 3
+			path: tests/Feature/InventoryRepositoryContractTest.php
+
+		-
+			message: "#^Call to an undefined method Psr\\\\Log\\\\LoggerInterface\\:\\:getProcessors\\(\\)\\.$#"
+			count: 1
+			path: tests/Feature/Logging/RedactSensitiveDataTest.php
+
+		-
+			message: "#^Unreachable statement \\- code above always terminates\\.$#"
+			count: 1
+			path: tests/Feature/Logging/RedactSensitiveDataTest.php
+
+		-
+			message: "#^Call to an undefined method DateTimeInterface\\:\\:toDateTimeString\\(\\)\\.$#"
+			count: 1
+			path: tests/Feature/Loyalty/FollowNotificationTest.php
+
+		-
+			message: "#^PHPDoc tag @return with type array\\<string, array\\<int, string\\>\\> is incompatible with native type void\\.$#"
+			count: 1
+			path: tests/Feature/Loyalty/FollowNotificationTest.php
+
+		-
+			message: "#^Constant Tests\\\\Feature\\\\Loyalty\\\\RaffleTest\\:\\:TOKEN is unused\\.$#"
+			count: 1
+			path: tests/Feature/Loyalty/RaffleTest.php
+
+		-
+			message: "#^Call to an undefined method Illuminate\\\\Contracts\\\\Filesystem\\\\Filesystem\\:\\:assertExists\\(\\)\\.$#"
+			count: 2
+			path: tests/Feature/Media/MediaApiTest.php
+
+		-
+			message: "#^Method Illuminate\\\\Testing\\\\TestResponse\\<Symfony\\\\Component\\\\HttpFoundation\\\\Response\\>\\:\\:assertStatus\\(\\) invoked with 2 parameters, 1 required\\.$#"
+			count: 1
+			path: tests/Feature/Media/MediaApiTest.php
+
+		-
+			message: "#^Call to an undefined static method Illuminate\\\\Support\\\\Facades\\\\Log\\:\\:shouldHaveReceived\\(\\)\\.$#"
+			count: 1
+			path: tests/Feature/Payments/PaymentInitiationGuardsTest.php
+
+		-
+			message: "#^Property Tests\\\\Feature\\\\Payments\\\\PaymentInitiationGuardsTest\\:\\:\\$organizationId is never read, only written\\.$#"
+			count: 1
+			path: tests/Feature/Payments/PaymentInitiationGuardsTest.php
+
+		-
+			message: "#^PHPDoc tag @param for parameter \\$socialLinks with type mixed is not subtype of native type array\\|string\\|null\\.$#"
+			count: 1
+			path: tests/Feature/Seo/EventArtistLinkTest.php
+
+		-
+			message: "#^PHPDoc tag @param for parameter \\$socialLinks with type mixed is not subtype of native type array\\|string\\|null\\.$#"
+			count: 1
+			path: tests/Feature/Seo/LandingArchiveTest.php
+
+		-
+			message: "#^PHPDoc tag @param for parameter \\$socialLinks with type mixed is not subtype of native type array\\|string\\|null\\.$#"
+			count: 1
+			path: tests/Feature/Seo/LandingArtistTest.php
+
+		-
+			message: "#^PHPDoc tag @param for parameter \\$socialLinks with type mixed is not subtype of native type array\\|string\\|null\\.$#"
+			count: 1
+			path: tests/Feature/Seo/LandingCategoryTest.php
+
+		-
+			message: "#^PHPDoc tag @param for parameter \\$socialLinks with type mixed is not subtype of native type array\\|string\\|null\\.$#"
+			count: 1
+			path: tests/Feature/Seo/LandingOrganizationTest.php
+
+		-
+			message: "#^PHPDoc tag @param for parameter \\$socialLinks with type mixed is not subtype of native type array\\|string\\|null\\.$#"
+			count: 1
+			path: tests/Feature/Seo/LandingPageTest.php
+
+		-
+			message: "#^PHPDoc tag @param for parameter \\$socialLinks with type mixed is not subtype of native type array\\|string\\|null\\.$#"
+			count: 1
+			path: tests/Feature/Seo/LandingSitemapTest.php
+
+		-
+			message: "#^Method Tests\\\\Feature\\\\Seo\\\\SitemapLastmodTest\\:\\:eventLastmod\\(\\) never returns null so it can be removed from the return type\\.$#"
+			count: 1
+			path: tests/Feature/Seo/SitemapLastmodTest.php
+
+		-
+			message: "#^Call to an undefined static method Nabilet\\\\Modules\\\\Venues\\\\Models\\\\HallSchemaVersion\\:\\:create\\(\\)\\.$#"
+			count: 1
+			path: tests/Feature/Sessions/SessionGeometryReuseTest.php
+
+		-
+			message: "#^Call to an undefined static method Nabilet\\\\Modules\\\\Venues\\\\Models\\\\HallSchemaVersion\\:\\:create\\(\\)\\.$#"
+			count: 1
+			path: tests/Feature/Tickets/TicketEmailTemplateTest.php
+
+		-
+			message: "#^Offset 'amount' on array\\{payment_id\\: string, amount\\: int, currency\\: string, reason\\?\\: string\\} on left side of \\?\\? always exists and is not nullable\\.$#"
+			count: 1
+			path: tests/Support/ScriptedPaymentProvider.php
+
+		-
+			message: "#^Unreachable statement \\- code above always terminates\\.$#"
+			count: 1
+			path: tests/Support/TestCase.php
+
+		-
+			message: "#^Parameter \\#1 \\$holds of class Nabilet\\\\Modules\\\\Cart\\\\Domain\\\\Superseded\\\\CartPolicy constructor expects array\\<int, Nabilet\\\\Modules\\\\Inventory\\\\Domain\\\\Superseded\\\\SeatHold\\>, array\\<int, stdClass\\> given\\.$#"
+			count: 1
+			path: tests/Unit/CartTest.php
+
+		-
+			message: "#^Parameter \\$items of class Nabilet\\\\Modules\\\\Cart\\\\Domain\\\\Superseded\\\\Cart constructor expects array\\<int, Nabilet\\\\Modules\\\\Cart\\\\Domain\\\\Superseded\\\\CartItem\\>, array\\<int, stdClass\\> given\\.$#"
+			count: 1
+			path: tests/Unit/CartTest.php
+
+		-
+			message: "#^Constant Nabilet\\\\Tests\\\\Unit\\\\HoldGraceTest\\:\\:CONFIG_KEY is unused\\.$#"
+			count: 1
+			path: tests/Unit/HoldGraceTest.php
+
+		-
+			message: "#^PHPDoc tag @param references unknown parameter\\: \\$override$#"
+			count: 1
+			path: tests/Unit/RetryPolicyTest.php
+
+		-
+			message: "#^Parameter \\#2 \\$rules of method Nabilet\\\\Modules\\\\Security\\\\Domain\\\\IpRulePolicy\\:\\:evaluate\\(\\) expects array\\<int, Nabilet\\\\Modules\\\\Security\\\\Domain\\\\IpRule\\>, array\\<int, stdClass\\> given\\.$#"
+			count: 1
+			path: tests/Unit/SecurityPolicyTest.php

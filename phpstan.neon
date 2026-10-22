@@ -1,3 +1,8 @@
+includes:
+    # Известные находки, зафиксированные как ratchet: список может только
+    # сокращаться. Что здесь лежит и почему — в шапке самого файла.
+    - phpstan-baseline.neon
+
 parameters:
     level: 5
 
@@ -23,11 +28,41 @@ parameters:
         - database/archive-superseded-migrations
 
     ignoreErrors:
-        # Config files legitimately reference classes created in later phases
-        # (e.g. the User model). `::class` resolves to a string without loading.
-        -
-            message: '#Class Nabilet\\Modules\\Users\\Models\\User not found#'
-            path: config/auth.php
+        # Пусто. Здесь стояло подавление «Class Nabilet\Modules\Users\Models\User
+        # not found» для config/auth.php — оно отстало: конфиг давно ссылается на
+        # канонический `Nabilet\Modules\Core\Users\Models\User`, и подавлять
+        # стало нечего. PHPStan сообщал об этом сам («Ignored error pattern …
+        # was not matched»), то есть мёртвая запись производила ошибку вместо
+        # того, чтобы её снимать.
+
+    # Eloquent-модели объявляют колонки в миграциях, а не в PHP, поэтому для
+    # анализатора `$event->public_id` — обращение к несуществующему свойству.
+    # Без этого параметра PHPStan выдавал 1124 таких ошибки из 1632 (69 %
+    # отчёта) на 90 классах, и настоящие находки тонули в них.
+    #
+    # Почему не Larastan, который решает ровно эту задачу: он требует
+    # `illuminate/console` не выше ^12, а проект на Laravel 13.32. Ни одна
+    # выпущенная версия Larastan не ставится (`composer require --dry-run`
+    # перебирает v2.4…v3.13 и упирается в это). Когда поддержка появится —
+    # удалить этот блок и поставить Larastan: он даст ещё и типы колонок.
+    #
+    # Что теряется: опечатка в имени свойства модели (`$event->publik_id`)
+    # больше не ловится здесь. Она ловится `tools/verify-models-schema.php`,
+    # который сверяет каждое имя колонки в моделях с DDL и падает на любом
+    # незнакомом — то есть проверка не исчезла, а переехала в инструмент,
+    # который знает про схему больше, чем анализатор.
+    #
+    # Одного базового класса достаточно: universalObjectCratesClasses
+    # наследуется, поэтому 90 моделей в app/Models и Modules/*/Models
+    # покрываются этой строкой.
+    #
+    # JsonResource — та же история для API-ресурсов: `JsonResource::__get()`
+    # проксирует во вложенный ресурс (`$this->resource->{$key}`), поэтому 163
+    # ошибки приходились на 17 классов `Http\Resources\*Resource`. Это не
+    # модели, но причина одна, и лечится она тем же списком.
+    universalObjectCratesClasses:
+        - Illuminate\Database\Eloquent\Model
+        - Illuminate\Http\Resources\Json\JsonResource
 
     # `checkMissingIterableValueType: false` stood here and did two bad things:
     # it printed a deprecation warning on EVERY run (PHPStan 1.12), and its
