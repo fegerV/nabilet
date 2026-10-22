@@ -110,10 +110,71 @@ export function isCustomerSession(): boolean {
   return getCustomerToken() !== null
 }
 
+/* ── Проверка, что токен ещё живой ──────────────────────────────────────────
+ * `isCustomerSession()` отвечает на вопрос «токен лежит в localStorage?», а не
+ * «сессия работает?». Это разные вещи: токен истекает (30 дней,
+ * `SessionIssuer::DEFAULT_TTL_DAYS`), отзывается выходом на другом устройстве
+ * и сменой пароля (она отзывает ВСЕ сессии), а на стенде исчезает вместе с
+ * пересозданной базой. Пока проверки не было, такой токен проходил guard
+ * кабинета, `/me/*` отвечали 401, и покупатель оставался на странице с нулями
+ * вместо формы входа.
+ *
+ * ПОЧЕМУ КЭШ НА ТОКЕН, А НЕ НА ВРЕМЯ
+ *   Проверка стоит одного `GET /me`, и делать её на каждый переход нельзя:
+ *   навигация ждала бы сеть. Но и «раз в N минут» — лишнее состояние: токен
+ *   либо тот же самый (значит, уже проверен в этом документе), либо новый
+ *   (после входа) — и тогда проверить его нужно ровно один раз.
+ */
+let validatedToken: string | null = null
+/** Проверка в полёте: два guard'а подряд не должны слать два запроса. */
+let probe: Promise<boolean> | null = null
+
+/**
+ * `true`, если сессия покупателя рабочая. `false` — токена нет или сервер его
+ * не признал (тогда сессия уже очищена).
+ *
+ * Сетевую ошибку и 5xx считаем «сессия, скорее всего, жива»: офлайн или
+ * перегруженный сервер — не повод выбрасывать покупателя на форму входа.
+ */
+export async function ensureCustomerSession(): Promise<boolean> {
+  const token = getCustomerToken()
+  if (token === null) return false
+  if (validatedToken === token) return true
+  if (probe !== null) return probe
+
+  probe = (async () => {
+    try {
+      // `as: 'customer'` обязателен: без него `activeToken()` предпочтёт токен
+      // сотрудника, и в браузере с открытой админкой проверялся бы он, а
+      // профиль покупателя затёрся бы профилем администратора.
+      const res = await request<{ data: CustomerUser }>('/me', { as: 'customer' })
+      saveCustomerUser(res.data)
+      validatedToken = token
+      return true
+    } catch (e) {
+      const status = (e as ApiError | null)?.status ?? 0
+      if (status === 401 || status === 403) {
+        // Токен мёртв. `request()` уже стёр его из localStorage; чистим и
+        // профиль — иначе шапка продолжит показывать имя того, кем покупатель
+        // уже не является.
+        clearCustomerSession()
+        validatedToken = null
+        return false
+      }
+      return true
+    } finally {
+      probe = null
+    }
+  })()
+
+  return probe
+}
+
 /** Полностью очистить сессию витрины: и токен, и сохранённый профиль. */
 export function clearCustomerSession(): void {
   setCustomerToken(null)
   clearCustomerUser()
+  validatedToken = null
 }
 
 interface AuthPayload {
@@ -177,6 +238,8 @@ export async function logoutCustomer(): Promise<void> {
 function acceptSession(payload: AuthPayload): CustomerUser {
   setCustomerToken(payload.token)
   saveCustomerUser(payload.user)
+  // Токен только что выдан сервером — проверять его через `/me` незачем.
+  validatedToken = payload.token
 
   return payload.user
 }

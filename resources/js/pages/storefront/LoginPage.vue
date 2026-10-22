@@ -41,6 +41,14 @@ const redirect = computed(() => {
   return typeof raw === 'string' && raw.startsWith('/') && !raw.startsWith('//') ? raw : '/account'
 })
 
+/**
+ * Guard присылает `?reason=expired`, когда токен в браузере был, но сервер его
+ * не признал (истёк, отозван выходом на другом устройстве или сменой пароля).
+ * Без объяснения форма входа появлялась «из ниоткуда»: покупатель шёл в клуб
+ * или кабинет и оказывался на входе без причины.
+ */
+const expired = computed(() => route.query.reason === 'expired')
+
 async function submit(): Promise<void> {
   if (loading.value) return
   error.value = null
@@ -61,6 +69,14 @@ async function submit(): Promise<void> {
     <h1 class="font-display text-2xl font-bold tracking-tight text-content">Вход</h1>
     <p class="mt-1.5 text-sm text-muted">
       Билеты, заказы и данные профиля — в личном кабинете.
+    </p>
+
+    <p
+      v-if="expired"
+      class="mt-4 rounded-lg border border-sun-500/30 bg-sun-500/10 px-3 py-2.5 text-sm text-sun-400"
+      role="status"
+    >
+      Сессия истекла — войдите снова, чтобы вернуться на прежнюю страницу.
     </p>
 
     <form class="surface-card mt-6 p-6" aria-label="Вход в личный кабинет" @submit.prevent="submit">

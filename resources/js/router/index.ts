@@ -10,7 +10,7 @@ import StorefrontShell from '@/layouts/StorefrontShell.vue'
 import AdminShell from '@/layouts/AdminShell.vue'
 import { getToken } from '@/lib/api'
 import { isAdminSession, clearSession } from '@/lib/auth'
-import { isCustomerSession } from '@/lib/customer'
+import { isCustomerSession, ensureCustomerSession } from '@/lib/customer'
 import { rememberReferralCode } from '@/lib/referral'
 import { applySeo } from '@/lib/seo'
 
@@ -280,7 +280,8 @@ router.beforeEach((to) => {
 })
 
 // Guard: админка требует админскую сессию — токен И роль. Без неё — на логин.
-router.beforeEach((to) => {
+// Асинхронный: ниже проверяется живость сессии покупателя запросом к серверу.
+router.beforeEach(async (to) => {
   if (to.matched.some((r) => r.meta.requiresAuth)) {
     if (!getToken()) {
       return { name: 'admin-login', query: { redirect: to.fullPath } }
@@ -304,14 +305,38 @@ router.beforeEach((to) => {
    * (см. `CUSTOMER_TOKEN_KEY` в `api.ts`), и если бы guard кабинета смотрел на
    * общий ключ, покупатель с сотрудническим токеном в том же браузере увидел бы
    * чужой кабинет.
+   *
+   * НАЛИЧИЕ ТОКЕНА — ЕЩЁ НЕ СЕССИЯ
+   *   `isCustomerSession()` читает localStorage и не знает, что токен уже
+   *   истёк, отозван выходом на другом устройстве или сменой пароля (она
+   *   отзывает все сессии), а на стенде — исчез вместе с пересозданной базой.
+   *   Такой токен проходил guard, страница кабинета грузилась, `/me/*` отвечали
+   *   401, и покупатель видел клуб с нулями вместо формы входа. Поэтому перед
+   *   допуском спрашиваем сервер (`ensureCustomerSession()` → `GET /me`), но
+   *   только один раз на токен: проверка кэшируется, навигация не ждёт сеть
+   *   каждый раз.
    */
-  if (to.matched.some((r) => r.meta.requiresCustomer) && !isCustomerSession()) {
-    return { name: 'login', query: { redirect: to.fullPath } }
+  const needsCustomer = to.matched.some((r) => r.meta.requiresCustomer)
+
+  if (needsCustomer) {
+    if (!isCustomerSession()) {
+      return { name: 'login', query: { redirect: to.fullPath } }
+    }
+    if (!(await ensureCustomerSession())) {
+      // `reason` — чтобы форма входа объяснила, почему покупатель здесь, а не
+      // молча выбросила его с открытой страницы.
+      return { name: 'login', query: { redirect: to.fullPath, reason: 'expired' } }
+    }
   }
 
   // Уже вошли — формы входа и регистрации показывать повторно незачем.
+  //
+  // Сессию здесь тоже проверяем: с мёртвым токеном этот переход увёл бы
+  // покупателя на `/account`, оттуда guard кабинета вернул бы его на `/login` —
+  // и форма мигала бы двумя лишними переходами. Проверка кэшируется, так что
+  // для живой сессии это ноль запросов.
   if ((to.name === 'login' || to.name === 'register') && isCustomerSession()) {
-    return { name: 'account' }
+    if (await ensureCustomerSession()) return { name: 'account' }
   }
 })
 
