@@ -20,6 +20,13 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class Consent extends Model
 {
+    /**
+     * Явно, а не через множественное число Eloquent: имя таблицы — часть
+     * контракта со схемой (`tools/verify-models-schema.php` сверяет колонки
+     * именно с ней), и переименование класса не должно молча менять таблицу.
+     */
+    protected $table = 'consents';
+
     public $timestamps = false;
 
     protected $fillable = [

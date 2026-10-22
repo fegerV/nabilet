@@ -390,37 +390,48 @@ function usesSoftDeletes(string $src): bool
 }
 
 /**
- * Every model file under app/Modules.
+ * Every model file: app/Modules/ * /Models/ plus app/Models.
+ *
+ * app/Models used to be excluded, which left the twelve legacy models there
+ * unchecked — and they are exactly the layer that was generated from a
+ * description of the domain rather than from the DDL, so they are the ones most
+ * likely to name a column that does not exist. Most of that directory (42 files,
+ * 2045 lines) turned out to be unreachable from anywhere outside itself and was
+ * deleted; the survivors are live, so they get checked like everything else.
  *
  * @return list<string>
  */
 function findModels(string $root): array
 {
     $found = [];
-    $dir = $root . '/app/Modules';
 
-    if (! is_dir($dir)) {
-        return $found;
-    }
-
-    $iterator = new RecursiveIteratorIterator(
-        new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS)
-    );
-
-    foreach ($iterator as $file) {
-        /** @var SplFileInfo $file */
-        if ($file->getExtension() !== 'php') {
-            continue;
+    $scan = static function (string $dir, bool $requireModelsSegment) use (&$found): void {
+        if (! is_dir($dir)) {
+            return;
         }
 
-        $path = str_replace('\\', '/', $file->getPathname());
+        $iterator = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS)
+        );
 
-        if (! str_contains($path, '/Models/')) {
-            continue;
+        foreach ($iterator as $file) {
+            /** @var SplFileInfo $file */
+            if ($file->getExtension() !== 'php') {
+                continue;
+            }
+
+            $path = str_replace('\\', '/', $file->getPathname());
+
+            if ($requireModelsSegment && ! str_contains($path, '/Models/')) {
+                continue;
+            }
+
+            $found[] = $file->getPathname();
         }
+    };
 
-        $found[] = $file->getPathname();
-    }
+    $scan($root . '/app/Modules', true);
+    $scan($root . '/app/Models', false);
 
     sort($found);
 

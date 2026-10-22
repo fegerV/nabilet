@@ -24,6 +24,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class Notification extends Model
 {
+    /** Явно, а не через множественное число Eloquent — см. `Consent`. */
+    protected $table = 'notifications';
+
     protected $fillable = [
         'public_id',
         'user_id',

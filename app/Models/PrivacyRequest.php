@@ -27,6 +27,9 @@ use Illuminate\Support\Str;
  */
 class PrivacyRequest extends Model
 {
+    /** Явно, а не через множественное число Eloquent — см. `Consent`. */
+    protected $table = 'privacy_requests';
+
     public $timestamps = false;
 
     protected $fillable = [

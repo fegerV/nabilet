@@ -21,6 +21,9 @@ use Illuminate\Database\Eloquent\Model;
  */
 class NotificationTemplate extends Model
 {
+    /** Явно, а не через множественное число Eloquent — см. `Consent`. */
+    protected $table = 'notification_templates';
+
     protected $fillable = [
         'public_id',
         'code',

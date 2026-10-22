@@ -1,15 +1,15 @@
 # Что это за файл.
 #
-# 344 находки PHPStan уровня 5, зафиксированные как ratchet: гейт падает только
+# 332 находки PHPStan уровня 5, зафиксированные как ratchet: гейт падает только
 # на НОВЫХ. Список может сокращаться, но не расти — это и есть смысл baseline.
 #
-# Почему 344, а не 1632. Из 1632 ошибок 1287 были `property.notFound` на
+# Почему 332, а не 1632. Из 1632 ошибок 1287 были `property.notFound` на
 # Eloquent-моделях и JsonResource: колонки объявлены в миграциях, а не в PHP,
 # поэтому анализатор их не видит. Лечится Larastan — но он требует
 # `illuminate/console` не выше ^12, а проект на Laravel 13, и ни одна
 # выпущенная версия не ставится. Вместо него в phpstan.neon объявлены
 # universalObjectCratesClasses (Model, JsonResource) — это снимает 1287+163
-# ложных срабатывания. Остальные 344 — не ложные, а следствия отсутствия
+# ложных срабатывания. Остальные 332 — не ложные, а следствия отсутствия
 # Larastan: PHPStan не знает, что `Order::query()` возвращает Eloquent\Builder,
 # что `$session->event()` — отношение, что `getReturnType()` вернёт
 # ReflectionNamedType. Проверено выборочно: в рантайме все они работают.
@@ -45,61 +45,6 @@ parameters:
 			message: "#^Access to an undefined property object\\:\\:\\$roles\\.$#"
 			count: 1
 			path: app/Core/Support/StaffRole.php
-
-		-
-			message: "#^Call to an undefined method Illuminate\\\\Contracts\\\\Auth\\\\Factory\\:\\:user\\(\\)\\.$#"
-			count: 1
-			path: app/Models/Event.php
-
-		-
-			message: "#^Method App\\\\Models\\\\Event\\:\\:getNextDateAttribute\\(\\) should return App\\\\Models\\\\EventDate\\|null but returns Illuminate\\\\Database\\\\Eloquent\\\\Model\\|null\\.$#"
-			count: 1
-			path: app/Models/Event.php
-
-		-
-			message: "#^Method App\\\\Models\\\\Event\\:\\:upcomingDates\\(\\) should return Illuminate\\\\Database\\\\Eloquent\\\\Relations\\\\HasMany but returns Illuminate\\\\Database\\\\Query\\\\Builder\\.$#"
-			count: 1
-			path: app/Models/Event.php
-
-		-
-			message: "#^Method App\\\\Models\\\\EventArtist\\:\\:scopeOrdered\\(\\) should return Illuminate\\\\Database\\\\Eloquent\\\\Builder but returns Illuminate\\\\Database\\\\Query\\\\Builder\\.$#"
-			count: 1
-			path: app/Models/EventArtist.php
-
-		-
-			message: "#^Method App\\\\Models\\\\EventFaq\\:\\:scopeOrdered\\(\\) should return Illuminate\\\\Database\\\\Eloquent\\\\Builder but returns Illuminate\\\\Database\\\\Query\\\\Builder\\.$#"
-			count: 1
-			path: app/Models/EventFaq.php
-
-		-
-			message: "#^Method App\\\\Models\\\\EventScheduleItem\\:\\:scopeOrdered\\(\\) should return Illuminate\\\\Database\\\\Eloquent\\\\Builder but returns Illuminate\\\\Database\\\\Query\\\\Builder\\.$#"
-			count: 1
-			path: app/Models/EventScheduleItem.php
-
-		-
-			message: "#^Method App\\\\Models\\\\EventSpeaker\\:\\:scopeOrdered\\(\\) should return Illuminate\\\\Database\\\\Eloquent\\\\Builder but returns Illuminate\\\\Database\\\\Query\\\\Builder\\.$#"
-			count: 1
-			path: app/Models/EventSpeaker.php
-
-		-
-			message: "#^Method App\\\\Models\\\\EventSponsor\\:\\:scopeOrdered\\(\\) should return Illuminate\\\\Database\\\\Eloquent\\\\Builder but returns Illuminate\\\\Database\\\\Query\\\\Builder\\.$#"
-			count: 1
-			path: app/Models/EventSponsor.php
-
-		-
-			message: "#^Property App\\\\Models\\\\RolePermission\\:\\:\\$primaryKey \\(string\\) does not accept default value of type array\\<int, string\\>\\.$#"
-			count: 1
-			path: app/Models/RolePermission.php
-
-		-
-			message: "#^Property App\\\\Models\\\\UserOrganization\\:\\:\\$primaryKey \\(string\\) does not accept default value of type array\\<int, string\\>\\.$#"
-			count: 1
-			path: app/Models/UserOrganization.php
-
-		-
-			message: "#^Call to an undefined method Illuminate\\\\Contracts\\\\Auth\\\\Factory\\:\\:user\\(\\)\\.$#"
-			count: 1
-			path: app/Models/Venue.php
 
 		-
 			message: "#^Call to static method table\\(\\) on an unknown class DB\\.$#"
