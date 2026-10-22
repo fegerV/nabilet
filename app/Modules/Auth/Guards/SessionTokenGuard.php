@@ -101,6 +101,17 @@ final class SessionTokenGuard implements Guard
      */
     public function setRequest(Request $request): static
     {
+        // Тот же самый объект — значит, привязку переставили в пределах ОДНОГО
+        // запроса. Так делает `Kernel::dispatchToRouter()`: он ещё раз кладёт
+        // `request` в контейнер перед маршрутными middleware, и это дёргает
+        // rebinding-callback. Сбрасывать кеш здесь нельзя — иначе глобальный
+        // `ResolveOrganizationContext` разбирает токен, а `auth:api` сразу за ним
+        // разбирает его ВТОРОЙ раз: лишние `SELECT user_sessions`,
+        // `SELECT users` и лишний `UPDATE last_seen_at` на каждом запросе.
+        if ($this->request === $request) {
+            return $this;
+        }
+
         $this->request = $request;
 
         if ($this->resolvedFromToken) {
