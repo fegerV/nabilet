@@ -34,6 +34,7 @@ declare(strict_types=1);
 $root = dirname(__DIR__);
 
 require $root . '/vendor/autoload.php';
+require $root . '/tools/spec-counts.php';
 
 $app = require $root . '/bootstrap/app.php';
 $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
@@ -109,12 +110,16 @@ if (preg_match_all('/ALTER\s+TABLE\s+`?(\w+)`?\s+(.*?);/is', $spec, $stmts, PREG
 // Self-check before trusting anything below. An under-reading parser invents
 // drift, and invented drift gets frozen into an accepted-drift list.
 //
-// ВНИМАНИЕ: те же два числа продублированы в `tools/verify-models-schema.php`
-// (`EXPECTED_TABLES` / `EXPECTED_COLUMNS`) и `tools/verify-contract-schema.php`.
-// Три скрипта, одно число, три места правки — и это уже стреляло: после того
-// как в спеку переехали 9 таблиц домена (64→73 таблицы, 678→785 колонок),
-// обновили два файла из трёх, и этот начал падать с «Fix the parser before
-// trusting its verdict». Меняйте все три сразу.
+// ВНИМАНИЕ: числа больше НЕ живут в этом файле. Они в `tools/spec-counts.php` —
+// единственном месте, которое читают все три инструмента (`verify-live`,
+// `verify-models-schema`, `verify-contract-schema`). Здесь они дублировались, и
+// это стреляло трижды: после сплитов 016 и 018 обновляли два файла из трёх, а
+// после 023 (`c581afbd`) — снова два из трёх, и этот падал на первой проверке с
+// «Fix the parser before trusting its verdict», обвиняя исправный парсер.
+//
+// История ниже — как росли числа ДО выноса (до 85/881). Дальше её ведёт
+// `spec-counts.php`: 85/881 → 88/911 (таблицы `artists`, `artist_event`,
+// `newsletter_subscribers`).
 //
 // 785 → 786: сплит `016_login_logs_event.sql` добавил `login_logs.event`
 // (аудит подбора пароля писал событие `login_failed` без колонки, куда его
@@ -143,8 +148,17 @@ if (preg_match_all('/ALTER\s+TABLE\s+`?(\w+)`?\s+(.*?);/is', $spec, $stmts, PREG
 // Итого 81 → 85 таблиц, 849 → 881 колонка. Обновлены все четыре файла
 // одновременно (ci.yml, verify-models-schema, verify-contract-schema,
 // verify-live) плюс `docs/DATABASE.md`.
-$expectedTables = 85;
-$expectedColumns = 881;
+// Сначала — отстала ли сама константа. Проверка независимая: считает
+// `CREATE TABLE` в бандле, не доверяя ни одному из трёх парсеров. Без неё
+// отставшая константа выглядит как сломанный парсер (так и было трижды).
+$countsProblem = spec_counts_problem($spec);
+if ($countsProblem !== null) {
+    fwrite(\STDERR, $line('  FAIL  ' . $countsProblem));
+    exit(1);
+}
+
+$expectedTables = EXPECTED_TABLES;
+$expectedColumns = EXPECTED_COLUMNS;
 if (count($specTables) !== $expectedTables || count($specCols) !== $expectedColumns) {
     fwrite(\STDERR, $line(sprintf(
         '  FAIL  spec parser read %d tables / %d columns, expected %d / %d.'
@@ -165,11 +179,18 @@ echo $line(sprintf('  spec parsed: %d tables, %d columns (self-check ok)', count
 // App-only extensions are excluded from the live counts. They are deliberate:
 // `tools/verify-migrations.php` records the same four in `$knownExtensions`, and
 // they exist because Laravel needs its own plumbing (queue, failed jobs, token
-// storage) plus Filament's "remember me". Without this exclusion the tool
-// reported `personal_access_tokens_token_unique` and `failed_jobs_uuid_unique`
-// as drift, and 25 of those tables' columns as "EXTRA" — noise that trains the
-// reader to ignore the section, which is how a real MISSING line gets missed.
-$appOnlyTables = ['failed_jobs', 'jobs', 'personal_access_tokens'];
+// storage, HTTP sessions) plus Filament's "remember me". Without this exclusion
+// the tool reported `personal_access_tokens_token_unique` and
+// `failed_jobs_uuid_unique` as drift, and 25 of those tables' columns as
+// "EXTRA" — noise that trains the reader to ignore the section, which is how a
+// real MISSING line gets missed.
+//
+// `web_sessions` был забыт в этом списке, хотя в `verify-migrations.php` он
+// есть с самого появления (2026_10_12_000600). Следствие: шесть его колонок
+// печатались как EXTRA, и раздел «columns» показывал 917 против 911 в спеке —
+// расхождение, которого нет. Добавлен, чтобы список совпадал с единственным
+// местом, которое его действительно проверяет.
+$appOnlyTables = ['failed_jobs', 'jobs', 'personal_access_tokens', 'web_sessions'];
 $appOnlyExclusion = "'" . implode("','", $appOnlyTables) . "'";
 
 $live = [
@@ -190,43 +211,44 @@ $live = [
         WHERE trigger_schema=DATABASE()")->c,
 ];
 
-// Числа сверены с самой спекой, а не подобраны: консолидированный бандл
-// (`nabilet_core_spec/migrations.sql`) загружен в чистую базу `nbl_cnt` и
-// посчитан по `information_schema` — 110 внешних ключей, 94 уникальных, 48
-// CHECK. Живая `nabilet_demo` после применения всех сплитов даёт те же числа
-// (app-only таблицы `jobs`, `failed_jobs`, `personal_access_tokens` из счёта
-// исключены выше, и их в бандле нет).
+// Числа НЕ подобраны и НЕ сложены вручную — они измерены тем же инструментом,
+// что и живые: бандл загружается в пустую схему, дальше `information_schema`.
+// Так обе стороны сравнения считает один счётчик, и «ожидание» не может
+// разойтись со спекой из-за арифметики.
 //
-// 101 → 110 и 88 → 94 и 47 → 48: сплит `018_loyalty_foundation.sql` добавил
-// три таблицы «Клуба зрителей» (`event_favorites`, `event_follows`,
-// `follow_notifications`) — 9 внешних ключей (шесть CASCADE на users/events/
-// sessions, один SET NULL на notifications, два внутри журнала), 6 уникальных
-// ключей и один CHECK `ck_follow_notifications_status`. Константы остались на
-// значениях, посчитанных до сплита, и инструмент падал на расхождении, которого
-// нет: спека и живая база сходились, а ожидание — нет.
+// Перемерить после сплита миграций (≈10 секунд):
+//   docker exec nabilet-mysql mysql -uroot -prootpass -e \
+//     'DROP DATABASE IF EXISTS nbl_cnt; CREATE DATABASE nbl_cnt'
+//   docker exec -i nabilet-mysql mysql -uroot -prootpass nbl_cnt \
+//     < nabilet_core_spec/migrations.sql
+//   docker exec nabilet-mysql mysql -uroot -prootpass -N -B -e \
+//     "SELECT constraint_type, count(*) FROM information_schema.table_constraints
+//      WHERE constraint_schema='nbl_cnt' GROUP BY constraint_type"
 //
-// 110 → 113, 94 → 98, 48 → 50: сплит `019_bonus_ledger.sql` (фаза 2). Внешние
-// ключи: `fk_bonus_accounts_user`, `fk_bonus_transactions_user` (CASCADE) и
-// `fk_bonus_transactions_order` (SET NULL). Уникальные: `uq_bonus_accounts_public_id`,
-// `uq_bonus_accounts_user`, `uq_bonus_transactions_public_id`,
-// `uq_bonus_transactions_dedupe`. CHECK — `ck_bonus_accounts_balance` и
-// `ck_bonus_transactions_reason`; переиздание `ck_orders_amounts` счёт НЕ меняет,
-// потому что имя то же (CHECK снимается и создаётся заново под тем же именем).
+// ПОЧЕМУ ЭТО ВАЖНО. Раньше здесь стояла арифметика по сплитам, и она отстала
+// на два сплита: 117/105/51 — это состояние после `021_referrals.sql`, тогда
+// как бандл уже содержал 022 (розыгрыши) и 023 (артисты + лента подписки).
+// Инструмент полгода падал на трёх MISMATCH, которых в схеме нет, и никто его
+// не запускал. Ровно та же болезнь, что у константы в `spec-counts.php`:
+// ручной счётчик, который выглядит авторитетным, но не пересчитывается.
 //
-// 113 → 114 и 98 → 100: сплит `020_loyalty_levels.sql` (фаза 3). Внешний ключ:
-// `fk_users_loyalty_level` (SET NULL). Уникальные: `uq_loyalty_levels_public_id`,
-// `uq_loyalty_levels_slug`. CHECK — без изменений (50).
+// Состав чисел (измерено по information_schema, дельта от 021 → 023):
+//   117 → 125, 105 → 113, 51 → 53  сплит `022_raffles.sql` (фаза 5).
+//     Внешние ключи — 8: `fk_raffle_entries_{raffle,user,order}`,
+//     `fk_raffle_prizes_raffle`, `fk_raffle_winners_{raffle,prize,entry,user}`.
+//     Уникальные — 8: `uq_raffles_public_id`, `uq_raffle_prizes_{public_id,place}`,
+//     `uq_raffle_entries_{public_id,order}`, `uq_raffle_winners_{public_id,prize,entry}`.
+//     CHECK — 2: `ck_raffles_status`, `ck_raffle_prizes_place`.
+//   125 → 127, 113 → 116, 53 → 53  мерж `c84e8688` (артисты, контент-модуль).
+//     Внешние ключи — 2: `artist_event_{artist,event}_id_foreign`.
+//     Уникальные — 3: `uq_artist_event`, `uq_artists_slug`, `uq_artists_normalized_name`.
+//   127 → 127, 116 → 118, 53 → 53  сплит `023`/`c581afbd` (лента подписки).
+//     Уникальные — 2: `uq_newsletter_email`, `uq_newsletter_unsub_token`.
 //
 // Триггеры в этот цикл НЕ входят: они сравниваются отдельно ниже, потому что
 // их расхождение — отставшая спека, а не дрейф схемы, и оно не должно
 // сбрасываться или подгоняться вместе с остальными счётчиками.
-// 114 → 117, 100 → 105 и 50 → 51: сплит `021_referrals.sql` (фаза 4). Внешние
-// ключи: `fk_referral_codes_user` (CASCADE), `fk_referrals_inviter` (CASCADE),
-// `fk_referrals_invited_user` (SET NULL). Уникальные: `uq_referral_codes_public_id`,
-// `uq_referral_codes_user`, `uq_referral_codes_code`, `uq_referrals_public_id`,
-// `uq_referrals_inviter_email`. CHECK — `ck_referrals_status`; переиздание
-// `ck_bonus_transactions_reason` счёт НЕ меняет (имя то же).
-$expect = ['fk' => 117, 'unique' => 105, 'check' => 51];
+$expect = ['fk' => 127, 'unique' => 118, 'check' => 53];
 foreach ($expect as $k => $want) {
     $got = $live[$k];
     $ok = $got === $want;
@@ -348,25 +370,77 @@ if (preg_match_all('/^ {2}(\/\S*):\s*$/m', $openapi, $pm)) {
     }
 }
 
+// Собираем ВСЕ маршруты, а не только `api/*`. Спека объявляет два пути вне
+// этого префикса (`/auth/yandex/callback`, `/auth/vk/callback`), и раньше они
+// попадали в «missing» автоматически — даже если бы их реализовали как
+// web-маршруты, фильтр `str_starts_with($uri, 'api/')` их не увидел бы. Гейт,
+// который не может пройти корректная реализация, — неверный гейт.
 $appPaths = [];
 $doubled = [];
 foreach (Route::getRoutes() as $route) {
-    $uri = $route->uri();
-    if (! str_starts_with($uri, 'api/')) {
-        continue;
-    }
-    $n = $norm($uri);
+    $n = $norm($route->uri());
     $appPaths[$n] = true;
     if (str_contains($n, '/v1/v1/') || str_contains($n, '/api/v1/api/v1/')) {
         $doubled[$n] = true;
     }
 }
+$appApiPaths = array_filter(
+    array_keys($appPaths),
+    static fn (string $p): bool => str_starts_with($p, '/api/')
+);
 
 $missing = array_diff_key($specPaths, $appPaths);
 $served = array_intersect_key($specPaths, $appPaths);
 
-echo $line(sprintf('  spec paths %d | app api routes %d | served as specified %d | missing %d',
-    count($specPaths), count($appPaths), count($served), count($missing)));
+// Три разных причины «не отдаётся» смешивались в одном списке, и из-за этого
+// число 32 читалось как «32 недоделанных эндпоинта», хотя часть из них
+// работает — просто под другим префиксом.
+//
+// Признак «другой префикс» — узкий и точный: путь приложения равен пути спеки
+// с ОДНИМ вставленным сегментом сразу после `/api/v1`. Это ровно случай
+// модуля Embed, который монтируется в `/api/v1/embed`:
+//   спека  /api/v1/events/{}/sessions
+//   app    /api/v1/embed/events/{}/sessions
+//
+// Почему не «совпал хвост пути». Первая версия сравнивала хвосты и объявляла
+// `/api/v1/admin/tickets/{}/cancel` «обслуживаемым» через
+// `/api/v1/events/{}/cancel`, а `/api/v1/admin/webhooks/{}` — через
+// `/api/v1/payments/webhooks/{}`. Это разные эндпоинты с разной авторизацией и
+// разным контрактом; такой «матч» хуже честного «отсутствует»: читатель
+// вычёркивает строку из списка дел, которой там место.
+//
+// Почему не «app длиннее и заканчивается спекой». Вставка стоит в СЕРЕДИНЕ
+// (`/api/v1/embed/...`), поэтому app не оканчивается на путь спеки — тест не
+// находил ни одного совпадения и печатал «0 под другим префиксом» при трёх
+// реальных.
+$prefixed = [];
+$absent = [];
+$versionPrefix = '/api/v1/';
+foreach (array_keys($missing) as $specPath) {
+    $candidates = [];
+
+    if (str_starts_with($specPath, $versionPrefix)) {
+        $tail = substr($specPath, strlen($versionPrefix));
+        $pattern = '#^' . preg_quote($versionPrefix, '#') . '[^/]+/' . preg_quote($tail, '#') . '$#';
+
+        foreach ($appApiPaths as $appPath) {
+            if (preg_match($pattern, $appPath) === 1) {
+                $candidates[] = $appPath;
+            }
+        }
+    }
+
+    if ($candidates === []) {
+        $absent[] = $specPath;
+    } else {
+        $prefixed[$specPath] = $candidates;
+    }
+}
+
+echo $line(sprintf('  spec paths %d | app routes %d (%d under /api) | served as specified %d',
+    count($specPaths), count($appPaths), count($appApiPaths), count($served)));
+echo $line(sprintf('  missing %d = %d served under another prefix + %d absent',
+    count($missing), count($prefixed), count($absent)));
 
 if ($doubled !== []) {
     $failed = true;
@@ -379,10 +453,24 @@ if ($doubled !== []) {
     echo $line('  /api/v1. A module route file must not repeat the version segment.');
 }
 
-if ($missing !== []) {
+if ($prefixed !== []) {
     echo $line();
-    echo $line(sprintf('  %d spec path(s) not served:', count($missing)));
-    foreach (array_keys($missing) as $m) {
+    echo $line(sprintf('  %d spec path(s) served under a different prefix:', count($prefixed)));
+    foreach ($prefixed as $specPath => $appPathsFor) {
+        echo $line("    SPEC  $specPath");
+        foreach ($appPathsFor as $a) {
+            echo $line("      app $a");
+        }
+    }
+    echo $line('  Not a gap: the endpoint exists and answers. Two ways to close it —');
+    echo $line('  move the route to the spec path (breaking for existing embed clients)');
+    echo $line('  or amend the spec. Pick one; do not leave the report ambiguous.');
+}
+
+if ($absent !== []) {
+    echo $line();
+    echo $line(sprintf('  %d spec path(s) absent:', count($absent)));
+    foreach ($absent as $m) {
         echo $line("    $m");
     }
     echo $line();

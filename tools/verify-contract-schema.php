@@ -221,20 +221,24 @@ function parseDdlColumns(string $file): array
 }
 
 /**
- * What the DDL is known to contain, used to prove the parser above actually
- * parsed something.
+ * Откуда берутся ожидаемые числа: `tools/spec-counts.php`.
  *
- * A parser that silently under-reads is the failure mode this whole file exists to
- * catch, and it caught this one the hard way: three columns were invisible, and
- * rather than the parser being suspected, the schema was. These constants come
- * from a real MySQL 8.4 (`information_schema`), and they are asserted before any
- * drift is reported, so a broken parser fails loudly instead of quietly inventing
- * drift. If the schema legitimately grows, update these in the same commit.
+ * Зачем проверка вообще нужна. Парсер DDL, который молча недосчитывает, — тот
+ * самый отказ, ради которого этот файл и существует, и он уже случался: три
+ * колонки были невидимы, и подозрение пало на схему, а не на парсер. Поэтому
+ * числа ожидания проверяются ДО того, как сообщается о дрейфе: сломанный
+ * парсер падает громко, вместо того чтобы тихо изобрести дрейф.
  *
- * 73/785 → 75/805 в B-1: таблицы `artists` (13 колонок) и `artist_event` (7).
+ * Зачем вынесено в отдельный файл. Числа стояли здесь, в
+ * `verify-models-schema.php` и в `verify-live.php` — в трёх местах — и
+ * разъезжались трижды: обновляли два файла из трёх. Последний раз коммит
+ * `c581afbd` поднял счётчики до 88/911 в двух инструментах, а третий с тех пор
+ * падал на первой проверке с обвинением парсера. Теперь число одно на всех, и
+ * `spec_counts_problem()` сверяет его с независимым подсчётом `CREATE TABLE` в
+ * бандле.
  */
-const EXPECTED_TABLES = 88;
-    const EXPECTED_COLUMNS = 911;
+require __DIR__ . '/spec-counts.php';
+
 /**
  * @param array<string, list<string>> $tables
  */

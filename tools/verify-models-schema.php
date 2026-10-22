@@ -67,9 +67,13 @@ $spec = $root . '/nabilet_core_spec/migrations.sql';
 $listMode = in_array('--list', $argv, true);
 $reportMode = in_array('--report', $argv, true);
 
-/** From information_schema on MySQL 8.4. Update in the same commit as the schema. */
-const EXPECTED_TABLES = 88;
-    const EXPECTED_COLUMNS = 911;
+/*
+ * Сколько таблиц и колонок в спеке — из `tools/spec-counts.php`. Раньше числа
+ * стояли здесь, в `verify-contract-schema.php` и в `verify-live.php`, то есть в
+ * трёх местах, и разъезжались трижды: обновляли два файла из трёх.
+ */
+require __DIR__ . '/spec-counts.php';
+
 /**
  * Application-owned additions to the Core schema, each tied to its owning migration.
  * These are included only after the migration's exact declaration is verified. Keep
