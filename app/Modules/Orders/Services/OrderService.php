@@ -11,6 +11,7 @@ use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Orders\Repositories\OrderRepository;
 use Nabilet\Modules\Orders\StateMachines\OrderStateMachine;
 use Nabilet\Modules\Payments\Models\Payment;
+use Nabilet\Modules\Payments\StateMachines\PaymentStateMachine;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 
@@ -89,8 +90,8 @@ class OrderService
                 'user_id' => $data['user_id'] ?? null,
                 'session_id' => $sessionId,
                 'event_id' => $eventId,
-                'status' => 'pending',
-                'payment_status' => 'pending',
+                'status' => OrderStateMachine::PENDING,
+                'payment_status' => PaymentStateMachine::PENDING,
                 'subtotal_amount' => $totalAmount,
                 'discount_amount' => 0,
                 // Прямая форма заказа (`items`, без корзины) бонусов не знает:

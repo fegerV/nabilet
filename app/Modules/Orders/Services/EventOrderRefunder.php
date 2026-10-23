@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\DB;
 use Nabilet\Core\Errors\DomainRuleViolation;
 use Nabilet\Modules\Events\Models\Event;
 use Nabilet\Modules\Orders\Models\Order;
+use Nabilet\Modules\Orders\StateMachines\OrderStateMachine;
 use Nabilet\Modules\Payments\StateMachines\PaymentStateMachine;
 use Nabilet\Modules\Payments\Services\RefundService;
 
@@ -45,6 +46,14 @@ final class EventOrderRefunder
     /**
      * Вернуть деньги по всем оплаченным заказам события.
      *
+     * Набор статусов — `OrderStateMachine::refundableStatuses()`, тот же, по
+     * которому `EventPublicationService::soldUnits()` решает, можно ли отменять
+     * событие. Раньше оба места писали `NOT IN ('cancelled','refunded')`
+     * самостоятельно, и расхождение между ними запирало бы отмену: продано
+     * есть, а возвращать некому. Здесь фильтр ещё и проверяется успешными
+     * платежами ниже, так что смена набора не меняет поведение — зато делает
+     * согласованность видимой.
+     *
      * @param  string $reason человекочитаемая причина — уходит в refund-строку
      * @return array{refunded: int, refund_failures: list<array{order: string, error: string}>}
      */
@@ -55,7 +64,7 @@ final class EventOrderRefunder
             ->join('inventory_items', 'inventory_items.id', '=', 'order_items.inventory_item_id')
             ->join('sessions', 'sessions.id', '=', 'inventory_items.session_id')
             ->where('sessions.event_id', $event->id)
-            ->whereNotIn('orders.status', ['cancelled', 'refunded'])
+            ->whereIn('orders.status', OrderStateMachine::refundableStatuses())
             ->distinct()
             ->pluck('orders.id');
 

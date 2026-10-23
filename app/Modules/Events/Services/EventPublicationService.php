@@ -10,6 +10,7 @@ use Nabilet\Modules\Events\Domain\Event as DomainEvent;
 use Nabilet\Modules\Events\Domain\EventPublicationPolicy;
 use Nabilet\Modules\Events\Domain\PublicationDecision;
 use Nabilet\Modules\Events\Models\Event;
+use Nabilet\Modules\Orders\StateMachines\OrderStateMachine;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -162,6 +163,16 @@ final class EventPublicationService
      * Отменённые и возвращённые заказы исключаются: они не создают
      * обязательств перед покупателем, и блокировать ими отмену события значило
      * бы запереть администратора в состоянии, из которого нет выхода.
+     *
+     * НЕОПЛАЧЕННЫЕ ЗАКАЗЫ ИСКЛЮЧЕНЫ ТОЖЕ, И ЭТО ИСПРАВЛЕНИЕ. Фильтр
+     * `NOT IN ('cancelled','refunded')` считал обязательством любой заказ, по
+     * которому не сделали возврат, — включая `pending`, `awaiting_payment` и
+     * `expired`. Корзина, брошенная на десятой минуте, навсегда запирала отмену
+     * события, причём и `cancelEventWithRefunds()` тоже: он возвращает деньги,
+     * а потом всё равно спрашивает политику, и та видит «продано». Набор —
+     * `OrderStateMachine::refundableStatuses()`, тот же, по которому
+     * `EventOrderRefunder` решает, кому возвращать: расхождение между этими
+     * двумя наборами и есть невозможность отмены.
      */
     private function soldUnits(Event $event): int
     {
@@ -170,7 +181,7 @@ final class EventPublicationService
             ->join('inventory_items', 'inventory_items.id', '=', 'order_items.inventory_item_id')
             ->join('sessions', 'sessions.id', '=', 'inventory_items.session_id')
             ->where('sessions.event_id', $event->id)
-            ->whereNotIn('orders.status', ['cancelled', 'refunded'])
+            ->whereIn('orders.status', OrderStateMachine::refundableStatuses())
             ->sum('order_items.quantity');
     }
 }

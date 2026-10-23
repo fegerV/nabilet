@@ -98,6 +98,67 @@ final class OrderStateMachine
         return [self::PENDING, self::AWAITING_PAYMENT, self::PAID, self::PARTIALLY_REFUNDED];
     }
 
+    /**
+     * Statuses in which the order still holds the customer's money.
+     *
+     * TWO PLACES ASK THE SAME QUESTION — «does this event have unsettled
+     * obligations toward its customers» — and they must give the same answer:
+     * how many units are sold (`EventPublicationService::soldUnits()`, which
+     * decides whether the event may be cancelled at all) and which orders to
+     * refund (`EventOrderRefunder::refundEventOrders()`). When one counts an
+     * order as an obligation and the other does not, the event becomes
+     * impossible to cancel: there are sold units, but nothing to refund.
+     *
+     * `cancelled` and `refunded` are absent — the money is back, or was never
+     * taken. `pending`, `awaiting_payment` and `payment_failed` are absent for
+     * the same reason: no payment happened, so there is nothing to return.
+     *
+     * WHAT THIS REPLACES. Both call sites filtered `NOT IN ('cancelled',
+     * 'refunded')`, which treats an unpaid order as an obligation. A cart
+     * abandoned at minute ten and then moved to `expired` by
+     * `StaleOrderExpirer` therefore locked event cancellation forever — and
+     * locked `cancelEventWithRefunds()` too, because after refunding it still
+     * asks the policy, and the policy still sees «sold». The refusal message
+     * («refunds must be settled first») then points at refunds that do not
+     * exist. Note the same file already had `occupyingInventory()` excluding
+     * `expired`: the seats were back on sale while the order still counted as
+     * sold.
+     *
+     * @return list<string>
+     */
+    public static function refundableStatuses(): array
+    {
+        return [self::PAID, self::PARTIALLY_REFUNDED];
+    }
+
+    /**
+     * Statuses in which money was taken, whether or not it was later returned.
+     *
+     * For «has this customer bought from us before» (`PromoCodeService`), a
+     * refunded order still counts: the purchase happened. This set also removed
+     * a literal that no longer exists — the caller listed `completed`, which
+     * `ck_orders_status` has never allowed (see the machine's states above).
+     *
+     * @return list<string>
+     */
+    public static function paidStatuses(): array
+    {
+        return [self::PAID, self::PARTIALLY_REFUNDED, self::REFUNDED];
+    }
+
+    /**
+     * Statuses that can still change: no payment and no cancellation yet.
+     *
+     * `StaleOrderExpirer` walks exactly these to find orders whose payment
+     * window has closed.
+     *
+     * @return list<string>
+     */
+    public static function openStatuses(): array
+    {
+        return [self::PENDING, self::AWAITING_PAYMENT, self::PAYMENT_FAILED];
+    }
+
     public static function isTerminal(string $status): bool
     {
         return in_array($status, [self::REFUNDED, self::CANCELLED, self::EXPIRED], true);

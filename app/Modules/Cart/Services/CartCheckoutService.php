@@ -23,6 +23,8 @@ use Nabilet\Modules\Loyalty\Services\ReferralService;
 use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Orders\Models\OrderItem;
 use Nabilet\Modules\Orders\Models\PromoCode;
+use Nabilet\Modules\Orders\StateMachines\OrderStateMachine;
+use Nabilet\Modules\Payments\StateMachines\PaymentStateMachine;
 use Nabilet\Modules\Pricing\Domain\OrderTotals;
 use Nabilet\Modules\Pricing\Services\PromoCodeService;
 use Nabilet\Modules\Sessions\Models\Session as SessionsSession;
@@ -497,8 +499,8 @@ final class CartCheckoutService
                 // Р‘РµР· РІР»Р°РґРµР»СЊС†Р° Р·Р°РєР°Р· РЅРµРІРёРґРёРј РІ `GET /orders` (СЃРїРёСЃРѕРє СЃРєРѕСѓРїРёС‚СЃСЏ
                 // РїРѕ РІР»Р°РґРµР»СЊС†Сѓ) Рё РЅРµРґРѕСЃС‚СѓРїРµРЅ РїРѕРґРґРµСЂР¶РєРµ РїРѕРєСѓРїР°С‚РµР»СЏ.
                 'user_id' => $buyerId,
-                'status' => 'pending',
-                'payment_status' => 'pending',
+                'status' => OrderStateMachine::PENDING,
+                'payment_status' => PaymentStateMachine::PENDING,
                 'subtotal_amount' => $subtotalAmount,
                 'discount_amount' => $discountAmount,
                 // РЎРїРёСЃР°РЅРѕ Р±РѕРЅСѓСЃР°РјРё вЂ” РѕС‚РґРµР»СЊРЅРѕР№ РєРѕР»РѕРЅРєРѕР№, Р° РЅРµ РІРЅСѓС‚СЂРё СЃРєРёРґРєРё:

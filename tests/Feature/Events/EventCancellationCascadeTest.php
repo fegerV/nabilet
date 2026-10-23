@@ -134,4 +134,73 @@ final class EventCancellationCascadeTest extends TestCase
 
         $this->app->make(EventPublicationService::class)->cancel($event->refresh());
     }
+
+    /**
+     * Неоплаченный заказ не считается проданным — и не запирает отмену.
+     *
+     * Дефект, который здесь закрывается: `soldUnits()` фильтровал
+     * `NOT IN ('cancelled','refunded')`, то есть считал обязательством любой
+     * заказ, по которому не сделали возврат, — включая `pending`,
+     * `awaiting_payment` и `expired`. Корзина, брошенная на десятой минуте,
+     * навсегда запирала отмену события. Запирала и `cancelEventWithRefunds()`:
+     * он возвращает деньги (их нет), а потом всё равно спрашивает политику, и
+     * та видит «продано». Сообщение при отказе («сначала возвраты») указывало
+     * на возвраты, которых не существует.
+     *
+     * Проверяется на `expired`, а не на `pending`: просроченный заказ — это
+     * уже не «покупатель на странице оплаты», а брошенная корзина, по которой
+     * `StaleOrderExpirer` вернул места в продажу. Заметь, что
+     * `OrderStateMachine::occupyingInventory()` `expired` исключает и сейчас —
+     * места снова на витрине, а заказ продолжал считаться проданным.
+     */
+    public function test_an_expired_order_does_not_count_as_sold(): void
+    {
+        [, $eventId, , $inventoryItemId] = $this->seedSellableSeat(available: 2);
+        $event = Event::query()->findOrFail($eventId);
+        $event->update(['status' => 'published']);
+
+        $this->orders->createOrder([
+            'organization_id' => (int) $event->organization_id,
+            'customer_email' => 'buyer@example.com',
+            'items' => [['inventory_item_id' => $inventoryItemId, 'quantity' => 1]],
+        ]);
+
+        // Просрочен и переведён в expired: местa вернулись в продажу.
+        DB::table('orders')->update(['status' => OrderStateMachine::EXPIRED]);
+
+        $this->app->make(EventPublicationService::class)->cancel($event->refresh());
+
+        $this->assertSame('cancelled', $event->fresh()->status);
+    }
+
+    /**
+     * Тот же незапертый путь, но через «отменить с возвратами».
+     *
+     * Именно здесь отказ был особенно неудобен: единственный разрешённый
+     * способ отмены события с продажами сам упирался в политику, потому что
+     * возвращать было некому, а «продано» оставалось.
+     */
+    public function test_cancel_with_refunds_succeeds_when_only_expired_orders_exist(): void
+    {
+        [, $eventId, , $inventoryItemId] = $this->seedSellableSeat(available: 2);
+        $event = Event::query()->findOrFail($eventId);
+        $event->update(['status' => 'published']);
+
+        $this->orders->createOrder([
+            'organization_id' => (int) $event->organization_id,
+            'customer_email' => 'buyer@example.com',
+            'items' => [['inventory_item_id' => $inventoryItemId, 'quantity' => 1]],
+        ]);
+
+        DB::table('orders')->update(['status' => OrderStateMachine::EXPIRED]);
+
+        $outcome = $this->app->make(EventOrderRefunder::class)->cancelEventWithRefunds(
+            $event->refresh(),
+            $this->app->make(EventPublicationService::class),
+            'Отмена мероприятия организатором'
+        );
+
+        $this->assertSame(0, $outcome['refunded']);
+        $this->assertSame('cancelled', $event->fresh()->status);
+    }
 }

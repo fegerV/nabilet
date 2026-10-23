@@ -15,6 +15,7 @@ use Nabilet\Modules\Cart\Models\Cart;
 use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Orders\Models\PromoCode;
 use Nabilet\Modules\Orders\Models\PromoCodeRedemption;
+use Nabilet\Modules\Orders\StateMachines\OrderStateMachine;
 use Nabilet\Modules\Pricing\Domain\OrderLine;
 use Nabilet\Modules\Pricing\Domain\PricingContext;
 use Nabilet\Modules\Pricing\Domain\PromoEvaluation;
@@ -341,9 +342,14 @@ final class PromoCodeService
         $priorOrders = 0;
 
         if ($userId !== null) {
+            // «Покупал раньше» — по факту взятых денег, а не по текущему
+            // состоянию: возвращённый заказ тоже был покупкой. Набор —
+            // `OrderStateMachine::paidStatuses()`, а не свой список: здесь
+            // стоял `'completed'`, которого в `ck_orders_status` нет вовсе,
+            // то есть элемент, не способный ничего сосчитать.
             $priorOrders = Order::query()
                 ->where('user_id', $userId)
-                ->whereIn('status', ['paid', 'completed', 'refunded', 'partially_refunded'])
+                ->whereIn('status', OrderStateMachine::paidStatuses())
                 ->count();
         }
 

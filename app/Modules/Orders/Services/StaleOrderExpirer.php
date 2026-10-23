@@ -11,6 +11,7 @@ use Nabilet\Core\Support\HoldGrace;
 use Nabilet\Modules\Cart\Models\Cart;
 use Nabilet\Modules\Cart\Services\CartItemService;
 use Nabilet\Modules\Orders\Models\Order;
+use Nabilet\Modules\Orders\StateMachines\OrderStateMachine;
 
 /**
  * StaleOrderExpirer — забирает «вечные» неоплаченные заказы и возвращает их
@@ -39,11 +40,6 @@ use Nabilet\Modules\Orders\Models\Order;
  */
 final class StaleOrderExpirer
 {
-    /**
-     * Статусы, в которых заказ считается «ещё не оплачен, но и не закрыт».
-     */
-    private const OPEN_STATUSES = ['pending', 'awaiting_payment', 'payment_failed'];
-
     /**
      * Потолок на число заказов за один проход. Sweeper идёт по Cron раз в
      * минуту; ограничение не даёт одному запуску заблокировать таблицу
@@ -74,7 +70,7 @@ final class StaleOrderExpirer
 
         $staleOrderIds = DB::table('orders')
             ->join('carts', 'carts.id', '=', 'orders.cart_id')
-            ->whereIn('orders.status', self::OPEN_STATUSES)
+            ->whereIn('orders.status', OrderStateMachine::openStatuses())
             ->where('carts.expires_at', '<', $deadline)
             ->whereNull('orders.paid_at')
             ->limit(self::BATCH_LIMIT)
@@ -95,7 +91,7 @@ final class StaleOrderExpirer
 
                     // Финальная проверка состояния внутри транзакции:
                     // параллельный succeeded-вебхук уже мог увести заказ в paid.
-                    if (! in_array($order->status, self::OPEN_STATUSES, true)
+                    if (! in_array($order->status, OrderStateMachine::openStatuses(), true)
                         || $order->paid_at !== null) {
                         return;
                     }
