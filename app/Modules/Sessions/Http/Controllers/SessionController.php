@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Nabilet\Modules\Sessions\Http\Controllers;
 
 use Nabilet\Core\Errors\ValidationError;
+use Nabilet\Modules\HallSchemas\Domain\SchemaVersionState;
 use Nabilet\Modules\Sessions\Models\Session;
 use Nabilet\Modules\Inventory\Services\InventoryService;
 use Nabilet\Modules\Venues\Models\Hall;
@@ -92,10 +93,12 @@ class SessionController extends Controller
         }
 
         // БД требует schema_version_id NOT NULL — берём последнюю published схему зала.
+        // Статус — из `SchemaVersionState`, а не литералом: `Hall::currentSchemaVersion()`
+        // ищет то же самое, и расхождение дало бы сеанс без схемы зала.
         if (empty($data['schema_version_id']) && !empty($data['hall_id'])) {
             $data['schema_version_id'] = HallSchemaVersion::query()
                 ->where('hall_id', $data['hall_id'])
-                ->where('status', 'published')
+                ->where('status', SchemaVersionState::PUBLISHED)
                 ->orderByDesc('id')
                 ->value('id');
         }
@@ -143,10 +146,11 @@ class SessionController extends Controller
         }
 
         // БД требует schema_version_id NOT NULL — берём последнюю published схему зала.
+        // Тот же `SchemaVersionState`, что и при создании.
         if (empty($data['schema_version_id']) && !empty($data['hall_id'])) {
             $data['schema_version_id'] = HallSchemaVersion::query()
                 ->where('hall_id', $data['hall_id'])
-                ->where('status', 'published')
+                ->where('status', SchemaVersionState::PUBLISHED)
                 ->orderByDesc('id')
                 ->value('id');
         }

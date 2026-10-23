@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Nabilet\Modules\Content\Domain\PageStatus;
 use Nabilet\Modules\Core\Organizations\Models\Organization;
 use Nabilet\Modules\Events\Domain\EventStatus;
 use Nabilet\Modules\Events\Models\Artist;
@@ -344,7 +345,7 @@ class CatalogService
     public function pages(): array
     {
         $rows = DB::table('pages')
-            ->where('status', 'published')
+            ->where('status', PageStatus::PUBLISHED)
             ->whereNotNull('published_at')
             ->where('published_at', '<=', now())
             ->orderBy('updated_at', 'desc')

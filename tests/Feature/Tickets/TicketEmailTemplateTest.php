@@ -646,6 +646,45 @@ final class TicketEmailTemplateTest extends TestCase
         self::assertNull(AssetUrl::storageOrNull('   '));
     }
 
+    /**
+     * Относительный вариант того же корня — для потребителя, которому хост
+     * приложения не нужен.
+     *
+     * `MediaAssetResource` отдаёт `/storage/...`, а не абсолютный адрес: админка
+     * и API на одном хосте, поэтому относительный путь резолвится всегда, а
+     * абсолютный ломал превью, когда `APP_URL` отставал от фактического хоста.
+     * Правило «абсолютный адрес проходит как есть» у него ДОЛЖНО быть тем же,
+     * что у `storage()`, — иначе ресурс начал бы отдавать
+     * `/storage/https://cdn…`. Раньше это правило было написано дважды.
+     */
+    public function test_asset_url_relative_variant_passes_external_addresses_through(): void
+    {
+        self::assertSame(
+            '/storage/events/posters/a.jpg',
+            AssetUrl::storageRelative('events/posters/a.jpg')
+        );
+
+        self::assertSame('/storage/a.jpg', AssetUrl::storageRelative('/a.jpg'));
+
+        self::assertSame(
+            'https://cdn.example.com/a.jpg',
+            AssetUrl::storageRelative('https://cdn.example.com/a.jpg')
+        );
+
+        // Протокол-относительный адрес (`//cdn…`) — тоже внешний: дописав к нему
+        // хост приложения, получили бы «https://host//cdn…».
+        self::assertSame(
+            '//cdn.example.com/a.jpg',
+            AssetUrl::storageRelative('//cdn.example.com/a.jpg')
+        );
+
+        // Хоста в результате нет вообще — в этом весь смысл метода.
+        self::assertStringNotContainsString(
+            $this->baseUrl(),
+            AssetUrl::storageRelative('events/posters/a.jpg')
+        );
+    }
+
     // ── Сев ────────────────────────────────────────────────────────────────
 
     /**

@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Nabilet\Modules\HallSchemas\Domain\SchemaVersionState;
 use Nabilet\Modules\Sessions\Models\Session;
 
 /**
@@ -82,8 +83,14 @@ class Hall extends Model
      */
     public function currentSchemaVersion(): HasOne
     {
+        // Статус — из `SchemaVersionState`, а не литералом: словарь
+        // draft/published/archived задан `ck_schema_status`, и в проекте уже была
+        // вторая копия этого словаря (`Venues\Halls\Domain\SchemaVersionPolicy`
+        // со status 'active', которого в БД нет вовсе) — удалена как мёртвая.
+        // Литерал здесь разошёлся бы с ней молча: отношение просто перестало бы
+        // находить версию.
         return $this->hasOne(HallSchemaVersion::class)
-            ->where('status', 'published')
+            ->where('status', SchemaVersionState::PUBLISHED)
             ->orderByDesc('version');
     }
 

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Venues\Halls\Repositories;
 
+use Nabilet\Modules\HallSchemas\Domain\SchemaVersionState;
 use Nabilet\Modules\Venues\Models\Hall;
 use Nabilet\Modules\Venues\Models\HallSchemaVersion;
 use Illuminate\Database\Eloquent\Collection;
@@ -88,24 +89,24 @@ class HallRepository
         return $hall->schemaVersions()->orderBy('version', 'desc')->get();
     }
 
-    public function createSchemaVersion(Hall $hall, array $payload, string $status = 'draft'): HallSchemaVersion
-        {
-            $latestVersion = $hall->schemaVersions()->max('version') ?? 0;
+    public function createSchemaVersion(Hall $hall, array $payload, string $status = SchemaVersionState::DRAFT): HallSchemaVersion
+    {
+        $latestVersion = $hall->schemaVersions()->max('version') ?? 0;
 
-            return $hall->schemaVersions()->create([
-                'version' => $latestVersion + 1,
-                'revision' => 1,
-                'schema_json' => $payload,
-                'status' => $status,
-            ]);
-        }
+        return $hall->schemaVersions()->create([
+            'version' => $latestVersion + 1,
+            'revision' => 1,
+            'schema_json' => $payload,
+            'status' => $status,
+        ]);
+    }
 
     public function publishSchemaVersion(HallSchemaVersion $version): HallSchemaVersion
     {
         // HallService has already applied the domain transition under the hall
         // lock; the repository must not silently bypass that policy by archiving
         // sibling versions as a side effect.
-        $version->update(['status' => 'published', 'published_at' => now()]);
+        $version->update(['status' => SchemaVersionState::PUBLISHED, 'published_at' => now()]);
 
         return $version->fresh();
     }

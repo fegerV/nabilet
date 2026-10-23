@@ -13,6 +13,7 @@ use Nabilet\Core\Errors\NotFoundError;
 use Nabilet\Core\Errors\ValidationError;
 use Nabilet\Modules\HallSchemas\Domain\SchemaVersion as DomainSchemaVersion;
 use Nabilet\Modules\HallSchemas\Domain\SchemaVersionPolicy;
+use Nabilet\Modules\HallSchemas\Domain\SchemaVersionState;
 use Nabilet\Modules\HallSchemas\Domain\VersionDecision;
 use Nabilet\Modules\Venues\Halls\Domain\SchemaPayloadNormalizer;
 use Nabilet\Modules\Venues\Halls\Repositories\HallRepository;
@@ -23,9 +24,16 @@ use Illuminate\Support\Facades\DB;
 /**
  * P2 (архитектурный дуализм Policy): этот сервис использует ЕДИНСТВЕННУЮ
  * живую политику версий — `Nabilet\Modules\HallSchemas\Domain\SchemaVersionPolicy`
- * (словарь draft/published/archived, ТЗ §20/§46/§98). Старый статический
- * класс `Nabilet\Modules\Venues\Halls\Domain\SchemaVersionPolicy` со словарём
- * 'active' был мёртвой зависимостью (никем не вызывался) и удалён.
+ * (словарь draft/published/archived, ТЗ §20/§46/§98), а сами статусы берёт из
+ * `SchemaVersionState`, а не из литералов.
+ *
+ * Старый статический класс `Nabilet\Modules\Venues\Halls\Domain\SchemaVersionPolicy`
+ * со словарём 'active' был мёртвой зависимостью (никем не вызывался) и наконец
+ * удалён: в этом докблоке удаление было записано двумя коммитами раньше, чем
+ * совершено. Файл лежал на месте, а его `STATE_ACTIVE = 'active'` описывал
+ * состояние, которого в БД нет (`ck_schema_status` = draft/published/archived),
+ * — то есть любой, кто нашёл бы класс по имени и воспользовался им, получил бы
+ * машину состояний, которая не срабатывает никогда.
  */
 class HallService
 {
@@ -173,7 +181,7 @@ class HallService
 
             // Share the hall lock with publish/archive so this check cannot race
             // a lifecycle transition and then cascade-delete a newly frozen map.
-            if ($lockedHall->schemaVersions()->whereIn('status', ['published', 'archived'])->exists()) {
+            if ($lockedHall->schemaVersions()->whereIn('status', [SchemaVersionState::PUBLISHED, SchemaVersionState::ARCHIVED])->exists()) {
                 throw new ConflictError(
                     'Нельзя удалить зал, пока у него есть опубликованные или архивные схемы.',
                     'HALL_HAS_FROZEN_SCHEMA_VERSIONS',
@@ -232,12 +240,15 @@ class HallService
 
     /**
      * Единственная опубликованная версия схемы зала (для публичной витрины, B10).
+     *
+     * Статус — из `SchemaVersionState`: `Hall::currentSchemaVersion()` ищет то
+     * же самое через отношение, и два литерала в двух местах разошлись бы молча.
      */
     public function getPublishedSchemaVersion(Hall $hall): ?HallSchemaVersion
     {
         return HallSchemaVersion::query()
             ->where('hall_id', $hall->id)
-            ->where('status', 'published')
+            ->where('status', SchemaVersionState::PUBLISHED)
             ->orderByDesc('version')
             ->first();
     }
@@ -303,7 +314,7 @@ class HallService
             // A concurrent first save may have created a draft since this editor
             // loaded. Never overwrite it without the version id + revision token.
             $existingDraft = $lockedHall->schemaVersions()
-                ->where('status', 'draft')
+                ->where('status', SchemaVersionState::DRAFT)
                 ->orderByDesc('id')
                 ->lockForUpdate()
                 ->first();
@@ -315,7 +326,7 @@ class HallService
                 );
             }
 
-            return $this->repository->createSchemaVersion($lockedHall, $payload, 'draft');
+            return $this->repository->createSchemaVersion($lockedHall, $payload, SchemaVersionState::DRAFT);
         });
     }
 
@@ -352,7 +363,7 @@ class HallService
 
             $siblings = $hall->schemaVersions()->lockForUpdate()->get();
             $published = $siblings->filter(
-                static fn (HallSchemaVersion $sibling): bool => $sibling->status === 'published'
+                static fn (HallSchemaVersion $sibling): bool => $sibling->status === SchemaVersionState::PUBLISHED
             )->values();
 
             // Replacing the live map is one atomic lifecycle operation. Retire
@@ -372,13 +383,13 @@ class HallService
                 if (!$archiveDecision->isAllowed()) {
                     $this->refuse($archiveDecision, 'SCHEMA_VERSION_NOT_PUBLISHED');
                 }
-                $previouslyPublished->update(['status' => 'archived']);
+                $previouslyPublished->update(['status' => SchemaVersionState::ARCHIVED]);
             }
 
             $siblings = $siblings
                 ->map(function (HallSchemaVersion $sibling) use ($published): HallSchemaVersion {
                     if ($published->contains('id', $sibling->id)) {
-                        $sibling->status = 'archived';
+                        $sibling->status = SchemaVersionState::ARCHIVED;
                     }
                     return $sibling;
                 })
@@ -421,7 +432,7 @@ class HallService
                 $this->refuse($decision, 'SCHEMA_VERSION_NOT_PUBLISHED');
             }
 
-            $version->update(['status' => 'archived']);
+            $version->update(['status' => SchemaVersionState::ARCHIVED]);
 
             return $version->fresh();
         });

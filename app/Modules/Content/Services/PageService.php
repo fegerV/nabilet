@@ -6,6 +6,7 @@ namespace Nabilet\Modules\Content\Services;
 
 use Illuminate\Support\Facades\DB;
 use Nabilet\Modules\Content\Domain\PageDocument;
+use Nabilet\Modules\Content\Domain\PageStatus;
 use Nabilet\Modules\Content\Models\Page;
 
 /**
@@ -60,7 +61,7 @@ class PageService
     {
         $page = Page::query()
             ->where('slug', $slug)
-            ->where('status', 'published')
+            ->where('status', PageStatus::PUBLISHED)
             ->where(function ($query): void {
                 // `published_at` NULL + `status='published'` трактуется как
                 // «ещё не опубликовано»: миграция не заставляет проставлять

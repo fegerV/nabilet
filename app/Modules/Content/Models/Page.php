@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Nabilet\Modules\Content\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Nabilet\Modules\Content\Domain\PageStatus;
 
 /**
  * Редакционная страница CMS (стратегия SEO, B-2).

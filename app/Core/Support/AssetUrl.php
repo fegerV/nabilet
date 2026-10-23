@@ -35,7 +35,25 @@ final class AssetUrl
             return $path;
         }
 
-        return self::base() . '/storage/' . ltrim($path, '/');
+        return self::base() . self::storageRelative($path);
+    }
+
+    /**
+     * Относительный адрес того же файла: `/storage/{path}` без хоста.
+     *
+     * ЗАЧЕМ ОТДЕЛЬНЫЙ МЕТОД. Потребителю, которому хост приложения не нужен,
+     * правило прохода абсолютных адресов раньше приходилось повторять у себя:
+     * `MediaAssetResource::publicUrl()` держал три ветки `str_starts_with`
+     * слово в слово как `isAbsolute()` — API отдаёт относительный путь, потому
+     * что админка и API живут на одном хосте. Список «что считается абсолютным»
+     * существовал в двух местах, и четвёртый случай в одном из них расходился бы
+     * молча: ресурс начал бы отдавать `/storage/https://cdn…`.
+     *
+     * Здесь правило живёт один раз, а `storage()` — это `base()` плюс он.
+     */
+    public static function storageRelative(string $path): string
+    {
+        return self::isAbsolute($path) ? $path : '/storage/' . ltrim($path, '/');
     }
 
     /**
