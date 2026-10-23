@@ -142,16 +142,21 @@ class AccountMailService
      *   Токен при этом остаётся обычным query-параметром (внутри фрагмента), а не
      *   частью пути, — то есть ограничение из абзаца выше не нарушено.
      *
-     * Базовый URL берётся из `app.url`, а путь задаётся здесь — шаблон не должен
-     * знать маршрутизацию SPA, иначе смена хеш-роутинга ломала бы уже
-     * отправленные письма.
+     * Базовый URL берёт `url()` — а не `rtrim(config('app.url'),'/')`, как
+     * стояло здесь. Ручная склейка корня повторялась в четырёх местах
+     * (`ReferralService`, `NotifyRaffleWinnersJob`, `TicketGeneratorService` и
+     * здесь), и каждое повторяло одно правило: убрать завершающий слэш,
+     * приписать фрагмент. `url()` делает это сам, а `AccountRecoveryTest`
+     * сравнивает результат именно с формой `url('/#/…')`.
+     *
+     * Путь задаётся здесь, а не в шаблоне: шаблон не должен знать маршрутизацию
+     * SPA, иначе смена хеш-роутинга ломала бы уже отправленные письма.
      */
     public function actionUrl(string $path, string $token, string $email): string
     {
-        $base = rtrim((string) config('app.url', ''), '/');
         $hashPath = '/#' . (str_starts_with($path, '/') ? $path : '/' . $path);
 
-        return $base . $hashPath . '?' . http_build_query([
+        return url($hashPath) . '?' . http_build_query([
             'token' => $token,
             'email' => $email,
         ]);

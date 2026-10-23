@@ -202,10 +202,20 @@ class TicketGeneratorService
      * живёт во фрагменте: серверная часть о нём не знает и знать не должна.
      * Именно сюда ведёт кнопка в письме; QR рисует браузер покупателя, поэтому
      * подписанный payload не покидает его устройство.
+     *
+     * ЧЕРЕЗ `url()`, А НЕ `rtrim(config('app.url'),'/') . '/#/…'`. Склейка
+     * корня вручную стояла в четырёх местах (`AccountMailService`,
+     * `ReferralService`, `NotifyRaffleWinnersJob` и здесь), и каждое повторяло
+     * одно и то же правило: «убрать завершающий слэш у `app.url`, приписать
+     * фрагмент». `url()` делает это сам, учитывает `forceRootUrl`/`forceScheme`
+     * и в отсутствие запроса (очередь, консоль) берёт тот же `app.url`.
+     * `ReferralTest` и `AccountRecoveryTest` давно сравнивают ссылки именно с
+     * формой `url('/#/…')` — то есть тесты знали правильный ответ, а код его
+     * не использовал.
      */
     private function ticketUrl(): string
     {
-        return rtrim((string) config('app.url'), '/') . '/#/tickets';
+        return url('/#/tickets');
     }
 
     /**

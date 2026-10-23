@@ -69,9 +69,8 @@ final class ReferralService
     /**
      * Ссылка приглашения для кабинета: `/#/r/{code}` от адреса приложения.
      *
-     * Тот же хост, что и витрина: `config('app.url')` — единственный источник,
-     * и зашитый домен в коде расходился бы с окружением при первом же
-     * переносе.
+     * Тот же хост, что и витрина: `url()` берёт корень из `app.url`, и зашитый
+     * домен в коде расходился бы с окружением при первом же переносе.
      *
      * ХЭШ-ПУТЬ, А НЕ ЧИСТЫЙ `/r/{code}`: SPA отдаётся ТОЛЬКО на `/`
      * (`routes/web.php`), а всё остальное уходит в `Route::fallback()` — чистый
@@ -79,12 +78,16 @@ final class ReferralService
      * инвариант, по которому ссылки в письмах несут `/#/reset-password?...`
      * (`AccountMailService::actionUrl()`): hash-роутинг работает без переписывания
      * URL на сервере, и витрина открывается на любом хостинге.
+     *
+     * Корень собирает `url()`, а не `rtrim(config('app.url'),'/')` вручную:
+     * такая склейка стояла в четырёх местах (`AccountMailService`,
+     * `NotifyRaffleWinnersJob`, `TicketGeneratorService` и здесь), и все четыре
+     * повторяли одно правило. `url()` его уже реализует, а тест
+     * (`ReferralTest::…`) сравнивает ссылку именно с формой `url('/#/…')`.
      */
     public function linkFor(User $user): string
     {
-        $base = rtrim((string) config('app.url'), '/');
-
-        return $base . '/#/r/' . $this->codeFor($user);
+        return url('/#/r/' . $this->codeFor($user));
     }
 
     /**

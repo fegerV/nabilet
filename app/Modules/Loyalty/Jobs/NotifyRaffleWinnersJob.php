@@ -150,8 +150,11 @@ class NotifyRaffleWinnersJob implements ShouldQueue
             // Хэш-путь: SPA отдаётся только на `/`, чистый путь ушёл бы в
             // `Route::fallback()` — тот же инвариант, что у сброса пароля и
             // реферальной ссылки.
-            'action_url' => rtrim((string) config('app.url'), '/')
-                . '/#/raffles/' . (string) ($raffle?->public_id ?? ''),
+            //
+            // Корень собирает `url()`: ручная склейка `rtrim(config('app.url'),'/')`
+            // стояла в четырёх местах и повторяла одно правило. В очереди запроса
+            // нет — `url()` берёт `app.url`, то есть результат тот же.
+            'action_url' => url('/#/raffles/' . (string) ($raffle?->public_id ?? '')),
         ];
     }
 

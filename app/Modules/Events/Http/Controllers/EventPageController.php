@@ -607,7 +607,11 @@ class EventPageController
     private function breadcrumbTrail(Event $event, string $canonical): array
     {
         $trail = [
-            ['name' => 'Главная', 'url' => rtrim((string) config('app.url'), '/') . '/'],
+            // `url('/')`, как в двух других сборщиках крошек (`EventPageContent`,
+            // `PageRenderer`). Здесь стояла своя склейка
+            // `rtrim(config('app.url'),'/') . '/'` — тот же корень, собранный
+            // третьим способом и с завершающим слэшем, которого у `url('/')` нет.
+            ['name' => 'Главная', 'url' => url('/')],
         ];
 
         $category = $this->categoryCrumb($event);

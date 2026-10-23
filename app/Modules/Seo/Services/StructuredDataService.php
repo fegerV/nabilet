@@ -646,7 +646,17 @@ class StructuredDataService
         // РАСТРОВЫЙ PNG, А НЕ SVG (аудит P-18). SVG-версию не читают парсеры VK
         // и iMessage: в разметке она проходила, а карточка ссылки в мессенджере
         // раскрывалась без картинки. Файл собирается `tools/gen-og-default.php`.
-        return $images !== [] ? $images : [config('app.url') . '/images/og-default.png'];
+        //
+        // АДРЕС — ЧЕРЕЗ `AssetUrl::public()`, А НЕ СКЛЕЙКОЙ. Здесь стояло
+        // `config('app.url') . '/images/og-default.png'` — свой экземпляр
+        // правила, ровно как было у `resolveImageUrl()` до этой же правки, и с
+        // той же парой дефектов: без `rtrim` базы и без учёта абсолютного
+        // значения. При этом `EventPageController` собирает ТУ ЖЕ заглушку
+        // через `AssetUrl::public()` — то есть одна и та же картинка уходила
+        // в два места по двум разным правилам. Именно так и появилась история
+        // с `/storage/images/og-default.svg` (см. докблок `AssetUrl`): копия
+        // правила разошлась с оригиналом молча.
+        return $images !== [] ? $images : [AssetUrl::public('images/og-default.png')];
     }
 
     /**

@@ -76,7 +76,11 @@ final class EventBreadcrumbSeoTest extends TestCase
     {
         $crumbs = $this->items($this->breadcrumb($this->pageResponse($this->seedEvent())));
 
-        $home = rtrim((string) config('app.url'), '/') . '/';
+        // `url('/')` — как и в двух других сборщиках крошек. Здесь была своя
+        // склейка `rtrim(config('app.url'),'/') . '/'`, то есть тест повторял
+        // реализацию контроллера и заодно фиксировал завершающий слэш, которого
+        // у `url('/')` нет.
+        $home = url('/');
 
         $this->assertSame(1, $crumbs[0]['position']);
         $this->assertSame('Главная', $crumbs[0]['name']);
