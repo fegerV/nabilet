@@ -76,7 +76,57 @@ $root = dirname(__DIR__);
  */
 $owners = [
     'inventory_items.status' => Nabilet\Modules\Inventory\StateMachines\InventoryItemStateMachine::class,
+    'carts.status' => Nabilet\Modules\Cart\Domain\CartStatus::class,
+    'sessions.status' => Nabilet\Modules\Sessions\StateMachines\SessionStateMachine::class,
 ];
+
+/**
+ * WHICH VALUES ARE ACTUALLY ENFORCED — the ones the schema makes unambiguous.
+ *
+ * A value like `active` is the status of users, organizations, venues, halls,
+ * seats, carts, check-in devices and raffles. Flagging every `'active'` next to
+ * a `status` token would report `organizations.status` as a copy of
+ * `carts.status` — noise, and noise gets a gate switched off. So the spec's own
+ * CHECK constraints decide: a value is enforced only when exactly ONE column
+ * in the whole schema allows it.
+ *
+ * That still covers the expensive drifts, because those are the values that
+ * identify a vocabulary on their own: `sold_out`, `held`, `available`, `sold`
+ * (inventory), `converted`, `abandoned` (carts), `on_sale` (sessions).
+ *
+ * @var array<string, list<string>>  column => enforced values
+ */
+$specSql = (string) file_get_contents($root . '/nabilet_core_spec/migrations.sql');
+
+/** @var array<string, array<string, true>> value => columns that allow it */
+$valueToColumns = [];
+
+preg_match_all('/ALTER TABLE\s+`?(\w+)`?\s+(.*?);\s*(?:\n|$)/si', $specSql, $alters, PREG_SET_ORDER);
+
+foreach ($alters as $alter) {
+    if (! preg_match('/CHECK\s*\(\s*status\s+IN\s*\((.*?)\)\s*\)/si', $alter[2], $m)) {
+        continue;
+    }
+
+    preg_match_all("/'([^']+)'/", $m[1], $vals);
+
+    foreach ($vals[1] as $value) {
+        $valueToColumns[$value][$alter[1]] = true;
+    }
+}
+
+$enforced = [];
+
+foreach ($owners as $column => $class) {
+    foreach (vocabularyOf($class) as $value) {
+        $columns = array_keys($valueToColumns[$value] ?? []);
+        $table = explode('.', $column)[0];
+
+        if (count($columns) === 1 && $columns[0] === $table) {
+            $enforced[$column][] = $value;
+        }
+    }
+}
 
 /**
  * Known-good spellings that belong to another vocabulary.
@@ -119,16 +169,16 @@ function vocabularyOf(string $class): array
 }
 
 /**
- * Tokens that mean "this literal is a status value".
+ * Is there a `status` token in front of this literal at all?
  *
- * A hit needs a `status` token in the window BEFORE the literal — either the
- * property/column name (`->status`, `where('status', …)`) or the qualified
- * column (`'inventory_items.status'`).
+ * Without this, every array key or bind parameter that happens to be spelled
+ * like a status value (`'available' => …`, `selectRaw(…, ['available'])`)
+ * would be reported — noise, and noise is how a gate gets switched off.
  *
  * @param  list<array{0:int,1:string,2:int}|string>  $tokens
  * @param  int  $i  index of the candidate literal
  */
-function hasStatusInWindow(array $tokens, int $i): bool
+function hasStatusToken(array $tokens, int $i): bool
 {
     for ($j = max(0, $i - 8); $j < $i; $j++) {
         $token = $tokens[$j];
@@ -149,11 +199,73 @@ function hasStatusInWindow(array $tokens, int $i): bool
     return false;
 }
 
-/** @var array<string, list<string>> */
+/**
+ * Which column the `status` in front of this literal belongs to, when the code
+ * says so.
+ *
+ * Returns the table name when the window contains a QUALIFIED column
+ * (`where('inventory_items.status', …)`) — that is the code naming the table
+ * out loud, and it makes a shared value like `sold_out` unambiguous. Returns
+ * null for a bare `->status` / `where('status', …)`, where only a value unique
+ * to one column can be judged safely.
+ *
+ * @param  list<array{0:int,1:string,2:int}|string>  $tokens
+ * @param  int  $i  index of the candidate literal
+ */
+function statusColumnInWindow(array $tokens, int $i): ?string
+{
+    for ($j = max(0, $i - 8); $j < $i; $j++) {
+        $token = $tokens[$j];
+
+        if (is_array($token) && $token[0] === T_STRING && $token[1] === 'status') {
+            return null;
+        }
+
+        if (is_array($token) && $token[0] === T_CONSTANT_ENCAPSED_STRING) {
+            $value = trim($token[1], "'\"");
+
+            if (str_contains($value, '.')) {
+                return explode('.', $value)[0];
+            }
+        }
+    }
+
+    return null;
+}
+
+/**
+ * Full vocabulary per column, straight from the owner class.
+ *
+ * @var array<string, list<string>>
+ */
 $vocabularies = [];
 
 foreach ($owners as $column => $class) {
     $vocabularies[$column] = vocabularyOf($class);
+}
+
+/**
+ * Values that belong to exactly one column in the whole schema.
+ *
+ * These are the only ones a BARE `status` can be judged against — with
+ * `where('status', 'sold_out')` the code has not said which table it means.
+ *
+ * @var array<string, list<string>>
+ */
+$unambiguous = $enforced;
+
+/** Values the schema leaves ambiguous — reported, not enforced. */
+$ambiguous = [];
+
+foreach ($owners as $column => $class) {
+    foreach (vocabularyOf($class) as $value) {
+        if (in_array($value, $vocabularies[$column] ?? [], true)) {
+            continue;
+        }
+
+        $columns = array_keys($valueToColumns[$value] ?? []);
+        $ambiguous[] = sprintf('%s.%s is also the status of %s', $column, $value, implode(', ', $columns) ?: 'no CHECK-constrained column');
+    }
 }
 
 $files = new RecursiveIteratorIterator(
@@ -201,22 +313,28 @@ foreach ($files as $file) {
         }
 
         $value = trim($token[1], "'\"");
+        $qualified = statusColumnInWindow($tokens, $i);
 
-        foreach ($vocabularies as $column => $values) {
-            if (! in_array($value, $values, true)) {
+        foreach ($owners as $column => $class) {
+            $table = explode('.', $column)[0];
+
+            if ($qualified !== null) {
+                // The code named the table (`'inventory_items.status'`), so the
+                // whole vocabulary of that column is fair game.
+                if ($qualified !== $table || ! in_array($value, $vocabularies[$column], true)) {
+                    continue;
+                }
+            } elseif (! hasStatusToken($tokens, $i)
+                || ! in_array($value, $unambiguous[$column] ?? [], true)) {
+                // Bare `status`: judge only values this column owns alone, and
+                // only where a status is actually being written.
                 continue;
             }
-
-            if (! hasStatusInWindow($tokens, $i)) {
-                continue;
-            }
-
-            $line = $token[2];
 
             $violations[] = sprintf(
                 '%s:%d  %s = \'%s\' is a literal; call the owner instead',
                 $relative,
-                $line,
+                $token[2],
                 $column,
                 $value
             );
@@ -227,11 +345,25 @@ foreach ($files as $file) {
 echo "\nNABILET Core — status-literal verification\n";
 echo str_repeat('─', 74), "\n\n";
 
-foreach ($vocabularies as $column => $values) {
-    printf("  %-24s %d values from %s\n", $column, count($values), basename(str_replace('\\', '/', $owners[$column])));
+foreach ($owners as $column => $class) {
+    printf(
+        "  %-24s %d of %d values from %s\n",
+        $column,
+        count($unambiguous[$column] ?? []),
+        count($vocabularies[$column]),
+        basename(str_replace('\\', '/', $class))
+    );
 }
 
 printf("\n  %d files scanned under app/\n", count($scanned));
+
+if ($ambiguous !== []) {
+    echo "\n  Not enforced — the value belongs to more than one column:\n";
+
+    foreach ($ambiguous as $note) {
+        printf("    ~ %s\n", $note);
+    }
+}
 
 if ($violations !== []) {
     echo "\n";
