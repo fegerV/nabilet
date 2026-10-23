@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Webhooks\Http\Controllers;
 
-use App\Models\Webhook;
-use App\Models\WebhookDelivery;
+use Nabilet\Modules\Webhooks\Models\Webhook;
+use Nabilet\Modules\Webhooks\Models\WebhookDelivery;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;

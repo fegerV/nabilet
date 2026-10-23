@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Database\Seeders;
 
-use App\Models\NotificationTemplate;
+use Nabilet\Modules\Notifications\Models\NotificationTemplate;
 use Illuminate\Database\Seeder;
 use Nabilet\Modules\Loyalty\Support\FollowNotificationCodes;
 use Nabilet\Modules\Loyalty\Support\RaffleNotificationCodes;

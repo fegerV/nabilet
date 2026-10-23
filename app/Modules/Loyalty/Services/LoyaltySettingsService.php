@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Loyalty\Services;
 
-use App\Models\Setting;
+use Nabilet\Modules\Core\Models\Setting;
 use Nabilet\Modules\Core\Users\Models\User;
 use Nabilet\Modules\Loyalty\Domain\ReferralPolicy;
 use Nabilet\Modules\Loyalty\Domain\ReferralReward;

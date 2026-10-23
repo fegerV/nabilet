@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Notifications;
 
-use App\Models\Setting;
+use Nabilet\Modules\Core\Models\Setting;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;

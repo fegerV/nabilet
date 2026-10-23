@@ -582,7 +582,7 @@ parameters:
 			path: app/Modules/Media/Services/MediaService.php
 
 		-
-			message: "#^Parameter \\#1 \\$callback of method Illuminate\\\\Support\\\\Collection\\<int,stdClass\\>\\:\\:map\\(\\) expects callable\\(stdClass, int\\)\\: array\\{id\\: int, code\\: string, channel\\: string, locale\\: string, subject\\: string\\|null, body_html\\: string\\|null, body_text\\: string\\|null, active\\: bool\\}, Closure\\(App\\\\Models\\\\NotificationTemplate\\)\\: array\\{id\\: int, code\\: string, channel\\: string, locale\\: string, subject\\: string\\|null, body_html\\: string\\|null, body_text\\: string\\|null, active\\: bool\\} given\\.$#"
+			message: "#^Parameter \\#1 \\$callback of method Illuminate\\\\Support\\\\Collection\\<int,stdClass\\>\\:\\:map\\(\\) expects callable\\(stdClass, int\\)\\: array\\{id\\: int, code\\: string, channel\\: string, locale\\: string, subject\\: string\\|null, body_html\\: string\\|null, body_text\\: string\\|null, active\\: bool\\}, Closure\\(Nabilet\\\\Modules\\\\Notifications\\\\Models\\\\NotificationTemplate\\)\\: array\\{id\\: int, code\\: string, channel\\: string, locale\\: string, subject\\: string\\|null, body_html\\: string\\|null, body_text\\: string\\|null, active\\: bool\\} given\\.$#"
 			count: 1
 			path: app/Modules/Notifications/Http/Controllers/NotificationTemplateController.php
 
@@ -1072,12 +1072,12 @@ parameters:
 			path: app/Modules/Webhooks/Http/Controllers/WebhookController.php
 
 		-
-			message: "#^Parameter \\#1 \\$callback of method Illuminate\\\\Support\\\\Collection\\<int,stdClass\\>\\:\\:map\\(\\) expects callable\\(stdClass, int\\)\\: array\\<string, mixed\\>, Closure\\(App\\\\Models\\\\Webhook\\)\\: array\\<string, mixed\\> given\\.$#"
+			message: "#^Parameter \\#1 \\$callback of method Illuminate\\\\Support\\\\Collection\\<int,stdClass\\>\\:\\:map\\(\\) expects callable\\(stdClass, int\\)\\: array\\<string, mixed\\>, Closure\\(Nabilet\\\\Modules\\\\Webhooks\\\\Models\\\\Webhook\\)\\: array\\<string, mixed\\> given\\.$#"
 			count: 1
 			path: app/Modules/Webhooks/Http/Controllers/WebhookSubscriptionController.php
 
 		-
-			message: "#^Parameter \\#1 \\$callback of method Illuminate\\\\Support\\\\Collection\\<int,stdClass\\>\\:\\:map\\(\\) expects callable\\(stdClass, int\\)\\: array\\{id\\: int, delivery_id\\: string, event_name\\: string, status_code\\: int\\|null, attempt\\: int, error_message\\: string\\|null, delivered_at\\: string\\|null, next_retry_at\\: string\\|null, created_at\\: string\\}, Closure\\(App\\\\Models\\\\WebhookDelivery\\)\\: array\\{id\\: int, delivery_id\\: string, event_name\\: string, status_code\\: int\\|null, attempt\\: int, error_message\\: string\\|null, delivered_at\\: string\\|null, next_retry_at\\: string\\|null, created_at\\: string\\} given\\.$#"
+			message: "#^Parameter \\#1 \\$callback of method Illuminate\\\\Support\\\\Collection\\<int,stdClass\\>\\:\\:map\\(\\) expects callable\\(stdClass, int\\)\\: array\\{id\\: int, delivery_id\\: string, event_name\\: string, status_code\\: int\\|null, attempt\\: int, error_message\\: string\\|null, delivered_at\\: string\\|null, next_retry_at\\: string\\|null, created_at\\: string\\}, Closure\\(Nabilet\\\\Modules\\\\Webhooks\\\\Models\\\\WebhookDelivery\\)\\: array\\{id\\: int, delivery_id\\: string, event_name\\: string, status_code\\: int\\|null, attempt\\: int, error_message\\: string\\|null, delivered_at\\: string\\|null, next_retry_at\\: string\\|null, created_at\\: string\\} given\\.$#"
 			count: 1
 			path: app/Modules/Webhooks/Http/Controllers/WebhookSubscriptionController.php
 

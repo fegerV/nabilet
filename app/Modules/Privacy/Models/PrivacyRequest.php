@@ -2,11 +2,12 @@
 
 declare(strict_types=1);
 
-namespace App\Models;
+namespace Nabilet\Modules\Privacy\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Str;
+use Nabilet\Modules\Core\Users\Models\User;
 
 /**
  * Запрос субъекта персональных данных (доступ/удаление/экспорт).

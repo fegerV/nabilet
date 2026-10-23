@@ -77,10 +77,10 @@ class FollowNotification extends Model
 
     public function notification(): BelongsTo
     {
-        // Журнал транспорта живёт в `App\Models\Notification` (модуль
+        // Журнал транспорта живёт в `Nabilet\Modules\Notifications\Models\Notification` (модуль
         // Notifications): запись в нём — это «письмо ушло в провайдера», а не
         // факт разрешения на отправку, который фиксирует эта таблица.
-        return $this->belongsTo(\App\Models\Notification::class, 'notification_id');
+        return $this->belongsTo(\Nabilet\Modules\Notifications\Models\Notification::class, 'notification_id');
     }
 
     /**

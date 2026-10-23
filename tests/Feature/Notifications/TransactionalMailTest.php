@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Notifications;
 
-use App\Models\Notification;
-use App\Models\NotificationTemplate;
+use Nabilet\Modules\Notifications\Models\Notification;
+use Nabilet\Modules\Notifications\Models\NotificationTemplate;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
 use Nabilet\Modules\Loyalty\Support\FollowNotificationCodes;

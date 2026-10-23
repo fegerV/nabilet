@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Notifications\Http\Controllers;
 
-use App\Models\NotificationTemplate;
+use Nabilet\Modules\Notifications\Models\NotificationTemplate;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;

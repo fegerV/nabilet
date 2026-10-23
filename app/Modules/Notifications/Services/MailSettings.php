@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Notifications\Services;
 
-use App\Models\Setting;
+use Nabilet\Modules\Core\Models\Setting;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Mail;

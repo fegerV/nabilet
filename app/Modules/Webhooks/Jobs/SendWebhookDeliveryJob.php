@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Webhooks\Jobs;
 
-use App\Models\Webhook;
-use App\Models\WebhookDelivery;
+use Nabilet\Modules\Webhooks\Models\Webhook;
+use Nabilet\Modules\Webhooks\Models\WebhookDelivery;
 use DateTimeImmutable;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;

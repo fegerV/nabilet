@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Webhooks;
 
-use App\Models\Webhook;
-use App\Models\WebhookDelivery;
+use Nabilet\Modules\Webhooks\Models\Webhook;
+use Nabilet\Modules\Webhooks\Models\WebhookDelivery;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Crypt;

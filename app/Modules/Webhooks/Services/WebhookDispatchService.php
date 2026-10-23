@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Webhooks\Services;
 
-use App\Models\Webhook;
-use App\Models\WebhookDelivery;
+use Nabilet\Modules\Webhooks\Models\Webhook;
+use Nabilet\Modules\Webhooks\Models\WebhookDelivery;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Nabilet\Modules\Orders\Support\OrderEventName;

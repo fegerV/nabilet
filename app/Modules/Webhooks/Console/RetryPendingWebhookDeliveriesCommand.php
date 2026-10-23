@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Webhooks\Console;
 
-use App\Models\WebhookDelivery;
+use Nabilet\Modules\Webhooks\Models\WebhookDelivery;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Nabilet\Modules\Webhooks\Jobs\SendWebhookDeliveryJob;

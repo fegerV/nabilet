@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Notifications\Services;
 
-use App\Models\Notification;
-use App\Models\NotificationTemplate;
+use Nabilet\Modules\Notifications\Models\Notification;
+use Nabilet\Modules\Notifications\Models\NotificationTemplate;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Nabilet\Modules\Notifications\Mail\TemplateMail;
