@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Events\Http\Resources;
 
+use Nabilet\Modules\Inventory\StateMachines\InventoryItemStateMachine;
 use Nabilet\Modules\Events\Models\Event;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -75,14 +76,14 @@ class EventResource extends JsonResource
                     'available_seats' => $s->available_seats_count
                         ?? $s->inventoryItems
                             ->filter(fn ($i) => ($i->available_quantity ?? 0) > 0
-                                && ($i->status === 'available'
-                                    || ($i->type === 'standing' && ! in_array($i->status, ['disabled', 'blocked'], true))))
+                                && ($i->status === InventoryItemStateMachine::AVAILABLE
+                                    || ($i->type === 'standing' && ! in_array($i->status, [InventoryItemStateMachine::DISABLED, InventoryItemStateMachine::BLOCKED], true))))
                             ->sum(fn ($i) => (int) ($i->available_quantity ?? 0)),
                     'availableSeats' => $s->available_seats_count
                         ?? $s->inventoryItems
                             ->filter(fn ($i) => ($i->available_quantity ?? 0) > 0
-                                && ($i->status === 'available'
-                                    || ($i->type === 'standing' && ! in_array($i->status, ['disabled', 'blocked'], true))))
+                                && ($i->status === InventoryItemStateMachine::AVAILABLE
+                                    || ($i->type === 'standing' && ! in_array($i->status, [InventoryItemStateMachine::DISABLED, InventoryItemStateMachine::BLOCKED], true))))
                             ->sum(fn ($i) => (int) ($i->available_quantity ?? 0)),
                 ])
                 ->toArray()),

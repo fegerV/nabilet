@@ -15,6 +15,7 @@ use Nabilet\Modules\Events\Http\Resources\EventResource;
 use Nabilet\Modules\Events\Models\Event;
 use Nabilet\Modules\Events\Repositories\EventRepository;
 use Nabilet\Modules\Events\Services\EventPublicationService;
+use Nabilet\Modules\Inventory\StateMachines\InventoryItemStateMachine;
 use Nabilet\Modules\Events\Services\EventService;
 use Nabilet\Modules\Seo\Services\RedirectResolver;
 use Nabilet\Modules\Tickets\Services\TicketTemplateService;
@@ -152,10 +153,10 @@ class EventController extends Controller
                     ->where('sessions.event_id', $event->id)
                     ->where('inventory_items.available_quantity', '>', 0)
                     ->where(function ($q) {
-                        $q->where('inventory_items.status', 'available')
+                        $q->where('inventory_items.status', InventoryItemStateMachine::AVAILABLE)
                             ->orWhere(function ($standing) {
                                 $standing->where('inventory_items.type', 'standing')
-                                    ->whereNotIn('inventory_items.status', ['disabled', 'blocked']);
+                                    ->whereNotIn('inventory_items.status', [InventoryItemStateMachine::DISABLED, InventoryItemStateMachine::BLOCKED]);
                             });
                     })
                     ->groupBy('inventory_items.session_id')

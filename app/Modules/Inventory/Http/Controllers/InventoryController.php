@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Nabilet\Modules\Inventory\Http\Controllers;
 
 use Nabilet\Modules\Inventory\Http\Requests\UpdateRowPricesRequest;
+use Nabilet\Modules\Inventory\StateMachines\InventoryItemStateMachine;
 use Nabilet\Modules\Inventory\Models\InventoryItem;
 use Nabilet\Modules\Inventory\Services\InventoryService;
 use Nabilet\Modules\Sessions\Models\Session;
@@ -209,9 +210,9 @@ class InventoryController extends Controller
     public function availability(int $sessionId): JsonResponse
     {
         $positions = [
-            'available' => InventoryItem::query()->where('session_id', $sessionId)->where('status', 'available')->count(),
-            'held' => InventoryItem::query()->where('session_id', $sessionId)->where('status', 'held')->count(),
-            'sold' => InventoryItem::query()->where('session_id', $sessionId)->where('status', 'sold')->count(),
+            'available' => InventoryItem::query()->where('session_id', $sessionId)->where('status', InventoryItemStateMachine::AVAILABLE)->count(),
+            'held' => InventoryItem::query()->where('session_id', $sessionId)->where('status', InventoryItemStateMachine::HELD)->count(),
+            'sold' => InventoryItem::query()->where('session_id', $sessionId)->where('status', InventoryItemStateMachine::SOLD)->count(),
         ];
         $positions['total'] = $positions['available'] + $positions['held'] + $positions['sold'];
 

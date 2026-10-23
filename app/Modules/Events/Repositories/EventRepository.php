@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Events\Repositories;
 
+use Nabilet\Modules\Inventory\StateMachines\InventoryItemStateMachine;
 use Nabilet\Modules\Events\Models\Event;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
@@ -65,10 +66,13 @@ class EventRepository
             // InventorySoldOnPaymentTest). Для неё решает остаток, иначе
             // «Танцпол» на 800 человек выпадал из продажи после первого заказа.
             ->where(function ($q) {
-                $q->where('inventory_items.status', 'available')
+                $q->where('inventory_items.status', InventoryItemStateMachine::AVAILABLE)
                     ->orWhere(function ($standing) {
                         $standing->where('inventory_items.type', 'standing')
-                            ->whereNotIn('inventory_items.status', ['disabled', 'blocked']);
+                            ->whereNotIn('inventory_items.status', [
+                                InventoryItemStateMachine::DISABLED,
+                                InventoryItemStateMachine::BLOCKED,
+                            ]);
                     });
             })
             ->groupBy('inventory_items.session_id')
@@ -119,7 +123,7 @@ class EventRepository
             ->join('sessions', 'sessions.id', '=', 'inventory_items.session_id')
             ->whereIn('sessions.event_id', $eventIds)
             ->where('sessions.starts_at', '>=', now()->toDateTimeString())
-            ->where('inventory_items.status', 'available')
+            ->where('inventory_items.status', InventoryItemStateMachine::AVAILABLE)
             ->where('inventory_items.available_quantity', '>', 0)
             ->groupBy('sessions.event_id')
             ->select('sessions.event_id', DB::raw('MIN(inventory_items.price_amount) as min_price_amount'))
@@ -145,7 +149,7 @@ class EventRepository
             ->join('sessions', 'sessions.id', '=', 'inventory_items.session_id')
             ->where('sessions.event_id', $event->id)
             ->where('sessions.starts_at', '>=', now()->toDateTimeString())
-            ->where('inventory_items.status', 'available')
+            ->where('inventory_items.status', InventoryItemStateMachine::AVAILABLE)
             ->where('inventory_items.available_quantity', '>', 0)
             ->min('inventory_items.price_amount');
 

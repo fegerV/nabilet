@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Inventory\Repositories;
 
+use Nabilet\Modules\Inventory\StateMachines\InventoryItemStateMachine;
 use Nabilet\Modules\Inventory\Models\InventoryItem;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
@@ -38,7 +39,7 @@ class InventoryItemRepository
     {
         return $this->model->where('session_id', $sessionId)
             ->where('available_quantity', '>', 0)
-            ->where('status', 'available')
+            ->where('status', InventoryItemStateMachine::AVAILABLE)
             ->with(['seat', 'standingZone'])
             ->get();
     }
@@ -59,7 +60,7 @@ class InventoryItemRepository
         $item->decrement('available_quantity', $amount);
         
         if ($item->available_quantity === 0) {
-            $item->update(['status' => 'sold_out']);
+            $item->update(['status' => InventoryItemStateMachine::SOLD_OUT]);
         }
         
         return $item->fresh();
@@ -69,8 +70,8 @@ class InventoryItemRepository
     {
         $item->increment('available_quantity', $amount);
         
-        if ($item->available_quantity > 0 && $item->status === 'sold_out') {
-            $item->update(['status' => 'available']);
+        if ($item->available_quantity > 0 && $item->status === InventoryItemStateMachine::SOLD_OUT) {
+            $item->update(['status' => InventoryItemStateMachine::AVAILABLE]);
         }
         
         return $item->fresh();

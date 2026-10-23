@@ -6,6 +6,7 @@ namespace Nabilet\Modules\Orders\Services;
 
 use Nabilet\Core\Errors\InvalidStateTransitionError;
 use Nabilet\Core\StateMachine\StateMachine;
+use Nabilet\Modules\Inventory\StateMachines\InventoryItemStateMachine;
 use Nabilet\Modules\Inventory\Models\InventoryItem;
 use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Orders\Repositories\OrderRepository;
@@ -231,8 +232,8 @@ class OrderService
                 $inventoryItem->increment('available_quantity', $item->quantity);
 
                 if ((int) $inventoryItem->available_quantity > 0
-                    && in_array($inventoryItem->status, ['sold', 'sold_out', 'held'], true)) {
-                    $inventoryItem->update(['status' => 'available']);
+                    && in_array($inventoryItem->status, [InventoryItemStateMachine::SOLD, InventoryItemStateMachine::SOLD_OUT, InventoryItemStateMachine::HELD], true)) {
+                    $inventoryItem->update(['status' => InventoryItemStateMachine::AVAILABLE]);
                 }
             }
 

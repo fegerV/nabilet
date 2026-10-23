@@ -14,6 +14,7 @@ use Nabilet\Modules\Events\Http\EventPageShell;
 use Nabilet\Modules\Events\Models\Event;
 use Nabilet\Modules\Events\Repositories\EventRepository;
 use Nabilet\Modules\Events\Services\EventCanonicalUrl;
+use Nabilet\Modules\Inventory\StateMachines\InventoryItemStateMachine;
 use Nabilet\Modules\Events\Services\EventService;
 use Nabilet\Modules\Seo\Services\StructuredDataService;
 use Illuminate\Http\Response;
@@ -424,7 +425,7 @@ class EventPageController
         // позиций доступно, валюта. Один агрегат по сеансу; строки не грузятся.
         $aggregate = $session === null ? null : \Illuminate\Support\Facades\DB::table('inventory_items')
             ->where('session_id', $session->id)
-            ->where('status', 'available')
+            ->where('status', InventoryItemStateMachine::AVAILABLE)
             ->where('available_quantity', '>', 0)
             ->selectRaw('MIN(price_amount) as min_price, COUNT(*) as available_count, MIN(currency) as currency')
             ->first();

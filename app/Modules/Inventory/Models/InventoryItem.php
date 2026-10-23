@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Nabilet\Modules\Events\Models\Session;
 use Nabilet\Modules\Orders\Models\SeatHold;
 use Nabilet\Modules\Venues\Models\Seat;
+use Nabilet\Modules\Inventory\StateMachines\InventoryItemStateMachine;
 use Nabilet\Modules\Venues\Models\StandingZone;
 use Illuminate\Support\Str;
 
@@ -61,7 +62,7 @@ class InventoryItem extends Model
                 $model->available_quantity = $model->capacity;
             }
             if ($model->status === null) {
-                $model->status = 'available';
+                $model->status = InventoryItemStateMachine::AVAILABLE;
             }
         });
     }

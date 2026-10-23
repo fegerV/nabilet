@@ -11,6 +11,7 @@ use Nabilet\Core\Errors\DomainRuleViolation;
 use Nabilet\Core\Errors\NotFoundError;
 use Nabilet\Core\Errors\ValidationError;
 use Nabilet\Modules\Cart\Domain\CartStatus;
+use Nabilet\Modules\Inventory\StateMachines\InventoryItemStateMachine;
 use Nabilet\Modules\Cart\Support\DbRetry;
 use Nabilet\Core\Support\Money;
 use Nabilet\Modules\Cart\Models\Cart;
@@ -374,8 +375,8 @@ final class CartCheckoutService
             // РґРµС„РµРєС‚ В«РјРµСЃС‚Р° СЃРіРѕСЂР°СЋС‚ РїСЂРё РЅРµРѕРїР»Р°С‚РµВ»: РЅРµРѕРїР»Р°С‡РµРЅРЅС‹Рµ РјРµСЃС‚Р° РЅРёРєРѕРіРґР° РЅРµ
             // Р·Р°РІРёСЃР°СЋС‚ РІ sold, Р° РѕСЃРІРѕР±РѕР¶РґР°СЋС‚СЃСЏ sweeper'РѕРј / checkout-expiry.
             foreach ($cart->items as $item) {
-                if ($item->inventoryItem !== null && $item->inventoryItem->status === 'available') {
-                    $item->inventoryItem->update(['status' => 'held']);
+                if ($item->inventoryItem !== null && $item->inventoryItem->status === InventoryItemStateMachine::AVAILABLE) {
+                    $item->inventoryItem->update(['status' => InventoryItemStateMachine::HELD]);
                 }
             }
 

@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Nabilet\Core\Support\HoldGrace;
 use Nabilet\Modules\Cart\Domain\CartStatus;
+use Nabilet\Modules\Inventory\StateMachines\InventoryItemStateMachine;
 use Nabilet\Modules\Cart\Models\Cart;
 use Nabilet\Modules\Cart\Services\CartItemService;
 use Nabilet\Modules\Orders\Models\Order;
@@ -146,7 +147,7 @@ final class StaleOrderExpirer
         foreach ($orphanHolds as $hold) {
             DB::table('inventory_items')
                 ->where('id', $hold->inventory_item_id)
-                ->where('status', '!=', 'sold')
+                ->where('status', '!=', InventoryItemStateMachine::SOLD)
                 ->increment('available_quantity', (int) $hold->quantity);
 
             DB::table('seat_holds')

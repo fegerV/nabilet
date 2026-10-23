@@ -16,6 +16,7 @@ use Nabilet\Modules\Cart\Models\Cart;
 use Nabilet\Modules\Cart\Models\CartItem;
 use Nabilet\Modules\Cart\Support\CartToken;
 use Nabilet\Modules\Core\Users\Models\User;
+use Nabilet\Modules\Inventory\StateMachines\InventoryItemStateMachine;
 use Nabilet\Modules\Inventory\Models\InventoryItem;
 use Nabilet\Modules\Loyalty\Services\LoyaltySettingsService;
 use Nabilet\Modules\Orders\Models\SeatHold;
@@ -215,9 +216,9 @@ final class CartItemService
 
             // РЎС‚Р°С‚СѓСЃ РјРµСЃС‚Р°: РїРѕРєР° РµСЃС‚СЊ СЃРІРѕР±РѕРґРЅС‹Рµ вЂ” held, РІСЃС‘ РІС‹РєСѓРїР»РµРЅРѕ РІ РєРѕСЂР·РёРЅР°С… вЂ” sold_out.
             if ((int) $inventoryItem->available_quantity === 0) {
-                $inventoryItem->update(['status' => 'sold_out']);
-            } elseif ($inventoryItem->status === 'available') {
-                $inventoryItem->update(['status' => 'held']);
+                $inventoryItem->update(['status' => InventoryItemStateMachine::SOLD_OUT]);
+            } elseif ($inventoryItem->status === InventoryItemStateMachine::AVAILABLE) {
+                $inventoryItem->update(['status' => InventoryItemStateMachine::HELD]);
             }
 
             $this->recalculateCartTotal($cart);
@@ -265,11 +266,11 @@ final class CartItemService
                 // РЅРµ РїРѕР»РЅРѕСЃС‚СЊСЋ вЂ” available_quantity Р·Р°РЅРёР¶Р°Р»СЃСЏ РЅР° (quantity-1) Рё
                 // РІРѕР·РЅРёРєР°Р» СЂР°СЃСЃРёРЅС…СЂРѕРЅ СЃ СЂРµР°Р»СЊРЅС‹Рј С‡РёСЃР»РѕРј СЃРІРѕР±РѕРґРЅС‹С… РјРµСЃС‚.
                 $inventoryItem->increment('available_quantity', (int) $cartItem->quantity);
-                if ($inventoryItem->status === 'sold_out') {
+                if ($inventoryItem->status === InventoryItemStateMachine::SOLD_OUT) {
                     // Р•СЃС‚СЊ СЃРІРѕР±РѕРґРЅС‹Рµ вЂ” РјРµСЃС‚Рѕ СЃРЅРѕРІР° РјРѕР¶РЅРѕ РґРµСЂР¶Р°С‚СЊ РІ РєРѕСЂР·РёРЅР°С….
-                    $inventoryItem->update(['status' => 'available']);
-                } elseif ($inventoryItem->status === 'held' && (int) $inventoryItem->available_quantity > 0) {
-                    $inventoryItem->update(['status' => 'available']);
+                    $inventoryItem->update(['status' => InventoryItemStateMachine::AVAILABLE]);
+                } elseif ($inventoryItem->status === InventoryItemStateMachine::HELD && (int) $inventoryItem->available_quantity > 0) {
+                    $inventoryItem->update(['status' => InventoryItemStateMachine::AVAILABLE]);
                 }
             }
 
@@ -387,13 +388,13 @@ final class CartItemService
                 ->first();
 
             // РњРµСЃС‚Рѕ СѓР¶Рµ РѕРїР»Р°С‡РµРЅРѕ (sold) вЂ” РІРѕР·РІСЂР°С‰Р°С‚СЊ РЅРµР»СЊР·СЏ.
-            if ($inventoryItem !== null && $inventoryItem->status !== 'sold') {
+            if ($inventoryItem !== null && $inventoryItem->status !== InventoryItemStateMachine::SOLD) {
                 $inventoryItem->increment('available_quantity', (int) $hold->quantity);
 
                 if ((int) $inventoryItem->available_quantity >= (int) $inventoryItem->capacity) {
-                    $inventoryItem->update(['status' => 'available']);
-                } elseif ($inventoryItem->status === 'sold_out') {
-                    $inventoryItem->update(['status' => 'held']);
+                    $inventoryItem->update(['status' => InventoryItemStateMachine::AVAILABLE]);
+                } elseif ($inventoryItem->status === InventoryItemStateMachine::SOLD_OUT) {
+                    $inventoryItem->update(['status' => InventoryItemStateMachine::HELD]);
                 }
             }
 

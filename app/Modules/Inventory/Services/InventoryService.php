@@ -10,6 +10,7 @@ use Nabilet\Modules\Cart\Models\Cart;
 use Nabilet\Modules\Cart\Domain\CartStatus;
 use Nabilet\Modules\Cart\Models\CartItem;
 use Nabilet\Modules\Inventory\Models\InventoryItem;
+use Nabilet\Modules\Inventory\StateMachines\InventoryItemStateMachine;
 use Nabilet\Modules\Inventory\Repositories\InventoryItemRepository;
 use Nabilet\Modules\Sessions\Models\Session;
 use Nabilet\Modules\Venues\Models\HallRow;
@@ -208,7 +209,7 @@ class InventoryService
                                                             'currency' => 'RUB',
                                                             'capacity' => $sector->capacity,
                                                             'available_quantity' => $sector->capacity,
-                                                            'status' => 'available',
+                                                            'status' => InventoryItemStateMachine::AVAILABLE,
                                                             'metadata_json' => json_encode([
                                                                 'sector_name' => $sector->name,
                                                                 'row_label' => 'Танцпол',
@@ -233,7 +234,7 @@ class InventoryService
                                                     'currency' => 'RUB',
                                                     'capacity' => 1,
                                                     'available_quantity' => 1,
-                                                    'status' => 'available',
+                                                    'status' => InventoryItemStateMachine::AVAILABLE,
                                                     'metadata_json' => json_encode([
                                                         'sector_name' => $sector->name,
                                                         'row_label' => $row->name,
