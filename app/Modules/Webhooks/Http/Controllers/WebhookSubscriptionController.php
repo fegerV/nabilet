@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Nabilet\Core\Errors\DomainRuleViolation;
+use Nabilet\Core\Support\UserOrganization;
 use Nabilet\Modules\Webhooks\Domain\DeliveryAttempt;
 use Nabilet\Modules\Webhooks\Services\WebhookDispatchService;
 use Nabilet\Modules\Webhooks\Services\WebhookEndpointGuard;
@@ -167,7 +168,11 @@ class WebhookSubscriptionController extends Controller
 
     private function organizationId(Request $request): int
     {
-        $id = $request->user()?->organizations()->first()?->id;
+        // Отказ, а не фолбэк на первую организацию в таблице: подписка на
+        // вебхуки чужого тенанта — это чужие события в чужом приёмнике.
+        // Само членство спрашиваем у `UserOrganization` — тот же вопрос задают
+        // события, площадки и витрина.
+        $id = UserOrganization::id($request->user());
 
         if ($id === null) {
             throw new DomainRuleViolation(
@@ -178,7 +183,7 @@ class WebhookSubscriptionController extends Controller
             );
         }
 
-        return (int) $id;
+        return $id;
     }
 
     /** @return array<string, mixed> */

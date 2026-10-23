@@ -482,6 +482,18 @@ class EventGalleryTest extends TestCase
             'created_at' => $now,
         ]);
 
+        // И членство — тоже, иначе организация запроса не resolвится: контекст
+        // заполняется из `user_organization`, а не из `user_roles`. Ровно эта
+        // пара таблиц — ловушка проекта (см. `UserRepository::assignRole()`,
+        // который пишет обе). Без этой строки тесты шли только благодаря
+        // фолбэку «первая организация в таблице», то есть благодаря дефекту.
+        DB::table('user_organization')->insert([
+            'user_id' => $userId,
+            'organization_id' => $this->organizationId,
+            'role_id' => (int) $roleId,
+            'created_at' => $now,
+        ]);
+
         $user = User::query()->findOrFail($userId);
         $this->actingAs($user, 'api');
 

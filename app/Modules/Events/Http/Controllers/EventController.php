@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Events\Http\Controllers;
 
+use Nabilet\Core\Errors\ValidationError;
 use Nabilet\Core\Support\StaffRole;
+use Nabilet\Core\Support\UserOrganization;
 use Nabilet\Modules\Content\Models\Redirect;
 use Nabilet\Modules\Events\Domain\EventStatus;
 use Nabilet\Modules\Events\Http\Requests\StoreEventRequest;
@@ -227,10 +229,29 @@ class EventController extends Controller
             $data = $request->validated();
 
             // БД требует organization_id NOT NULL; форма его не шлёт — берём
-            // организацию пользователя (или первую в системе), как в VenueController.
+            // организацию пользователя.
+            //
+            // РАНЬШЕ ЗДЕСЬ БЫЛ ФОЛБЭК НА ПЕРВУЮ ОРГАНИЗАЦИЮ В ТАБЛИЦЕ. Это не
+            // заглушка, а запись чужому тенанту: мероприятие администратора без
+            // членства молча появлялось в чужом кабинете — его видели и правили
+            // сотрудники той организации, оно уходило на их витрину и в их
+            // карту сайта. Ошибки при этом не возникает нигде: `organization_id`
+            // NOT NULL, значение валидное, ответ 201.
+            //
+            // Тот же дефект уже был закрыт в `VenueController::store()` (см. его
+            // докблок), и `ResolveOrganizationContext` называет такой фолбэк
+            // недопустимым прямо. Здесь его просто не заметили.
+            //
+            // Альтернатива угадыванию — отказ: колонка NOT NULL, поэтому
+            // «показать ошибку» дешевле, чем «угадать не того».
             if (empty($data['organization_id'])) {
-                $orgId = $request->user()?->organizations()->first()?->id;
-                $data['organization_id'] = $orgId ?? \Nabilet\Modules\Core\Organizations\Models\Organization::query()->value('id');
+                $data['organization_id'] = UserOrganization::id($request->user());
+            }
+
+            if (empty($data['organization_id'])) {
+                throw new ValidationError([
+                    'organization_id' => ['No organization to attach this event to.'],
+                ]);
             }
 
             // Макет билета по умолчанию. Новое мероприятие без выбранного макета

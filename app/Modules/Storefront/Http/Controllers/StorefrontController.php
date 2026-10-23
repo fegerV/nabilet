@@ -7,6 +7,7 @@ namespace Nabilet\Modules\Storefront\Http\Controllers;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Nabilet\Core\Support\UserOrganization;
 use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Storefront\Services\StorefrontService;
 use Throwable;
@@ -159,13 +160,19 @@ class StorefrontController
      */
     private function organizationId(Request $request): ?string
     {
-        $user = $request->user();
-        $organizationId = $user?->organizations()->first()?->id;
+        // Членство — через `UserOrganization`: тот же вопрос задают события,
+        // площадки и вебхуки, и ответ обязан быть один. Здесь стоял
+        // `->first()` без сортировки, то есть у сотрудника с двумя членствами
+        // витрина могла открыться не той организации, которую выбрал
+        // middleware в том же запросе.
+        $organizationId = UserOrganization::id($request->user());
 
         if ($organizationId !== null) {
             return (string) $organizationId;
         }
 
+        // Покупатель членства не имеет — тогда решает контекст middleware'а
+        // (`ResolveOrganizationContext`), у которого есть ещё и хост.
         return $this->context->tryId();
     }
 }

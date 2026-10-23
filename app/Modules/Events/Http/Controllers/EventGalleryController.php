@@ -164,26 +164,36 @@ class EventGalleryController extends Controller
      * Организация берётся у САМОГО мероприятия (`events.organization_id`,
      * NOT NULL) — это надёжнее контекста запроса, который в этом проекте не
      * связан как singleton и может оказаться пустым.
+     *
+     * ПУСТОЙ КОНТЕКСТ — ОТКАЗ, А НЕ ПРОХОД. Раньше здесь стоял фолбэк на
+     * первую организацию в таблице (`?? 0`, если таблица пуста) — тот же
+     * дефект, что в `EventController::store()`: администратор без членства
+     * проходил проверку для МЕРОПРИЯТИЯ ТОЙ организации, которую отдаст
+     * MySQL, то есть правил чужую галерею. Ноль давал обратное — отказ всем,
+     * включая владельца.
      */
     private function assertBelongsToOrganization(Event $event): void
     {
         $organizationId = $this->organizationId();
 
-        if ((int) $event->organization_id !== $organizationId) {
+        if ($organizationId === null || (int) $event->organization_id !== $organizationId) {
             throw new NotFoundError('Event', (string) $event->id);
         }
     }
 
-    private function organizationId(): int
+    /**
+     * Организация из контекста middleware'а, либо `null`.
+     *
+     * Контекст заполняет `ResolveOrganizationContext` членством пользователя
+     * (см. `UserOrganization`); угадывать организацию при его отсутствии
+     * нельзя — это запись/правка в чужом тенанте.
+     */
+    private function organizationId(): ?int
     {
         $contextId = $this->context->tryId();
 
-        if ($contextId !== null && ctype_digit((string) $contextId)) {
-            return (int) $contextId;
-        }
-
-        return (int) (\Nabilet\Modules\Core\Organizations\Models\Organization::query()
-            ->orderBy('id')
-            ->value('id') ?? 0);
+        return $contextId !== null && ctype_digit((string) $contextId)
+            ? (int) $contextId
+            : null;
     }
 }

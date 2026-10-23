@@ -7,6 +7,7 @@ namespace Nabilet\Modules\Venues\Http\Controllers;
 use Nabilet\Core\Errors\ConflictError;
 use Nabilet\Core\Errors\ValidationError;
 use Nabilet\Core\Support\LikePattern;
+use Nabilet\Core\Support\UserOrganization;
 use Nabilet\Modules\Venues\Models\Venue;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -89,8 +90,11 @@ class VenueController extends Controller
         // arbitrary tenant, which would silently file one organization's venue
         // under another's. `organization_id` is NOT NULL, so the alternative to
         // guessing is refusing.
+        //
+        // Сам выбор организации — `UserOrganization`, а не своя выборка: тот же
+        // вопрос задают события, вебхуки и витрина, и ответ должен быть один.
         if (empty($data['organization_id'])) {
-            $data['organization_id'] = $request->user()?->organizations()->value('organizations.id');
+            $data['organization_id'] = UserOrganization::id($request->user());
         }
 
         if (empty($data['organization_id'])) {

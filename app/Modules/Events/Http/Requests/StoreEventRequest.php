@@ -7,6 +7,7 @@ namespace Nabilet\Modules\Events\Http\Requests;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 use Nabilet\Modules\Events\Http\Requests\Concerns\HandlesPosterUpload;
+use Nabilet\Core\Support\UserOrganization;
 use Nabilet\Modules\Events\Models\Event;
 use Illuminate\Foundation\Http\FormRequest;
 
@@ -301,21 +302,24 @@ class StoreEventRequest extends FormRequest
     /**
      * Организация, которой должен принадлежать назначаемый шаблон билета.
      *
-     * Тот же порядок, что в `EventController::store()`: организация пользователя,
-     * иначе первая в системе. Дублирование здесь неизбежно — правило валидации
-     * выполняется ДО контроллера, и к моменту проверки `organization_id` в
-     * payload ещё нет (его подставляет контроллер).
+     * Тот же порядок, что в `EventController::store()`: организация пользователя
+     * из `UserOrganization`. Раньше здесь был фолбэк на первую организацию в
+     * системе — свой ответ на тот же вопрос, причём другой, чем у контроллера:
+     * тот брал первую по `ORDER BY id`, а этот без сортировки. То есть шаблон
+     * проверялся по одному тенанту, а событие уходило другому.
+     *
+     * Дублирование здесь неизбежно — правило валидации выполняется ДО
+     * контроллера, и к моменту проверки `organization_id` в payload ещё нет
+     * (его подставляет контроллер). Поэтому дублируется ВЫЗОВ владельца, а не
+     * само правило.
+     *
+     * `0` при отсутствии членства: правило `exists` тогда не находит ни одного
+     * макета, и валидатор отвечает полем `ticket_template_id`. Недоверие к
+     * шаблону в этой ситуации — правильная сторона ошибки: без организации
+     * неизвестно, какой макет «свой».
      */
     private function resolveOrganizationId(): int
     {
-        $fromUser = $this->user()?->organizations()->first()?->id;
-
-        if ($fromUser !== null) {
-            return (int) $fromUser;
-        }
-
-        return (int) (\Nabilet\Modules\Core\Organizations\Models\Organization::query()
-            ->orderBy('id')
-            ->value('id') ?? 0);
+        return UserOrganization::id($this->user()) ?? 0;
     }
 }

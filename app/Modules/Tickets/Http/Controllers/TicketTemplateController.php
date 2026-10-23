@@ -49,8 +49,18 @@ class TicketTemplateController extends Controller
 
     public function index(Request $request): JsonResponse
     {
+        $organizationId = $this->organizationId();
+
+        // Без организации список ПУСТ. Поставить сюда `where('organization_id',
+        // null)` нельзя: Laravel превращает такое условие в `IS NULL`, и
+        // вместо пустого списка вернулись бы макеты без организации — то есть
+        // молча другой набор строк, а не отказ.
+        if ($organizationId === null) {
+            return response()->json(['data' => []]);
+        }
+
         $query = TicketTemplate::query()
-            ->where('organization_id', $this->organizationId())
+            ->where('organization_id', $organizationId)
             // Привязки к мероприятиям — для списка `/admin/ticket-templates`:
             // какой макет чьи билеты оформляет. Колонки ограничены тем, что
             // рисует карточка (id + title); `ticket_template_id` в выборке
@@ -85,7 +95,7 @@ class TicketTemplateController extends Controller
         $data = $this->validatePayload($request);
 
         $template = TicketTemplate::query()->create([
-            'organization_id' => $this->organizationId(),
+            'organization_id' => $this->requireOrganizationId(),
             'name' => $data['name'],
             'format' => $data['format'] ?? 'mobile',
             'width' => $data['width'],
@@ -146,7 +156,7 @@ class TicketTemplateController extends Controller
         if (! empty($data['event_id'])) {
             $event = \Nabilet\Modules\Events\Models\Event::query()
                 ->whereKey((int) $data['event_id'])
-                ->where('organization_id', $this->organizationId())
+                ->where('organization_id', $this->requireOrganizationId())
                 ->first();
 
             if ($event === null) {
@@ -237,17 +247,47 @@ class TicketTemplateController extends Controller
      * экземпляр — без данных запроса. Фолбэк «первая организация по id» — тот
      * же приём, что в `StorefrontController::publicOrganizationId()`.
      */
-    private function organizationId(): int
+    /**
+     * Организация из контекста middleware'а, либо `null`.
+     *
+     * ЗДЕСЬ БЫЛ ФОЛБЭК НА ПЕРВУЮ ОРГАНИЗАЦИЮ В ТАБЛИЦЕ (и `?? 0`, если таблица
+     * пуста) — тот же дефект, что в `EventController::store()` и
+     * `MediaController`: сотрудник без членства молча создавал макет в чужом
+     * тенанте, а при пустой таблице писал `organization_id = 0`, то есть макет,
+     * не принадлежащий никому и невидимый никому.
+     *
+     * Контекст заполняет `ResolveOrganizationContext` членством пользователя
+     * (см. `UserOrganization`), поэтому для сотрудника с членством значение
+     * здесь есть. Отсутствие контекста означает, что определять нечего.
+     *
+     * Вызывающие обрабатывают `null` по fail-closed: список — пустым, запись —
+     * отказом, чужой id — 404.
+     */
+    private function organizationId(): ?int
     {
         $contextId = $this->context->tryId();
 
-        if ($contextId !== null && ctype_digit((string) $contextId)) {
-            return (int) $contextId;
+        return $contextId !== null && ctype_digit((string) $contextId)
+            ? (int) $contextId
+            : null;
+    }
+
+    /**
+     * Организация запроса, отказ если её не определить.
+     *
+     * Для путей записи: макет без организации — это макет ничьей витрины.
+     */
+    private function requireOrganizationId(): int
+    {
+        $organizationId = $this->organizationId();
+
+        if ($organizationId === null) {
+            throw new ValidationError([
+                'organization_id' => ['No organization to attach this template to.'],
+            ]);
         }
 
-        return (int) (\Nabilet\Modules\Core\Organizations\Models\Organization::query()
-            ->orderBy('id')
-            ->value('id') ?? 0);
+        return $organizationId;
     }
 
     /**
@@ -258,9 +298,15 @@ class TicketTemplateController extends Controller
      */
     private function find(int $id): TicketTemplate
     {
+        $organizationId = $this->organizationId();
+
+        if ($organizationId === null) {
+            throw new NotFoundError('TicketTemplate', (string) $id);
+        }
+
         $template = TicketTemplate::query()
             ->where('id', $id)
-            ->where('organization_id', $this->organizationId())
+            ->where('organization_id', $organizationId)
             ->first();
 
         if ($template === null) {

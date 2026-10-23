@@ -730,6 +730,23 @@ class MediaApiTest extends TestCase
             'created_at' => $now,
         ]);
 
+        // И членство — тоже. `user_roles` делает пользователя сотрудником
+        // (её проверяет `EnsureAdminRole`), но ОРГАНИЗАЦИУ запроса даёт
+        // `user_organization`: её читает `ResolveOrganizationContext`, а он
+        // заполняет контекст, из которого контроллеры берут арендатора.
+        //
+        // Без этой строки тесты проходили благодаря фолбэку «первая организация
+        // в таблице» — то есть ровно благодаря дефекту, который здесь закрыт:
+        // в тестовой базе организация одна, и угадывание всегда попадало в неё.
+        // `UserRepository::assignRole()` пишет ОБЕ таблицы; фикстура обязана
+        // делать то же.
+        DB::table('user_organization')->insert([
+            'user_id' => $userId,
+            'organization_id' => $this->organizationId,
+            'role_id' => (int) $roleId,
+            'created_at' => $now,
+        ]);
+
         $user = User::query()->findOrFail($userId);
         $this->actingAs($user, 'api');
 

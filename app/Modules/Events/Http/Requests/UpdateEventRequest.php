@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Nabilet\Modules\Events\Http\Requests;
 
 use Nabilet\Modules\Events\Http\Requests\Concerns\HandlesPosterUpload;
+use Nabilet\Core\Support\UserOrganization;
 use Nabilet\Modules\Events\Models\Event;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
@@ -235,6 +236,10 @@ class UpdateEventRequest extends FormRequest
      *
      * Берётся у самого мероприятия: правило проверяет, что назначаемый шаблон
      * принадлежит той же организации, что и событие.
+     *
+     * Запасной вариант — организация пользователя, и её тоже даёт
+     * `UserOrganization`. Раньше здесь стоял `->first()` без сортировки, то есть
+     * у сотрудника с двумя членствами ответ зависел от порядка строк в MySQL.
      */
     private function eventOrganizationId(): int
     {
@@ -244,7 +249,7 @@ class UpdateEventRequest extends FormRequest
             return (int) $event->organization_id;
         }
 
-        return (int) ($this->user()?->organizations()->first()?->id ?? 0);
+        return UserOrganization::id($this->user()) ?? 0;
     }
 
 }

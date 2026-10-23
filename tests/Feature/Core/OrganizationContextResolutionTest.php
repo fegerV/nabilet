@@ -8,6 +8,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Nabilet\Modules\Core\Users\Models\User;
+use Nabilet\Core\Support\UserOrganization;
 use Tests\TestCase;
 
 /**
@@ -133,6 +134,106 @@ final class OrganizationContextResolutionTest extends TestCase
 
         $this->assertContains('MINE10', $codes);
         $this->assertNotContains('THEIRS10', $codes);
+    }
+
+    /**
+     * Сотрудник с ролью, но БЕЗ членства не создаёт событие в чужой организации.
+     *
+     * ДЕФЕКТ, КОТОРЫЙ ЗДЕСЬ ЗАКРЫТ. `EventController::store()` при отсутствии
+     * `organization_id` в payload брал организацию пользователя, а если её не
+     * было — ПЕРВУЮ ОРГАНИЗАЦИЮ В ТАБЛИЦЕ. То есть сотрудник с ролью `admin`
+     * (её даёт `user_roles`, и middleware `admin` её проверяет) и без строки в
+     * `user_organization` молча создавал мероприятие в чужом тенанте: его
+     * видели и правили сотрудники той организации, оно уходило на их витрину и
+     * в их карту сайта. Ошибки не возникало нигде — `organization_id` NOT NULL,
+     * значение валидное, ответ 201.
+     *
+     * Роль и членство — РАЗНЫЕ таблицы, и ровно это и делало дефект возможным:
+     * `EnsureAdminRole` смотрит в `user_roles`, а организацию запроса даёт
+     * `user_organization`. Проверка здесь идёт через реальный HTTP, потому что
+     * проверяется весь диапазон «роль есть → доступ есть → организация есть».
+     */
+    public function test_a_staff_member_without_membership_cannot_file_an_event_into_a_foreign_tenant(): void
+    {
+        $foreign = $this->organization('Чужая организация');
+        $this->promoCode($foreign, 'THEIRS10');
+
+        // Роль есть, членства нет: `admin` пускает мимо middleware'а.
+        $userId = (int) DB::table('users')->insertGetId([
+            'public_id' => (string) Str::ulid()->toBase32(),
+            'email' => 'role-but-no-membership@nabilet.local',
+            'status' => 'active',
+            'created_at' => now()->toDateTimeString(),
+            'updated_at' => now()->toDateTimeString(),
+        ]);
+
+        $roleId = (int) (DB::table('roles')->where('slug', 'admin')->value('id')
+            ?? DB::table('roles')->insertGetId([
+                'name' => 'Администратор',
+                'slug' => 'admin',
+            ]));
+
+        DB::table('user_roles')->insert([
+            'user_id' => $userId,
+            'organization_id' => $foreign,
+            'role_id' => $roleId,
+            'created_at' => now()->toDateTimeString(),
+        ]);
+
+        $staff = User::query()->findOrFail($userId);
+
+        $response = $this->actingAs($staff, 'api')->postJson('/api/v1/events', [
+            'title' => 'Событие без арендатора',
+            'slug' => 'sobytie-bez-arendatora',
+        ]);
+
+        $response->assertStatus(422);
+
+        // И главное — строки в `events` нет вовсе. До правки здесь был 201 и
+        // мероприятие, принадлежащее `$foreign`.
+        $this->assertSame(0, DB::table('events')->count());
+    }
+
+    /**
+     * Сотрудник с двумя членствами получает одну и ту же организацию везде.
+     *
+     * `->first()` без сортировки возвращает ту строку, которую отдаст MySQL, то
+     * есть разную в разные запросы. `UserOrganization` и `ResolveOrganizationContext`
+     * сортируют по id, поэтому middleware и контроллер не могут разойтись в
+     * рамках одного запроса. Проверяется на витрине: она читает организацию
+     * запроса и отдаёт её конфиг.
+     */
+    public function test_a_staff_member_with_two_memberships_gets_one_deterministic_organization(): void
+    {
+        $first = $this->organization('Первая организация');
+        $second = $this->organization('Вторая организация');
+
+        $this->promoCode($first, 'FIRST10');
+        $this->promoCode($second, 'SECOND10');
+
+        $staff = $this->staffOf($first, 'two-memberships@nabilet.local');
+
+        // Второе членство — тем же пользователем, другой организации.
+        $roleId = (int) DB::table('roles')->where('slug', 'admin')->value('id');
+        DB::table('user_organization')->insert([
+            'user_id' => $staff->getKey(),
+            'organization_id' => $second,
+            'role_id' => $roleId,
+            'created_at' => now()->toDateTimeString(),
+        ]);
+
+        // Сам помощник выбирает по id, а не по порядку строк.
+        $this->assertSame($first, UserOrganization::id($staff));
+
+        // И middleware выбирает ТУ ЖЕ: `/promo-codes` скоупится организацией
+        // из контекста, то есть из `ResolveOrganizationContext`. До правки оба
+        // места звали `->first()` без сортировки, и в рамках одного запроса
+        // могли разойтись — контроллер правил бы одной организации, а список
+        // показывал другой.
+        $response = $this->actingAs($staff, 'api')->getJson('/api/v1/promo-codes');
+
+        $response->assertOk();
+        $this->assertSame(['FIRST10'], array_column($response->json('data'), 'code'));
     }
 
     public function test_a_user_without_membership_gets_no_foreign_organization_data(): void

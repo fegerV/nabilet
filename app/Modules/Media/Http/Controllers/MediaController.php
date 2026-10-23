@@ -8,6 +8,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Nabilet\Core\Errors\ValidationError;
+use Nabilet\Core\Errors\NotFoundError;
 use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Media\Domain\MediaEntityType;
 use Nabilet\Modules\Media\Domain\MediaRole;
@@ -110,6 +111,21 @@ class MediaController extends Controller
     {
         $organizationId = $this->organizationId();
 
+        // Без организации список ПУСТ, а не «все файлы»: `PaymentService` ведёт
+        // себя так же и по той же причине. Угаданная организация показала бы
+        // библиотеку чужого тенанта.
+        if ($organizationId === null) {
+            return response()->json([
+                'data' => [],
+                'meta' => [
+                    'current_page' => 1,
+                    'per_page' => $this->perPage($request),
+                    'total' => 0,
+                    'last_page' => 1,
+                ],
+            ]);
+        }
+
         $perPage = $this->perPage($request);
         $entityType = $request->query('entity_type');
         $entityId = $request->query('entity_id');
@@ -187,7 +203,13 @@ class MediaController extends Controller
 
     public function show(int $media): JsonResponse
     {
-        $asset = $this->media->findForOrganization($media, $this->organizationId());
+        $organizationId = $this->organizationId();
+
+        if ($organizationId === null) {
+            throw new NotFoundError('MediaAsset', (string) $media);
+        }
+
+        $asset = $this->media->findForOrganization($media, $organizationId);
         $asset->load('links');
 
         return response()->json(['data' => new MediaAssetResource($asset)]);
@@ -213,6 +235,12 @@ class MediaController extends Controller
     public function store(Request $request): JsonResponse
     {
         $organizationId = $this->organizationId();
+
+        if ($organizationId === null) {
+            throw new ValidationError([
+                'organization_id' => ['No organization to attach this file to.'],
+            ]);
+        }
 
         // Поля привязки валидируются ЗДЕСЬ, а не в ветках ниже, и это не
         // формальность: без них `entity_type` длиной 101 символ доходил до
@@ -250,7 +278,13 @@ class MediaController extends Controller
      */
     public function update(Request $request, int $media): JsonResponse
     {
-        $asset = $this->media->findForOrganization($media, $this->organizationId());
+        $organizationId = $this->organizationId();
+
+        if ($organizationId === null) {
+            throw new NotFoundError('MediaAsset', (string) $media);
+        }
+
+        $asset = $this->media->findForOrganization($media, $organizationId);
 
         $data = $request->validate([
             'title' => ['sometimes', 'nullable', 'string', 'max:500'],
@@ -281,7 +315,13 @@ class MediaController extends Controller
      */
     public function destroy(int $media): JsonResponse
     {
-        $asset = $this->media->findForOrganization($media, $this->organizationId());
+        $organizationId = $this->organizationId();
+
+        if ($organizationId === null) {
+            throw new NotFoundError('MediaAsset', (string) $media);
+        }
+
+        $asset = $this->media->findForOrganization($media, $organizationId);
         $this->media->delete($asset);
 
         return response()->json(null, 204);
@@ -434,25 +474,26 @@ class MediaController extends Controller
     }
 
     /**
-     * Организация запроса.
+     * Организация из контекста middleware'а, либо `null`.
      *
-     * НЕ полагается на `OrganizationContext::id()`: `NabiletServiceProvider` не
-     * зарегистрирован в `bootstrap/providers.php`, поэтому контекст не связан
-     * как singleton и `app(OrganizationContext::class)` даёт каждый раз НОВЫЙ
-     * экземпляр. Фолбэк «первая организация по id» — тот же приём, что в
-     * `TicketTemplateController::organizationId()`.
+     * ЗДЕСЬ БЫЛ ФОЛБЭК НА ПЕРВУЮ ОРГАНИЗАЦИЮ В ТАБЛИЦЕ — тот же дефект, что
+     * был в `EventController::store()`: сотрудник без членства молча работал
+     * с файлами чужого тенанта. `ResolveOrganizationContext` уже заполняет
+     * контекст членством пользователя (см. `UserOrganization`), поэтому для
+     * любого сотрудника с членством значение здесь есть; отсутствие контекста
+     * означает, что определять нечего, и угадывать нельзя.
+     *
+     * Вызывающие обязаны обработать `null`: список — пустым результатом,
+     * запись — отказом, чужая карточка — 404. Это тот же fail-closed контракт,
+     * что у `PaymentService::paginate()`.
      */
-    private function organizationId(): int
+    private function organizationId(): ?int
     {
         $contextId = $this->context->tryId();
 
-        if ($contextId !== null && ctype_digit((string) $contextId)) {
-            return (int) $contextId;
-        }
-
-        return (int) (\Nabilet\Modules\Core\Organizations\Models\Organization::query()
-            ->orderBy('id')
-            ->value('id') ?? 0);
+        return $contextId !== null && ctype_digit((string) $contextId)
+            ? (int) $contextId
+            : null;
     }
 
     private function userId(): ?int

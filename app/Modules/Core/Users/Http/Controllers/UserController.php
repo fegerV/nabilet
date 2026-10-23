@@ -9,6 +9,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Nabilet\Core\Errors\NotFoundError;
 use Nabilet\Core\Errors\ValidationError;
+use Nabilet\Core\Support\UserOrganization;
 use Nabilet\Modules\Auth\Validation\PasswordRules;
 use Nabilet\Modules\Core\Users\Domain\UserStatus;
 use Nabilet\Modules\Core\Users\Models\User;
@@ -136,7 +137,11 @@ class UserController
         // Берём организацию ДЕЙСТВУЮЩЕГО администратора, а не цель, — выдать
         // роль в чужом тенанте нельзя. Тот же приём и тот же fail-closed отказ,
         // что в `VenueController::store()`.
-        $organizationId = $request->user()?->organizations()->value('organizations.id');
+        //
+        // Членство — `UserOrganization`, как и везде: здесь стоял `->value()`
+        // без сортировки, то есть у администратора с двумя членствами роль
+        // уходила в ту организацию, которую отдаст MySQL.
+        $organizationId = UserOrganization::id($request->user());
 
         if (empty($organizationId)) {
             throw new ValidationError([

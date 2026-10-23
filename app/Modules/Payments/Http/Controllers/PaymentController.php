@@ -8,6 +8,7 @@ use Nabilet\Core\Errors\DomainRuleViolation;
 use Nabilet\Core\Errors\NotFoundError;
 use Nabilet\Core\Errors\ValidationError;
 use Nabilet\Core\Support\StaffRole;
+use Nabilet\Core\Support\UserOrganization;
 use Nabilet\Modules\Cart\Models\Cart;
 use Nabilet\Modules\Cart\Support\CartToken;
 use Nabilet\Modules\Orders\Models\Order;
@@ -53,7 +54,11 @@ class PaymentController extends Controller
             // заполнена. Именно её отсутствие и делало список пустым раньше.
             // Показывать платежи ВСЕХ организаций нельзя: это и есть
             // межарендаторская утечка, от которой защищает сервис.
-            $organizationId = $request->user()->organizations()->value('organizations.id');
+            //
+            // Само членство — `UserOrganization`, как и везде: здесь стоял
+            // `->value()` без сортировки, то есть у сотрудника с двумя
+            // членствами ответ зависел от порядка строк в MySQL.
+            $organizationId = UserOrganization::id($request->user());
 
             if ($organizationId === null) {
                 throw new ValidationError([

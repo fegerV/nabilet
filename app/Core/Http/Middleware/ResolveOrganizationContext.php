@@ -7,8 +7,8 @@ namespace Nabilet\Core\Http\Middleware;
 use Closure;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Nabilet\Core\Tenancy\OrganizationContext;
+use Nabilet\Core\Support\UserOrganization;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -59,30 +59,30 @@ final class ResolveOrganizationContext
             return null;
         }
 
-        $organizationId = $user->organization_id ?? null;
-
-        if ($organizationId !== null) {
-            return (string) $organizationId;
-        }
-
-        // В таблице `users` колонки `organization_id` НЕТ: членство сотрудника
+        // Членство спрашиваем у `UserOrganization` — того же владельца, которым
+        // пользуются контроллеры событий, площадок, вебхуков и витрины.
+        //
+        // В ТАБЛИЦЕ `users` КОЛОНКИ `organization_id` НЕТ: членство сотрудника
         // живёт в связке `user_organization` (установщик привязывает админа
         // именно туда — см. `InstallerController::bootstrapOrganization()`, а
         // его докблок прямо обещает, что «ResolveOrganizationContext resolves
-        // the active org from the user's membership»).
+        // the active org from the user's membership»). Ветка на несуществующую
+        // колонку здесь стояла и никогда не срабатывала: guard отдаёт обычную
+        // модель `User`, без join'ов. Пока читалась только она, контекст у
+        // сотрудника оставался пустым ВСЕГДА, и любой tenant-scoped админский
+        // путь падал 500 `TenantContextMissingError` — например весь CRUD
+        // /promo-codes.
         //
-        // Пока читалась только несуществующая колонка, контекст у сотрудника
-        // оставался пустым ВСЕГДА, и любой tenant-scoped админский путь падал
-        // 500 `TenantContextMissingError` — например весь CRUD /promo-codes.
+        // Своя выборка из `user_organization` была вторым экземпляром правила
+        // «какая организация у пользователя»: сортировка в одном месте могла
+        // разойтись с другой, и тогда middleware выбирал бы одну организацию, а
+        // контроллер — другую, в рамках одного запроса.
         //
-        // Покупатель членства не имеет (он не сотрудник), поэтому для витрины
-        // поведение не меняется: контекст так и остаётся пустым.
-        $membership = DB::table('user_organization')
-            ->where('user_id', $user->getKey())
-            ->orderBy('organization_id')
-            ->value('organization_id');
+        // Фолбэка на «первую организацию в таблице» здесь нет и быть не должно
+        // (см. докблок класса): угадывание означает запись чужому тенанту.
+        $organizationId = UserOrganization::id($user);
 
-        return $membership === null ? null : (string) $membership;
+        return $organizationId === null ? null : (string) $organizationId;
     }
 
     /**
