@@ -179,7 +179,7 @@ class PaymentRepository
 
     public function findPendingWebhookPayments(): Collection
     {
-        return $this->model->where('status', 'pending')
+        return $this->model->where('status', PaymentStateMachine::PENDING)
             ->whereNotNull('payment_url')
             ->get();
     }

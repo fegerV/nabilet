@@ -7,6 +7,8 @@ namespace Nabilet\Modules\Sessions\Http\Controllers;
 use Nabilet\Core\Errors\ValidationError;
 use Nabilet\Modules\HallSchemas\Domain\SchemaVersionState;
 use Nabilet\Modules\Sessions\Models\Session;
+use Nabilet\Modules\Sessions\StateMachines\SessionStateMachine;
+use Illuminate\Validation\Rule;
 use Nabilet\Modules\Inventory\Services\InventoryService;
 use Nabilet\Modules\Venues\Models\Hall;
 use Nabilet\Modules\Venues\Models\HallSchemaVersion;
@@ -79,10 +81,17 @@ class SessionController extends Controller
             'sales_start_at' => ['nullable', 'date'],
             'sales_end_at' => ['nullable', 'date', 'after:sales_start_at'],
             'timezone' => ['nullable', 'string', 'max:64'],
-            'status' => ['nullable', 'string', 'in:scheduled,on_sale,held,completed,cancelled'],
+            // Словарь — из машины состояний, а не своей строкой. Здесь стоял
+            // список `scheduled,on_sale,held,completed,cancelled`, разошедшийся
+            // с `SessionStateMachine` в обе стороны: `held` в машине и в
+            // `ck_sessions_status` нет вовсе (это состояние позиции инвентаря,
+            // `InventoryItemStateMachine::HELD`), зато отсутствовали `draft`,
+            // `sold_out` и `closed` — обязательные состояния продаж. Подробнее
+            // в `SessionStateMachine::all()`.
+            'status' => ['nullable', 'string', Rule::in(SessionStateMachine::all())],
         ]);
 
-        $data['status'] ??= 'scheduled';
+        $data['status'] ??= SessionStateMachine::SCHEDULED;
         $data['timezone'] ??= config('app.timezone', 'UTC');
 
         // БД требует venue_id NOT NULL; форма его не шлёт — берём площадку зала.
@@ -135,7 +144,9 @@ class SessionController extends Controller
             'sales_start_at' => ['nullable', 'date'],
             'sales_end_at' => ['nullable', 'date', 'after:sales_start_at'],
             'timezone' => ['nullable', 'string', 'max:64'],
-            'status' => ['sometimes', 'string', 'in:scheduled,on_sale,held,completed,cancelled'],
+            // Тот же словарь из машины, что и при создании: две копии строки
+            // разошлись бы при первой же правке.
+            'status' => ['sometimes', 'string', Rule::in(SessionStateMachine::all())],
         ]);
 
         // БД требует venue_id NOT NULL; при смене зала обновляем площадку зала.

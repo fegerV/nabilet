@@ -6,6 +6,7 @@ namespace Nabilet\Modules\Analytics\Services;
 
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Nabilet\Modules\Orders\StateMachines\OrderStateMachine;
 
 /**
  * Аналитика против реальной схемы.
@@ -46,7 +47,7 @@ class AnalyticsReportService
 
         $totalSales = (int) DB::table('orders')
             ->where('created_at', '>=', $since)
-            ->where('status', 'paid')
+            ->where('status', OrderStateMachine::PAID)
             ->sum('total_amount');
 
         $totalTicketsSold = (int) DB::table('tickets')
@@ -90,7 +91,7 @@ class AnalyticsReportService
             ->join('sessions as s', 's.id', '=', 'ii.session_id')
             ->join('events as e', 'e.id', '=', 's.event_id')
             ->where('o.created_at', '>=', $since)
-            ->where('o.status', 'paid')
+            ->where('o.status', OrderStateMachine::PAID)
             ->select(
                 'e.title as name',
                 DB::raw('COUNT(DISTINCT o.id) as orders'),
@@ -115,7 +116,7 @@ class AnalyticsReportService
             ->where('created_at', '>=', $since)
             ->selectRaw('CAST(created_at AS date) as date')
             ->selectRaw('COUNT(*) as orders')
-            ->selectRaw('SUM(CASE WHEN status = ? THEN total_amount ELSE 0 END) as revenue', ['paid'])
+            ->selectRaw('SUM(CASE WHEN status = ? THEN total_amount ELSE 0 END) as revenue', [OrderStateMachine::PAID])
             ->groupBy('date')
             ->orderBy('date')
             ->get();

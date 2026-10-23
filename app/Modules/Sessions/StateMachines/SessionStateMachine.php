@@ -72,4 +72,40 @@ final class SessionStateMachine
     {
         return [self::ON_SALE];
     }
+
+    /**
+     * Все состояния жизненного цикла.
+     *
+     * ЗАЧЕМ. `SessionController` держал свой список для правила `in:` —
+     * `scheduled,on_sale,held,completed,cancelled`. Этот список разошёлся с
+     * машиной в ОБЕ стороны:
+     *
+     *  - `held` в машине и в `ck_sessions_status` нет вовсе. Это состояние
+     *    позиции инвентаря (`InventoryItemStateMachine::HELD`), попавшее сюда
+     *    копированием из соседнего словаря. Запись с ним проходила валидацию и
+     *    падала на MySQL — 500 вместо 422.
+     *  - `draft`, `sold_out` и `closed` в списке отсутствуют, хотя машина их
+     *    знает, а `sold_out` и `closed` — обязательные состояния продаж
+     *    (`on_sale ⇄ sold_out → closed`, см. `docs/STATE-MACHINES.md`).
+     *    Администратор не мог выставить их через API.
+     *
+     * Список состояний — часть машины, а не деталь контроллера. Гейт
+     * `tools/verify-state-machines.php` сверяет машину с CHECK-констрейнтом,
+     * но не с правилами валидации: правило валидации — тоже потребитель
+     * словаря, и он обязан спрашивать его здесь.
+     *
+     * @return list<string>
+     */
+    public static function all(): array
+    {
+        return [
+            self::DRAFT,
+            self::SCHEDULED,
+            self::ON_SALE,
+            self::SOLD_OUT,
+            self::CLOSED,
+            self::COMPLETED,
+            self::CANCELLED,
+        ];
+    }
 }

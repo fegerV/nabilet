@@ -1269,6 +1269,11 @@ parameters:
 		-
 			message: "#^Call to an undefined static method Nabilet\\\\Modules\\\\Venues\\\\Models\\\\HallSchemaVersion\\:\\:create\\(\\)\\.$#"
 			count: 1
+			path: tests/Feature/Sessions/SessionStatusVocabularyTest.php
+
+		-
+			message: "#^Call to an undefined static method Nabilet\\\\Modules\\\\Venues\\\\Models\\\\HallSchemaVersion\\:\\:create\\(\\)\\.$#"
+			count: 1
 			path: tests/Feature/Tickets/TicketEmailTemplateTest.php
 
 		-

@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Testing\TestResponse;
 use Nabilet\Tests\Support\SellableSeatFixtures;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 /**
@@ -245,9 +246,8 @@ final class EventCanonicalUrlTest extends TestCase
      * У обоих `parse_url()` не находит хост, поэтому раньше они проходили ветку
      * «относительный путь» и попадали в `<loc>` как есть. Для `javascript:` это
      * ещё и запись в XML-документ, который отдаётся краулеру.
-     *
-     * @dataProvider schemeOnlyUrls
      */
+    #[DataProvider('schemeOnlyUrls')]
     public function test_a_scheme_only_url_is_rejected(string $stored): void
     {
         $event = $this->seedEvent();

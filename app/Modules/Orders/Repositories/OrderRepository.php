@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\DB;
 use Nabilet\Core\Support\LikePattern;
 use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Orders\Models\OrderItem;
+use Nabilet\Modules\Orders\StateMachines\OrderStateMachine;
 use Illuminate\Pagination\LengthAwarePaginator;
 
 class OrderRepository
@@ -183,7 +184,7 @@ class OrderRepository
     public function getRevenueByOrganization(int $organizationId, string $dateFrom, string $dateTo): int
         {
             return (int) $this->model->where('organization_id', $organizationId)
-                ->where('status', 'paid')
+                ->where('status', OrderStateMachine::PAID)
                 ->whereBetween('created_at', [$dateFrom, $dateTo])
                 ->sum('total_amount');
         }
