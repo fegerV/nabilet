@@ -613,7 +613,7 @@ class PaymentService
             // confirmation). До этого момента места оставались held и при
             // неоплате возвращались в продажу sweep-путём.
             $freshOrder = $order->fresh();
-            if ($freshOrder !== null && $freshOrder->status === 'paid') {
+            if ($freshOrder !== null && $freshOrder->status === OrderStateMachine::PAID) {
                 $this->markInventorySoldForOrder($freshOrder);
 
                 // A6: выпуск билетов сразу после перехода заказа в paid — внутри той же

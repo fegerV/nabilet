@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Nabilet\Core\Errors\ExternalServiceError;
+use Nabilet\Modules\Payments\StateMachines\PaymentStateMachine;
 
 /**
  * YooKassa payment provider implementation.
@@ -252,10 +253,28 @@ class YooKassaProvider implements PaymentProviderInterface
         $event = $payload['event'];
         $object = $payload['object'];
 
+        // ЛЕВАЯ ЧАСТЬ — события ЮKassa (контракт API), ПРАВАЯ — наши имена
+        // событий, на которые диспатчится `PaymentService::processWebhook()`.
+        //
+        // `payment.canceled` ОБЯЗАН остаться `payment.canceled`. Здесь раньше
+        // стояло `'payment.canceled' => 'payment.failed'` — и это не косметика:
+        // `PaymentService` разводит эти два случая (аудит A12), помечая
+        // отменённый платёж `PaymentStateMachine::CANCELED`, а неудачный —
+        // `PaymentStateMachine::FAILED`. Схлопни их один раз, и отменённый
+        // платёж становится неотличим от неудачного, причём МОЛЧА: обработчик
+        // `payment.canceled` просто перестаёт вызываться, оба кейса дают 200,
+        // и тест на это не падает, пока он зовёт `processWebhook()` напрямую.
+        //
+        // На сегодня этот метод не вызывается ниоткуда: живой путь —
+        // `PaymentController::webhook()` → `PaymentService::processWebhook()`
+        // с СЫРЫМ payload, то есть мимо нормализатора провайдера. Поэтому
+        // ошибка здесь — не действующий дефект, а заряженная ловушка на день,
+        // когда вебхуки начнут ходить через провайдера (архитектурно это вернее).
+        // Правка сделана заранее, а не по факту поломки.
         $eventType = match ($event) {
             'payment.succeeded' => 'payment.succeeded',
             'payment.waiting_for_capture' => 'payment.waiting_for_capture',
-            'payment.canceled' => 'payment.failed',
+            'payment.canceled' => 'payment.canceled',
             'refund.succeeded' => 'refund.succeeded',
             'refund.failed' => 'refund.failed',
             default => null,
@@ -307,15 +326,29 @@ class YooKassaProvider implements PaymentProviderInterface
     }
 
     /**
-     * Map YooKassa status to internal status.
+     * Перевести статус ЮKassa во внутренний (`PaymentStateMachine`).
+     *
+     * Левая часть `match` — словарь ПРОВАЙДЕРА, его нельзя менять: это контракт
+     * API ЮKassa. Правая — наш, и он берётся у владельца константами, а не
+     * выписывается здесь: `payments.status` ограничен `ck_payments_status`, и
+     * разошедшаяся копия означала бы либо CHECK violation, либо молча
+     * принятый статус, которого машина не знает.
+     *
+     * `canceled` и `failed` провайдера схлопываются в `PaymentStateMachine::FAILED`
+     * — это ОСОЗНАННОЕ решение, а не недосмотр, и причина живёт в
+     * `ReconcilePaymentsCommand::eventFor()`: по результату опроса для нас исход
+     * один — денег нет, холд надо вернуть в продажу. НО: это верно только для
+     * пути СВЕРКИ, где статус читается ответом API. Путь ВЕБХУКА различает их
+     * (аудит A12: отменённый платёж — отдельное терминальное состояние), и
+     * `handleWebhook()` ниже их НЕ схлопывает.
      */
     private function mapStatus(string $status): string
     {
         return match ($status) {
-            'pending', 'waiting_for_capture' => 'pending',
-            'succeeded' => 'succeeded',
-            'canceled', 'failed' => 'failed',
-            default => 'pending',
+            'pending', 'waiting_for_capture' => PaymentStateMachine::PENDING,
+            'succeeded' => PaymentStateMachine::SUCCEEDED,
+            'canceled', 'failed' => PaymentStateMachine::FAILED,
+            default => PaymentStateMachine::PENDING,
         };
     }
 }

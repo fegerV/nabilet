@@ -104,7 +104,7 @@ final class StaleOrderExpirer
                         $cart->update(['status' => CartStatus::ABANDONED]);
                     }
 
-                    $order->update(['status' => 'expired']);
+                    $order->update(['status' => OrderStateMachine::EXPIRED]);
 
                     if ($cart !== null) {
                         $this->carts->releaseCartInventory($cart);

@@ -159,17 +159,29 @@ class OrderRepository
         return $order->fresh();
     }
 
+    /**
+     * Отменить заказ.
+     *
+     * Статус берётся у владельца (`OrderStateMachine::CANCELLED`), а не
+     * выписывается здесь повторно: проверку перехода делает `OrderService`
+     * перед вызовом, а этот метод — единственная точка записи.
+     */
     public function cancel(Order $order): Order
     {
-        $order->update(['status' => 'cancelled']);
+        $order->update(['status' => OrderStateMachine::CANCELLED]);
         return $order;
     }
 
-    public function complete(Order $order): Order
-    {
-        $order->update(['status' => 'completed']);
-        return $order;
-    }
+    // ЗДЕСЬ БЫЛ `complete()`, ПИСАВШИЙ `'completed'`. УДАЛЁН, А НЕ ПОЧИНЕН:
+    //   - `ck_orders_status` такого значения не допускает вообще, поэтому
+    //     вызов всегда падал бы с SQL CHECK violation;
+    //   - его единственный вызывающий (`OrderService::completeOrder()`)
+    //     проверял машиной переход в `PAID`, а запись уходила в `completed` —
+    //     сторож и запись расходились;
+    //   - оплаченный заказ проводит `markPaid()`, который ставит и `paid_at`,
+    //     и `payment_status`; «починенный» `complete()` стал бы вторым,
+    //     более слабым путём к `paid` без этих побочных эффектов.
+    // Вызывающих не было ни в `app/`, ни в `tests/`, ни в `resources/js`.
 
     public function addItem(Order $order, array $itemData): OrderItem
     {

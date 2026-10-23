@@ -18,6 +18,7 @@ use Nabilet\Modules\Orders\Models\PromoCodeRedemption;
 use Nabilet\Modules\Orders\StateMachines\OrderStateMachine;
 use Nabilet\Modules\Pricing\Domain\OrderLine;
 use Nabilet\Modules\Pricing\Domain\PricingContext;
+use Nabilet\Modules\Pricing\Domain\PromoCodeDefinition;
 use Nabilet\Modules\Pricing\Domain\PromoEvaluation;
 use Nabilet\Modules\Pricing\Domain\PromoEvaluator;
 
@@ -442,7 +443,10 @@ final class PromoCodeService
         if (array_key_exists('status', $input)) {
             $status = (string) $input['status'];
 
-            if (! in_array($status, ['active', 'paused', 'expired'], true)) {
+            // Словарь — у владельца (`PromoCodeDefinition::all()`), а не копией
+            // здесь: `promo_codes.status` не имеет CHECK в схеме, поэтому эта
+            // проверка — единственный барьер от произвольного статуса.
+            if (! PromoCodeDefinition::isValid($status)) {
                 throw new DomainRuleViolation('status must be active, paused or expired.', 'INVALID_PROMO_STATUS');
             }
 

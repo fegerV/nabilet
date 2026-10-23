@@ -113,7 +113,11 @@ class PaymentRepository
         return $this->model->whereHas('order', function ($q) use ($organizationId) {
                 $q->where('organization_id', $organizationId);
             })
-            ->where('status', 'succeeded')
+            // Таблица названа явно: запрос идёт по `payments`, а значение
+            // берётся у владельца. Голый `where('status', 'succeeded')` не
+            // сказал бы читателю, о каком статусе речь, и не попал бы под
+            // проверку `verify-status-literals` (значение делят с `refunds`).
+            ->where('payments.status', PaymentStateMachine::SUCCEEDED)
             ->whereBetween('created_at', [$dateFrom, $dateTo])
             ->with(['order'])
             ->get();
@@ -136,7 +140,7 @@ class PaymentRepository
     public function markAsSucceeded(Payment $payment): Payment
     {
         $payment->update([
-            'status' => 'succeeded',
+            'status' => PaymentStateMachine::SUCCEEDED,
             'paid_at' => now(),
         ]);
         return $payment;
@@ -155,7 +159,7 @@ class PaymentRepository
         ];
 
         $payment->update([
-            'status' => 'failed',
+            'status' => PaymentStateMachine::FAILED,
             'metadata_json' => $metadata,
         ]);
         return $payment;

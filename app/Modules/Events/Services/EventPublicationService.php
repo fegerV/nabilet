@@ -8,6 +8,7 @@ use Nabilet\Core\Errors\ConflictError;
 use Nabilet\Core\Errors\NotFoundError;
 use Nabilet\Modules\Events\Domain\Event as DomainEvent;
 use Nabilet\Modules\Events\Domain\EventPublicationPolicy;
+use Nabilet\Modules\Events\Domain\EventStatus;
 use Nabilet\Modules\Events\Domain\PublicationDecision;
 use Nabilet\Modules\Events\Models\Event;
 use Nabilet\Modules\Orders\StateMachines\OrderStateMachine;
@@ -108,7 +109,7 @@ final class EventPublicationService
         }
 
         if ($decision->requiresWrite()) {
-            $event->update(['status' => 'cancelled']);
+            $event->update(['status' => EventStatus::CANCELLED]);
         }
 
         return $decision;

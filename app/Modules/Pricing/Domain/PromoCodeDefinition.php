@@ -37,6 +37,27 @@ final class PromoCodeDefinition
     public const STATUS_PAUSED = 'paused';
     public const STATUS_EXPIRED = 'expired';
 
+    /**
+     * Все допустимые статусы промокода.
+     *
+     * ВЛАДЕЛЕЦ СЛОВАРЯ. `promo_codes.status` — `VARCHAR(32)` БЕЗ CHECK-ограничения
+     * (в отличие от `orders.status` и `carts.status`), поэтому база здесь ни от
+     * чего не защищает: единственный барьер — этот метод. Пока список был
+     * выписан руками в `PromoCodeService`, правка словаря требовала найти все
+     * копии, а несогласованная копия означала молча принимаемый мусорный статус.
+     *
+     * @return list<string>
+     */
+    public static function all(): array
+    {
+        return [self::STATUS_ACTIVE, self::STATUS_PAUSED, self::STATUS_EXPIRED];
+    }
+
+    public static function isValid(string $status): bool
+    {
+        return in_array($status, self::all(), true);
+    }
+
     public function __construct(
         public readonly string $code,
         public readonly string $discountType = self::TYPE_PERCENT,

@@ -78,6 +78,16 @@ $owners = [
     'inventory_items.status' => Nabilet\Modules\Inventory\StateMachines\InventoryItemStateMachine::class,
     'carts.status' => Nabilet\Modules\Cart\Domain\CartStatus::class,
     'sessions.status' => Nabilet\Modules\Sessions\StateMachines\SessionStateMachine::class,
+    'payments.status' => Nabilet\Modules\Payments\StateMachines\PaymentStateMachine::class,
+    'orders.status' => Nabilet\Modules\Orders\StateMachines\OrderStateMachine::class,
+    'events.status' => Nabilet\Modules\Events\Domain\EventStatus::class,
+    // Не state machine, а value object: в нём лежат ТРИ словаря сразу
+    // (discount_type, scope, status). Reflection заберёт все девять значений,
+    // и это норма — квалифицированная запись `'promo_codes.status' => 'fixed'`
+    // и должна быть нарушением: `fixed` не статус. Голый `status` при этом
+    // не проверяется вовсе, потому что `promo_codes.status` — VARCHAR(32)
+    // БЕЗ CHECK, и развести его по схеме нечем.
+    'promo_codes.status' => Nabilet\Modules\Pricing\Domain\PromoCodeDefinition::class,
 ];
 
 /**

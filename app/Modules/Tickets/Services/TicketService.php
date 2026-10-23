@@ -9,6 +9,7 @@ use Nabilet\Modules\Tickets\Repositories\TicketRepository;
 use Nabilet\Modules\Tickets\Domain\TicketIssuance;
 use Nabilet\Modules\Tickets\StateMachines\TicketStateMachine;
 use Nabilet\Modules\Orders\Models\Order;
+use Nabilet\Modules\Orders\StateMachines\OrderStateMachine;
 use Nabilet\Modules\Inventory\Models\InventoryItem;
 use Nabilet\Modules\Sessions\Models\Session;
 use Nabilet\Core\Support\QrSigner;
@@ -43,7 +44,7 @@ class TicketService
     public function issueTicketsForOrder(Order $order): array
     {
         return DB::transaction(function () use ($order) {
-            if ($order->status !== 'paid') {
+            if ($order->status !== OrderStateMachine::PAID) {
                 // Доменная ошибка вместо RuntimeException (аудит D-7):
                 // прямой вызов из админ-пути должен давать конверт §66 (422
                 // ORDER_NOT_PAID), а не 500, — машина состояний просто не даёт

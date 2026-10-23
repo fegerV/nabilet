@@ -188,7 +188,7 @@ class OrderService
             $now = now();
             $order->update([
                 'status' => OrderStateMachine::PAID,
-                'payment_status' => 'succeeded',
+                'payment_status' => PaymentStateMachine::SUCCEEDED,
                 'paid_at' => $now,
             ]);
             return $order->fresh();
@@ -255,19 +255,22 @@ class OrderService
         });
     }
 
-    public function completeOrder(Order $order): Order
-    {
-        if (!$this->machine->can($order->status, OrderStateMachine::PAID)) {
-            throw new InvalidStateTransitionError(
-                'Order',
-                $order->status,
-                OrderStateMachine::PAID,
-                $this->machine->allowedFrom($order->status),
-            );
-        }
-
-        return $this->repository->complete($order);
-    }
+    /**
+     * ЗДЕСЬ БЫЛ `completeOrder()`. УДАЛЁН, А НЕ ПОЧИНЕН.
+     *
+     * Он проверял машиной переход в `OrderStateMachine::PAID`, а потом звал
+     * `OrderRepository::complete()`, который писал `'completed'` — статус,
+     * которого `ck_orders_status` не допускает. Сторож и запись расходились:
+     * переход разрешался, запись падала с CHECK violation.
+     *
+     * Оплаченный заказ проводит `markPaid()` — он ставит `status`, `paid_at`
+     * и `payment_status` одним update'ом. «Починенный» `completeOrder()` был бы
+     * вторым путём к `paid` без `paid_at`/`payment_status`, то есть тихо
+     * оплаченным заказом, по которому ни отчётность, ни сверка с провайдером
+     * не видят оплаты.
+     *
+     * Вызывающих не было ни в `app/`, ни в `tests/`, ни в `resources/js`.
+     */
 
     public function applyPayment(Order $order, Payment $payment): Order
     {
@@ -278,7 +281,9 @@ class OrderService
             }
 
             // Check if fully paid
-            $paidAmount = (int) $order->payments()->where('status', 'succeeded')->sum('amount');
+            $paidAmount = (int) $order->payments()
+                ->where('payments.status', PaymentStateMachine::SUCCEEDED)
+                ->sum('amount');
 
             if ($paidAmount >= (int) $order->total_amount) {
                 // Прямой pending -> paid запрещён машиной; но здесь платёж уже
