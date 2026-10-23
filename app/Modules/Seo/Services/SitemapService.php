@@ -6,6 +6,7 @@ namespace Nabilet\Modules\Seo\Services;
 
 use Nabilet\Modules\Events\Models\Event;
 use Nabilet\Modules\Events\Domain\EventStatus;
+use Nabilet\Modules\Events\Services\EventCanonicalUrl;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
@@ -108,6 +109,7 @@ class SitemapService
 
     public function __construct(
         private readonly CatalogService $catalog,
+        private readonly EventCanonicalUrl $canonicalUrl,
     ) {}
 
     /**
@@ -391,19 +393,19 @@ class SitemapService
     }
 
     /**
-     * Get canonical URL for an event.
+     * Адрес страницы события для `<loc>`.
+     *
+     * ЧЕРЕЗ `EventCanonicalUrl`, А НЕ НАПРЯМУЮ ИЗ ПОЛЯ. Здесь стояло
+     * `if (!empty($event->canonical_url)) return $event->canonical_url;` — то
+     * есть ровно та строка, которую проверял на чужой домен контроллер
+     * страницы, попадала в карту сайта без проверки. Последствие тяжелее, чем
+     * на странице: `<loc>` обязан быть с того же хоста, что и сама карта
+     * (протокол sitemap), иначе Search Console отклоняет карту целиком —
+     * вместе со всеми остальными адресами в ней.
      */
     private function getCanonicalUrl(Event $event): string
     {
-        // Use explicit canonical_url if set
-        if (!empty($event->canonical_url)) {
-            return $event->canonical_url;
-        }
-
-        return route('events.show', [
-            'slug' => $event->slug,
-            'publicId' => $event->public_id,
-        ]);
+        return $this->canonicalUrl->for($event);
     }
 
     /**

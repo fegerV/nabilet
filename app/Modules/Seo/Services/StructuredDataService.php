@@ -6,6 +6,7 @@ namespace Nabilet\Modules\Seo\Services;
 
 use Nabilet\Core\Support\AssetUrl;
 use Nabilet\Modules\Events\Models\Event;
+use Nabilet\Modules\Events\Services\EventCanonicalUrl;
 use Nabilet\Modules\Events\StateMachines\EventStateMachine;
 
 /**
@@ -71,6 +72,10 @@ class StructuredDataService
      * Default attendance mode.
      */
     private const DEFAULT_ATTENDANCE_MODE = 'https://schema.org/OfflineEventAttendanceMode';
+
+    public function __construct(
+        private readonly EventCanonicalUrl $canonicalUrl,
+    ) {}
 
     /**
      * Generate JSON-LD structured data for an event page.
@@ -568,21 +573,27 @@ class StructuredDataService
     }
 
     /**
-     * Get canonical URL for an event.
+     * Адрес страницы события для `url` в JSON-LD.
+     *
+     * ЧЕРЕЗ `EventCanonicalUrl`, А НЕ НАПРЯМУЮ ИЗ МАССИВА. Здесь стояло
+     * `if (!empty($eventData['canonical_url'])) return $eventData['canonical_url'];`
+     * — то есть поле из БД уходило в разметку без проверки на чужой домен.
+     * Разметка `url`, ведущая на чужой сайт, читается Google как «событие
+     * описано там» и снимает rich snippet у нашей страницы. Правило проверки
+     * живёт в одном классе на все три потребителя: страницу, карту сайта и
+     * эту разметку.
      *
      * @param array<string, mixed> $eventData
      */
     public function getCanonicalUrl(array $eventData): string
     {
-        // Use explicit canonical_url if set, otherwise generate from slug/public_id
-        if (!empty($eventData['canonical_url'])) {
-            return $eventData['canonical_url'];
-        }
+        $stored = $eventData['canonical_url'] ?? null;
 
-        return route('events.show', [
-            'slug' => $eventData['slug'] ?? '',
-            'publicId' => $eventData['public_id'] ?? '',
-        ]);
+        return $this->canonicalUrl->resolve(
+            is_string($stored) ? $stored : null,
+            (string) ($eventData['slug'] ?? ''),
+            isset($eventData['public_id']) ? (string) $eventData['public_id'] : null,
+        );
     }
 
     /**
@@ -639,15 +650,19 @@ class StructuredDataService
     }
 
     /**
-     * Resolve image URL from storage path.
+     * Абсолютный адрес картинки события.
+     *
+     * ЧЕРЕЗ `AssetUrl`, А НЕ СКЛЕЙКОЙ. Здесь стояло
+     * `config('app.url') . '/storage/' . ltrim($path, '/')` — свой экземпляр
+     * того же правила, что в `AssetUrl::storage()`, и ровно с теми же двумя
+     * дефектами: без `rtrim` базового адреса (двойной слэш при `APP_URL` со
+     * слэшем) и без учёта уже абсолютного значения. `AssetUrl` — единственный
+     * владелец двух корней проекта, его докблок объясняет, почему ручная
+     * склейка уже давала `og:image` со ссылкой в 404.
      */
     private function resolveImageUrl(string $path): string
     {
-        if (str_starts_with($path, 'http')) {
-            return $path;
-        }
-
-        return config('app.url') . '/storage/' . ltrim($path, '/');
+        return AssetUrl::storage($path);
     }
 
     /**

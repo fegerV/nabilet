@@ -13,6 +13,7 @@ use Nabilet\Modules\Events\Http\EventPageContent;
 use Nabilet\Modules\Events\Http\EventPageShell;
 use Nabilet\Modules\Events\Models\Event;
 use Nabilet\Modules\Events\Repositories\EventRepository;
+use Nabilet\Modules\Events\Services\EventCanonicalUrl;
 use Nabilet\Modules\Events\Services\EventService;
 use Nabilet\Modules\Seo\Services\StructuredDataService;
 use Illuminate\Http\Response;
@@ -56,7 +57,8 @@ class EventPageController
         private readonly EventRepository $events,
         private readonly StructuredDataService $structuredData,
         private readonly EventPageShell $shell,
-        private readonly EventPageContent $content
+        private readonly EventPageContent $content,
+        private readonly EventCanonicalUrl $canonicalUrl
     ) {}
 
     /**
@@ -140,10 +142,12 @@ class EventPageController
         // Канонический URL: /event/{slug}/{publicId}.
         //
         // `events.canonical_url` побеждает вычисленный адрес, но только если он
-        // ведёт на НАШ домен (см. `resolveCanonical()`): раньше значение из БД
-        // принималось как есть, и одна опечатка в админке снимала страницу с
-        // индексации («alternate page with proper canonical tag»).
-        $canonical = $this->resolveCanonical($event);
+        // ведёт на НАШ домен. Правило живёт в `EventCanonicalUrl` — раньше оно
+        // было приватным методом здесь, и карта сайта с JSON-LD брали поле из
+        // БД напрямую, то есть проверка действовала ровно там, где вредит
+        // меньше всего: одна опечатка в админке снимала страницу с индексации
+        // («alternate page with proper canonical tag»).
+        $canonical = $this->canonicalUrl->for($event);
 
         // 301 и когда publicId не указан вовсе, и когда он ЧУЖОЙ.
         //
@@ -387,55 +391,6 @@ class EventPageController
             request()->getPathInfo(),
             sprintf('Мероприятие «%s» удалено.', $slug),
         );
-    }
-
-    /**
-     * Канонический адрес страницы — из БД, но только если он ведёт на наш домен.
-     *
-     * ПОЧЕМУ НУЖНА ПРОВЕРКА. `events.canonical_url` — свободное поле, которое
-     * заполняет администратор. Оно уходит в `<link rel="canonical">`, в JSON-LD и
-     * в sitemap. Если туда попадает чужой домен (скопированный адрес конкурента,
-     * тестовый стенд, опечатка), Google видит «эта страница — копия вон той» и
-     * снимает её с индексации целиком. Ошибка стоит всей органики страницы и
-     * ничем не сигнализирует о себе — ни 500, ни в логах.
-     *
-     * Относительный путь принимается: он по определению наш, и это ровно то, что
-     * подставляет сам администратор, когда пишет `/event/…`.
-     *
-     * Абсолютный адрес принимается только при совпадении хоста с `app.url` или с
-     * хостом текущего запроса. Второе нужно для стендов и локальной разработки,
-     * где `APP_URL` в `.env` может отставать от фактического адреса.
-     */
-    private function resolveCanonical(Event $event): string
-    {
-        $computed = route('events.show', [
-            'slug' => $event->slug,
-            'publicId' => $event->public_id,
-        ]);
-
-        $stored = is_string($event->canonical_url) ? trim($event->canonical_url) : '';
-
-        if ($stored === '') {
-            return $computed;
-        }
-
-        $host = parse_url($stored, PHP_URL_HOST);
-
-        // Относительный путь — наш по определению. Абсолютный URL без хоста
-        // (`mailto:`, `javascript:`) сюда не попадёт: у них хост тоже `null`,
-        // но и `path` не начинается со слэша.
-        if ($host === null) {
-            return str_starts_with($stored, '/')
-                ? rtrim((string) config('app.url'), '/') . $stored
-                : $computed;
-        }
-
-        $allowedHosts = array_filter([
-            parse_url((string) config('app.url'), PHP_URL_HOST),
-            request()->getHost(),
-        ]);
-
-        return in_array($host, $allowedHosts, true) ? $stored : $computed;
     }
 
     /**

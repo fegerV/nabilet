@@ -150,13 +150,18 @@ final class SitemapCachingTest extends TestCase
      * адрес вычислялся из slug. Администратор менял canonical и не видел
      * эффекта именно в карте сайта — там, где расхождение с `<link rel="canonical">`
      * и приводит к «alternate page with proper canonical tag».
+     *
+     * Хост ЗДЕСЬ НАШ (`APP_URL` из `.env`). Карта принимает сохранённый адрес
+     * только со своего домена — проверка общего правила живёт в
+     * `EventCanonicalUrlTest`, и там же проверяется, что чужой хост в `<loc>`
+     * не попадает.
      */
     public function test_a_stored_canonical_url_is_used_in_the_sitemap(): void
     {
         [, $eventId] = $this->seedPublishedEvent('Событие с canonical');
 
         DB::table('events')->where('id', $eventId)->update([
-            'canonical_url' => 'https://nabilet.ru/event/kanonicheskij-adres/01HZZ',
+            'canonical_url' => 'https://tickets.example.com/event/kanonicheskij-adres/01HZZ',
         ]);
 
         $xml = (string) $this->get('/sitemap-events.xml')->getContent();
