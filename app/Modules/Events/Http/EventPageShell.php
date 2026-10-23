@@ -63,8 +63,8 @@ final class EventPageShell
         }
 
         // `geo.*` идут из площадки события: `$seo['venue']` собирается
-        // `venuePayload()` (см. выше). Это та же площадка, что попадает в
-        // JSON-LD `Place` внутри разметки события — для поисковика сигнал
+        // `EventPageContent::venuePayload()`. Это та же площадка, что попадает
+        // в JSON-LD `Place` внутри разметки события — для поисковика сигнал
         // консистентный.
         $venue = is_array($seo['venue'] ?? null) ? $seo['venue'] : [];
         $city = trim((string) ($venue['city'] ?? ''));
