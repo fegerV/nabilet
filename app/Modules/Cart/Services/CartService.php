@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\DB;
 use Nabilet\Core\Errors\DomainRuleViolation;
 use Nabilet\Modules\Cart\Models\Cart;
 use Nabilet\Modules\Cart\Models\CartItem;
+use Nabilet\Modules\Cart\Domain\CartStatus;
 use Nabilet\Modules\Cart\Support\CartToken;
 use Nabilet\Modules\Core\Users\Models\User;
 use Nabilet\Modules\Loyalty\Services\LoyaltySettingsService;
@@ -67,7 +68,7 @@ class CartService
     {
         $cart = Cart::query()
             ->where('session_id', $sessionId)
-            ->where('status', 'active')
+            ->where('status', CartStatus::ACTIVE)
             ->where('cart_token', $token)
             ->first();
 
@@ -101,7 +102,7 @@ class CartService
                 // привязывались к аккаунту (ломая per_user_limit промокодов,
                 // напоминания о брошенном и проверку владения «carts.user_id»).
                 'user_id' => $buyer?->id ?? null,
-                'status' => 'active',
+                'status' => CartStatus::ACTIVE,
                 // C1: единый источник истины для срока холда — конфиг
                 // nabilet.checkout.hold_duration_minutes (дефолт 15). UI больше
                 // не считает таймер локально: expires_at отдаётся сервером в
@@ -153,7 +154,7 @@ class CartService
         return DB::transaction(function () use ($sessionId, $token) {
             $cart = Cart::query()
                 ->where('session_id', $sessionId)
-                ->where('status', 'active')
+                ->where('status', CartStatus::ACTIVE)
                 ->where('cart_token', $token)
                 ->first();
 

@@ -10,6 +10,7 @@ use Nabilet\Core\Errors\ConflictError;
 use Nabilet\Core\Errors\DomainRuleViolation;
 use Nabilet\Core\Errors\NotFoundError;
 use Nabilet\Core\Errors\ValidationError;
+use Nabilet\Modules\Cart\Domain\CartStatus;
 use Nabilet\Modules\Cart\Support\DbRetry;
 use Nabilet\Core\Support\Money;
 use Nabilet\Modules\Cart\Models\Cart;
@@ -109,7 +110,7 @@ final class CartCheckoutService
 
                 $cart = Cart::query()
                     ->where('session_id', $sessionId)
-                    ->where('status', 'active')
+                    ->where('status', CartStatus::ACTIVE)
                     ->where('cart_token', $token)
                     ->with(['items.inventoryItem'])
                     ->lockForUpdate()
@@ -213,7 +214,7 @@ final class CartCheckoutService
 
         return Cart::query()
             ->where('public_id', $publicId)
-            ->where('status', 'active')
+            ->where('status', CartStatus::ACTIVE)
             ->where(function ($query) use ($token, $userId): void {
                 if ($userId !== null) {
                     $query->where('user_id', $userId);
@@ -305,7 +306,7 @@ final class CartCheckoutService
     {
         // Check cart expiration
             if ($cart->expires_at < CarbonImmutable::now()) {
-                $cart->update(['status' => 'abandoned']);
+                $cart->update(['status' => CartStatus::ABANDONED]);
 
                 // A13: РёСЃС‚С‘РєС€Р°СЏ РєРѕСЂР·РёРЅР° РѕСЃРІРѕР±РѕР¶РґР°РµС‚ РёРЅРІРµРЅС‚Р°СЂСЊ РЅРµРјРµРґР»РµРЅРЅРѕ вЂ”
                 // РёРЅР°С‡Рµ РјРµСЃС‚Р° Р·Р°РІРёСЃР°СЋС‚ РІ held/sold РґРѕ СЂР°Р±РѕС‚С‹ sweeper'Р°.
@@ -364,7 +365,7 @@ final class CartCheckoutService
             }
 
             // Mark cart as converted
-            $cart->update(['status' => 'converted']);
+            $cart->update(['status' => CartStatus::CONVERTED]);
 
             // A6 (РїР»Р°РЅ b): РґРѕ РѕРїР»Р°С‚С‹ РјРµСЃС‚Р° РќР• РїРѕРјРµС‡Р°СЋС‚СЃСЏ 'sold'. sold вЂ” СЌС‚Рѕ
             // РїРѕРґС‚РІРµСЂР¶РґС‘РЅРЅР°СЏ РїСЂРѕРґР°Р¶Р° (InventoryItemStateMachine: held в†’ sold РЅР°
@@ -620,7 +621,7 @@ final class CartCheckoutService
         $cartId = DB::table('carts')
             ->where('session_id', $sessionId)
             ->where('cart_token', $token)
-            ->where('status', 'converted')
+            ->where('status', CartStatus::CONVERTED)
             ->orderByDesc('id')
             ->value('id');
 

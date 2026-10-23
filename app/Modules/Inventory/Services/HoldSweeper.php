@@ -8,6 +8,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Nabilet\Core\Support\HoldGrace;
+use Nabilet\Modules\Cart\Domain\CartStatus;
 use Nabilet\Modules\Orders\Services\StaleOrderExpirer;
 
 /**
@@ -132,7 +133,7 @@ class HoldSweeper
                             // это «заброшенный» холд или гонка с активной корзиной.
                             $cartStillActive = DB::table('carts')
                                 ->where('id', $freshHold->cart_id)
-                                ->where('status', 'active')
+                                ->where('status', CartStatus::ACTIVE)
                                 ->exists();
 
                             DB::table('seat_holds')
@@ -160,8 +161,8 @@ class HoldSweeper
                             // abandoned, а sweep — нет, создавая расхождение в отчётности).
                             DB::table('carts')
                                 ->where('id', $freshHold->cart_id)
-                                ->where('status', 'active')
-                                ->update(['status' => 'abandoned']);
+                                ->where('status', CartStatus::ACTIVE)
+                                ->update(['status' => CartStatus::ABANDONED]);
 
                             $releasedCount++;
 

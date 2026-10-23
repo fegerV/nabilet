@@ -10,6 +10,7 @@ use Illuminate\Support\Str;
 use Nabilet\Core\Errors\ConflictError;
 use Nabilet\Core\Errors\DomainRuleViolation;
 use Nabilet\Core\Errors\ValidationError;
+use Nabilet\Modules\Cart\Domain\CartStatus;
 use Nabilet\Modules\Cart\Support\DbRetry;
 use Nabilet\Modules\Cart\Models\Cart;
 use Nabilet\Modules\Cart\Models\CartItem;
@@ -242,7 +243,7 @@ final class CartItemService
         return DB::transaction(function () use ($sessionId, $itemId, $token) {
             $cart = Cart::query()
                 ->where('session_id', $sessionId)
-                ->where('status', 'active')
+                ->where('status', CartStatus::ACTIVE)
                 ->where('cart_token', $token)
                 ->firstOrFail();
 
@@ -313,7 +314,7 @@ final class CartItemService
         return DB::transaction(function () use ($sessionId, $token): array {
             $cart = Cart::query()
                 ->where('session_id', $sessionId)
-                ->where('status', 'active')
+                ->where('status', CartStatus::ACTIVE)
                 ->where('cart_token', $token)
                 ->lockForUpdate()
                 ->first();

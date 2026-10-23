@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Nabilet\Modules\Cart\Http\Controllers;
 
 use Nabilet\Modules\Cart\Http\Resources\CartResource;
+use Nabilet\Modules\Cart\Domain\CartStatus;
 use Nabilet\Modules\Cart\Models\Cart;
 use Nabilet\Modules\Cart\Services\CartCheckoutService;
 use Nabilet\Modules\Cart\Services\CartService;
@@ -81,7 +82,7 @@ class CartController extends Controller
 
         $cart = Cart::query()
             ->where('session_id', $validated['session_id'])
-            ->where('status', 'active')
+            ->where('status', CartStatus::ACTIVE)
             ->where('cart_token', $token)
             // `seat.row.sector` нужны `CartItemResource` целиком: он отдаёт
             // покупателю «Ряд N · Сектор». Без этой цепочки каждая позиция
@@ -219,7 +220,7 @@ class CartController extends Controller
 
         $cart = Cart::query()
             ->where('public_id', $cart)
-            ->where('status', 'active')
+            ->where('status', CartStatus::ACTIVE)
             ->where(function ($query) use ($token, $request): void {
                 $query->where('cart_token', $token);
 
@@ -318,7 +319,7 @@ class CartController extends Controller
     {
         return Cart::query()
             ->where('public_id', $cartPublicId)
-            ->where('status', 'active')
+            ->where('status', CartStatus::ACTIVE)
             ->where(function ($query) use ($token, $request): void {
                 $query->where('cart_token', $token);
 

@@ -23,12 +23,17 @@ use Nabilet\Modules\Orders\Domain\Superseded\CartState;
  *   decided. Both ask the same question about the same status column, so both
  *   read the same class. There is no cycle — Orders never imports Cart.
  *
- * THE STATUS VOCABULARY IS A PROPOSAL, NOT A DECISION I MAY MAKE.
- *   `carts.status` is `VARCHAR(32) DEFAULT 'active'` with no CHECK, and the
- *   contract declares it as a bare string; `status='banana'` was accepted on
- *   MySQL 8.4. So this class never *validates* the status — it only asks whether
- *   it is the one value that permits writing. An unrecognised status is treated
- *   as not-active, which fails closed.
+ * THE STATUS VOCABULARY HAS MOVED ON — THIS DOCBLOCK HAS NOT.
+ *   It used to say "`carts.status` is `VARCHAR(32) DEFAULT 'active'` with no
+ *   CHECK… `status='banana'` was accepted on MySQL 8.4". `ck_carts_status`
+ *   exists now and allows `active`, `converted`, `abandoned` only. The live
+ *   owner of that vocabulary is `Nabilet\Modules\Cart\Domain\CartStatus`; this
+ *   class keeps reading `CartState::ACTIVE`, which also declares `EXPIRED` — a
+ *   value the column cannot hold (see the note in `CartState`).
+ *
+ *   What has NOT changed: this class never *validates* the status — it only
+ *   asks whether it is the one value that permits writing. An unrecognised
+ *   status is treated as not-active, which fails closed.
  */
 final class Cart
 {

@@ -7,6 +7,7 @@ namespace Nabilet\Modules\Inventory\Services;
 use Nabilet\Core\Errors\ConflictError;
 use Nabilet\Core\Errors\NotFoundError;
 use Nabilet\Modules\Cart\Models\Cart;
+use Nabilet\Modules\Cart\Domain\CartStatus;
 use Nabilet\Modules\Cart\Models\CartItem;
 use Nabilet\Modules\Inventory\Models\InventoryItem;
 use Nabilet\Modules\Inventory\Repositories\InventoryItemRepository;
@@ -548,7 +549,7 @@ class InventoryService
         $updated = 0;
         $items = CartItem::query()
             ->whereIn('inventory_item_id', $inventoryItemIds)
-            ->whereHas('cart', fn ($q) => $q->where('status', 'active'))
+            ->whereHas('cart', fn ($q) => $q->where('status', CartStatus::ACTIVE))
             ->with('inventoryItem:id,price_amount')
             ->get();
 
@@ -577,7 +578,7 @@ class InventoryService
      */
     protected function recalculateAffectedCarts(): int
     {
-        $carts = Cart::query()->where('status', 'active')->get();
+        $carts = Cart::query()->where('status', CartStatus::ACTIVE)->get();
         $recalculated = 0;
 
         foreach ($carts as $cart) {

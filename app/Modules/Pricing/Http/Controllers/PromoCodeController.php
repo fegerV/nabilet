@@ -11,6 +11,7 @@ use Nabilet\Core\Errors\NotFoundError;
 use Nabilet\Core\Errors\TenantContextMissingError;
 use Nabilet\Core\Errors\ValidationError;
 use Nabilet\Core\Tenancy\OrganizationContext;
+use Nabilet\Modules\Cart\Domain\CartStatus;
 use Nabilet\Modules\Cart\Models\Cart;
 use Nabilet\Modules\Orders\Models\PromoCode;
 use Nabilet\Modules\Pricing\Http\Resources\PromoCodeResource;
@@ -198,7 +199,7 @@ class PromoCodeController extends Controller
         $token = trim((string) $request->input('cart_token', ''));
 
         if ($token !== '') {
-            $cart = Cart::query()->where('cart_token', $token)->where('status', 'active')->first();
+            $cart = Cart::query()->where('cart_token', $token)->where('status', CartStatus::ACTIVE)->first();
 
             if ($cart === null) {
                 // NotFoundError(resource, resourceId): код составляется классом
@@ -212,7 +213,7 @@ class PromoCodeController extends Controller
         $cartId = $request->input('cart_id');
 
         if (is_string($cartId) && ctype_digit($cartId)) {
-            $cart = Cart::query()->whereKey((int) $cartId)->where('status', 'active')->first();
+            $cart = Cart::query()->whereKey((int) $cartId)->where('status', CartStatus::ACTIVE)->first();
 
             if ($cart === null) {
                 throw new NotFoundError('cart', $cartId);

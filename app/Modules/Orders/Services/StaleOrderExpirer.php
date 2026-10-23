@@ -8,6 +8,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Nabilet\Core\Support\HoldGrace;
+use Nabilet\Modules\Cart\Domain\CartStatus;
 use Nabilet\Modules\Cart\Models\Cart;
 use Nabilet\Modules\Cart\Services\CartItemService;
 use Nabilet\Modules\Orders\Models\Order;
@@ -98,8 +99,8 @@ final class StaleOrderExpirer
 
                     $cart = Cart::find($order->cart_id);
 
-                    if ($cart !== null && $cart->status === 'active') {
-                        $cart->update(['status' => 'abandoned']);
+                    if ($cart !== null && $cart->status === CartStatus::ACTIVE) {
+                        $cart->update(['status' => CartStatus::ABANDONED]);
                     }
 
                     $order->update(['status' => 'expired']);

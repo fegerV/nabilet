@@ -9,13 +9,22 @@ use Nabilet\Core\Errors\DomainRuleViolation;
 /**
  * The lifecycle of a cart (ТЗ §23, §84).
  *
- * A GAP, NOT A DECISION I AM ENTITLED TO MAKE:
- *   `carts.status` is `VARCHAR(32) NOT NULL DEFAULT 'active'` with NO CHECK
- *   constraint in the spec bundle, and the OpenAPI contract declares it as a bare
- *   `status: { type: string }`. So the vocabulary below is *proposed*, not
- *   spec-backed — the same way `hold` states are. It is recorded as an open
- *   decision in docs/REVIEW-spec-bundle.md; do not treat these four values as
- *   authoritative until ck_carts_status exists in the bundle.
+ * A GAP THAT HAS SINCE CLOSED — AND THIS CLASS DID NOT FOLLOW:
+ *   The docblock here used to say "`carts.status` has NO CHECK constraint in the
+ *   spec bundle… do not treat these four values as authoritative until
+ *   ck_carts_status exists". `ck_carts_status` HAS since been added, and it
+ *   allows THREE values: `active`, `converted`, `abandoned`. The fourth one
+ *   below — `expired` — is not among them, so it cannot be written to the
+ *   column at all: MySQL refuses the row, i.e. a 500, not a domain error.
+ *   The OpenAPI contract still declares `status: { type: string }`, which is
+ *   why the discrepancy stayed invisible.
+ *
+ *   THE LIVE OWNER IS `Nabilet\Modules\Cart\Domain\CartStatus` — it carries
+ *   exactly the three schema values. This class is the ARCHIVED parallel model
+ *   (moved to `Superseded/` per docs/CODE-QUALITY-GUIDE.md §9.9, kept for its
+ *   unit tests and verified formulas). `EXPIRED` stays here because this
+ *   cluster models the DOMAIN, not the column — but no live code may write it,
+ *   and the two vocabularies must never be merged by hand again.
  *
  * WHY THE VOCABULARY IS THIS SMALL:
  *   Every state here exists because some other component behaves differently

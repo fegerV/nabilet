@@ -8,6 +8,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Nabilet\Modules\Cart\Domain\CartStatus;
 use Nabilet\Modules\Notifications\Mail\TemplateMail;
 use Throwable;
 
@@ -46,7 +47,7 @@ final class AbandonedCartReminderSweeper
 
         $carts = DB::table('carts')
             ->join('users', 'users.id', '=', 'carts.user_id')
-            ->where('carts.status', 'active')
+            ->where('carts.status', CartStatus::ACTIVE)
             ->whereNull('carts.reminder_sent_at')
             ->where('carts.expires_at', '>=', $now->toDateTimeString())
             ->where('carts.expires_at', '<=', $now->addMinutes(self::REMIND_BEFORE_MINUTES)->toDateTimeString())
