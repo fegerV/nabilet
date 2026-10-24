@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Nabilet\Modules\Checkin\Support;
 
 use Nabilet\Core\Errors\ValidationError;
+use Nabilet\Core\Support\DatabaseId;
 use Nabilet\Modules\Sessions\Models\Session;
 
 /**
@@ -26,7 +27,7 @@ final class SessionLocator
 {
     public function resolve(string|int $value): int
     {
-        if (is_int($value) || (is_string($value) && preg_match('/^\d{1,19}$/', $value) === 1)) {
+        if (is_int($value) || DatabaseId::isNumeric($value)) {
             $id = (int) $value;
             $found = Session::query()->whereKey($id)->value('id');
 

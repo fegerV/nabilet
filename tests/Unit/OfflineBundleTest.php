@@ -170,6 +170,15 @@ final class OfflineBundleTest extends TestCase
 
     // ── refusals ─────────────────────────────────────────────────────────────
 
+    /**
+     * Выключенное устройство не получает бандл.
+     *
+     * `disabled` — единственное значение словаря, которое не пишет НИ ОДИН
+     * продакшн-путь: контроллер умеет только `active` и `revoked`. Оно нужно
+     * здесь именно поэтому — это настоящий «не активен» из схемы, а не
+     * выдуманная строка: fail-closed проверяется на значении, которое база
+     * допускает, а не на `'banana'`.
+     */
     public function testADisabledDeviceIsRefused(): void
     {
         $decision = (new OfflineBundleBuilder())->decide($this->request(
@@ -182,8 +191,11 @@ final class OfflineBundleTest extends TestCase
     }
 
     /**
-     * `checkin_devices.status` has no CHECK. An unrecognised status must refuse,
-     * not pass — otherwise a status nobody knows about grants a bundle.
+     * `checkin_devices.status` закреплён `ck_checkin_devices_status`
+     * (active/disabled/revoked), но нераспознанное значение всё равно должно
+     * отказывать, а не пропускать: ограничение не существует везде, где может
+     * оказаться строка — старый дамп, другая СУБД, запись мимо приложения.
+     * Неизвестный статус, выдающий бандл, — это дыра.
      */
     public function testAnUnrecognisedDeviceStatusIsRefusedFailClosed(): void
     {

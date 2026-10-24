@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Nabilet\Modules\Checkin\Support;
 
 use Nabilet\Core\Errors\ValidationError;
+use Nabilet\Core\Support\DatabaseId;
 use Nabilet\Modules\Tickets\Models\Ticket;
 
 /**
@@ -32,7 +33,7 @@ final class TicketLocator
             throw new ValidationError(['ticket_id' => ['Ticket id is required.']]);
         }
 
-        if (preg_match('/^\d{1,19}$/', $value) === 1) {
+        if (DatabaseId::isNumeric($value)) {
             $id = (int) $value;
 
             if ($id === 0) {
