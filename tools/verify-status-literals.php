@@ -97,6 +97,23 @@ $owners = [
     // нечем — зато `where('notifications.status', …)` попадает под правило.
     'notifications.status' => Nabilet\Modules\Notifications\Domain\NotificationStatus::class,
     'consents.status' => Nabilet\Modules\Privacy\Domain\ConsentRecord::class,
+    // Ниже — словари, у которых владелец был, а охраны не было. Именно так
+    // копия и заводится: класс объявлен, гейт о нём не знает, и литерал рядом
+    // с `status` считается законным.
+    'users.status' => Nabilet\Modules\Core\Users\Domain\UserStatus::class,
+    'checkin_devices.status' => Nabilet\Modules\Checkin\Domain\CheckinDevice::class,
+    'refunds.status' => Nabilet\Modules\Payments\StateMachines\RefundStateMachine::class,
+    'raffles.status' => Nabilet\Modules\Loyalty\StateMachines\RaffleStateMachine::class,
+    // Value object с ДВУМЯ словарями (type + status), как PromoCodeDefinition:
+    // reflection заберёт и `access`/`erasure`. Это не шум — квалифицированная
+    // запись `'privacy_requests.status' => 'access'` и должна падать.
+    'privacy_requests.status' => Nabilet\Modules\Privacy\Domain\PrivacyRequest::class,
+    // Денежный флаг заказа. CHECK у колонки УЖЕ, чем у машины платежа
+    // (`pending, succeeded` против пяти состояний), поэтому голых значений
+    // здесь не охраняется ни одного — зато квалифицированная запись
+    // `where('orders.payment_status', 'pending')` падает, а это и есть копия.
+    // Расхождение «CHECK уже владельца» стережёт verify-contract-schema.
+    'orders.payment_status' => Nabilet\Modules\Payments\StateMachines\PaymentStateMachine::class,
 ];
 
 /**
@@ -117,20 +134,25 @@ $owners = [
  */
 $specSql = (string) file_get_contents($root . '/nabilet_core_spec/migrations.sql');
 
-/** @var array<string, array<string, true>> value => columns that allow it */
+/** @var array<string, array<string, true>> value => "table.column" that allows it */
 $valueToColumns = [];
 
 preg_match_all('/ALTER TABLE\s+`?(\w+)`?\s+(.*?);\s*(?:\n|$)/si', $specSql, $alters, PREG_SET_ORDER);
 
 foreach ($alters as $alter) {
-    if (! preg_match('/CHECK\s*\(\s*status\s+IN\s*\((.*?)\)\s*\)/si', $alter[2], $m)) {
+    // `\w*status`, а не `status`: `orders.payment_status` — тоже словарь со
+    // своим CHECK, и раньше он был для этого файла невидим. Собираем ВСЕ
+    // CHECK в ALTER, а не первый: у `tickets.status` их два.
+    if (! preg_match_all('/CHECK\s*\(\s*`?(\w*status)`?\s+IN\s*\((.*?)\)\s*\)/si', $alter[2], $checks, PREG_SET_ORDER)) {
         continue;
     }
 
-    preg_match_all("/'([^']+)'/", $m[1], $vals);
+    foreach ($checks as $check) {
+        preg_match_all("/'([^']+)'/", $check[2], $vals);
 
-    foreach ($vals[1] as $value) {
-        $valueToColumns[$value][$alter[1]] = true;
+        foreach ($vals[1] as $value) {
+            $valueToColumns[$value][$alter[1] . '.' . $check[1]] = true;
+        }
     }
 }
 
@@ -139,9 +161,8 @@ $enforced = [];
 foreach ($owners as $column => $class) {
     foreach (vocabularyOf($class) as $value) {
         $columns = array_keys($valueToColumns[$value] ?? []);
-        $table = explode('.', $column)[0];
 
-        if (count($columns) === 1 && $columns[0] === $table) {
+        if (count($columns) === 1 && $columns[0] === $column) {
             $enforced[$column][] = $value;
         }
     }
@@ -219,14 +240,20 @@ function hasStatusToken(array $tokens, int $i): bool
 }
 
 /**
- * Which column the `status` in front of this literal belongs to, when the code
+ * Which COLUMN the `status` in front of this literal belongs to, when the code
  * says so.
  *
- * Returns the table name when the window contains a QUALIFIED column
- * (`where('inventory_items.status', …)`) — that is the code naming the table
- * out loud, and it makes a shared value like `sold_out` unambiguous. Returns
- * null for a bare `->status` / `where('status', …)`, where only a value unique
- * to one column can be judged safely.
+ * Returns the qualified column as written (`'orders.payment_status'`) when the
+ * window contains one — that is the code naming the column out loud, and it
+ * makes a shared value like `sold_out` unambiguous. Returns null for a bare
+ * `->status` / `where('status', …)`, where only a value unique to one column
+ * can be judged safely.
+ *
+ * ВОЗВРАЩАЕТСЯ ИМЕННО КОЛОНКА, А НЕ ТАБЛИЦА. Пока у таблицы был один словарь,
+ * разницы не было; с `orders.status` и `orders.payment_status` она появилась:
+ * по таблице запись `where('orders.payment_status', 'pending')` засчиталась бы
+ * нарушением `orders.status` — то есть гейт ругался бы на ПРАВИЛЬНЫЙ код и
+ * называл не ту колонку.
  *
  * @param  list<array{0:int,1:string,2:int}|string>  $tokens
  * @param  int  $i  index of the candidate literal
@@ -244,7 +271,7 @@ function statusColumnInWindow(array $tokens, int $i): ?string
             $value = trim($token[1], "'\"");
 
             if (str_contains($value, '.')) {
-                return explode('.', $value)[0];
+                return $value;
             }
         }
     }
@@ -278,12 +305,16 @@ $ambiguous = [];
 
 foreach ($owners as $column => $class) {
     foreach (vocabularyOf($class) as $value) {
-        if (in_array($value, $vocabularies[$column] ?? [], true)) {
+        // Сравнение с $unambiguous, а не с полным словарём: полный словарь —
+        // это и есть vocabularyOf(), поэтому проверка «есть ли значение в
+        // полном словаре» была тождественно истинной, и раздел «Not enforced»
+        // не печатался НИКОГДА. Молчащий диагноз хуже отсутствующего: он
+        // создаёт впечатление, что непокрытых значений нет.
+        if (in_array($value, $unambiguous[$column] ?? [], true)) {
             continue;
         }
 
-        $columns = array_keys($valueToColumns[$value] ?? []);
-        $ambiguous[] = sprintf('%s.%s is also the status of %s', $column, $value, implode(', ', $columns) ?: 'no CHECK-constrained column');
+        $ambiguous[$column][] = $value;
     }
 }
 
@@ -335,12 +366,10 @@ foreach ($files as $file) {
         $qualified = statusColumnInWindow($tokens, $i);
 
         foreach ($owners as $column => $class) {
-            $table = explode('.', $column)[0];
-
             if ($qualified !== null) {
-                // The code named the table (`'inventory_items.status'`), so the
-                // whole vocabulary of that column is fair game.
-                if ($qualified !== $table || ! in_array($value, $vocabularies[$column], true)) {
+                // The code named the column (`'inventory_items.status'`), so the
+                // whole vocabulary of THAT column is fair game.
+                if ($qualified !== $column || ! in_array($value, $vocabularies[$column], true)) {
                     continue;
                 }
             } elseif (! hasStatusToken($tokens, $i)
@@ -379,8 +408,17 @@ printf("\n  %d files scanned under app/\n", count($scanned));
 if ($ambiguous !== []) {
     echo "\n  Not enforced — the value belongs to more than one column:\n";
 
-    foreach ($ambiguous as $note) {
-        printf("    ~ %s\n", $note);
+    // По колонке на строку. Раньше печаталось по значению на строку и с
+    // перечислением чужих колонок — сорок с лишним строк, в которых терялось
+    // главное: сколько значений осталось без охраны.
+    foreach ($ambiguous as $column => $values) {
+        printf(
+            "    %-24s %d of %d: %s\n",
+            $column,
+            count($values),
+            count($vocabularies[$column]),
+            implode(', ', $values)
+        );
     }
 }
 
