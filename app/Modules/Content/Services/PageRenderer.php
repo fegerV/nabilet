@@ -6,6 +6,7 @@ namespace Nabilet\Modules\Content\Services;
 
 use Illuminate\Http\Response;
 use Nabilet\Core\Http\BrandPalette;
+use Nabilet\Core\Http\HtmlResponse;
 use Nabilet\Core\Http\SearchVerification;
 use Nabilet\Core\Support\DataLayer;
 use Nabilet\Core\Support\JsonLd;
@@ -47,8 +48,7 @@ final class PageRenderer
 
     public function render(PageDocument $page): Response
     {
-        return response($this->document($page))
-            ->header('Content-Type', 'text/html; charset=utf-8');
+        return HtmlResponse::of($this->document($page));
     }
 
     private function document(PageDocument $page): string

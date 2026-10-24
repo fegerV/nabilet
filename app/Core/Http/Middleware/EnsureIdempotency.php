@@ -167,8 +167,10 @@ final class EnsureIdempotency
         $body = $record->responseBody;
         $decoded = is_string($body) && $body !== '' ? json_decode($body, true) : null;
 
+        // `Content-Type: application/json` здесь не передаётся: его ставит
+        // `response()->json()`. Литерал в списке лишь повторял значение
+        // фреймворка и создавал вид, что тип ответа — решение вызывающего.
         return response()->json($decoded, (int) $record->responseStatus, [
-            'Content-Type' => 'application/json',
             'Idempotent-Replay' => 'true',
         ]);
     }

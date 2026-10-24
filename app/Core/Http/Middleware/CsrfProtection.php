@@ -57,9 +57,9 @@ class CsrfProtection
 
             $requestId = (string) ($request->attributes->get('request_id') ?? '');
 
-            return response()->json($error->toResponse($requestId), 419, [
-                'Content-Type' => 'application/json',
-            ]);
+            // `Content-Type` ставит `response()->json()` — дублировать его
+            // литералом незачем.
+            return response()->json($error->toResponse($requestId), 419);
         }
 
         return $next($request);

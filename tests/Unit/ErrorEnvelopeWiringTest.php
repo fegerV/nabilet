@@ -20,7 +20,7 @@ use Nabilet\Tests\Support\TestCase;
  * into `ApiExceptionRenderer` so it could be exercised without a booted framework:
  *
  *   bootstrap/app.php   must DELEGATE  → `ApiExceptionRenderer::render()`
- *   ApiExceptionRenderer must RENDER   → `AppError::toResponse()`, `application/json`
+ *   ApiExceptionRenderer must RENDER   → `AppError::toResponse()`, `response()->json()`
  *   AppError            must SHAPE     → the nested `error` object
  *
  * Asserting only one half would let the other regress silently — and a bootstrap that
@@ -100,9 +100,19 @@ final class ErrorEnvelopeWiringTest extends TestCase
             'the operational branch must render AppError::toResponse()'
         );
 
+        // `response()->json()` ставит `Content-Type: application/json` сам —
+        // проверяем механизм, а не литерал. Литерал в исходнике был хуже
+        // отсутствия: он создавал вид, что тип ответа решает вызывающий, и
+        // разошёлся бы с `Core\Http\ContentType`, как только тип понадобилось
+        // бы поменять в одном месте.
         $this->assertTrue(
-            str_contains($this->renderer, "'Content-Type' => 'application/json'"),
-            'error responses must be served as application/json'
+            str_contains($this->renderer, 'response()->json('),
+            'error responses must be built with response()->json(), which serves application/json'
+        );
+
+        $this->assertFalse(
+            str_contains($this->renderer, "'Content-Type'"),
+            'the renderer must not override the content type: response()->json() owns it'
         );
 
         $this->assertTrue(

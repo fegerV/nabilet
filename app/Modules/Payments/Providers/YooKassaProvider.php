@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Nabilet\Core\Errors\ExternalServiceError;
+use Nabilet\Core\Http\ContentType;
 use Nabilet\Modules\Payments\StateMachines\PaymentStateMachine;
 
 /**
@@ -123,7 +124,7 @@ class YooKassaProvider implements PaymentProviderInterface
             }
 
             $response = Http::withHeaders([
-            'Content-Type' => 'application/json',
+            'Content-Type' => ContentType::JSON,
             'Idempotence-Key' => $paymentData['idempotency_key'] ?? uniqid('yk_', true),
         ])
         ->withBasicAuth($this->shopId, $this->secretKey)
@@ -171,7 +172,7 @@ class YooKassaProvider implements PaymentProviderInterface
     public function getPayment(string $providerPaymentId): array
     {
         $response = Http::withHeaders([
-            'Content-Type' => 'application/json',
+            'Content-Type' => ContentType::JSON,
         ])
         ->withBasicAuth($this->shopId, $this->secretKey)
         ->timeout(20)
@@ -201,7 +202,7 @@ class YooKassaProvider implements PaymentProviderInterface
     public function refund(array $refundData): array
     {
         $response = Http::withHeaders([
-            'Content-Type' => 'application/json',
+            'Content-Type' => ContentType::JSON,
             // Ключ идемпотентности обязан быть стабильным между повторами одного
             // и того же возврата. Раньше здесь стоял `uniqid('ykr_', true)` —
             // уникальный на каждый вызов, поэтому повтор после таймаута сети

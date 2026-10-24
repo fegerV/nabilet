@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Nabilet\Modules\Tickets\Http\Controllers;
 
 use Nabilet\Core\Errors\NotFoundError;
+use Nabilet\Core\Http\ContentType;
 use Nabilet\Core\Support\StaffRole;
 use Nabilet\Modules\Cart\Models\Cart;
 use Nabilet\Modules\Cart\Support\CartToken;
@@ -204,7 +205,7 @@ class TicketController extends Controller
         }
 
         return response($pdf, 200, [
-            'Content-Type' => 'application/pdf',
+            'Content-Type' => ContentType::PDF,
             // Attachment, а не inline: пенсионный крючок — браузер с
             // форматом билетов ничего сделать не может; файл тарифицируется
             // как загрузка.

@@ -2,6 +2,7 @@
 
 namespace Nabilet\Modules\Analytics\Http\Controllers;
 
+use Nabilet\Core\Http\ContentType;
 use Illuminate\Routing\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -137,7 +138,7 @@ class AnalyticsController extends Controller
         }
 
         return response($csvData, 200, [
-            'Content-Type' => 'text/csv',
+            'Content-Type' => ContentType::CSV,
             'Content-Disposition' => 'attachment; filename="analytics_export_' . date('Y-m-d') . '.csv"',
         ]);
     }

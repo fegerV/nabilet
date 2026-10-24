@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Seo\Http\Controllers;
 
+use Nabilet\Core\Http\ContentType;
 use Nabilet\Modules\Seo\Services\SitemapService;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -123,7 +124,7 @@ class SitemapController
     private function xml(string $body): Response
     {
         return response($body)
-            ->header('Content-Type', 'text/xml')
+            ->header('Content-Type', ContentType::XML)
             ->header('Cache-Control', 'public, max-age=3600');
     }
 }

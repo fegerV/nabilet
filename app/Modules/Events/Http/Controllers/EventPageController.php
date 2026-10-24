@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Events\Http\Controllers;
 
+use Nabilet\Core\Http\HtmlResponse;
 use Nabilet\Core\Http\NotFoundPage;
 use Nabilet\Core\Support\AssetUrl;
 use Nabilet\Core\Support\Money;
@@ -135,8 +136,7 @@ class EventPageController
             $cachedHtml = Cache::get($cacheKey);
 
             if (is_string($cachedHtml) && $cachedHtml !== '') {
-                return response($cachedHtml)
-                    ->header('Content-Type', 'text/html; charset=utf-8');
+                return HtmlResponse::of($cachedHtml);
             }
         }
 
@@ -311,8 +311,7 @@ class EventPageController
             Cache::put($cacheKey, $html, now()->addMinutes(5));
         }
 
-        return response($html)
-            ->header('Content-Type', 'text/html; charset=utf-8');
+        return HtmlResponse::of($html);
     }
 
     /**

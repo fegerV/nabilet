@@ -104,12 +104,12 @@ final class NotFoundPage
             ? ''
             : sprintf('<p class="reason">%s</p>', htmlspecialchars(trim($reason), ENT_QUOTES));
 
-        return response(self::template([
+        return HtmlResponse::of(self::template([
             '{{headline}}' => htmlspecialchars($headline, ENT_QUOTES),
             '{{explanation}}' => htmlspecialchars($explanation, ENT_QUOTES),
             '{{reason}}' => $reasonBlock,
             '{{path}}' => $pathBlock,
-        ]), $status)->header('Content-Type', 'text/html; charset=utf-8');
+        ]), $status);
     }
 
     /**

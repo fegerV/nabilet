@@ -95,9 +95,10 @@ final class ApiExceptionRenderer
             );
         }
 
-        return response()->json($appError->toResponse($requestId), $appError->status, [
-            'Content-Type' => 'application/json',
-        ]);
+        // `Content-Type: application/json` не передаём: `response()->json()`
+        // ставит его сам, а явный литерал создавал вид, что тип ответа —
+        // решение вызывающего.
+        return response()->json($appError->toResponse($requestId), $appError->status);
     }
 
     /**

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Webhooks\Jobs;
 
+use Nabilet\Core\Http\ContentType;
 use Nabilet\Modules\Webhooks\Models\Webhook;
 use Nabilet\Modules\Webhooks\Models\WebhookDelivery;
 use DateTimeImmutable;
@@ -147,7 +148,7 @@ class SendWebhookDeliveryJob implements ShouldQueue
                     'X-Nabilet-Delivery' => $delivery->delivery_id,
                     'X-Nabilet-Signature' => hash_hmac('sha256', $body, $secret),
                 ])
-                    ->withBody($body, 'application/json')
+                    ->withBody($body, ContentType::JSON)
                     ->post($webhook->url);
 
                 $statusCode = $response->status();
