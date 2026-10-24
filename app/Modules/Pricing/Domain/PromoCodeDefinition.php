@@ -118,12 +118,22 @@ final class PromoCodeDefinition
     }
 
     /**
-     * Build from the DECIMAL(5,2) percent string MySQL returns ("10.50").
+     * ЕДИНСТВЕННЫЙ ВЛАДЕЛЕЦ правила «строка процента → целые базисные пункты».
      *
-     * String maths, not float: (float)"10.50" * 100 is 1050.0000000000001 on some
-     * builds, and truncating that would quietly turn a 10.5% code into a 10% one.
+     * Столбец — DECIMAL(5,2), PDO отдаёт его строкой ("10.50"). Переводим в
+     * базисные пункты СТРОКОВОЙ математикой, а не через float: (float)"10.50"*100
+     * даёт 1050.0000000000001 на части сборок, и отбрасывание хвоста молча
+     * превратило бы код 10,5% в код 10%.
+     *
+     * Этот же парсер используют и `fromPercentString()`, и `PromoCode::toDefinition()`
+     * — иначе два пути построения домена могли бы разойтись (один бросает на
+     * битом вводе, другой молча отдавал 0%). Невалидный/пустой ввод бросает
+     * DomainRuleViolation: промокод с битым процентом не должен превращаться в 0%
+     * (это «скидка, которая ничего не скидывает» — хуже явной ошибки).
+     *
+     * @throws DomainRuleViolation
      */
-    public static function fromPercentString(string $percent, string $code = '', string $currency = 'RUB'): self
+    public static function percentToBasisPoints(string $percent): int
     {
         $percent = trim($percent);
 
@@ -135,14 +145,26 @@ final class PromoCodeDefinition
         }
 
         $whole = $m[1] === '' ? '0' : $m[1];
-        // Pad to 2 decimals, then the two decimal digits ARE the basis points
-        // remainder: "10.5" -> "10" + "50" -> 1050.
+        // Дополняем до 2 знаков; эти два десятичных разряда И ЕСТЬ остаток в
+        // базисных пунктах: "10.5" -> "10" + "50" -> 1050.
         $fraction = str_pad(substr($m[2] ?? '', 0, 2), 2, '0');
 
+        return ((int) $whole) * 100 + (int) $fraction;
+    }
+
+    /**
+     * Build from the DECIMAL(5,2) percent string MySQL returns ("10.50").
+     *
+     * String maths, not float: (float)"10.50" * 100 is 1050.0000000000001 on some
+     * builds, and truncating that would quietly turn a 10.5% code into a 10% one.
+     * Сам разбор строки вынесен в {@see self::percentToBasisPoints()}.
+     */
+    public static function fromPercentString(string $percent, string $code = '', string $currency = 'RUB'): self
+    {
         return new self(
             code: $code,
             discountType: self::TYPE_PERCENT,
-            valuePercentBasisPoints: ((int) $whole) * 100 + (int) $fraction,
+            valuePercentBasisPoints: self::percentToBasisPoints($percent),
             currency: $currency,
         );
     }

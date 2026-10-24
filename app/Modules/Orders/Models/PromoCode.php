@@ -93,13 +93,10 @@ class PromoCode extends Model
      */
     public function toDefinition(): PromoCodeDefinition
     {
-        $percent = trim((string) ($this->value_percent ?? '0'));
-        $bp = 0;
-
-        if (preg_match('/^(\d*)(?:\.(\d*))?$/', $percent, $m) && ($m[1] !== '' || ($m[2] ?? '') !== '')) {
-            $bp = ((int) ($m[1] === '' ? '0' : $m[1])) * 100
-                + (int) str_pad(substr($m[2] ?? '', 0, 2), 2, '0');
-        }
+        // Правило «строка процента → базисные пункты» живёт в единственном
+        // владельце PromoCodeDefinition::percentToBasisPoints() — здесь вызов,
+        // а не копия. value_percent — DECIMAL(5,2), nullable: null трактуем как "0".
+        $bp = PromoCodeDefinition::percentToBasisPoints((string) ($this->value_percent ?? '0'));
 
         return new PromoCodeDefinition(
             code: (string) $this->code,
