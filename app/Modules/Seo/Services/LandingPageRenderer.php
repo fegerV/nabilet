@@ -6,6 +6,10 @@ namespace Nabilet\Modules\Seo\Services;
 
 use Illuminate\Http\Response;
 use Nabilet\Core\Http\BrandPalette;
+use Nabilet\Core\Http\SearchVerification;
+use Nabilet\Core\Support\DataLayer;
+use Nabilet\Core\Support\JsonLd;
+use Nabilet\Core\Support\MetaTag;
 use Nabilet\Core\Support\RuText;
 use Nabilet\Modules\Seo\Domain\LandingPage;
 
@@ -30,7 +34,7 @@ use Nabilet\Modules\Seo\Domain\LandingPage;
  * ВСЁ ЭКРАНИРУЕТСЯ. Название города, площадки и мероприятия вводит человек, и
  * они попадают в HTML. `htmlspecialchars(ENT_QUOTES)` применяется к каждому
  * значению на выходе, включая подписи ссылок; JSON-LD экранируется отдельно
- * (`safeJsonLd()`) — там `&quot;` сломал бы JSON.
+ * (`Core\Support\JsonLd::escape()`) — там `&quot;` сломал бы JSON.
  */
 final class LandingPageRenderer
 {
@@ -176,51 +180,25 @@ final class LandingPageRenderer
      */
     private function headExtras(LandingPage $page): string
     {
-        $tags = [];
-
-        // Коды верификации читаются из `config/nabilet.php` (`SEO_VERIFICATION_*`).
-        // `LandingPageRenderer` НЕ Domain: он ходит в `config()` напрямую,
-        // потому что purity-гейт пропускает `config()` для всех файлов вне
-        // `app/Core/Support` и `*/Domain/` (см. `tools/verify-purity.php`).
-        $yandexVerification = trim((string) (config('nabilet.seo.verification.yandex') ?? ''));
-        $googleVerification = trim((string) (config('nabilet.seo.verification.google') ?? ''));
-
-        if ($yandexVerification !== '') {
-            $tags[] = sprintf(
-                '<meta name="yandex-verification" content="%s" />',
-                htmlspecialchars($yandexVerification, ENT_QUOTES),
-            );
-        }
-
-        if ($googleVerification !== '') {
-            $tags[] = sprintf(
-                '<meta name="google-site-verification" content="%s" />',
-                htmlspecialchars($googleVerification, ENT_QUOTES),
-            );
-        }
+        // Коды верификации — владелец `Core\Http\SearchVerification`: они
+        // одинаковы на всех страницах домена, и их же выводят редакционные
+        // страницы и страницы событий.
+        $tags = SearchVerification::tagList();
 
         // Геопривязка — через nullable-поля LandingPage: `$page->geoRegion`
         // и т. д. могут быть `null` (город, категория, артист), и пустую
         // строку мы здесь НЕ должны подменять выдуманным значением.
-        if ($page->geoRegion !== null && trim($page->geoRegion) !== '') {
-            $tags[] = sprintf(
-                '<meta name="geo.region" content="%s" />',
-                htmlspecialchars(trim($page->geoRegion), ENT_QUOTES),
-            );
-        }
+        // Пустое значение → тега нет: правило живёт в `MetaTag`.
+        foreach ([
+            'geo.region' => $page->geoRegion,
+            'geo.placename' => $page->geoPlacename,
+            'geo.position' => $page->geoPosition,
+        ] as $name => $value) {
+            $tag = MetaTag::named($name, $value);
 
-        if ($page->geoPlacename !== null && trim($page->geoPlacename) !== '') {
-            $tags[] = sprintf(
-                '<meta name="geo.placename" content="%s" />',
-                htmlspecialchars(trim($page->geoPlacename), ENT_QUOTES),
-            );
-        }
-
-        if ($page->geoPosition !== null && trim($page->geoPosition) !== '') {
-            $tags[] = sprintf(
-                '<meta name="geo.position" content="%s" />',
-                htmlspecialchars(trim($page->geoPosition), ENT_QUOTES),
-            );
+            if ($tag !== '') {
+                $tags[] = $tag;
+            }
         }
 
         return $tags === [] ? '' : implode("\n            ", $tags);
@@ -262,20 +240,11 @@ final class LandingPageRenderer
         // загружена — тег-менеджер сам разберёт объект по правилам GA4. Ключи
         // camelCase соответствуют соглашениям GA4 (`page_location`,
         // `page_referrer`).
-        $payload = json_encode([
+        return DataLayer::push([
             'event' => 'page_view',
             'page_type' => $pageType,
             'page_path' => $path,
-        ], JSON_UNESCAPED_UNICODE);
-
-        if (! is_string($payload)) {
-            return '';
-        }
-
-        return sprintf(
-            "<script>(function(w){w.dataLayer=w.dataLayer||[];w.dataLayer.push(%s);})(window);</script>",
-            $payload,
-        );
+        ]);
     }
 
     /**
@@ -466,7 +435,9 @@ final class LandingPageRenderer
      * Пустой `ItemList` не выводится: `<script>` без элементов валидатор
      * показывает как ошибку «expected a value», а не как пустой список. Крошки
      * выводятся всегда — они непусты по построению. Разметка сущности
-     * пропускается по тому же признаку, что и `ItemList`.
+     * пропускается по тому же признаку, что и `ItemList`. Правило «пустой блок
+     * не выводится» целиком живёт в `Core\Support\JsonLd::script()` — здесь
+     * только решение, какие блоки собрать.
      */
     private function jsonLd(LandingPage $page): string
     {
@@ -474,7 +445,7 @@ final class LandingPageRenderer
             $this->structuredData->generateBreadcrumbList($page->breadcrumbs),
         );
 
-        $blocks = $this->script($breadcrumb);
+        $blocks = JsonLd::script($breadcrumb);
 
         if ($page->items !== []) {
             $itemList = json_encode($this->structuredData->generateItemList(array_map(
@@ -485,39 +456,13 @@ final class LandingPageRenderer
                 $page->items,
             )));
 
-            $blocks .= $this->script($itemList);
+            $blocks .= JsonLd::script($itemList);
         }
 
         if ($page->entity !== null && $page->entity !== []) {
-            $blocks .= $this->script(json_encode($page->entity));
+            $blocks .= JsonLd::script(json_encode($page->entity));
         }
 
         return $blocks;
-    }
-
-    private function script(string|false $json): string
-    {
-        if (! is_string($json) || trim($json) === '') {
-            return '';
-        }
-
-        return '<script type="application/ld+json">' . $this->safeJsonLd($json) . '</script>';
-    }
-
-    /**
-     * JSON-LD, безопасный для вставки внутрь `<script>`.
-     *
-     * Экранируются только `<` и `>` — в шестнадцатеричные последовательности.
-     * Это валидный JSON (`\u003C` разбирается парсером как `<`), но браузер
-     * больше не увидит `</script>` внутри строкового значения и не оборвёт тег.
-     * `htmlspecialchars()` здесь неприменим: `&quot;` сломал бы JSON целиком.
-     *
-     * Название площадки или мероприятия приходит от администратора, поэтому
-     * `</script>` в нём — не гипотетический сценарий, а обычная опечатка в
-     * описании.
-     */
-    private function safeJsonLd(string $jsonLd): string
-    {
-        return str_replace(['<', '>'], ['\u003C', '\u003E'], $jsonLd);
     }
 }

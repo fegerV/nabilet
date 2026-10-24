@@ -4,6 +4,11 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Events\Http;
 
+use Nabilet\Core\Http\SearchVerification;
+use Nabilet\Core\Support\DataLayer;
+use Nabilet\Core\Support\JsonLd;
+use Nabilet\Core\Support\MetaTag;
+
 /**
  * Сборка HTML-документа страницы события для поисковых роботов.
  *
@@ -19,6 +24,12 @@ namespace Nabilet\Modules\Events\Http;
  *   условие: без лимита замена `<title>` задела бы и заголовки внутри
  *   инлайн-скриптов, а `<div id="app">` — упоминания в комментариях.
  *   Подробности — в docblock самого `render()`.
+ *
+ * ОБЩИЕ ПРАВИЛА — В `Core`. Экранирование JSON-LD (`JsonLd`), формат
+ * мета-тега и «пустое значение → нет тега» (`MetaTag`), коды верификации
+ * (`SearchVerification`), обёртка `dataLayer` (`DataLayer`) раньше были
+ * скопированы здесь и в двух рендерерах — посадочном и редакционном. Копии
+ * разъехались молча: правка правила в одном месте не попадала в два других.
  */
 final class EventPageShell
 {
@@ -32,8 +43,8 @@ final class EventPageShell
      * Коды верификации читаются из `config/nabilet.php` (`SEO_VERIFICATION_*`).
      * Сайт отдаёт их БЕЗ диагностики конфигурации: пустое значение
      * (`config('...') === null`) трактуется как «верификация ещё не пройдена»
-     * и мета-тег не выводится. Эту же логику дублирует `LandingPageRenderer`,
-     * чтобы посадочные страницы и страницы событий вели себя одинаково.
+     * и мета-тег не выводится. Раньше это правило было скопировано здесь и в
+     * `LandingPageRenderer`; теперь оно одно — `Core\Http\SearchVerification`.
      *
      * `geo.region`/`geo.placename` берутся из площадки события (`venue`),
      * если она пришла в `$seo`. Для событий без площадки (онлайн-события,
@@ -44,44 +55,26 @@ final class EventPageShell
      */
     private function seoVerificationAndGeoTags(array $seo): string
     {
-        $tags = [];
-
-        $yandexVerification = trim((string) (config('nabilet.seo.verification.yandex') ?? ''));
-        if ($yandexVerification !== '') {
-            $tags[] = sprintf(
-                '<meta name="yandex-verification" content="%s" />',
-                htmlspecialchars($yandexVerification, ENT_QUOTES),
-            );
-        }
-
-        $googleVerification = trim((string) (config('nabilet.seo.verification.google') ?? ''));
-        if ($googleVerification !== '') {
-            $tags[] = sprintf(
-                '<meta name="google-site-verification" content="%s" />',
-                htmlspecialchars($googleVerification, ENT_QUOTES),
-            );
-        }
+        // Коды верификации — владелец `Core\Http\SearchVerification`: один
+        // домен, один код на всех страницах, и выводят их ещё два рендерера.
+        $tags = SearchVerification::tagList();
 
         // `geo.*` идут из площадки события: `$seo['venue']` собирается
         // `EventPageContent::venuePayload()`. Это та же площадка, что попадает
         // в JSON-LD `Place` внутри разметки события — для поисковика сигнал
-        // консистентный.
+        // консистентный. Полу-валидный `geo.*` хуже отсутствия, поэтому
+        // пустые значения отбрасывает `MetaTag`.
         $venue = is_array($seo['venue'] ?? null) ? $seo['venue'] : [];
-        $city = trim((string) ($venue['city'] ?? ''));
-        $region = trim((string) ($venue['region'] ?? ''));
 
-        if ($region !== '') {
-            $tags[] = sprintf(
-                '<meta name="geo.region" content="%s" />',
-                htmlspecialchars($region, ENT_QUOTES),
-            );
-        }
+        foreach ([
+            'geo.region' => $venue['region'] ?? null,
+            'geo.placename' => $venue['city'] ?? null,
+        ] as $name => $value) {
+            $tag = MetaTag::named($name, $value);
 
-        if ($city !== '') {
-            $tags[] = sprintf(
-                '<meta name="geo.placename" content="%s" />',
-                htmlspecialchars($city, ENT_QUOTES),
-            );
+            if ($tag !== '') {
+                $tags[] = $tag;
+            }
         }
 
         return $tags === [] ? '' : implode('', $tags);
@@ -133,7 +126,11 @@ final class EventPageShell
         );
         $html = preg_replace(
             '/<meta name="description"[^>]*>/',
-            sprintf('<meta name="description" content="%s" />', htmlspecialchars($seo['description'], ENT_QUOTES)),
+            // `MetaTag` экранирует значение и не выведет пустой тег. Пустым
+            // описание не бывает — `EventPageContent::buildDescription()`
+            // заканчивается готовой формулировкой, — поэтому «нет тега» здесь
+            // недостижимо и не превращается в удаление описания из оболочки.
+            MetaTag::named('description', $seo['description']),
             $html,
             1
         );
@@ -171,21 +168,20 @@ final class EventPageShell
                 '{{canonical}}'   => htmlspecialchars($seo['canonical'], ENT_QUOTES),
                 '{{title}}'       => htmlspecialchars($seo['title'], ENT_QUOTES),
                 '{{description}}' => htmlspecialchars($seo['description'], ENT_QUOTES),
-                '{{robots}}'      => ($seo['robots'] ?? null)
-                    ? sprintf('<meta name="robots" content="%s" />', htmlspecialchars((string) $seo['robots'], ENT_QUOTES))
-                    : '',
+                '{{robots}}'      => MetaTag::named('robots', $seo['robots'] ?? null),
                 '{{image}}'       => $this->ogImageTags($seo),
                 // JSON-LD НЕ htmlspecialchars-им: экранирование превратило бы
                 // кавычки в `&quot;` и сделало блок невалидным JSON. При этом
                 // `<`/`>` внутри строк JSON надо нейтрализовать, иначе `</script>`
                 // в описании события закрывает тег и ломает страницу —
-                // это классическая XSS через structured data.
-                '{{jsonLd}}'      => $this->safeJsonLd($seo['jsonLd']),
+                // это классическая XSS через structured data. Правило живёт в
+                // `Core\Support\JsonLd::escape()`.
+                '{{jsonLd}}'      => JsonLd::escape((string) ($seo['jsonLd'] ?? '')),
                 // Пустое значение дало бы `<script type="application/ld+json">`
                 // без содержимого — валидатор Google показывает это как ошибку
                 // «expected a value», поэтому тег не выводится вовсе, когда
                 // крошек нет.
-                '{{jsonLdBreadcrumb}}' => $this->breadcrumbScript($seo['jsonLdBreadcrumb'] ?? null),
+                '{{jsonLdBreadcrumb}}' => JsonLd::script($seo['jsonLdBreadcrumb'] ?? null),
                 // B-7: см. `seoVerificationAndGeoTags()` ниже.
                 '{{headExtras}}'  => $this->seoVerificationAndGeoTags($seo),
             ]
@@ -259,21 +255,12 @@ final class EventPageShell
         $path = parse_url((string) ($seo['canonical'] ?? ''), PHP_URL_PATH) ?: '/event';
         $eventId = (string) ($seo['eventPublicId'] ?? '');
 
-        $payload = json_encode([
+        return DataLayer::push([
             'event' => 'page_view',
             'page_type' => 'event',
             'page_path' => $path,
             'event_id' => $eventId,
-        ], JSON_UNESCAPED_UNICODE);
-
-        if (! is_string($payload)) {
-            return '';
-        }
-
-        return sprintf(
-            "<script>(function(w){w.dataLayer=w.dataLayer||[];w.dataLayer.push(%s);})(window);</script>",
-            $payload,
-        );
+        ]);
     }
     /**
      * Теги `og:image`, включая alt и размеры (аудит P-18).
@@ -291,59 +278,32 @@ final class EventPageShell
      */
     private function ogImageTags(array $seo): string
     {
-        $image = $seo['image'] ?? null;
+        // Первый тег — заодно проверка «картинка есть»: без `og:image`
+        // остальные три не имеют смысла.
+        $tags = MetaTag::property('og:image', $seo['image'] ?? null);
 
-        if (! is_string($image) || $image === '') {
+        if ($tags === '') {
             return '';
         }
 
-        $tags = sprintf('<meta property="og:image" content="%s" />', htmlspecialchars($image, ENT_QUOTES));
+        // `og:image:alt` обязателен для доступности превью: без него парсеры
+        // показывают карточку без описания картинки, а скринридеры — без
+        // альтернативного текста. Пустое значение не подменяется заголовком —
+        // это поведение сохранено: `??` не пропускает пустую строку.
+        $tags .= MetaTag::property('og:image:alt', $seo['imageAlt'] ?? $seo['title'] ?? null);
 
-        $alt = $seo['imageAlt'] ?? $seo['title'] ?? null;
-
-        if (is_string($alt) && $alt !== '') {
-            $tags .= sprintf('<meta property="og:image:alt" content="%s" />', htmlspecialchars($alt, ENT_QUOTES));
-        }
-
+        // Размеры выводятся ТОЛЬКО когда известны оба. У постера они не
+        // читаются с диска намеренно: неверное значение хуже отсутствующего —
+        // парсер обрежет превью именно по нему, тогда как без размера он
+        // определит их сам после загрузки.
         $width = $seo['imageWidth'] ?? null;
         $height = $seo['imageHeight'] ?? null;
 
         if (is_int($width) && is_int($height)) {
-            $tags .= sprintf('<meta property="og:image:width" content="%d" />', $width);
-            $tags .= sprintf('<meta property="og:image:height" content="%d" />', $height);
+            $tags .= MetaTag::property('og:image:width', $width);
+            $tags .= MetaTag::property('og:image:height', $height);
         }
 
         return $tags;
-    }
-    /**
-     * `<script>` с BreadcrumbList — или пустая строка, если крошек нет.
-     *
-     * Вынесено из `renderSpaShell()`, потому что решает содержательный вопрос
-     * (выводить тег или нет), а не вопрос подстановки: пустой `<script>` — это
-     * ошибка валидации, а не «безопасный дефолт».
-     */
-    private function breadcrumbScript(mixed $breadcrumb): string
-    {
-        if (! is_string($breadcrumb) || trim($breadcrumb) === '') {
-            return '';
-        }
-
-        return '<script type="application/ld+json">' . $this->safeJsonLd($breadcrumb) . '</script>';
-    }
-    /**
-     * JSON-LD, безопасный для вставки внутрь `<script>`.
-     *
-     * Экранируются только `<` и `>` (в шестнадцатеричные последовательности).
-     * Это валидный JSON — `\u003C` разбирается парсером как `<`, — но браузер
-     * больше не увидит `</script>` внутри строкового значения и не оборвёт тег.
-     * `htmlspecialchars()` здесь применять нельзя: `&quot;` сломает JSON целиком.
-     */
-    private function safeJsonLd(string $jsonLd): string
-    {
-        return str_replace(
-            ['<', '>'],
-            ['\u003C', '\u003E'],
-            $jsonLd
-        );
     }
 }

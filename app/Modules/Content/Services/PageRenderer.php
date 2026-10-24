@@ -6,6 +6,10 @@ namespace Nabilet\Modules\Content\Services;
 
 use Illuminate\Http\Response;
 use Nabilet\Core\Http\BrandPalette;
+use Nabilet\Core\Http\SearchVerification;
+use Nabilet\Core\Support\DataLayer;
+use Nabilet\Core\Support\JsonLd;
+use Nabilet\Core\Support\MetaTag;
 use Nabilet\Modules\Content\Domain\PageDocument;
 use Nabilet\Modules\Seo\Services\StructuredDataService;
 
@@ -23,11 +27,13 @@ use Nabilet\Modules\Seo\Services\StructuredDataService;
  * стили встроены, шрифты системные. Сломанная сборка не должна превращать
  * редакционную страницу в «сервер недоступен».
  *
- * `safeJsonLd()` ОБЯЗАТЕЛЕН. Контент пишет администратор, и `</script>` в
- * статье — обычная опечатка: `<script>document.write('foo');</script>`
- * обрывает встроенный JSON-LD и портит всю разметку. Преобразование `<`/`>` в
- * `\u003C`/`\u003E` оставляет JSON валидным (`\u003C` парсер читает как `<`),
- * но браузер уже не увидит закрывающий тег.
+ * ЭКРАНИРОВАНИЕ JSON-LD — В `Core\Support\JsonLd`. Раньше здесь лежала
+ * собственная копия `safeJsonLd()`, и её докблок обещал выделить общий класс
+ * «при появлении третьего потребителя». Третий (`Events\Http\EventPageShell`)
+ * появился раньше, чем обещание было выполнено, поэтому правило теперь одно:
+ * `JsonLd::escape()` для вставки внутрь готового тега и `JsonLd::script()` для
+ * тега целиком. `robots` и коды верификации собирает `MetaTag`, `dataLayer` —
+ * `DataLayer`.
  *
  * `robots` ВЫВОДИТСЯ ТОЛЬКО КОГДА ЗАДАНО. Сейчас `PageDocument::$robots`
  * всегда `null` (колонки в `pages` нет), и `<meta name="robots">` не
@@ -141,13 +147,12 @@ final class PageRenderer
                 '{{heading}}' => htmlspecialchars($page->title, ENT_QUOTES),
                 '{{articleBody}}' => $page->contentHtml,
                 '{{breadcrumbNav}}' => $this->breadcrumbNav($page),
-                '{{robots}}' => $this->robotsMeta($page),
+                '{{robots}}' => MetaTag::named('robots', $page->robots),
                 '{{jsonLd}}' => $jsonLd,
-                // B-7: коды верификации поисковиков — общая логика со
-                // `LandingPageRenderer::headExtras()` и `EventPageController::
-                // seoVerificationAndGeoTags()`. Сейчас редакционная страница
+                // B-7: коды верификации поисковиков — владелец
+                // `Core\Http\SearchVerification`. Сейчас редакционная страница
                 // не имеет геопривязки, поэтому выводятся только коды.
-                '{{headExtras}}' => $this->headExtras(),
+                '{{headExtras}}' => SearchVerification::tags(),
                 // B-7: редакционная страница — собственный `page_type: 'page'`
                 // в аналитике, отличающий её от посадочных и событий.
                 '{{dataLayer}}' => $this->dataLayerSnippet($page->slug, $canonical),
@@ -178,23 +183,6 @@ final class PageRenderer
             . '<li>' . htmlspecialchars($page->title, ENT_QUOTES) . '</li>'
             . '</ol>'
             . '</nav>';
-    }
-
-    /**
-     * `<meta name="robots">` — выводится только когда `PageDocument::$robots`
-     * непуст. Пустое — дефолт «index, follow», и тег не нужен: он бы дублировал
-     * поведение, а не сообщал роботу новое.
-     */
-    private function robotsMeta(PageDocument $page): string
-    {
-        if ($page->robots === null || trim($page->robots) === '') {
-            return '';
-        }
-
-        return sprintf(
-            '<meta name="robots" content="%s" />',
-            htmlspecialchars($page->robots, ENT_QUOTES),
-        );
     }
 
     /**
@@ -230,40 +218,9 @@ final class PageRenderer
             ]),
         );
 
-        $blocks = $this->script($breadcrumb);
-
-        if ($article !== false) {
-            $blocks .= $this->script($article);
-        }
-
-        return $blocks;
-    }
-
-    private function script(string|false $json): string
-    {
-        if (! is_string($json) || trim($json) === '') {
-            return '';
-        }
-
-        return '<script type="application/ld+json">' . $this->safeJsonLd($json) . '</script>';
-    }
-
-    /**
-     * Экранирование, безопасное для вставки внутрь `<script>`.
-     *
-     * Преобразуются только `<` и `>` — в `\u003C` и `\u003E`. Это валидный JSON
-     * (парсер читает `\u003C` как `<`), но браузер уже не увидит `</script>`
-     * внутри строкового значения и не оборвёт тег. `htmlspecialchars()` здесь
-     * неприменим: `&quot;` сломал бы JSON целиком.
-     *
-     * Та же операция живёт в `LandingPageRenderer::safeJsonLd()` — копия
-     * осознанная: у двух рендереров разные сервисы-зависимости, и общего
-     * трейта/класса они пока не имеют. При появлении ТРЕТЬЕГО потребителя —
-     * выделить в `Nabilet\Core\Support\JsonLd::escape()`.
-     */
-    private function safeJsonLd(string $jsonLd): string
-    {
-        return str_replace(['<', '>'], ['\u003C', '\u003E'], $jsonLd);
+        // `JsonLd::script()` сам возвращает пустую строку на `false` от
+        // `json_encode()`: проверять это здесь второй раз незачем.
+        return JsonLd::script($breadcrumb) . JsonLd::script($article);
     }
 
     /**
@@ -282,55 +239,11 @@ final class PageRenderer
     {
         $path = parse_url($canonical, PHP_URL_PATH) ?: ('/page/' . $slug);
 
-        $payload = json_encode([
+        return DataLayer::push([
             'event' => 'page_view',
             'page_type' => 'page',
             'page_slug' => $slug,
             'page_path' => $path,
-        ], JSON_UNESCAPED_UNICODE);
-
-        if (! is_string($payload)) {
-            return '';
-        }
-
-        return sprintf(
-            "<script>(function(w){w.dataLayer=w.dataLayer||[];w.dataLayer.push(%s);})(window);</script>",
-            $payload,
-        );
-    }
-
-    /**
-     * Коды верификации Яндекс/Google в `<head>` (стратегия SEO, B-7).
-     *
-     * Те же значения `config('nabilet.seo.verification.*')`, что и в
-     * `LandingPageRenderer::headExtras()` и `EventPageController::
-     * seoVerificationAndGeoTags()`: подтверждение прав на сайт ведётся по
-     * одному домену, и код одинаков на всех страницах.
-     *
-     * Пустое значение → тег НЕ выводится. Это важно: пустой
-     * `<meta name="yandex-verification" content="">` валидатор Яндекс.Вебмастера
-     * читает как ошибку, и подтверждение прав не сработает.
-     */
-    private function headExtras(): string
-    {
-        $tags = [];
-
-        $yandexVerification = trim((string) (config('nabilet.seo.verification.yandex') ?? ''));
-        if ($yandexVerification !== '') {
-            $tags[] = sprintf(
-                '<meta name="yandex-verification" content="%s" />',
-                htmlspecialchars($yandexVerification, ENT_QUOTES),
-            );
-        }
-
-        $googleVerification = trim((string) (config('nabilet.seo.verification.google') ?? ''));
-        if ($googleVerification !== '') {
-            $tags[] = sprintf(
-                '<meta name="google-site-verification" content="%s" />',
-                htmlspecialchars($googleVerification, ENT_QUOTES),
-            );
-        }
-
-        return $tags === [] ? '' : implode('', $tags);
+        ]);
     }
 }
