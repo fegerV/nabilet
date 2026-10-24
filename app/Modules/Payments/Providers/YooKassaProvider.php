@@ -9,6 +9,8 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Nabilet\Core\Errors\ExternalServiceError;
 use Nabilet\Core\Http\ContentType;
+use Nabilet\Core\Support\HmacSignature;
+use Nabilet\Core\Support\SignedPayload;
 use Nabilet\Modules\Payments\StateMachines\PaymentStateMachine;
 
 /**
@@ -315,15 +317,13 @@ class YooKassaProvider implements PaymentProviderInterface
             return false;
         }
 
-        $payloadBody = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        $payloadBody = SignedPayload::encode($payload);
 
-        if ($payloadBody === false) {
+        if ($payloadBody === null) {
             return false;
         }
 
-        $expectedSignature = hash_hmac('sha256', $payloadBody, $hmacSecret);
-
-        return hash_equals($expectedSignature, $signature);
+        return HmacSignature::verify($payloadBody, $hmacSecret, $signature);
     }
 
     /**

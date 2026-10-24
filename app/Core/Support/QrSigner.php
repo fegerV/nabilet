@@ -101,7 +101,7 @@ final class QrSigner
      */
     public function offlineDigest(string $ticketId, string $token): string
     {
-        return substr(hash_hmac('sha256', self::VERSION . '|' . $ticketId . '|' . $token, $this->secret), 0, 32);
+        return substr(HmacSignature::digest(self::VERSION . '|' . $ticketId . '|' . $token, $this->secret), 0, 32);
     }
 
     public function keyId(): string
@@ -109,10 +109,17 @@ final class QrSigner
         return $this->keyId;
     }
 
+    /**
+     * base64url от сырого дайджеста — формат QR, а не «своя подпись».
+     *
+     * Алгоритм берётся у `HmacSignature`: если он когда-нибудь изменится, это
+     * должно произойти в одном месте, а не в двух независимых реализациях QR.
+     * Формат остаётся здесь, потому что он принадлежит QR (`NB1.…`), а не HMAC.
+     */
     private function sign(string $ticketId, string $token): string
     {
         return rtrim(strtr(base64_encode(
-            hash_hmac('sha256', self::VERSION . '|' . $ticketId . '|' . $token, $this->secret, true)
+            HmacSignature::digest(self::VERSION . '|' . $ticketId . '|' . $token, $this->secret, true)
         ), '+/', '-_'), '=');
     }
 }

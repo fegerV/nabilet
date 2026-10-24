@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Nabilet\Modules\Payments\Services;
 
 use Nabilet\Core\Errors\DomainRuleViolation;
+use Nabilet\Core\Support\HmacSignature;
+use Nabilet\Core\Support\SignedPayload;
 
 /**
  * Verifies webhook signatures from payment providers.
@@ -16,6 +18,16 @@ use Nabilet\Core\Errors\DomainRuleViolation;
  * - YooKassa: HMAC-SHA256 with optional secret
  * - Stripe: HMAC-SHA256 with timestamp
  * - Kaspi: Custom signature header
+ *
+ * Само вычисление подписи и сравнение — у `HmacSignature`, сериализация
+ * подписываемых байтов — у `SignedPayload`. Здесь остаётся только то, что
+ * действительно различает провайдеров: откуда взять секрет и есть ли в подписи
+ * метка времени.
+ *
+ * Раньше `verifyYooKassa()` и `verifyKaspi()` были двумя побайтово одинаковыми
+ * методами: протокол у этих провайдеров один, а кода было два. Правка в одном
+ * (например, переход на сырое тело) не доезжала до второго, и «Kaspi проверяется
+ * иначе» было ложью докблока, а не свойством кода.
  */
 class WebhookSignatureVerifier
 {
@@ -39,9 +51,15 @@ class WebhookSignatureVerifier
     ): bool {
         $secret = $this->getProviderSecret($provider);
 
-        if ($secret === null) {
+        if (! is_string($secret) || $secret === '') {
             // For production, we REQUIRE webhook secrets to be configured
-            // Returning true here would be a security vulnerability
+            // Returning true here would be a security vulnerability.
+            //
+            // Пустая строка проверяется наравне с `null`: `hash_hmac` с пустым
+            // ключом считает подпись, которую может воспроизвести кто угодно.
+            // Пока проверка была только на `null`, незаполненный (но
+            // существующий) ключ в `.env` давал именно это — проверка шла,
+            // но проверять было нечего.
             throw new DomainRuleViolation(
                 "Webhook secret not configured for provider: {$provider}. " .
                 'This is required for production security.',
@@ -50,9 +68,12 @@ class WebhookSignatureVerifier
         }
 
         return match (strtolower($provider)) {
-            'yookassa' => $this->verifyYooKassa($payload, $signature, $secret, $rawBody),
+            // ЮKassa и Kaspi подписывают одно и то же: hex-HMAC-SHA256 над
+            // сырым телом. Одна ветка на двоих — потому что протокол один;
+            // два одинаковых метода означали, что правку придётся делать дважды
+            // и один из двух раз её забудут.
+            'yookassa', 'kaspi' => $this->verifyHmac($payload, $signature, $secret, $rawBody),
             'stripe' => $this->verifyStripe($payload, $signature, $headers, $secret, $rawBody),
-            'kaspi' => $this->verifyKaspi($payload, $signature, $secret, $rawBody),
             default => throw new DomainRuleViolation(
                 "Unknown payment provider: {$provider}",
                 'UNKNOWN_PROVIDER'
@@ -72,38 +93,45 @@ class WebhookSignatureVerifier
      * подлинности (аудит R-04a).
      *
      * Перекодировка оставлена только как fallback для вызовов без сырого тела
-     * (внутренние вызовы, тесты), чтобы сигнатура метода не ломалась.
+     * (внутренние вызовы, тесты), чтобы сигнатура метода не ломалась. Флаги
+     * перекодировки — у `SignedPayload`: подписывающая сторона
+     * (`SendWebhookDeliveryJob`) обязана получить те же байты, что и проверяющая
+     * здесь, и совпадение больше не держится на предложении в докблоке.
      */
-    private function body(array $payload, ?string $rawBody): string|false
+    private function body(array $payload, ?string $rawBody): ?string
     {
         if ($rawBody !== null && $rawBody !== '') {
             return $rawBody;
         }
 
-        return json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        return SignedPayload::encode($payload);
     }
 
     /**
-     * Verify YooKassa webhook signature.
-     * Uses HMAC-SHA256 of the JSON payload.
+     * Проверка подписи провайдера, у которого схема — «hex-HMAC над телом».
+     *
+     * Таких провайдеров два (ЮKassa и Kaspi), и протокол у них один. Метод тоже
+     * один: пока их было два, это были две копии одного правила, и любая правка
+     * в одном оставляла второй с прежним поведением.
      */
-    private function verifyYooKassa(array $payload, string $signature, string $secret, ?string $rawBody = null): bool
+    private function verifyHmac(array $payload, string $signature, string $secret, ?string $rawBody = null): bool
     {
         $payloadBody = $this->body($payload, $rawBody);
 
-        if ($payloadBody === false) {
+        if ($payloadBody === null) {
             return false;
         }
 
-        $expectedSignature = hash_hmac('sha256', $payloadBody, $secret);
-
-        // Constant-time comparison to prevent timing attacks
-        return hash_equals($expectedSignature, $signature);
+        return HmacSignature::verify($payloadBody, $secret, $signature);
     }
 
     /**
      * Verify Stripe webhook signature.
      * Format: t=<timestamp>,v1=<signature>
+     *
+     * Отличается от остальных провайдеров ровно одним: подписывается не тело, а
+     * `"{$timestamp}.{$body}"`. Это правило Stripe, и оно живёт здесь. Само
+     * вычисление и сравнение — у `HmacSignature`.
      */
     private function verifyStripe(array $payload, string $signature, array $headers, string $secret, ?string $rawBody = null): bool
     {
@@ -130,33 +158,11 @@ class WebhookSignatureVerifier
         // Create signed payload (timestamp.payload)
         $payloadBody = $this->body($payload, $rawBody);
 
-        if ($payloadBody === false) {
+        if ($payloadBody === null) {
             return false;
         }
 
-        $signedPayload = "{$timestamp}.{$payloadBody}";
-
-        $expectedSignature = hash_hmac('sha256', $signedPayload, $secret);
-
-        return hash_equals($expectedSignature, $providedSignature);
-    }
-
-    /**
-     * Verify Kaspi webhook signature.
-     * Implementation depends on Kaspi's specific requirements.
-     */
-    private function verifyKaspi(array $payload, string $signature, string $secret, ?string $rawBody = null): bool
-    {
-        // Kaspi typically uses HMAC-SHA256
-        $payloadBody = $this->body($payload, $rawBody);
-
-        if ($payloadBody === false) {
-            return false;
-        }
-
-        $expectedSignature = hash_hmac('sha256', $payloadBody, $secret);
-
-        return hash_equals($expectedSignature, $signature);
+        return HmacSignature::verify("{$timestamp}.{$payloadBody}", $secret, $providedSignature);
     }
 
     /**

@@ -12,7 +12,9 @@ use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Orders\StateMachines\OrderStateMachine;
 use Nabilet\Modules\Inventory\Models\InventoryItem;
 use Nabilet\Modules\Sessions\Models\Session;
+use Nabilet\Core\Support\HmacSignature;
 use Nabilet\Core\Support\QrSigner;
+use Nabilet\Core\Support\SignedPayload;
 use Nabilet\Modules\Core\Support\PublicId;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
@@ -271,14 +273,14 @@ class TicketService
         }
 
         // Create the payload JSON
-        $payload = json_encode($ticketData, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        $payload = SignedPayload::encode($ticketData);
         
-        if ($payload === false) {
+        if ($payload === null) {
             throw new \RuntimeException('Failed to encode ticket data for QR code');
         }
 
-        // Generate HMAC-SHA256 signature
-        $signature = hash_hmac('sha256', $payload, $secret);
+        // Generate HMAC-SHA256 signature — алгоритм и сравнение у `HmacSignature`
+        $signature = HmacSignature::sign($payload, $secret);
 
         // Return signed payload: base64(payload.signature)
         // This format is compact and can be easily decoded by the checker app
@@ -320,9 +322,7 @@ class TicketService
             }
 
             // Verify the signature
-            $expectedSignature = hash_hmac('sha256', $payload, $secret);
-            
-            if (!hash_equals($expectedSignature, $providedSignature)) {
+            if (! HmacSignature::verify($payload, $secret, $providedSignature)) {
                 return ['valid' => false, 'reason' => 'SIGNATURE_MISMATCH'];
             }
 

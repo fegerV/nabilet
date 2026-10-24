@@ -65,6 +65,46 @@ class OutboundWebhookDeliveryTest extends TestCase
         self::assertEqualsCanonicalizing(['order_id' => 42, 'status' => 'paid'], $payload['data'] ?? null);
     }
 
+    /**
+     * Подписанные байты — ровно те, что ушли в сеть.
+     *
+     * Кириллица и `/` не экранируются: подписчик проверяет подпись по телу,
+     * которое получил, и любое расхождение экранирования делает подпись
+     * неверной у честной стороны. Флаги живут у `SignedPayload` — этот тест
+     * проверяет, что они действительно доезжают до провода.
+     */
+    public function test_signed_body_keeps_cyrillic_and_slashes_unescaped(): void
+    {
+        Http::fake(fn () => Http::response('ok', 200));
+
+        $organizationId = $this->createOrganization();
+        $this->createWebhook($organizationId, ['order.paid']);
+
+        app(WebhookDispatchService::class)->dispatch('order.paid', [
+            'name' => 'Сургут',
+            'url' => 'https://example.com/a/b',
+        ], $organizationId);
+
+        $delivery = WebhookDelivery::query()->firstOrFail();
+
+        app(SendWebhookDeliveryJob::class, ['deliveryId' => $delivery->id, 'jitter' => 0.5])
+            ->handle(app(RetryPolicy::class), app(WebhookEndpointGuard::class));
+
+        $recordedRequest = Http::recorded()->first();
+        self::assertNotNull($recordedRequest);
+        $body = $recordedRequest[0]->body();
+
+        self::assertStringContainsString('Сургут', $body);
+        self::assertStringContainsString('https://example.com/a/b', $body);
+        self::assertStringNotContainsString('\\u04', $body, 'кириллица не должна уезжать в \\uXXXX');
+        self::assertStringNotContainsString('\\/', $body, 'слэш не должен экранироваться');
+
+        self::assertTrue($recordedRequest[0]->hasHeader(
+            'X-Nabilet-Signature',
+            hash_hmac('sha256', $body, 'secret-for-test'),
+        ));
+    }
+
     public function test_server_error_schedules_backoff_but_client_error_is_not_retried(): void
     {
         $organizationId = $this->createOrganization();

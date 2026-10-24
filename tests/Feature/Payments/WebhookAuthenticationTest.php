@@ -152,6 +152,68 @@ class WebhookAuthenticationTest extends TestCase
         app(WebhookSignatureVerifier::class)->verify('stripe', [], 'signature', []);
     }
 
+    /**
+     * Пустой секрет — то же, что отсутствующий.
+     *
+     * `hash_hmac` с пустым ключом считает подпись, которую воспроизведёт кто
+     * угодно. Пока проверялось только `null`, незаполненный ключ в `.env`
+     * проходил эту проверку и превращал вебхук в «подпись верна для всех».
+     */
+    public function test_an_empty_secret_is_treated_as_missing(): void
+    {
+        config(['nabilet.payment.yookassa.webhook_secret' => '']);
+
+        $this->expectException(DomainRuleViolation::class);
+
+        app(WebhookSignatureVerifier::class)->verify('yookassa', ['a' => 1], 'signature', [], '{"a":1}');
+    }
+
+    /**
+     * ЮKassa и Kaspi подписывают одинаково, поэтому и проверяются одним правилом.
+     *
+     * Раньше это были два побайтово одинаковых метода: правка в одном (например,
+     * переход на сырое тело) не доезжала до второго, и «Kaspi проверяется иначе»
+     * было утверждением докблока, а не свойством кода.
+     */
+    public function test_kaspi_and_yookassa_share_one_hmac_rule(): void
+    {
+        config([
+            'nabilet.payment.yookassa.webhook_secret' => 'shared-secret',
+            'nabilet.payment.kaspi.webhook_secret' => 'shared-secret',
+        ]);
+
+        $verifier = app(WebhookSignatureVerifier::class);
+        $raw = '{"a":1,"b":"Сургут"}';
+        $signature = hash_hmac('sha256', $raw, 'shared-secret');
+
+        $this->assertTrue($verifier->verify('yookassa', ['a' => 1], $signature, [], $raw));
+        $this->assertTrue($verifier->verify('kaspi', ['a' => 1], $signature, [], $raw));
+
+        // И обе стороны отвергают одну и ту же подпись по одной и той же причине.
+        $this->assertFalse($verifier->verify('yookassa', ['a' => 1], 'deadbeef', [], $raw));
+        $this->assertFalse($verifier->verify('kaspi', ['a' => 1], 'deadbeef', [], $raw));
+    }
+
+    /**
+     * Без сырого тела перекодировка идёт флагами `SignedPayload`.
+     *
+     * Кириллица и `/` не экранируются — иначе байты, по которым считалась
+     * подпись у отправителя, не совпали бы с байтами у нас.
+     */
+    public function test_the_fallback_body_keeps_cyrillic_and_slashes_readable(): void
+    {
+        config(['nabilet.payment.yookassa.webhook_secret' => 'shh']);
+
+        $verifier = app(WebhookSignatureVerifier::class);
+        $payload = ['name' => 'Сургут', 'url' => 'https://example.com/a/b'];
+
+        // Ровно те байты, которые даёт владелец: без сырого тела перекодировка
+        // обязана быть той же, что и у подписывающей стороны.
+        $expected = '{"name":"Сургут","url":"https://example.com/a/b"}';
+
+        $this->assertTrue($verifier->verify('yookassa', $payload, hash_hmac('sha256', $expected, 'shh')));
+    }
+
     /** Production-сторож обязан заметить `*` в allowlist вебхуков. */
     public function test_the_production_guard_flags_a_wildcard_webhook_allowlist(): void
     {

@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Nabilet\Modules\Webhooks\Jobs;
 
 use Nabilet\Core\Http\ContentType;
+use Nabilet\Core\Support\HmacSignature;
+use Nabilet\Core\Support\SignedPayload;
 use Nabilet\Modules\Webhooks\Models\Webhook;
 use Nabilet\Modules\Webhooks\Models\WebhookDelivery;
 use DateTimeImmutable;
@@ -28,9 +30,14 @@ use Throwable;
  * ПОДПИСЬ СЧИТАЕТСЯ ПО ТЕЛУ, КОТОРОЕ РЕАЛЬНО УХОДИТ. Тело сериализуется один
  * раз и отправляется как строка (`withBody`), а не как массив: иначе клиент
  * переупорядочит ключи или изменит экранирование, и подпись, посчитанная до
- * отправки, перестанет совпадать с тем, что получит подписчик. Именно поэтому
- * здесь `json_encode(..., JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)` —
- * тот же набор флагов, что и при проверке входящих вебхуков ЮKassa.
+ * отправки, перестанет совпадать с тем, что получит подписчик.
+ *
+ * Флаги сериализации и само вычисление подписи — у `SignedPayload` и
+ * `HmacSignature`. Раньше здесь стоял `json_encode` с тем же набором флагов,
+ * что и при проверке входящих вебхуков, и это совпадение держалось на
+ * предложении в этом самом докблоке: код его не проверял, а подписчик —
+ * единственный, кто заметил бы расхождение, — узнал бы о нём уже после того,
+ * как перестал принимать наши подписи.
  *
  * Ретраями управляет НЕ очередь: у джобы `tries = 1`, а решение принимает
  * RetryPolicy. Причина в том, что политика обязана различать «эндпоинт неверный»
@@ -85,12 +92,9 @@ class SendWebhookDeliveryJob implements ShouldQueue
             return;
         }
 
-        $body = json_encode(
-            $delivery->payload_json,
-            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES,
-        );
+        $body = SignedPayload::encode($delivery->payload_json);
 
-        if ($body === false) {
+        if ($body === null) {
             $this->finish($delivery, null, null, 'Не удалось сериализовать полезную нагрузку.', null);
 
             return;
@@ -146,7 +150,7 @@ class SendWebhookDeliveryJob implements ShouldQueue
             $response = $request->withHeaders([
                     'X-Nabilet-Event' => $delivery->event_name,
                     'X-Nabilet-Delivery' => $delivery->delivery_id,
-                    'X-Nabilet-Signature' => hash_hmac('sha256', $body, $secret),
+                    'X-Nabilet-Signature' => HmacSignature::sign($body, $secret),
                 ])
                     ->withBody($body, ContentType::JSON)
                     ->post($webhook->url);
