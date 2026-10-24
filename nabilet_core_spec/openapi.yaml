@@ -2856,7 +2856,7 @@ components:
         first_name: { type: string, nullable: true }
         last_name: { type: string, nullable: true }
         phone: { type: string, nullable: true }
-        status: { type: string }
+        status: { type: string, enum: [active, inactive, banned] }
         locale: { type: string }
         timezone: { type: string }
         created_at: { type: string, format: date-time }
@@ -2922,7 +2922,7 @@ components:
         id: { type: string }
         name: { type: string }
         slug: { type: string }
-        status: { type: string }
+        status: { type: string, enum: [active, inactive, suspended] }
 
     Event:
       type: object
@@ -2939,7 +2939,7 @@ components:
         cover: { type: string, nullable: true }
         age_limit: { type: string, nullable: true }
         duration_minutes: { type: integer, nullable: true }
-        status: { type: string }
+        status: { type: string, enum: [draft, scheduled, published, completed, cancelled, archived] }
         published_at: { type: string, format: date-time, nullable: true }
         seo:
           $ref: '#/components/schemas/SeoMeta'
@@ -3489,7 +3489,7 @@ components:
         sales_start_at: { type: string, format: date-time, nullable: true }
         sales_end_at: { type: string, format: date-time, nullable: true }
         timezone: { type: string }
-        status: { type: string }
+        status: { type: string, enum: [draft, scheduled, on_sale, sold_out, closed, completed, cancelled] }
 
     SessionResponse:
       type: object
@@ -3517,7 +3517,7 @@ components:
         sales_start_at: { type: string, format: date-time, nullable: true }
         sales_end_at: { type: string, format: date-time, nullable: true }
         timezone: { type: string }
-        status: { type: string }
+        status: { type: string, enum: [draft, scheduled, on_sale, sold_out, closed, completed, cancelled] }
 
     InventoryItem:
       type: object
@@ -3532,7 +3532,7 @@ components:
         currency: { type: string, example: RUB }
         capacity: { type: integer }
         available_quantity: { type: integer }
-        status: { type: string }
+        status: { type: string, enum: [available, held, sold_out, sold, blocked, disabled] }
 
     SeatMapResponse:
       type: object
@@ -3549,7 +3549,7 @@ components:
       properties:
         id: { type: string }
         session_id: { type: string }
-        status: { type: string }
+        status: { type: string, enum: [active, converted, abandoned] }
         expires_at: { type: string, format: date-time, nullable: true }
         items:
           type: array
@@ -3626,8 +3626,8 @@ components:
       properties:
         id: { type: string }
         order_number: { type: string }
-        status: { type: string }
-        payment_status: { type: string }
+        status: { type: string, enum: [pending, awaiting_payment, payment_failed, paid, cancelled, expired, partially_refunded, refunded] }
+        payment_status: { type: string, enum: [pending, succeeded] }
         totals: { $ref: '#/components/schemas/MoneyTotals' }
         customer_email: { type: string, format: email }
         customer_name: { type: string, nullable: true }
@@ -3674,7 +3674,7 @@ components:
         provider_payment_id: { type: string, nullable: true }
         amount: { type: integer }
         currency: { type: string }
-        status: { type: string }
+        status: { type: string, enum: [pending, waiting_for_capture, succeeded, canceled, failed] }
         payment_url: { type: string, format: uri, nullable: true }
         created_at: { type: string, format: date-time }
         paid_at: { type: string, format: date-time, nullable: true }
@@ -3700,7 +3700,7 @@ components:
         amount: { type: integer }
         currency: { type: string }
         reason: { type: string, nullable: true }
-        status: { type: string }
+        status: { type: string, enum: [requested, processing, succeeded, failed] }
         provider_refund_id: { type: string, nullable: true }
 
     RefundResponse:

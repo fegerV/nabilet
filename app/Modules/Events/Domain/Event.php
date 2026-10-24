@@ -15,11 +15,15 @@ use Nabilet\Core\Errors\DomainRuleViolation;
  * without consulting either (§3.20). Passing them in is what lets the domain ask
  * "has anything been sold?" without reaching for a repository.
  *
- * THE STATUS VOCABULARY IS NOT MINE TO FIX. `events.status` is
- * `VARCHAR(32) DEFAULT 'draft'` with no CHECK, and `'banana'` was accepted. So the
- * status is never validated — only compared, exactly as `carts.status` and
- * `ip_rules.rule_type` are handled. Anything that is not 'published' is not
- * published, which fails closed.
+ * THE STATUS VOCABULARY IS ENFORCED BY THE DATABASE NOW. `events.status` was
+ * `VARCHAR(32) DEFAULT 'draft'` with no CHECK, and `'banana'` was accepted —
+ * that is why the status here is only compared, never validated: anything that
+ * is not 'published' is not published, which fails closed. Since split
+ * `015_events_status_check.sql` the whole dictionary is pinned by
+ * `ck_events_status`, and the sibling `EventStateMachine` docblock was updated
+ * to say so while this one was not. The comparison-only rule is unchanged and
+ * still correct; what changed is that an unknown value can no longer reach it
+ * from a database write.
  *
  * `published_at` is NULLABLE, and a row with `status = 'published'` and
  * `published_at IS NULL` was accepted. Such an event is on the site with no answer

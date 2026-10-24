@@ -186,9 +186,18 @@ final class SessionTokenGuard implements Guard
         // will happily return it. Refusing here fails closed, the same choice made
         // for an unbounded session and an unrecognised cart status.
         //
-        // `status` is deliberately NOT checked: it is `VARCHAR(32)` with no CHECK
-        // constraint and the ТЗ does not say which values deny access, so gating on
-        // one would be inventing policy. Recorded in docs/REVIEW-spec-bundle.md.
+        // `status` is deliberately NOT checked here: the ТЗ does not say which
+        // values deny access to an ALREADY-ISSUED session, so gating on one would
+        // be inventing policy. Recorded in docs/REVIEW-spec-bundle.md.
+        //
+        // Уточнение обоснования: комментарий здесь говорил «VARCHAR(32) with no
+        // CHECK constraint» — это было верно до `ck_users_status` (сплит 013).
+        // С тех пор схема допускает ровно `active`, `inactive`, `banned`, и
+        // вход при не-`active` действительно закрыт — но ДРУГИМ местом:
+        // `UserStatus::mayAuthenticate()` в `UserService::authenticate()`.
+        // Проверка при входе и проверка на каждом запросе — разные решения:
+        // отзыв сессий при бане уже сделан (`UserSessionRevocationTest`), и
+        // повторная проверка статуса в guard'е его не заменяет.
         if ($user === null || self::isDeleted($user)) {
             return null;
         }

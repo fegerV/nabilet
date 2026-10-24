@@ -320,6 +320,30 @@ users.status                 venues.status
 > (**17 необеспеченных** — машины состояний теперь все семь обеспечены CHECK) описывают
 > разные моменты: перечень — момент обнаружения, инструмент — текущее состояние.
 > Разбор по `inventory_items.status` — в 3.25.7.
+>
+> **Обновление 2026-10-24 (третий проход).** Ещё пять колонок из перечня получили CHECK
+> тем же способом — значения уже писались кодом, схема лишь перестала молчать:
+> `carts.status` (`ck_carts_status`, владелец `Cart\Domain\CartStatus`),
+> `notifications.status` (`ck_notifications_status`, владелец
+> `Notifications\Domain\NotificationStatus`), `consents.status` (`ck_consents_status`,
+> владелец `Privacy\Domain\ConsentRecord`), `privacy_requests.status`
+> (`ck_privacy_requests_status`, владелец `Privacy\Domain\PrivacyRequest`),
+> `checkin_devices.status` (`ck_checkin_devices_status`, владелец
+> `Checkin\Domain\CheckinDevice`). Все пять — сплит
+> `2026_10_12_000500_add_status_vocabularies.php`.
+>
+> Из перечня остались без CHECK одиннадцать: `ab_experiments.status`,
+> `event_categories.status`, `halls.status`, `idempotency_keys.response_status`,
+> `offline_bundles.status`, `orders.payment_status`, `organizations.status`,
+> `pages.status`, `payment_transactions.status`, `promo_codes.status`, `venues.status`.
+>
+> **Попутно исправлены устаревшие докблоки.** `CheckinDevice`, `PrivacyRequest`,
+> `ConsentRecord` и `Event` утверждали, что CHECK на их колонке нет, и ссылались на
+> этот перечень. Правила в классах были верны — устарело только обоснование, и
+> читатель мог заключить, что четвёртое значение добавить безопасно. Тот же класс
+> дефекта, что и копии словаря по местам: записанное правило разошлось с базой.
+> Запись в коде теперь требует, чтобы словарь был вызван у владельца, а не переписан, —
+> это проверяет `tools/verify-status-literals.php`.
 
 Ни одна из них не имеет CHECK. Для `carts.status` это подтверждается и контрактом:
 OpenAPI описывает её как `status: { type: string }` — то есть «любая строка».

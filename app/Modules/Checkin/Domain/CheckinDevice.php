@@ -9,16 +9,20 @@ use Nabilet\Core\Errors\DomainRuleViolation;
 /**
  * A device authorised to run the Android Checker (ТЗ §31/§33).
  *
- * `checkin_devices.status` has NO CHECK constraint — it is one of the 19 free-form
- * status columns catalogued in REVIEW-spec-bundle.md §3.11. So the vocabulary
- * below is the application's, not the database's, and it is applied
- * FAIL-CLOSED: only the literal 'active' may receive a bundle. Any other value —
- * including one this class has never heard of — is treated as not authorised.
+ * `checkin_devices.status` — словарь из схемы: `ck_checkin_devices_status`
+ * допускает ровно `active`, `disabled`, `revoked` (spec, сплит
+ * `2026_10_12_000500_add_status_vocabularies.php`). Этот докблок утверждал
+ * обратное — «CHECK нет, колонка из 19 свободных по §3.11» — и был неверен
+ * с момента появления ограничения. Значения ниже совпадают с ним до последнего
+ * символа, так что расходились только обоснования: читатель верил, что четвёртое
+ * состояние добавить безопасно, и был прав ровно до первого обращения к базе.
  *
- * That direction matters. If a future release introduces 'blocked' and this class
- * still only knows 'active', the device is refused, which is the safe outcome.
- * The reverse (anything except 'revoked' is allowed) would hand a bundle to a
- * device whose status nobody recognises.
+ * Fail-closed сохранён и теперь барьер двойной: только `active` получает бандл,
+ * любое другое значение — включая то, которого класс не знает, — считается
+ * неавторизованным. Направление важно. Если будущий релиз введёт `blocked`, а
+ * этот класс по-прежнему знает только `active`, устройству откажут — это
+ * безопасный исход. Обратное («всё кроме revoked разрешено») отдало бы бандл
+ * устройству, статус которого никто не распознаёт.
  */
 final class CheckinDevice
 {

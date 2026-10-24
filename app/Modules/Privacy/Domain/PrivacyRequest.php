@@ -9,9 +9,15 @@ use Nabilet\Core\Errors\DomainRuleViolation;
 /**
  * A data subject asking us to do something about their data (ТЗ §72, 152-ФЗ).
  *
- * `privacy_requests.status` and `.type` both have NO CHECK, so — like
- * `consents.status` — the vocabularies below are the application's and an
- * unrecognised value is treated as unusable rather than as valid.
+ * `privacy_requests.status` — словарь из схемы: `ck_privacy_requests_status`
+ * допускает ровно `requested`, `in_progress`, `completed`, `rejected` (spec,
+ * сплит `2026_10_12_000500_add_status_vocabularies.php`). Этот докблок
+ * утверждал, что CHECK нет и на `.status`, и на `.type`; теперь это верно
+ * только про `.type` — он по-прежнему `VARCHAR(32)` без ограничения, и его
+ * словарь (пять видов обращений) остаётся приложенческим.
+ *
+ * Fail-closed про `.status` сохранён: нераспознанное значение считается
+ * нерабочим, а не валидным. Барьер двойной — класс и база.
  *
  * THE DEADLINE IS A PARAMETER, NOT A CONSTANT, and that is deliberate. Neither
  * the ТЗ nor the OpenAPI contract states the response period, and I am not
