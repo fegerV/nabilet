@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Nabilet\Modules\Events\Http\Requests;
 
 use Nabilet\Modules\Events\Http\Requests\Concerns\EventFormMessages;
-use Nabilet\Modules\Events\Http\Requests\Concerns\HandlesPosterUpload;
+use Nabilet\Modules\Events\Http\Requests\Concerns\PreparesEventPayload;
 use Nabilet\Core\Support\UserOrganization;
 use Nabilet\Core\Support\StaffRole;
 use Nabilet\Modules\Events\Models\Event;
@@ -15,11 +15,13 @@ use Illuminate\Foundation\Http\FormRequest;
 
 class UpdateEventRequest extends FormRequest
 {
-    // Сохранение файла афиши + перенос legacy `image_url` → `poster`. Раньше
-    // этих методов здесь не было вовсе, и новая афиша при редактировании молча
-    // не сохранялась (жалоба «афиша не сохраняется»). Общий трейт с Store.
+    // Сохранение файла афиши, перенос `image_url` → `poster`, вырезание
+    // не-колоночных полей и `status`, порядок шагов — всё это в трейте
+    // `PreparesEventPayload` (общий со `StoreEventRequest`). Раньше порядок
+    // шагов был выписан здесь ДВАЖДЫ — в `passedValidation()` и в
+    // `validated()` — и мог разойтись.
     use EventFormMessages;
-    use HandlesPosterUpload;
+    use PreparesEventPayload;
 
     /**
      * Что реально было отброшено: поле => значение. См. StoreEventRequest —
@@ -151,49 +153,13 @@ class UpdateEventRequest extends FormRequest
         ];
     }
 
-    public function passedValidation(): void
-    {
-        $this->storeUploadedPoster();
-        $this->normalizePosterMapping();
-        $this->stripNonColumnFields();
-        $this->stripStatusField();
-    }
-
-    /**
-     * @return array<string, mixed>|mixed
-     */
-    public function validated($key = null, $default = null)
-    {
-        $this->storeUploadedPoster();
-        $this->normalizePosterMapping();
-        $this->stripNonColumnFields();
-        $this->stripStatusField();
-
-        return parent::validated($key, $default);
-    }
-
-    /**
-     * Убирает `status` из входных данных.
-     *
-     * ОТДЕЛЬНО ОТ `stripNonColumnFields()`, потому что `status` — НАСТОЯЩАЯ
-     * колонка `events`: её нельзя внести в список «полей без столбца», не
-     * вводя в заблуждение следующего читателя. Вырезается по другой причине —
-     * это смена состояния, а не правка атрибута, и у неё есть собственный
-     * эндпоинт с проверкой политики.
-     *
-     * Молча, без 422: форма админки отправляет `status` в общем payload, и
-     * жёсткая ошибка сломала бы обычное сохранение карточки. Значение просто
-     * не доходит до модели.
-     */
-    protected function stripStatusField(): void
-    {
-        $this->request->remove('status');
-        $this->getInputSource()->remove('status');
-    }
-
     /**
      * Поля без колонок в таблице `events` (см. StoreEventRequest) — вырезаем,
      * чтобы Eloquent-update не падал на несуществующем столбце.
+     *
+     * Отличие от Store намеренное и описано в `PreparesEventPayload`: здесь
+     * нет служебного `__poster_stored` (его убирает Store), а сообщение в лог
+     * называет `event_id` — на правке важно, ЧЬЯ карточка потеряла поля.
      *
      * @var list<string>
      */

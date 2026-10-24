@@ -7,7 +7,7 @@ namespace Nabilet\Modules\Events\Http\Requests;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 use Nabilet\Modules\Events\Http\Requests\Concerns\EventFormMessages;
-use Nabilet\Modules\Events\Http\Requests\Concerns\HandlesPosterUpload;
+use Nabilet\Modules\Events\Http\Requests\Concerns\PreparesEventPayload;
 use Nabilet\Core\Support\UserOrganization;
 use Nabilet\Core\Support\StaffRole;
 use Nabilet\Modules\Events\Models\Event;
@@ -15,11 +15,12 @@ use Illuminate\Foundation\Http\FormRequest;
 
 class StoreEventRequest extends FormRequest
 {
-    // Сохранение файла афиши и перенос legacy `image_url` → `poster` — общие с
-    // `UpdateEventRequest` (см. трейт). Раньше в Update этой логики не было вовсе,
-    // и новая афиша при редактировании молча не сохранялась.
+    // Сохранение файла афиши, перенос `image_url` → `poster`, вырезание
+    // не-колоночных полей и `status`, порядок шагов — всё это в трейте
+    // `PreparesEventPayload` (общий с `UpdateEventRequest`). Раньше порядок
+    // шагов был выписан здесь, а в Update — двумя копиями, и они расходились.
     use EventFormMessages;
-    use HandlesPosterUpload;
+    use PreparesEventPayload;
 
     /**
      * Поля, которые принимает API (для совместимости со старыми клиентами), но
@@ -203,68 +204,14 @@ class StoreEventRequest extends FormRequest
     }
 
     /**
-     * Normalize the poster field: the form sends `image_url`, the DB column is
-     * `poster`. Without this mapping the concert poster was silently dropped.
+     * Вырезать не-колоночные ключи из входных данных.
      *
-     * Validator::validated() re-reads data from the LIVE validation data source,
-     * so mutating the input here (before the controller calls validated()) is
-     * what actually changes the payload that reaches EventService.
-     */
-    public function passedValidation(): void
-    {
-        $this->preparePayload();
-    }
-
-    /**
-     * @return array<string, mixed>|mixed
-     */
-    public function validated($key = null, $default = null)
-    {
-        // Belt and braces: if a subclass/pipe skipped passedValidation(),
-        // still prepare the payload at read time. preparePayload() is idempotent.
-        $this->preparePayload();
-
-        return parent::validated($key, $default);
-    }
-
-    protected function preparePayload(): void
-    {
-        $this->storeUploadedPoster();
-        $this->normalizePosterMapping();
-        $this->stripNonColumnFields();
-        $this->stripStatusField();
-    }
-
-    /**
-     * Убирает `status` из входных данных.
-     *
-     * ЭТО НЕ ТО, ЧТО ЗАЩИЩАЕТ ЗАПИСЬ. Защищает отсутствие правила `status` в
-     * `rules()`: `Validator::validated()` перебирает `getRules()` и читает
-     * значения из снимка данных, сделанного при создании валидатора, поэтому
-     * удаление ключа из входного набора в результат не попадает. Тот, кто
-     * вернёт правило и понадеется на этот метод, откроет обход политики снова.
-     *
-     * Метод нужен для второго: `$request->input('status')` читают мимо
-     * `validated()` — логи, отладка, будущий код. Пока значение лежит во входном
-     * наборе, оно выглядит как принятое. `UpdateEventRequest` держит такой же
-     * метод по той же причине, и симметрия здесь важнее экономии четырёх строк:
-     * расхождение этих двух классов и было причиной дефекта.
-     */
-    protected function stripStatusField(): void
-    {
-        $this->request->remove('status');
-        $this->getInputSource()->remove('status');
-    }
-
-    /**
-     * Вырезать не-колоночные ключи из входных данных, чтобы validated()
-     * (он перечитывает живой источник данных) вернул только поля таблицы
-     * `events`. Повторные вызовы безопасны: удалённые ключи исчезают из
-     * all() и не обрабатываются снова.
-     *
-     * Здесь же фиксируется, что именно было отброшено. Раньше метод молча
-     * удалял значения, и клиент, приславший `start_date`, получал 201 без
-     * единого признака, что дата не сохранена нигде.
+     * ВАЖНО, ЧТО ЭТО ЗАЩИЩАЕТ, А ЧТО НЕТ. `validated()` читает СНИМОК данных,
+     * снятый до `passedValidation()`, поэтому этот метод НЕ влияет на его
+     * результат — запись защищает `Event::$fillable`, а не он. Он защищает
+     * чтения входного набора мимо `validated()`: `$request->input()`, логи,
+     * отладка. Молчаливая потеря неотличима от успешного сохранения, поэтому
+     * здесь же фиксируется, что именно было отброшено.
      */
     protected function stripNonColumnFields(): void
     {

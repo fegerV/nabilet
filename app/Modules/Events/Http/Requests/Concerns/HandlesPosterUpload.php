@@ -19,9 +19,11 @@ use Nabilet\Core\Errors\ValidationError;
  *    абсолютный URL в колонку `poster`;
  *  - `normalizePosterMapping()` переносит legacy-поле `image_url` в `poster`.
  *
- * Потребитель обязан вызвать оба метода и в `passedValidation()`, и в
- * `validated()`: `Validator::validated()` перечитывает живой источник данных,
- * поэтому мутация входа до его вызова — единственное, что реально меняет payload.
+ * Вызывать эти методы потребителю напрямую НЕ НУЖНО и не следует: порядок
+ * шагов, включая их, принадлежит `PreparesEventPayload::preparePayload()`.
+ * Раньше здесь было написано «потребитель обязан вызвать оба метода и в
+ * `passedValidation()`, и в `validated()`» — обещание прозой, которое
+ * `UpdateEventRequest` исполнял двумя копиями, а не одним вызовом.
  */
 trait HandlesPosterUpload
 {
