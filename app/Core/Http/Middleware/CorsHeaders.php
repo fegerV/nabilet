@@ -6,6 +6,7 @@ namespace Nabilet\Core\Http\Middleware;
 
 use Closure;
 use Illuminate\Http\Request;
+use Nabilet\Core\Idempotency\IdempotencyHeader;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -136,7 +137,7 @@ class CorsHeaders
         return config('cors.allowed_headers', [
             'Content-Type',
             'Authorization',
-            'Idempotency-Key',
+            IdempotencyHeader::NAME,
             'X-Request-Id',
             'X-Locale',
             'X-CSRF-TOKEN',

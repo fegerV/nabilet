@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\DB;
 use Nabilet\Core\Errors\ConflictError;
 use Nabilet\Core\Errors\ValidationError;
 use Nabilet\Core\Idempotency\IdempotencyDecision;
+use Nabilet\Core\Idempotency\IdempotencyHeader;
 use Nabilet\Core\Idempotency\IdempotencyPolicy;
 use Nabilet\Core\Idempotency\IdempotencyRecord;
 use Nabilet\Core\Idempotency\IdempotencyScope;
@@ -41,7 +42,7 @@ use Symfony\Component\HttpFoundation\Response;
  */
 final class EnsureIdempotency
 {
-    private const HEADER = 'Idempotency-Key';
+    private const HEADER = IdempotencyHeader::NAME;
     private const TABLE = 'idempotency_keys';
 
     public function __construct(

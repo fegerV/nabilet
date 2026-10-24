@@ -7,6 +7,7 @@ namespace Nabilet\Modules\Payments\Http\Controllers;
 use Nabilet\Core\Errors\DomainRuleViolation;
 use Nabilet\Core\Errors\NotFoundError;
 use Nabilet\Core\Errors\ValidationError;
+use Nabilet\Core\Idempotency\IdempotencyHeader;
 use Nabilet\Core\Support\StaffRole;
 use Nabilet\Core\Support\UserOrganization;
 use Nabilet\Modules\Cart\Models\Cart;
@@ -141,7 +142,7 @@ class PaymentController extends Controller
         // `idempotency_key` — принимаем оба, чтобы требование не зависело от
         // транспорта. Заголовок может прийти массивом (дубли), поэтому в сервис
         // уходит только строка; пустое значение отсекает `initiatePayment()`.
-        $idempotencyKey = $validated['idempotency_key'] ?? $request->header('Idempotency-Key');
+        $idempotencyKey = $validated['idempotency_key'] ?? $request->header(IdempotencyHeader::NAME);
 
         $result = $this->paymentService->initiatePayment(
             (int) $order->id,

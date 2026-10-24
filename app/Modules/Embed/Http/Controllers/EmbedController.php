@@ -10,6 +10,7 @@ use Illuminate\Routing\Controller;
 use Nabilet\Core\Errors\AuthError;
 use Nabilet\Core\Errors\NotFoundError;
 use Nabilet\Core\Errors\ValidationError;
+use Nabilet\Core\Idempotency\IdempotencyHeader;
 use Nabilet\Modules\Cart\Http\Resources\CartResource;
 use Nabilet\Modules\Cart\Models\Cart;
 use Nabilet\Modules\Cart\Services\CartCheckoutService;
@@ -69,7 +70,7 @@ final class EmbedController extends Controller
     private const CHECKOUT_HEADER = 'X-Checkout-Token';
 
     /** The contract's name for the replay-protection header. */
-    private const IDEMPOTENCY_HEADER = 'Idempotency-Key';
+    private const IDEMPOTENCY_HEADER = IdempotencyHeader::NAME;
 
     public function __construct(
         private readonly EmbedAccessService $access,
