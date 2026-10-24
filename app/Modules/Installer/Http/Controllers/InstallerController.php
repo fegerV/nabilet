@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Routing\Controller;
 use Illuminate\Validation\ValidationException;
+use Nabilet\Modules\Core\Support\PublicId;
 use Nabilet\Modules\Core\Users\Domain\UserStatus;
 
 /**
@@ -567,7 +568,7 @@ ENV;
         } else {
             Log::warning('Installer: Модель User не найдена, создаем админа через DB');
             $userId = DB::table('users')->insertGetId([
-                'public_id' => Str::ulid()->toBase32(),
+                'public_id' => PublicId::generate(),
                 'email' => $email,
                 'password' => password_hash($password, PASSWORD_BCRYPT),
                 'first_name' => 'Administrator',
@@ -602,7 +603,7 @@ ENV;
             }
 
             $organizationId = DB::table('organizations')->insertGetId([
-                'public_id' => Str::ulid()->toBase32(),
+                'public_id' => PublicId::generate(),
                 'name' => $orgName,
                 'slug' => $slug,
                 'status' => 'active',

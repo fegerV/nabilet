@@ -4,11 +4,12 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Media\Models;
 
+use Nabilet\Modules\Core\Models\Concerns\HasPublicId;
+
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
-use Illuminate\Support\Str;
 use Nabilet\Core\Support\AssetUrl;
 use Nabilet\Modules\Core\Organizations\Models\Organization;
 use Nabilet\Modules\Core\Users\Models\User;
@@ -44,6 +45,8 @@ use Nabilet\Modules\Core\Users\Models\User;
  */
 class MediaAsset extends Model
 {
+    use HasPublicId;
+
     use SoftDeletes;
 
     protected $table = 'media_assets';
@@ -71,20 +74,6 @@ class MediaAsset extends Model
         'height' => 'integer',
         'variants_json' => 'array',
     ];
-
-    /**
-     * `public_id` — ULID (base32), как и у остальных публичных идентификаторов
-     * проекта. `uq_media_assets_public_id` требует уникальности, поэтому
-     * генерируем только при создании и никогда не переписываем.
-     */
-    protected static function booted(): void
-    {
-        static::creating(function (self $model): void {
-            if ($model->public_id === null) {
-                $model->public_id = (string) Str::ulid()->toBase32();
-            }
-        });
-    }
 
     public function organization(): BelongsTo
     {

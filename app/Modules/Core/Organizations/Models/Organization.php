@@ -4,11 +4,12 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Core\Organizations\Models;
 
+use Nabilet\Modules\Core\Models\Concerns\HasPublicId;
+
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Support\Str;
 use Nabilet\Modules\Core\Users\Models\User;
 
 /**
@@ -31,24 +32,9 @@ use Nabilet\Modules\Core\Users\Models\User;
  */
 class Organization extends Model
 {
-    protected $table = 'organizations';
+    use HasPublicId;
 
-    /**
-     * `public_id` is `CHAR(26)` — a Base32 ULID, not a UUID.
-     *
-     * `OrganizationService::createOrganization()` used to write a 36-character
-     * UUID here, which MySQL rejects with 1406. Generating the value in the model
-     * means the service, a factory and a seeder all produce the same shape, and a
-     * caller that passes its own value still keeps it.
-     */
-    protected static function booted(): void
-    {
-        static::creating(function (self $model): void {
-            if ($model->public_id === null) {
-                $model->public_id = (string) Str::ulid()->toBase32();
-            }
-        });
-    }
+    protected $table = 'organizations';
 
     protected $fillable = [
         'public_id',

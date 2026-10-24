@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Sessions\Models;
 
+use Nabilet\Modules\Core\Models\Concerns\HasPublicId;
+
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -14,6 +16,8 @@ use Nabilet\Modules\Sessions\Domain\SalesWindow;
  */
 class Session extends Model
 {
+    use HasPublicId;
+
     protected $table = 'sessions';
 
     public $timestamps = true;
@@ -31,16 +35,6 @@ class Session extends Model
         'timezone',
         'status',
     ];
-
-    /** Конвенция проекта: char(26) public_id NOT NULL → генерим ULID при создании. */
-    protected static function booted(): void
-    {
-        static::creating(function (Session $session): void {
-            if ($session->public_id === null) {
-                $session->public_id = \Illuminate\Support\Str::ulid()->toBase32();
-            }
-        });
-    }
 
     protected function casts(): array
     {

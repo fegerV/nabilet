@@ -6,7 +6,7 @@ namespace Nabilet\Modules\Privacy\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Support\Str;
+use Nabilet\Modules\Core\Models\Concerns\HasPublicId;
 use Nabilet\Modules\Core\Users\Models\User;
 
 /**
@@ -28,6 +28,8 @@ use Nabilet\Modules\Core\Users\Models\User;
  */
 class PrivacyRequest extends Model
 {
+    use HasPublicId;
+
     /** Явно, а не через множественное число Eloquent — см. `Consent`. */
     protected $table = 'privacy_requests';
 
@@ -54,13 +56,4 @@ class PrivacyRequest extends Model
         return $this->belongsTo(User::class);
     }
 
-    protected static function boot(): void
-    {
-        parent::boot();
-        static::creating(function (self $model): void {
-            if (empty($model->public_id)) {
-                $model->public_id = (string) Str::ulid()->toBase32();
-            }
-        });
-    }
 }

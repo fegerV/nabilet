@@ -4,11 +4,12 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Loyalty\Models;
 
+use Nabilet\Modules\Core\Models\Concerns\HasPublicId;
+
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\UniqueConstraintViolationException;
-use Illuminate\Support\Str;
 use Nabilet\Modules\Core\Users\Models\User;
 use Nabilet\Modules\Events\Models\Event;
 
@@ -29,6 +30,8 @@ use Nabilet\Modules\Events\Models\Event;
  */
 class EventFavorite extends Model
 {
+    use HasPublicId;
+
     protected $table = 'event_favorites';
 
     public $incrementing = true;
@@ -53,10 +56,6 @@ class EventFavorite extends Model
     protected static function booted(): void
     {
         static::creating(function (EventFavorite $favorite): void {
-            if ($favorite->public_id === null) {
-                $favorite->public_id = Str::ulid()->toBase32();
-            }
-
             if ($favorite->created_at === null) {
                 $favorite->created_at = now();
             }

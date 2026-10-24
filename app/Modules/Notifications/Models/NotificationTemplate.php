@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Nabilet\Modules\Notifications\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Nabilet\Modules\Core\Models\Concerns\HasPublicId;
 
 /**
  * @property int $id
@@ -21,6 +22,8 @@ use Illuminate\Database\Eloquent\Model;
  */
 class NotificationTemplate extends Model
 {
+    use HasPublicId;
+
     /** Явно, а не через множественное число Eloquent — см. `Consent`. */
     protected $table = 'notification_templates';
 
@@ -40,15 +43,5 @@ class NotificationTemplate extends Model
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];
-
-        protected static function boot(): void
-        {
-            parent::boot();
-            static::creating(function (self $model) {
-                if (empty($model->public_id)) {
-                    $model->public_id = (string) \Illuminate\Support\Str::ulid()->toBase32();
-                }
-            });
-        }
 
 }

@@ -6,6 +6,7 @@ namespace Nabilet\Modules\Inventory\Services;
 
 use Nabilet\Core\Errors\ConflictError;
 use Nabilet\Core\Errors\NotFoundError;
+use Nabilet\Modules\Core\Support\PublicId;
 use Nabilet\Modules\Cart\Models\Cart;
 use Nabilet\Modules\Cart\Domain\CartStatus;
 use Nabilet\Modules\Cart\Models\CartItem;
@@ -20,7 +21,6 @@ use Nabilet\Modules\Venues\Models\Seat;
 use Nabilet\Modules\Venues\Models\Sector;
 use Nabilet\Modules\Venues\Models\StandingZone;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 
 class InventoryService
 {
@@ -200,7 +200,7 @@ class InventoryService
                                                                 'currency' => 'RUB',
                                                             ]);
                                                         $standingItems[] = [
-                                                            'public_id' => (string) Str::ulid()->toBase32(),
+                                                            'public_id' => PublicId::generate(),
                                                             'session_id' => $session->id,
                                                             'type' => 'standing',
                                                             'seat_id' => null,
@@ -225,7 +225,7 @@ class InventoryService
                                             $seats = Seat::query()->where('row_id', $row->id)->get();
                                             foreach ($seats as $seat) {
                                                 $seatItems[] = [
-                                                    'public_id' => (string) Str::ulid()->toBase32(),
+                                                    'public_id' => PublicId::generate(),
                                                     'session_id' => $session->id,
                                                     'type' => 'seat',
                                                     'seat_id' => $seat->id,

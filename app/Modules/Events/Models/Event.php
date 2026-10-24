@@ -4,12 +4,13 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Events\Models;
 
+use Nabilet\Modules\Core\Models\Concerns\HasPublicId;
+
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
-use Illuminate\Support\Str;
 
 /**
  * Event Model
@@ -41,20 +42,12 @@ use Illuminate\Support\Str;
  */
 class Event extends Model
 {
+    use HasPublicId;
+
     use SoftDeletes;
     protected $table = 'events';
 
     public $timestamps = true;
-
-    /** Конвенция проекта: public_id = ULID (base32) */
-    protected static function booted(): void
-    {
-        static::creating(function (Event $event) {
-            if ($event->public_id === null) {
-                $event->public_id = Str::ulid()->toBase32();
-            }
-        });
-    }
 
     protected $fillable = [
         'public_id',

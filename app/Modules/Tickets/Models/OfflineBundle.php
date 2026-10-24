@@ -4,9 +4,10 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Tickets\Models;
 
+use Nabilet\Modules\Core\Models\Concerns\HasPublicId;
+
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Support\Str;
 // Каноническая модель. Дубликат в `Modules\Organizations\Models\Organization`
 // нёс трейт `SoftDeletes` при отсутствующей колонке `organizations.deleted_at`,
 // из-за чего эта связь падала с `SQLSTATE[42S22]` при первой же загрузке.
@@ -17,6 +18,8 @@ use Nabilet\Modules\Sessions\Models\Session;
 /** Eloquent mapping for the signed, device-bound offline ticket bundle. */
 class OfflineBundle extends Model
 {
+    use HasPublicId;
+
     protected $table = 'offline_bundles';
 
     protected $fillable = [
@@ -46,15 +49,6 @@ class OfflineBundle extends Model
         'downloaded_at' => 'datetime',
         'expires_at' => 'datetime',
     ];
-
-    protected static function booted(): void
-    {
-        static::creating(function (self $model): void {
-            if ($model->public_id === null) {
-                $model->public_id = (string) Str::ulid()->toBase32();
-            }
-        });
-    }
 
     public function organization(): BelongsTo
     {

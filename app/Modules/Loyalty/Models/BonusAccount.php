@@ -4,11 +4,12 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Loyalty\Models;
 
+use Nabilet\Modules\Core\Models\Concerns\HasPublicId;
+
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\UniqueConstraintViolationException;
-use Illuminate\Support\Str;
 use Nabilet\Modules\Core\Users\Models\User;
 
 /**
@@ -29,6 +30,8 @@ use Nabilet\Modules\Core\Users\Models\User;
  */
 class BonusAccount extends Model
 {
+    use HasPublicId;
+
     protected $table = 'bonus_accounts';
 
     protected $fillable = [
@@ -45,15 +48,6 @@ class BonusAccount extends Model
             'created_at' => 'datetime:Y-m-d H:i:s.u',
             'updated_at' => 'datetime:Y-m-d H:i:s.u',
         ];
-    }
-
-    protected static function booted(): void
-    {
-        static::creating(function (BonusAccount $account): void {
-            if ($account->public_id === null) {
-                $account->public_id = Str::ulid()->toBase32();
-            }
-        });
     }
 
     public function user(): BelongsTo

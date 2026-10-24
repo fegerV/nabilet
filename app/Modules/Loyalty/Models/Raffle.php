@@ -4,10 +4,11 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Loyalty\Models;
 
+use Nabilet\Modules\Core\Models\Concerns\HasPublicId;
+
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Support\Str;
 use Nabilet\Modules\Loyalty\Domain\RaffleWindow;
 use Nabilet\Modules\Loyalty\StateMachines\RaffleStateMachine;
 
@@ -35,6 +36,8 @@ use Nabilet\Modules\Loyalty\StateMachines\RaffleStateMachine;
  */
 class Raffle extends Model
 {
+    use HasPublicId;
+
     public const STATUS_DRAFT = RaffleStateMachine::DRAFT;
 
     public const STATUS_ACTIVE = RaffleStateMachine::ACTIVE;
@@ -64,15 +67,6 @@ class Raffle extends Model
             'created_at' => 'datetime:Y-m-d H:i:s.u',
             'updated_at' => 'datetime:Y-m-d H:i:s.u',
         ];
-    }
-
-    protected static function booted(): void
-    {
-        static::creating(function (Raffle $raffle): void {
-            if ($raffle->public_id === null) {
-                $raffle->public_id = Str::ulid()->toBase32();
-            }
-        });
     }
 
     /** @return HasMany<RafflePrize, $this> */

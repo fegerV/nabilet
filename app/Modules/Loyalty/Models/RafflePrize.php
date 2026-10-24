@@ -4,9 +4,10 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Loyalty\Models;
 
+use Nabilet\Modules\Core\Models\Concerns\HasPublicId;
+
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Support\Str;
 
 /**
  * Призовое место розыгрыша (фаза 5).
@@ -32,6 +33,8 @@ use Illuminate\Support\Str;
  */
 class RafflePrize extends Model
 {
+    use HasPublicId;
+
     protected $table = 'raffle_prizes';
 
     protected $fillable = [
@@ -49,15 +52,6 @@ class RafflePrize extends Model
             'created_at' => 'datetime:Y-m-d H:i:s.u',
             'updated_at' => 'datetime:Y-m-d H:i:s.u',
         ];
-    }
-
-    protected static function booted(): void
-    {
-        static::creating(function (RafflePrize $prize): void {
-            if ($prize->public_id === null) {
-                $prize->public_id = Str::ulid()->toBase32();
-            }
-        });
     }
 
     /** @return BelongsTo<Raffle, $this> */

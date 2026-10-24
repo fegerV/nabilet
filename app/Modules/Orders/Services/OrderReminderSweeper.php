@@ -7,7 +7,7 @@ namespace Nabilet\Modules\Orders\Services;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Str;
+use Nabilet\Modules\Core\Support\PublicId;
 use Nabilet\Modules\Notifications\Jobs\SendOrderNotificationJob;
 use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Orders\StateMachines\OrderStateMachine;
@@ -196,7 +196,7 @@ final class OrderReminderSweeper
             }
 
             DB::table('order_reminders')->insert([
-                'public_id' => (string) Str::ulid()->toBase32(),
+                'public_id' => PublicId::generate(),
                 'order_id' => $order->id,
                 'organization_id' => (int) $order->organization_id,
                 'session_id' => (int) $order->session_id,

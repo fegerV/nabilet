@@ -11,7 +11,7 @@ use Nabilet\Modules\Tickets\Models\TicketScan;
 use Nabilet\Modules\Tickets\StateMachines\TicketStateMachine;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
-use Illuminate\Support\Str;
+use Nabilet\Modules\Core\Support\PublicId;
 
 class TicketRepository
 {
@@ -116,7 +116,7 @@ class TicketRepository
         ?\DateTimeImmutable $scannedAt = null,
     ): TicketScan {
         return $ticket->scans()->create([
-            'public_id' => (string) Str::ulid(),
+            'public_id' => PublicId::generate(),
             'session_id' => $ticket->session_id,
             'device_id' => $deviceId,
             'client_scan_id' => $clientScanId,

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Venues\Models;
 
+use Nabilet\Modules\Core\Models\Concerns\HasPublicId;
+
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
@@ -16,6 +18,8 @@ use Nabilet\Modules\Sessions\Models\Session;
  */
 class Hall extends Model
 {
+    use HasPublicId;
+
     protected $table = 'halls';
 
     public $timestamps = true;
@@ -34,16 +38,6 @@ class Hall extends Model
         'height',
         'status',
     ];
-
-    /** Конвенция проекта: char(26) public_id NOT NULL → генерим ULID при создании. */
-    protected static function booted(): void
-    {
-        static::creating(function (Hall $hall): void {
-            if ($hall->public_id === null) {
-                $hall->public_id = \Illuminate\Support\Str::ulid()->toBase32();
-            }
-        });
-    }
 
     protected function casts(): array
     {

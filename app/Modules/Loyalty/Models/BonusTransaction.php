@@ -4,10 +4,11 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Loyalty\Models;
 
+use Nabilet\Modules\Core\Models\Concerns\HasPublicId;
+
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Support\Str;
 use Nabilet\Modules\Core\Users\Models\User;
 use Nabilet\Modules\Orders\Models\Order;
 
@@ -38,6 +39,8 @@ use Nabilet\Modules\Orders\Models\Order;
  */
 class BonusTransaction extends Model
 {
+    use HasPublicId;
+
     protected $table = 'bonus_transactions';
 
     protected $fillable = [
@@ -63,10 +66,6 @@ class BonusTransaction extends Model
     protected static function booted(): void
     {
         static::creating(function (BonusTransaction $transaction): void {
-            if ($transaction->public_id === null) {
-                $transaction->public_id = Str::ulid()->toBase32();
-            }
-
             if ($transaction->created_at === null) {
                 $transaction->created_at = now();
             }

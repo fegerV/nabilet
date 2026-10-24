@@ -4,11 +4,12 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Core\Users\Models;
 
+use Nabilet\Modules\Core\Models\Concerns\HasPublicId;
+
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 use Illuminate\Foundation\Auth\User as Authenticatable;
-use Illuminate\Support\Str;
 use Laravel\Sanctum\HasApiTokens;
 use Nabilet\Modules\Core\Users\Domain\UserStatus;
 use Nabilet\Modules\Core\Organizations\Models\Organization;
@@ -49,32 +50,11 @@ use Nabilet\Modules\Analytics\Models\AbAssignment;
  */
 class User extends Authenticatable
 {
+    use HasPublicId;
+
     use HasApiTokens;
 
     protected $table = 'users';
-
-    /**
-     * `public_id` is the identifier that leaves the process.
-     *
-     * The column is `CHAR(26)` in `nabilet_core_spec` — that is the width of a
-     * Crockford Base32 ULID, not of a UUID. A UUID is 36 characters, so writing
-     * one is not a cosmetic mismatch: MySQL rejects the INSERT with 1406 ("Data
-     * too long for column 'public_id'"), which is how registration failed. The
-     * generation lives here rather than in the repository so that every creation
-     * path — repository, factory, seeder, `create()` on a relation — gets a
-     * value the column can actually hold.
-     *
-     * The `null` guard means a caller that supplies its own `public_id` (a data
-     * import, a deterministic fixture) keeps it.
-     */
-    protected static function booted(): void
-    {
-        static::creating(function (self $model): void {
-            if ($model->public_id === null) {
-                $model->public_id = (string) Str::ulid()->toBase32();
-            }
-        });
-    }
 
     /**
      * `password` and `remember_token` never leave the process.

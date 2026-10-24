@@ -6,6 +6,7 @@ namespace Nabilet\Modules\Privacy\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Nabilet\Modules\Core\Models\Concerns\HasPublicId;
 use Nabilet\Modules\Core\Users\Models\User;
 
 /**
@@ -21,6 +22,8 @@ use Nabilet\Modules\Core\Users\Models\User;
  */
 class Consent extends Model
 {
+    use HasPublicId;
+
     /**
      * Явно, а не через множественное число Eloquent: имя таблицы — часть
      * контракта со схемой (`tools/verify-models-schema.php` сверяет колонки
@@ -49,15 +52,5 @@ class Consent extends Model
     {
         return $this->belongsTo(User::class);
     }
-
-        protected static function boot(): void
-        {
-            parent::boot();
-            static::creating(function (self $model) {
-                if (empty($model->public_id)) {
-                    $model->public_id = (string) \Illuminate\Support\Str::ulid()->toBase32();
-                }
-            });
-        }
 
 }

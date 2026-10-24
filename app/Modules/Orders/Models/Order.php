@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Orders\Models;
 
+use Nabilet\Modules\Core\Models\Concerns\HasPublicId;
+
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -43,6 +45,8 @@ use Nabilet\Modules\Tickets\Models\Ticket;
  */
 class Order extends Model
 {
+    use HasPublicId;
+
     protected $table = 'orders';
 
     protected $fillable = [
@@ -86,11 +90,9 @@ class Order extends Model
 
     protected static function booted(): void
     {
-        // CHAR(26) public_id обязателен везде в этой схеме — генерируем ULID base32.
+        // `public_id` заполняет трейт HasPublicId; здесь — только номер заказа,
+        // который нужен человеку в переписке и не является внешним ключом.
         static::creating(function (Order $model): void {
-            if ($model->public_id === null) {
-                $model->public_id = (string) Str::ulid()->toBase32();
-            }
             if ($model->order_number === null) {
                 $model->order_number = 'NB-' . now()->format('Ymd') . '-' . strtoupper(Str::random(8));
             }

@@ -7,13 +7,15 @@ namespace Nabilet\Modules\Venues\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Support\Str;
+use Nabilet\Modules\Core\Models\Concerns\HasPublicId;
 
 /**
  * StandingZone Model
  */
 class StandingZone extends Model
 {
+    use HasPublicId;
+
     protected $table = 'standing_zones';
 
     public $timestamps = true;
@@ -35,17 +37,6 @@ class StandingZone extends Model
             'created_at' => 'datetime:Y-m-d H:i:s.u',
             'updated_at' => 'datetime:Y-m-d H:i:s.u',
         ];
-    }
-
-    protected static function boot(): void
-    {
-        parent::boot();
-
-        static::creating(function ($model): void {
-            if (empty($model->public_id)) {
-                $model->public_id = (string) Str::ulid()->toBase32();
-            }
-        });
     }
 
     public function sector(): BelongsTo

@@ -4,10 +4,11 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Tickets\Models;
 
+use Nabilet\Modules\Core\Models\Concerns\HasPublicId;
+
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Support\Str;
 // Каноническая модель. Дубликат в `Modules\Organizations\Models\Organization`
 // нёс трейт `SoftDeletes` при отсутствующей колонке `organizations.deleted_at`,
 // из-за чего эта связь падала с `SQLSTATE[42S22]` при первой же загрузке.
@@ -16,6 +17,8 @@ use Nabilet\Modules\Core\Organizations\Models\Organization;
 /** Eloquent mapping for `checkin_devices`; the raw device token is never stored. */
 class CheckinDevice extends Model
 {
+    use HasPublicId;
+
     protected $table = 'checkin_devices';
 
     protected $fillable = [
@@ -32,15 +35,6 @@ class CheckinDevice extends Model
     protected $casts = [
         'last_seen_at' => 'datetime',
     ];
-
-    protected static function booted(): void
-    {
-        static::creating(function (self $model): void {
-            if ($model->public_id === null) {
-                $model->public_id = (string) Str::ulid()->toBase32();
-            }
-        });
-    }
 
     public function organization(): BelongsTo
     {

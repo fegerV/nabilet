@@ -4,11 +4,12 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Loyalty\Models;
 
+use Nabilet\Modules\Core\Models\Concerns\HasPublicId;
+
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\UniqueConstraintViolationException;
-use Illuminate\Support\Str;
 use Nabilet\Modules\Core\Users\Models\User;
 
 /**
@@ -35,6 +36,8 @@ use Nabilet\Modules\Core\Users\Models\User;
  */
 class Referral extends Model
 {
+    use HasPublicId;
+
     public const STATUS_PENDING = 'pending';
 
     public const STATUS_REGISTERED = 'registered';
@@ -64,10 +67,6 @@ class Referral extends Model
     protected static function booted(): void
     {
         static::creating(function (Referral $referral): void {
-            if ($referral->public_id === null) {
-                $referral->public_id = Str::ulid()->toBase32();
-            }
-
             // Адрес — ключ в UNIQUE: приведение делает сервер, иначе
             // «Иванов@» и «иванов@» оказались бы двумя приглашениями.
             if (is_string($referral->invited_email)) {

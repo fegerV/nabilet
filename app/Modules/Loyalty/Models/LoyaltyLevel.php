@@ -6,7 +6,7 @@ namespace Nabilet\Modules\Loyalty\Models;
 
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Support\Str;
+use Nabilet\Modules\Core\Models\Concerns\HasPublicId;
 
 /**
  * Уровень «Клуба зрителей» — строка конфига (Старт/Friend/VIP).
@@ -20,6 +20,8 @@ use Illuminate\Support\Str;
  */
 class LoyaltyLevel extends Model
 {
+    use HasPublicId;
+
     protected $table = 'loyalty_levels';
 
     protected $fillable = [
@@ -34,16 +36,6 @@ class LoyaltyLevel extends Model
         'min_paid_orders' => 'integer',
         'sort_order' => 'integer',
     ];
-
-    protected static function booted(): void
-    {
-        static::creating(function (self $model): void {
-            if (empty($model->public_id)) {
-                // 26-символьный ULID в base32 — тот же формат, что у прочих public_id.
-                $model->public_id = Str::ulid()->toBase32();
-            }
-        });
-    }
 
     /**
      * Уровни по возрастанию порога — тот порядок, который ожидает `LoyaltyTierPolicy`.

@@ -4,12 +4,13 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Loyalty\Models;
 
+use Nabilet\Modules\Core\Models\Concerns\HasPublicId;
+
 use Nabilet\Modules\Notifications\Domain\NotificationStatus;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\UniqueConstraintViolationException;
-use Illuminate\Support\Str;
 
 /**
  * Журнал подписных писем — идемпотентность отправки в схеме, а не в коде.
@@ -31,6 +32,8 @@ use Illuminate\Support\Str;
  */
 class FollowNotification extends Model
 {
+    use HasPublicId;
+
     /**
      * Словарь `follow_notifications.status` (`ck_follow_notifications_status`).
      *
@@ -72,15 +75,6 @@ class FollowNotification extends Model
             'created_at' => 'datetime:Y-m-d H:i:s.u',
             'updated_at' => 'datetime:Y-m-d H:i:s.u',
         ];
-    }
-
-    protected static function booted(): void
-    {
-        static::creating(function (FollowNotification $row): void {
-            if ($row->public_id === null) {
-                $row->public_id = Str::ulid()->toBase32();
-            }
-        });
     }
 
     public function follow(): BelongsTo
@@ -183,7 +177,6 @@ class FollowNotification extends Model
             ->where('template_code', $templateCode)
             ->first();
     }
-
 
     public function markSent(int|string $notificationId): void
     {

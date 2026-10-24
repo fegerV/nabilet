@@ -7,12 +7,12 @@ namespace Nabilet\Modules\Inventory\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Nabilet\Modules\Core\Models\Concerns\HasPublicId;
 use Nabilet\Modules\Events\Models\Session;
 use Nabilet\Modules\Orders\Models\SeatHold;
 use Nabilet\Modules\Venues\Models\Seat;
 use Nabilet\Modules\Inventory\StateMachines\InventoryItemStateMachine;
 use Nabilet\Modules\Venues\Models\StandingZone;
-use Illuminate\Support\Str;
 
 /**
  * InventoryItem — продаваемое место/зона на сессию.
@@ -21,6 +21,8 @@ use Illuminate\Support\Str;
  */
 class InventoryItem extends Model
 {
+    use HasPublicId;
+
     protected $table = 'inventory_items';
 
     protected $fillable = [
@@ -49,9 +51,6 @@ class InventoryItem extends Model
         parent::boot();
 
         static::creating(function (self $model): void {
-            if ($model->public_id === null) {
-                $model->public_id = (string) Str::ulid()->toBase32();
-            }
             if ($model->currency === null) {
                 $model->currency = 'RUB';
             }

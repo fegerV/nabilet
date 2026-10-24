@@ -13,10 +13,10 @@ use Nabilet\Modules\Orders\StateMachines\OrderStateMachine;
 use Nabilet\Modules\Inventory\Models\InventoryItem;
 use Nabilet\Modules\Sessions\Models\Session;
 use Nabilet\Core\Support\QrSigner;
+use Nabilet\Modules\Core\Support\PublicId;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Str;
 
 class TicketService
 {
@@ -102,7 +102,7 @@ class TicketService
 
                 for ($i = 0; $i < max(1, (int) $item->quantity); $i++) {
                     $seq++;
-                    $publicId = (string) Str::ulid();
+                    $publicId = PublicId::generate();
                     $snapshot = $item->seat_snapshot_json ?? [];
                     $seatId = $snapshot['seat_id'] ?? $inventory?->seat_id;
 

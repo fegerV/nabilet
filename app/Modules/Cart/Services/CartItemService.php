@@ -6,10 +6,10 @@ namespace Nabilet\Modules\Cart\Services;
 
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 use Nabilet\Core\Errors\ConflictError;
 use Nabilet\Core\Errors\DomainRuleViolation;
 use Nabilet\Core\Errors\ValidationError;
+use Nabilet\Modules\Core\Support\PublicId;
 use Nabilet\Modules\Cart\Domain\CartStatus;
 use Nabilet\Modules\Cart\Support\DbRetry;
 use Nabilet\Modules\Cart\Models\Cart;
@@ -413,7 +413,7 @@ final class CartItemService
     private function createHold(Cart $cart, InventoryItem $inventoryItem, int $quantity): void
     {
         SeatHold::create([
-            'public_id' => (string) Str::ulid()->toBase32(),
+            'public_id' => PublicId::generate(),
             'inventory_item_id' => $inventoryItem->id,
             'session_id' => (int) $inventoryItem->session_id,
             'cart_id' => $cart->id,

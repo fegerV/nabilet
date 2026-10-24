@@ -4,11 +4,12 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Loyalty\Models;
 
+use Nabilet\Modules\Core\Models\Concerns\HasPublicId;
+
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\UniqueConstraintViolationException;
-use Illuminate\Support\Str;
 use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Core\Users\Models\User;
 
@@ -38,6 +39,8 @@ use Nabilet\Modules\Core\Users\Models\User;
  */
 class RaffleEntry extends Model
 {
+    use HasPublicId;
+
     /**
      * В таблице только `created_at` — запись не правится после создания.
      *
@@ -61,15 +64,6 @@ class RaffleEntry extends Model
         return [
             'created_at' => 'datetime:Y-m-d H:i:s.u',
         ];
-    }
-
-    protected static function booted(): void
-    {
-        static::creating(function (RaffleEntry $entry): void {
-            if ($entry->public_id === null) {
-                $entry->public_id = Str::ulid()->toBase32();
-            }
-        });
     }
 
     /** @return BelongsTo<Raffle, $this> */

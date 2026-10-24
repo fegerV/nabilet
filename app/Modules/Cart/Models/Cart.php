@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Cart\Models;
 
+use Nabilet\Modules\Core\Models\Concerns\HasPublicId;
+
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -23,14 +25,7 @@ use Nabilet\Modules\Core\Users\Models\User;
  */
 class Cart extends Model
 {
-    protected static function booted(): void
-    {
-        static::creating(function (Cart $cart): void {
-            if ($cart->public_id === null) {
-                $cart->public_id = \Illuminate\Support\Str::ulid()->toBase32();
-            }
-        });
-    }
+    use HasPublicId;
 
     protected $table = 'carts';
 

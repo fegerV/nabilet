@@ -4,10 +4,11 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Venues\Models;
 
+use Nabilet\Modules\Core\Models\Concerns\HasPublicId;
+
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Support\Str;
 use Nabilet\Modules\Sessions\Models\Session;
 
 /**
@@ -15,6 +16,8 @@ use Nabilet\Modules\Sessions\Models\Session;
  */
 class HallSchemaVersion extends Model
 {
+    use HasPublicId;
+
     protected $table = 'hall_schema_versions';
 
     public $timestamps = true;
@@ -49,16 +52,6 @@ class HallSchemaVersion extends Model
     public function hall(): BelongsTo
         {
             return $this->belongsTo(Hall::class);
-        }
-
-        /** Конвенция проекта: char(26) public_id NOT NULL → генерим ULID при создании. */
-        protected static function booted(): void
-        {
-            static::creating(function (HallSchemaVersion $version): void {
-                if ($version->public_id === null) {
-                    $version->public_id = Str::ulid()->toBase32();
-                }
-            });
         }
 
             public function sectors(): HasMany

@@ -4,9 +4,10 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Venues\Models;
 
+use Nabilet\Modules\Core\Models\Concerns\HasPublicId;
+
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Support\Str;
 
 /**
  * HallTable Model
@@ -23,6 +24,8 @@ use Illuminate\Support\Str;
  */
 class HallTable extends Model
 {
+    use HasPublicId;
+
     protected $table = 'hall_tables';
 
     public $timestamps = true;
@@ -53,16 +56,6 @@ class HallTable extends Model
             'created_at' => 'datetime:Y-m-d H:i:s.u',
             'updated_at' => 'datetime:Y-m-d H:i:s.u',
         ];
-    }
-
-    /** Конвенция проекта: char(26) public_id NOT NULL → генерим ULID при создании. */
-    protected static function booted(): void
-    {
-        static::creating(function (HallTable $model): void {
-            if ($model->public_id === null) {
-                $model->public_id = Str::ulid()->toBase32();
-            }
-        });
     }
 
     public function sector(): BelongsTo

@@ -4,10 +4,11 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Orders\Models;
 
+use Nabilet\Modules\Core\Models\Concerns\HasPublicId;
+
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
-use Illuminate\Support\Str;
 use Nabilet\Modules\Pricing\Domain\PromoCodeDefinition;
 
 /**
@@ -30,6 +31,8 @@ use Nabilet\Modules\Pricing\Domain\PromoCodeDefinition;
  */
 class PromoCode extends Model
 {
+    use HasPublicId;
+
     use SoftDeletes;
 
     protected $table = 'promo_codes';
@@ -68,16 +71,6 @@ class PromoCode extends Model
         'valid_until' => 'datetime',
         'deleted_at' => 'datetime',
     ];
-
-    protected static function booted(): void
-    {
-        // CHAR(26) public_id обязателен везде в этой схеме — генерируем ULID base32.
-        static::creating(function (self $model): void {
-            if ($model->public_id === null) {
-                $model->public_id = (string) Str::ulid()->toBase32();
-            }
-        });
-    }
 
     public function redemptions(): HasMany
     {

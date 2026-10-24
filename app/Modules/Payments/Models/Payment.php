@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Payments\Models;
 
+use Nabilet\Modules\Core\Models\Concerns\HasPublicId;
+
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -30,6 +32,8 @@ use Nabilet\Modules\Orders\Models\Order;
  */
 class Payment extends Model
 {
+    use HasPublicId;
+
     protected $table = 'payments';
 
     protected $fillable = [
@@ -54,11 +58,9 @@ class Payment extends Model
 
     protected static function booted(): void
     {
-        // CHAR(26) public_id обязателен везде в этой схеме.
+        // `public_id` заполняет трейт HasPublicId; здесь — ключ идемпотентности,
+        // который защищает от двойного списания при повторном запросе.
         static::creating(function (Payment $model): void {
-            if ($model->public_id === null) {
-                $model->public_id = (string) Str::ulid()->toBase32();
-            }
             if ($model->idempotency_key === null) {
                 $model->idempotency_key = (string) Str::ulid();
             }

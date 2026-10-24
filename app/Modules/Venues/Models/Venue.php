@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Venues\Models;
 
+use Nabilet\Modules\Core\Models\Concerns\HasPublicId;
+
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -14,6 +16,8 @@ use Nabilet\Modules\Sessions\Models\Session;
  */
 class Venue extends Model
 {
+    use HasPublicId;
+
     protected $table = 'venues';
 
     public $timestamps = true;
@@ -44,16 +48,6 @@ class Venue extends Model
     public function getRouteKeyName(): string
     {
         return 'public_id';
-    }
-
-    /** Конвенция проекта: char(26) public_id NOT NULL → генерим ULID при создании. */
-    protected static function booted(): void
-    {
-        static::creating(function (Venue $venue): void {
-            if ($venue->public_id === null) {
-                $venue->public_id = \Illuminate\Support\Str::ulid()->toBase32();
-            }
-        });
     }
 
     protected function casts(): array

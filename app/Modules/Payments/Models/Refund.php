@@ -4,9 +4,10 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Payments\Models;
 
+use Nabilet\Modules\Core\Models\Concerns\HasPublicId;
+
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Support\Str;
 
 /**
  * @property int $id
@@ -24,6 +25,8 @@ use Illuminate\Support\Str;
  */
 class Refund extends Model
 {
+    use HasPublicId;
+
     protected $table = 'refunds';
 
     protected $fillable = [
@@ -42,15 +45,6 @@ class Refund extends Model
         'amount' => 'integer',
         'completed_at' => 'datetime',
     ];
-
-    protected static function booted(): void
-    {
-        static::creating(function (Refund $model): void {
-            if ($model->public_id === null) {
-                $model->public_id = (string) Str::ulid()->toBase32();
-            }
-        });
-    }
 
     public function payment(): BelongsTo
     {

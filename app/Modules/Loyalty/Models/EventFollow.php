@@ -4,11 +4,12 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Loyalty\Models;
 
+use Nabilet\Modules\Core\Models\Concerns\HasPublicId;
+
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\UniqueConstraintViolationException;
-use Illuminate\Support\Str;
 use Nabilet\Modules\Core\Users\Models\User;
 use Nabilet\Modules\Events\Models\Event;
 
@@ -27,6 +28,8 @@ use Nabilet\Modules\Events\Models\Event;
  */
 class EventFollow extends Model
 {
+    use HasPublicId;
+
     protected $table = 'event_follows';
 
     protected $fillable = [
@@ -49,10 +52,6 @@ class EventFollow extends Model
     protected static function booted(): void
     {
         static::creating(function (EventFollow $follow): void {
-            if ($follow->public_id === null) {
-                $follow->public_id = Str::ulid()->toBase32();
-            }
-
             if ($follow->created_at === null) {
                 $follow->created_at = now();
             }

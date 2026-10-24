@@ -426,6 +426,16 @@ function findModels(string $root): array
                 continue;
             }
 
+            // `Models/Concerns/` держит ТРЕЙТЫ, а не модели: у трейта нет ни
+            // `$table`, ни своей таблицы в схеме, и проверять его как модель
+            // бессмысленно. Пропускаем по виду объявления, а не по пути —
+            // трейт в любом месте под `Models/` перестаёт считаться моделью.
+            $source = (string) file_get_contents($file->getPathname());
+
+            if (preg_match('/^\s*(?:final\s+|abstract\s+)?trait\s+\w+/m', $source) === 1) {
+                continue;
+            }
+
             $found[] = $file->getPathname();
         }
     };

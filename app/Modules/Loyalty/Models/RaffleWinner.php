@@ -4,10 +4,11 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Loyalty\Models;
 
+use Nabilet\Modules\Core\Models\Concerns\HasPublicId;
+
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Support\Str;
 use Nabilet\Modules\Core\Users\Models\User;
 
 /**
@@ -37,6 +38,8 @@ use Nabilet\Modules\Core\Users\Models\User;
  */
 class RaffleWinner extends Model
 {
+    use HasPublicId;
+
     /**
      * В таблице только `created_at`: результат тиража не переписывается.
      *
@@ -64,15 +67,6 @@ class RaffleWinner extends Model
             'notified_at' => 'datetime:Y-m-d H:i:s.u',
             'created_at' => 'datetime:Y-m-d H:i:s.u',
         ];
-    }
-
-    protected static function booted(): void
-    {
-        static::creating(function (RaffleWinner $winner): void {
-            if ($winner->public_id === null) {
-                $winner->public_id = Str::ulid()->toBase32();
-            }
-        });
     }
 
     /** @return BelongsTo<Raffle, $this> */
