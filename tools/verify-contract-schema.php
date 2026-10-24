@@ -105,6 +105,7 @@ function parseOpenApiSchemas(string $file): array
     $schemas = [];
     $current = null;
     $property = null;
+    $inherits = [];
 
     foreach ($lines as $line) {
         // A schema header is indented exactly four spaces and ends in a colon.
@@ -128,6 +129,32 @@ function parseOpenApiSchemas(string $file): array
             continue;
         }
 
+        // `allOf: [ {$ref: X}, {type: object, properties: ...} ]` — схема
+        // СОБИРАЕТСЯ из другой, а не объявляет поля сама.
+        //
+        // ЗАЧЕМ ЭТОТ ВЕТВЕНИЕ. `EventFollow` перестал выписывать поля второй
+        // раз и стал `allOf` от `EventFavorite`: раньше совпадение формы двух
+        // ресурсов держалось на предложении в докблоке, то есть правило жило в
+        // прозе. Но линейный парсер выше видит свойства только на отступе 8, а
+        // под `allOf` они уходят на 12 — и гейт начинал бы сравнивать
+        // `event_follows` с ПУСТЫМ набором полей. Это не «меньше замечаний», а
+        // ослепшая проверка: расхождение по любой колонке стало бы невидимым.
+        // Поэтому `$ref` разрешается, и поля родителя подмешиваются сюда же.
+        if (preg_match('/^      allOf:\s*$/', $line)) {
+            $inherits[$current] = [];
+            $property = null;
+
+            continue;
+        }
+
+        // Кавычка после имени необязательна: `$ref: '#/.../EventFavorite'` и
+        // `$ref: "#/.../EventFavorite"` встречаются в одном документе.
+        if (isset($inherits[$current]) && preg_match('/^\s+- \$ref: .*\/schemas\/([A-Za-z0-9]+)[\'"]?\s*$/', $line, $m)) {
+            $inherits[$current][] = $m[1];
+
+            continue;
+        }
+
         // A property is indented eight spaces: `        revoked_at: { type: string }`
         // A property is indented eight spaces: `        revoked_at: { type: string }`.
         // Its TYPE may be on the following lines though (`seo:` / `type: object`),
@@ -142,6 +169,17 @@ function parseOpenApiSchemas(string $file): array
 
         if ($property !== null && preg_match('/^          /', $line)) {
             $schemas[$current][$property] .= "\n" . $line;
+        }
+    }
+
+    // Наследованное: поля родителя становятся полями наследника, если он их не
+    // переобъявил. Порядок — от родителя к наследнику, чтобы собственное
+    // объявление побеждало (ровно так же, как это делает OpenAPI).
+    foreach ($inherits as $schema => $parents) {
+        foreach ($parents as $parent) {
+            foreach ($schemas[$parent] ?? [] as $name => $declaration) {
+                $schemas[$schema][$name] ??= $declaration;
+            }
         }
     }
 

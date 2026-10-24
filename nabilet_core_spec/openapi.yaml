@@ -2982,18 +2982,19 @@ components:
         created_at: { type: string, format: date-time }
 
     EventFollow:
-      type: object
-      required: [id, event, created_at]
-      description: >-
-        Форма совпадает с `EventFavorite` намеренно: экран кабинета показывает
-        два списка рядом, и разные формы заставляли бы фронтенд писать два
-        парсера под одну и ту же строку.
-      properties:
-        id:
-          type: string
-          description: event_follows.public_id
-        event: { $ref: '#/components/schemas/EventSummary' }
-        created_at: { type: string, format: date-time }
+      allOf:
+        - $ref: '#/components/schemas/EventFavorite'
+        - type: object
+          description: >-
+            Форма совпадает с `EventFavorite` намеренно: экран кабинета показывает
+            два списка рядом, и разные формы заставляли бы фронтенд писать два
+            парсера под одну и ту же строку. Раньше это совпадение держалось
+            только на этом предложении, а поля были выписаны второй раз; теперь
+            форма объявлена один раз, а здесь наследуется.
+          properties:
+            id:
+              type: string
+              description: event_follows.public_id
 
     EventFavoriteResponse:
       type: object
