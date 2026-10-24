@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Nabilet\Modules\Tickets\Services;
 
 use Illuminate\Support\Facades\Log;
+use Nabilet\Core\Support\CssColor;
 use Nabilet\Modules\Tickets\Domain\Qr\QrEncoder;
 use Nabilet\Modules\Tickets\Domain\Qr\QrPngRenderer;
 use Nabilet\Modules\Tickets\Domain\TicketTemplateDefaults;
@@ -420,6 +421,10 @@ HTML;
     /**
      * Цвет из макета: только hex/именованные, иначе значение по умолчанию.
      * Защита от разрыва атрибута стиля (как в `TicketPalette`).
+     *
+     * Правило — у CssColor. Здесь была его четвёртая копия, и она была шире
+     * остальных на слово `none` (законное значение SVG `fill`), хотя докблок
+     * обещал «как в TicketPalette».
      */
     private function safeColor(mixed $value, string $fallback): string
     {
@@ -427,17 +432,7 @@ HTML;
             return $fallback;
         }
 
-        $value = trim($value);
-
-        if (preg_match('/^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/', $value) === 1) {
-            return strtolower($value);
-        }
-
-        if (in_array(strtolower($value), ['black', 'white', 'transparent', 'inherit', 'none'], true)) {
-            return strtolower($value);
-        }
-
-        return $fallback;
+        return CssColor::normalizeFill($value) ?? $fallback;
     }
 
     /**

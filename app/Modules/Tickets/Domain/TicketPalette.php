@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Tickets\Domain;
 
+use Nabilet\Core\Support\CssColor;
+
 /**
  * Цвета билета, извлечённые из произвольного `template_json`.
  *
@@ -51,10 +53,10 @@ final class TicketPalette
     /**
      * Ключевые слова CSS, которые безопасно вставлять в атрибут как есть.
      * Список закрытый: это не «поддержка CSS», а защита от разрыва атрибута.
+     *
+     * Живёт у CssColor: рендерер PDF держал ВТОРУЮ копию этого списка (на одно
+     * слово шире, с `none`) и в докблоке обещал «как в TicketPalette».
      */
-    private const NAMED_COLORS = [
-        'black', 'white', 'transparent', 'inherit',
-    ];
 
     private function __construct(
         public readonly string $background,
@@ -113,24 +115,23 @@ final class TicketPalette
     {
         $color = strtolower(trim($color));
 
-        if ($color === 'white' || $color === 'transparent' || $color === 'inherit') {
-            return 1.0;
+        if (CssColor::isNamed($color)) {
+            // `black` — единственное имя цвета с нулевой яркостью; остальные
+            // (`white`, `transparent`, `inherit`) в этом расчёте значат
+            // «светлый фон, тёмный текст».
+            return $color === 'black' ? 0.0 : 1.0;
         }
 
-        if ($color === 'black') {
-            return 0.0;
-        }
+        $normalized = CssColor::normalizeHex($color);
 
-        if (preg_match('/^#([0-9a-f]{3}|[0-9a-f]{6})$/', $color, $matches) !== 1) {
+        if ($normalized === null) {
             return null;
         }
 
-        $hex = $matches[1];
-
         // #abc → #aabbcc: короткая запись разворачивается дублированием цифр.
-        if (strlen($hex) === 3) {
-            $hex = $hex[0] . $hex[0] . $hex[1] . $hex[1] . $hex[2] . $hex[2];
-        }
+        // Разворачивание — тоже правило (в SPA оно есть в hexToRgb), и живёт
+        // оно у CssColor, а не копией здесь.
+        $hex = substr(CssColor::expand($normalized), 1);
 
         $linear = [];
 
@@ -239,13 +240,15 @@ final class TicketPalette
             return $fallback;
         }
 
-        $value = strtolower(trim($value));
+        $hex = CssColor::normalizeHex($value);
 
-        if (preg_match('/^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/', $value) === 1) {
-            return $value;
+        if ($hex !== null) {
+            return $hex;
         }
 
-        if (in_array($value, self::NAMED_COLORS, true)) {
+        $value = strtolower(trim($value));
+
+        if (CssColor::isNamed($value)) {
             return $value;
         }
 

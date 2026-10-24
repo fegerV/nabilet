@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Nabilet\Modules\Storefront\Services;
 
 use Illuminate\Support\Arr;
+use Nabilet\Core\Support\CssColor;
 use Nabilet\Modules\Storefront\Models\StorefrontSetting;
 
 /**
@@ -497,15 +498,9 @@ final class StorefrontService
     /** Цвет #rgb / #rrggbb. null — «не задан», тогда берём кисть пресета. */
     private function color(mixed $value): ?string
     {
-        if (! is_string($value)) {
-            return null;
-        }
-        $value = strtolower(trim($value));
-        if (! preg_match('/^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/', $value)) {
-            return null;
-        }
-
-        return $value;
+        // Правило «это цвет?» — у CssColor: копия здесь уже расходилась с
+        // палитрой билета по регистру.
+        return CssColor::normalizeHex($value);
     }
 
     /** Ссылка: только http(s), относительный путь или data:image для логотипа. */
