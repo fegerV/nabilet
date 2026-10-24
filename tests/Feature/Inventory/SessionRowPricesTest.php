@@ -232,6 +232,50 @@ final class SessionRowPricesTest extends TestCase
         $this->assertSame($gridBefore + 150_000, $this->gridPriceSum());
     }
 
+    // ── Кто имеет право: список ролей живёт в одном месте ───────────────────
+
+    /**
+     * `UpdateRowPricesRequest::authorize()` и middleware `admin` задают ОДИН
+     * вопрос одному владельцу (`StaffRole`). Пока ответ на него расходился,
+     * смысл defense-in-depth терялся: FormRequest держал свой список ролей,
+     * и добавление роли в `StaffRole::ROLES` не доезжало до него.
+     *
+     * Тест смотрит на оба конца: пользователь без роли не пишет (403), а
+     * `manager` — пишет (200). Второй assert не про вежливость: он ловит
+     * rewiring, который сузил набор ролей до одного `admin`.
+     */
+    public function test_the_prices_endpoint_refuses_a_plain_user_and_admits_a_manager(): void
+    {
+        $sessionId = $this->createSession($this->hallId, '2026-11-20 19:00');
+        $rowId = $this->rowIdOf($sessionId, number: '1');
+        $seatId = $this->seatIdOf($rowId);
+        $payload = ['rows' => [['row_id' => $rowId, 'price_amount' => 250_000]]];
+
+        $priceOf = fn (): int => (int) DB::table('inventory_items')
+            ->where('session_id', $sessionId)
+            ->where('seat_id', $seatId)
+            ->value('price_amount');
+
+        $before = $priceOf();
+        $this->assertSame(100_000, $before, 'фикстура: цена ряда в сетке зала изменилась');
+
+        $this->actingAs($this->actingAsUserWithRole('customer'), 'api');
+        $this->patchJson("/api/v1/inventory/sessions/{$sessionId}/prices", $payload)
+            ->assertStatus(403);
+
+        $this->assertSame($before, $priceOf(), 'пользователь без роли прошёл authorize() и цена изменилась');
+
+        $this->actingAs($this->actingAsUserWithRole('manager'), 'api');
+        $this->patchJson("/api/v1/inventory/sessions/{$sessionId}/prices", $payload)
+            ->assertStatus(200);
+
+        $this->assertSame(
+            250_000,
+            $priceOf(),
+            'manager — сотрудник (StaffRole::ROLES), и после rewiring он потерял доступ',
+        );
+    }
+
     // ── Схемы и фикстуры ───────────────────────────────────────────────────
 
     /**
@@ -407,7 +451,21 @@ final class SessionRowPricesTest extends TestCase
 
     private function actingAsAdmin(int $organizationId): User
     {
+        $user = $this->actingAsUserWithRole('admin', $organizationId);
+        $this->actingAs($user, 'api');
+
+        return $user;
+    }
+
+    /**
+     * Пользователь ровно с одной ролью. Роль создаётся при первом
+     * обращении — в схеме нет сида ролей, и `manager` до сих пор не
+     * требовался ни одному тесту.
+     */
+    private function actingAsUserWithRole(string $slug, ?int $organizationId = null): User
+    {
         $now = now();
+        $organizationId ??= $this->organizationId;
 
         $userId = (int) DB::table('users')->insertGetId([
             'public_id' => (string) Str::ulid()->toBase32(),
@@ -418,12 +476,12 @@ final class SessionRowPricesTest extends TestCase
             'updated_at' => $now,
         ]);
 
-        $roleId = DB::table('roles')->where('slug', 'admin')->value('id');
+        $roleId = DB::table('roles')->where('slug', $slug)->value('id');
 
         if ($roleId === null) {
             $roleId = (int) DB::table('roles')->insertGetId([
-                'name' => 'Администратор',
-                'slug' => 'admin',
+                'name' => $slug,
+                'slug' => $slug,
             ]);
         }
 
@@ -441,9 +499,6 @@ final class SessionRowPricesTest extends TestCase
             'created_at' => $now,
         ]);
 
-        $user = User::query()->findOrFail($userId);
-        $this->actingAs($user, 'api');
-
-        return $user;
+        return User::query()->findOrFail($userId);
     }
 }

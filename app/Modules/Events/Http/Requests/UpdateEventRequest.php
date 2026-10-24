@@ -7,6 +7,7 @@ namespace Nabilet\Modules\Events\Http\Requests;
 use Nabilet\Modules\Events\Http\Requests\Concerns\EventFormMessages;
 use Nabilet\Modules\Events\Http\Requests\Concerns\HandlesPosterUpload;
 use Nabilet\Core\Support\UserOrganization;
+use Nabilet\Core\Support\StaffRole;
 use Nabilet\Modules\Events\Models\Event;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
@@ -38,17 +39,16 @@ class UpdateEventRequest extends FormRequest
     }
 
     public function authorize(): bool
-        {
-            // Write-роуты уже под auth:api + admin (middleware 'admin').
-            // Здесь дублируем роль-проверку, чтобы FormRequest не зависел от
-            // несуществующей EventPolicy (can('update') всегда false → 403).
-            $user = $this->user();
-            if (! $user) {
-                return false;
-            }
-
-            return $user->roles()->pluck('slug')->intersect(['admin', 'manager'])->isNotEmpty();
-        }
+    {
+        // Write-роут уже под auth:api + admin (middleware 'admin'). Здесь
+        // правило «это сотрудник?» берём у владельца — `StaffRole`: список
+        // ролей знает он, своя копия означала бы второй список, который
+        // разойдётся с первым при добавлении роли.
+        //
+        // Policy не используется намеренно: `EventPolicy` не существует, а
+        // `can('update')` без неё всегда false → 403 на собственный роут.
+        return StaffRole::isStaff($this->user());
+    }
 
     public function rules(): array
     {

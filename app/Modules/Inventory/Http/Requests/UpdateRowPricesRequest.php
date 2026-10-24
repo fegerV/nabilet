@@ -6,6 +6,7 @@ namespace Nabilet\Modules\Inventory\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
 use Nabilet\Core\Errors\ValidationError;
+use Nabilet\Core\Support\StaffRole;
 
 /**
  * PATCH /inventory/sessions/{sessionId}/prices
@@ -35,14 +36,13 @@ class UpdateRowPricesRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        // Write-роут под auth:api + admin; дублируем роль-проверку по
-        // образцу StoreEventRequest (без Policy — can() был бы всегда false).
-        $user = $this->user();
-        if (! $user) {
-            return false;
-        }
-
-        return $user->roles()->pluck('slug')->intersect(['admin', 'manager'])->isNotEmpty();
+        // Write-роут под auth:api + admin. Правило «это сотрудник?» берём у
+        // владельца — `StaffRole`: список ролей знает он. Раньше здесь стояла
+        // своя копия проверки «по образцу StoreEventRequest», то есть третий
+        // список ролей, который разошёлся бы с первыми двумя при добавлении
+        // роли. Policy не используется намеренно: её для этого ресурса нет,
+        // а `can()` без неё всегда false.
+        return StaffRole::isStaff($this->user());
     }
 
     /**

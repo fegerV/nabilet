@@ -9,6 +9,7 @@ use Illuminate\Validation\Rule;
 use Nabilet\Modules\Events\Http\Requests\Concerns\EventFormMessages;
 use Nabilet\Modules\Events\Http\Requests\Concerns\HandlesPosterUpload;
 use Nabilet\Core\Support\UserOrganization;
+use Nabilet\Core\Support\StaffRole;
 use Nabilet\Modules\Events\Models\Event;
 use Illuminate\Foundation\Http\FormRequest;
 
@@ -60,15 +61,16 @@ class StoreEventRequest extends FormRequest
 
     public function authorize(): bool
     {
-        // Write-роуты уже под auth:api + admin (middleware 'admin').
-        // Здесь дублируем роль-проверку, чтобы FormRequest не зависел от
-        // несуществующей EventPolicy (can('create') всегда false → 403).
-        $user = $this->user();
-        if (! $user) {
-            return false;
-        }
-
-        return $user->roles()->pluck('slug')->intersect(['admin', 'manager'])->isNotEmpty();
+        // Write-роут уже под auth:api + admin (middleware 'admin'). Здесь
+        // правило «это сотрудник?» берём у владельца: `StaffRole` знает и
+        // список ролей, и то, что «сотрудник» — это класс доступа, а не
+        // владелец ресурса. Своя копия проверки в FormRequest означала бы
+        // четвёртый список ролей, который разойдётся с тремя остальными.
+        //
+        // Policy здесь не используется намеренно: `EventPolicy` не
+        // существует, а `can('create')` без неё всегда false → 403 на
+        // собственный роут.
+        return StaffRole::isStaff($this->user());
     }
 
     public function rules(): array
