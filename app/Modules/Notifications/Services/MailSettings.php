@@ -4,10 +4,9 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Notifications\Services;
 
-use Nabilet\Modules\Core\Models\Setting;
 use Illuminate\Support\Facades\Config;
-use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Mail;
+use Nabilet\Modules\Core\Settings\SettingsStore;
 use Throwable;
 
 /**
@@ -34,6 +33,17 @@ use Throwable;
 class MailSettings
 {
     public const SCOPE = 'mail';
+
+    /**
+     * Чтение/запись `settings`. Кэш НЕ включён: настройки SMTP читаются редко,
+     * а изменения из другого процесса должны быть видны сразу.
+     */
+    private SettingsStore $store;
+
+    public function __construct()
+    {
+        $this->store = new SettingsStore();
+    }
 
     /** Ключи, которые администратор может править через UI. */
     public const EDITABLE = [
@@ -240,22 +250,7 @@ class MailSettings
     /** @return array<string, mixed> сырые значения из БД (пароль — всё ещё шифротекст) */
     private function storedValues(): array
     {
-        try {
-            $rows = Setting::query()
-                ->where('scope', self::SCOPE)
-                ->pluck('value_json', 'setting_key')
-                ->all();
-        } catch (Throwable) {
-            return [];
-        }
-
-        $out = [];
-        foreach ($rows as $key => $value) {
-            $decoded = json_decode((string) $value, true);
-            $out[$key] = $decoded === null ? $value : $decoded;
-        }
-
-        return $out;
+        return $this->store->values(self::SCOPE);
     }
 
     /**
@@ -269,38 +264,16 @@ class MailSettings
             return null;
         }
 
-        try {
-            return Crypt::decryptString($raw);
-        } catch (Throwable) {
-            // Нечитаемый шифротекст (сменился APP_KEY) — не валим запрос:
-            // трактуем как «пароль не задан», админ введёт заново.
-            return null;
-        }
+        return SettingsStore::decrypt($raw);
     }
 
     private function writeValue(string $key, mixed $value, bool $encrypted = false): void
     {
-        $stored = $encrypted ? Crypt::encryptString((string) $value) : $value;
-
-        // updateOrCreate кладёт второй массив только в UPDATE. На INSERT он бы
-        // потерял `updated_at`, а колонка NOT NULL без дефолта — поэтому
-        // выставляем метку через модель явно, до сохранения.
-        $setting = Setting::query()->firstOrNew([
-            'scope' => self::SCOPE,
-            'setting_key' => $key,
-        ]);
-
-        $setting->value_json = json_encode($stored, JSON_UNESCAPED_UNICODE);
-        $setting->encrypted = $encrypted;
-        $setting->updated_at = now();
-        $setting->save();
+        $this->store->write(self::SCOPE, $key, $value, $encrypted);
     }
 
     private function forget(string $key): void
     {
-        Setting::query()
-            ->where('scope', self::SCOPE)
-            ->where('setting_key', $key)
-            ->delete();
+        $this->store->forget(self::SCOPE, $key);
     }
 }

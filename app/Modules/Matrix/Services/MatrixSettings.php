@@ -4,10 +4,8 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Matrix\Services;
 
-use Nabilet\Modules\Core\Models\Setting;
 use Illuminate\Support\Facades\Config;
-use Illuminate\Support\Facades\Crypt;
-use Throwable;
+use Nabilet\Modules\Core\Settings\SettingsStore;
 
 /**
  * Настройки канала Matrix, редактируемые из админки.
@@ -73,8 +71,17 @@ final class MatrixSettings
     private const CONFIG_ENABLED = 'nabilet.matrix.enabled';
     private const CONFIG_NOTIFY_ORDERS = 'nabilet.matrix.notify_orders';
 
-    /** @var array<string, mixed>|null */
-    private ?array $cache = null;
+    /**
+     * Чтение/запись `settings` С кэшем: аксессоры (`isEnabled()`,
+     * `notifyOrders()`) зовутся на каждый заказ, а таблица — одна на всю
+     * установку. Кэш сбрасывается в `save()` через `invalidate()`.
+     */
+    private SettingsStore $store;
+
+    public function __construct()
+    {
+        $this->store = new SettingsStore(cached: true);
+    }
 
     /**
      * Применить настройки из БД к runtime-конфигу.
@@ -236,7 +243,7 @@ final class MatrixSettings
         }
 
         // Сбросить кэш ДО применения: иначе аксессоры вернули бы старые значения.
-        $this->cache = null;
+        $this->store->invalidate();
 
         // Применить сразу: администратор сохранил — тест-отправка должна уйти
         // уже с новыми настройками, без перезапуска воркера.
@@ -248,27 +255,7 @@ final class MatrixSettings
      */
     private function values(): array
     {
-        if ($this->cache !== null) {
-            return $this->cache;
-        }
-
-        try {
-            $rows = Setting::query()
-                ->where('scope', self::SCOPE)
-                ->pluck('value_json', 'setting_key')
-                ->all();
-        } catch (Throwable) {
-            return $this->cache = [];
-        }
-
-        $out = [];
-
-        foreach ($rows as $key => $value) {
-            $decoded = json_decode((string) $value, true);
-            $out[$key] = $decoded === null ? $value : $decoded;
-        }
-
-        return $this->cache = $out;
+        return $this->store->values(self::SCOPE);
     }
 
     private function string(string $key, string $configPath): string
@@ -295,41 +282,16 @@ final class MatrixSettings
 
     private function decrypt(string $cipherText): ?string
     {
-        if ($cipherText === '') {
-            return null;
-        }
-
-        try {
-            return Crypt::decryptString($cipherText);
-        } catch (Throwable) {
-            // Нечитаемый шифротекст (сменился APP_KEY) — не валим запрос:
-            // трактуем как «токен не задан», владелец введёт заново.
-            return null;
-        }
+        return SettingsStore::decrypt($cipherText);
     }
 
     private function writeValue(string $key, mixed $value, bool $encrypted = false): void
     {
-        $stored = $encrypted ? Crypt::encryptString((string) $value) : $value;
-
-        // Таблица `settings` несёт только `updated_at` (NOT NULL, без дефолта) —
-        // метку выставляем явно, как в `MailSettings`.
-        $setting = Setting::query()->firstOrNew([
-            'scope' => self::SCOPE,
-            'setting_key' => $key,
-        ]);
-
-        $setting->value_json = json_encode($stored, JSON_UNESCAPED_UNICODE);
-        $setting->encrypted = $encrypted;
-        $setting->updated_at = now();
-        $setting->save();
+        $this->store->write(self::SCOPE, $key, $value, $encrypted);
     }
 
     private function forget(string $key): void
     {
-        Setting::query()
-            ->where('scope', self::SCOPE)
-            ->where('setting_key', $key)
-            ->delete();
+        $this->store->forget(self::SCOPE, $key);
     }
 }

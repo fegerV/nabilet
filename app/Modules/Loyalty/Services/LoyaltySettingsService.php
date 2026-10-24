@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Loyalty\Services;
 
-use Nabilet\Modules\Core\Models\Setting;
+use Nabilet\Modules\Core\Settings\SettingsStore;
 use Nabilet\Modules\Core\Users\Models\User;
 use Nabilet\Modules\Loyalty\Domain\ReferralPolicy;
 use Nabilet\Modules\Loyalty\Domain\ReferralReward;
@@ -72,9 +72,13 @@ final class LoyaltySettingsService
     public const DEFAULT_REFERRAL_INVITER_BONUS = 30000;
     public const DEFAULT_REFERRAL_INVITED_BONUS = 30000;
 
+    /** Чтение/запись `settings`; кэш не нужен — настроек три, читаются редко. */
+    private SettingsStore $store;
+
     public function __construct(
         private readonly LoyaltyLevelService $levels = new LoyaltyLevelService(),
     ) {
+        $this->store = new SettingsStore();
     }
 
     /**
@@ -197,38 +201,11 @@ final class LoyaltySettingsService
     /** @return array<string, mixed> сырые значения из БД */
     private function storedValues(): array
     {
-        try {
-            $rows = Setting::query()
-                ->where('scope', self::SCOPE)
-                ->pluck('value_json', 'setting_key')
-                ->all();
-        } catch (\Throwable) {
-            // Свежая установка до миграций: настроек нет — работаем по дефолтам.
-            return [];
-        }
-
-        $out = [];
-
-        foreach ($rows as $key => $value) {
-            $decoded = json_decode((string) $value, true);
-            $out[$key] = $decoded === null ? $value : $decoded;
-        }
-
-        return $out;
+        return $this->store->values(self::SCOPE);
     }
 
     private function writeValue(string $key, mixed $value): void
     {
-        // Таблица `settings` несёт только `updated_at` (NOT NULL, без дефолта) —
-        // метку выставляем явно, как в `MailSettings`.
-        $setting = Setting::query()->firstOrNew([
-            'scope' => self::SCOPE,
-            'setting_key' => $key,
-        ]);
-
-        $setting->value_json = json_encode($value, JSON_UNESCAPED_UNICODE);
-        $setting->encrypted = false;
-        $setting->updated_at = now();
-        $setting->save();
+        $this->store->write(self::SCOPE, $key, $value);
     }
 }
