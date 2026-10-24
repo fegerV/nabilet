@@ -56,10 +56,11 @@ final class StorefrontService
             'version' => 1,
             'theme' => [
                 'preset' => 'violet',
-                'brand' => '#6D4AFF',
-                'brandStrong' => '#5A31F0',
-                'accent' => '#FF5C22',
-                'accentStrong' => '#F03F00',
+                // Кисть пресета — ОДИН источник: не перепечатываем те же четыре
+                // HEX-значения руками, иначе правка `PRESETS['violet']` оставила
+                // бы дефолт на старых цветах (и normalize() уже берёт кисть
+                // именно из PRESETS, так что копия разошлась бы молча).
+                ...self::PRESETS['violet'],
                 'radius' => 16,
                 'mode' => 'auto',
                 'surface' => 'tinted',

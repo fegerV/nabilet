@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Seo;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Nabilet\Core\Http\BrandPalette;
 use Tests\TestCase;
 
 /**
@@ -155,5 +156,40 @@ final class BrandedNotFoundTest extends TestCase
     public function test_real_routes_are_not_shadowed(): void
     {
         $this->get('/up')->assertStatus(200);
+    }
+
+    /**
+     * Палитра бренда — ОДИН владелец, а не копия на страницу.
+     *
+     * Раньше `NotFoundPage` держал собственные `COLOR_*` константы с теми же
+     * шестью HEX-значениями, что и `BrandPalette`, — то есть был ровно той
+     * «второй копией», от которой предостерегает докблок палитры. Правка бренда
+     * в одном месте оставила бы 404 на старом цвете, и заметить это можно было
+     * бы только глазами.
+     *
+     * Две проверки:
+     *   — выходной HTML содержит значения ИМЕННО из `BrandPalette` (страница
+     *     берёт их оттуда, а не из своей таблицы);
+     *   — в исходнике класса нет собственных цветовых констант (нельзя вернуть
+     *     копию, не уронив тест).
+     */
+    public function test_the_page_uses_the_shared_brand_palette_not_a_copy(): void
+    {
+        $body = (string) \Nabilet\Core\Http\NotFoundPage::response('/x')->getContent();
+
+        foreach ([
+            BrandPalette::CANVAS,
+            BrandPalette::SURFACE,
+            BrandPalette::CONTENT,
+            BrandPalette::MUTED,
+            BrandPalette::BRAND,
+            BrandPalette::ACCENT,
+        ] as $color) {
+            $this->assertStringContainsString($color, $body, sprintf('палитра: %s', $color));
+        }
+
+        $source = (string) file_get_contents(base_path('app/Core/Http/NotFoundPage.php'));
+
+        $this->assertStringNotContainsString('const COLOR_', $source);
     }
 }

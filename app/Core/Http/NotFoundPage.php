@@ -32,29 +32,14 @@ use Illuminate\Http\Response;
  * закрывает случай, когда робот пришёл по внешней ссылке. `follow` — потому что
  * единственный осмысленный сигнал с этой страницы ведёт в каталог.
  *
- * ЦВЕТА ВЗЯТЫ ИЗ ТОКЕНОВ ТЁМНОЙ ТЕМЫ ВИТРИНЫ (`resources/css/app.css`, класс
- * `.dark`). Страница не подключает CSS приложения, поэтому значения выписаны
- * явно: расхождение с палитрой здесь заметно сразу — 404 встречается редко и
- * именно поэтому выглядит «чужим», если выпадает из бренда.
+ * ЦВЕТА — ИЗ `BrandPalette`, ЕДИНСТВЕННОГО ВЛАДЕЛЬЦА ПАЛИТРЫ, А НЕ КОПИЯ.
+ * Раньше страница держала собственные `COLOR_*` константы с теми же шестью
+ * HEX-значениями — ровно та «вторая копия», от которой предостерегает докблок
+ * `BrandPalette`. Теперь шаблон ссылается на `BrandPalette::CANVAS` и т. д., и
+ * правка бренда не может разойтись между 404 и посадочными страницами.
  */
 final class NotFoundPage
 {
-    /** Фон витрины: `--canvas` в тёмной теме. */
-    private const COLOR_CANVAS = '#0B0918';
-
-    /** `--surface` — карточка. */
-    private const COLOR_SURFACE = '#171331';
-
-    /** `--content` — основной текст. */
-    private const COLOR_CONTENT = '#F4F2FF';
-
-    /** `--content-muted` — вторичный текст. */
-    private const COLOR_MUTED = '#A49DBF';
-
-    /** `--brand-500` и `--accent-500` — градиент бренда. */
-    private const COLOR_BRAND = '#6D4AFF';
-    private const COLOR_ACCENT = '#FF5C22';
-
     /**
      * Собрать ответ 404.
      *
@@ -206,12 +191,12 @@ final class NotFoundPage
             </html>
             HTML,
             $blocks + [
-                '{{canvas}}' => self::COLOR_CANVAS,
-                '{{surface}}' => self::COLOR_SURFACE,
-                '{{content}}' => self::COLOR_CONTENT,
-                '{{muted}}' => self::COLOR_MUTED,
-                '{{brand}}' => self::COLOR_BRAND,
-                '{{accent}}' => self::COLOR_ACCENT,
+                '{{canvas}}' => BrandPalette::CANVAS,
+                '{{surface}}' => BrandPalette::SURFACE,
+                '{{content}}' => BrandPalette::CONTENT,
+                '{{muted}}' => BrandPalette::MUTED,
+                '{{brand}}' => BrandPalette::BRAND,
+                '{{accent}}' => BrandPalette::ACCENT,
             ]
         );
     }
