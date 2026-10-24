@@ -310,10 +310,10 @@ class PromoCodeController extends Controller
      */
     private function organizationIdFor(?Cart $cart): int
     {
-        $contextId = $this->context->tryId();
+        $fromContext = $this->context->idOrNull();
 
-        if ($contextId !== null && ctype_digit($contextId)) {
-            return (int) $contextId;
+        if ($fromContext !== null) {
+            return $fromContext;
         }
 
         $fromCart = $cart === null ? null : $this->organizationOfCart($cart);

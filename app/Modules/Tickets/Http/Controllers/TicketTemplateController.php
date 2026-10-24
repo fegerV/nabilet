@@ -49,7 +49,7 @@ class TicketTemplateController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $organizationId = $this->organizationId();
+        $organizationId = $this->context->idOrNull();
 
         // Без организации список ПУСТ. Поставить сюда `where('organization_id',
         // null)` нельзя: Laravel превращает такое условие в `IS NULL`, и
@@ -263,14 +263,6 @@ class TicketTemplateController extends Controller
      * Вызывающие обрабатывают `null` по fail-closed: список — пустым, запись —
      * отказом, чужой id — 404.
      */
-    private function organizationId(): ?int
-    {
-        $contextId = $this->context->tryId();
-
-        return $contextId !== null && ctype_digit((string) $contextId)
-            ? (int) $contextId
-            : null;
-    }
 
     /**
      * Организация запроса, отказ если её не определить.
@@ -279,7 +271,7 @@ class TicketTemplateController extends Controller
      */
     private function requireOrganizationId(): int
     {
-        $organizationId = $this->organizationId();
+        $organizationId = $this->context->idOrNull();
 
         if ($organizationId === null) {
             throw new ValidationError([
@@ -298,7 +290,7 @@ class TicketTemplateController extends Controller
      */
     private function find(int $id): TicketTemplate
     {
-        $organizationId = $this->organizationId();
+        $organizationId = $this->context->idOrNull();
 
         if ($organizationId === null) {
             throw new NotFoundError('TicketTemplate', (string) $id);

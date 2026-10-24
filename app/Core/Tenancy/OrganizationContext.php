@@ -61,6 +61,40 @@ final class OrganizationContext
     }
 
     /**
+     * Организация запроса как int, или null если контекста нет.
+     *
+     * ЗАЧЕМ. Преобразование `?string → ?int` стояло четырьмя одинаковыми
+     * копиями в контроллерах чтения:
+     *
+     *   - `Events\Http\Controllers\EventGalleryController::organizationId()`
+     *   - `Media\Http\Controllers\MediaController::organizationId()`
+     *   - `Tickets\Http\Controllers\TicketTemplateController::organizationId()`
+     *   - первая ветка `Pricing\Http\Controllers\PromoCodeController::organizationIdFor()`
+     *
+     * Все четыре отвечают на один вопрос: «есть ли у запроса арендатор, и какой
+     * именно номер». Ответ null у них значит НЕ ошибку, а «список пуст»: без
+     * организации галерея события, библиотека файлов и шаблоны билетов обязаны
+     * вернуть пусто, а не всё подряд. Угаданная организация показала бы данные
+     * чужого тенанта.
+     *
+     * ПОЧЕМУ `ctype_digit`, А НЕ ПРОСТО `(int)`. Внутри `withoutScope()`
+     * `id()` возвращает ПУСТУЮ СТРОКУ — это явный системный контекст
+     * (установщик, миграции, задания). `(int) ''` даёт 0, то есть организацию
+     * с номером ноль: запрос ушёл бы с `organization_id = 0`, не нашёл ничего
+     * и выглядел бы как «данных нет» вместо «контекста нет». `ctype_digit('')`
+     * ложно, поэтому здесь null.
+     *
+     * Отказ (`id()`, исключение) — для путей записи. Этот метод намеренно
+     * мягкий: он про чтение.
+     */
+    public function idOrNull(): ?int
+    {
+        $id = $this->organizationId;
+
+        return $id !== null && ctype_digit($id) ? (int) $id : null;
+    }
+
+    /**
      * @throws TenantContextMissingError when no organization is active and we are
      *                                   not inside a withoutScope() block.
      */

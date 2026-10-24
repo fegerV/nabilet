@@ -109,7 +109,7 @@ class MediaController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        $organizationId = $this->organizationId();
+        $organizationId = $this->context->idOrNull();
 
         // Без организации список ПУСТ, а не «все файлы»: `PaymentService` ведёт
         // себя так же и по той же причине. Угаданная организация показала бы
@@ -203,7 +203,7 @@ class MediaController extends Controller
 
     public function show(int $media): JsonResponse
     {
-        $organizationId = $this->organizationId();
+        $organizationId = $this->context->idOrNull();
 
         if ($organizationId === null) {
             throw new NotFoundError('MediaAsset', (string) $media);
@@ -234,7 +234,7 @@ class MediaController extends Controller
      */
     public function store(Request $request): JsonResponse
     {
-        $organizationId = $this->organizationId();
+        $organizationId = $this->context->idOrNull();
 
         if ($organizationId === null) {
             throw new ValidationError([
@@ -278,7 +278,7 @@ class MediaController extends Controller
      */
     public function update(Request $request, int $media): JsonResponse
     {
-        $organizationId = $this->organizationId();
+        $organizationId = $this->context->idOrNull();
 
         if ($organizationId === null) {
             throw new NotFoundError('MediaAsset', (string) $media);
@@ -315,7 +315,7 @@ class MediaController extends Controller
      */
     public function destroy(int $media): JsonResponse
     {
-        $organizationId = $this->organizationId();
+        $organizationId = $this->context->idOrNull();
 
         if ($organizationId === null) {
             throw new NotFoundError('MediaAsset', (string) $media);
@@ -487,14 +487,6 @@ class MediaController extends Controller
      * запись — отказом, чужая карточка — 404. Это тот же fail-closed контракт,
      * что у `PaymentService::paginate()`.
      */
-    private function organizationId(): ?int
-    {
-        $contextId = $this->context->tryId();
-
-        return $contextId !== null && ctype_digit((string) $contextId)
-            ? (int) $contextId
-            : null;
-    }
 
     private function userId(): ?int
     {

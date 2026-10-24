@@ -174,7 +174,7 @@ class EventGalleryController extends Controller
      */
     private function assertBelongsToOrganization(Event $event): void
     {
-        $organizationId = $this->organizationId();
+        $organizationId = $this->context->idOrNull();
 
         if ($organizationId === null || (int) $event->organization_id !== $organizationId) {
             throw new NotFoundError('Event', (string) $event->id);
@@ -188,12 +188,4 @@ class EventGalleryController extends Controller
      * (см. `UserOrganization`); угадывать организацию при его отсутствии
      * нельзя — это запись/правка в чужом тенанте.
      */
-    private function organizationId(): ?int
-    {
-        $contextId = $this->context->tryId();
-
-        return $contextId !== null && ctype_digit((string) $contextId)
-            ? (int) $contextId
-            : null;
-    }
 }
