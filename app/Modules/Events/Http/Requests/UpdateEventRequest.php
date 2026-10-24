@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Events\Http\Requests;
 
+use Nabilet\Modules\Events\Http\Requests\Concerns\EventFormMessages;
 use Nabilet\Modules\Events\Http\Requests\Concerns\HandlesPosterUpload;
 use Nabilet\Core\Support\UserOrganization;
 use Nabilet\Modules\Events\Models\Event;
@@ -16,6 +17,7 @@ class UpdateEventRequest extends FormRequest
     // Сохранение файла афиши + перенос legacy `image_url` → `poster`. Раньше
     // этих методов здесь не было вовсе, и новая афиша при редактировании молча
     // не сохранялась (жалоба «афиша не сохраняется»). Общий трейт с Store.
+    use EventFormMessages;
     use HandlesPosterUpload;
 
     /**
@@ -120,7 +122,7 @@ class UpdateEventRequest extends FormRequest
             // афиши здесь не было, поэтому multipart `poster_file` не валидировался
             // и не сохранялся — новая афиша молча терялась. Правило то же, что в
             // StoreEventRequest; сохранение делает трейт HandlesPosterUpload.
-            'poster_file' => ['nullable', 'file', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
+            'poster_file' => $this->posterRule(),
             'seo_title' => ['nullable', 'string', 'max:255'],
             'seo_description' => ['nullable', 'string', 'max:500'],
             // Управление индексацией страницы (аудит P-23). См.
@@ -146,17 +148,6 @@ class UpdateEventRequest extends FormRequest
                 },
             ],
             'metadata' => ['nullable'],
-        ];
-    }
-
-    public function messages(): array
-    {
-        return [
-            'slug.unique' => 'Такой адрес мероприятия уже занят. Укажите другой — '
-                . 'он входит в публичную ссылку на страницу.',
-            'poster_file.image' => 'Файл афиши должен быть изображением.',
-            'poster_file.mimes' => 'Файл афиши должен быть в формате jpg, png или webp.',
-            'poster_file.max' => 'Файл афиши не должен превышать 5 МБ.',
         ];
     }
 
