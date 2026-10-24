@@ -114,7 +114,7 @@ class FollowNotificationTest extends TestCase
             'first_name' => 'Без',
             'last_name' => 'Почты',
         ]);
-        EventFollow::subscribe($user->id, $eventId);
+        EventFollow::remember($user->id, $eventId);
 
         $this->runJob($session->id, FollowNotificationCodes::NEW_SESSION);
 
@@ -402,7 +402,7 @@ class FollowNotificationTest extends TestCase
             'last_name' => $lastName,
         ]);
 
-        return EventFollow::subscribe($user->id, $eventId);
+        return EventFollow::remember($user->id, $eventId);
     }
 
     private function runJob(int $sessionId, string $templateCode): void

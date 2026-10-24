@@ -23,7 +23,11 @@ class FollowService
 {
     public function subscribe(User $user, Event $event): EventFollow
     {
-        return EventFollow::subscribe($user->getKey(), $event->getKey());
+        // Имя метода модели — `remember()`, как и у избранного: правило
+        // «повторное действие возвращает ту же строку» одно на оба случая и
+        // живёт в `RemembersUserEvent`. Здесь сохраняется доменное имя
+        // «подписаться», потому что это язык сервиса, а не копия реализации.
+        return EventFollow::remember($user->getKey(), $event->getKey());
     }
 
     /**

@@ -51,7 +51,7 @@ class FollowNotificationIdempotencyTest extends TestCase
             'updated_at' => now()->toDateTimeString(),
         ]);
 
-        $follow = EventFollow::subscribe($userId, $eventId);
+        $follow = EventFollow::remember($userId, $eventId);
 
         return [$follow, $sessionId];
     }

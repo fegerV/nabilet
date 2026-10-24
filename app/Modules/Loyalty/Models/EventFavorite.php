@@ -5,11 +5,10 @@ declare(strict_types=1);
 namespace Nabilet\Modules\Loyalty\Models;
 
 use Nabilet\Modules\Core\Models\Concerns\HasPublicId;
-
+use Nabilet\Modules\Loyalty\Models\Concerns\RemembersUserEvent;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\UniqueConstraintViolationException;
 use Nabilet\Modules\Core\Users\Models\User;
 use Nabilet\Modules\Events\Models\Event;
 
@@ -31,6 +30,7 @@ use Nabilet\Modules\Events\Models\Event;
 class EventFavorite extends Model
 {
     use HasPublicId;
+    use RemembersUserEvent;
 
     protected $table = 'event_favorites';
 
@@ -82,30 +82,4 @@ class EventFavorite extends Model
         return $query->where('user_id', $userId);
     }
 
-    /**
-     * Повторное «❤️» — тот же факт, а не вторая строка и не ошибка.
-     *
-     * `firstOrCreate` здесь недостаточно: между его SELECT и INSERT влезает
-     * второй запрос, и уникальный ключ `uq_event_favorites_user_event`
-     * роняет вставку дубликата. Ловим именно нарушение ключа и возвращаем уже
-     * существующую строку — повторное нажатие отвечает 200, а не 500.
-     */
-    public static function remember(int|string $userId, int|string $eventId): self
-    {
-        try {
-            return self::create([
-                'user_id' => $userId,
-                'event_id' => $eventId,
-            ]);
-        } catch (UniqueConstraintViolationException) {
-            // NULL невозможен: ключ нарушился, значит строка есть — её только
-            // что вставил кто-то другой, ровно между нашими SELECT и INSERT.
-            // `firstOrFail`, а не `first()` + `assert()`: в продакшене
-            // `assert()` выключен и молча вернул бы null из метода `: self`.
-            return self::query()
-                ->where('user_id', $userId)
-                ->where('event_id', $eventId)
-                ->firstOrFail();
-        }
-    }
 }

@@ -66,7 +66,9 @@ class BonusAccount extends Model
      * Гонка закрыта уникальным ключом, а не проверкой «уже есть?»: между SELECT
      * и INSERT влезает второй воркер (кэшбэк за два заказа одного покупателя
      * приходит двумя джобами), и `uq_bonus_accounts_user` роняет лишнюю вставку.
-     * Тот же приём, что у `EventFollow::subscribe()`.
+     * Тот же приём, что у `Concerns\RemembersUserEvent` (избранное и подписки) —
+     * но здесь своя форма: ключ один на пользователя, а не пара, и вставка несёт
+     * ещё и `balance`, поэтому общий трейт не подходит.
      */
     public static function forUserOrCreate(int|string $userId, string $currency = 'RUB'): self
     {

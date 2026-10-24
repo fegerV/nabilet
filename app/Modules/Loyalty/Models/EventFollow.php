@@ -5,11 +5,10 @@ declare(strict_types=1);
 namespace Nabilet\Modules\Loyalty\Models;
 
 use Nabilet\Modules\Core\Models\Concerns\HasPublicId;
-
+use Nabilet\Modules\Loyalty\Models\Concerns\RemembersUserEvent;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\UniqueConstraintViolationException;
 use Nabilet\Modules\Core\Users\Models\User;
 use Nabilet\Modules\Events\Models\Event;
 
@@ -29,6 +28,7 @@ use Nabilet\Modules\Events\Models\Event;
 class EventFollow extends Model
 {
     use HasPublicId;
+    use RemembersUserEvent;
 
     protected $table = 'event_follows';
 
@@ -93,25 +93,4 @@ class EventFollow extends Model
         return $query->where('event_id', $eventId)->with('user');
     }
 
-    /**
-     * Повторное «🔔» — тот же факт, а не вторая подписка и не ошибка.
-     *
-     * Та же защита от гонки, что у `EventFavorite::remember()`: между SELECT и
-     * INSERT влезает второй запрос, и `uq_event_follows_user_event` роняет
-     * вставку дубликата.
-     */
-    public static function subscribe(int|string $userId, int|string $eventId): self
-    {
-        try {
-            return self::create([
-                'user_id' => $userId,
-                'event_id' => $eventId,
-            ]);
-        } catch (UniqueConstraintViolationException) {
-            return self::query()
-                ->where('user_id', $userId)
-                ->where('event_id', $eventId)
-                ->firstOrFail();
-        }
-    }
 }

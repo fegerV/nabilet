@@ -185,6 +185,30 @@ class LoyaltyEndpointsTest extends TestCase
         $this->assertSame(1, DB::table('event_favorites')->count());
     }
 
+    /**
+     * Повторная подписка — тот же факт, что и повторное избранное.
+     *
+     * Метод модели переименован (`subscribe()` → `remember()`) при сведении
+     * двух побайтовых копий в один трейт; этот тест держит ПОВЕДЕНИЕ, а не имя:
+     * повторное «🔔» отвечает 200 той же строкой, а не 500 и не второй строкой.
+     */
+    public function test_repeat_follow_is_the_same_fact_not_a_second_row(): void
+    {
+        $token = $this->tokenFor();
+        $publicId = $this->seedEvent($this->seedOrganization());
+
+        $first = $this->postJson("/api/v1/me/events/{$publicId}/follow", [], $this->authHeaders($token))
+            ->assertStatus(201)
+            ->json('data.id');
+
+        $second = $this->postJson("/api/v1/me/events/{$publicId}/follow", [], $this->authHeaders($token))
+            ->assertStatus(200)
+            ->json('data.id');
+
+        $this->assertSame($first, $second);
+        $this->assertSame(1, DB::table('event_follows')->count());
+    }
+
     public function test_removing_a_favorite_twice_is_still_204(): void
     {
         $token = $this->tokenFor();
