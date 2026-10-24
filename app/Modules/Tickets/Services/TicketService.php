@@ -146,7 +146,7 @@ class TicketService
                         'inventory_item_id' => $item->inventory_item_id,
                         'seat_id' => $seatId,
                         'holder_name' => $order->customer_name ?? $order->customer_email,
-                        'status' => 'issued',
+                        'status' => TicketStateMachine::ISSUED,
                         'qr_version' => 1,
                         'qr_token_hash' => hash('sha256', $signed['token']),
                         'qr_payload' => $signed['payload'],

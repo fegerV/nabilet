@@ -88,6 +88,15 @@ $owners = [
     // не проверяется вовсе, потому что `promo_codes.status` — VARCHAR(32)
     // БЕЗ CHECK, и развести его по схеме нечем.
     'promo_codes.status' => Nabilet\Modules\Pricing\Domain\PromoCodeDefinition::class,
+    'tickets.status' => Nabilet\Modules\Tickets\StateMachines\TicketStateMachine::class,
+    // Словарь журнала отправки. До появления `NotificationStatus` он был
+    // выписан трижды: `AccountMailService`, `TransactionalMailService` и
+    // `FollowNotification` (для `follow_notifications`, у которой словарь
+    // совпадает). Проверяется он почти только квалифицированно: `queued`,
+    // `sent` и `failed` есть у обеих колонок, поэтому голый `status` судить
+    // нечем — зато `where('notifications.status', …)` попадает под правило.
+    'notifications.status' => Nabilet\Modules\Notifications\Domain\NotificationStatus::class,
+    'consents.status' => Nabilet\Modules\Privacy\Domain\ConsentRecord::class,
 ];
 
 /**

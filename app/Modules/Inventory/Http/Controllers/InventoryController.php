@@ -10,6 +10,7 @@ use Nabilet\Modules\Inventory\Models\InventoryItem;
 use Nabilet\Modules\Inventory\Services\InventoryService;
 use Nabilet\Modules\Sessions\Models\Session;
 use Nabilet\Modules\Tickets\Models\Ticket;
+use Nabilet\Modules\Tickets\StateMachines\TicketStateMachine;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -220,7 +221,7 @@ class InventoryController extends Controller
         $availableTickets = (int) InventoryItem::query()->where('session_id', $sessionId)->sum('available_quantity');
         $soldTickets = (int) Ticket::query()
             ->where('session_id', $sessionId)
-            ->whereIn('status', ['issued', 'used'])
+            ->whereIn('status', [TicketStateMachine::ISSUED, TicketStateMachine::USED])
             ->count();
 
         // Резерв — то, что уже разобрано корзинами/холдами, но ещё не оплачено.

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Notifications\Services;
 
+use Nabilet\Modules\Notifications\Domain\NotificationStatus;
 use Nabilet\Modules\Notifications\Models\Notification;
 use Nabilet\Modules\Notifications\Models\NotificationTemplate;
 use Illuminate\Support\Facades\Log;
@@ -37,10 +38,6 @@ class AccountMailService
     public const CHANNEL = 'email';
     public const LOCALE = 'ru';
 
-    public const STATUS_QUEUED = 'queued';
-    public const STATUS_SENT = 'sent';
-    public const STATUS_FAILED = 'failed';
-
     /**
      * Отправить письмо по коду шаблона.
      *
@@ -71,7 +68,7 @@ class AccountMailService
             'channel' => self::CHANNEL,
             'type' => $code,
             'recipient' => $recipient,
-            'status' => self::STATUS_QUEUED,
+            'status' => NotificationStatus::QUEUED,
             // Ни содержимое письма, ни токен в лог не пишем: `payload_json` — это
             // диагностика, а не хранилище секретов. Достаточно кодов и адресата.
             'payload_json' => ['variables' => array_values(array_map('strval', array_keys($variables)))],
@@ -84,7 +81,7 @@ class AccountMailService
                 textBody: $body['text'],
             ));
 
-            $log->update(['status' => self::STATUS_SENT, 'sent_at' => now()]);
+            $log->update(['status' => NotificationStatus::SENT, 'sent_at' => now()]);
 
             return true;
         } catch (Throwable $e) {
@@ -93,7 +90,7 @@ class AccountMailService
             $safeMessage = str_ireplace($recipient, '[адрес скрыт]', $e->getMessage());
 
             $log->update([
-                'status' => self::STATUS_FAILED,
+                'status' => NotificationStatus::FAILED,
                 'error_message' => $safeMessage,
             ]);
 

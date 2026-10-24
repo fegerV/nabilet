@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Nabilet\Modules\Notifications\Models\NewsletterSubscriber;
+use Nabilet\Modules\Privacy\Domain\ConsentRecord;
 use Throwable;
 
 /**
@@ -72,7 +73,7 @@ final class NewsletterSubscriptionService
                 'user_id' => null,
                 'anonymous_id' => $subscriber->anonymous_id,
                 'consent_type' => NewsletterSubscriber::CONSENT_TYPE,
-                'status' => 'granted',
+                'status' => ConsentRecord::GRANTED,
                 'policy_version' => $subscriber->policy_version,
                 'ip_address' => null,
                 'user_agent' => null,
@@ -104,7 +105,7 @@ final class NewsletterSubscriptionService
                         'user_id' => null,
                         'anonymous_id' => $subscriber->anonymous_id,
                         'consent_type' => NewsletterSubscriber::CONSENT_TYPE,
-                        'status' => 'withdrawn',
+                        'status' => ConsentRecord::WITHDRAWN,
                         'policy_version' => $subscriber->policy_version,
                         'ip_address' => null,
                         'user_agent' => null,

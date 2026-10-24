@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Loyalty\Models;
 
+use Nabilet\Modules\Notifications\Domain\NotificationStatus;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -30,12 +31,24 @@ use Illuminate\Support\Str;
  */
 class FollowNotification extends Model
 {
-    /** Словарь `notifications.status` (`ck_notifications_status`, сплит 017). */
-    public const STATUS_QUEUED = 'queued';
+    /**
+     * Словарь `follow_notifications.status` (`ck_follow_notifications_status`).
+     *
+     * ПСЕВДОНИМЫ, А НЕ ЗНАЧЕНИЯ. Этот словарь совпадает с `notifications.status`
+     * (`ck_notifications_status`), и до появления `NotificationStatus` он был
+     * выписан здесь третий раз — рядом с двумя копиями в транспортных сервисах.
+     * Теперь значение живёт в одном классе, а здесь осталась только удобная
+     * для вызывающих форма: тесты и `claim()`/`markSent()`/`markFailed()`
+     * обращаются к статусу через модель, чью колонку они правят.
+     *
+     * Менять значения ЗДЕСЬ нельзя — менять надо `NotificationStatus`, иначе
+     * три копии разъедутся снова, ровно как до этой правки.
+     */
+    public const STATUS_QUEUED = NotificationStatus::QUEUED;
 
-    public const STATUS_SENT = 'sent';
+    public const STATUS_SENT = NotificationStatus::SENT;
 
-    public const STATUS_FAILED = 'failed';
+    public const STATUS_FAILED = NotificationStatus::FAILED;
 
     protected $table = 'follow_notifications';
 

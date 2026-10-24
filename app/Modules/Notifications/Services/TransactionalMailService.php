@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Notifications\Services;
 
+use Nabilet\Modules\Notifications\Domain\NotificationStatus;
 use Nabilet\Modules\Notifications\Models\Notification;
 use Nabilet\Modules\Notifications\Models\NotificationTemplate;
 use Illuminate\Contracts\Support\Htmlable;
@@ -40,10 +41,6 @@ class TransactionalMailService
 {
     public const CHANNEL = 'email';
     public const LOCALE = 'ru';
-
-    public const STATUS_QUEUED = 'queued';
-    public const STATUS_SENT = 'sent';
-    public const STATUS_FAILED = 'failed';
 
     /**
      * Переменные, доступные в шаблоне. Список показывается администратору в
@@ -117,7 +114,7 @@ class TransactionalMailService
             'channel' => self::CHANNEL,
             'type' => $code,
             'recipient' => $recipient,
-            'status' => self::STATUS_QUEUED,
+            'status' => NotificationStatus::QUEUED,
             'payload_json' => $this->loggableVariables($variables),
         ]);
 
@@ -135,7 +132,7 @@ class TransactionalMailService
             ));
 
             $log->update([
-                'status' => self::STATUS_SENT,
+                'status' => NotificationStatus::SENT,
                 'sent_at' => now(),
             ]);
 
@@ -147,7 +144,7 @@ class TransactionalMailService
             $safeMessage = str_ireplace($recipient, '[адрес скрыт]', $e->getMessage());
 
             $log->update([
-                'status' => self::STATUS_FAILED,
+                'status' => NotificationStatus::FAILED,
                 'error_message' => $safeMessage,
             ]);
 

@@ -7,6 +7,7 @@ namespace Nabilet\Modules\Tickets\Http\Resources;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Nabilet\Modules\Tickets\Models\Ticket;
 use Nabilet\Modules\Tickets\Services\TicketTemplateResolver;
+use Nabilet\Modules\Tickets\StateMachines\TicketStateMachine;
 
 /**
  * Карточка билета покупателя (витрина «Мои билеты»).
@@ -40,7 +41,7 @@ class TicketCardResource extends JsonResource
             'seat' => $seat?->number ?? 0,
             'priceMinor' => (int) ($orderItem?->unit_price ?? 0),
             'status' => $ticket->status,
-            'qrPayload' => $ticket->status === 'issued' ? $ticket->qr_payload : null,
+            'qrPayload' => $ticket->status === TicketStateMachine::ISSUED ? $ticket->qr_payload : null,
             'holder' => $ticket->order?->customer_name ?? null,
             'orderId' => $ticket->order?->public_id,
             'template' => $this->resolveTemplate($ticket),

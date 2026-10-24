@@ -9,12 +9,14 @@ use Nabilet\Core\Errors\DomainRuleViolation;
 /**
  * One consent, for one purpose, by one subject (ТЗ §72, 152-ФЗ).
  *
- * `consents.status` has NO CHECK constraint — it is one of the 19 free-form
- * status columns in REVIEW-spec-bundle.md §3.11. So the vocabulary below is the
- * application's, and it is applied FAIL-CLOSED: only the literal `granted`
- * authorises processing. An unrecognised status is not consent. That direction
- * matters — if a future release writes `opted_in`, this class refuses to treat
- * it as permission rather than guessing.
+ * `consents.status` — словарь из схемы: `ck_consents_status` допускает ровно
+ * `granted`, `withdrawn`, `expired` (spec §«consents», сплит
+ * `2026_10_12_000500_add_status_vocabularies.php`). Он применяется
+ * FAIL-CLOSED и здесь: только `granted` разрешает обработку, незнакомый
+ * статус согласием не является. Это направление важно — если будущий релиз
+ * начнёт писать `opted_in`, класс откажется считать это разрешением, а не
+ * угадает. До появления CHECK тот же барьер держался только этим классом;
+ * теперь их два, и расходятся они не могут: значения берутся отсюда.
  *
  * EXACTLY ONE SUBJECT. The schema allows `user_id` and `anonymous_id` to be NULL
  * simultaneously, and MySQL accepts it (verified). A consent row belonging to
@@ -36,6 +38,17 @@ final class ConsentRecord
     public const WITHDRAWN = 'withdrawn';
     public const EXPIRED = 'expired';
 
+    /** @return list<string> */
+    public static function all(): array
+    {
+        return [self::GRANTED, self::WITHDRAWN, self::EXPIRED];
+    }
+
+    public static function isValid(string $status): bool
+    {
+        return in_array($status, self::all(), true);
+    }
+
     public function __construct(
         public readonly string $type,
         public readonly string $status,
@@ -52,7 +65,7 @@ final class ConsentRecord
             );
         }
 
-        if (! in_array($status, [self::GRANTED, self::WITHDRAWN, self::EXPIRED], true)) {
+        if (! self::isValid($status)) {
             throw new DomainRuleViolation(
                 sprintf('"%s" is not a consent status.', $status),
                 'INVALID_CONSENT_STATUS'
