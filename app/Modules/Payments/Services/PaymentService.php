@@ -400,7 +400,7 @@ class PaymentService
             $this->repository->addTransaction($payment, [
                 'type' => 'authorization',
                 'amount' => $amount,
-                'status' => 'pending',
+                'status' => PaymentStateMachine::PENDING,
             ]);
 
             // Создание платежа = попытка оплаты: pending -> awaiting_payment.
@@ -596,7 +596,7 @@ class PaymentService
         $this->repository->addTransaction($payment, [
             'type' => 'capture',
             'amount' => $payment->amount,
-            'status' => 'succeeded',
+            'status' => PaymentStateMachine::SUCCEEDED,
             'payload_json' => $payload,
             'provider_event_id' => $this->providerEventId($payment, $payload),
         ]);
@@ -757,7 +757,7 @@ class PaymentService
         $this->repository->addTransaction($payment, [
             'type' => 'capture',
             'amount' => $payment->amount,
-            'status' => 'succeeded',
+            'status' => PaymentStateMachine::SUCCEEDED,
             'payload_json' => $payload + ['settlement_refusal' => $reason],
             'provider_event_id' => $this->providerEventId($payment, $payload),
         ]);
@@ -836,7 +836,12 @@ class PaymentService
         $this->repository->addTransaction($payment, [
             'type' => 'refund',
             'amount' => -((int) $refund->amount),
-            'status' => $target === RefundStateMachine::SUCCEEDED ? 'succeeded' : 'failed',
+            // Словарь транзакции — словарь платежа: колонка осознанно оставлена
+            // без CHECK (REVIEW §3.11: «словарь провайдера»), но в неё пишем МЫ
+            // и пишем свои значения. Сырой ответ провайдера уходит в payload_json.
+            'status' => $target === RefundStateMachine::SUCCEEDED
+                ? PaymentStateMachine::SUCCEEDED
+                : PaymentStateMachine::FAILED,
             'payload_json' => $payload,
             'provider_event_id' => $this->providerEventId($payment, $payload),
         ]);
@@ -998,7 +1003,7 @@ class PaymentService
         $this->repository->addTransaction($payment, [
             'type' => 'failure',
             'amount' => 0,
-            'status' => 'failed',
+            'status' => PaymentStateMachine::FAILED,
             'payload_json' => $payload,
             'provider_event_id' => $this->providerEventId($payment, $payload),
         ]);

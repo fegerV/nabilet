@@ -138,7 +138,7 @@ final class RefundService
             $this->repository->addTransaction($payment, [
                 'type' => 'refund',
                 'amount' => -$refundAmount,
-                'status' => 'pending',
+                'status' => PaymentStateMachine::PENDING,
                 // Стартовая запись журнала получает provider_event_id ДО прихода
                 // ответа провайдера (аудит R-11): UNIQUE (payment_id,
                 // provider_event_id) с NULL для этого ключа не защищал бы от
