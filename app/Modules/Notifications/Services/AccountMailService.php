@@ -15,12 +15,19 @@ use Throwable;
 /**
  * Письма о доступе к аккаунту (сброс пароля, подтверждение адреса).
  *
- * Отдельный сервис, а не вызов `TransactionalMailService` с кодом заказа:
- * у писем о заказе другая модель переменных (мероприятие, сумма, билеты) и
+ * Отдельный сервис, а не вызов `TransactionalMailService` с кодом заказа: у
+ * писем о заказе другая модель переменных (мероприятие, сумма, билеты) и
  * другой вызывающий (обсервер статуса). Общий у них ровно один шаг — отправка
  * уже собранного `TemplateMail`, и его дублирование здесь дешевле, чем
  * протаскивание «пустых» переменных заказа через подстановку: шаблон с
  * `{{order_number}}` не должен мочь случайно отрендериться как письмо о пароле.
+ *
+ * ПОИСК ШАБЛОНА И ПОДСТАНОВКА ПЕРЕМЕННЫХ — ОБЩИЕ, в
+ * `NotificationTemplateRenderer`. Раньше они были скопированы сюда целиком, и
+ * копия отстала: в ней не было ветки `Htmlable` и защиты от нескалярных
+ * значений. Списки переменных при этом остаются раздельными (см. выше), так
+ * что защита от чужого плейсхолдера не ослаблена — рендерер подставляет ровно
+ * то, что ему передали.
  *
  * ШАБЛОНЫ РЕДАКТИРУЕМЫЕ, как и у заказов: текст лежит в `notification_templates`
  * по коду из `AccountNotificationCodes`, поэтому администратор правит его без
@@ -35,8 +42,14 @@ use Throwable;
  */
 class AccountMailService
 {
-    public const CHANNEL = 'email';
-    public const LOCALE = 'ru';
+    /** Ссылка на владельца: литералы `'email'`/`'ru'` жили здесь и в
+     *  `TransactionalMailService` независимо, то есть расходились молча. */
+    public const CHANNEL = NotificationTemplateRenderer::CHANNEL;
+    public const LOCALE = NotificationTemplateRenderer::LOCALE;
+
+    public function __construct(
+        private readonly NotificationTemplateRenderer $templates,
+    ) {}
 
     /**
      * Отправить письмо по коду шаблона.
@@ -61,7 +74,7 @@ class AccountMailService
             return false;
         }
 
-        $body = $this->renderTemplate($template, $variables);
+        $body = $this->templates->render($template, $variables);
 
         $log = Notification::query()->create([
             'user_id' => $userId,
@@ -107,12 +120,7 @@ class AccountMailService
 
     public function findTemplate(string $code): ?NotificationTemplate
     {
-        return NotificationTemplate::query()
-            ->where('code', $code)
-            ->where('channel', self::CHANNEL)
-            ->where('locale', self::LOCALE)
-            ->where('active', true)
-            ->first();
+        return $this->templates->find($code);
     }
 
     /**
@@ -157,46 +165,5 @@ class AccountMailService
             'token' => $token,
             'email' => $email,
         ]);
-    }
-
-    /**
-     * @param  array<string, scalar|null>  $variables
-     * @return array{subject: string, html: string, text: string}
-     */
-    private function renderTemplate(NotificationTemplate $template, array $variables): array
-    {
-        return [
-            'subject' => $this->renderText((string) ($template->subject ?? ''), $variables),
-            'html' => $this->renderHtml((string) ($template->body_html ?? ''), $variables),
-            'text' => $this->renderText((string) ($template->body_text ?? ''), $variables),
-        ];
-    }
-
-    /**
-     * @param  array<string, scalar|null>  $variables
-     */
-    private function renderHtml(string $body, array $variables): string
-    {
-        foreach ($variables as $name => $value) {
-            $body = str_replace(
-                '{{' . $name . '}}',
-                $value === null ? '' : e((string) $value),
-                $body,
-            );
-        }
-
-        return $body;
-    }
-
-    /**
-     * @param  array<string, scalar|null>  $variables
-     */
-    private function renderText(string $body, array $variables): string
-    {
-        foreach ($variables as $name => $value) {
-            $body = str_replace('{{' . $name . '}}', $value === null ? '' : (string) $value, $body);
-        }
-
-        return $body;
     }
 }

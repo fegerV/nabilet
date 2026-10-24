@@ -25,7 +25,7 @@ final class AccountNotificationCodes
     public const EMAIL_VERIFICATION = 'account.email_verification';
 
     /**
-     * Переменные, которые подставляет `TransactionalMailService`.
+     * Переменные, которые подставляет `AccountMailService`.
      *
      * Отдельный список, чтобы редактор шаблонов в админке не показывал
      * `order_number` в письме о смене пароля — иначе администратор подставит

@@ -16,19 +16,15 @@ use Throwable;
 /**
  * Транзакционные письма по редактируемым шаблонам.
  *
-     * Шаблон лежит в БД (`notification_templates`) и ищется по коду, поэтому текст
-     * письма правится администратором без деплоя. Код шаблона = `order.<status>`,
+ * Шаблон лежит в БД (`notification_templates`) и ищется по коду, поэтому текст
+ * письма правится администратором без деплоя. Код шаблона = `order.<status>`,
  * что избавляет от таблицы соответствий статус→шаблон.
  *
- * ПОДСТАНОВКА ПЕРЕМЕННЫХ — ЕДИНСТВЕННОЕ МЕСТО, ГДЕ ДАННЫЕ ПОЛЬЗОВАТЕЛЯ
- * ПОПАДАЮТ В HTML. Имя покупателя вводится им самим при оформлении заказа,
- * поэтому подставлять его в HTML как есть нельзя: в письме появится чужая
- * разметка. Значения экранируются, кроме тех, что пришли как `Htmlable` —
- * именно так передаётся уже собранный блок билетов (`tickets_html`), который
- * экранировать нельзя, иначе покупатель увидит теги вместо QR-кода.
- *
- * В текстовой версии письма экранирование не нужно и даже вредно: `&amp;`
- * читается как мусор, поэтому там значения вставляются как есть.
+ * ПОИСК ШАБЛОНА И ПОДСТАНОВКА ПЕРЕМЕННЫХ ЖИВУТ НЕ ЗДЕСЬ, а в
+ * `NotificationTemplateRenderer`: то же правило нужно письмам о доступе к
+ * аккаунту (`AccountMailService`), и две его копии уже разошлись. Класс
+ * занимается только транспортом — журналом `notifications`, скрытой копией и
+ * обработкой сбоя SMTP.
  *
  * Сбой транспорта пишется в лог и в запись `notifications` со статусом
  * `failed`, после чего исключение пробрасывается обратно в очередь. Письмо
@@ -39,8 +35,20 @@ use Throwable;
  */
 class TransactionalMailService
 {
-    public const CHANNEL = 'email';
-    public const LOCALE = 'ru';
+    /**
+     * Канал и локаль — не свои константы, а ссылка на владельца.
+     *
+     * Литералы `'email'`/`'ru'` стояли здесь и в `AccountMailService` по разу,
+     * плюс участвовали в запросе админки; два независимых литерала — это две
+     * точки правки при появлении второй локали. Владелец — рендерер шаблонов,
+     * потому что именно он по ним ищет шаблон.
+     */
+    public const CHANNEL = NotificationTemplateRenderer::CHANNEL;
+    public const LOCALE = NotificationTemplateRenderer::LOCALE;
+
+    public function __construct(
+        private readonly NotificationTemplateRenderer $templates,
+    ) {}
 
     /**
      * Переменные, доступные в шаблоне. Список показывается администратору в
@@ -171,17 +179,12 @@ class TransactionalMailService
             ? $codeOrTemplate
             : $this->findTemplate($codeOrTemplate);
 
-        return $template === null ? null : $this->renderTemplate($template, $variables);
+        return $template === null ? null : $this->templates->render($template, $variables);
     }
 
     public function findTemplate(string $code): ?NotificationTemplate
     {
-        return NotificationTemplate::query()
-            ->where('code', $code)
-            ->where('channel', self::CHANNEL)
-            ->where('locale', self::LOCALE)
-            ->where('active', true)
-            ->first();
+        return $this->templates->find($code);
     }
 
     /**
@@ -190,63 +193,7 @@ class TransactionalMailService
      */
     public function renderTemplate(NotificationTemplate $template, array $variables): array
     {
-        return [
-            'subject' => $this->renderText((string) ($template->subject ?? ''), $variables),
-            'html' => $this->renderHtml((string) ($template->body_html ?? ''), $variables),
-            'text' => $this->renderText((string) ($template->body_text ?? ''), $variables),
-        ];
-    }
-
-    /**
-     * Подстановка в HTML: значения экранируются, `Htmlable` вставляется как есть.
-     *
-     * @param  array<string, scalar|Htmlable|null>  $variables
-     */
-    private function renderHtml(string $body, array $variables): string
-    {
-        if ($body === '') {
-            return '';
-        }
-
-        foreach ($variables as $name => $value) {
-            $replacement = match (true) {
-                $value instanceof Htmlable => $value->toHtml(),
-                $value === null => '',
-                is_bool($value) => $value ? '1' : '',
-                is_scalar($value) => e((string) $value),
-                // Массивы и объекты в HTML не подставляем: это всегда ошибка
-                // сборки данных, и пустое место заметнее, чем «Array».
-                default => '',
-            };
-
-            $body = str_replace('{{' . $name . '}}', $replacement, $body);
-        }
-
-        return $body;
-    }
-
-    /**
-     * @param  array<string, scalar|Htmlable|null>  $variables
-     */
-    private function renderText(string $body, array $variables): string
-    {
-        if ($body === '') {
-            return '';
-        }
-
-        foreach ($variables as $name => $value) {
-            $replacement = match (true) {
-                $value instanceof Htmlable => strip_tags($value->toHtml()),
-                $value === null => '',
-                is_bool($value) => $value ? '1' : '',
-                is_scalar($value) => (string) $value,
-                default => '',
-            };
-
-            $body = str_replace('{{' . $name . '}}', $replacement, $body);
-        }
-
-        return $body;
+        return $this->templates->render($template, $variables);
     }
 
     /**
