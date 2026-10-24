@@ -221,6 +221,35 @@ function parseDdlColumns(string $file): array
 }
 
 /**
+ * Словари статусов из DDL: `table.column` => значения.
+ *
+ * Читает ТОЛЬКО `CHECK (status IN (...))` / `CHECK (payment_status IN (...))`
+ * из ALTER TABLE. Колонки без ограничения сюда не попадают вовсе — и это
+ * осознанно: §3.11 спеки перечисляет их как намеренно свободные, и требовать
+ * от контракта перечисления там значило бы выдумывать соглашение.
+ *
+ * @return array<string, list<string>>
+ */
+function parseDdlStatusVocabularies(string $file): array
+{
+    $sql = file_get_contents($file);
+    $vocabularies = [];
+
+    preg_match_all('/ALTER TABLE\s+`?(\w+)`?\s+(.*?);\s*(?:\n|$)/si', $sql, $alters, \PREG_SET_ORDER);
+
+    foreach ($alters as $alter) {
+        $table = $alter[1];
+
+        if (preg_match('/CHECK\s*\(\s*(\w+)\s+IN\s*\((.*?)\)\s*\)/si', $alter[2], $m)) {
+            preg_match_all("/'([^']+)'/", $m[2], $vals);
+            $vocabularies[$table . '.' . $m[1]] = $vals[1];
+        }
+    }
+
+    return $vocabularies;
+}
+
+/**
  * Откуда берутся ожидаемые числа: `tools/spec-counts.php`.
  *
  * Зачем проверка вообще нужна. Парсер DDL, который молча недосчитывает, — тот
@@ -283,6 +312,27 @@ function isStructural(string $declaration): bool
         || str_contains($declaration, '$ref:');
 }
 
+/**
+ * Значения `enum` из объявления свойства, или null, если перечисления нет.
+ *
+ * Объявление бывает в двух формах, и обе встречаются в контракте:
+ *   `status: { type: string, enum: [active, converted, abandoned] }`
+ *   `status:` с `type: string` и `enum: [...]` на следующих строках.
+ * Поэтому ищется по всему блоку, а не в первой строке.
+ *
+ * @return list<string>|null
+ */
+function enumOf(string $declaration): ?array
+{
+    if (preg_match('/enum:\s*\[([^\]]*)\]/s', $declaration, $m) !== 1) {
+        return null;
+    }
+
+    $values = array_map('trim', explode(',', $m[1]));
+
+    return $values === [''] ? [] : $values;
+}
+
 // ── run ──────────────────────────────────────────────────────────────────────
 
 echo "\nNABILET Core — contract ↔ schema drift\n";
@@ -302,6 +352,8 @@ $compared = 0;
 $drift = [];
 $accepted = [];
 $exposedInternalIds = [];
+$statusVocabularies = parseDdlStatusVocabularies($ddl);
+$statusDrift = [];
 
 foreach ($schemas as $schema => $properties) {
     $table = TABLE_OVERRIDES[$schema] ?? snakePlural($schema);
@@ -328,6 +380,34 @@ foreach ($schemas as $schema => $properties) {
         if (in_array($column, $columns, true)) {
             if ($property === 'id' && $column === 'id') {
                 $exposedInternalIds[] = ['schema' => $schema, 'table' => $table];
+            }
+
+            // Контракт перечисляет словарь — сверь его с тем, что допускает база.
+            //
+            // ЗАЧЕМ. `status: { type: string }` — обещание «любая строка». Пока
+            // CHECK нет, оно правда; как только ограничение появляется, контракт
+            // начинает обещать меньше, чем позволяет схема, и клиент не знает,
+            // какие значения вообще возможны. Так и вышло: десять колонок имели
+            // CHECK, а контракт остался «любая строка» — и ни один гейт этого не
+            // видел, потому что ни verify-openapi, ни verify-contract-schema, ни
+            // verify-spec-parity не смотрели на enum'ы.
+            //
+            // Сравнение идёт с CHECK, а не с владельцем в PHP: контракт описывает
+            // границу хранения, и она в схеме.
+            $enum = enumOf($declaration);
+
+            if ($enum !== null && isset($statusVocabularies[$table . '.' . $column])) {
+                $allowed = $statusVocabularies[$table . '.' . $column];
+
+                if ($enum !== $allowed) {
+                    $statusDrift[] = [
+                        'schema' => $schema,
+                        'table' => $table,
+                        'property' => $property,
+                        'contract' => $enum,
+                        'allowed' => $allowed,
+                    ];
+                }
             }
 
             continue;
@@ -378,11 +458,30 @@ if ($exposedInternalIds !== []) {
     echo "\n";
 }
 
-if ($drift === [] && $accepted === []) {
-    echo "  Clean: every field the contract promises exists as a column.\n\n";
+if ($statusDrift !== []) {
+    echo "  STATUS DRIFT — the contract enumerates a vocabulary the database disagrees with:\n\n";
+
+    foreach ($statusDrift as $d) {
+        printf("    FAIL  %s.%s enum does not match %s\n", $d['schema'], $d['property'], $d['table']);
+        printf("          contract: %s\n", implode(', ', $d['contract']));
+        printf("          schema:   %s\n", implode(', ', $d['allowed']));
+    }
+
+    echo "\n";
+}
+
+if ($drift === [] && $accepted === [] && $statusDrift === []) {
+    echo "  Clean: every field the contract promises exists as a column,\n";
+    echo "         and every enumerated status matches its CHECK constraint.\n\n";
 }
 
 echo str_repeat('─', 74), "\n";
-printf("  %d entity schemas, %d drift, %d accepted\n\n", $compared, count($drift), count($accepted));
+printf(
+    "  %d entity schemas, %d drift, %d accepted, %d status drift\n\n",
+    $compared,
+    count($drift),
+    count($accepted),
+    count($statusDrift)
+);
 
-exit($drift === [] ? 0 : 1);
+exit($drift === [] && $statusDrift === [] ? 0 : 1);
