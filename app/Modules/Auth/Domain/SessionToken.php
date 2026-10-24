@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Auth\Domain;
 
+use Nabilet\Core\Support\Sha256Hex;
+
 /**
  * A bearer token and the hash that is stored for it (ТЗ §5, §6).
  *
@@ -35,11 +37,18 @@ final class SessionToken
     /** Entropy of the plaintext token, in bytes. 64 bytes = 512 bits. */
     public const BYTES = 64;
 
-    /** `session_token_hash` is CHAR(64), so the digest must be sha256 in hex. */
-    public const HASH_ALGORITHM = 'sha256';
+    /**
+     * Алгоритм отпечатка берётся у владельца `Core\Support\Sha256Hex`.
+     *
+     * Константы остались здесь как имена этого класса, потому что семь колонок
+     * проекта объявлены `CHAR(64)` — шириной, которую задаёт именно этот
+     * алгоритм. Вычисление при этом одно на все семь: раньше его копировали в
+     * каждое место, и правка алгоритма здесь ничего не меняла там.
+     */
+    public const HASH_ALGORITHM = Sha256Hex::ALGORITHM;
 
-    /** sha256 in hex is 64 characters — the width the column declares. */
-    public const HASH_LENGTH = 64;
+    /** Ширина колонки = длина hex-записи sha256. */
+    public const HASH_LENGTH = Sha256Hex::LENGTH;
 
     private function __construct(
         public readonly string $plain,
@@ -61,7 +70,7 @@ final class SessionToken
 
     public static function hashOf(string $plain): string
     {
-        return hash(self::HASH_ALGORITHM, $plain);
+        return Sha256Hex::of($plain);
     }
 
     /**

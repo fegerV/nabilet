@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Nabilet\Core\Errors\AuthError;
 use Nabilet\Core\Errors\NotFoundError;
+use Nabilet\Core\Support\Sha256Hex;
 use Nabilet\Modules\Analytics\Models\EmbedDomain;
 use Nabilet\Modules\Cart\Models\Cart;
 use Nabilet\Modules\Embed\Domain\EmbedOrigin;
@@ -98,7 +99,7 @@ final class EmbedAccessService
         }
 
         $key = ApiKey::query()
-            ->where('key_hash', hash('sha256', $token))
+            ->where('key_hash', Sha256Hex::of($token))
             ->first();
 
         if ($key === null) {

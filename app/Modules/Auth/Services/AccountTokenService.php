@@ -6,6 +6,7 @@ namespace Nabilet\Modules\Auth\Services;
 
 use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Support\Facades\Crypt;
+use Nabilet\Core\Support\Sha256Hex;
 use Nabilet\Modules\Auth\Domain\AccountTokenPurpose;
 use Nabilet\Modules\Core\Users\Models\User;
 
@@ -160,6 +161,9 @@ final class AccountTokenService
 
     private function fingerprint(string $passwordHash): string
     {
-        return substr(hash('sha256', $passwordHash), 0, self::FINGERPRINT_LENGTH);
+        // Алгоритм — у владельца (`Sha256Hex`); длина обрезки — правило этого
+        // класса, и оно здесь и остаётся: отпечаток показывает, что пароль
+        // СМЕНИЛСЯ, поэтому длиннее 16 символов ему незачем.
+        return substr(Sha256Hex::of($passwordHash), 0, self::FINGERPRINT_LENGTH);
     }
 }

@@ -14,6 +14,7 @@ use Nabilet\Modules\Inventory\Models\InventoryItem;
 use Nabilet\Modules\Sessions\Models\Session;
 use Nabilet\Core\Support\HmacSignature;
 use Nabilet\Core\Support\QrSigner;
+use Nabilet\Core\Support\Sha256Hex;
 use Nabilet\Core\Support\SignedPayload;
 use Nabilet\Modules\Core\Support\PublicId;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -150,7 +151,7 @@ class TicketService
                         'holder_name' => $order->customer_name ?? $order->customer_email,
                         'status' => TicketStateMachine::ISSUED,
                         'qr_version' => 1,
-                        'qr_token_hash' => hash('sha256', $signed['token']),
+                        'qr_token_hash' => Sha256Hex::of($signed['token']),
                         'qr_payload' => $signed['payload'],
                         'issued_at' => now(),
                         'created_at' => now(),

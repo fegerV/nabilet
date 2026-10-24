@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Nabilet\Core\Idempotency;
 
 use Nabilet\Core\Errors\DomainRuleViolation;
+use Nabilet\Core\Support\Sha256Hex;
 
 /**
  * The rules for replaying an idempotent request (ТЗ §28, §76).
@@ -84,12 +85,12 @@ final class IdempotencyPolicy
 
     public function keyHash(string $key): string
     {
-        return hash('sha256', $key);
+        return Sha256Hex::of($key);
     }
 
     public function requestHash(string $body): string
     {
-        return hash('sha256', $body);
+        return Sha256Hex::of($body);
     }
 
     public function expiresAt(\DateTimeImmutable $now): \DateTimeImmutable

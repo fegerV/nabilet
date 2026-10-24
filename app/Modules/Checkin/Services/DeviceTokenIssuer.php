@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Nabilet\Modules\Checkin\Services;
 
 use Illuminate\Support\Str;
+use Nabilet\Core\Support\Sha256Hex;
 use Nabilet\Modules\Checkin\Domain\CheckinDevice as DevicePolicy;
 use Nabilet\Modules\Tickets\Models\CheckinDevice;
 
@@ -77,9 +78,19 @@ final class DeviceTokenIssuer
         return $device->fresh();
     }
 
+    /**
+     * Отпечаток токена устройства — тем же правилом, что и остальные шесть
+     * `CHAR(64)` в схеме.
+     *
+     * Метод остаётся точкой входа для этого класса (его зовут middleware,
+     * контроллер бандла и запись в `checkin_devices`), но алгоритм берётся у
+     * владельца. Раньше `hash('sha256', …)` был выписан здесь, в
+     * `AuthenticateChecker` и в `OfflineBundleController` — и три копии должны
+     * были совпадать молча: разойдясь, они дали бы 401 на живом сканере.
+     */
     public static function hash(string $token): string
     {
-        return hash('sha256', $token);
+        return Sha256Hex::of($token);
     }
 
     /**

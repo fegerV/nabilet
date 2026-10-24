@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use Nabilet\Core\Errors\AuthError;
 use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Checkin\Domain\CheckinDevice as DevicePolicy;
+use Nabilet\Modules\Checkin\Services\DeviceTokenIssuer;
 use Nabilet\Modules\Tickets\Models\CheckinDevice;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -123,8 +124,17 @@ final class AuthenticateChecker
         return $token === '' ? null : $token;
     }
 
+    /**
+     * Отпечаток токена — у того же владельца, что и при выдаче.
+     *
+     * Здесь стояла копия `hash('sha256', $token)`, и она ОБЯЗАНА была
+     * совпадать с копией в `DeviceTokenIssuer` (пишет `device_token_hash`) и с
+     * копией в `OfflineBundleController` (ищет по нему же). Расхождение не
+     * ломает тест и не ломает сборку: сканер просто начинает получать 401 на
+     * живой входе, и понять почему можно только сравнив три файла.
+     */
     private function hash(string $token): string
     {
-        return hash('sha256', $token);
+        return DeviceTokenIssuer::hash($token);
     }
 }

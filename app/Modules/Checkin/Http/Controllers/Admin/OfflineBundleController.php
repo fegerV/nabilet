@@ -122,7 +122,7 @@ final class OfflineBundleController extends Controller
 
         if (str_starts_with($token, DeviceTokenIssuer::TOKEN_PREFIX)) {
             $device = CheckinDevice::query()
-                ->where('device_token_hash', hash('sha256', $token))
+                ->where('device_token_hash', DeviceTokenIssuer::hash($token))
                 ->first();
 
             if ($device === null || $device->status !== 'active') {

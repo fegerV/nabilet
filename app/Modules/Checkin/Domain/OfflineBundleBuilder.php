@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Nabilet\Modules\Checkin\Domain;
 
 use Nabilet\Core\Errors\DomainRuleViolation;
+use Nabilet\Core\Support\Sha256Hex;
 
 /**
  * Builds the offline bundle an Android Checker takes with it into a venue with
@@ -161,7 +162,7 @@ final class OfflineBundleBuilder
         );
 
         return new OfflineBundlePlan(
-            bundleHash: hash('sha256', $canonical),
+            bundleHash: Sha256Hex::of($canonical),
             publicKeyFingerprint: $request->publicKeyFingerprint,
             schemaVersion: $request->schemaVersion,
             ticketCount: count($valid),
