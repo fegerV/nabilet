@@ -8,7 +8,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Nabilet\Core\Errors\NotFoundError;
-use Nabilet\Core\Support\DatabaseId;
+use Nabilet\Core\Database\IdentifierLookup;
 use Nabilet\Modules\Checkin\Domain\CheckinDevice as DevicePolicy;
 use Nabilet\Modules\Checkin\Services\DeviceTokenIssuer;
 use Nabilet\Modules\Tickets\Models\CheckinDevice;
@@ -116,11 +116,7 @@ final class CheckinDeviceController extends Controller
      */
     private function find(string $device): CheckinDevice
     {
-        $query = CheckinDevice::query();
-
-        $model = DatabaseId::isNumeric($device)
-            ? $query->whereKey((int) $device)->first()
-            : $query->where('public_id', $device)->first();
+        $model = IdentifierLookup::first(CheckinDevice::class, $device);
 
         if ($model === null) {
             throw new NotFoundError('Device', $device);

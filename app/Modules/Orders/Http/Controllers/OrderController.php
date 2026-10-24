@@ -7,7 +7,7 @@ namespace Nabilet\Modules\Orders\Http\Controllers;
 use Nabilet\Core\Errors\AppError;
 use Nabilet\Core\Errors\DomainRuleViolation;
 use Nabilet\Core\Errors\NotFoundError;
-use Nabilet\Core\Support\DatabaseId;
+use Nabilet\Core\Database\IdentifierLookup;
 use Nabilet\Core\Support\StaffRole;
 use Nabilet\Modules\Cart\Models\Cart;
 use Nabilet\Modules\Cart\Services\CartCheckoutService;
@@ -230,11 +230,10 @@ class OrderController extends Controller
     public function refund(Request $request, string $order): JsonResponse
     {
         // Идентификатор приходит и числом (админка), и строкой-`public_id`
-        // (контракт: OrderIdPath — строка). Число резолвим по ключу, всё
-        // остальное — по public_id; неизвестное — fail-closed 404.
-        $resolved = DatabaseId::isNumeric($order)
-            ? Order::query()->whereKey((int) $order)->first()
-            : Order::query()->where('public_id', $order)->first();
+        // (контракт: OrderIdPath — строка). Само правило «число — по ключу,
+        // остальное — по public_id; неизвестное — fail-closed 404» живёт у
+        // `IdentifierLookup`, как и в двух контроллерах Checkin.
+        $resolved = IdentifierLookup::first(Order::class, $order);
 
         if ($resolved === null) {
             throw new NotFoundError('Order', $order);

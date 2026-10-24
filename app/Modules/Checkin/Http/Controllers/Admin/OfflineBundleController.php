@@ -9,7 +9,7 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Nabilet\Core\Errors\AuthError;
 use Nabilet\Core\Errors\NotFoundError;
-use Nabilet\Core\Support\DatabaseId;
+use Nabilet\Core\Database\IdentifierLookup;
 use Nabilet\Core\Support\StaffRole;
 use Nabilet\Modules\Checkin\Services\DeviceTokenIssuer;
 use Nabilet\Modules\Checkin\Services\OfflineBundleService;
@@ -154,11 +154,7 @@ final class OfflineBundleController extends Controller
 
     private function findDevice(string $device): CheckinDevice
     {
-        $query = CheckinDevice::query();
-
-        $model = DatabaseId::isNumeric($device)
-            ? $query->whereKey((int) $device)->first()
-            : $query->where('public_id', $device)->first();
+        $model = IdentifierLookup::first(CheckinDevice::class, $device);
 
         if ($model === null) {
             throw new NotFoundError('Device', $device);
