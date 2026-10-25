@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Nabilet\Core\Support\PublicationStatus;
 use Nabilet\Modules\Content\Domain\PageStatus;
 use Nabilet\Modules\Core\Organizations\Models\Organization;
 use Nabilet\Modules\Events\Domain\EventStatus;
@@ -106,7 +107,7 @@ class CatalogService
     {
         return Venue::query()
             ->where('slug', $slug)
-            ->where('status', 'active')
+            ->where('status', PublicationStatus::ACTIVE)
             ->first();
     }
 
@@ -148,7 +149,7 @@ class CatalogService
     {
         return EventCategory::query()
             ->where('slug', $slug)
-            ->where('status', 'active')
+            ->where('status', PublicationStatus::ACTIVE)
             ->first();
     }
 
@@ -178,7 +179,7 @@ class CatalogService
     {
         return Organization::query()
             ->where('slug', $slug)
-            ->where('status', 'active')
+            ->where('status', PublicationStatus::ACTIVE)
             ->first();
     }
 
@@ -202,7 +203,7 @@ class CatalogService
     {
         return Artist::query()
             ->where('slug', $slug)
-            ->where('status', 'active')
+            ->where('status', PublicationStatus::ACTIVE)
             ->first();
     }
 
@@ -242,7 +243,7 @@ class CatalogService
                     ->whereIn('events.status', EventStatus::publiclyVisible())
                     ->whereNull('events.deleted_at');
             })
-            ->where('artists.status', 'active')
+            ->where('artists.status', PublicationStatus::ACTIVE)
             ->groupBy(
                 'artists.id',
                 'artists.name',
@@ -300,7 +301,7 @@ class CatalogService
                     ->whereIn('events.status', EventStatus::publiclyVisible())
                     ->whereNull('events.deleted_at');
             })
-            ->where('organizations.status', 'active')
+            ->where('organizations.status', PublicationStatus::ACTIVE)
             ->groupBy(
                 'organizations.id',
                 'organizations.name',
@@ -381,7 +382,7 @@ class CatalogService
                     // не знает про SoftDeletes, фильтр обязателен вручную.
                     ->whereNull('events.deleted_at');
             })
-            ->where('event_categories.status', 'active')
+            ->where('event_categories.status', PublicationStatus::ACTIVE)
             ->groupBy('event_categories.id', 'event_categories.name', 'event_categories.slug')
             ->orderByRaw('COUNT(DISTINCT events.id) DESC')
             ->orderBy('event_categories.name')
@@ -427,7 +428,7 @@ class CatalogService
             })
             ->join('sessions', 'sessions.event_id', '=', 'events.id')
             ->join('venues', 'venues.id', '=', 'sessions.venue_id')
-            ->where('event_categories.status', 'active')
+            ->where('event_categories.status', PublicationStatus::ACTIVE)
             ->whereIn('venues.city', $cityNames)
             ->groupBy('event_categories.id', 'event_categories.name', 'event_categories.slug')
             ->orderByRaw('COUNT(DISTINCT events.id) DESC')
@@ -488,7 +489,7 @@ class CatalogService
                     // и удалённое мероприятие иначе продолжало бы наполнять город.
                     ->whereNull('events.deleted_at');
             })
-            ->where('venues.status', 'active')
+            ->where('venues.status', PublicationStatus::ACTIVE)
             ->whereNotNull('venues.city')
             ->where('venues.city', '<>', '')
             ->groupBy('venues.city')
@@ -558,7 +559,7 @@ class CatalogService
                     ->whereIn('events.status', EventStatus::publiclyVisible())
                     ->whereNull('events.deleted_at');
             })
-            ->where('venues.status', 'active')
+            ->where('venues.status', PublicationStatus::ACTIVE)
             ->groupBy('venues.id', 'venues.name', 'venues.slug', 'venues.city', 'venues.updated_at')
             ->orderByRaw('COUNT(DISTINCT events.id) DESC')
             ->orderBy('venues.name')

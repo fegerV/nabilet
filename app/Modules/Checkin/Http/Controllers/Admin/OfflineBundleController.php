@@ -11,6 +11,7 @@ use Nabilet\Core\Errors\AuthError;
 use Nabilet\Core\Errors\NotFoundError;
 use Nabilet\Core\Database\IdentifierLookup;
 use Nabilet\Core\Support\StaffRole;
+use Nabilet\Modules\Checkin\Domain\CheckinDevice as CheckinDeviceStatus;
 use Nabilet\Modules\Checkin\Services\DeviceTokenIssuer;
 use Nabilet\Modules\Checkin\Services\OfflineBundleService;
 use Nabilet\Modules\Checkin\Support\SessionLocator;
@@ -128,7 +129,7 @@ final class OfflineBundleController extends Controller
                 ->where('device_token_hash', DeviceTokenIssuer::hash($token))
                 ->first();
 
-            if ($device === null || $device->status !== 'active') {
+            if ($device === null || $device->status !== CheckinDeviceStatus::STATUS_ACTIVE) {
                 throw AuthError::unauthenticated('Device token is no longer valid.');
             }
 

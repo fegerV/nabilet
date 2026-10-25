@@ -7,6 +7,7 @@ namespace Nabilet\Modules\Venues\Http\Controllers;
 use Nabilet\Core\Errors\ConflictError;
 use Nabilet\Core\Errors\ValidationError;
 use Nabilet\Core\Support\LikePattern;
+use Nabilet\Core\Support\PublicationStatus;
 use Nabilet\Core\Support\UserOrganization;
 use Nabilet\Modules\Venues\Models\Venue;
 use Illuminate\Http\JsonResponse;
@@ -80,10 +81,10 @@ class VenueController extends Controller
             'address' => ['nullable', 'string', 'max:500'],
             'latitude' => ['nullable', 'numeric', 'between:-90,90'],
             'longitude' => ['nullable', 'numeric', 'between:-180,180'],
-            'status' => ['nullable', 'string', 'in:active,inactive'],
+            'status' => ['nullable', 'string', PublicationStatus::validationRule()],
         ]);
 
-        $data['status'] ??= 'active';
+        $data['status'] ??= PublicationStatus::ACTIVE;
 
         // Fail closed when there is no organization to attach the venue to. The
         // previous fallback was `Organization::query()->value('id')` — an
@@ -135,7 +136,7 @@ class VenueController extends Controller
             'address' => ['nullable', 'string', 'max:500'],
             'latitude' => ['nullable', 'numeric', 'between:-90,90'],
             'longitude' => ['nullable', 'numeric', 'between:-180,180'],
-            'status' => ['sometimes', 'string', 'in:active,inactive'],
+            'status' => ['sometimes', 'string', PublicationStatus::validationRule()],
         ]);
 
         $venue->update(array_filter($data, fn ($v) => $v !== null));

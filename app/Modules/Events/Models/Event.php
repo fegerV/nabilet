@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Events\Models;
 
+use Nabilet\Core\Support\PublicationStatus;
 use Nabilet\Modules\Core\Models\Concerns\HasPublicId;
 
 use Illuminate\Database\Eloquent\Model;
@@ -136,7 +137,7 @@ class Event extends Model
     public function artists(): BelongsToMany
     {
         return $this->belongsToMany(Artist::class, 'artist_event')
-            ->where('artists.status', 'active')
+            ->where('artists.status', PublicationStatus::ACTIVE)
             ->withPivot(['is_headliner', 'sort_order'])
             ->orderByDesc('artist_event.is_headliner')
             ->orderBy('artist_event.sort_order')

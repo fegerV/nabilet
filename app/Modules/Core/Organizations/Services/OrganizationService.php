@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Core\Organizations\Services;
 
+use Nabilet\Core\Support\PublicationStatus;
 use Nabilet\Modules\Core\Organizations\Models\Organization;
 use Nabilet\Modules\Core\Organizations\Repositories\OrganizationRepository;
 use Nabilet\Modules\Core\Users\Models\User;
@@ -52,7 +53,7 @@ class OrganizationService
                 'description' => $data['description'] ?? null,
                 'slug' => $slug,
                 'owner_id' => $owner->id,
-                'status' => 'active',
+                'status' => PublicationStatus::ACTIVE,
             ]);
 
             // Assign owner as admin member

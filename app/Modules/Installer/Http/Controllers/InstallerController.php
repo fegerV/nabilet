@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Routing\Controller;
 use Illuminate\Validation\ValidationException;
+use Nabilet\Core\Support\PublicationStatus;
 use Nabilet\Modules\Core\Support\PublicId;
 use Nabilet\Modules\Core\Users\Domain\UserStatus;
 
@@ -606,7 +607,7 @@ ENV;
                 'public_id' => PublicId::generate(),
                 'name' => $orgName,
                 'slug' => $slug,
-                'status' => 'active',
+                'status' => PublicationStatus::ACTIVE,
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);

@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Nabilet\Core\Errors\NotFoundError;
 use Nabilet\Core\Errors\ValidationError;
+use Nabilet\Core\Support\PublicationStatus;
 use Nabilet\Modules\Venues\Models\Hall;
 use Nabilet\Modules\Venues\Halls\Services\HallService;
 use Nabilet\Modules\Venues\Halls\Http\Resources\HallResource;
@@ -74,11 +75,11 @@ class HallController extends Controller
             'capacity' => ['nullable', 'integer', 'min:0'],
             'width' => ['nullable', 'integer', 'min:0'],
             'height' => ['nullable', 'integer', 'min:0'],
-            'status' => ['nullable', 'string', 'in:active,inactive'],
+            'status' => ['nullable', 'string', PublicationStatus::validationRule()],
         ]);
 
         // БД требует status NOT NULL.
-        $validated['status'] ??= 'active';
+        $validated['status'] ??= PublicationStatus::ACTIVE;
 
         $hall = $this->service->createHall($validated);
 

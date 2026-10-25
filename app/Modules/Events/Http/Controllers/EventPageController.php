@@ -8,6 +8,7 @@ use Nabilet\Core\Http\HtmlResponse;
 use Nabilet\Core\Http\NotFoundPage;
 use Nabilet\Core\Support\AssetUrl;
 use Nabilet\Core\Support\Money;
+use Nabilet\Core\Support\PublicationStatus;
 use Nabilet\Modules\Events\Domain\EventRobots;
 use Nabilet\Modules\Events\Domain\EventStatus;
 use Nabilet\Modules\Events\Http\EventPageContent;
@@ -648,7 +649,7 @@ class EventPageController
 
         $category = $event->category;
 
-        if ($category === null || (string) $category->status !== 'active') {
+        if ($category === null || ! PublicationStatus::isPubliclyVisible((string) $category->status)) {
             return null;
         }
 

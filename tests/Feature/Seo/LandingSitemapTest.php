@@ -8,6 +8,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Nabilet\Core\Support\PublicationStatus;
 use Nabilet\Modules\Events\Domain\EventStatus;
 use Nabilet\Tests\Support\CatalogFixtures;
 use Tests\TestCase;
@@ -67,6 +68,46 @@ final class LandingSitemapTest extends TestCase
         );
     }
 
+    /**
+     * Снятая с публикации площадка уходит из карты.
+     *
+     * ПАРНАЯ ПРОВЕРКА К `LandingPageTest::test_an_inactive_venue_has_no_page()`.
+     * Там закреплено «страница отвечает 404», здесь — «адреса в карте нет».
+     * По отдельности каждая зелёная и при сломанном фильтре: страница 404 и
+     * карта с лишним адресом не противоречат друг другу в одном тесте, но
+     * вместе дают ровно то, из-за чего карта теряет доверие краулера.
+     *
+     * ЧТО ЗДЕСЬ ЛОВИТСЯ. Фильтр `venues.status` в `CatalogService` был литералом
+     * `'active'` в двух запросах — и это единственное место, где значение
+     * сравнивалось, не имея владельца. При переименовании значения правила
+     * валидации обновились бы, а фильтры нет: карта продолжила бы искать слово,
+     * которого в базе больше нет, и стала бы пустой, отвечая 200 и корректным
+     * XML. Ни исключения, ни строки в логе.
+     */
+    public function test_the_venues_sitemap_skips_inactive_venues(): void
+    {
+        $event = $this->seedCatalogEvent('Концерт', 'zakrytyy-zal', 'Москва');
+
+        // ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ. Без него проверка ниже зелена и тогда, когда
+        // площадки нет в карте по любой другой причине — например, потому что
+        // карта вообще пуста. Один раз это уже случилось в этом же файле: адрес
+        // города был написан как `voronezh`, тогда как транслитерация даёт
+        // `voronez`, и «отсутствие» выполнялось над несуществующим адресом.
+        $this->assertStringContainsString(
+            route('landing.venue', ['slug' => 'zakrytyy-zal']),
+            $this->venuesSitemap(),
+        );
+
+        DB::table('venues')->where('id', $event['venue'])
+            ->update(['status' => PublicationStatus::INACTIVE]);
+        Cache::flush();
+
+        $this->assertStringNotContainsString(
+            route('landing.venue', ['slug' => 'zakrytyy-zal']),
+            $this->venuesSitemap(),
+        );
+    }
+
     public function test_the_cities_sitemap_lists_cities_that_have_events(): void
     {
         $this->seedCatalogEvent('Концерт', 'zal-1', 'Екатеринбург');
@@ -94,6 +135,44 @@ final class LandingSitemapTest extends TestCase
             1,
             substr_count($xml, route('landing.city', ['slug' => 'sankt-peterburg'])),
             'город попал в карту больше одного раза',
+        );
+    }
+
+    /**
+     * Город, у которого единственная площадка снята с публикации, уходит из карты.
+     *
+     * ГОРОДА КАК СУЩНОСТИ В СХЕМЕ НЕТ: `venues.city` — свободный текст, поэтому
+     * город существует ровно настолько, насколько существует хотя бы одна его
+     * площадка, видимая каталогу. Это второй запрос с тем же литералом
+     * `venues.status` (первый — карта площадок выше), и он опаснее первого:
+     * ошибка здесь убирает из карты не одну страницу, а целый раздел вместе со
+     * всеми его событиями.
+     *
+     * Отдельный город, а не «тот же, что в тесте площадок»: проверки должны
+     * падать независимо, иначе первая же поломка замаскирует вторую.
+     */
+    public function test_the_cities_sitemap_skips_a_city_whose_only_venue_is_inactive(): void
+    {
+        // Адрес написан ЯВНО и проверен: `Str::slug('Казань')` = `kazan`. Адрес
+        // города — публичный контракт (он уже в индексе), а транслитерация
+        // приходит из `voku/portable-ascii`; писать её «на глаз» нельзя.
+        // `Воронеж` даёт `voronez`, а не `voronezh` — на этом первая редакция
+        // этого теста была зелёной, ничего не проверяя.
+        $event = $this->seedCatalogEvent('Концерт', 'zakrytyy-zal-gorod', 'Казань');
+
+        // Положительный контроль: пока площадка активна, город в карте есть.
+        $this->assertStringContainsString(
+            route('landing.city', ['slug' => 'kazan']),
+            $this->citiesSitemap(),
+        );
+
+        DB::table('venues')->where('id', $event['venue'])
+            ->update(['status' => PublicationStatus::INACTIVE]);
+        Cache::flush();
+
+        $this->assertStringNotContainsString(
+            route('landing.city', ['slug' => 'kazan']),
+            $this->citiesSitemap(),
         );
     }
 

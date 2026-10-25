@@ -6,6 +6,7 @@ namespace Nabilet\Modules\Events\Console;
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
+use Nabilet\Core\Support\PublicationStatus;
 use Nabilet\Modules\Events\Domain\EventStatus;
 use Nabilet\Modules\Events\Models\Artist;
 
@@ -82,7 +83,7 @@ final class SyncArtistsCommand extends Command
                         'bio' => $group['bio'],
                         'photo' => $group['photo'],
                         'social_links' => $group['social_links'],
-                        'status' => 'active',
+                        'status' => PublicationStatus::ACTIVE,
                     ]);
                 }
             }
