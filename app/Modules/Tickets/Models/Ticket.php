@@ -7,6 +7,7 @@ namespace Nabilet\Modules\Tickets\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Nabilet\Modules\Core\Models\Concerns\HasPublicId;
 use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Orders\Models\OrderItem;
 use Nabilet\Modules\Events\Models\Event;
@@ -28,6 +29,8 @@ use Nabilet\Modules\Venues\Models\StandingZone;
  */
 class Ticket extends Model
 {
+    use HasPublicId;
+
     protected $table = 'tickets';
 
     protected $fillable = [

@@ -7,6 +7,7 @@ namespace Nabilet\Modules\Orders\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Nabilet\Core\Support\HoldGrace;
+use Nabilet\Modules\Core\Models\Concerns\HasPublicId;
 use Nabilet\Modules\Inventory\Models\InventoryItem;
 use Nabilet\Modules\Cart\Models\Cart;
 
@@ -26,6 +27,8 @@ use Nabilet\Modules\Cart\Models\Cart;
  */
 class SeatHold extends Model
 {
+    use HasPublicId;
+
     /**
      * `seat_holds` has `created_at` but no `updated_at` (see
      * nabilet_core_spec/migrations.sql). Without this, Eloquent adds

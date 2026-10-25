@@ -7,6 +7,7 @@ namespace Nabilet\Modules\System\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Nabilet\Modules\Core\Models\Concerns\HasPublicId;
 use Nabilet\Modules\Core\Organizations\Models\Organization;
 
 /**
@@ -21,6 +22,8 @@ use Nabilet\Modules\Core\Organizations\Models\Organization;
  */
 class Webhook extends Model
 {
+    use HasPublicId;
+
     protected $table = 'webhooks';
 
     protected $fillable = [

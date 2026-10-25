@@ -6,12 +6,15 @@ namespace Nabilet\Modules\Events\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Nabilet\Modules\Core\Models\Concerns\HasPublicId;
 
 /**
  * EventCategory Model
  */
 class EventCategory extends Model
 {
+    use HasPublicId;
+
     protected $table = 'event_categories';
 
     public $timestamps = false;

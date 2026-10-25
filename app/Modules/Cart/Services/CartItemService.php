@@ -9,7 +9,6 @@ use Illuminate\Support\Facades\DB;
 use Nabilet\Core\Errors\ConflictError;
 use Nabilet\Core\Errors\DomainRuleViolation;
 use Nabilet\Core\Errors\ValidationError;
-use Nabilet\Modules\Core\Support\PublicId;
 use Nabilet\Modules\Cart\Domain\CartStatus;
 use Nabilet\Modules\Cart\Support\DbRetry;
 use Nabilet\Modules\Cart\Models\Cart;
@@ -412,8 +411,13 @@ final class CartItemService
      */
     private function createHold(Cart $cart, InventoryItem $inventoryItem, int $quantity): void
     {
+        // `public_id` здесь НЕ передаётся: его ставит `HasPublicId` на модели
+        // `SeatHold`. Раньше значение генерировалось и тут — то есть у одного
+        // правила было два владельца, и правка «сменим генератор» требовала
+        // помнить об обоих. `seat_holds.public_id` — `CHAR(26) NOT NULL` без
+        // значения по умолчанию, поэтому забыть трейт нельзя: `create()` упадёт
+        // 1364. Это и стережёт `PublicIdGenerationCopyTest`.
         SeatHold::create([
-            'public_id' => PublicId::generate(),
             'inventory_item_id' => $inventoryItem->id,
             'session_id' => (int) $inventoryItem->session_id,
             'cart_id' => $cart->id,

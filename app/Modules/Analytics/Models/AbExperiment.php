@@ -7,6 +7,7 @@ namespace Nabilet\Modules\Analytics\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Nabilet\Modules\Core\Models\Concerns\HasPublicId;
 use Nabilet\Modules\Core\Organizations\Models\Organization;
 
 /**
@@ -19,6 +20,8 @@ use Nabilet\Modules\Core\Organizations\Models\Organization;
  */
 class AbExperiment extends Model
 {
+    use HasPublicId;
+
     protected $table = 'ab_experiments';
 
     protected $fillable = [

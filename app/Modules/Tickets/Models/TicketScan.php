@@ -6,6 +6,7 @@ namespace Nabilet\Modules\Tickets\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Nabilet\Modules\Core\Models\Concerns\HasPublicId;
 
 /**
  * @property int $id
@@ -20,6 +21,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class TicketScan extends Model
 {
+    use HasPublicId;
+
     protected $table = 'ticket_scans';
 
     /** ticket_scans has no updated_at column in the spec schema. */

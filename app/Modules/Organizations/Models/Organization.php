@@ -6,6 +6,7 @@ namespace Nabilet\Modules\Organizations\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Nabilet\Modules\Core\Models\Concerns\HasPublicId;
 use Nabilet\Modules\Events\Models\Event;
 use Nabilet\Modules\System\Models\ApiKey;
 use Nabilet\Modules\Tickets\Models\CheckinDevice;
@@ -53,6 +54,8 @@ use Nabilet\Modules\Venues\Models\Venue;
  */
 class Organization extends Model
 {
+    use HasPublicId;
+
     protected $table = 'organizations';
 
     protected $fillable = [

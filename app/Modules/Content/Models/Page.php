@@ -6,6 +6,7 @@ namespace Nabilet\Modules\Content\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Nabilet\Modules\Content\Domain\PageStatus;
+use Nabilet\Modules\Core\Models\Concerns\HasPublicId;
 
 /**
  * Редакционная страница CMS (стратегия SEO, B-2).
@@ -60,6 +61,8 @@ use Nabilet\Modules\Content\Domain\PageStatus;
  */
 class Page extends Model
 {
+    use HasPublicId;
+
     protected $table = 'pages';
 
     protected $fillable = [

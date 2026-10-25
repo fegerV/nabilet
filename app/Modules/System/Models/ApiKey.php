@@ -6,6 +6,7 @@ namespace Nabilet\Modules\System\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Nabilet\Modules\Core\Models\Concerns\HasPublicId;
 use Nabilet\Modules\Core\Organizations\Models\Organization;
 use Nabilet\Modules\Security\Domain\ApiKey as DomainApiKey;
 
@@ -34,6 +35,8 @@ use Nabilet\Modules\Security\Domain\ApiKey as DomainApiKey;
  */
 class ApiKey extends Model
 {
+    use HasPublicId;
+
     protected $table = 'api_keys';
 
     /**
