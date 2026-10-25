@@ -1995,7 +1995,14 @@ paths:
               type: object
               properties:
                 name: { type: string }
-                status: { type: string, enum: [active, revoked] }
+                # Только `revoked`: отзыв необратим. `DeviceTokenIssuer::revoke()`
+                # меняет ТОЛЬКО статус, `device_token_hash` остаётся прежним, и
+                # `active` здесь означал бы возврат к жизни утёкшего токена.
+                # Оживить устройство может лишь новая выдача (`POST` выше) — у
+                # неё новый хеш. Модель `CheckinDevice` ниже по-прежнему
+                # перечисляет `disabled`: это словарь КОЛОНКИ (CHECK), а не
+                # список допустимых значений запроса.
+                status: { type: string, enum: [revoked] }
       responses:
         '200':
           description: Updated

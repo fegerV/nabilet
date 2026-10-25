@@ -382,6 +382,64 @@ class CheckerHttpLayerTest extends TestCase
     }
 
     /**
+     * Отзыв устройства НЕОБРАТИМ: `PATCH` не умеет вернуть сканер к жизни.
+     *
+     * ЭТО НЕ ПЕДАНТИЗМ, А ДЫРА. `DeviceTokenIssuer::revoke()` ставит только
+     * статус — `device_token_hash` не меняется, потому что журнал сканов
+     * ссылается на устройство и удалять строку нельзя. Значит единственное, что
+     * отделяет утёкший токен от работы, — значение `status`. Если бы `PATCH`
+     * принимал `active`, то `status: 'active'` возвращал бы к жизни ровно тот
+     * токен, который утёк: отзыв лечился бы флажком в админке, и весь смысл
+     * отзыва пропадал.
+     *
+     * Ровно это и было: правило `in:active,revoked` разрешало `active`, а ветка
+     * ниже снимала `status` из набора ТОЛЬКО для `revoked` — то есть `active`
+     * доезжал до `$model->update()`. Комментарий над правилом при этом обещал
+     * обратное («`PATCH` не умеет вернуть жизнь отозванному сканеру»), и
+     * расходился с кодом на две строки ниже.
+     *
+     * Поэтому проверяются обе половины: отказ в записи И отказ токену. Одной
+     * записи мало — «статус не изменился, но токен всё же пускает» было бы
+     * худшим из возможных исходов.
+     */
+    public function test_patch_cannot_revive_a_revoked_device(): void
+    {
+        [$organizationId, , $sessionId] = $this->seedSellableSeat(available: 1);
+
+        $this->actingAsStaff($organizationId);
+
+        $device = $this->issueDevice($organizationId);
+
+        $this->patchJson('/api/v1/admin/checkin/devices/' . $device->public_id, ['status' => 'revoked'])
+            ->assertOk();
+
+        $this->assertSame('revoked', (string) $device->fresh()->status);
+
+        // Попытка оживить отозванный сканер обязана быть отвергнута на входе.
+        // Проверяется и код, и поле: голый 422 мог бы прийти откуда угодно —
+        // например от отсутствующего `name`, — и тест остался бы зелёным,
+        // ничего не проверив.
+        $this->patchJson('/api/v1/admin/checkin/devices/' . $device->public_id, ['status' => 'active'])
+            ->assertStatus(422)
+            ->assertJsonPath('error.code', 'VALIDATION_ERROR')
+            ->assertJsonStructure(['error' => ['details' => ['fields' => ['status']]]]);
+
+        $this->assertSame(
+            'revoked',
+            (string) $device->fresh()->status,
+            'PATCH вернул отозванному устройству статус active',
+        );
+
+        // И вторая половина: тот же токен по-прежнему не пускает.
+        $this->withToken($this->tokenOf($device))
+            ->postJson('/api/v1/checkin/validate', [
+                'qr_payload' => 'NB1.anything',
+                'session_id' => $sessionId,
+            ])->assertStatus(401)
+            ->assertJsonPath('error.code', 'DEVICE_NOT_ACTIVE');
+    }
+
+    /**
      * Два пути админки открывают ОДНО устройство по одному идентификатору —
      * значит и отвечать «не нашли» они обязаны одинаково.
      *

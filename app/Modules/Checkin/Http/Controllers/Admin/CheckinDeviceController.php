@@ -92,10 +92,27 @@ final class CheckinDeviceController extends Controller
 
         $validated = $request->validate([
             'name' => ['sometimes', 'string', 'max:255'],
-            // Активным устройство делает только повторная выдача токена: `PATCH`
-            // не умеет вернуть жизнь отозванному сканеру, и это правильно —
-            // иначе утечка токена лечилась бы флажком в админке.
-            'status' => ['sometimes', 'string', 'in:' . DevicePolicy::STATUS_ACTIVE . ',' . DevicePolicy::STATUS_REVOKED],
+            // ТОЛЬКО `revoked`. Отзыв необратим, и это не удобство, а смысл
+            // отзыва: `DeviceTokenIssuer::revoke()` меняет ТОЛЬКО статус —
+            // `device_token_hash` остаётся прежним, потому что `ticket_scans`
+            // ссылается на устройство и строку нельзя удалить. Значит статус —
+            // единственное, что отделяет утёкший токен от работы.
+            //
+            // Здесь стояло `in:active,revoked`, и ветка ниже снимала `status`
+            // из набора только для `revoked` — `active` доезжал до
+            // `$model->update()`. То есть `PATCH {"status":"active"}` оживлял
+            // отозванный сканер вместе с утёкшим токеном, хотя комментарий на
+            // две строки выше обещал обратное. Нашлось тестом
+            // `test_patch_cannot_revive_a_revoked_device`.
+            //
+            // Вернуть устройство к жизни может только новая выдача токена
+            // (`POST /admin/checkin/devices`): у неё новое значение
+            // `device_token_hash`, то есть старый токен не воскресает вместе со
+            // статусом. `disabled` из CHECK сюда не выставляется намеренно: в
+            // проверке `AuthenticateChecker` он ведёт себя ровно как `revoked`,
+            // а вернуть его обратно было бы нечем — второе имя для того же
+            // состояния без выхода из него.
+            'status' => ['sometimes', 'string', 'in:' . DevicePolicy::STATUS_REVOKED],
         ]);
 
         if (isset($validated['status']) && $validated['status'] === DevicePolicy::STATUS_REVOKED) {
