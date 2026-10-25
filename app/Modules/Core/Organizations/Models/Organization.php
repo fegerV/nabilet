@@ -163,10 +163,19 @@ class Organization extends Model
 
     /**
      * Get the webhook endpoints belonging to this organization.
+     *
+     * Владелец таблицы `webhooks` — `Webhooks\Models\Webhook`. Здесь стоял
+     * `System\Models\Webhook`, который объявлял колонки `name`, `secret`,
+     * `events`, `is_active`; в таблице их нет (`url`, `secret_encrypted`,
+     * `events_json`, `active`, `retry_limit`). То есть связь выбирала колонки,
+     * которых MySQL не имеет, и любое `->create()` по ней упало бы на 42S22.
+     * Ровно этот же дефект уже был исправлен для `apiKeys()` (см. докблок
+     * `System\Models\ApiKey`); `webhooks` остался недоделанным хвостом того же
+     * прохода.
      */
     public function webhookEndpoints(): HasMany
     {
-        return $this->hasMany(\Nabilet\Modules\System\Models\Webhook::class, 'organization_id');
+        return $this->hasMany(\Nabilet\Modules\Webhooks\Models\Webhook::class, 'organization_id');
     }
 
     /**

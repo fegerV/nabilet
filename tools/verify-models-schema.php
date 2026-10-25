@@ -162,10 +162,13 @@ const INVENTED_FIELDS = [
     // (`key_prefix`, `key_hash`, `scopes_json`, `expires_at`, `revoked_at`) and
     // the three entries were removed here in the same change — a ratchet that
     // keeps an entry after the debt is paid stops being a ratchet.
-    'Cart' => [
-        'currency' => 'names currency/total_amount; carts stores total_price and has no currency column',
-        'total_amount' => 'names currency/total_amount; carts stores total_price and has no currency column',
-    ],
+    // `Cart`, `MediaAsset`, `MediaLink`, `PromoCode`, `SeatHold`, `Ticket`,
+    // `TicketScan` — записи удалены проверкой на устаревание (см. `$inventedSeen`
+    // ниже). Все эти модели уже приведены к реальной схеме, поэтому исключения
+    // не срабатывали ни разу: они остались от прошлых правок и молча прикрывали
+    // бы следующий класс с тем же коротким именем. Нашлось в тот же прогон, в
+    // котором проверка появилась, — то есть цена «оставить на всякий случай»
+    // оказалась ровно такой, как предупреждает комментарий про `Page`.
     'HeatmapEvent' => [
         'properties' => 'names properties/scroll_depth; heatmap_events stores payload_json and has no scroll depth',
         'scroll_depth' => 'names properties/scroll_depth; heatmap_events stores payload_json and has no scroll depth',
@@ -177,14 +180,6 @@ const INVENTED_FIELDS = [
     'IpRule' => [
         'is_active' => 'names is_active; ip_rules stores active',
     ],
-    'MediaAsset' => [
-        'name' => 'names name; media_assets stores filename/title',
-    ],
-    'MediaLink' => [
-        'caption' => 'names subject_type/subject_id/caption; media_links stores entity_type/entity_id and has no caption',
-        'subject_id' => 'names subject_type/subject_id/caption; media_links stores entity_type/entity_id and has no caption',
-        'subject_type' => 'names subject_type/subject_id/caption; media_links stores entity_type/entity_id and has no caption',
-    ],
     'Module' => [
         'config' => 'names is_active/config; modules stores enabled/config_json',
         'is_active' => 'names is_active/config; modules stores enabled/config_json',
@@ -194,23 +189,10 @@ const INVENTED_FIELDS = [
     // `published_at`), и расхождения больше нет. Запись удалена, а не оставлена
     // «на всякий случай»: исключение без причины — это молчаливое разрешение
     // снова разойтись.
+    // `Redirect` снят по той же причине: модель переписана под реальную схему
+    // (`source`/`destination`/`active`), расхождения больше нет.
     'PageTranslation' => [
         'meta_description' => 'names meta_description; page_translations stores description/seo_description',
-    ],
-    'PromoCode' => [
-        'expires_at' => 'names type/value/max_uses/used_count/expires_at/is_active; promo_codes stores discount_type, value_amount/value_percent, max_redemptions, redemptions_count, valid_until, status',
-        'is_active' => 'names type/value/max_uses/used_count/expires_at/is_active; promo_codes stores discount_type, value_amount/value_percent, max_redemptions, redemptions_count, valid_until, status',
-        'max_uses' => 'names type/value/max_uses/used_count/expires_at/is_active; promo_codes stores discount_type, value_amount/value_percent, max_redemptions, redemptions_count, valid_until, status',
-        'type' => 'names type/value/max_uses/used_count/expires_at/is_active; promo_codes stores discount_type, value_amount/value_percent, max_redemptions, redemptions_count, valid_until, status',
-        'used_count' => 'names type/value/max_uses/used_count/expires_at/is_active; promo_codes stores discount_type, value_amount/value_percent, max_redemptions, redemptions_count, valid_until, status',
-        'value' => 'names type/value/max_uses/used_count/expires_at/is_active; promo_codes stores discount_type, value_amount/value_percent, max_redemptions, redemptions_count, valid_until, status',
-    ],
-    // `Redirect` снят с исключений: модель переписана под реальную схему
-    // (`source`/`destination`/`active`), и расхождения больше нет. Запись
-    // удалена, а не оставлена «на всякий случай»: исключение без причины —
-    // это молчаливое разрешение снова разойтись.
-    'SeatHold' => [
-        'status' => 'names status; seat_holds has NO status column -- the state lives on released_at/converted_at (REVIEW §3.x)',
     ],
     'SeoMeta' => [
         'meta_description' => 'names meta_title/meta_description/page_id/subject_type/subject_id; seo_meta stores entity_type/entity_id, title/description',
@@ -219,29 +201,26 @@ const INVENTED_FIELDS = [
         'subject_id' => 'names meta_title/meta_description/page_id/subject_type/subject_id; seo_meta stores entity_type/entity_id, title/description',
         'subject_type' => 'names meta_title/meta_description/page_id/subject_type/subject_id; seo_meta stores entity_type/entity_id, title/description',
     ],
-    'Ticket' => [
-        'pdf_url' => 'names qr_code/pdf_url; tickets stores qr_token_hash/qr_version and has no PDF column',
-        'qr_code' => 'names qr_code/pdf_url; tickets stores qr_token_hash/qr_version and has no PDF column',
-    ],
-    'TicketScan' => [
-        'message' => 'names message; ticket_scans stores result/reason',
-    ],
-    'Webhook' => [
-        'events' => 'names name/secret/events/is_active; webhooks stores url/secret_hash/event_types/active',
-        'is_active' => 'names name/secret/events/is_active; webhooks stores url/secret_hash/event_types/active',
-        'name' => 'names name/secret/events/is_active; webhooks stores url/secret_hash/event_types/active',
-        'secret' => 'names name/secret/events/is_active; webhooks stores url/secret_hash/event_types/active',
-    ],
-    'WebhookDelivery' => [
-        'attempt_count' => 'names webhook_event_id/status/attempt_count/response_code; webhook_deliveries stores event_id/response_status/attempts. response_code vs response_status is the same confusion the idempotency middleware had',
-        'response_code' => 'names webhook_event_id/status/attempt_count/response_code; webhook_deliveries stores event_id/response_status/attempts. response_code vs response_status is the same confusion the idempotency middleware had',
-        'status' => 'names webhook_event_id/status/attempt_count/response_code; webhook_deliveries stores event_id/response_status/attempts. response_code vs response_status is the same confusion the idempotency middleware had',
-        'webhook_event_id' => 'names webhook_event_id/status/attempt_count/response_code; webhook_deliveries stores event_id/response_status/attempts. response_code vs response_status is the same confusion the idempotency middleware had',
-    ],
-    'WebhookEvent' => [
-        'event_type' => 'names event_type/payload; webhook_events stores event_name/payload_json',
-        'payload' => 'names event_type/payload; webhook_events stores event_name/payload_json',
-    ],
+    // `Webhook`, `WebhookDelivery`, `WebhookEvent` — записи удалены.
+    //
+    // Они прикрывали ТРИ модели в `app/Modules/System/Models/`, которые
+    // объявляли колонки, не существующие ни в одной таблице: `name`, `secret`,
+    // `events`, `is_active` (таблица `webhooks` хранит `url`, `secret_encrypted`,
+    // `events_json`, `active`, `retry_limit`), `webhook_event_id`, `status`,
+    // `attempt_count`, `response_code` (в `webhook_deliveries` их нет),
+    // `event_type`, `payload` (в `webhook_events` — `provider`,
+    // `provider_event_id`, `event_name`, `payload_json`).
+    //
+    // Это была вторая, «мёртвая» половина пары: живые модели для тех же таблиц
+    // лежат в `app/Modules/Webhooks/Models/` и схеме соответствуют. Держать
+    // исключения после удаления фантомов нельзя — иначе следующий класс с тем
+    // же коротким именем разойдётся со схемой молча. Ровно так же здесь уже
+    // снимались записи `ApiKey`, `Page` и `Redirect`.
+    //
+    // Заодно: причина, записанная в этих исключениях, сама была неверной —
+    // «webhooks stores url/secret_hash/event_types/active» описывает таблицу,
+    // которой нет. Исключение, обоснование которого никто не перепроверил,
+    // переживает и модель, и схему, ради которых его писали.
 ];
 
 /**
@@ -539,6 +518,17 @@ $softDeleteWithoutColumn = [];
 $noTable = [];
 $checkedFields = 0;
 $applicationExtensionsSeen = [];
+/**
+ * Class => field => true, for every `INVENTED_FIELDS` entry actually used.
+ *
+ * Без этого набора исключение живёт вечно: модель удалили или привели к схеме,
+ * а запись осталась и молча прикрывает следующий класс с тем же именем. Именно
+ * так `Webhook`, `WebhookDelivery` и `WebhookEvent` пережили и свои фантомные
+ * модели, и правку схемы.
+ *
+ * @var array<string, array<string, true>>
+ */
+$inventedSeen = [];
 
 /**
  * FQCN => source, for every model we scan.
@@ -680,6 +670,7 @@ foreach ($models as $path) {
         }
 
         if (isset(INVENTED_FIELDS[$class][$field])) {
+            $inventedSeen[$class][$field] = true;
             continue;
         }
 
@@ -705,6 +696,30 @@ foreach (APPLICATION_EXTENSION_FIELDS as $class => $fields) {
 if ($staleApplicationExtensions !== []) {
     foreach ($staleApplicationExtensions as $extension) {
         $unknownFields['stale:' . $extension] = 'stale application extension entry: ' . $extension;
+    }
+}
+
+/**
+ * Исключение обязано оставаться нужным.
+ *
+ * `APPLICATION_EXTENSION_FIELDS` такую проверку имел с самого начала, а
+ * `INVENTED_FIELDS` — нет. Разница вылезла на `Webhook`: три записи прикрывали
+ * модели, которых больше нет, и ничто не заставляло их снять. Исключение без
+ * владельца — это разрешение, которое никто не пересматривает; поэтому набор
+ * использованных записей собирается выше, а неиспользованные падают здесь.
+ */
+$staleInvented = [];
+foreach (INVENTED_FIELDS as $class => $fields) {
+    foreach ($fields as $field => $reason) {
+        if (! isset($inventedSeen[$class][$field])) {
+            $staleInvented[] = $class . '.' . $field . ' — ' . $reason;
+        }
+    }
+}
+
+if ($staleInvented !== []) {
+    foreach ($staleInvented as $entry) {
+        $unknownFields['stale:' . $entry] = 'stale invented-field entry: ' . $entry;
     }
 }
 

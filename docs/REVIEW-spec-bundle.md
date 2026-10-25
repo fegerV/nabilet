@@ -1259,6 +1259,18 @@ JSON-колонки, проверял наличие `event_id`, обрабат�
 **Исправлено:** колонка удалена из миграции, `processWebhook()` переписан на
 атомарное заявление события в `webhook_events`. `verify-migrations`: **13/13**.
 
+**Уточнение (проверено кодом).** «Модель под эту таблицу есть» было верно только
+формально: `app/Modules/System/Models/WebhookEvent.php` объявляла `event_type` и
+`payload`, которых в таблице нет, и вдобавок `deliveries()` по несуществующему
+внешнему ключу `webhook_event_id`. Удалена вместе с двумя такими же фантомами —
+`System\Models\Webhook` (объявляла `name`/`secret`/`events`/`is_active`; на неё
+при этом указывала ЖИВАЯ связь `Organization::webhookEndpoints()`, то есть связь
+выбирала несуществующие колонки) и `System\Models\WebhookDelivery`. Расхождения
+были известны и записаны исключениями в `tools/verify-models-schema.php` — то
+есть находка превратилась в тишину, а не в задачу. Теперь у `INVENTED_FIELDS`
+есть проверка на устаревание: исключение, которое перестало срабатывать, роняет
+гейт. Живой владелец `webhooks` — `app/Modules/Webhooks/Models/Webhook.php`.
+
 ### 3.23.7 PHP 8.4: неявная nullable-типизация
 
 Сгенерированный слой использовал `int $organizationId = null` вместо

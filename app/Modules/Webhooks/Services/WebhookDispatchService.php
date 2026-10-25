@@ -108,16 +108,13 @@ class WebhookDispatchService
     /**
      * Подписан ли вебхук на событие.
      *
-     * `events_json` читается и как массив, и как строка: модель `Webhook` не
-     * объявляет cast для этой колонки, поэтому из БД может прийти JSON-строка.
+     * `events_json` приходит массивом: cast объявлен в модели `Webhook`. Здесь
+     * стоял ручной `is_string` + `json_decode` — вторая копия правила модели,
+     * которую пришлось бы править в каждом таком месте при смене формата.
      */
     private function subscribesTo(Webhook $webhook, string $eventName): bool
     {
         $events = $webhook->events_json;
-
-        if (is_string($events)) {
-            $events = json_decode($events, true);
-        }
 
         if (! is_array($events)) {
             return false;

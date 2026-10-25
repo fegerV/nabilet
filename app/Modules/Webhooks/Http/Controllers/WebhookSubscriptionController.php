@@ -74,10 +74,9 @@ class WebhookSubscriptionController extends Controller
             'organization_id' => $this->organizationId($request),
             'url' => $data['url'],
             'secret_encrypted' => Crypt::encryptString($secret),
-            // Модель не объявляет cast для events_json, поэтому массив
-            // сериализуется здесь: без этого Eloquent передал бы его в
-            // JSON-колонку как есть и получил ошибку биндинга.
-            'events_json' => json_encode(array_values($data['events']), JSON_UNESCAPED_UNICODE),
+            // Массив, а не строка: колонка `events_json` типизирована в модели
+            // (`casts['events_json'] = 'array'`), и сериализация — её работа.
+            'events_json' => array_values($data['events']),
             'active' => (bool) ($data['active'] ?? true),
             'retry_limit' => (int) ($data['retry_limit'] ?? DeliveryAttempt::DEFAULT_RETRY_LIMIT),
         ]);
@@ -112,7 +111,7 @@ class WebhookSubscriptionController extends Controller
         }
 
         if (isset($data['events'])) {
-            $payload['events_json'] = json_encode(array_values($data['events']), JSON_UNESCAPED_UNICODE);
+            $payload['events_json'] = array_values($data['events']);
         }
 
         $model->update($payload);
@@ -189,19 +188,18 @@ class WebhookSubscriptionController extends Controller
     /** @return array<string, mixed> */
     private function present(Webhook $webhook): array
     {
+        // Читается как массив: cast объявлен в модели. Ручной `json_decode` тут
+        // стоял потому, что cast'а не было, — и это была вторая копия правила,
+        // которое принадлежит модели.
         $events = $webhook->events_json;
-
-        if (is_string($events)) {
-            $events = json_decode($events, true);
-        }
 
         return [
             'id' => $webhook->id,
             'public_id' => $webhook->public_id,
             'url' => $webhook->url,
             'events' => is_array($events) ? array_values($events) : [],
-            'active' => (bool) $webhook->active,
-            'retry_limit' => (int) $webhook->retry_limit,
+            'active' => $webhook->active,
+            'retry_limit' => $webhook->retry_limit,
         ];
     }
 }

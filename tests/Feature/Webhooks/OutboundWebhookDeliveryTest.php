@@ -191,7 +191,9 @@ class OutboundWebhookDeliveryTest extends TestCase
             'organization_id' => $organizationId,
             'url' => 'https://example.com/hooks/nabilet',
             'secret_encrypted' => Crypt::encryptString('secret-for-test'),
-            'events_json' => json_encode($events, JSON_THROW_ON_ERROR),
+            // Массив, а не json_encode: сериализацию делает cast модели —
+            // тот же, что и в контроллере подписок.
+            'events_json' => $events,
             'active' => true,
             'retry_limit' => $retryLimit,
         ]);
