@@ -747,22 +747,7 @@ parameters:
 			path: app/Modules/Payments/Services/RefundService.php
 
 		-
-			message: "#^Cannot call method fresh\\(\\) on stdClass\\.$#"
-			count: 1
-			path: app/Modules/Payments/Services/RefundService.php
-
-		-
-			message: "#^Cannot call method refunds\\(\\) on stdClass\\.$#"
-			count: 2
-			path: app/Modules/Payments/Services/RefundService.php
-
-		-
 			message: "#^Offset 'refund_id' on array\\{refund_id\\: string, status\\: string, amount\\: int, provider_data\\: array\\} on left side of \\?\\? always exists and is not nullable\\.$#"
-			count: 1
-			path: app/Modules/Payments/Services/RefundService.php
-
-		-
-			message: "#^Parameter \\#1 \\$payment of method Nabilet\\\\Modules\\\\Payments\\\\Repositories\\\\PaymentRepository\\:\\:addTransaction\\(\\) expects Nabilet\\\\Modules\\\\Payments\\\\Models\\\\Payment, stdClass given\\.$#"
 			count: 1
 			path: app/Modules/Payments/Services/RefundService.php
 

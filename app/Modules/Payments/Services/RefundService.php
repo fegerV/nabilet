@@ -9,6 +9,7 @@ use Nabilet\Core\Support\Money;
 use Nabilet\Modules\Payments\Models\Payment;
 use Nabilet\Modules\Payments\Models\Refund;
 use Nabilet\Modules\Payments\Domain\RefundLedger;
+use Nabilet\Modules\Payments\Domain\RefundOutcome;
 use Nabilet\Modules\Payments\Domain\TransactionType;
 use Nabilet\Modules\Payments\Repositories\PaymentRepository;
 use Nabilet\Modules\Payments\StateMachines\PaymentStateMachine;
@@ -47,6 +48,7 @@ final class RefundService
             // Блокируем строку платежа на время транзакции: без этого два
             // параллельных полных возврата читали одинаковый `totalRefunded = 0`,
             // оба проходили проверку остатка и возвращали деньги дважды.
+            /** @var Payment $payment */
             $payment = Payment::query()->whereKey($payment->id)->lockForUpdate()->firstOrFail();
 
             if ($payment->status !== PaymentStateMachine::SUCCEEDED) {
@@ -64,7 +66,13 @@ final class RefundService
                 ->where('status', '!=', RefundStateMachine::FAILED)
                 ->sum('amount');
 
-            if ($totalRefunded >= (int) $payment->amount) {
+            $currency = $payment->currency ?? 'RUB';
+            $paid = Money::of((int) $payment->amount, $currency);
+
+            // «Возвращать уже нечего» — это факт о ПЛАТЕЖЕ, а не арифметика
+            // суммы, поэтому у него свой код отказа и своё сообщение. Само
+            // решение о сумме принимает RefundLedger (ниже).
+            if ($totalRefunded >= $paid->minorUnits()) {
                 throw new DomainRuleViolation(
                     'Payment already fully refunded',
                     'PAYMENT_ALREADY_REFUNDED',
@@ -73,24 +81,30 @@ final class RefundService
                 );
             }
 
-            $refundAmount = $amount ?? ((int) $payment->amount - $totalRefunded);
+            $refundAmount = $amount ?? ($paid->minorUnits() - $totalRefunded);
 
-            if ($refundAmount <= 0) {
-                throw new DomainRuleViolation(
-                    'Refund amount must be positive',
-                    'REFUND_AMOUNT_INVALID',
-                    ['payment_id' => $payment->id, 'amount' => $refundAmount],
-                    422,
-                );
-            }
+            // РЕШЕНИЕ О СУММЕ ПРИНИМАЕТ RefundLedger, а не этот метод.
+            //
+            // Здесь стояли три собственные проверки — `$refundAmount <= 0`,
+            // `$totalRefunded + $refundAmount > $payment->amount` и
+            // `$totalRefunded >= $payment->amount`, — то есть та же арифметика,
+            // что в `RefundLedger::evaluate()`, но со своими условиями и своими
+            // причинами отказа. Две копии одного правила расходятся молча:
+            // правку в одной никто не переносит во вторую.
+            //
+            // Хуже того, `evaluate()` вызывался НИЖЕ, уже после этих проверок,
+            // поэтому все его отказы были недостижимы: доменное правило
+            // существовало, было покрыто Unit-тестами и при этом ничего не
+            // решало — работала ручная копия. Проверка «never refund more than
+            // was paid», объявленная в его докблоке, держалась не им.
+            $outcome = (new RefundLedger())->evaluate(
+                $paid,
+                Money::of($totalRefunded, $currency),
+                Money::of($refundAmount, $currency),
+            );
 
-            if ($totalRefunded + $refundAmount > (int) $payment->amount) {
-                throw new DomainRuleViolation(
-                    'Refund amount exceeds remaining payment balance',
-                    'REFUND_EXCEEDS_BALANCE',
-                    ['payment_id' => $payment->id, 'amount' => $refundAmount],
-                    422,
-                );
+            if (! $outcome->isAllowed()) {
+                throw $this->refusal($outcome, $payment, $refundAmount);
             }
 
             $machine = RefundStateMachine::make();
@@ -98,6 +112,7 @@ final class RefundService
             // Запись создаётся сразу в requested — это честное начальное
             // состояние машины; переход requested → processing фиксируется
             // только после того, как провайдер принял запрос.
+            /** @var Refund $refund */
             $refund = $payment->refunds()->create([
                 'order_id' => $payment->order_id,
                 'amount' => $refundAmount,
@@ -156,42 +171,75 @@ final class RefundService
             // оставались сканируемыми (дефект «возвращённый билет проходит check-in»).
             $order = $payment->order;
 
-            if ($order !== null) {
-                $ledger = new RefundLedger();
-                $outcome = $ledger->evaluate(
-                    Money::of((int) $payment->amount, $payment->currency ?? 'RUB'),
-                    Money::of($totalRefunded, $payment->currency ?? 'RUB'),
-                    Money::of($refundAmount, $payment->currency ?? 'RUB'),
-                );
+            // `$outcome` посчитан ВЫШЕ, до записи в журнал, и те же три числа
+            // дают тот же ответ — второй вызов `evaluate()` был чистым
+            // повторением. Условие `isAllowed()` при этом было всегда истинным:
+            // до этой строки отказ уже бросил бы исключение.
+            if ($order !== null && $outcome->orderStatus() !== null) {
+                // Переход заказа применяется только если он ЛЕГАЛЕН по графу
+                // машины состояний. Прямой `update()` раньше переводил в
+                // `refunded` даже заказ, который никогда не был `paid`
+                // (например, `expired` + автовозврат): статус терял историю,
+                // а из `expired`/`cancelled`/`awaiting_payment` такого
+                // перехода не существует.
+                $orders = OrderStateMachine::make();
 
-                if ($outcome->isAllowed() && $outcome->orderStatus() !== null) {
-                    // Переход заказа применяется только если он ЛЕГАЛЕН по графу
-                    // машины состояний. Прямой `update()` раньше переводил в
-                    // `refunded` даже заказ, который никогда не был `paid`
-                    // (например, `expired` + автовозврат): статус терял историю,
-                    // а из `expired`/`cancelled`/`awaiting_payment` такого
-                    // перехода не существует.
-                    $orders = OrderStateMachine::make();
+                if ($orders->can((string) $order->status, $outcome->orderStatus())) {
+                    $order->update(['status' => $outcome->orderStatus()]);
 
-                    if ($orders->can((string) $order->status, $outcome->orderStatus())) {
-                        $order->update(['status' => $outcome->orderStatus()]);
-
-                        // При ПОЛНОМ возврате аннулируем ещё не использованные билеты,
-                        // чтобы их QR не проходил check-in (CheckinEvaluator отвергает REFUNDED).
-                        if ($outcome->orderStatus() === OrderStateMachine::REFUNDED) {
-                            Ticket::where('order_id', $order->id)
-                                ->where('status', TicketStateMachine::ISSUED)
-                                ->update([
-                                    'status' => TicketStateMachine::REFUNDED,
-                                    'refunded_at' => now(),
-                                ]);
-                        }
+                    // При ПОЛНОМ возврате аннулируем ещё не использованные билеты,
+                    // чтобы их QR не проходил check-in (CheckinEvaluator отвергает REFUNDED).
+                    if ($outcome->orderStatus() === OrderStateMachine::REFUNDED) {
+                        Ticket::where('order_id', $order->id)
+                            ->where('status', TicketStateMachine::ISSUED)
+                            ->update([
+                                'status' => TicketStateMachine::REFUNDED,
+                                'refunded_at' => now(),
+                            ]);
                     }
                 }
             }
 
             return $payment->fresh();
         });
+    }
+
+    /**
+     * Доменная причина отказа → код контракта.
+     *
+     * Единственное место, где словарь `RefundLedger::REASON_*` переводится в
+     * `error.code`, который видят клиенты. Это РАЗНЫЕ словари с разной судьбой:
+     * причина — часть домена (её можно переименовать, если правило изменится),
+     * код — часть контракта (`OrderController` и админка опираются на
+     * `REFUND_EXCEEDS_BALANCE`, он же в документации API). Пока перевод стоит
+     * здесь, обе стороны можно менять независимо и осознанно.
+     */
+    private function refusal(RefundOutcome $outcome, Payment $payment, int $amount): DomainRuleViolation
+    {
+        [$message, $code] = match ($outcome->reason()) {
+            RefundLedger::REASON_ZERO_AMOUNT => [
+                'Refund amount must be positive',
+                'REFUND_AMOUNT_INVALID',
+            ],
+            RefundLedger::REASON_EXCEEDS_PAID => [
+                'Refund amount exceeds remaining payment balance',
+                'REFUND_EXCEEDS_BALANCE',
+            ],
+            // `REASON_NOTHING_PAID` — платёж, по которому нечего возвращать.
+            // Штатно сюда не попасть: выше стоит проверка статуса платежа, — но
+            // неизвестную причину нельзя выдавать за успех.
+            default => [
+                'Payment cannot be refunded',
+                'PAYMENT_NOT_SUCCEEDED',
+            ],
+        };
+
+        return new DomainRuleViolation(
+            $message,
+            $code,
+            ['payment_id' => $payment->id, 'amount' => $amount],
+            422,
+        );
     }
 
     /**

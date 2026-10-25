@@ -680,6 +680,115 @@ class PaymentWritePathTest extends TestCase
         );
     }
 
+    /**
+     * R-07: решение о ДОПУСТИМОЙ сумме возврата принимает RefundLedger, а не
+     * копия арифметики внутри RefundService.
+     *
+     * Раньше `RefundService::refund()` держал СВОИ три проверки суммы
+     * (`$refundAmount <= 0`, `$totalRefunded + $refundAmount > $payment->amount`,
+     * `$totalRefunded >= $payment->amount`), дублирующие `RefundLedger::evaluate()`,
+     * а сам `evaluate()` вызывался НИЖЕ — его отказы были недостижимы. Проверка
+     * «never refund more than was paid» держалась не им. Этот тест фиксирует
+     * контракт: переплата сверх остатка отвергается кодом REFUND_EXCEEDS_BALANCE,
+     * который генерирует ТОЛЬКО RefundLedger (сервис лишь переводит его причину в
+     * код контракта). Вернуть назад локальную копию, не сломав тест, нельзя — её
+     * код не совпадёт с REFUND_EXCEEDS_BALANCE.
+     */
+    public function test_refund_over_balance_is_rejected_with_refund_exceeds_balance(): void
+    {
+        $order = $this->pendingOrder(quantity: 1);
+        $payment = $this->payments->createPayment($order->id, [
+            'provider' => 'yookassa',
+            'provider_payment_id' => 'yk-refund-bal-1',
+        ]);
+
+        $this->payments->processWebhook('yookassa', [
+            'event' => 'payment.succeeded',
+            'object' => [
+                'id' => 'yk-refund-bal-1',
+                'status' => 'succeeded',
+                'amount' => ['value' => '50000.00', 'currency' => 'RUB'],
+            ],
+        ]);
+
+        $this->configureYooKassa();
+        Http::fake([
+            '*/refunds' => Http::response([
+                'id' => 'rf-bal-1',
+                'status' => 'succeeded',
+                'amount' => ['value' => '50000.00', 'currency' => 'RUB'],
+            ], 200),
+        ]);
+
+        $this->actingAsAdmin((int) $order->organization_id);
+
+        // Просим вернуть на 1 копейку больше оплаченного. RefundLedger должен
+        // отказать по REFUND_EXCEEDS_BALANCE — это решение домена, а не сервиса.
+        $this->postJson("/api/v1/payments/{$payment->id}/refund", [
+            'amount' => self::PRICE + 1,
+            'reason' => 'тест переплаты',
+        ])->assertStatus(422)
+            ->assertJsonPath('error.code', 'REFUND_EXCEEDS_BALANCE');
+
+        // Никакой записи возврата не создано — деньги не двинулись.
+        $this->assertSame(
+            0,
+            (int) DB::table('refunds')->where('payment_id', $payment->id)->count(),
+            'возврат сверх остатка всё же записался — решение ушло не в RefundLedger',
+        );
+    }
+
+    /**
+     * R-07 (обратная сторона): корректная частичная сумма ДОЛЖНА пройти, и именно
+     * RefundLedger выводит статус заказа из остатка денег (partially_refunded, а не
+     * refunded). Если сервис снова начнёт считать статус руками — тест упадёт.
+     */
+    public function test_partial_refund_within_balance_is_allowed_and_marks_partially_refunded(): void
+    {
+        $order = $this->pendingOrder(quantity: 1);
+        $payment = $this->payments->createPayment($order->id, [
+            'provider' => 'yookassa',
+            'provider_payment_id' => 'yk-refund-part-1',
+        ]);
+
+        $this->payments->processWebhook('yookassa', [
+            'event' => 'payment.succeeded',
+            'object' => [
+                'id' => 'yk-refund-part-1',
+                'status' => 'succeeded',
+                'amount' => ['value' => '50000.00', 'currency' => 'RUB'],
+            ],
+        ]);
+
+        $this->configureYooKassa();
+        Http::fake([
+            '*/refunds' => Http::response([
+                'id' => 'rf-part-1',
+                'status' => 'succeeded',
+                'amount' => ['value' => '25000.00', 'currency' => 'RUB'],
+            ], 200),
+        ]);
+
+        $this->actingAsAdmin((int) $order->organization_id);
+
+        $this->postJson("/api/v1/payments/{$payment->id}/refund", [
+            'amount' => intdiv(self::PRICE, 2),
+            'reason' => 'частичный возврат',
+        ])->assertOk();
+
+        $refund = DB::table('refunds')->where('payment_id', $payment->id)->first();
+
+        $this->assertNotNull($refund, 'частичный возврат не создан — RefundLedger не пропустил валидную сумму');
+        $this->assertSame(intdiv(self::PRICE, 2), (int) $refund->amount);
+        $this->assertSame(RefundStateMachine::PROCESSING, $refund->status);
+
+        // Остаток > 0 → RefundLedger решает partially_refunded, а не refunded.
+        $this->assertSame(
+            OrderStateMachine::PARTIALLY_REFUNDED,
+            DB::table('orders')->where('id', $order->id)->value('status'),
+        );
+    }
+
     private function pendingOrder(int $quantity = 1): \Nabilet\Modules\Orders\Models\Order
     {
         [$organizationId, , , $inventoryId] = $this->seedSellableSeat(available: 10);
