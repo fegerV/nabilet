@@ -356,7 +356,8 @@ class PaymentService
                 // Без неё демо-подтверждение выглядело бы недоплатой и уходило бы
                 // в автовозврат вместо выпуска билета.
                 'amount' => [
-                    'value' => number_format((int) $payment->amount / 100, 2, '.', ''),
+                    // minor units → "50000.00": СОБСТВЕННОСТЬ Money::toDecimal(), а не ручное форматирование.
+                    'value' => Money::of((int) $payment->amount, $payment->currency)->toDecimal(),
                     'currency' => (string) ($payment->currency ?? 'RUB'),
                 ],
             ],

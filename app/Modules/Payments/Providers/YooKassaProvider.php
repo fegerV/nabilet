@@ -11,6 +11,7 @@ use Nabilet\Core\Errors\ExternalServiceError;
 use Nabilet\Core\Http\ContentType;
 use Nabilet\Core\Support\HmacSignature;
 use Nabilet\Core\Support\SignedPayload;
+use Nabilet\Core\Support\Money;
 use Nabilet\Modules\Payments\StateMachines\PaymentStateMachine;
 
 /**
@@ -136,7 +137,9 @@ class YooKassaProvider implements PaymentProviderInterface
         ->connectTimeout(5)
         ->post("{$this->baseUrl}/payments", [
             'amount' => [
-                'value' => number_format($paymentData['amount'] / 100, 2, '.', ''),
+                // Десятичная сумма провайдера — СОБСТВЕННОСТЬ Money (никогда float):
+                // minor units → "50000.00" через Money::toDecimal(), а не ручное форматирование.
+                'value' => Money::of((int) $paymentData['amount'], $paymentData['currency'])->toDecimal(),
                 'currency' => $paymentData['currency'],
             ],
             'capture' => true, // Auto-capture payment
@@ -194,7 +197,9 @@ class YooKassaProvider implements PaymentProviderInterface
 
         return [
             'status' => $this->mapStatus($data['status']),
-            'amount' => (int) round((float) $data['amount']['value'] * 100),
+            // minor units ← "50000.00": СОБСТВЕННОСТЬ Money::fromDecimal() (строковая
+            // математика, без float — иначе 0.1*100 даёт дрейф на границе точности).
+            'amount' => Money::fromDecimal((string) $data['amount']['value'], $data['amount']['currency'])->minorUnits(),
             'currency' => $data['amount']['currency'],
             'created_at' => $data['created_at'] ?? null,
             'provider_data' => $data,
@@ -218,7 +223,7 @@ class YooKassaProvider implements PaymentProviderInterface
         ->post("{$this->baseUrl}/refunds", [
             'payment_id' => $refundData['payment_id'],
             'amount' => [
-                'value' => number_format($refundData['amount'] / 100, 2, '.', ''),
+                'value' => Money::of((int) $refundData['amount'], $refundData['currency'])->toDecimal(),
                 'currency' => $refundData['currency'],
             ],
             'description' => $refundData['reason'] ?? 'Refund',
@@ -238,7 +243,8 @@ class YooKassaProvider implements PaymentProviderInterface
         return [
             'refund_id' => $data['id'],
             'status' => $this->mapStatus($data['status']),
-            'amount' => (int) round((float) $data['amount']['value'] * 100),
+            // minor units ← "50000.00": тот же владелец, что у getPayment — Money::fromDecimal().
+            'amount' => Money::fromDecimal((string) $data['amount']['value'], $data['amount']['currency'])->minorUnits(),
             'provider_data' => $data,
         ];
     }
