@@ -6,6 +6,7 @@ namespace Nabilet\Modules\Tickets\Services;
 
 use Illuminate\Support\Facades\Log;
 use Nabilet\Core\Support\CssColor;
+use Nabilet\Core\Support\Money;
 use Nabilet\Modules\Tickets\Domain\Qr\QrEncoder;
 use Nabilet\Modules\Tickets\Domain\Qr\QrPngRenderer;
 use Nabilet\Modules\Tickets\Domain\TicketTemplateDefaults;
@@ -393,7 +394,10 @@ HTML;
             'ticket.price' => fmod($price, 1.0) === 0.0
                 ? number_format($price, 0, ',', ' ')
                 : number_format($price, 2, ',', ' '),
-            'ticket.currency' => $currency === 'RUB' ? '₽' : $currency,
+            // Символ валюты — СОБСТВЕННОСТЬ Money::symbolFor(). Раньше здесь была
+            // своя ветка выбора символа для RUB, дублирующая карту символов Money;
+            // копия молча расходилась бы при добавлении валюты (USD→$ и т.п.).
+            'ticket.currency' => Money::symbolFor($currency),
             'seat.row' => (string) ($data['seat_row'] ?? ''),
             'seat.number' => (string) ($data['seat_number'] ?? ''),
             'seat.info' => (string) ($data['seats'] ?? ''),

@@ -182,16 +182,25 @@ final class Money implements \JsonSerializable, \Stringable
 
     public function format(string $locale = 'ru_RU'): string
     {
-        $symbol = match ($this->currency) {
+        $formatted = number_format(abs($this->minorUnits) / 100, 2, ',', ' ');
+
+        return ($this->minorUnits < 0 ? '−' : '') . $formatted . ' ' . self::symbolFor($this->currency);
+    }
+
+    /**
+     * Символ валюты для отображения — единственный владелец соответствия
+     * валюта→символ. И письмо заказа (OrderNotificationData), и PDF билета
+     * (TicketPdfRenderer) берут символ отсюда, чтобы RUB→₽, USD→$, EUR→€ не
+     * разошлись между каналами выдачи.
+     */
+    public static function symbolFor(string $currency): string
+    {
+        return match ($currency) {
             'RUB' => '₽',
             'USD' => '$',
             'EUR' => '€',
-            default => ' ' . $this->currency,
+            default => ' ' . $currency,
         };
-
-        $formatted = number_format(abs($this->minorUnits) / 100, 2, ',', ' ');
-
-        return ($this->minorUnits < 0 ? '−' : '') . $formatted . ' ' . $symbol;
     }
 
     /** @return array{amount: int, currency: string, decimal: string} */
