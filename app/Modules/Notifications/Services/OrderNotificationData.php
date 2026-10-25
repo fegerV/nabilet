@@ -7,6 +7,7 @@ namespace Nabilet\Modules\Notifications\Services;
 use Illuminate\Contracts\Support\Htmlable;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\HtmlString;
+use Nabilet\Core\Support\Money;
 use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Orders\StateMachines\OrderStateMachine;
 use Nabilet\Modules\Tickets\Domain\TicketPalette;
@@ -66,13 +67,12 @@ class OrderNotificationData
 
     private function money(Order $order): string
     {
-        $amount = number_format(((int) $order->total_amount) / 100, 2, ',', ' ');
-        $currency = (string) ($order->currency ?? 'RUB');
-
-        return $amount . ' ' . match ($currency) {
-            'RUB' => '₽',
-            default => $currency,
-        };
+        // Форматирование суммы заказа — СОБСТВЕННОСТЬ Nabilet\Core\Support\Money.
+        // Раньше здесь была своя копия ручного числового форматирования с match по
+        // валюте, дублирующая Money::format('ru_RU'); копия молча расходилась бы при
+        // смене правила отображения валюты. Единственный владелец правила — Money.
+        return Money::of((int) $order->total_amount, (string) ($order->currency ?? 'RUB'))
+            ->format('ru_RU');
     }
 
     private function ticketsHtml(Order $order): string
