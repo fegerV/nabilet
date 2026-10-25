@@ -9,7 +9,6 @@ use Nabilet\Modules\Core\Models\Concerns\HasPublicId;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\UniqueConstraintViolationException;
 use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Core\Users\Models\User;
 
@@ -87,22 +86,34 @@ class RaffleEntry extends Model
     /**
      * Билет заказа в розыгрыше — ровно один, сколько бы раз ни звали.
      *
+     * `uq_raffle_entries_order (raffle_id, order_id)` — вот разрешение на
+     * вставку; поэтому гонку закрывает `createOrFirst()`, а не свой
+     * `try/catch`. Он ловит нарушение ключа, переспрашивает по тем же
+     * атрибутам и возвращает существующую строку, а `withSavepointIfNeeded()`
+     * не даёт отвергнутой вставке отравить объемлющую транзакцию.
+     *
+     * `wasRecentlyCreated` — ответ фреймворка на вопрос «вставил ли это я».
+     * Без него вызывающий не отличил бы первый вход от повтора: строка в обоих
+     * случаях одна и та же, а вернуть нужно `null` именно на повторе.
+     *
      * @return RaffleEntry|null null — билет уже есть (повтор), иначе строка
      */
     public static function remember(int|string $raffleId, Order $order): ?RaffleEntry
     {
-        try {
-            return self::create([
+        $entry = self::query()->createOrFirst(
+            [
                 'raffle_id' => $raffleId,
                 'order_id' => $order->getKey(),
-                // Снимок покупателя на момент входа: заказ к моменте оплаты
+            ],
+            [
+                // Снимок покупателя на момент входа: заказ к моменту оплаты
                 // уже прошёл `resolveBuyerId()`, поэтому `user_id` финален.
                 'user_id' => $order->user_id,
-            ]);
-        } catch (UniqueConstraintViolationException) {
-            // Билет уже есть — это нормальный путь, а не авария.
-            return null;
-        }
+            ],
+        );
+
+        // Билет уже есть — это нормальный путь, а не авария.
+        return $entry->wasRecentlyCreated ? $entry : null;
     }
 
     /** @return Builder<RaffleEntry> */

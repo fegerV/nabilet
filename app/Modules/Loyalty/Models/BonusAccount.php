@@ -9,7 +9,6 @@ use Nabilet\Modules\Core\Models\Concerns\HasPublicId;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\UniqueConstraintViolationException;
 use Nabilet\Modules\Core\Users\Models\User;
 
 /**
@@ -66,27 +65,25 @@ class BonusAccount extends Model
      * Гонка закрыта уникальным ключом, а не проверкой «уже есть?»: между SELECT
      * и INSERT влезает второй воркер (кэшбэк за два заказа одного покупателя
      * приходит двумя джобами), и `uq_bonus_accounts_user` роняет лишнюю вставку.
-     * Тот же приём, что у `Concerns\RemembersUserEvent` (избранное и подписки) —
-     * но здесь своя форма: ключ один на пользователя, а не пара, и вставка несёт
-     * ещё и `balance`, поэтому общий трейт не подходит.
+     *
+     * ЗДЕСЬ `firstOrCreate()`, А НЕ СВОЙ `try/catch`. Раньше стояла пара
+     * «SELECT → create → catch → SELECT `firstOrFail`», то есть
+     * переписанный `Builder::firstOrCreate()`: он делает ровно это, включая
+     * переспрос по тем же атрибутам после нарушения ключа. Своя версия была
+     * хуже в одном: `firstOrCreate()` оборачивает вставку в
+     * `withSavepointIfNeeded()`, и отвергнутая вставка не отравляет
+     * объемлющую транзакцию.
+     *
+     * `firstOrCreate`, а не `createOrFirst`: этот метод зовут на КАЖДОМ
+     * начислении, списании и возврате уже существующего покупателя, поэтому
+     * горячий путь — именно попадание в SELECT.
      */
     public static function forUserOrCreate(int|string $userId, string $currency = 'RUB'): self
     {
-        $existing = self::query()->where('user_id', $userId)->first();
-
-        if ($existing !== null) {
-            return $existing;
-        }
-
-        try {
-            return self::create([
-                'user_id' => $userId,
-                'balance' => 0,
-                'currency' => $currency,
-            ]);
-        } catch (UniqueConstraintViolationException) {
-            return self::query()->where('user_id', $userId)->firstOrFail();
-        }
+        return self::query()->firstOrCreate(
+            ['user_id' => $userId],
+            ['balance' => 0, 'currency' => $currency],
+        );
     }
 
     /** @return Builder<BonusAccount> */

@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Nabilet\Modules\Loyalty\Services;
 
 use Illuminate\Support\Facades\DB;
-use Illuminate\Database\UniqueConstraintViolationException;
 use Nabilet\Core\Errors\DomainRuleViolation;
 use Nabilet\Core\Support\Money;
 use Nabilet\Modules\Core\Users\Models\User;
@@ -91,15 +90,24 @@ class BonusService
             // Сначала строка журнала — она же разрешение на начисление. Порядок
             // важен: если бы счёт заводился первым, повтор джобы создавал бы
             // пустой счёт заказу, за который бонусы уже начислены.
-            try {
-                $transaction = BonusTransaction::create([
+            //
+            // Разрешение даёт `uq_bonus_transactions_dedupe`, а обрабатывает
+            // нарушение `createOrFirst()`: переспрос по ключу и `savepoint`
+            // вокруг вставки. Свой `try/catch` здесь был переписыванием этого
+            // метода — и без savepoint.
+            $transaction = BonusTransaction::query()->createOrFirst(
+                ['dedupe_key' => self::dedupeKeyForOrder($order)],
+                [
                     'user_id' => $userId,
                     'order_id' => $order->getKey(),
                     'delta' => $accrual->minorUnits(),
                     'reason' => BonusReason::ACCRUAL,
-                    'dedupe_key' => self::dedupeKeyForOrder($order),
-                ]);
-            } catch (UniqueConstraintViolationException) {
+                ],
+            );
+
+            // `wasRecentlyCreated` отличает первое начисление от повтора:
+            // строка журнала в обоих случаях одна и та же.
+            if (! $transaction->wasRecentlyCreated) {
                 // По этому заказу уже начисляли. Ни строки, ни баланса — и это
                 // ровно то поведение, которого требует повтор джобы.
                 return null;
@@ -229,15 +237,17 @@ class BonusService
             // Сначала строка журнала — она же разрешение на списание. Порядок
             // важен по той же причине, что и при начислении: повтор (обсервер
             // сработал дважды, транзакция переиграна) не должен списать дважды.
-            try {
-                $transaction = BonusTransaction::create([
+            $transaction = BonusTransaction::query()->createOrFirst(
+                ['dedupe_key' => self::dedupeKeyForSpend($order)],
+                [
                     'user_id' => $userId,
                     'order_id' => $order->getKey(),
                     'delta' => -$amount->minorUnits(),
                     'reason' => BonusReason::SPEND,
-                    'dedupe_key' => self::dedupeKeyForSpend($order),
-                ]);
-            } catch (UniqueConstraintViolationException) {
+                ],
+            );
+
+            if (! $transaction->wasRecentlyCreated) {
                 // По этому заказу уже списывали. Ни строки, ни баланса.
                 return null;
             }
@@ -307,15 +317,17 @@ class BonusService
         $currency = (string) ($order->currency ?: 'RUB');
 
         return DB::transaction(function () use ($order, $userId, $spent, $currency): ?BonusTransaction {
-            try {
-                $transaction = BonusTransaction::create([
+            $transaction = BonusTransaction::query()->createOrFirst(
+                ['dedupe_key' => self::dedupeKeyForRefund($order)],
+                [
                     'user_id' => $userId,
                     'order_id' => $order->getKey(),
                     'delta' => $spent,
                     'reason' => BonusReason::REFUND,
-                    'dedupe_key' => self::dedupeKeyForRefund($order),
-                ]);
-            } catch (UniqueConstraintViolationException) {
+                ],
+            );
+
+            if (! $transaction->wasRecentlyCreated) {
                 // Уже возвращали по этому заказу.
                 return null;
             }
@@ -372,15 +384,17 @@ class BonusService
             // Сначала строка журнала — она же разрешение на начисление. Порядок
             // тот же, что у `accrueForOrder()`: счёт, заведённый первым,
             // пережил бы отказ вставки журнала.
-            try {
-                $transaction = BonusTransaction::create([
+            $transaction = BonusTransaction::query()->createOrFirst(
+                ['dedupe_key' => $dedupeKey],
+                [
                     'user_id' => $user->getKey(),
                     'order_id' => $order?->getKey(),
                     'delta' => $amount->minorUnits(),
                     'reason' => $reason,
-                    'dedupe_key' => $dedupeKey,
-                ]);
-            } catch (UniqueConstraintViolationException) {
+                ],
+            );
+
+            if (! $transaction->wasRecentlyCreated) {
                 // По этому ключу уже начисляли: и строка, и баланс не двигаются.
                 return null;
             }

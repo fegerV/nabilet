@@ -135,6 +135,15 @@ final class EnsureIdempotency
             // A concurrent request won the race. Nothing to do: it owns the lock
             // and this request has not executed anything yet, so there is no
             // partial work to undo.
+            //
+            // ПОЧЕМУ НЕ `insertOrIgnore()` И НЕ `createOrFirst()`.
+            // Здесь работает query builder, а не Eloquent, поэтому
+            // `createOrFirst()` недоступен. `insertOrIgnore()` доступен, но он
+            // шире по смыслу: MySQL `INSERT IGNORE` гасит ЛЮБУЮ ошибку строки
+            // (обрезанные данные, неверный тип), а не только дубликат. Замок,
+            // молча не вставленный из-за обрезанного `request_hash`, — это
+            // отсутствующая идемпотентность, которую никто не заметит. `catch`
+            // ловит ровно дубликат, и это здесь важно.
         }
     }
 

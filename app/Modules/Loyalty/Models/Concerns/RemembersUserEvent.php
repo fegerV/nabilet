@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Loyalty\Models\Concerns;
 
-use Illuminate\Database\UniqueConstraintViolationException;
-
 /**
  * Идемпотентная запись «пользователь ↔ событие».
  *
@@ -22,18 +20,25 @@ use Illuminate\Database\UniqueConstraintViolationException;
  * которой правку затевали. `BonusAccount` ссылался на них же третьим
  * докблоком: три модели, три реализации, два перекрёстных обещания.
  *
- * ПОЧЕМУ `firstOrCreate` НЕ ПОДХОДИТ. Между его SELECT и INSERT влезает второй
- * запрос, и уникальный ключ роняет вставку дубликата. Ловим именно нарушение
- * ключа и возвращаем уже существующую строку: повторное нажатие отвечает 200,
- * а не 500.
+ * ПОЧЕМУ `createOrFirst`, А НЕ СВОЙ `try/catch`.
+ *   Здесь раньше стояло утверждение, что `firstOrCreate()` не подходит: «между
+ *   его SELECT и INSERT влезает второй запрос, и уникальный ключ роняет
+ *   вставку». Для Laravel 11+ это НЕВЕРНО. `Builder::firstOrCreate()` после
+ *   пустого SELECT зовёт `createOrFirst()`, а тот ловит
+ *   `UniqueConstraintViolationException`, переспрашивает по тем же атрибутам и
+ *   возвращает существующую строку. То есть весь ручной `try/catch` ниже был
+ *   переписыванием метода фреймворка — и переписыванием ХУЖЕ: `createOrFirst()`
+ *   оборачивает вставку в `withSavepointIfNeeded()`, поэтому отвергнутая
+ *   вставка не отравляет объемлющую транзакцию.
  *
- * ПОЧЕМУ `firstOrFail`, А НЕ `first()` + проверка. В продакшене `assert()`
- * выключен, и `assert()` молча вернул бы null из метода, который обещает
- * `static`. `firstOrFail()` бросает всегда.
+ *   Ложное утверждение в докблоке и было причиной копии: на него опирались,
+ *   решая, что без своего `catch` не обойтись. Поэтому объяснение живёт здесь
+ *   вместе с вызовом, а не в отдельной записке.
  *
- * NULL в ветке конфликта невозможен по построению: ключ нарушился, значит
- * строка есть — её только что вставил кто-то другой, ровно между нашими SELECT
- * и INSERT.
+ * `wasRecentlyCreated` не проверяем: повтор обязан вернуть ТУ ЖЕ строку, и
+ * вызывающему безразлично, кто её вставил. Кому безразлично не всем — где ответ
+ * «уже было» меняет поведение (журнал бонусов, билет розыгрыша), там проверка
+ * стоит явно, см. `BonusService` и `RaffleEntry::remember()`.
  */
 trait RemembersUserEvent
 {
@@ -42,16 +47,12 @@ trait RemembersUserEvent
      */
     public static function remember(int|string $userId, int|string $eventId): static
     {
-        try {
-            return self::create([
-                'user_id' => $userId,
-                'event_id' => $eventId,
-            ]);
-        } catch (UniqueConstraintViolationException) {
-            return self::query()
-                ->where('user_id', $userId)
-                ->where('event_id', $eventId)
-                ->firstOrFail();
-        }
+        // `createOrFirst`, а не `firstOrCreate`: SELECT в горячем пути не нужен —
+        // повторное нажатие и так упирается в уникальный ключ, и лишний запрос
+        // на каждый клик дороже, чем сэкономленный на первом.
+        return self::query()->createOrFirst([
+            'user_id' => $userId,
+            'event_id' => $eventId,
+        ]);
     }
 }

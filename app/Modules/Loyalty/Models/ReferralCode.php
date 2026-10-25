@@ -61,37 +61,34 @@ class ReferralCode extends Model
      * Ленивый, а не при регистрации: покупатель по умолчанию — гость, и
      * заводить код каждому, кто открыл афишу, значило бы держать таблицу
      * ссылок, которыми никто не пользуется.
+     *
+     * ПОЧЕМУ `firstOrCreate`, А НЕ СВОЙ `try/catch`. Раньше стояла пара
+     * «SELECT → create → catch → SELECT», то есть переписанный
+     * `Builder::firstOrCreate()`, который делает ровно это и вдобавок
+     * оборачивает вставку в `withSavepointIfNeeded()`.
+     *
+     * ПОЧЕМУ `catch` ВСЁ ЖЕ ОСТАЛСЯ — второй уникальный индекс. У таблицы их
+     * два: `uq_referral_codes_user` и `uq_referral_codes_code`. `firstOrCreate`
+     * переспрашивает по `user_id`; если нарушился ключ по `code` (совпал
+     * сгенерированный код у ДРУГОГО человека), переспрос ничего не найдёт и
+     * `createOrFirst()` перевыбросит исключение. Этот `catch` — не про гонку, а
+     * про повтор генерации: одна дополнительная попытка, и только одна.
      */
     public static function forUserOrCreate(int|string $userId): self
     {
-        $existing = self::query()->where('user_id', $userId)->first();
-
-        if ($existing !== null) {
-            return $existing;
-        }
-
         try {
-            return self::create([
-                'user_id' => $userId,
-                'code' => ReferralCodeRules::generate(),
-            ]);
+            return self::query()->firstOrCreate(
+                ['user_id' => $userId],
+                ['code' => ReferralCodeRules::generate()],
+            );
         } catch (UniqueConstraintViolationException) {
-            // Конфликт по `user_id` — код уже заведён из другого запроса.
-            // Конфликт по `code` — совпадение сгенерированных кодов.
-            $existing = self::query()->where('user_id', $userId)->first();
-
-            if ($existing !== null) {
-                return $existing;
-            }
-
-            // Совпал именно сгенерированный код у ДРУГОГО человека: ещё круг
-            // с новым кодом. Вложенность одна — при втором конфликте
-            // исключение уйдёт наверх, потому что дважды подряд попасть в
-            // 80 бит энтропии означает не случайность, а поломку генератора.
-            return self::create([
-                'user_id' => $userId,
-                'code' => ReferralCodeRules::generate(),
-            ]);
+            // Вложенность одна: при втором конфликте исключение уйдёт наверх,
+            // потому что дважды подряд попасть в 80 бит энтропии означает не
+            // случайность, а поломку генератора.
+            return self::query()->firstOrCreate(
+                ['user_id' => $userId],
+                ['code' => ReferralCodeRules::generate()],
+            );
         }
     }
 

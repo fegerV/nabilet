@@ -10,7 +10,6 @@ use Nabilet\Modules\Notifications\Domain\NotificationStatus;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\UniqueConstraintViolationException;
 
 /**
  * Журнал подписных писем — идемпотентность отправки в схеме, а не в коде.
@@ -117,18 +116,31 @@ class FollowNotification extends Model
         int|string $sessionId,
         string $templateCode,
     ): ?self {
-        try {
-            return self::create([
+        // Гонку закрывает `uq_follow_notifications_dedupe (follow_id, session_id,
+        // template_code)`, и обрабатывает её `createOrFirst()`, а не свой
+        // `try/catch`: он ловит нарушение ключа, переспрашивает по тем же
+        // атрибутам и возвращает существующую строку, обернув вставку в
+        // `withSavepointIfNeeded()`.
+        $notification = self::query()->createOrFirst(
+            [
                 'follow_id' => $followId,
-                'user_id' => $userId,
-                'event_id' => $eventId,
                 'session_id' => $sessionId,
                 'template_code' => $templateCode,
+            ],
+            [
+                'user_id' => $userId,
+                'event_id' => $eventId,
                 'status' => self::STATUS_QUEUED,
-            ]);
-        } catch (UniqueConstraintViolationException) {
-            return self::takeOver($followId, $sessionId, $templateCode);
+            ],
+        );
+
+        // Путь 1: вставка удалась — строка наша, статус `queued`.
+        if ($notification->wasRecentlyCreated) {
+            return $notification;
         }
+
+        // Путь 2: строка уже есть, и дальше решает `takeOver()`.
+        return self::takeOver($followId, $sessionId, $templateCode);
     }
 
     /**

@@ -427,29 +427,9 @@ parameters:
 			path: app/Modules/Loyalty/Jobs/NotifyFollowersOfNewSessionJob.php
 
 		-
-			message: "#^Call to an undefined static method Nabilet\\\\Modules\\\\Loyalty\\\\Models\\\\BonusAccount\\:\\:create\\(\\)\\.$#"
-			count: 1
-			path: app/Modules/Loyalty/Models/BonusAccount.php
-
-		-
 			message: "#^Method Nabilet\\\\Modules\\\\Loyalty\\\\Models\\\\BonusTransaction\\:\\:scopeForUser\\(\\) should return Illuminate\\\\Database\\\\Eloquent\\\\Builder\\<Nabilet\\\\Modules\\\\Loyalty\\\\Models\\\\BonusTransaction\\> but returns Illuminate\\\\Database\\\\Query\\\\Builder\\.$#"
 			count: 1
 			path: app/Modules/Loyalty/Models/BonusTransaction.php
-
-		-
-			message: "#^Call to an undefined static method Nabilet\\\\Modules\\\\Loyalty\\\\Models\\\\EventFavorite\\:\\:create\\(\\)\\.$#"
-			count: 1
-			path: app/Modules/Loyalty/Models/EventFavorite.php
-
-		-
-			message: "#^Call to an undefined static method Nabilet\\\\Modules\\\\Loyalty\\\\Models\\\\EventFollow\\:\\:create\\(\\)\\.$#"
-			count: 1
-			path: app/Modules/Loyalty/Models/EventFollow.php
-
-		-
-			message: "#^Call to an undefined static method Nabilet\\\\Modules\\\\Loyalty\\\\Models\\\\FollowNotification\\:\\:create\\(\\)\\.$#"
-			count: 1
-			path: app/Modules/Loyalty/Models/FollowNotification.php
 
 		-
 			message: "#^Method Nabilet\\\\Modules\\\\Loyalty\\\\Models\\\\LoyaltyLevel\\:\\:scopeOrdered\\(\\) should return Illuminate\\\\Database\\\\Eloquent\\\\Builder\\<Nabilet\\\\Modules\\\\Loyalty\\\\Models\\\\LoyaltyLevel\\> but returns Illuminate\\\\Database\\\\Query\\\\Builder\\.$#"
@@ -467,29 +447,14 @@ parameters:
 			path: app/Modules/Loyalty/Models/Raffle.php
 
 		-
-			message: "#^Call to an undefined static method Nabilet\\\\Modules\\\\Loyalty\\\\Models\\\\RaffleEntry\\:\\:create\\(\\)\\.$#"
-			count: 1
-			path: app/Modules/Loyalty/Models/RaffleEntry.php
-
-		-
 			message: "#^Method Nabilet\\\\Modules\\\\Loyalty\\\\Models\\\\RaffleWinner\\:\\:scopePendingNotification\\(\\) should return Illuminate\\\\Database\\\\Eloquent\\\\Builder\\<Nabilet\\\\Modules\\\\Loyalty\\\\Models\\\\RaffleWinner\\> but returns Illuminate\\\\Database\\\\Query\\\\Builder\\.$#"
 			count: 1
 			path: app/Modules/Loyalty/Models/RaffleWinner.php
 
 		-
-			message: "#^Call to an undefined static method Nabilet\\\\Modules\\\\Loyalty\\\\Models\\\\Referral\\:\\:create\\(\\)\\.$#"
-			count: 1
-			path: app/Modules/Loyalty/Models/Referral.php
-
-		-
 			message: "#^Method Nabilet\\\\Modules\\\\Loyalty\\\\Models\\\\Referral\\:\\:scopeAwaitingReward\\(\\) should return Illuminate\\\\Database\\\\Eloquent\\\\Builder\\<Nabilet\\\\Modules\\\\Loyalty\\\\Models\\\\Referral\\> but returns Illuminate\\\\Database\\\\Query\\\\Builder\\.$#"
 			count: 1
 			path: app/Modules/Loyalty/Models/Referral.php
-
-		-
-			message: "#^Call to an undefined static method Nabilet\\\\Modules\\\\Loyalty\\\\Models\\\\ReferralCode\\:\\:create\\(\\)\\.$#"
-			count: 2
-			path: app/Modules/Loyalty/Models/ReferralCode.php
 
 		-
 			message: "#^Call to an undefined static method Nabilet\\\\Modules\\\\Core\\\\Users\\\\Models\\\\User\\:\\:find\\(\\)\\.$#"
@@ -499,11 +464,6 @@ parameters:
 		-
 			message: "#^Call to an undefined method Illuminate\\\\Database\\\\Eloquent\\\\Builder\\<Nabilet\\\\Modules\\\\Loyalty\\\\Models\\\\BonusAccount\\>\\:\\:forUser\\(\\)\\.$#"
 			count: 3
-			path: app/Modules/Loyalty/Services/BonusService.php
-
-		-
-			message: "#^Call to an undefined static method Nabilet\\\\Modules\\\\Loyalty\\\\Models\\\\BonusTransaction\\:\\:create\\(\\)\\.$#"
-			count: 4
 			path: app/Modules/Loyalty/Services/BonusService.php
 
 		-

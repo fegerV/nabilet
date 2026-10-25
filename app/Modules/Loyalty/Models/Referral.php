@@ -9,7 +9,6 @@ use Nabilet\Modules\Core\Models\Concerns\HasPublicId;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\UniqueConstraintViolationException;
 use Nabilet\Modules\Core\Users\Models\User;
 
 /**
@@ -91,45 +90,46 @@ class Referral extends Model
      * Возвращает существующую строку, если она есть: повторный переход по
      * ссылке и повторное оформление — это ОДНО приглашение, а не второе.
      * Конфликт вставки по `uq_referrals_inviter_email` обрабатывается как
-     * «строка уже есть» — ровно тот же приём, что у
-     * `ReferralCode::forUserOrCreate()`.
+     * «строка уже есть» — это делает `firstOrCreate()`, а не свой `try/catch`.
+     *
+     * ПОЧЕМУ РУЧНАЯ ПАРА SELECT+INSERT УБРАНА. Здесь стояло
+     * «SELECT → create → catch → SELECT `firstOrFail`», то есть переписанный
+     * `Builder::firstOrCreate()`: он делает ровно это, включая переспрос по тем
+     * же атрибутам после нарушения ключа, и вдобавок оборачивает вставку в
+     * `withSavepointIfNeeded()`. Уточнение `invited_user_id` ниже осталось
+     * своим: это не про гонку, а про «аккаунт друга появился позже
+     * приглашения», и фреймворк про это ничего не знает.
      */
     public static function upsertByEmail(int|string $inviterUserId, string $invitedEmail, ?int $invitedUserId = null): self
     {
         $email = strtolower($invitedEmail);
 
-        $existing = self::query()
-            ->where('inviter_user_id', $inviterUserId)
-            ->where('invited_email', $email)
-            ->first();
-
-        if ($existing !== null) {
-            // Аккаунт друга мог появиться позже приглашения — уточняем, не
-            // понижая статус: награда уже выплачена означает, что уточнять
-            // нечего.
-            if ($existing->status !== self::STATUS_REWARDED && $invitedUserId !== null && $existing->invited_user_id === null) {
-                $existing->forceFill([
-                    'invited_user_id' => $invitedUserId,
-                    'status' => self::STATUS_REGISTERED,
-                ])->save();
-            }
-
-            return $existing;
-        }
-
-        try {
-            return self::create([
+        $referral = self::query()->firstOrCreate(
+            [
                 'inviter_user_id' => $inviterUserId,
                 'invited_email' => $email,
+            ],
+            [
                 'invited_user_id' => $invitedUserId,
                 'status' => $invitedUserId !== null ? self::STATUS_REGISTERED : self::STATUS_PENDING,
-            ]);
-        } catch (UniqueConstraintViolationException) {
-            return self::query()
-                ->where('inviter_user_id', $inviterUserId)
-                ->where('invited_email', $email)
-                ->firstOrFail();
+            ],
+        );
+
+        // `! wasRecentlyCreated` — точный перевод прежнего раннего возврата:
+        // уточнять нечего в строке, которую только что вставили с этими же
+        // значениями.
+        if (! $referral->wasRecentlyCreated
+            && $referral->status !== self::STATUS_REWARDED
+            && $invitedUserId !== null
+            && $referral->invited_user_id === null
+        ) {
+            $referral->forceFill([
+                'invited_user_id' => $invitedUserId,
+                'status' => self::STATUS_REGISTERED,
+            ])->save();
         }
+
+        return $referral;
     }
 
     /**
