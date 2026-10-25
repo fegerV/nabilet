@@ -15,6 +15,9 @@ namespace Nabilet\Core\Support;
  *   - `Checkin\Support\SessionLocator::resolve()`
  *   - `Checkin\Support\TicketLocator::publicIdOf()`
  *
+ * (Первые два метода удалены вместе с их копиями запроса и копиями политики
+ * 404 — см. `Core\Database\IdentifierLookup`.)
+ *
  * Все четыре отвечают на один вопрос: клиент прислал внутренний `id` или внешний
  * `public_id`? Оба идентификатора приходят в одном и том же поле контракта
  * (`session_id: { type: string }`, `device_id`, `ticket_id`), потому что бандл

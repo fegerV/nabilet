@@ -232,14 +232,9 @@ class OrderController extends Controller
         // Идентификатор приходит и числом (админка), и строкой-`public_id`
         // (контракт: OrderIdPath — строка). Само правило «число — по ключу,
         // остальное — по public_id; неизвестное — fail-closed 404» живёт у
-        // `IdentifierLookup`, как и в двух контроллерах Checkin.
-        $resolved = IdentifierLookup::first(Order::class, $order);
-
-        if ($resolved === null) {
-            throw new NotFoundError('Order', $order);
-        }
-
-        $order = $resolved;
+        // `IdentifierLookup::firstOrFail()`, как и в двух контроллерах Checkin.
+        // Здесь стояла третья копия этой политики, выписанная вручную.
+        $order = IdentifierLookup::firstOrFail(Order::class, $order, 'Order');
 
         $this->assertCanSee($request, $order);
 

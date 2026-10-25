@@ -381,6 +381,50 @@ class CheckerHttpLayerTest extends TestCase
         $this->assertSame('revoked', (string) $device->fresh()->status);
     }
 
+    /**
+     * Два пути админки открывают ОДНО устройство по одному идентификатору —
+     * значит и отвечать «не нашли» они обязаны одинаково.
+     *
+     * До Batch 34 политика «разреши или 404» была выписана в каждом
+     * контроллере своим приватным методом, побайтово одинаковым. Пока они
+     * совпадали, разницы не было видно; разойдясь, они дали бы 404 на одном
+     * пути и 500 (или, хуже, чужое устройство) на другом — при том что это
+     * один и тот же объект в одной и той же админке.
+     */
+    public function test_both_device_paths_resolve_one_identifier_or_answer_404_alike(): void
+    {
+        [$organizationId] = $this->seedSellableSeat(available: 1);
+
+        $this->actingAsStaff($organizationId);
+
+        $device = $this->issueDevice($organizationId);
+
+        // Неизвестное значение — 404 на ОБОИХ путях, с одним и тем же кодом.
+        // '999999' здесь важен отдельно: это ЧИСЛО, то есть проверяется ветка
+        // поиска по первичному ключу, а не только строковая.
+        foreach (['no-such-device', '999999'] as $unknown) {
+            $this->patchJson("/api/v1/admin/checkin/devices/{$unknown}", ['status' => 'revoked'])
+                ->assertStatus(404)
+                ->assertJsonPath('error.code', 'DEVICE_NOT_FOUND');
+
+            $this->getJson("/api/v1/checkin-devices/{$unknown}/bundles")
+                ->assertStatus(404)
+                ->assertJsonPath('error.code', 'DEVICE_NOT_FOUND');
+        }
+
+        // И оба способа записать идентификатор ведут к тому же устройству:
+        // контракт админки допускает и внутренний id, и public_id.
+        foreach ([$device->public_id, (string) $device->id] as $identifier) {
+            $this->getJson("/api/v1/checkin-devices/{$identifier}/bundles")->assertOk();
+        }
+
+        $this->patchJson('/api/v1/admin/checkin/devices/' . $device->id, ['status' => 'revoked'])
+            ->assertOk()
+            ->assertJsonPath('data.id', $device->id);
+
+        $this->assertSame('revoked', (string) $device->fresh()->status);
+    }
+
     public function test_a_report_lists_scans_with_their_devices(): void
     {
         [$organizationId, , $sessionId, , $ticket] = $this->seedTicket();

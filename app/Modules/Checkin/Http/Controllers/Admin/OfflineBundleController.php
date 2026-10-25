@@ -39,7 +39,10 @@ final class OfflineBundleController extends Controller
 
     public function index(Request $request, string $device): JsonResponse
     {
-        $model = $this->findDevice($device);
+        // Разрешение идентификатора и отказ при «не нашли» — у одного владельца
+        // (`IdentifierLookup::firstOrFail`). Здесь стояла своя копия политики
+        // 404, побайтово равная такой же копии в `CheckinDeviceController`.
+        $model = IdentifierLookup::firstOrFail(CheckinDevice::class, $device, 'Device');
         $perPage = min(100, max(1, (int) $request->query('per_page', 50)));
 
         $bundles = $model->offlineBundles()
@@ -66,7 +69,7 @@ final class OfflineBundleController extends Controller
             'session_id' => ['nullable', 'string', 'max:64'],
         ]);
 
-        $model = $this->findDevice($device);
+        $model = IdentifierLookup::firstOrFail(CheckinDevice::class, $device, 'Device');
         $event = Event::query()->where('public_id', (string) $validated['event_id'])->first();
 
         if ($event === null) {
@@ -150,16 +153,5 @@ final class OfflineBundleController extends Controller
         } catch (\Throwable) {
             // last_seen — телеметрия: её отказ не должен ронять выдачу бандла.
         }
-    }
-
-    private function findDevice(string $device): CheckinDevice
-    {
-        $model = IdentifierLookup::first(CheckinDevice::class, $device);
-
-        if ($model === null) {
-            throw new NotFoundError('Device', $device);
-        }
-
-        return $model;
     }
 }

@@ -7,7 +7,6 @@ namespace Nabilet\Modules\Checkin\Http\Controllers\Admin;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
-use Nabilet\Core\Errors\NotFoundError;
 use Nabilet\Core\Database\IdentifierLookup;
 use Nabilet\Modules\Checkin\Domain\CheckinDevice as DevicePolicy;
 use Nabilet\Modules\Checkin\Services\DeviceTokenIssuer;
@@ -86,7 +85,10 @@ final class CheckinDeviceController extends Controller
 
     public function update(Request $request, string $device): JsonResponse
     {
-        $model = $this->find($device);
+        // Разрешение идентификатора и отказ при «не нашли» — у одного владельца
+        // (`IdentifierLookup::firstOrFail`). Здесь стояла своя копия политики
+        // 404, побайтово равная такой же копии в `OfflineBundleController`.
+        $model = IdentifierLookup::firstOrFail(CheckinDevice::class, $device, 'Device');
 
         $validated = $request->validate([
             'name' => ['sometimes', 'string', 'max:255'],
@@ -106,22 +108,5 @@ final class CheckinDeviceController extends Controller
         }
 
         return response()->json(['data' => $model->fresh()]);
-    }
-
-    /**
-     * Идентификатор в пути — число или `public_id`, как и везде в админке
-     * (`orders`, `events`). Неявная привязка модели здесь не используется:
-     * она приводит путь к int, и `/admin/checkin/devices/1abc` открывал бы
-     * устройство 1.
-     */
-    private function find(string $device): CheckinDevice
-    {
-        $model = IdentifierLookup::first(CheckinDevice::class, $device);
-
-        if ($model === null) {
-            throw new NotFoundError('Device', $device);
-        }
-
-        return $model;
     }
 }

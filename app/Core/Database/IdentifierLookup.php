@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Nabilet\Core\Database;
 
 use Illuminate\Database\Eloquent\Model;
+use Nabilet\Core\Errors\NotFoundError;
 use Nabilet\Core\Support\DatabaseId;
 
 /**
@@ -23,6 +24,9 @@ use Nabilet\Core\Support\DatabaseId;
  *   - `Checkin\Http\Controllers\Admin\OfflineBundleController::findDevice()`
  *   - `Orders\Http\Controllers\OrderController::refund()` (тем же порядком,
  *     но без выделения в метод)
+ *
+ * (Обе приватные методы удалены: разрешение и отрус при «не нашли» теперь
+ * `firstOrFail()` ниже.)
  *
  * Правило («один идентификатор в контракте, два способа его понять») описано у
  * `DatabaseId`, но само построение запроса копировали. Копии в одном модуле —
@@ -62,5 +66,47 @@ final class IdentifierLookup
         return DatabaseId::isNumeric($value)
             ? $query->whereKey((int) $value)->first()
             : $query->where('public_id', $value)->first();
+    }
+
+    /**
+     * Разрешить идентификатор или отказать.
+     *
+     * ЗАЧЕМ. Политика «не нашлось — 404» стояла двумя побайтово одинаковыми
+     * приватными методами в двух контроллерах Checkin:
+     *
+     *   - `CheckinDeviceController::find()`
+     *   - `OfflineBundleController::findDevice()`
+     *
+     * Извлечение `first()` закрыло только половину: способ построить запрос
+     * стал общим, а способ на него отреагировать — нет. Разойдясь, эти две
+     * копии дали бы разный код ошибки или молча ушли в 500 на одном из двух
+     * путей админки, открывающих одно и то же устройство.
+     *
+     * ПОЧЕМУ ИМЕННО ЗДЕСЬ. Владелец разрешения идентификатора уже этот класс;
+     * «не нашли» — такая же часть правила, как «как искали». Отдельный хелпер
+     * означал бы, что половина правила живёт в `Core/Database`, а половина —
+     * у вызывающего, и снова требует синхронизации.
+     *
+     * `$resource` — параметр, а не производная от имени класса: подпись в
+     * ошибке это текст контракта («Device not found: X.»), и он не обязан
+     * совпадать с именем PHP-класса. Выводить его автоматически значило бы
+     * менять сообщение об ошибке при переименовании модели.
+     *
+     * @template TModel of Model
+     * @param  class-string<TModel>  $model
+     * @param  string  $resource  имя ресурса для NotFoundError
+     * @return TModel
+     *
+     * @throws NotFoundError
+     */
+    public static function firstOrFail(string $model, string $value, string $resource): Model
+    {
+        $found = self::first($model, $value);
+
+        if ($found === null) {
+            throw new NotFoundError($resource, $value);
+        }
+
+        return $found;
     }
 }
