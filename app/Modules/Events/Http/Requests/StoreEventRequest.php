@@ -19,46 +19,12 @@ class StoreEventRequest extends FormRequest
     // не-колоночных полей и `status`, порядок шагов — всё это в трейте
     // `PreparesEventPayload` (общий с `UpdateEventRequest`). Раньше порядок
     // шагов был выписан здесь, а в Update — двумя копиями, и они расходились.
+    //
+    // Из шага «вырезать не-колоночные поля» потребителю остался только текст
+    // сообщения в лог (`reportDroppedFields()`): список полей, накопление
+    // отброшенного и вырезание из обоих источников принадлежат трейту.
     use EventFormMessages;
     use PreparesEventPayload;
-
-    /**
-     * Поля, которые принимает API (для совместимости со старыми клиентами), но
-     * которых НЕТ в таблице `events` (миграция 000200_002_content). Они
-     * валидируются, но вырезаются из payload перед Event::create() — иначе
-     * Eloquent ушёл бы в 500 на несуществующую колонку. Даты живут в
-     * sessions/event_dates, цены — в inventory_row_prices.
-     *
-     * ЭТИ ПОЛЯ БОЛЬШЕ НЕ ТЕРЯЮТСЯ МОЛЧА (см. `droppedFields()`). Раньше клиент,
-     * отправивший `start_date`, получал 201 и был уверен, что дата сохранена —
-     * а её не было нигде. Теперь имена отброшенных полей возвращаются в
-     * `meta.ignored_fields`, а факт пишется в лог. Поведение то же (поля
-     * по-прежнему не пишутся), но перестало быть невидимым.
-     *
-     * @var list<string>
-     */
-    private const NON_COLUMN_FIELDS = ['start_date', 'end_date', 'timezone', 'currency', 'is_featured', 'min_price', 'max_price', 'metadata'];
-
-    /**
-     * Что реально было отброшено: поле => значение.
-     *
-     * Только непустые значения: `null` и `''` в payload — это обычная форма
-     * (поле есть в HTML-форме, но не заполнено), а не потеря данных. Сообщать о
-     * них значило бы показывать предупреждение на каждом сохранении.
-     *
-     * @var array<string, mixed>
-     */
-    private array $droppedFields = [];
-
-    /**
-     * Имена полей, значения которых некуда было записать.
-     *
-     * @return array<string, mixed>
-     */
-    public function droppedFields(): array
-    {
-        return $this->droppedFields;
-    }
 
     public function authorize(): bool
     {
@@ -204,39 +170,20 @@ class StoreEventRequest extends FormRequest
     }
 
     /**
-     * Вырезать не-колоночные ключи из входных данных.
+     * Сообщить о полях, которым некуда было записаться.
      *
-     * ВАЖНО, ЧТО ЭТО ЗАЩИЩАЕТ, А ЧТО НЕТ. `validated()` читает СНИМОК данных,
-     * снятый до `passedValidation()`, поэтому этот метод НЕ влияет на его
-     * результат — запись защищает `Event::$fillable`, а не он. Он защищает
-     * чтения входного набора мимо `validated()`: `$request->input()`, логи,
-     * отладка. Молчаливая потеря неотличима от успешного сохранения, поэтому
-     * здесь же фиксируется, что именно было отброшено.
+     * Единственное, что осталось у потребителя от шага «вырезать не-колоночные
+     * поля»: текст сообщения. На создании нечего назвать, кроме самих полей; на
+     * правке важен `event_id` — ЧЬЯ карточка их потеряла.
+     *
+     * @param  list<string>  $fields
      */
-    protected function stripNonColumnFields(): void
+    protected function reportDroppedFields(array $fields): void
     {
-        foreach (self::NON_COLUMN_FIELDS as $field) {
-            $value = $this->input($field, '__missing__');
-
-            // Пустое значение — это норма: поле присутствует в HTML-форме, но не
-            // заполнено. Предупреждать о нём значит шуметь на каждом сохранении.
-            if ($value !== '__missing__' && $value !== null && $value !== '' && $value !== []) {
-                $this->droppedFields[$field] = $value;
-            }
-
-            $this->request->remove($field);
-            $this->getInputSource()->remove($field);
-        }
-
-        $this->request->remove('__poster_stored');
-        $this->getInputSource()->remove('__poster_stored');
-
-        if ($this->droppedFields !== []) {
-            Log::warning('Поля мероприятия отброшены: в таблице `events` для них нет колонок.', [
-                'fields' => array_keys($this->droppedFields),
-                'hint' => 'Дата и время живут в сеансах (sessions.starts_at), цены — в ценах рядов.',
-            ]);
-        }
+        Log::warning('Поля мероприятия отброшены: в таблице `events` для них нет колонок.', [
+            'fields' => $fields,
+            'hint' => 'Дата и время живут в сеансах (sessions.starts_at), цены — в ценах рядов.',
+        ]);
     }
 
     /**

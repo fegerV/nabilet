@@ -23,23 +23,6 @@ class UpdateEventRequest extends FormRequest
     use EventFormMessages;
     use PreparesEventPayload;
 
-    /**
-     * Что реально было отброшено: поле => значение. См. StoreEventRequest —
-     * механизм общий, здесь он нужен по той же причине: молчаливая потеря
-     * значений неотличима от успешного сохранения.
-     *
-     * @var array<string, mixed>
-     */
-    private array $droppedFields = [];
-
-    /**
-     * @return array<string, mixed>
-     */
-    public function droppedFields(): array
-    {
-        return $this->droppedFields;
-    }
-
     public function authorize(): bool
     {
         // Write-роут уже под auth:api + admin (middleware 'admin'). Здесь
@@ -154,38 +137,21 @@ class UpdateEventRequest extends FormRequest
     }
 
     /**
-     * Поля без колонок в таблице `events` (см. StoreEventRequest) — вырезаем,
-     * чтобы Eloquent-update не падал на несуществующем столбце.
+     * Сообщить о полях, которым некуда было записаться.
      *
-     * Отличие от Store намеренное и описано в `PreparesEventPayload`: здесь
-     * нет служебного `__poster_stored` (его убирает Store), а сообщение в лог
-     * называет `event_id` — на правке важно, ЧЬЯ карточка потеряла поля.
+     * Единственное, что осталось у потребителя от шага «вырезать не-колоночные
+     * поля»: на правке в сообщение добавляется `event_id` — важно, ЧЬЯ карточка
+     * потеряла поля. Список полей, накопление отброшенного и вырезание из обоих
+     * источников принадлежат `PreparesEventPayload`.
      *
-     * @var list<string>
+     * @param  list<string>  $fields
      */
-    private const NON_COLUMN_FIELDS = ['start_date', 'end_date', 'timezone', 'currency', 'is_featured', 'min_price', 'max_price', 'metadata'];
-
-    protected function stripNonColumnFields(): void
+    protected function reportDroppedFields(array $fields): void
     {
-        foreach (self::NON_COLUMN_FIELDS as $field) {
-            $value = $this->input($field, '__missing__');
-
-            // См. StoreEventRequest::stripNonColumnFields() — пустое значение
-            // это норма, потеря данных это непустое.
-            if ($value !== '__missing__' && $value !== null && $value !== '' && $value !== []) {
-                $this->droppedFields[$field] = $value;
-            }
-
-            $this->request->remove($field);
-            $this->getInputSource()->remove($field);
-        }
-
-        if ($this->droppedFields !== []) {
-            Log::warning('Поля мероприятия отброшены при обновлении: колонок нет в `events`.', [
-                'event_id' => $this->route('event')?->id,
-                'fields' => array_keys($this->droppedFields),
-            ]);
-        }
+        Log::warning('Поля мероприятия отброшены при обновлении: колонок нет в `events`.', [
+            'event_id' => $this->route('event')?->id,
+            'fields' => $fields,
+        ]);
     }
 
     /**

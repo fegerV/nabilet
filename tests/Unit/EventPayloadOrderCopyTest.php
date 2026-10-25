@@ -26,6 +26,13 @@ use Nabilet\Tests\Support\TestCase;
  * не вызвана у владельца. В владельце оба есть ровно потому, что он её и
  * определяет.
  *
+ * Второй сторож (добавлен позже) держит СЛОВАРЬ этого шага: список
+ * `NON_COLUMN_FIELDS` и накопитель `droppedFields` с аксессором. Извлечение
+ * порядка шагов их не забрало — они остались побайтовыми копиями в двух
+ * Request'ах, и разошлись ровно так, как предсказывает класс дефекта:
+ * `storeUploadedPoster()` ставит служебный `__poster_stored` в обоих классах, а
+ * вырезал его только Store. На правке ключ оставался во входном наборе.
+ *
  * Проверка ищет КОД, а не упоминания: докблоки вырезаются, иначе объяснение
  * «почему не здесь» само считалось бы нарушением.
  */
@@ -40,6 +47,56 @@ final class EventPayloadOrderCopyTest extends TestCase
             $this->filesWhere('~storeUploadedPoster~', '~stripStatusField~'),
             'последовательность подготовки payload выписана здесь, а не вызвана у PreparesEventPayload::preparePayload()',
         );
+    }
+
+    /**
+     * Словарь не-колоночных полей и накопитель отброшенного — тоже у владельца.
+     *
+     * Скан дублированных списков нашёл то, что извлечение пропустило:
+     * `private const NON_COLUMN_FIELDS` был побайтово одинаковым в двух
+     * Request'ах, как и `private array $droppedFields` с аксессором
+     * `droppedFields()`. Список — это правило, а не оформление: добавив поле в
+     * один класс и забыв во втором, получаешь создание и правку, которые режут
+     * разное, молча.
+     *
+     * Проверяются ОБА объявления по отдельности, а не пара: скопировать можно и
+     * одно — например, расширить список, не тронув аксессор.
+     */
+    public function testTheDroppedFieldsVocabularyLivesOnlyInItsOwner(): void
+    {
+        $this->assertSame(
+            [],
+            $this->filesMatching('~const\s+NON_COLUMN_FIELDS\s*=~'),
+            'список не-колоночных полей объявлен здесь, а не взят у PreparesEventPayload',
+        );
+
+        $this->assertSame(
+            [],
+            $this->filesMatching('~function\s+droppedFields\s*\(\s*\)~'),
+            'аксессор отброшенных полей объявлен здесь, а не взят у PreparesEventPayload',
+        );
+    }
+
+    /**
+     * Файлы `app/`, в коде которых встречается шаблон, кроме владельца.
+     *
+     * @return list<string>
+     */
+    private function filesMatching(string $pattern): array
+    {
+        $offenders = [];
+
+        foreach ($this->appFiles() as $path) {
+            if (str_ends_with($path, self::OWNER)) {
+                continue;
+            }
+
+            if (preg_match($pattern, $this->code((string) file_get_contents($path))) === 1) {
+                $offenders[] = $this->relative($path);
+            }
+        }
+
+        return $offenders;
     }
 
     /**

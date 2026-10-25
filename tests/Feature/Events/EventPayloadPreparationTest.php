@@ -112,6 +112,44 @@ final class EventPayloadPreparationTest extends TestCase
     }
 
     /**
+     * Служебный `__poster_stored` вырезается на ОБОИХ путях, и в отчёт не попадает.
+     *
+     * Это и было расхождение, которое нашёл скан дублированных списков:
+     * `storeUploadedPoster()` ставит признак «файл уже записан» в обоих классах
+     * (трейт общий), а вырезал его только `StoreEventRequest`. На правке
+     * синтетический ключ оставался во входном наборе — ровно то, от чего
+     * предостерегает докблок `stripStatusField()`: значение лежит и выглядит
+     * принятым.
+     *
+     * В `droppedFields()` его быть НЕ ДОЛЖНО: это не данные клиента, терять
+     * нечего, и предупреждать о нём значило бы шуметь на каждой загрузке афиши.
+     */
+    public function test_the_internal_poster_marker_is_stripped_on_both_paths(): void
+    {
+        foreach ([StoreEventRequest::class, UpdateEventRequest::class] as $class) {
+            $payload = ['title' => 'Концерт', 'status' => 'published'];
+
+            if ($class === StoreEventRequest::class) {
+                $payload['slug'] = 'koncert';
+            }
+
+            $request = $this->request($class, $payload);
+            $request->setValidator($this->app['validator']->make($request->all(), $request->rules()));
+
+            // Так же, как это делает storeUploadedPoster() после записи файла.
+            $request->merge(['__poster_stored' => true]);
+
+            $request->validated();
+
+            $this->assertNull(
+                $request->input('__poster_stored'),
+                $class . ': служебный признак остался во входном наборе',
+            );
+            $this->assertSame([], $request->droppedFields(), $class . ': служебный признак попал в отчёт о потерях');
+        }
+    }
+
+    /**
      * @param  class-string<StoreEventRequest|UpdateEventRequest>  $class
      * @param  array<string, mixed>  $payload
      * @return StoreEventRequest|UpdateEventRequest
