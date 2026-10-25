@@ -9,6 +9,7 @@ use Nabilet\Core\Support\Money;
 use Nabilet\Modules\Payments\Models\Payment;
 use Nabilet\Modules\Payments\Models\Refund;
 use Nabilet\Modules\Payments\Domain\RefundLedger;
+use Nabilet\Modules\Payments\Domain\TransactionType;
 use Nabilet\Modules\Payments\Repositories\PaymentRepository;
 use Nabilet\Modules\Payments\StateMachines\PaymentStateMachine;
 use Nabilet\Modules\Payments\StateMachines\RefundStateMachine;
@@ -136,7 +137,7 @@ final class RefundService
             ]);
 
             $this->repository->addTransaction($payment, [
-                'type' => 'refund',
+                'type' => TransactionType::REFUND,
                 'amount' => -$refundAmount,
                 'status' => PaymentStateMachine::PENDING,
                 // Стартовая запись журнала получает provider_event_id ДО прихода

@@ -17,6 +17,7 @@ use Nabilet\Modules\Orders\StateMachines\OrderStateMachine;
 use Nabilet\Modules\Payments\Domain\PaymentSettlement;
 use Nabilet\Modules\Payments\Domain\SettlementDecision;
 use Nabilet\Modules\Payments\Domain\SettlementRequest;
+use Nabilet\Modules\Payments\Domain\TransactionType;
 use Nabilet\Modules\Payments\Models\Payment;
 use Nabilet\Modules\Payments\Models\Refund;
 use Nabilet\Modules\Payments\Repositories\PaymentRepository;
@@ -398,7 +399,7 @@ class PaymentService
 
             // Create initial transaction record
             $this->repository->addTransaction($payment, [
-                'type' => 'authorization',
+                'type' => TransactionType::AUTHORIZATION,
                 'amount' => $amount,
                 'status' => PaymentStateMachine::PENDING,
             ]);
@@ -594,7 +595,7 @@ class PaymentService
 
         // Add success transaction
         $this->repository->addTransaction($payment, [
-            'type' => 'capture',
+            'type' => TransactionType::CAPTURE,
             'amount' => $payment->amount,
             'status' => PaymentStateMachine::SUCCEEDED,
             'payload_json' => $payload,
@@ -755,7 +756,7 @@ class PaymentService
         }
 
         $this->repository->addTransaction($payment, [
-            'type' => 'capture',
+            'type' => TransactionType::CAPTURE,
             'amount' => $payment->amount,
             'status' => PaymentStateMachine::SUCCEEDED,
             'payload_json' => $payload + ['settlement_refusal' => $reason],
@@ -834,11 +835,13 @@ class PaymentService
         ]);
 
         $this->repository->addTransaction($payment, [
-            'type' => 'refund',
+            'type' => TransactionType::REFUND,
             'amount' => -((int) $refund->amount),
             // Словарь транзакции — словарь платежа: колонка осознанно оставлена
-            // без CHECK (REVIEW §3.11: «словарь провайдера»), но в неё пишем МЫ
-            // и пишем свои значения. Сырой ответ провайдера уходит в payload_json.
+            // без CHECK, но в неё пишем МЫ и пишем свои значения (сырой ответ
+            // провайдера уходит в payload_json). Спека называла эту колонку
+            // «словарём провайдера» — это было неверно и держало словарь без
+            // владельца; правило пары живёт в TransactionType.
             'status' => $target === RefundStateMachine::SUCCEEDED
                 ? PaymentStateMachine::SUCCEEDED
                 : PaymentStateMachine::FAILED,
@@ -1001,7 +1004,7 @@ class PaymentService
 
         // Add failed transaction
         $this->repository->addTransaction($payment, [
-            'type' => 'failure',
+            'type' => TransactionType::FAILURE,
             'amount' => 0,
             'status' => PaymentStateMachine::FAILED,
             'payload_json' => $payload,

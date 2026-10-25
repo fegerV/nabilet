@@ -14,9 +14,17 @@
 -- ЧТО ОСТАЁТСЯ СВОБОДНЫМ — И ПОЧЕМУ ЭТО ЗАПИСАНО, А НЕ ЗАБЫТО
 --   `idempotency_keys.response_status` — HTTP-код ответа (100…599). Словарь
 --   здесь задаёт IANA, не приложение.
---   `payment_transactions.status` — словарь платёжного провайдера (его же
---   значения уходят в raw-payload). Закреплять в спеке чужой словарь значит
---   ломаться при смене провайдера.
+--   `payment_transactions.status` — свободна, но НЕ потому, что она «словарь
+--   провайдера»: так было записано раньше, и это неверно. Ни один писатель не
+--   копирует `status` из payload — значения пишем мы (PaymentStateMachine), а
+--   сырой ответ провайдера уходит в `payload_json`. CHECK здесь не ставится
+--   потому, что колонка осознанно NULL-able (строка журнала может фиксировать
+--   факт события, не утверждая состояние), а правило «какой статус возможен при
+--   каком типе записи» — это правило приложения, владелец
+--   `Nabilet\Modules\Payments\Domain\TransactionType`, а не плоский список
+--   значений. `payment_transactions.type` — закрытый словарь из четырёх
+--   значений по той же причине: владелец тот же класс, проверку делает
+--   единственный писатель (`PaymentRepository::addTransaction`).
 --   `pages.status`, `promo_codes.status`, `halls.status`, `venues.status`,
 --   `event_categories.status`, `event_dates.status`, `offline_bundles.status` —
 --   значения только СРАВНИВАЮТСЯ ('active', 'published', 'draft', 'scheduled'),

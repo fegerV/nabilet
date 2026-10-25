@@ -10,6 +10,7 @@ use Illuminate\Support\Str;
 use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Orders\Services\OrderService;
 use Nabilet\Modules\Orders\StateMachines\OrderStateMachine;
+use Nabilet\Modules\Payments\Domain\TransactionType;
 use Nabilet\Modules\Payments\Providers\PaymentProviderInterface;
 use Nabilet\Modules\Payments\Services\PaymentProviderRegistry;
 use Nabilet\Modules\Payments\Services\PaymentService;
@@ -120,7 +121,7 @@ class PaymentReconcileTest extends TestCase
             1,
             DB::table('payment_transactions')
                 ->where('payment_id', $paymentId)
-                ->where('type', 'capture')
+                ->where('type', TransactionType::CAPTURE)
                 ->count(),
             'повторная сверка записала вторую операцию захвата'
         );

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Payments\Repositories;
 
+use Nabilet\Modules\Payments\Domain\TransactionType;
 use Nabilet\Modules\Payments\Models\Payment;
 use Nabilet\Modules\Payments\Models\PaymentTransaction;
 use Nabilet\Modules\Payments\StateMachines\PaymentStateMachine;
@@ -103,8 +104,27 @@ class PaymentRepository
         return $payment->fresh();
     }
 
+    /**
+     * Единственный писатель журнала `payment_transactions`.
+     *
+     * Поэтому проверка пары (тип, статус) стоит ЗДЕСЬ, а не в каждом из шести
+     * вызовов: словарь типа был объявлен докблоком модели, а писали его голыми
+     * строками — седьмой писатель мог написать что угодно, и колонка
+     * `type VARCHAR(64) NOT NULL` без CHECK это молча принимала. Правило живёт в
+     * `TransactionType`, а этот метод его вызывает, так что обойти его можно
+     * только правкой доменного класса.
+     *
+     * Исключение здесь безопасно: `type` и `status` никогда не берутся из
+     * payload провайдера (только из констант приложения), поэтому отказать
+     * вебхуку, который придёт повторно, эта проверка не может.
+     */
     public function addTransaction(Payment $payment, array $transactionData): PaymentTransaction
     {
+        TransactionType::assertAllowed(
+            (string) ($transactionData['type'] ?? ''),
+            isset($transactionData['status']) ? (string) $transactionData['status'] : null,
+        );
+
         return $payment->transactions()->create($transactionData);
     }
 

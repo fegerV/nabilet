@@ -1844,9 +1844,18 @@ SET FOREIGN_KEY_CHECKS = 1;
 -- WHAT STAYS FREE-FORM, ON PURPOSE:
 --   `idempotency_keys.response_status` — an HTTP status code (100…599); the
 --     vocabulary belongs to IANA, not to the application.
---   `payment_transactions.status` — the payment provider's own vocabulary (it
---     also lands in the raw payload); pinning a third party's vocabulary in the
---     spec is how you break on a provider switch.
+--   `payment_transactions.status` — free-form, but NOT because it is the
+--     provider's vocabulary. That was the earlier reading and it was wrong: no
+--     writer ever copies `status` out of a provider payload. The values written
+--     are ours (`PaymentStateMachine`), and the provider's raw answer goes to
+--     `payload_json`. It stays without a CHECK because the column is nullable by
+--     design — a journal row may record that an event arrived without claiming a
+--     state — and because the pairing "which status can this transaction type
+--     assert" is an application rule owned by
+--     `Nabilet\Modules\Payments\Domain\TransactionType`, not a flat list of
+--     values. `payment_transactions.type` is a closed four-value vocabulary for
+--     the same reason: owned by that class, enforced by the only writer
+--     (`PaymentRepository::addTransaction`), deliberately not pinned here.
 --   `pages.status`, `promo_codes.status`, `halls.status`, `venues.status`,
 --     `event_categories.status`, `event_dates.status`, `offline_bundles.status` —
 --     values are only ever COMPARED ('active', 'published', 'draft',

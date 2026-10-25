@@ -39,7 +39,13 @@ use Illuminate\Support\Facades\DB;
  *
  * ЧТО ОСТАЁТСЯ СВОБОДНЫМ — И ПОЧЕМУ ЭТО ЗАПИСАНО, А НЕ ЗАБЫТО
  *   `idempotency_keys.response_status` — HTTP-код ответа: словарь IANA.
- *   `payment_transactions.status` — словарь провайдера (уходит и в raw-payload).
+ *   `payment_transactions.status` — свободна, но НЕ как «словарь провайдера»:
+ *   так было записано раньше, и это неверно. Ни один писатель не копирует
+ *   `status` из payload — значения пишем мы (`PaymentStateMachine`), сырой ответ
+ *   провайдера уходит в `payload_json`. CHECK не ставится потому, что колонка
+ *   осознанно NULL-able, а правило «какой статус возможен при каком типе записи»
+ *   — правило приложения (`Domain\TransactionType`), а не плоский список
+ *   значений. `payment_transactions.type` — закрытый словарь оттуда же.
  *   `pages.status`, `promo_codes.status`, `halls.status`, `venues.status`,
  *   `event_categories.status`, `event_dates.status`, `offline_bundles.status` —
  *   значения только сравниваются, ни один писатель их не проверяет. CHECK тут

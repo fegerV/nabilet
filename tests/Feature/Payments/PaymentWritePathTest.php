@@ -12,6 +12,7 @@ use Nabilet\Core\Errors\DomainRuleViolation;
 use Nabilet\Modules\Core\Users\Models\User;
 use Nabilet\Modules\Orders\Services\OrderService;
 use Nabilet\Modules\Orders\StateMachines\OrderStateMachine;
+use Nabilet\Modules\Payments\Domain\TransactionType;
 use Nabilet\Modules\Payments\Models\Payment;
 use Nabilet\Modules\Payments\Services\PaymentService;
 use Nabilet\Modules\Payments\StateMachines\PaymentStateMachine;
@@ -91,8 +92,8 @@ class PaymentWritePathTest extends TestCase
         $transaction = DB::table('payment_transactions')->where('payment_id', $payment->id)->first();
 
         $this->assertNotNull($transaction);
-        $this->assertSame('authorization', $transaction->type);
-        $this->assertSame('pending', $transaction->status);
+        $this->assertSame(TransactionType::AUTHORIZATION, $transaction->type);
+        $this->assertSame(PaymentStateMachine::PENDING, $transaction->status);
         // Колонка называется `payload_json`; `metadata` в таблице нет.
         $this->assertNotNull($transaction->created_at);
     }
@@ -148,7 +149,7 @@ class PaymentWritePathTest extends TestCase
             1,
             DB::table('payment_transactions')
                 ->where('payment_id', $payment->id)
-                ->where('type', 'capture')
+                ->where('type', TransactionType::CAPTURE)
                 ->count()
         );
 
@@ -198,7 +199,7 @@ class PaymentWritePathTest extends TestCase
             1,
             DB::table('payment_transactions')
                 ->where('payment_id', $payment->id)
-                ->where('type', 'capture')
+                ->where('type', TransactionType::CAPTURE)
                 ->count(),
             'a replayed webhook was processed more than once'
         );
