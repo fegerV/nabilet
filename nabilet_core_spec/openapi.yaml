@@ -148,6 +148,22 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '422': { $ref: '#/components/responses/ValidationError' }
 
+  /auth/yandex/start:
+    get:
+      tags: [Auth]
+      summary: Start Yandex OAuth
+      operationId: yandexStart
+      responses:
+        '302': { description: Redirect to the provider }
+
+  /auth/vk/start:
+    get:
+      tags: [Auth]
+      summary: Start VK OAuth
+      operationId: vkStart
+      responses:
+        '302': { description: Redirect to the provider }
+
   /auth/yandex/callback:
     get:
       tags: [Auth]

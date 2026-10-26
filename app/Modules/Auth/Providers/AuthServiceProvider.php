@@ -11,7 +11,11 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Nabilet\Modules\Auth\Guards\SessionTokenGuard;
+use Nabilet\Modules\Auth\Domain\SocialProvider;
 use Nabilet\Modules\Auth\Services\SessionIssuer;
+use Nabilet\Modules\Auth\Services\Social\SocialProviderRegistry;
+use Nabilet\Modules\Auth\Services\Social\VkClient;
+use Nabilet\Modules\Auth\Services\Social\YandexClient;
 
 class AuthServiceProvider extends ServiceProvider
 {
@@ -30,6 +34,30 @@ class AuthServiceProvider extends ServiceProvider
     {
         // Bind authentication repositories and services if needed
         // $this->app->bind(AuthRepositoryInterface::class, AuthRepository::class);
+        $this->registerSocialProviders();
+    }
+
+    /**
+     * Соц-вход: реестр клиентов OAuth по имени провайдера.
+     *
+     * Клиенты строятся здесь, а не резолвятся из контейнера по строке, потому что
+     * имя приходит из URL. `SocialProviderRegistry::for()` сверяет его со словарём
+     * `SocialProvider` и отдаёт `null` для всего остального — построить клиент по
+     * произвольной строке из пути невозможно в принципе.
+     *
+     * `singleton`, а не `bind`: клиенты не хранят состояния запроса (только
+     * конфигурацию), поэтому пересоздавать их на каждое обращение незачем.
+     *
+     * Telegram здесь НЕ регистрируется: у него нет OAuth-обмена кода. Его
+     * `initData` проверяется симметричной подписью в `TelegramInitData`, а не
+     * сетевым вызовом, поэтому «клиента» у него нет — есть только контроллер.
+     */
+    private function registerSocialProviders(): void
+    {
+        $this->app->singleton(SocialProviderRegistry::class, static fn (): SocialProviderRegistry => new SocialProviderRegistry([
+            SocialProvider::YANDEX => new YandexClient(),
+            SocialProvider::VK => new VkClient(),
+        ]));
     }
 
     /**

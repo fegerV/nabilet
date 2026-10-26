@@ -5,12 +5,20 @@ declare(strict_types=1);
 use Illuminate\Support\Facades\Route;
 use Nabilet\Modules\Auth\Http\Controllers\AuthController;
 use Nabilet\Modules\Auth\Http\Controllers\MeController;
+use Nabilet\Modules\Auth\Http\Controllers\SocialAuthController;
 
 /*
 |--------------------------------------------------------------------------
 | Auth Module API Routes
 |--------------------------------------------------------------------------
 */
+
+/*
+ * Telegram Mini App (ТЗ §17). Путь — `/api/v1/telegram/auth`, БЕЗ префикса
+ * `auth`: контракт объявляет его на корне API, и `init_data` проверяется
+ * server-side до любого использования данных.
+ */
+Route::post('/telegram/auth', [SocialAuthController::class, 'telegram'])->middleware('throttle:auth');
 
 Route::prefix('auth')->group(function () {
     Route::post('/register', [AuthController::class, 'register']);

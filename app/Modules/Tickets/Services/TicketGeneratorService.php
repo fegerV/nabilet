@@ -63,7 +63,7 @@ class TicketGeneratorService
      *   event_date:string,
      *   venue_name:string,
      *   seats:string,
-     *   price:float,
+     *   price:\Nabilet\Core\Support\Money,
      *   currency:string,
      *   customer_name:string,
      *   customer_email:string,

@@ -135,6 +135,22 @@ if (file_exists(__DIR__ . '/../app/Modules/Installer/routes/web.php')) {
 }
 
 /*
+ * OAuth-соц-вход (модуль Auth): /auth/{yandex|vk}/start и /auth/{provider}/callback.
+ *
+ * Web, а не api: `start` — это переход браузера на страницу провайдера, `callback`
+ * — возврат с неё, и ответ в обоих случаях 302, а не JSON. Пути объявлены без
+ * `/api/v1` в `openapi.yaml` (`yandexStart`/`yandexCallback` и пары VK), поэтому
+ * живут здесь.
+ *
+ * Подключается ЗДЕСЬ — до `Route::fallback()` ниже. Префикс `/auth/` не
+ * пересекается ни с `/page/`, ни с `/venue/`, ни с `/install`, поэтому порядок
+ * относительно соседей значения не имеет.
+ */
+if (file_exists(__DIR__ . '/../app/Modules/Auth/routes/web.php')) {
+    require __DIR__ . '/../app/Modules/Auth/routes/web.php';
+}
+
+/*
  * Sitemap routes are handled by the SEO module via api.php.
  */
 

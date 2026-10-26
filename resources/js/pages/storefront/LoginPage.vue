@@ -20,6 +20,13 @@ import { useRoute, useRouter } from 'vue-router'
 import NButton from '@/components/ui/NButton.vue'
 import NInput from '@/components/ui/NInput.vue'
 import { customerAuthMessage, loginCustomer } from '@/lib/customer'
+import {
+  SOCIAL_PROVIDERS,
+  isTelegramMiniApp,
+  loginWithTelegram,
+  startSocialLogin,
+  telegramInitData,
+} from '@/lib/social'
 
 const router = useRouter()
 const route = useRoute()
@@ -29,6 +36,13 @@ const password = ref('')
 const loading = ref(false)
 const error = ref<string | null>(null)
 const showPassword = ref(false)
+
+/** Кнопки OAuth. Список — владелец в `lib/social.ts`, здесь только рендер. */
+const social = SOCIAL_PROVIDERS
+
+/** Telegram Mini App: `initData` есть только внутри клиента Telegram. */
+const inTelegram = isTelegramMiniApp()
+const telegramLoading = ref(false)
 
 /**
  * Куда вернуться после входа. Значение приходит от guard'а кабинета
@@ -60,6 +74,29 @@ async function submit(): Promise<void> {
     error.value = customerAuthMessage(e)
   } finally {
     loading.value = false
+  }
+}
+
+/**
+ * Вход внутри Telegram Mini App.
+ *
+ * Подпись проверяет сервер (`TelegramInitData`); здесь только передать
+ * `initData`. `initDataUnsafe` не используется ни при каких условиях — он не
+ * подписан, и доверять ему нельзя.
+ */
+async function submitTelegram(): Promise<void> {
+  const initData = telegramInitData()
+  if (initData === null || telegramLoading.value) return
+
+  error.value = null
+  telegramLoading.value = true
+  try {
+    await loginWithTelegram(initData)
+    await router.push(redirect.value)
+  } catch {
+    error.value = 'Не удалось войти через Telegram. Попробуйте ещё раз.'
+  } finally {
+    telegramLoading.value = false
   }
 }
 </script>
@@ -117,6 +154,51 @@ async function submit(): Promise<void> {
         <NButton type="submit" variant="primary" block size="lg" :loading="loading">Войти</NButton>
       </div>
     </form>
+
+    <!--
+      Соц-вход (ТЗ §17).
+
+      Кнопки ВНЕ формы: у них своя навигация (уход на страницу провайдера), и
+      внутри `<form>` они были бы кнопками отправки — нажатие «Войти через
+      Яндекс» отправляло бы пустую парольную форму.
+
+      Показываются только те провайдеры, для которых у сервера есть
+      конфигурация (`/auth/{provider}/start` вернёт `provider_not_configured`,
+      если её нет). Список и подписи живут в `lib/social.ts` — там же, где
+      обработка возврата, чтобы «начать» и «принять» не разъехались.
+    -->
+    <div v-if="social.length > 0" class="mt-4">
+      <div class="flex items-center gap-3">
+        <span class="h-px flex-1 bg-white/10" />
+        <span class="text-xs uppercase tracking-wide text-subtle">или</span>
+        <span class="h-px flex-1 bg-white/10" />
+      </div>
+
+      <div class="mt-4 grid gap-2" :class="social.length > 1 ? 'grid-cols-2' : 'grid-cols-1'">
+        <button
+          v-for="provider in social"
+          :key="provider.id"
+          type="button"
+          class="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-content transition-colors hover:border-white/20 hover:bg-white/10"
+          @click="startSocialLogin(provider.id, redirect)"
+        >Войти через {{ provider.label }}</button>
+      </div>
+    </div>
+
+    <!--
+      Telegram — не OAuth-переход, а вход по подписанному `initData`. Кнопка
+      имеет смысл только внутри Mini App: в обычном браузере подписи нет, и
+      отправлять нечего.
+    -->
+    <NButton
+      v-if="inTelegram"
+      class="mt-2"
+      variant="secondary"
+      block
+      size="lg"
+      :loading="telegramLoading"
+      @click="submitTelegram"
+    >Продолжить в Telegram</NButton>
 
     <div class="mt-4 flex flex-wrap items-center justify-between gap-2 text-sm">
       <RouterLink to="/forgot-password" class="text-brand-400 transition-colors hover:text-brand-300">

@@ -609,6 +609,9 @@ $knownExtensions = [
         'jobs',                   // очередь Laravel: транзакционная почта и исходящие вебхуки
         'web_sessions',           // HTTP-сессии Laravel (storefront/admin SPA); config/session.php
                                   // шёл в `sessions`, но это доменная таблица сеансов событий
+        'social_accounts',        // соц-вход (модуль Auth): привязка user → (provider, provider_user_id).
+                                  // Спека соц-вход не описывает вовсе; `users` при этом уже допускает
+                                  // NULL в email/password — это и был заложенный запас под такой вход
     ],
     'columns' => [
         'users' => ['remember_token'],
@@ -619,6 +622,14 @@ $knownExtensions = [
     // в обе стороны: колонка вычиталась, а ожидалась — и diff никогда не сходился.
     'defaults' => [],
     'indexes' => [],
+    // Внешние ключи app-only таблиц: спека описывает только свои таблицы, поэтому
+    // FK внутри таблицы приложения сюда вносится поимённо. Список проверяется на
+    // устаревание так же, как INVENTED_FIELDS: исключение, переставшее
+    // срабатывать, — это либо забытая миграция, либо лишняя строка, и оба случая
+    // должны быть видны, а не тихо разрешены навсегда.
+    'foreign_keys' => [
+        'fk_social_user', // social_accounts.user_id -> users(id) ON DELETE CASCADE
+    ],
 ];
 
 function assertExactDiff(array $actualMissing, array $actualExtra, array $expectedMissing, array $expectedExtra, string $what): void
@@ -844,7 +855,7 @@ check('Core indexes match; application-owned indexes are explicit', function () 
     assertTrue($problems === [], implode("\n      ", $problems));
 });
 
-check('same foreign keys, including ON DELETE', function () use ($tables, $recorder, $spec): void {
+check('same foreign keys, including ON DELETE', function () use ($tables, $recorder, $spec, $knownExtensions): void {
     $have = [];
 
     foreach ($tables as $name => $blueprint) {
@@ -891,9 +902,25 @@ check('same foreign keys, including ON DELETE', function () use ($tables, $recor
         }
     }
 
+    $seen = [];
+
     foreach (array_keys($have) as $name) {
         if (! isset($want[$name])) {
+            if (in_array($name, $knownExtensions['foreign_keys'], true)) {
+                $seen[] = $name;
+                continue;
+            }
+
             $problems[] = $name . ' is declared but not in the spec';
+        }
+    }
+
+    // Ratchet: названное исключение обязано сработать. Если FK исчез из миграций,
+    // строка в $knownExtensions осталась бы «мёртвой лицензией» и разрешала бы
+    // любой будущий одноимённый ключ молча.
+    foreach ($knownExtensions['foreign_keys'] as $name) {
+        if (! in_array($name, $seen, true)) {
+            $problems[] = $name . ' is allow-listed but no longer declared';
         }
     }
 

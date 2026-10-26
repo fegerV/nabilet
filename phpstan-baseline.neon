@@ -547,22 +547,22 @@ parameters:
 			path: app/Modules/Notifications/Http/Controllers/NotificationTemplateController.php
 
 		-
-			message: "#^Offset 'qr_payload' on array\\{order_id\\: int, ticket_number\\: string, event_name\\: string, event_date\\: string, venue_name\\: string, seats\\: string, price\\: float, currency\\: string, \\.\\.\\.\\} on left side of \\?\\? always exists and is not nullable\\.$#"
+			message: "#^Offset 'qr_payload' on array\\{order_id\\: int, ticket_number\\: string, event_name\\: string, event_date\\: string, venue_name\\: string, seats\\: string, price\\: Nabilet\\\\Core\\\\Support\\\\Money, currency\\: string, \\.\\.\\.\\} on left side of \\?\\? always exists and is not nullable\\.$#"
 			count: 1
 			path: app/Modules/Notifications/Services/OrderNotificationData.php
 
 		-
-			message: "#^Offset 'seats' on array\\{order_id\\: int, ticket_number\\: string, event_name\\: string, event_date\\: string, venue_name\\: string, seats\\: string, price\\: float, currency\\: string, \\.\\.\\.\\} on left side of \\?\\? always exists and is not nullable\\.$#"
+			message: "#^Offset 'seats' on array\\{order_id\\: int, ticket_number\\: string, event_name\\: string, event_date\\: string, venue_name\\: string, seats\\: string, price\\: Nabilet\\\\Core\\\\Support\\\\Money, currency\\: string, \\.\\.\\.\\} on left side of \\?\\? always exists and is not nullable\\.$#"
 			count: 1
 			path: app/Modules/Notifications/Services/OrderNotificationData.php
 
 		-
-			message: "#^Offset 'ticket_number' on array\\{order_id\\: int, ticket_number\\: string, event_name\\: string, event_date\\: string, venue_name\\: string, seats\\: string, price\\: float, currency\\: string, \\.\\.\\.\\} on left side of \\?\\? always exists and is not nullable\\.$#"
+			message: "#^Offset 'ticket_number' on array\\{order_id\\: int, ticket_number\\: string, event_name\\: string, event_date\\: string, venue_name\\: string, seats\\: string, price\\: Nabilet\\\\Core\\\\Support\\\\Money, currency\\: string, \\.\\.\\.\\} on left side of \\?\\? always exists and is not nullable\\.$#"
 			count: 1
 			path: app/Modules/Notifications/Services/OrderNotificationData.php
 
 		-
-			message: "#^Offset 'ticket_url' on array\\{order_id\\: int, ticket_number\\: string, event_name\\: string, event_date\\: string, venue_name\\: string, seats\\: string, price\\: float, currency\\: string, \\.\\.\\.\\} on left side of \\?\\? always exists and is not nullable\\.$#"
+			message: "#^Offset 'ticket_url' on array\\{order_id\\: int, ticket_number\\: string, event_name\\: string, event_date\\: string, venue_name\\: string, seats\\: string, price\\: Nabilet\\\\Core\\\\Support\\\\Money, currency\\: string, \\.\\.\\.\\} on left side of \\?\\? always exists and is not nullable\\.$#"
 			count: 1
 			path: app/Modules/Notifications/Services/OrderNotificationData.php
 

@@ -65,7 +65,8 @@ C:\Project\nabilet
 3. **Спека/пути:** решить 29 спек-путей (`/admin/*` → ресурсные пути, `/webhooks/yookassa`
    → `/payments/webhooks/{provider}`, `/embed/*`) — двигать роуты или править `openapi.yaml`;
    привести спеку к 3 триггерам жизненного цикла.
-4. **Не построено:** соц-вход (Yandex/VK/Telegram), translations-подпути, Embed-виджет.
+4. **Не построено:** translations-подпути, Embed-виджет. Соц-вход (Яндекс/VK/Telegram)
+   построен и выключен без кредов провайдеров — включение только через `.env`.
 5. **Эксплуатация:** бэкапы БД, мониторинг/алерты, ротация секретов, PII-free логи, 152-ФЗ.
 6. **Android Checker** — отдельный проект (офлайн-бандлы), вне web-MVP.
 
@@ -82,6 +83,16 @@ C:\Project\nabilet
   эмитит `Money::of()`, а не float. Сторож — `TicketPriceFormatSingleOwnerTest`.
 - (Batch 47) — цена «от N ₽» на посадочной: `Money::format(omitWholeKopecks)`, убрана
   своя ветка целых рублей. Сторож — `LandingPriceFormatSingleOwnerTest`.
+- (Соц-вход, ТЗ §17) — построен вход через Яндекс, VK и Telegram: `social_accounts`
+  (app-only), `SocialProvider`/`SocialIdentity`/`TelegramInitData`/`OAuthState`,
+  `SocialAuthService` (единое правило «к какому аккаунту привязать»),
+  `GET /auth/{provider}/start|callback`, `POST /api/v1/telegram/auth`, экран
+  `#/auth/callback` и кнопки на форме входа. Две копии правил поймали сторожа и
+  устранены по ходу: HMAC для `initData` ушёл в `HmacSignature::deriveKey()`
+  (`HmacSignatureCopyTest`), `users.status` — в `UserStatus::ACTIVE`
+  (`PublicationStatusCopyTest`). Найдено и исправлено попутно: докблок
+  `TicketGeneratorService::generateTicketData()` всё ещё объявлял `price: float`
+  после Batch 46 — PHPStan ловил это как unmatched-исключение в baseline.
 
 Все батчи: гейты 14/14, unit и PHPUnit зелёные, статический сторож делает возврат копии
 невозможным без падения теста.

@@ -153,6 +153,20 @@ const routes: RouteRecordRaw[] = [
       { path: 'login', name: 'login', component: () => import('@/pages/storefront/LoginPage.vue'), meta: { title: 'Вход' } },
       { path: 'register', name: 'register', component: () => import('@/pages/storefront/RegisterPage.vue'), meta: { title: 'Регистрация' } },
       {
+        /*
+         * Приём результата соц-входа (ТЗ §17). Путь задан СЕРВЕРОМ:
+         * `SocialAuthController::frontendUrl()` собирает
+         * `APP_URL . '/#/auth/callback'` и добавляет `?token=` или `?error=`.
+         * Переименование маршрута здесь сломало бы живой вход молча — человек
+         * после «Войти через Яндекс» увидел бы 404 витрины. Поэтому путь
+         * фиксируется тестом `SocialAuthTest`, а не только этой строкой.
+         */
+        path: 'auth/callback',
+        name: 'social-callback',
+        component: () => import('@/pages/storefront/SocialCallbackPage.vue'),
+        meta: { title: 'Завершение входа' },
+      },
+      {
         path: 'forgot-password',
         name: 'forgot-password',
         component: () => import('@/pages/storefront/ForgotPasswordPage.vue'),

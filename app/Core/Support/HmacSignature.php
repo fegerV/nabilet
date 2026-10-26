@@ -99,6 +99,35 @@ final class HmacSignature
     }
 
     /**
+     * Ключ, выведенный из HMAC, — сырые байты.
+     *
+     * Отдельная операция, а не «`digest()` с флагом», потому что это ДРУГОЙ
+     * смысл: результат здесь не подпись и наружу не уходит — он сам служит
+     * ключом для следующего HMAC. Так устроена проверка `initData` Telegram:
+     *
+     *   secret_key = HMAC_SHA256(bot_token, "WebAppData")   ← этот метод
+     *   hash       = HMAC_SHA256(data_check_string, secret_key)
+     *
+     * Hex-обёртка на первом шаге дала бы другой ключ и другую подпись, поэтому
+     * `digest(raw: true)` тут был бы верным по байтам, но неверным по названию:
+     * следующий читатель решил бы, что это подпись, и попробовал бы её
+     * сравнить. Имя «вывести ключ» снимает этот вопрос.
+     *
+     * `$material` — то, что хешируется (у Telegram — bot token), `$key` — ключ
+     * HMAC (у Telegram — константа протокола `"WebAppData"`). Порядок совпадает
+     * с `hash_hmac($algo, $data, $key)` намеренно.
+     *
+     * Пустой ключ — исключение по тому же правилу, что у `sign()`: ключ,
+     * который знают все, ключом не является.
+     */
+    public static function deriveKey(string $material, string $key): string
+    {
+        self::assertUsableSecret($key);
+
+        return hash_hmac(self::ALGORITHM, $material, $key, true);
+    }
+
+    /**
      * Совпадает ли подпись с той, что мы бы посчитали.
      *
      * Пустая подпись — сразу `false`, не доходя до сравнения: `hash_equals('', '')`

@@ -129,6 +129,7 @@ const APPLICATION_EXTENSION_FIELDS = [
  */
 const APPLICATION_ONLY_TABLES = [
     'storefront_settings', // конструктор витрины (модуль Storefront)
+    'social_accounts',     // соц-вход (модуль Auth): DDL в миграции, спека таблицу не описывает
 ];
 
 const INVENTED_FIELDS = [
