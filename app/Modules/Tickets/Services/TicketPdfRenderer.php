@@ -379,7 +379,6 @@ HTML;
      */
     private function renderText(string $content, array $data): string
     {
-        $price = is_numeric($data['price'] ?? null) ? (float) $data['price'] : 0.0;
         $currency = strtoupper((string) ($data['currency'] ?? 'RUB'));
 
         $flat = [
@@ -390,10 +389,10 @@ HTML;
             'ticket.number' => (string) ($data['ticket_number'] ?? ''),
             'ticket.holder' => (string) ($data['customer_name'] ?? ''),
             // «3 500» — без копеек, если они нулевые: на билете они не нужны, а
-            // «3 500,00» занимает место и читается хуже.
-            'ticket.price' => fmod($price, 1.0) === 0.0
-                ? number_format($price, 0, ',', ' ')
-                : number_format($price, 2, ',', ' '),
+            // «3 500,00» занимает место и читается хуже. Правило форматирования
+            // цены — СОБСТВЕННОСТЬ Money::format(): копия не выводила бы символ
+            // валюты и расходилась бы с письмом заказа.
+            'ticket.price' => $data['price']->format('ru_RU', omitWholeKopecks: true),
             // Символ валюты — СОБСТВЕННОСТЬ Money::symbolFor(). Раньше здесь была
             // своя ветка выбора символа для RUB, дублирующая карту символов Money;
             // копия молча расходилась бы при добавлении валюты (USD→$ и т.п.).

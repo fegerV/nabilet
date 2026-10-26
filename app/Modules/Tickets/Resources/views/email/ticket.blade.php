@@ -80,7 +80,7 @@
         <!-- Price -->
         <div style="margin-bottom: 25px; text-align: right;">
             <span style="font-size: 14px; color: #6c757d;">Общая стоимость: </span>
-            <span style="font-size: 24px; font-weight: bold; color: #28a745;">{{ number_format($ticketData['price'], 2, ',', ' ') }} {{ $ticketData['currency'] }}</span>
+            <span style="font-size: 24px; font-weight: bold; color: #28a745;">{{ $ticketData['price']->format('ru_RU') }}</span>
         </div>
 
         <!-- QR Code Section -->

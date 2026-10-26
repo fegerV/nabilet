@@ -6,6 +6,7 @@ namespace Nabilet\Modules\Tickets\Services;
 
 use Illuminate\Support\Facades\Log;
 use Nabilet\Core\Support\AssetUrl;
+use Nabilet\Core\Support\Money;
 use Nabilet\Modules\Tickets\Domain\Qr\QrCapacityException;
 use Nabilet\Modules\Tickets\Domain\Qr\QrEncoder;
 use Nabilet\Modules\Tickets\Domain\Qr\QrPngRenderer;
@@ -138,7 +139,11 @@ class TicketGeneratorService
             // блоках. `seats` остаётся склеенной строкой для «одной строкой».
             'seat_row' => (string) ($seat?->row?->name ?? ''),
             'seat_number' => (string) ($seat?->number ?? ''),
-            'price' => $minorAmount / 100,
+            // Цена — СОБСТВЕННОСТЬ Money. Раньше здесь стояло вещественное
+            // деление minor-единиц на сто, и каждый потребитель (письмо, PDF)
+            // заново форматировал результат — копия правила конверсии
+            // minor→десятичное, которая молча расходится с владельцем.
+            'price' => Money::of($minorAmount, (string) ($order->currency ?? 'RUB')),
             'currency' => (string) ($order->currency ?? 'RUB'),
             'customer_name' => (string) ($order->customer_name ?? $order->user?->name ?? 'Покупатель'),
             'customer_email' => (string) $order->customer_email,

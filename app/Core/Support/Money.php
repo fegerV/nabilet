@@ -180,9 +180,25 @@ final class Money implements \JsonSerializable, \Stringable
         return sprintf('%s%d.%02d', $sign, intdiv($abs, 100), $abs % 100);
     }
 
-    public function format(string $locale = 'ru_RU'): string
+    /**
+     * Отображаемая сумма в локали `ru_RU` — единственный владелец этого правила.
+     *
+     * ДВА КАНАЛА ВЫДАЧИ ПОЛЬЗУЮТСЯ ИМ ЖЕ: письмо заказа (OrderNotificationData)
+     * и PDF билета (TicketPdfRenderer) — иначе «3 500,00 ₽» и «3 500 ₽» могли бы
+     * разойтись именно потому, что каждый форматировал minor-единицы сам.
+     *
+     * `$omitWholeKopecks` включает правило «не печатать копейки, когда их нет» —
+     * это осознанный вид билета (на билете «3 500 ₽» читается лучше, чем
+     * «3 500,00 ₽»), а не отдельное форматирование: и письмо, и PDF зовут
+     * один и тот же метод, поэтому смена символа валюты или разделителя
+     * отразится в обоих каналах сразу.
+     */
+    public function format(string $locale = 'ru_RU', bool $omitWholeKopecks = false): string
     {
-        $formatted = number_format(abs($this->minorUnits) / 100, 2, ',', ' ');
+        $abs = abs($this->minorUnits);
+        $decimals = ($omitWholeKopecks && $abs > 0 && $abs % 100 === 0) ? 0 : 2;
+
+        $formatted = number_format($abs / 100, $decimals, ',', ' ');
 
         return ($this->minorUnits < 0 ? '−' : '') . $formatted . ' ' . self::symbolFor($this->currency);
     }
