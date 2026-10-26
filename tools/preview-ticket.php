@@ -60,7 +60,8 @@ if (isset($options['ticket'])) {
         'event_date' => '13.11.2026 19:00',
         'venue_name' => 'Сургутская филармония, Большой зал',
         'seats' => 'Партер / Ряд 5 / Место 12',
-        'price' => 3500.0,
+        // Контракт ticketData['price'] — Money; копейки, чтобы проверить дробный формат.
+        'price' => \Nabilet\Core\Support\Money::of(350050, 'RUB'),
         'currency' => 'RUB',
         'customer_name' => 'Иван Иванов',
         'customer_email' => 'ivan@example.com',

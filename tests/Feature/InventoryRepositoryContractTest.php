@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Nabilet\Core\Support\Money;
 use Carbon\CarbonImmutable;
 use Nabilet\Modules\Inventory\Models\InventoryItem;
 use Nabilet\Modules\Inventory\Repositories\InventoryItemRepository;
@@ -134,7 +135,12 @@ final class InventoryRepositoryContractTest extends TestCase
         $this->assertSame('Тестовый концерт', $data['event_name']);
         $this->assertSame('20.11.2026 19:30', $data['event_date']);
         $this->assertSame('Ряд 7 / Место 12', $data['seats']);
-        $this->assertEquals(125, $data['price']);
+        // Контракт ticketData['price'] — Money (единственный владелец формата).
+        // Раньше здесь был float 125.0; письмо и PDF зовут ->format(), поэтому
+        // источник обязан отдавать Money, а не число.
+        $this->assertInstanceOf(Money::class, $data['price']);
+        $this->assertSame(12500, $data['price']->minorUnits());
+        $this->assertSame('RUB', $data['price']->currency());
         $this->assertSame('NB1.ticket-public-id.token.signature', $data['qr_payload']);
         $this->assertArrayNotHasKey('qr_code', $data, 'do not claim a raster QR exists without a QR encoder');
 
