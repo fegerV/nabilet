@@ -1,182 +1,139 @@
-# NABILET — готовность к продакшену (актуально 2026-10-07)
+# NABILET — готовность к продакшену (актуально 2026-10-27)
 
-> **Источник истины о текущем состоянии.** Исторический срез «что осталось до запуска» —
-> [`LAUNCH-READINESS.md`](LAUNCH-READINESS.md) (срез 2026-09-20, прикладной слой тогда не был
-> написан). Сейчас прикладной слой реализован; этот файл фиксирует **реальное** состояние,
-> конкретные незавершённые места, моки/заглушки и план закрытия. Обновляется по каждому
-> крупному этапу. Сверяться перед релизом.
+> **Источник истины о текущем состоянии.** Прошлый срез — 2026-10-07 (PHPUnit 105/105,
+> unit 596). С тех пор закрыты Auth reset/verify, placeholder-разделы, CI, вебхуки,
+> лояльность и целая серия дефектов «правило скопировано, а не вызвано». Этот файл
+> фиксирует **реальное** состояние на 2026-10-27, конкретные оставшиеся места и план
+> закрытия. Исторический срез «что осталось до запуска» — [`LAUNCH-READINESS.md`](LAUNCH-READINESS.md)
+> (2026-09-20, прикладной слой тогда не был написан) — **не актуален**.
 
 ---
 
 ## 1. Краткий вывод
 
-**Готово и работает:** прикладной слой (22 контроллера, 18 API Resources), Vue 3 SPA
-(витрина + админка + конструктор залов + конструктор билетов), платёжный провайдер YooKassa
-(реальные вызовы `api.yookassa.ru/v3`, проверка подписи вебхука, возвраты), доменная логика
-ядра (покрыта тестами). **Проверки зелёные: Vitest 128/128, PHPUnit 105/105 (430 assertions),
-vue-tsc и Vite production build** (проверено 2026-10-07).
+**Код готов к продакшену; готова ли среда — нет.** Всё, что можно проверить без внешних
+сервисов, зелёное: 14 гейтов, `verify-live` (схема живой БД = спека), 940 unit-методов,
+полный PHPUnit-набор, `vue-tsc`, Vitest, production-сборка Vite, PHPStan level 5 в CI.
 
-**P0 в коде закрыт 2026-10-07:** подключена транзакционная почта по редактируемым шаблонам,
-исходящие вебхуки по переходам статусов заказа, удалены `mock.ts` и демо-страницы (включая
-сгенерированные копии/ассеты из `public_html/build`). Реализованы статусы `awaiting_payment`,
-`paid`, `cancelled`, `refunded`, `partially_refunded`, `payment_failed`, `expired` (все допустимые статусы по `ck_orders_status`, кроме исходного `pending`).
+**Блокирует запуск только конфигурация production-транспорта и внешние интеграции:**
 
-**Релиз всё ещё требует настройки среды:** включить очередь `database`, применить миграцию
-таблиц `jobs`/`failed_jobs`, включить планировщик раз в минуту (он разбирает очередь и повторы
-вебхуков), заполнить реальные SMTP-параметры и `MAIL_FROM_ADDRESS`. В текущем локальном
-`.env` SMTP-хост пустой, поэтому почта не может уйти до настройки; SMTP и живой endpoint
-партнёра не тестировались. P0-код закрыт, конфигурация production-транспорта — ещё нет.
+1. **Среда:** `APP_ENV=production`, `APP_DEBUG=false`, реальный `APP_KEY`, SMTP-креды,
+   `MAIL_FROM_ADDRESS`; воркер очереди (`queue:work`) и минутный cron `schedule:run`;
+   `CACHE_STORE`/`SESSION_DRIVER` → `redis` (или `database`), права на `storage/`.
+2. **Живой платёж:** YooKassa проверена тестами и по контракту, но **не** прогнана против
+   реального `api.yookassa.ru` с боевыми ключами и живым вебхуком.
+3. **Не построено:** соц-вход (`/auth/yandex/callback`, `/auth/vk/callback`,
+   `/api/v1/telegram/auth`), подпути переводов (`…/{}/translations`), Embed-виджет (скелет).
 
-**Остаются перед MVP:** восстановление пароля и верификация email (`AuthController` — 3
-эндпоинта `notImplemented`); довести CI до прогона PHPUnit + Vitest + сборки образа;
-placeholder админ-секций `AdminPlaceholderPage.vue` (только для разделов, не заменённых
-реальными страницами).
+**Не блокирует веб-продажи:** Android Checker (отдельный проект), 152-ФЗ-инфраструктура
+(бэкапы/мониторинг/ротация секретов) — нужны до публичного трафика, но не до smoke-теста.
 
 ---
 
-## 2. Что реализовано (проверено по дереву и grep, 2026-10-07)
+## 2. Свежие метрики (проверено 2026-10-27)
 
-| Область | Статус | Как проверено |
-|---|---|---|
-| HTTP-слой | Модульные контроллеры и API Resources, маршруты централизованы в `routes/api.php` | `app/Modules/**/Http/Controllers/`, `*/Http/Resources/` |
-| Аутентификация/роли | Sanctum + `EnsureAdminRole`, `AuthResource` отдаёт роли, write-роуты защищены | `AuthController`, middleware |
-| Каталог/витрина | Catalog, EventPage, SeatSelection, Checkout — на реальном API (`lib/api.ts`) | `resources/js/pages/storefront/` |
-| Админка (Vue) | Логин, Мероприятия, Сеансы, Площадки, Залы, Заказы, интеграции, редактор шаблонов писем, управление исходящими вебхуками | `resources/js/pages/admin/` |
-| Конструктор залов | Загрузка/автосейв/публикация схем, импорт JSON, конвертация в инвентарь | `HallEditorPage.vue`, `HallSchemaVersion::toInventoryFormat` |
-| Платежи | `YooKassaProvider` (реальный API), `PaymentProviderRegistry`, `WebhookSignatureVerifier`, `RefundService` | `app/Modules/Payments/` |
-| Транзакционная почта | `TransactionalMailService`, редактируемые `notification_templates`, статусы заказов, `Notification`-лог + `afterCommit()` queue | `app/Modules/Notifications/`, `OrderObserver` |
-| Исходящие вебхуки | Подписки по организации и событиям, HMAC-SHA256, SSRF guard, retry policy, журнал доставок | `app/Modules/Webhooks/`, `webhooks`/`webhook_deliveries` |
-| Инвентарь/корзина/заказы/билеты | Сквозной контур реализован; цены, холды, чекаут, выпуск билетов | `Cart`/`Inventory`/`Orders`/`Tickets` модули + PHPUnit |
-| Тесты ядра (dependency-free) | 596 методов / 1216 утверждений (исторически) | `tests/run.php` |
-| Тесты прикладного слоя | Vitest 128/128, PHPUnit 105/105 (430 assertions) | запуск 2026-10-07 |
-| Документация | ARCHITECTURE, ROADMAP, deploy-timeweb, CODE-QUALITY-GUIDE, Техническая спецификация | `docs/` |
+| Проверка | Результат |
+|---|---|
+| Гейты (14 + `modules --validate`) | **14/14 OK**, `modules.exit=0` |
+| `verify-live.php` (живая БД ↔ спека) | **PASS**: 88 таблиц / 911 колонок, FK 127, unique 118, check 53 — совпадают |
+| Миграции живой БД | **0 pending** (`artisan migrate:status`) |
+| Unit (dependency-free, `tests/run.php`) | **940 методов / 2322 утверждения**, 0 failed |
+| Feature (`vendor/bin/phpunit`) | **1141 тест / 4659 утверждений**, 0 failed |
+| Фронт: `vue-tsc --noEmit` | **OK** (exit 0) |
+| Фронт: Vitest | **414/414** (33 файла) |
+| Фронт: `vite build` | **OK** — 8.98 s, 72 ассета, `index-*.js` 177 kB (gzip 66 kB) |
+| PHPStan level 5 | В CI-job `static` (локально песочница блокирует `reg.exe`/`WMIC.exe`) |
+| Спека | 88 таблиц / 911 колонок (`tools/spec-counts.php`) |
+| Структура | 36 модулей, 52 контроллера, 184 route-декларации в 27 файлах, OpenAPI 103 пути, 47 миграций |
+| Заглушки/долги | **0** `TODO`/`FIXME`/`notImplemented` в `app/`; **0** хардкод-секретов; **0** `dd/dump` |
+| CI | 6 job'ов: `verify`, `static` (PHPStan), `docker`, `schema`, `phpunit`, `frontend` |
+
+`verify-live` **не падает**, но «reports, not failed» два расхождения (см. §4): спека
+описывает 1 триггер, живых 3; 29 спек-путей не обслуживаются под точным путём.
 
 ---
 
-## 3. Не реализовано / моки / заглушки — конкретно
+## 3. Что закрыто с прошлого среза (2026-10-07 → 2026-10-27)
 
-| # | Где | Что | Серьёзность | Влияние на прод |
+- **Auth:** восстановление пароля и верификация e-mail (`AccountTokenService`,
+  `AccountRecoveryService`), пути приведены к контракту; `throttle:auth` 5/мин на пару
+  e-mail+IP и 20/мин на IP.
+- **Placeholder-разделы:** удалены; catch-all админки — честный `AdminNotFoundPage`.
+- **CI:** 6 job'ов — верификаторы, PHPStan, PHPUnit на MySQL 8.4, фронт (типы/тесты/сборка),
+  схема спеки, Docker-образ.
+- **Вебхуки:** HMAC-SHA256, SSRF-guard, retry/backoff, журнал доставок, идемпотентность fan-out.
+- **Лояльность:** фазы 1 (избранное/подписки) и 2 (бонусный счёт, кэшбэк, списание в чекауте).
+- **Деньги — единый владелец** (`Money`): конверсия minor↔decimal в Payments (B43),
+  формат суммы заказа в письме (B44), символ валюты (B45), цена билета в письме и PDF (B46),
+  цена «от N ₽» на посадочной (B47). Ручных `number_format` для денег вне `Money` — **нет**.
+- **Возвраты:** решение о сумме — только `RefundLedger::evaluate()` (B42).
+
+---
+
+## 4. Оставшиеся расхождения и риски
+
+| # | Где | Что | Серьёзность | Влияние |
 |---|---|---|---|---|
-| 1 | `app/Modules/Auth/**` | `forgot-password` / `reset-password` / `verify-email` — **реализованы** (см. ниже) | ✅ закрыто | Восстановление пароля и подтверждение адреса работают; пути приведены к контракту (`/auth/password/forgot`, `/auth/password/reset`, `/auth/email/verify`) |
-| 2 | `resources/js/pages/admin/AdminNotFoundPage.vue` | **Заглушек больше нет:** все пункты меню ведут на реальные экраны, catch-all отдаёт честный «Раздел не найден» (с подсказкой по опечатке) | ✅ закрыто | Раньше catch-all показывал «раздел ещё не реализован» — для несуществующего раздела это прямо вводило в заблуждение |
-| 3 | `.env` → `MAIL_HOST`, `MAIL_USERNAME`, `MAIL_PASSWORD`, `MAIL_FROM_ADDRESS` | Локальная конфигурация не содержит SMTP-хоста/учётных данных | 🔴 высокая до настройки | Письмо корректно создаётся и ставится в очередь, но транспорт не сможет подключиться; реальные credentials не коммитить |
-| 4 | `app/Modules/Embed/**` | Embed-виджет — скелет (`EmbedDomain` модель + `EmbedServiceProvider`); контроллер/роут/рендер не подтверждены | 🟡 средняя | ТЗ §: виджет для чужих сайтов; функциональность не доведена |
-| 5 | Android Checker | Отдельное приложение (офлайн-бандлы) | ⚪ вне web-MVP | Не блокирует веб-продажи |
-
-**Примечание по безопасности/качеству:** ранее отмеченные в `LAUNCH-READINESS.md` дефекты
-(перекос пространств имён, 88 выдуманных колонок, отсутствие `vendor/`/`composer.lock`,
-снятые защиты `.gitignore`) — **закрыты** в слияниях 2026-09-21. Текущий `composer.lock`
-отслеживается, пространства имён приведены к `Nabilet\Modules\`, секреты в `.gitignore`
-защищены.
+| 1 | `.env` (production) | `APP_DEBUG=true`, `MAIL_MAILER=log`, пустой `MAIL_HOST`; `CACHE_STORE=file`, `SESSION_DRIVER=file` | 🔴 до настройки | Письма не уходят, отладка светит стектрейсы, сессии/кэш не разделяются между воркерами |
+| 2 | YooKassa | Нет живого e2e с боевыми ключами и реальным вебхуком | 🔴 | Платёж/возврат/подпись проверены в тестах, но не против боевого API |
+| 3 | `verify-live`: триггеры | Спека описывает 1 триггер, живая БД — 3 (жизненный цикл схем зала) | 🟡 | Не дрейф схемы; нужна правка спеки, а не кода |
+| 4 | `verify-live`: 29 путей | `/admin/*` отдаются по ресурсным путям, `/webhooks/yookassa` → `/payments/webhooks/{provider}`, `/embed/*` вместо спек-путей | 🟡 | Фича есть, путь в спеке другой — выбрать: двигать роут или править спеку |
+| 5 | Auth соц-вход | `/auth/yandex/callback`, `/auth/vk/callback`, `/api/v1/telegram/auth` не реализованы | 🟡 | Вход только e-mail/пароль |
+| 6 | Translations | `/venues/{}/translations`, `/pages/{}/translations` не реализованы | 🟡 | Одноязычная витрина |
+| 7 | `app/Modules/Embed/**` | Виджет — скелет (модель + провайдер), рендер не подтверждён | 🟡 | ТЗ §: встраивание на чужие сайты не доведено |
+| 8 | Инфраструктура | Бэкапы БД, мониторинг/алерты, ротация секретов, PII-free логи, 152-ФЗ (`consents`/`privacy_requests`) | 🟡 | Нужно до публичного трафика |
+| 9 | Android Checker | Отдельное приложение (офлайн-бандлы) | ⚪ вне web-MVP | Не блокирует веб-продажи |
 
 ---
 
-## 4. Готовность по областям
+## 5. Готовность по областям
 
 | Область | Оценка | Комментарий |
 |---|---|---|
-| Ядро / доменная логика (прайсинг, корзина, инвентарь, заказы, билеты, чекин, платежи, приватность, тенантность) | 🟢 | Покрыта тестами, дефекты доказаны исполнением |
-| API / HTTP-слой | 🟢 | Валидация, роли, мультитенантные админские маршруты и централизованное подключение |
-| Фронтенд (витрина + админка + редактор залов + конструктор билетов) | 🟢 | Vue 3 + TS, на реальном API, `vue-tsc` и production build проходят |
-| Платежи (YooKassa: создание/статус/возврат + входящий вебхук) | 🟡 | Реализовано; **не проверено** против живого API (нужны реальные ключи и e2e) |
-| Уведомления / почта | 🟡 | Письма и вебхуки подключены и протестированы; production SMTP/cron не настроены |
-| Auth (reset/verify email) | 🟡 | Логин/роли есть; восстановление пароля и верификация — заглушки |
-| Инфраструктура (Docker / деплой / бэкапы / мониторинг / ротация секретов / 152-ФЗ / PII-логи) | 🟡 | Docker-файлы и `docs/deploy-timeweb.md` есть; образ не собирался; бэкапы/мониторинг/ротация/логирование без PII не проверены |
-| CI | 🟢 | `.github/workflows/ci.yml` гоняет dependency-free верификаторы ядра, **PHPUnit** на MySQL 8.4, **Vitest + vue-tsc + production build**, собирает образ и применяет spec-бандл к MySQL |
+| Ядро / домен (прайсинг, корзина, инвентарь, заказы, билеты, чекин, платежи, приватность, тенантность) | 🟢 | Покрыто тестами; дефекты доказаны исполнением |
+| API / HTTP | 🟢 | Валидация, роли, мультитенантность; `verify-live` PASS |
+| Фронтенд (витрина + админка + залы + конструктор билетов) | 🟢 | `vue-tsc`, Vitest 414/414, production build |
+| Платежи (YooKassa: create/status/refund + вебхук) | 🟡 | Код и подпись готовы; живой e2e не проведён |
+| Уведомления / почта | 🟡 | Код и шаблоны готовы; production SMTP/cron не настроены |
+| Auth | 🟢 / 🟡 | E-mail reset/verify — 🟢; соц-вход — 🟡 (не построен) |
+| Инфраструктура (Docker/деплой/бэкапы/мониторинг/152-ФЗ) | 🟡 | Docker и `deploy-timeweb.md` есть; эксплуатация не проверена |
+| CI | 🟢 | 6 job'ов, включая PHPStan и Docker-сборку |
 
 ---
 
-## 5. План закрытия перед продакшеном
+## 6. План закрытия перед продакшеном
 
-### P0 — код закрыт; остаётся настроить production
-- [x] Транзакционная почта по `awaiting_payment`, `paid`, `cancelled`, `refunded`,
-  `partially_refunded`, `payment_failed`, `expired`; шаблоны редактируются
-  через админку, письмо оплаты включает выпущенные билеты.
-- [x] Исходящие вебхуки по тем же статусам: HMAC-SHA256, ограничение SSRF, 4xx не
-  ретраятся, 3xx не переходятся, backoff+jitter и идемпотентность fan-out.
-- [x] Удалены `mock.ts`, демо-страницы/копии из `public_html/build` и мёртвая точка входа.
-- [x] Удалены четыре устаревших дубля моделей `app/Modules/Notifications/Models/*`
-  (`Consent`, `Notification`, `NotificationTemplate`, `PrivacyRequest`) — они объявляли
-  колонки, которых нет в схеме (`subject_template`, `is_subscribed`,
-  `notification_template_id`, `reason`), и `User` ссылался именно на них, то есть
-  relations `consents()/notifications()/privacyRequests()` упали бы в рантайме.
-  `User` переведён на канонические `App\Models\*`; `PrivacyRequest` создан в
-  `App\Models` по реальной схеме. `verify-models-schema`: 68→64 модели,
-  460→442 поля, долг `INVENTED_FIELDS` 69→59.
-- [x] Исправлен `SendWebhookDeliveryJob`: `error_message` обнулялся и при `abandoned`
-  (4xx/исчерпание лимита), поэтому причина остановки доставки терялась — ровно то,
-  ради чего `DeliveryOutcome` разделяет `permanent_failure` и `retry_limit_reached`.
-  Теперь сообщение сохраняется; `error_message` очищается только при успешной доставке.
-- [ ] На production настроить SMTP, применить миграцию `jobs`/`failed_jobs`, установить
-  минутный cron для `schedule:run` и выполнить живой smoke test транспорта.
+### P0 — среда (без кода)
+- [ ] `APP_ENV=production`, `APP_DEBUG=false`, сгенерировать `APP_KEY`.
+- [ ] SMTP-креды + `MAIL_FROM_ADDRESS`; живой smoke письма на реальный ящик.
+- [ ] Воркер `php artisan queue:work` под supervisor + минутный cron `schedule:run`.
+- [ ] `CACHE_STORE`/`SESSION_DRIVER` → `redis` (или `database`); права на `storage/`, `bootstrap/cache`.
+- [ ] HTTPS, `APP_URL`, доверенные прокси; `migrate --force` (сейчас 0 pending).
 
 ### P1 — качество MVP
-1. **Auth:** `forgot-password` / `reset-password` / `verify-email`. — **✅ сделано.**
-   `AccountTokenService` выпускает подписанный stateless-токен (Crypt, полезная
-   нагрузка: user public_id + e-mail + purpose + срок + отпечаток хеша пароля);
-   `AccountRecoveryService` проводит сброс (в транзакции, с отзывом всех сессий)
-   и подтверждение адреса; письма идут по редактируемым шаблонам
-   (`account.password_reset`, `account.email_verification`). Пути эндпоинтов
-   приведены к `docs/openapi.yaml`. Лимит `throttle:auth` — 5/мин на пару
-   e-mail+IP и 20/мин на IP.
-2. **Placeholder-разделы:** заменить catch-all `AdminPlaceholderPage.vue` реальными
-   экранами или явно пометить оставшиеся экспериментальными. — **✅ сделано.**
-   Все пункты меню (`AdminShell` GROUPS) уже ведут на реальные экраны, поэтому
-   заглушка была удалена, а catch-all `:section` заменён на `AdminNotFoundPage`:
-   честный «Раздел не найден» с названием введённого сегмента и подсказкой по
-   опечатке (Левенштейн, порог ≤ 2). Тест: `tests/Unit/Admin/adminNotFound.test.ts`.
-3. **CI:** добавить шаги `php vendor/bin/phpunit` + `vitest run` + `docker build` (после
-   появления воспроизводимого `composer install`). — **✅ сделано.** В `ci.yml` пять
-   job'ов: `verify` (dependency-free верификаторы, включая `verify-route-ownership`),
-   `phpunit` (MySQL 8.4 + `composer install` из коммитнутого `composer.lock`),
-   `frontend` (`npm ci` → `vue-tsc` → `vitest` → `vite build` → проверка, что бандл
-   действительно выпущен), `schema` (применение spec-бандла и сверка двух его
-   рендеров) и `docker` (сборка образа).
+- [ ] Живой e2e YooKassa (боевые ключи): платёж → вебхук → билет → возврат.
+- [ ] Решить судьбу 29 спек-путей: двигать роуты к спеке или править `openapi.yaml`
+      (`/admin/*`, `/webhooks/yookassa`, `/embed/*`).
+- [ ] Привести спеку к 3 триггерам жизненного цикла (сейчас 1).
 
 ### P2 — полнота
-6. **Embed-виджет:** довести до рабочего состояния или явно пометить experimental/out-of-scope.
-7. **Инфраструктура:** бэкапы БД, мониторинг/алерты, ротация секретов, логирование без PII,
-   соответствие 152-ФЗ (`consents`, `privacy_requests`).
-8. **Android Checker** — отдельный проект (офлайн-бандлы, синхронизация).
+- [ ] Соц-вход (Yandex/VK/Telegram) или явно out-of-scope.
+- [ ] Translations-подпути (`venues`, `pages`) или одноязычный запуск осознанно.
+- [ ] Embed-виджет до рабочего состояния или пометить experimental.
+- [ ] Инфраструктура: бэкапы, мониторинг/алерты, ротация секретов, PII-free логи, 152-ФЗ.
+- [ ] Android Checker — отдельный проект.
 
 ---
 
-## 6. Что проверено 2026-10-07 (методика)
+## 7. Методика проверки 2026-10-27
 
-- `node node_modules/vitest/vitest.mjs run` → **128/128** (managed Node v22.22.2, системный v24.12.0,
-  пулы `forks`/`threads`, после `rm -rf node_modules/.vite`). Ранее фиксировавшаяся ошибка
-  `Cannot read properties of undefined (reading 'config')` **не воспроизводится** — была транзиентным
-  состоянием кэша, не дефектом кода.
-- `php vendor/bin/phpunit --no-coverage` → **105/105** (430 assertions), включая новые тесты
-  транзакционных писем, OrderObserver, HMAC/webhook delivery, retry policy и SSRF guard;
-  `RefreshDatabase` делает `migrate:fresh` на
-  `nabilet_test_suite` без ошибки 1419 (триггерная миграция `harden_hall_schema_lifecycle` проходит —
-  `log_bin_trust_function_creators=1` выставлен глобально).
-- `vue-tsc --noEmit` и `vite build --config vite.config.ts` → прошли; `verify-migrations.php` → 16/16;
-  `verify-models-schema`, `verify-purity`, `verify-module-structure`, `verify-autoload`,
-  `verify-error-envelope`, OpenAPI и contract-schema — прошли.
-- Оставшиеся места проверять по `notImplemented` (Auth), placeholder-роутам, production SMTP/cron
-  и live e2e платежей/вебхуков.
-
-### Живой сквозной прогон P0 (2026-10-07, рабочая БД)
-
-Проведён на реальном сервере (`artisan serve`) и рабочей БД, не только в тестах:
-
-- Вход админом → `GET /api/v1/notification-templates` отдаёт 7 шаблонов и словарь
-  переменных; без токена — **401**.
-- `POST /notification-templates/2/preview` рендерит HTML и text письма `order.paid`
-  с подстановкой всех переменных (имя, номер заказа, мероприятие, дата, площадка,
-  форматированная сумма, блок билетов).
-- Подписка на вебхук с публичным `https` создаётся (**201**, секрет + `retry_limit=10`);
-  внутренний адрес `http://127.0.0.1:...` отвергается (**422**) — SSRF-guard работает.
-- Переход заказа `pending → paid` ставит **2 джобы** (`SendOrderNotificationJob` +
-  `DispatchOrderWebhookJob`); воркер доводит их до конца, fan-out создаёт
-  `webhook_deliveries`, `SendWebhookDeliveryJob` делает реальный подписанный POST.
-- Ретрай-петля: `webhooks:retry-pending` по «состаренному» `next_retry_at` поднимает
-  повторно ровно 1 доставку.
-
-Замечания окружения (не дефекты кода): миграция `2026_10_07_000500_create_queue_tables`
-в рабочей БД была **Pending** и применена в ходе проверки — без неё любая `dispatch()`
-падала бы на отсутствии `jobs`. Локальный `MAIL_MAILER=smtp` без SMTP-сервера и
-отсутствие CA-бандла дают `failed` в `notifications` и TLS-ошибку у вебхука —
-на production с настроенным SMTP и валидным сертификатом это ожидаемо исчезает.
+- `tools/verify-*.php` (13) + `tools/modules.php --validate` → exit 0.
+- `tools/verify-live.php` → PASS (88/911, FK 127, unique 118, check 53); триггеры и 29 путей
+  — «reported, not failed».
+- `php tests/run.php` → 940/2322; `php vendor/bin/phpunit --no-coverage` → 1141/4659.
+- `node node_modules/vue-tsc/bin/vue-tsc.js --noEmit` → 0; `vitest run` → 414/414;
+  `vite build` → 72 ассета (локально падает только на sandbox-шимме удаления `dist/`,
+  в CI-job `frontend` собирается штатно).
+- `grep` по `app/`: 0 `TODO/FIXME/notImplemented`, 0 хардкод-секретов, 0 `dd/dump`;
+  `number_format` для денег — только внутри `Money` (остальные — проценты и сам владелец).
+- PHPStan level 5 запускается в CI (`static`); локально песочница блокирует `reg.exe`/`WMIC.exe`.
