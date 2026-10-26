@@ -15,6 +15,7 @@
 import type { EBackground, ESector, ESeat, EStatic, SeatKind, SectorShape, StaticKind } from './editorTypes'
 import { SEAT, GAP, ROW_GAP, tableLayout } from './seatGeometry'
 import { unwrapSchemaRoot } from './schemaImport'
+import { nodePriceMinor, nodePriceOrNull, seatPriceOverride } from '@/lib/hall'
 
 /** Версия формата схемы (§54). */
 export const SCHEMA_VERSION = '1.0'
@@ -134,6 +135,10 @@ export function normalizeStaticObject(o: unknown): EStatic | null {
   if (typeof rec.id !== 'string' || typeof rec.kind !== 'string') return null
   const kinds: StaticKind[] = ['table', 'standing', 'label', 'text', 'stage', 'entrance']
   if (!kinds.includes(rec.kind as StaticKind)) return null
+  // Цена стоячей зоны читается тем же правилом, что и на сервере: `priceMinor`
+  // побеждает легаси `price`. `undefined` здесь значит «цены нет» и отличается
+  // от нуля — ноль сервер отвергнет как непродаваемую зону.
+  const staticPrice = nodePriceOrNull(rec)
   return {
     id: rec.id,
     // Импорт/старые payload'ы могут прислать 'text' вместо канонического 'label'.
@@ -147,9 +152,7 @@ export function normalizeStaticObject(o: unknown): EStatic | null {
     locked: rec.locked === true,
     text: typeof rec.text === 'string' ? rec.text : undefined,
     capacity: Number.isFinite(Number(rec.capacity)) ? Math.max(0, Math.round(Number(rec.capacity))) : undefined,
-    priceMinor: Number.isFinite(Number(rec.priceMinor ?? rec.price))
-      ? Math.max(0, Math.round(Number(rec.priceMinor ?? rec.price)))
-      : undefined,
+    priceMinor: staticPrice === null ? undefined : Math.max(0, staticPrice),
   }
 }
 
@@ -242,11 +245,6 @@ function num(v: unknown, fallback = 0): number {
 }
 
 /** Цена места: валидное положительное целое в минорных единицах, иначе undefined. */
-function readSeatPrice(v: unknown): number | undefined {
-  const n = Number(v)
-  return Number.isFinite(n) && n > 0 ? Math.round(n) : undefined
-}
-
 function toSeatKind(raw: unknown, fromDb: boolean): SeatKind {
   const v = String(raw ?? '')
   if (v === 'vip') return 'vip'
@@ -329,7 +327,7 @@ export function parseSchemaPayload(raw: unknown, canvasSize: SchemaCanvas): Norm
         kind: toSeatKind(seat?.kind, false),
         x: num(seat?.x, 0),
         y: num(seat?.y, 0),
-        priceMinor: readSeatPrice(seat?.priceMinor ?? seat?.price ?? seat?.price_amount),
+        priceMinor: seatPriceOverride(seat),
       }))
     } else if (Array.isArray(s.rows)) {
       for (const r of s.rows as ServerSeat[]) {
@@ -341,7 +339,7 @@ export function parseSchemaPayload(raw: unknown, canvasSize: SchemaCanvas): Norm
             kind: toSeatKind(seat?.type, true),
             x: num(seat?.x, 0),
             y: num(seat?.y, 0),
-            priceMinor: readSeatPrice(seat?.priceMinor ?? seat?.price_amount ?? seat?.price),
+            priceMinor: seatPriceOverride(seat),
           })
         }
       }
@@ -382,7 +380,7 @@ export function parseSchemaPayload(raw: unknown, canvasSize: SchemaCanvas): Norm
       out.push({
         id: srcId,
         name: s.name as string,
-        priceMinor: Math.max(0, Math.round(num(s.priceMinor ?? s.price, 0))),
+        priceMinor: Math.max(0, nodePriceMinor(s)),
         x: Math.round(num(s.x, 0)),
         y: Math.round(num(s.y, 0)),
         seats: flatSeats.map((p, i) => ({
@@ -440,8 +438,8 @@ export function parseSchemaPayload(raw: unknown, canvasSize: SchemaCanvas): Norm
       }
       // Если у сектора цена не задана вовсе, но ряды имеют цены — берём
       // минимальную цену ряда как базовую, иначе инспектор покажет 0 (B7).
-      let secPrice = num(s.priceMinor ?? s.price, NaN)
-      if (!Number.isFinite(secPrice) || secPrice <= 0) {
+      let secPrice = nodePriceMinor(s)
+      if (secPrice <= 0) {
         const vals = Object.values(rowPrices)
         secPrice = vals.length > 0 ? Math.min(...vals) : 0
       }

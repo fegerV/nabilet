@@ -41,6 +41,108 @@ export function buildSeatPricePalette(prices: readonly number[]): Map<number, st
   return new Map(tiers.map((price, index) => [price, SEAT_PRICE_PALETTE[index % SEAT_PRICE_PALETTE.length]]))
 }
 
+/**
+ * Действующая цена узла схемы — зеркало серверного `Venues\Domain\SchemaPrice`.
+ *
+ * ЗАЧЕМ ЗЕРКАЛО. Схема зала описывает одну и ту же цену двумя именами:
+ * `priceMinor` — поле редактора (§50), `price` — легаси сидеров и импорта
+ * Афиши. На сервере приоритет владеет `SchemaPrice`; клиент читает те же узлы,
+ * и без общей функции цепочка «`priceMinor` ?? `price`» была скопирована в
+ * `schemaSerialization` дважды. Копия на клиенте опаснее серверной: она не
+ * проходит гейты и расходится молча — редактор показал бы ноль там, где
+ * сервер продаёт по легаси-полю.
+ *
+ * ПОЧЕМУ ОКРУГЛЕНИЕ, ХОТЯ СЕРВЕР ВЕЩЕСТВЕННОЕ ЧИСЛО ОТВЕРГАЕТ. Клиент цену не
+ * НАЗНАЧАЕТ, а показывает: `schemaSerialization` уже приводит значения к целым
+ * копейкам при загрузке, поэтому округление здесь — не решение о цене, а
+ * страховка от `NaN` в цветовой шкале. Владелец правила «деньги только целые» —
+ * сервер (`HallService`), и он по-прежнему отвергает `2999.5`.
+ */
+export const NODE_PRICE_KEYS = ['priceMinor', 'price'] as const
+
+export interface PriceNode {
+  priceMinor?: unknown
+  /** БД-формат (`rows[].price_amount`, `rows[].seats[].price_amount`). */
+  price_amount?: unknown
+  /** Легаси-имя (сидеры, импорт Афиши). */
+  price?: unknown
+}
+
+/** Значение цены в минорных единицах или null, если это не цена. */
+function parseMinor(value: unknown): number | null {
+  if (typeof value === 'number') return Number.isFinite(value) ? Math.round(value) : null
+  if (typeof value === 'string' && /^-?\d{1,15}$/.test(value.trim())) return Number(value.trim())
+  return null
+}
+
+/** Цена узла (сектор, стоячая зона): `priceMinor` побеждает легаси `price`. */
+export function nodePriceMinor(node: PriceNode | null | undefined): number {
+  return nodePriceOrNull(node) ?? 0
+}
+
+/**
+ * То же, но «цены нет» отличается от нулевой цены.
+ *
+ * Нужно там, где модель различает «поле не задано» и «задано 0»: у статического
+ * объекта `undefined` означает «цены нет» (поле не уедет в payload), а `0`
+ * уехало бы и было отвергнуто сервером как непродаваемая стоячая зона.
+ */
+export function nodePriceOrNull(node: PriceNode | null | undefined): number | null {
+  for (const key of NODE_PRICE_KEYS) {
+    const parsed = parseMinor(node?.[key])
+    if (parsed !== null) return parsed
+  }
+  return null
+}
+
+/**
+ * Имена поля индивидуальной цены места, в порядке приоритета.
+ *
+ * Три, а не два, потому что место встречается в двух форматах: `priceMinor` —
+ * редактор, `price_amount` — БД-формат (`rows[].seats[]`), `price` — легаси.
+ * Порядок совпадает с серверным (`HallService` проверяет `price_amount`, затем
+ * `price`); раньше два места в этом файле перечисляли их в РАЗНОМ порядке, и
+ * схема с обоими полями читалась по-разному в зависимости от формата.
+ */
+export const SEAT_PRICE_KEYS = ['priceMinor', 'price_amount', 'price'] as const
+
+/**
+ * Индивидуальная цена места — зеркало `SchemaPrice::seatOverride()`.
+ *
+ * Возвращает `undefined`, если своей цены нет: место наследует цену ряда.
+ * Некорректное значение (ноль, отрицательное, нечисло) — тоже «нет своей
+ * цены», а не «цена ноль», иначе место продавалось бы бесплатно.
+ */
+export function seatPriceOverride(node: PriceNode | null | undefined): number | undefined {
+  for (const key of SEAT_PRICE_KEYS) {
+    const raw = node?.[key]
+    if (raw === null || raw === undefined) continue
+
+    const parsed = parseMinor(raw)
+
+    return parsed !== null && parsed >= 1 ? parsed : undefined
+  }
+  return undefined
+}
+
+/**
+ * Цена, по которой место продаётся: место → ряд (`rowPrices`) → сектор.
+ *
+ * Нулевое значение — это ОТВЕТ, а не «не задано»: цепочка останавливается на
+ * первом объявленном уровне, ровно как `??` на сервере. Иначе место с явным
+ * нулём молча показывало бы цену ряда, которой его не продают.
+ */
+export function effectiveSeatPrice(
+  seat: { priceMinor?: number | null; row: number },
+  sector: PriceNode & { rowPrices?: Record<number, number> | null },
+): number {
+  const override = seat.priceMinor
+  if (override !== null && override !== undefined) return override
+  const byRow = sector.rowPrices?.[seat.row]
+  if (byRow !== null && byRow !== undefined) return byRow
+  return nodePriceMinor(sector)
+}
+
 export interface TableSeatPoint {
   sectorName?: string | null
   x: number

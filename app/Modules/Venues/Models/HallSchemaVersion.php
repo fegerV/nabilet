@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Nabilet\Modules\Sessions\Models\Session;
+use Nabilet\Modules\Venues\Domain\SchemaPrice;
 
 /**
  * HallSchemaVersion Model
@@ -138,7 +139,7 @@ class HallSchemaVersion extends Model
                             $sector['rows'] = [[
                                 'number' => '1',
                                 'label' => (string) ($obj['text'] ?? 'Танцпол'),
-                                'price_amount' => (int) ($obj['priceMinor'] ?? $obj['price'] ?? $sector['priceMinor'] ?? $sector['price'] ?? 0),
+                                'price_amount' => SchemaPrice::forStandingZone($obj, $sector)?->minorUnits() ?? 0,
                                 'seats' => array_fill(0, $cap, [
                                     'id' => null,
                                     'number' => '',
@@ -242,22 +243,14 @@ class HallSchemaVersion extends Model
                             'y' => $gy,
                             // Индивидуальная цена места (опционально): побеждает
                             // цену ряда при генерации инвентаря (§54).
-                            'priceMinor' => isset($seat['priceMinor']) && is_numeric($seat['priceMinor']) && (int) $seat['priceMinor'] > 0
-                                ? (int) $seat['priceMinor']
-                                : null,
+                            'priceMinor' => SchemaPrice::seatOverride($seat['priceMinor'] ?? null)?->minorUnits(),
                         ];
                     }
 
-                    // Цена ряда: rowPrices перекрывает priceMinor сектора
-                                        $rowPrice = 0;
-                                        if (isset($sector['rowPrices']) && isset($sector['rowPrices'][(string) $rowNum])) {
-                                            $rowPrice = (int) $sector['rowPrices'][(string) $rowNum];
-                                        } elseif (isset($sector['priceMinor'])) {
-                                            $rowPrice = (int) $sector['priceMinor'];
-                                        } elseif (isset($sector['price'])) {
-                                            // Legacy editor/import schemas store the same minor-unit price here.
-                                            $rowPrice = (int) $sector['price'];
-                                        }
+                    // Цена ряда: rowPrices перекрывает цену сектора. Приоритет
+                    // «место → ряд → сектор» принадлежит SchemaPrice — здесь
+                    // нужен только уровень ряда.
+                    $rowPrice = SchemaPrice::forRow($rowNum, $sector)?->minorUnits() ?? 0;
 
                                         $rows[] = [
                         'number' => (string) $rowNum,
@@ -326,7 +319,7 @@ class HallSchemaVersion extends Model
                     'rows' => [[
                         'number' => '1',
                         'label' => (string) ($objRaw['text'] ?? 'Танцпол'),
-                        'price_amount' => (int) ($objRaw['priceMinor'] ?? $objRaw['price'] ?? 0),
+                        'price_amount' => SchemaPrice::forStandingZone($objRaw)?->minorUnits() ?? 0,
                         'seats' => array_fill(0, $cap, [
                             'id' => null,
                             'number' => '',

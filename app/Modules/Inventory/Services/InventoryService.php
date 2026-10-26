@@ -20,6 +20,7 @@ use Nabilet\Modules\Venues\Models\HallTable;
 use Nabilet\Modules\Venues\Models\Seat;
 use Nabilet\Modules\Venues\Models\Sector;
 use Nabilet\Modules\Venues\Models\StandingZone;
+use Nabilet\Modules\Venues\Domain\SchemaPrice;
 use Illuminate\Support\Facades\DB;
 
 class InventoryService
@@ -132,9 +133,7 @@ class InventoryService
                                                                                                 'rotation' => 0,
                                                                                                 'status' => 'active',
                                                                     // Индивидуальная цена места (§54): побеждает цену ряда.
-                                                                    'price_amount' => isset($seatData['priceMinor']) && is_numeric($seatData['priceMinor']) && (int) $seatData['priceMinor'] > 0
-                                                                        ? (int) $seatData['priceMinor']
-                                                                        : null,
+                                                                    'price_amount' => SchemaPrice::seatOverride($seatData['priceMinor'] ?? null)?->minorUnits(),
                                         ]);
                                         $capacity += 1;
                                     }

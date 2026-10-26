@@ -25,7 +25,7 @@ import NBadge from '@/components/ui/NBadge.vue'
 import NSegmented from '@/components/ui/NSegmented.vue'
 import { useUiStore } from '@/stores/ui'
 import { money, plural } from '@/lib/format'
-import { buildSeatPricePalette } from '@/lib/hall'
+import { buildSeatPricePalette, effectiveSeatPrice } from '@/lib/hall'
 import { cn } from '@/lib/cn'
 import { ApiError, get, send } from '@/lib/api'
 import { usePersistedRef } from '@/lib/usePersistedRef'
@@ -1550,12 +1550,12 @@ const COLORS = {
 }
 
 const seatPriceColors = computed(() => buildSeatPricePalette(
-  sectors.value.flatMap((sector) => sector.seats.map((seat) => seat.priceMinor ?? sector.rowPrices[seat.row] ?? sector.priceMinor)),
+  sectors.value.flatMap((sector) => sector.seats.map((seat) => effectiveSeatPrice(seat, sector))),
 ))
 const seatPriceLegend = computed(() => [...seatPriceColors.value].map(([price, color]) => ({ price, color })))
 
 function seatFill(seat: ESeat, sector: ESector): string {
-  const price = seat.priceMinor ?? sector.rowPrices[seat.row] ?? sector.priceMinor
+  const price = effectiveSeatPrice(seat, sector)
   return seatPriceColors.value.get(price) ?? COLORS[seat.kind]
 }
 
@@ -2296,7 +2296,7 @@ const groupSeatPriceRub = computed(() => {
   for (const sector of sectors.value) {
     for (const seat of sector.seats) {
       if (selectedSeatIds.value.has(seat.id)) {
-        return (seat.priceMinor ?? sector.rowPrices[seat.row] ?? sector.priceMinor) / 100
+        return effectiveSeatPrice(seat, sector) / 100
       }
     }
   }

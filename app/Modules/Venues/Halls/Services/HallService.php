@@ -7,6 +7,7 @@ namespace Nabilet\Modules\Venues\Halls\Services;
 use Nabilet\Modules\Venues\Models\Hall;
 use Nabilet\Modules\Venues\Models\HallSchemaVersion;
 use Nabilet\Modules\Venues\Models\Venue;
+use Nabilet\Modules\Venues\Domain\SchemaPrice;
 use Nabilet\Core\Errors\ConflictError;
 use Nabilet\Core\Errors\DomainRuleViolation;
 use Nabilet\Core\Errors\NotFoundError;
@@ -588,12 +589,11 @@ class HallService
                 }
 
                 if ($this->isPositiveInt($rowNo)) {
-                    $effectivePrice = $rowPrices[(string) $rowNo]
-                        ?? $rowPrices[$rowNo]
-                        ?? $sector['priceMinor']
-                        ?? $sector['price']
-                        ?? null;
-                    if (!$this->isPositiveInt($effectivePrice)) {
+                    // Действующая цена места: приоритет «место → ряд → сектор»
+                    // принадлежит SchemaPrice, здесь проверяется только
+                    // продажность результата.
+                    $effectivePrice = SchemaPrice::forRow($rowNo, $sector);
+                    if ($effectivePrice === null || !$effectivePrice->isSellable()) {
                         $errors["sectors.$i.seats.$j.priceMinor"] = [
                             'Every sellable seat must resolve to a positive integer price in minor units',
                         ];
@@ -736,8 +736,8 @@ class HallService
                 $errors["staticObjects.$i.capacity"] = ['A sellable standing zone requires a positive integer capacity'];
                 continue;
             }
-            $price = $object['priceMinor'] ?? $object['price'] ?? null;
-            if (!$this->isPositiveInt($price)) {
+            $price = SchemaPrice::ofNode($object);
+            if ($price === null || !$price->isSellable()) {
                 $errors["staticObjects.$i.priceMinor"] = ['A sellable standing zone requires a positive integer price in minor units'];
             }
         }
