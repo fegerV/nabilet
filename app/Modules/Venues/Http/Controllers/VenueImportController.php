@@ -10,6 +10,7 @@ use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Http;
 use Nabilet\Core\Errors\DomainRuleViolation;
 use Nabilet\Core\Errors\ValidationError;
+use Nabilet\Modules\Venues\Domain\ExternalPrice;
 
 /**
  * Импорт площадки со страницы события Яндекс.Афиши.
@@ -135,11 +136,16 @@ class VenueImportController extends Controller
         }
 
         $ticket['id'] = $m[1];
-        $ticket['price_currency'] = mb_strtoupper($m[2]);
 
-        // Копейки → рубли: на витрине Яндекса и в нашей системе рубли.
-        $ticket['price_min'] = (int) (((int) $m[3]) / 100);
-        $ticket['price_max'] = (int) (((int) $m[4]) / 100);
+        // Копейки остаются копейками: раньше здесь было вещественное деление на
+        // сто с отбрасыванием остатка, и 2999 копеек превращались в 29 рублей.
+        // Масштаб теперь общий с остальным API — minor units (ТЗ §3).
+        $priceMin = ExternalPrice::fromMinorUnits($m[3], $m[2]);
+        $priceMax = ExternalPrice::fromMinorUnits($m[4], $m[2]);
+
+        $ticket['price_currency'] = $priceMin?->currency() ?? mb_strtoupper($m[2]);
+        $ticket['price_min'] = $priceMin?->minorUnits();
+        $ticket['price_max'] = $priceMax?->minorUnits();
 
         return $ticket;
     }
@@ -173,18 +179,24 @@ class VenueImportController extends Controller
                 continue;
             }
 
+            // Цены JSON-LD приходят в РУБЛЯХ десятичной записью, а стейт сеанса —
+            // в КОПЕЙКАХ. Обе ветки приводятся к одному масштабу одним владельцем
+            // (`ExternalPrice`), иначе ответ содержал бы два разных масштаба.
+            $offers = is_array($json['offers'] ?? null) ? $json['offers'] : [];
+            $currency = is_string($offers['priceCurrency'] ?? null) ? (string) $offers['priceCurrency'] : null;
+
+            $priceMin = ExternalPrice::fromMajorAmount($offers['lowPrice'] ?? null, $currency);
+            $priceMax = ExternalPrice::fromMajorAmount($offers['highPrice'] ?? null, $currency);
+
             return [
                 'event' => [
                     'title' => is_string($json['name'] ?? null) ? (string) $json['name'] : null,
                     'description' => is_string($json['description'] ?? null) ? (string) $json['description'] : null,
                     'image' => is_string($json['image'] ?? null) ? (string) $json['image'] : null,
                     'starts_at' => is_string($json['startDate'] ?? null) ? (string) $json['startDate'] : null,
-                    'price_min' => isset($json['offers']['lowPrice']) && is_numeric($json['offers']['lowPrice'])
-                        ? (float) $json['offers']['lowPrice'] : null,
-                    'price_max' => isset($json['offers']['highPrice']) && is_numeric($json['offers']['highPrice'])
-                        ? (float) $json['offers']['highPrice'] : null,
-                    'price_currency' => is_string($json['offers']['priceCurrency'] ?? null)
-                        ? (string) $json['offers']['priceCurrency'] : null,
+                    'price_min' => $priceMin?->minorUnits(),
+                    'price_max' => $priceMax?->minorUnits(),
+                    'price_currency' => $priceMin?->currency() ?? $priceMax?->currency(),
                     'url' => is_string($json['url'] ?? null) ? (string) $json['url'] : null,
                 ],
                 'venue' => $this->extractVenue($json['location']),

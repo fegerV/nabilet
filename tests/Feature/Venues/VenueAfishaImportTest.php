@@ -90,18 +90,22 @@ final class VenueAfishaImportTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.event.title', 'Шура')
             ->assertJsonPath('data.event.starts_at', '2026-10-29T21:00:00.000Z')
-            // Цены численно равны: JSON-транспорт вправе прислать 2500 как int.
-            ->assertJsonPath('data.event.price_min', fn ($v) => is_numeric($v) && abs($v - 2500) < 0.01)
-            ->assertJsonPath('data.event.price_max', fn ($v) => is_numeric($v) && abs($v - 12000) < 0.01)
+            // Цены ОБЕИХ веток — в minor units (ТЗ §3), как и всё остальное API.
+            // JSON-LD присылает рубли строкой, SSR-стейт — копейки числом; до
+            // `ExternalPrice` эти две ветки отдавали разные масштабы.
+            ->assertJsonPath('data.event.price_min', 250000)
+            ->assertJsonPath('data.event.price_max', 1200000)
+            ->assertJsonPath('data.event.price_currency', 'RUB')
             ->assertJsonPath('data.venue.name', 'Вавилон')
             ->assertJsonPath('data.venue.city', 'Сургут')
             ->assertJsonPath('data.venue.address', 'ул. Университетская, 55')
             ->assertJsonPath('data.venue.latitude', 61.263354)
             ->assertJsonPath('data.venue.phones.0', '+7 (3462) 94-40-48')
-            // Сеанс и цены из SSR-стейта (TicketPriceRange): цена в копейках → в рублях.
+            // Сеанс и цены из SSR-стейта (TicketPriceRange): копейки остаются
+            // копейками — 230000, а не 2300 «рублей» с потерянным остатком.
             ->assertJsonPath('data.ticket.id', '843017')
-            ->assertJsonPath('data.ticket.price_min', 2300)
-            ->assertJsonPath('data.ticket.price_max', 2800)
+            ->assertJsonPath('data.ticket.price_min', 230000)
+            ->assertJsonPath('data.ticket.price_max', 280000)
             ->assertJsonPath('data.ticket.price_currency', 'RUB');
 
         // Эндпоинт — чистый разбор: площадок после вызова не прибавилось.

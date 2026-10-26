@@ -22,6 +22,7 @@ import NStatusBadge from '@/components/ui/NStatusBadge.vue'
 import NDataTable from '@/components/ui/NDataTable.vue'
 import { useUiStore } from '@/stores/ui'
 import { get, send } from '@/lib/api'
+import { money } from '@/lib/format'
 import type { Column } from '@/components/ui/NDataTable.vue'
 
 const ui = useUiStore()
@@ -130,6 +131,22 @@ interface AfishaPreview {
     description: string | null
     image: string | null
     starts_at: string | null
+    /**
+     * Цены — в MINOR UNITS (копейках), как и всё остальное API (ТЗ §3).
+     *
+     * Было в рублях, причём двумя разными способами: JSON-LD разбирался во
+     * `float`, а стейт сеанса — целочисленным делением на сто с отбрасыванием
+     * остатка. Правило теперь одно (`Venues\Domain\ExternalPrice`), и наружу
+     * уходит общий масштаб, поэтому показывать их надо через `money()`, а не
+     * подставлять число как есть.
+     */
+    price_min: number | null
+    price_max: number | null
+    price_currency: string | null
+  }
+  /** Сеанс из SSR-стейта: id нужен админу, чтобы найти карту мест в окне покупки. */
+  ticket: {
+    id: string | null
     price_min: number | null
     price_max: number | null
     price_currency: string | null
@@ -151,6 +168,27 @@ const importError = ref<string | null>(null)
 const importUrl = ref('')
 const afisha = ref<AfishaPreview | null>(null)
 const importForm = ref({ name: '', city: '', address: '', description: '' })
+
+/**
+ * Диапазон цен предпросмотра: minor units → «2 500 ₽–12 000 ₽».
+ *
+ * Форматирование — только через `money()` (`lib/format.ts`): она принимает
+ * копейки и не работает с float, то есть ровно тот масштаб, в котором цены
+ * теперь приходят. Подставлять число напрямую нельзя — админ увидел бы
+ * «250000», а не «2 500 ₽».
+ *
+ * Символ подставляется для рубля (основная валюта источника), для остальных
+ * кодов показывается сам код: врать знаком «₽» про чужую валюту хуже, чем
+ * показать «KZT».
+ */
+function priceRange(min: number | null, max: number | null, code: string | null): string {
+  if (min === null) return '—'
+
+  const currency = code === null || code === 'RUB' ? '₽' : code
+  const low = money(min, { currency })
+
+  return max === null || max === min ? low : `${low}–${money(max, { currency })}`
+}
 
 function openImport(): void {
   importOpen.value = true
@@ -320,8 +358,15 @@ onMounted(load)
           <template v-if="afisha.event.title">
             Событие: <b class="text-content">{{ afisha.event.title }}</b>
             <span v-if="afisha.event.price_min !== null">
-              · цены {{ afisha.event.price_min }}–{{ afisha.event.price_max }} {{ afisha.event.price_currency ?? 'RUB' }}
+              · цены {{ priceRange(afisha.event.price_min, afisha.event.price_max, afisha.event.price_currency) }}
             </span>
+            <div v-if="afisha.ticket.id" class="mt-1">
+              Сеанс <b class="text-content">{{ afisha.ticket.id }}</b>
+              <span v-if="afisha.ticket.price_min !== null">
+                · {{ priceRange(afisha.ticket.price_min, afisha.ticket.price_max, afisha.ticket.price_currency) }}
+              </span>
+              — по id ищется карта мест в окне покупки
+            </div>
             <div v-if="afisha.venue.phones.length" class="mt-1">Телефоны: {{ afisha.venue.phones.join(', ') }}</div>
           </template>
         </div>
