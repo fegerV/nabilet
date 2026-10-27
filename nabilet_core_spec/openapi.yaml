@@ -28,6 +28,7 @@ tags:
   - name: Admin Tickets
   - name: Admin Checkin
   - name: Admin Analytics
+  - name: Admin Embed
   - name: Analytics
   - name: Webhooks
   - name: Embed
@@ -2026,6 +2027,142 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/CheckinDevice' }
 
+  /api/v1/admin/embed/keys:
+    get:
+      tags: [Admin Embed]
+      summary: List embed keys
+      operationId: adminListEmbedKeys
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Embed keys
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/EmbedKey' }
+    post:
+      tags: [Admin Embed]
+      summary: Issue embed key
+      operationId: adminIssueEmbedKey
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EmbedKeyCreateRequest' }
+      responses:
+        '201':
+          description: Key issued; the token is shown once and cannot be read again
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EmbedKeyCreateResponse' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /api/v1/admin/embed/keys/{key}:
+    patch:
+      tags: [Admin Embed]
+      summary: Revoke embed key
+      operationId: adminRevokeEmbedKey
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: key
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                # Только `true`: отзыв необратим. В `api_keys` нет истории, поэтому
+                # снятый `revoked_at` стёр бы сам факт отзыва (`ApiKeyPolicy::
+                # revokeDecision()`). Оживить ключ может лишь новый выпуск.
+                revoked: { type: boolean }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EmbedKey' }
+
+  /api/v1/admin/embed/domains:
+    get:
+      tags: [Admin Embed]
+      summary: List embed domains
+      operationId: adminListEmbedDomains
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Embed domains
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/EmbedDomain' }
+    post:
+      tags: [Admin Embed]
+      summary: Add embed domain
+      operationId: adminCreateEmbedDomain
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EmbedDomainCreateRequest' }
+      responses:
+        '201':
+          description: Domain added
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EmbedDomain' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /api/v1/admin/embed/domains/{embedDomain}:
+    patch:
+      tags: [Admin Embed]
+      summary: Enable or disable embed domain
+      operationId: adminUpdateEmbedDomain
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: embedDomain
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EmbedDomainUpdateRequest' }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EmbedDomain' }
+    delete:
+      tags: [Admin Embed]
+      summary: Remove embed domain
+      operationId: adminDeleteEmbedDomain
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: embedDomain
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Domain removed
+
   /api/v1/admin/webhooks:
     get:
       tags: [System]
@@ -3944,6 +4081,72 @@ components:
         token:
           type: string
           description: Device token. Display only once; store only as hash server-side.
+
+    EmbedKey:
+      type: object
+      properties:
+        id: { type: string }
+        public_id: { type: string }
+        organization_id: { type: string, nullable: true }
+        name: { type: string }
+        key_prefix: { type: string }
+        # Колонка называется `scopes_json` и сериализуется как есть: имя поля в
+        # ответе — имя колонки, а не удобное сокращение.
+        scopes_json:
+          type: array
+          nullable: true
+          items: { type: string }
+        expires_at: { type: string, format: date-time, nullable: true }
+        revoked_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
+
+    EmbedKeyCreateRequest:
+      type: object
+      required: [organization_id, name, expires_at]
+      properties:
+        organization_id: { type: string }
+        name: { type: string }
+        # Срок обязателен: бессрочный ключ нельзя вывести из обращения, поэтому
+        # `ApiKeyPolicy::issueDecision()` отказывает такому выпуску.
+        expires_at: { type: string, format: date-time }
+
+    EmbedKeyCreateResponse:
+      type: object
+      required: [key, token]
+      properties:
+        key: { $ref: '#/components/schemas/EmbedKey' }
+        token:
+          type: string
+          description: >-
+            Embed token, passed to the widget as `?embed_token=`. Displayed only
+            once; the server stores nothing but its sha256 digest.
+
+    EmbedDomain:
+      type: object
+      properties:
+        id: { type: string }
+        organization_id: { type: string }
+        domain: { type: string }
+        active: { type: boolean }
+
+    EmbedDomainCreateRequest:
+      type: object
+      required: [organization_id, domain]
+      properties:
+        organization_id: { type: string }
+        domain:
+          type: string
+          description: >-
+            Host the widget may be embedded on: `partner.example` for that host
+            exactly, `.partner.example` to include its subdomains. A full URL is
+            accepted and reduced to its host.
+        active: { type: boolean }
+
+    EmbedDomainUpdateRequest:
+      type: object
+      required: [active]
+      properties:
+        active: { type: boolean }
 
     Webhook:
       type: object

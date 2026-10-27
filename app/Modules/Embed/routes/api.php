@@ -3,6 +3,8 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Facades\Route;
+use Nabilet\Modules\Embed\Http\Controllers\Admin\EmbedDomainController;
+use Nabilet\Modules\Embed\Http\Controllers\Admin\EmbedKeyController;
 use Nabilet\Modules\Embed\Http\Controllers\EmbedController;
 
 /*
@@ -38,4 +40,35 @@ Route::prefix('embed')->group(function (): void {
     Route::post('carts/{cart}/items', [EmbedController::class, 'addCartItem']);
     Route::post('orders', [EmbedController::class, 'createOrder']);
     Route::post('orders/{order}/payment', [EmbedController::class, 'createPayment']);
+});
+
+/*
+| Провиджининг встраивания: чем выпускают embed-токен и чем заполняют whitelist
+| (контракт openapi: /api/v1/admin/embed/keys, /api/v1/admin/embed/domains).
+|
+| ДО ЭТОГО БЛОКА фича была недостижима: `EmbedAccessService` проверял ключ со
+| скоупом `embed` и домен в `embed_domains`, но ни один код приложения не писал
+| ни ту, ни другую таблицу. Весь `/api/v1/embed/*` отвечал 403 на любой запрос,
+| и включить встраивание было нечем — ни настройкой, ни сидом.
+|
+| `auth:api` + `admin` — как у остального CRUD админки: раздача embed-токена даёт
+| право продавать от имени организации на чужом сайте, то есть это действие
+| администратора, а не сотрудника.
+|
+| `whereNumber` здесь НЕТ у ключей и ЕСТЬ у доменов — и это не непоследовательность.
+| Ключ адресуется `public_id` (ULID) или числом, поэтому ограничение пути сломало бы
+| половину контракта. У `embed_domains` колонки `public_id` НЕТ вовсе, поэтому
+| единственный честный идентификатор — числовой id, и `whereNumber` не даёт пути
+| `/1abc` дойти до `IdentifierLookup` (там нечисловое значение ушло бы в
+| `where('public_id', …)` — в несуществующую колонку, то есть в 500).
+*/
+Route::prefix('admin/embed')->middleware(['auth:api', 'admin'])->group(function (): void {
+    Route::get('keys', [EmbedKeyController::class, 'index']);
+    Route::post('keys', [EmbedKeyController::class, 'store']);
+    Route::patch('keys/{key}', [EmbedKeyController::class, 'update']);
+
+    Route::get('domains', [EmbedDomainController::class, 'index']);
+    Route::post('domains', [EmbedDomainController::class, 'store']);
+    Route::patch('domains/{embedDomain}', [EmbedDomainController::class, 'update'])->whereNumber('embedDomain');
+    Route::delete('domains/{embedDomain}', [EmbedDomainController::class, 'destroy'])->whereNumber('embedDomain');
 });

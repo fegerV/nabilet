@@ -151,4 +151,79 @@ final class EmbedOriginTest extends TestCase
         $this->assertTrue(EmbedOrigin::isAllowed('www.example.com', ['.example.com']));
         $this->assertFalse(EmbedOrigin::isAllowed('www.example.com', ['example.com']));
     }
+
+    // ── normalizeDomain(): what may be written to the allow-list? ────────────
+
+    /**
+     * Что вносится в whitelist и что из него читается — одна единица измерения.
+     *
+     * `normalizeDomain()` существует потому, что запись и чтение разошлись бы
+     * молча: `isAllowed()` сравнивает голый хост в нижнем регистре, поэтому
+     * сохранённый «как ввели» адрес не совпал бы никогда, а ошибки не было бы —
+     * виджет просто получил бы 403 на разрешённом сайте.
+     */
+    public function test_a_bare_host_is_stored_lowercased(): void
+    {
+        $this->assertSame('partner.example', EmbedOrigin::normalizeDomain('partner.example'));
+        $this->assertSame('partner.example', EmbedOrigin::normalizeDomain('  Partner.Example  '));
+    }
+
+    public function test_a_full_url_is_reduced_to_its_host(): void
+    {
+        // Организатор копирует адрес из строки браузера.
+        $this->assertSame('partner.example', EmbedOrigin::normalizeDomain('https://partner.example/afisha?x=1'));
+        $this->assertSame('partner.example', EmbedOrigin::normalizeDomain('http://partner.example:8080'));
+        $this->assertSame('partner.example', EmbedOrigin::normalizeDomain('partner.example/afisha'));
+    }
+
+    public function test_the_leading_dot_survives_normalisation(): void
+    {
+        // Точка означает «и поддомены». Потерять её — значит сузить список
+        // молча: организатор записал одно, а получил другое.
+        $this->assertSame('.partner.example', EmbedOrigin::normalizeDomain('.partner.example'));
+        $this->assertSame('.partner.example', EmbedOrigin::normalizeDomain('.https://partner.example/afisha'));
+    }
+
+    public function test_localhost_and_an_ip_are_real_entries(): void
+    {
+        // Виджет отлаживают на локальном сервере; требовать DNS ради проверки
+        // значило бы, что правило мешает его же проверить.
+        $this->assertSame('localhost', EmbedOrigin::normalizeDomain('localhost'));
+        $this->assertSame('127.0.0.1', EmbedOrigin::normalizeDomain('http://127.0.0.1:5173'));
+    }
+
+    public function test_what_is_not_a_host_is_refused(): void
+    {
+        $this->assertNull(EmbedOrigin::normalizeDomain(null));
+        $this->assertNull(EmbedOrigin::normalizeDomain(''));
+        $this->assertNull(EmbedOrigin::normalizeDomain('   '));
+        $this->assertNull(EmbedOrigin::normalizeDomain('.'));
+        $this->assertNull(EmbedOrigin::normalizeDomain('exa mple.com'));
+        $this->assertNull(EmbedOrigin::normalizeDomain('-example.com'));
+        $this->assertNull(EmbedOrigin::normalizeDomain('example..com'));
+        // Схема без хоста — не сайт.
+        $this->assertNull(EmbedOrigin::normalizeDomain('https://'));
+    }
+
+    /**
+     * Замкнутость: что бы нормализация ни вернула, `isAllowed()` обязан это
+     * узнать. Это и есть смысл общего владельца — две половины одного правила
+     * не могут разойтись.
+     */
+    public function test_a_normalised_entry_admits_the_site_it_names(): void
+    {
+        foreach ([
+            ['https://partner.example/afisha', 'partner.example'],
+            ['.partner.example', 'www.partner.example'],
+            ['localhost', 'localhost'],
+        ] as [$raw, $host]) {
+            $entry = EmbedOrigin::normalizeDomain($raw);
+
+            $this->assertSame($host, EmbedOrigin::hostFrom('https://' . $host));
+            $this->assertTrue(
+                $entry !== null && EmbedOrigin::isAllowed($host, [$entry]),
+                'нормализованная запись не пускает свой же сайт: ' . (string) $entry
+            );
+        }
+    }
 }

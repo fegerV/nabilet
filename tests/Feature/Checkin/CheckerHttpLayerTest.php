@@ -6,16 +6,15 @@ namespace Tests\Feature\Checkin;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Nabilet\Modules\Checkin\Services\DeviceTokenIssuer;
-use Nabilet\Modules\Core\Users\Models\User;
 use Nabilet\Modules\Orders\Services\OrderService;
 use Nabilet\Modules\Tickets\Models\CheckinDevice;
 use Nabilet\Modules\Tickets\Models\Ticket;
 use Nabilet\Modules\Tickets\Services\TicketScanService;
 use Nabilet\Modules\Tickets\Services\TicketService;
 use Nabilet\Tests\Support\SellableSeatFixtures;
+use Nabilet\Tests\Support\StaffAuth;
 use Tests\TestCase;
 
 /**
@@ -39,6 +38,7 @@ class CheckerHttpLayerTest extends TestCase
 {
     use RefreshDatabase;
     use SellableSeatFixtures;
+    use StaffAuth;
 
     private const QR = '11111111-2222-3333-4444-555555555555';
     private const SECOND_SCAN = '99999999-8888-7777-6666-555555555555';
@@ -643,34 +643,9 @@ class CheckerHttpLayerTest extends TestCase
     /**
      * Сотрудник: `StaffRole::isStaff()` читает `user_roles`, а не колонку в
      * `users` — роль выдаётся записью в связи.
+     *
+     * Тело переехало в `Nabilet\Tests\Support\StaffAuth`: второй потребитель
+     * появился вместе с админскими эндпоинтами Embed, и копия стала бы двумя
+     * описаниями «как выглядит админ», которые расходятся молча.
      */
-    private function actingAsStaff(int $organizationId): string
-    {
-        $now = now()->toDateTimeString();
-
-        $userId = (int) DB::table('users')->insertGetId([
-            'public_id' => (string) Str::ulid()->toBase32(),
-            'email' => 'operator-' . Str::random(6) . '@example.test',
-            'password' => Hash::make('Kv7#mRta2!Qz'),
-            'first_name' => 'Оператор',
-            'last_name' => 'Входа',
-            'status' => 'active',
-            'created_at' => $now,
-            'updated_at' => $now,
-        ]);
-
-        $roleId = (int) (DB::table('roles')->where('slug', 'admin')->value('id')
-            ?? DB::table('roles')->insertGetId(['name' => 'Администратор', 'slug' => 'admin']));
-
-        DB::table('user_roles')->insert([
-            'user_id' => $userId,
-            'organization_id' => $organizationId,
-            'role_id' => $roleId,
-            'created_at' => $now,
-        ]);
-
-        $this->actingAs(User::query()->findOrFail($userId), 'api');
-
-        return (string) $roleId;
-    }
 }
