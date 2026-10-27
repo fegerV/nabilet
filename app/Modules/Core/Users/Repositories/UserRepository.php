@@ -131,10 +131,31 @@ class UserRepository
         $user->roles()->detach($roleId);
     }
 
+    /**
+     * Есть ли у пользователя право `$permission`.
+     *
+     * ПОЧЕМУ `slug`, А НЕ `name`. В `permissions` две текстовые колонки:
+     * `name` — человеческая подпись («Просмотр мероприятий»), `slug` — машинный
+     * идентификатор (`view_events`), и UNIQUE стоит именно на `slug`. Сюда
+     * приходит идентификатор: так ключует сидер (`NabiletAdminSeeder`), и так
+     * выглядит пример в докблоке `RequirePermission` (`permission:orders.refund`).
+     *
+     * Здесь стояло `where('name', $permission)` — то есть slug сравнивался с
+     * русской подписью и не совпадал НИКОГДА. Ответ был `false` при любых
+     * выданных правах; обратная сторона того же дефекта — запрос
+     * `hasPermission('Просмотр мероприятий')` возвращал `true`. Оба направления
+     * закреплены в `PermissionResolutionTest`: тест на slug падал, тест на
+     * подпись падал тоже, только с противоположным ожиданием.
+     *
+     * Почему это дожило до сих пор: проверка не подключена ни к одному маршруту
+     * (`permission:` в `routes/` не встречается), поэтому «всегда false» не
+     * проявлялось как отказ в доступе — оно просто не вызывалось. Первый же
+     * маршрут с `permission:` запретил бы доступ всем, включая администратора.
+     */
     public function hasPermission(User $user, string $permission): bool
     {
         return $user->roles()->whereHas('permissions', function ($q) use ($permission) {
-            $q->where('name', $permission);
+            $q->where('slug', $permission);
         })->exists();
     }
 

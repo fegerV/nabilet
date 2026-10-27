@@ -564,6 +564,25 @@ started. The repro scripts are `tools/repro-binary-ip.php` (#15) and `tools/repr
   `permission` gate the kernel already ships (`RequirePermission`, aliased, fail-closed). The second is
   a one-line change but it changes the authorization *model* on those endpoints, and the spec's OpenAPI
   expresses only `bearerAuth` — it does not settle which of the two the HTTP layer should use.
+  **Обновление 2026-10-27:** псевдоним `role` в маршрутах больше не встречается, `RequireRole` не
+  построен — вопрос закрылся сам, маршруты стоят на `admin` (`EnsureAdminRole` → `StaffRole`).
+  Но утверждение «второй вариант — однострочная правка» было **неверным**, и это проверяемо:
+  `UserRepository::hasPermission()` фильтровал `where('name', $permission)`, а `name` в `permissions` —
+  русская подпись («Просмотр мероприятий»), машинный идентификатор лежит в `slug` (`view_events`,
+  UNIQUE). Значит резолвер прав возвращал `false` при любых выданных правах, и обратная сторона того
+  же — `hasPermission('Просмотр мероприятий')` возвращал `true`. Перевод маршрутов на `permission:`
+  запретил бы доступ ВСЕМ, включая администратора, и выглядел бы как «права сломались». Исправлено
+  (`slug`); сторож — `tests/Feature/Core/PermissionResolutionTest.php` (5 методов; до правки падали
+  три, причём тест на подпись падал с противоположным ожиданием — то есть тесты различают колонки).
+  Сам шлюз по-прежнему не подключён ни к одному маршруту: выбор модели авторизации остаётся за
+  владельцем продукта, и это решение здесь не принято молча.
+  **Вторая мина на том же пути.** `RequirePermission::userHas()` сначала спрашивает хук
+  `auth.user_has_permission` (слушателей нет → вернётся `null`, не `bool`), затем проверяет
+  `method_exists($user, 'hasPermission')`. У модели `User` такого метода НЕТ — только `hasRole()`.
+  Значит при подключении `permission:` к любому маршруту доступ запретился бы всем по причине №2,
+  уже независимой от колонки. Прежде чем переводить маршруты на шлюз, нужно закрыть именно это:
+  либо слушатель хука из модуля Users, либо метод на `User` — но ДЕЛЕГАТ, вызывающий
+  `UserRepository::hasPermission()`, а не вторую копию запроса по `role_permissions`.
 - **The four `UserService` methods and the `AuthController` rewrite (§4.4).** The guard half is built;
   the module is still a facade. `registerCustomer`, `sendPasswordResetLink`, `resetPassword` and
   `verifyEmail` do not exist, and `AuthController` still returns the flat
