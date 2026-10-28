@@ -14,6 +14,7 @@ import { computed, onMounted, ref } from 'vue'
 import NEmptyState from '@/components/ui/NEmptyState.vue'
 import { get } from '@/lib/api'
 import { money, dateLong } from '@/lib/format'
+import { revenueByDay } from '@/lib/stats'
 
 /** Денежная часть заказа — схема `MoneyTotals` контракта (минорные единицы). */
 interface ApiTotals {
@@ -87,31 +88,15 @@ const successRate = computed(() => {
   return Math.round((ok / total) * 100)
 })
 
-/** Выручка по дням за последние 14 дней. */
-const series = computed(() => {
-  const days: Array<{ date: string; label: string; total: number; count: number }> = []
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-
-  for (let i = 13; i >= 0; i -= 1) {
-    const day = new Date(today)
-    day.setDate(day.getDate() - i)
-    days.push({ date: day.toISOString().slice(0, 10), label: dateLong(day.toISOString()), total: 0, count: 0 })
-  }
-
-  for (const order of paid.value) {
-    const at = order.paid_at ?? order.created_at
-    if (!at) continue
-    const key = new Date(at).toISOString().slice(0, 10)
-    const bucket = days.find((d) => d.date === key)
-    if (bucket) {
-      bucket.total += orderTotal(order)
-      bucket.count += 1
-    }
-  }
-
-  return days
-})
+/** Выручка по дням за последние 14 дней. Бакетирование — `revenueByDay` (локальные сутки). */
+const series = computed(() =>
+  revenueByDay(paid.value, {
+    days: 14,
+    timestamp: (o) => o.paid_at ?? o.created_at,
+    amount: orderTotal,
+    label: dateLong,
+  }),
+)
 
 const maxTotal = computed(() => Math.max(1, ...series.value.map((d) => d.total)))
 

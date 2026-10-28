@@ -22,6 +22,7 @@ import NCard from '@/components/ui/NCard.vue'
 import NPageHeader from '@/components/ui/NPageHeader.vue'
 import { get } from '@/lib/api'
 import { money, relative, dateLong, ticketsLabel } from '@/lib/format'
+import { revenueByDay } from '@/lib/stats'
 import type { Column } from '@/components/ui/NDataTable.vue'
 
 const router = useRouter()
@@ -184,34 +185,14 @@ const KPIS = computed(() => [
 const CHART_W = 720
 const CHART_H = 180
 
-const series = computed(() => {
-  const days: Array<{ label: string; total: number }> = []
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  for (let i = 11; i >= 0; i -= 1) {
-    const day = new Date(today)
-    day.setDate(day.getDate() - i)
-    days.push({ label: dateLong(day.toISOString()), total: 0 })
-  }
-  // Границы суток считаем один раз: пересчитывать их на каждый заказ —
-  // 200 лишних Date на рендер.
-  const bounds = days.map((_, i) => {
-    const start = new Date(today)
-    start.setDate(start.getDate() - (11 - i))
-    const end = new Date(start)
-    end.setDate(end.getDate() + 1)
-    return { from: start.getTime(), to: end.getTime() }
-  })
-
-  for (const order of orders.value) {
-    if (!isPaid(order)) continue
-    const at = new Date(order.created_at ?? '').getTime()
-    if (Number.isNaN(at)) continue
-    const index = bounds.findIndex((b) => at >= b.from && at < b.to)
-    if (index >= 0) days[index]!.total += orderTotal(order)
-  }
-  return days
-})
+const series = computed(() =>
+  revenueByDay(orders.value.filter(isPaid), {
+    days: 12,
+    timestamp: (o) => o.created_at,
+    amount: orderTotal,
+    label: dateLong,
+  }),
+)
 
 const maxValue = computed(() => Math.max(1, ...series.value.map((d) => d.total)) * 1.15)
 
