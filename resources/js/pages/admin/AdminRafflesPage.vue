@@ -44,6 +44,7 @@ import {
   type RaffleListItem,
   type RafflePrizeDraft,
 } from '@/lib/raffles'
+import { formatDateTimeShort } from '@/lib/format'
 
 const ui = useUiStore()
 
@@ -216,11 +217,7 @@ async function runAction(kind: 'activate' | 'cancel' | 'draw' | 'notify', public
   }
 }
 
-function formatDate(value: string | null): string {
-  if (!value) return '—'
-  const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' })
-}
+// «25.12.2026, 19:30» — единственный владелец: lib/format.ts::formatDateTimeShort.
 </script>
 
 <template>
@@ -258,8 +255,8 @@ function formatDate(value: string | null): string {
               <NStatusBadge kind="raffle" :status="raffle.status" />
             </div>
             <p class="mt-0.5 text-xs text-white/40">
-              Окно: {{ formatDate(raffle.starts_at) }} — {{ formatDate(raffle.ends_at) }}
-              <template v-if="raffle.drawn_at"> · тираж {{ formatDate(raffle.drawn_at) }}</template>
+              Окно: {{ formatDateTimeShort(raffle.starts_at) }} — {{ formatDateTimeShort(raffle.ends_at) }}
+              <template v-if="raffle.drawn_at"> · тираж {{ formatDateTimeShort(raffle.drawn_at) }}</template>
             </p>
           </div>
 
@@ -311,7 +308,7 @@ function formatDate(value: string | null): string {
         </div>
         <div>
           <dt class="text-xs text-white/40">Тираж</dt>
-          <dd class="text-content">{{ selected.drawn_at ? formatDate(selected.drawn_at) : 'не проведён' }}</dd>
+          <dd class="text-content">{{ selected.drawn_at ? formatDateTimeShort(selected.drawn_at) : 'не проведён' }}</dd>
         </div>
       </dl>
 

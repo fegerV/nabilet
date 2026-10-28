@@ -64,6 +64,11 @@ const MONTHS_GEN = [
   'января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
   'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря',
 ]
+/** Именительный падеж — для автономного «октябрь 2026» (без числа перед ним). */
+const MONTHS_NOM = [
+  'январь', 'февраль', 'март', 'апрель', 'май', 'июнь',
+  'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь',
+]
 const WEEKDAYS = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб']
 
 export function dateLong(iso: string): string {
@@ -87,6 +92,57 @@ export function dateTime(iso: string): string {
 export function time(iso: string): string {
   const d = new Date(iso)
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+
+/**
+ * Даты с годом и короткие формы — один владелец, а не копии `toLocaleString`.
+ *
+ * РАНЬШЕ ЭТИ ФОРМАТЫ ЖИЛИ РОЗНО. `mediaLibrary.ts` и `AdminRafflesPage.vue`
+ * определяли КАЖДЫЙ СВОЙ `formatDate` (один — «9 октября 2026», второй —
+ * «25.12.2026, 19:30», то есть разные форматы под одним именем), а
+ * `AdminEventFormPage` и `AdminDashboard` встраивали `toLocaleString` /
+ * `Intl.DateTimeFormat` прямо в `computed`. Копии не лгали (форматы стабильны
+ * для ru-RU), но расходились бы при смене локали или правке одного места.
+ *
+ * Здесь — единственный владелец; месяцы берутся из того же `MONTHS_GEN`, что у
+ * `dateLong`/`dateTime`, поэтому вывод детерминирован и не зависит от локали
+ * браузера (в отличие от `toLocaleString`, который на managed-хостинге с
+ * неустановленной ru-RU мог бы отдать `Oct 9, 2026`).
+ */
+function pad2(n: number): string {
+  return String(n).padStart(2, '0')
+}
+
+/** «9 октября 2026» — дата с годом (библиотека файлов). Пустая → ''. */
+export function formatDate(iso: string | null | undefined): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  return `${d.getDate()} ${MONTHS_GEN[d.getMonth()]} ${d.getFullYear()}`
+}
+
+/** «9 октября 2026, 19:30» — дата с годом и временем (карточка мероприятия). */
+export function formatDateTimeLong(iso: string | null | undefined): string {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return '—'
+  return `${d.getDate()} ${MONTHS_GEN[d.getMonth()]} ${d.getFullYear()}, ${pad2(d.getHours())}:${pad2(d.getMinutes())}`
+}
+
+/** «октябрь 2026» — подпись периода обзора. */
+export function formatMonthYear(iso: string | null | undefined): string {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return '—'
+  return `${MONTHS_NOM[d.getMonth()]} ${d.getFullYear()}`
+}
+
+/** «09.10.2026, 19:30» — короткая дата+время (окно розыгрыша). */
+export function formatDateTimeShort(iso: string | null | undefined): string {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return '—'
+  return `${pad2(d.getDate())}.${pad2(d.getMonth() + 1)}.${d.getFullYear()}, ${pad2(d.getHours())}:${pad2(d.getMinutes())}`
 }
 
 /** «через 9:41» — для таймера удержания места. */

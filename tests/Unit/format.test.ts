@@ -25,7 +25,7 @@
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { plural, rowsLabel, seatsLabel, ticketsLabel } from '@/lib/format'
+import { plural, rowsLabel, seatsLabel, ticketsLabel, formatDate, formatDateTimeLong, formatMonthYear, formatDateTimeShort } from '@/lib/format'
 
 describe('plural', () => {
   /**
@@ -184,5 +184,55 @@ describe('один владелец склонения', () => {
     }
 
     expect(offenders, offenders.join('\n')).toEqual([])
+  })
+
+  describe('даты: один владелец в format.ts', () => {
+    /**
+     * Строка без `Z` парсится `new Date()` как локальное время, поэтому
+     * `getHours()` детерминированно равен 19 независимо от часового пояса
+     * раннера — ровно как ведёт себя заменённый `toLocaleString('ru-RU')`.
+     */
+    const ISO = '2026-10-09T19:30:00'
+
+    it('formatDate — «9 октября 2026», пустая строка на пустом/битом вводе', () => {
+      expect(formatDate(ISO)).toBe('9 октября 2026')
+      expect(formatDate('')).toBe('')
+      expect(formatDate(null)).toBe('')
+      expect(formatDate('не дата')).toBe('')
+    })
+
+    it('formatDateTimeLong — «9 октября 2026, 19:30»', () => {
+      expect(formatDateTimeLong(ISO)).toBe('9 октября 2026, 19:30')
+      expect(formatDateTimeLong('')).toBe('—')
+      expect(formatDateTimeLong(null)).toBe('—')
+    })
+
+    it('formatMonthYear — «октябрь 2026»', () => {
+      expect(formatMonthYear(ISO)).toBe('октябрь 2026')
+      expect(formatMonthYear('')).toBe('—')
+    })
+
+    it('formatDateTimeShort — «09.10.2026, 19:30»', () => {
+      expect(formatDateTimeShort(ISO)).toBe('09.10.2026, 19:30')
+      expect(formatDateTimeShort('')).toBe('—')
+    })
+
+    it('нигде больше нет разбросанных форматтеров дат', () => {
+      // Вернуть копию (свой `formatDate`, `toLocaleDateString`, `Intl.DateTimeFormat`)
+      // — упадёт по имени файла: правило дат живёт только в `lib/format.ts`.
+      const root = join(process.cwd(), 'resources', 'js')
+      const offenders: string[] = []
+      const DATE_API = /toLocaleDateString|Intl\.DateTimeFormat|function formatDate\b/
+
+      for (const file of sourceFiles(root)) {
+        const relative = file.slice(root.length + 1).replace(/\\/g, '/')
+        if (relative === 'lib/format.ts') continue
+        if (DATE_API.test(codeOnly(readFileSync(file, 'utf8')))) {
+          offenders.push(relative)
+        }
+      }
+
+      expect(offenders, offenders.join('\n')).toEqual([])
+    })
   })
 })

@@ -21,7 +21,7 @@ import NEmptyState from '@/components/ui/NEmptyState.vue'
 import NCard from '@/components/ui/NCard.vue'
 import NPageHeader from '@/components/ui/NPageHeader.vue'
 import { get } from '@/lib/api'
-import { money, plural, relative, dateLong, ticketsLabel } from '@/lib/format'
+import { money, plural, relative, dateLong, ticketsLabel, formatMonthYear } from '@/lib/format'
 import { attentionTasks } from '@/lib/attention'
 import { revenueByDay } from '@/lib/stats'
 import type { Column } from '@/components/ui/NDataTable.vue'
@@ -280,9 +280,7 @@ const topEvents = computed(() => {
 })
 
 /** «октябрь 2026» — подпись к обзору, чтобы цифры были привязаны к моменту. */
-const period = computed(() =>
-  new Intl.DateTimeFormat('ru-RU', { month: 'long', year: 'numeric' }).format(new Date()),
-)
+const period = computed(() => formatMonthYear(new Date().toISOString()))
 
 /** Подпись к обзору: привязывает цифры к моменту, а в загрузке не врёт числом. */
 const headerSubtitle = computed(() =>

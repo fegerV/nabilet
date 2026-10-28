@@ -39,7 +39,7 @@ import MediaPicker from '@/components/admin/MediaPicker.vue'
 import { useUiStore } from '@/stores/ui'
 import { ApiError, get, request, send, upload } from '@/lib/api'
 import { storageSrc } from '@/lib/mediaLibrary'
-import { dateFull, time } from '@/lib/format'
+import { dateFull, time, formatDateTimeLong } from '@/lib/format'
 import { statusOptions } from '@/lib/statusLabels'
 import {
   buildSessionPayload,
@@ -884,18 +884,10 @@ async function cancelFlow(): Promise<void> {
   await changePublication('cancel')
 }
 
-/** Дата публикации в читаемом виде. */
+/** Дата публикации в читаемом виде — единственный владелец: lib/format.ts. */
 const publishedAtText = computed<string | null>(() => {
   if (!publishedAt.value) return null
-  const date = new Date(publishedAt.value)
-  if (Number.isNaN(date.getTime())) return publishedAt.value
-  return date.toLocaleString('ru-RU', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
+  return formatDateTimeLong(publishedAt.value)
 })
 </script>
 

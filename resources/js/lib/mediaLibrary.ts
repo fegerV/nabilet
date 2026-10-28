@@ -213,15 +213,7 @@ export function assetSrc(asset: Pick<MediaAsset, 'url'> | null | undefined): str
   return storageSrc(asset?.url)
 }
 
-/** Дата загрузки в виде «9 октября 2026». Пустая строка, если даты нет. */
-export function formatDate(iso: string | null | undefined): string {
-  if (!iso) return ''
-
-  const date = new Date(iso)
-  if (Number.isNaN(date.getTime())) return ''
-
-  return date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })
-}
+// «9 октября 2026» — единственный владелец: lib/format.ts::formatDate.
 
 /**
  * Страница, приведённая к допустимому диапазону.

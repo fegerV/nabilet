@@ -39,12 +39,12 @@ import {
   assetSrc,
   clampPage,
   dimensionsLabel,
-  formatDate,
   humanSize,
   kindOf,
   usageLabels,
   validateMediaFile,
 } from '@/lib/mediaLibrary'
+import { formatDate } from '@/lib/format'
 
 /**
  * `meta` списка файлов — общий `PageMeta` из `lib/api.ts`.

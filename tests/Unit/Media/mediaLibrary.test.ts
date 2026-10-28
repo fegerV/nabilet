@@ -23,7 +23,6 @@ import {
   assetSrc,
   clampPage,
   dimensionsLabel,
-  formatDate,
   humanSize,
   kindOf,
   storageSrc,
@@ -32,6 +31,7 @@ import {
   usageLabels,
   validateMediaFile,
 } from '@/lib/mediaLibrary'
+import { formatDate } from '@/lib/format'
 
 /** Файл заданного типа и размера — без обращения к настоящему `File`. */
 function fakeFile(name: string, type: string, size: number): File {
