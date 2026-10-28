@@ -21,6 +21,7 @@ use Nabilet\Modules\Orders\Services\OrderService;
 use Nabilet\Modules\Orders\StateMachines\OrderStateMachine;
 use Nabilet\Modules\Payments\Services\RefundService;
 use Nabilet\Modules\Payments\StateMachines\PaymentStateMachine;
+use Nabilet\Modules\Users\Domain\ContactChannel;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -324,7 +325,12 @@ class OrderController extends Controller
 
         $email = $validated['email'] ?? null;
 
-        if ($email !== null && strcasecmp($email, (string) $order->customer_email) !== 0) {
+        // «Тот же ли это адрес» — вопрос к колонке, а не к PHP: здесь стоял
+        // `strcasecmp()`, который складывает регистр только в ASCII и не знает
+        // про PAD SPACE. `sameIdentity()` отвечает так же, как `utf8mb4_unicode_ci`.
+        if ($email !== null
+            && ! ContactChannel::sameIdentity(ContactChannel::EMAIL, $email, (string) $order->customer_email)
+        ) {
             // Присваивание свойству, а не `update()`: адрес здесь — предмет
             // операции, а не произвольный пользовательский ввод.
             $order->customer_email = $email;

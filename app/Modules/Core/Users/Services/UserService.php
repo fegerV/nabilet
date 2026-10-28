@@ -11,6 +11,7 @@ use Nabilet\Modules\Auth\Services\SessionIssuer;
 use Nabilet\Modules\Core\Users\Domain\UserStatus;
 use Nabilet\Modules\Core\Users\Models\User;
 use Nabilet\Modules\Core\Users\Repositories\UserRepository;
+use Nabilet\Modules\Users\Domain\ContactChannel;
 
 class UserService
 {
@@ -33,6 +34,12 @@ class UserService
      */
     public function createUser(array $data): User
     {
+        // Адрес приводится ДО проверки занятости, чтобы проверка и INSERT видели
+        // одно и то же значение, а `users.email` хранил канонический вид. Само
+        // приведение — правило колонки, поэтому его делает `ContactChannel`, а не
+        // этот сервис (см. докблок класса: регистр складывает `utf8mb4_unicode_ci`).
+        $data['email'] = (string) ContactChannel::normalise(ContactChannel::EMAIL, (string) ($data['email'] ?? ''));
+
         if ($this->repository->findByEmail($data['email'])) {
             throw new ValidationError([
                 'email' => ['This email address is already registered.'],
@@ -66,8 +73,27 @@ class UserService
      */
     public function updateUser(User $user, array $data): User
     {
-        if (isset($data['email']) && $data['email'] !== $user->email) {
-            if ($this->repository->findByEmail($data['email'])) {
+        // ЗДЕСЬ БЫЛ ЖИВОЙ ДЕФЕКТ: два ответа на один вопрос.
+        //
+        // «Изменился ли адрес» решалось через `$data['email'] !== $user->email` —
+        // побайтово в PHP, — а «занят ли он» через `findByEmail()` — по коллации
+        // в SQL. Для `Buyer@Example.com` против `buyer@example.com` PHP отвечал
+        // «адрес другой», SQL находил СОБСТВЕННУЮ строку пользователя и сообщал
+        // «уже зарегистрирован»: правка профиля отказывала в сохранении своего же
+        // адреса, набранного в другом регистре. Домен при этом (см.
+        // `UserIdentityPolicy::addressChangeDecision`) уже считал такой адрес
+        // неизменённым — то есть противоречили не только PHP и SQL, но и два слоя.
+        //
+        // Теперь вопрос один и у него один владелец: `sameIdentity()` сравнивает
+        // так же, как колонка, а `normalise()` даёт адресу канонический вид для
+        // записи. `null` остаётся `null`: `users.email` NULLABLE, и стирание
+        // адреса — отдельное действие, а не пустая строка.
+        if (array_key_exists('email', $data) && $data['email'] !== null) {
+            $data['email'] = (string) ContactChannel::normalise(ContactChannel::EMAIL, (string) $data['email']);
+
+            if (! ContactChannel::sameIdentity(ContactChannel::EMAIL, $data['email'], (string) $user->email)
+                && $this->repository->findByEmail($data['email'])
+            ) {
                 throw new ValidationError([
                     'email' => ['This email address is already registered.'],
                 ]);

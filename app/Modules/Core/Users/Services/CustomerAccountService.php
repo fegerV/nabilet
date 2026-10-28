@@ -7,6 +7,7 @@ namespace Nabilet\Modules\Core\Users\Services;
 use Illuminate\Database\QueryException;
 use Nabilet\Modules\Core\Users\Domain\UserStatus;
 use Nabilet\Modules\Core\Users\Models\User;
+use Nabilet\Modules\Users\Domain\ContactChannel;
 
 /**
  * Аккаунт покупателя, выведенный из заказа.
@@ -60,15 +61,20 @@ final class CustomerAccountService
      */
     public function resolveForCheckout(string $email, ?string $name = null, ?string $phone = null): ?int
     {
-        $email = trim($email);
+        // Приведение — правило колонки `users.email`, а не этого сервиса.
+        // Здесь стоял свой `trim($email)`, то есть копия половины правила: она
+        // обрезала пробелы, но оставляла регистр, и `users.email` был
+        // ЕДИНСТВЕННОЙ адресной колонкой, хранившей адрес «как набрали» —
+        // `referrals`, `newsletter_subscribers` и `social_accounts` пишут
+        // нижний регистр. Отсюда и рос дефект `UserService::updateUser()`.
+        $email = ContactChannel::normalise(ContactChannel::EMAIL, $email);
 
-        if ($email === '' || ! filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        if ($email === null || ! filter_var($email, FILTER_VALIDATE_EMAIL)) {
             return null;
         }
 
-        // Сравнение идёт по колонке с коллацией utf8mb4_unicode_ci, поэтому
-        // регистр адреса значения не имеет: `Ivan@Example.com` и
-        // `ivan@example.com` — один и тот же аккаунт.
+        // Поиск идёт по колонке с коллацией `utf8mb4_unicode_ci`, поэтому даже
+        // адрес, записанный до этой правки в смешанном регистре, находится.
         $existing = User::query()->where('email', $email)->first();
 
         if ($existing !== null) {
@@ -84,7 +90,7 @@ final class CustomerAccountService
                 'email_verified_at' => null,
                 'first_name' => $firstName,
                 'last_name' => $lastName,
-                'phone' => $this->cleanPhone($phone),
+                'phone' => ContactChannel::normalise(ContactChannel::PHONE, $phone),
                 'status' => UserStatus::ACTIVE,
             ]);
         } catch (QueryException $e) {
@@ -123,12 +129,5 @@ final class CustomerAccountService
         $parts = preg_split('/\s+/', $name, 2) ?: [];
 
         return [$parts[0] ?? null, $parts[1] ?? null];
-    }
-
-    private function cleanPhone(?string $phone): ?string
-    {
-        $phone = trim((string) $phone);
-
-        return $phone === '' ? null : $phone;
     }
 }

@@ -99,6 +99,26 @@ final class UserIdentityTest extends TestCase
         );
     }
 
+    /**
+     * Регистр складывается так же, как его складывает коллация, — включая
+     * не-ASCII. Это и есть причина, по которой правило живёт в одном классе:
+     * `strtolower()`/`strcasecmp()` умеют только ASCII и на кириллице дают
+     * ДРУГОЙ ответ, чем `utf8mb4_unicode_ci`.
+     */
+    public function testNonAsciiCaseIsFoldedTheWayTheCollationFoldsIt(): void
+    {
+        $this->assertTrue(
+            ContactChannel::sameIdentity(ContactChannel::EMAIL, 'ИВАН@ПОЧТА.РФ', 'иван@почта.рф'),
+            'колонка считает эти адреса одним значением'
+        );
+
+        $this->assertNotSame(
+            0,
+            strcasecmp('ИВАН@ПОЧТА.РФ', 'иван@почта.рф'),
+            'а strcasecmp — нет: именно поэтому он не может быть копией этого правила'
+        );
+    }
+
     public function testAPhoneIsTrimmedButNotStripped(): void
     {
         // Stripping separators would make PHP stricter than the column:
@@ -122,6 +142,100 @@ final class UserIdentityTest extends TestCase
             fn () => ContactChannel::normalise('telegram', '@someone'),
             'an unknown channel must be refused'
         );
+    }
+
+    /**
+     * Никто, кроме владельца, не приводит адрес своими руками.
+     *
+     * ЗАЧЕМ СТАТИЧЕСКИЙ СТОРОЖ
+     *   Правило «адрес → ключ» было скопировано в одиннадцати местах шестью
+     *   способами: `mb_strtolower(trim())` в двух сервисах, `strtolower()` без
+     *   `trim` в четырёх, `strcasecmp()` в трёх. Все копии были «почти верны»,
+     *   и именно поэтому ни одна не выглядела дефектом: расхождение видно
+     *   только на краю — на не-ASCII регистре и на пробелах, которые колонка
+     *   прощает, а PHP нет.
+     *
+     * ЧТО ЗДЕСЬ ЗАПРЕЩЕНО
+     *   1. `strcasecmp()` — сложение регистра только в ASCII, использованное как
+     *      ответ на вопрос «это тот же адрес». Замены нет: вопрос задаётся
+     *      `ContactChannel::sameIdentity()`.
+     *   2. `strtolower()`/`mb_strtolower()` над чем-либо, что называется *email*.
+     *      Замена — `ContactChannel::normalise(ContactChannel::EMAIL, …)`.
+     *
+     * ЧЕГО СТОРОЖ НЕ ВИДИТ
+     *   `trim($email)` без сложения регистра — половина правила. Такой вызов
+     *   безвреден только потому, что за ним всё равно идёт владелец; отдельного
+     *   запрета на `trim()` нет, иначе под него попали бы `trim($candidate)` в
+     *   проверках синтаксиса. Комментарии вырезаются токенайзером, а не
+     *   регуляркой: иначе сторож матчил бы собственный пояснительный текст.
+     */
+    public function testNoOtherFileReducesAnAddressItself(): void
+    {
+        $root = str_replace('\\', '/', dirname(__DIR__, 2)) . '/app';
+        $offenders = [];
+
+        $files = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($root, \FilesystemIterator::SKIP_DOTS)
+        );
+
+        foreach ($files as $file) {
+            /** @var \SplFileInfo $file */
+            if ($file->getExtension() !== 'php') {
+                continue;
+            }
+
+            $path = str_replace('\\', '/', $file->getPathname());
+
+            // Сам владелец — единственное место, где правило записано.
+            if (str_ends_with($path, '/Users/Domain/ContactChannel.php')) {
+                continue;
+            }
+
+            $source = $this->codeWithoutComments((string) file_get_contents($path));
+            $relative = substr($path, strlen($root) + 1);
+
+            if (preg_match('/\bstrcasecmp\s*\(/', $source) === 1) {
+                $offenders[] = $relative . ': strcasecmp()';
+            }
+
+            preg_match_all('/(?:mb_)?strtolower\s*\(([^)]*)\)/i', $source, $calls);
+
+            foreach ($calls[1] as $argument) {
+                if (preg_match('/email/i', $argument) === 1) {
+                    $offenders[] = $relative . ': strtolower(' . trim($argument) . ')';
+                }
+            }
+        }
+
+        $this->assertSame(
+            [],
+            $offenders,
+            "приведение адреса — правило ContactChannel::normalise()/sameIdentity():\n  "
+            . implode("\n  ", $offenders)
+        );
+    }
+
+    /**
+     * Исходник без комментариев — через токенайзер, а не регуляркой.
+     *
+     * `preg_replace('~//.*~')` режет и строковые литералы с `//` внутри, а
+     * регулярка для блочного комментария ломается от одного неверного символа.
+     * Токенайзер даёт ровно «код», поэтому сторож не зависит от того, как
+     * оформлено пояснение рядом.
+     */
+    private function codeWithoutComments(string $source): string
+    {
+        $code = '';
+
+        foreach (token_get_all($source) as $token) {
+            if (is_array($token) && ($token[0] === T_COMMENT || $token[0] === T_DOC_COMMENT)) {
+                continue;
+            }
+
+            $code .= is_array($token) ? $token[1] : $token;
+        }
+
+        return $code;
     }
 
     // ── reachability ────────────────────────────────────────────────────────

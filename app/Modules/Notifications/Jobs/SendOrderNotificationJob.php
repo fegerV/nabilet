@@ -14,6 +14,7 @@ use Nabilet\Modules\Notifications\Services\TransactionalMailService;
 use Nabilet\Modules\Notifications\Support\OrderNotificationCodes;
 use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Orders\StateMachines\OrderStateMachine;
+use Nabilet\Modules\Users\Domain\ContactChannel;
 
 /**
  * Письмо по смене статуса заказа.
@@ -136,7 +137,14 @@ class SendOrderNotificationJob implements ShouldQueue
             $candidate = trim($candidate);
 
             if ($candidate !== '' && filter_var($candidate, FILTER_VALIDATE_EMAIL) !== false) {
-                return strcasecmp($candidate, (string) $order->customer_email) === 0 ? null : $candidate;
+                // Здесь стоял `strcasecmp()` — своя копия правила «тот же адрес»,
+                // складывающая регистр только в ASCII. Владелец сравнивает так,
+                // как сравнивает колонка (`utf8mb4_unicode_ci`).
+                return ContactChannel::sameIdentity(
+                    ContactChannel::EMAIL,
+                    $candidate,
+                    (string) $order->customer_email
+                ) ? null : $candidate;
             }
         }
 

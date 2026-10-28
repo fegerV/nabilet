@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Nabilet\Modules\Notifications\Models\NewsletterSubscriber;
 use Nabilet\Modules\Privacy\Domain\ConsentRecord;
+use Nabilet\Modules\Users\Domain\ContactChannel;
 use Throwable;
 
 /**
@@ -40,7 +41,10 @@ final class NewsletterSubscriptionService
      */
     public function subscribe(string $email): NewsletterSubscriber
     {
-        $email = mb_strtolower(trim($email));
+        // `uq_newsletter_email` — колонка `utf8mb4_unicode_ci`: приведение адреса
+        // к каноническому виду делает `ContactChannel`, чтобы поиск подписчика
+        // шёл по тому же значению, которое записано.
+        $email = (string) ContactChannel::normalise(ContactChannel::EMAIL, $email);
 
         $existing = NewsletterSubscriber::query()->where('email', $email)->first();
 

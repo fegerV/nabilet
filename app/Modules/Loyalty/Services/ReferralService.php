@@ -13,6 +13,7 @@ use Nabilet\Modules\Loyalty\Models\BonusTransaction;
 use Nabilet\Modules\Loyalty\Models\Referral;
 use Nabilet\Modules\Loyalty\Models\ReferralCode;
 use Nabilet\Modules\Orders\Models\Order;
+use Nabilet\Modules\Users\Domain\ContactChannel;
 
 /**
  * Реферальная программа «Клуба зрителей» (фаза 4 `docs/LOYALTY-PLAN.md`).
@@ -161,7 +162,17 @@ final class ReferralService
             return null;
         }
 
-        if ($link->user !== null && strcasecmp($email, (string) $link->user->email) === 0) {
+        // Сравнение адресов — вопрос к колонке, а не к PHP. Здесь стоял
+        // `strcasecmp()`: он складывает регистр только в ASCII, поэтому на
+        // кириллице (`ИВАН@ПОЧТА.РФ` против `иван@почта.рф`) даёт −32, тогда как
+        // `utf8mb4_unicode_ci` считает это одним значением. Сегодня это
+        // замаскировано дважды — правилом `email:rfc`, которое не пропускает
+        // не-ASCII, и `TrimStrings` для пробелов, — но совпадение с владельцем
+        // было случайным, а не выведенным: следующая правка правил валидации
+        // сделала бы проверку самоприглашения дырявой.
+        if ($link->user !== null
+            && ContactChannel::sameIdentity(ContactChannel::EMAIL, $email, (string) $link->user->email)
+        ) {
             return null;
         }
 
@@ -169,7 +180,7 @@ final class ReferralService
         // второе не заводим, иначе один друг приносил бы награду каждому,
         // чью ссылку открыл. Уточнение `rewarded` — именно этого пригласившего.
         $alreadyRewarded = Referral::query()
-            ->where('invited_email', strtolower($email))
+            ->where('invited_email', (string) ContactChannel::normalise(ContactChannel::EMAIL, $email))
             ->rewarded()
             ->exists();
 

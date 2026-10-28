@@ -232,6 +232,44 @@ class MeEndpointsTest extends TestCase
     }
 
     /**
+     * Тот же адрес в другом регистре — это ТОТ ЖЕ адрес, а не занятый.
+     *
+     * Колонка `users.email` — `utf8mb4_unicode_ci`, поэтому MySQL считает
+     * `Buyer@Example.com` и `buyer@example.com` одним значением. Владелец этого
+     * правила — `ContactChannel::sameIdentity()`, и домен им уже пользуется:
+     * `UserIdentityPolicy::addressChangeDecision()` на такую правку отвечает
+     * «адрес не изменился» и подтверждение не снимает.
+     *
+     * `UserService::updateUser()` решал тот же вопрос иначе — `$data['email']
+     * !== $user->email` в PHP, а затем `findByEmail()` в SQL. Две проверки одного
+     * правила отвечали по-разному: PHP говорил «адрес другой», SQL находил
+     * СОБСТВЕННУЮ строку пользователя и сообщал «адрес уже зарегистрирован».
+     * То есть сохранить свой же адрес, набрав его в другом регистре, было
+     * невозможно — 422 про чужой аккаунт.
+     *
+     * Сторож невакциозен: без нормализации в `updateUser()` ответ 422.
+     */
+    public function test_patch_me_accepts_its_own_address_written_in_another_case(): void
+    {
+        [$token, $userId] = $this->registerAndLogin();
+
+        $this->withToken($token)
+            ->patchJson('/api/v1/me', ['email' => 'Buyer@Example.com'])
+            ->assertStatus(200)
+            ->assertJsonPath('data.email', self::EMAIL);
+
+        $this->assertSame(
+            self::EMAIL,
+            (string) DB::table('users')->where('id', $userId)->value('email'),
+            'адрес остаётся каноническим: правка регистра не создаёт второй адрес',
+        );
+        $this->assertNotNull(
+            DB::table('users')->where('id', $userId)->value('email_verified_at'),
+            'подтверждение не снимается: адрес не менялся',
+        );
+    }
+
+    /**
      * Подтверждённый адрес нельзя перенести правкой профиля.
      *
      * Схема этого не запрещает: `UPDATE users SET email = …` на MySQL 8.4

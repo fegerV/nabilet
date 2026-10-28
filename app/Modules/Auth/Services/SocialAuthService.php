@@ -9,6 +9,7 @@ use Nabilet\Modules\Auth\Domain\SocialIdentity;
 use Nabilet\Modules\Auth\Models\SocialAccount;
 use Nabilet\Modules\Core\Users\Domain\UserStatus;
 use Nabilet\Modules\Core\Users\Models\User;
+use Nabilet\Modules\Users\Domain\ContactChannel;
 
 /**
  * К какому пользователю привязать проверенную внешнюю идентичность.
@@ -42,7 +43,10 @@ final class SocialAuthService
             return $existing->user;
         }
 
-        $email = $this->normalizeEmail($identity->email);
+        // Приведение адреса — правило колонки `users.email`, а не этого сервиса:
+        // `ContactChannel` знает про `utf8mb4_unicode_ci` и PAD SPACE, а
+        // локальная копия `strtolower(trim())` складывала регистр только в ASCII.
+        $email = ContactChannel::normalise(ContactChannel::EMAIL, $identity->email);
 
         $user = DB::transaction(function () use ($identity, $email): User {
             $user = $this->findOrCreateUser($identity, $email);
@@ -94,16 +98,5 @@ final class SocialAuthService
         $user->save();
 
         return $user;
-    }
-
-    private function normalizeEmail(?string $email): ?string
-    {
-        if ($email === null) {
-            return null;
-        }
-
-        $normalized = strtolower(trim($email));
-
-        return $normalized === '' ? null : $normalized;
     }
 }

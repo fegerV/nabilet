@@ -11,6 +11,7 @@ use Nabilet\Modules\Core\Users\Repositories\UserRepository;
 use Nabilet\Modules\Notifications\Jobs\SendAccountNotificationJob;
 use Nabilet\Modules\Notifications\Services\AccountMailService;
 use Nabilet\Modules\Notifications\Support\AccountNotificationCodes;
+use Nabilet\Modules\Users\Domain\ContactChannel;
 
 /**
  * Восстановление пароля и подтверждение адреса.
@@ -95,9 +96,22 @@ final class AccountRecoveryService
     {
         $user = $this->tokens->verify($token, AccountTokenPurpose::PasswordReset);
 
+        if ($user === null) {
+            return false;
+        }
+
         // Токен подписан на конкретный адрес: он обязан совпасть с телом запроса.
         // Это ловит ссылку, пересланную в другой аккаунт вместе с адресом.
-        if ($user === null || ! hash_equals(strtolower((string) $user->email), strtolower($email))) {
+        //
+        // `hash_equals()` остаётся намеренно: он сравнивает за постоянное время,
+        // и это единственная причина, по которой здесь нет `sameIdentity()`.
+        // Приводит адреса всё равно владелец правила — иначе `strtolower()`
+        // складывал бы регистр только в ASCII, тогда как колонка считает
+        // `ИВАН@ПОЧТА.РФ` и `иван@почта.рф` одним значением.
+        $stored = ContactChannel::normalise(ContactChannel::EMAIL, (string) $user->email) ?? '';
+        $claimed = ContactChannel::normalise(ContactChannel::EMAIL, $email) ?? '';
+
+        if (! hash_equals($stored, $claimed)) {
             return false;
         }
 

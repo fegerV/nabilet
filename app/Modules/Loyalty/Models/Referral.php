@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Nabilet\Modules\Core\Users\Models\User;
+use Nabilet\Modules\Users\Domain\ContactChannel;
 
 /**
  * Приглашение: строка на пару «пригласивший + email друга» (фаза 4
@@ -66,10 +67,18 @@ class Referral extends Model
     protected static function booted(): void
     {
         static::creating(function (Referral $referral): void {
-            // Адрес — ключ в UNIQUE: приведение делает сервер, иначе
-            // «Иванов@» и «иванов@» оказались бы двумя приглашениями.
+            // Здесь стояло «приведение делает сервер, иначе „Иванов@“ и
+            // „иванов@“ оказались бы двумя приглашениями» — и это неправда:
+            // уникальность обеспечивает КОЛЛАЦИЯ `utf8mb4_unicode_ci`, которая
+            // и без PHP считает оба написания одним значением. Задача приведения
+            // другая — записать адрес в том единственном виде, в котором его
+            // потом сравнивают (`ContactChannel::normalise()`), иначе строка
+            // хранит регистр, которого нет ни в одной проверке.
             if (is_string($referral->invited_email)) {
-                $referral->invited_email = strtolower($referral->invited_email);
+                $referral->invited_email = (string) ContactChannel::normalise(
+                    ContactChannel::EMAIL,
+                    $referral->invited_email
+                );
             }
         });
     }
@@ -102,7 +111,7 @@ class Referral extends Model
      */
     public static function upsertByEmail(int|string $inviterUserId, string $invitedEmail, ?int $invitedUserId = null): self
     {
-        $email = strtolower($invitedEmail);
+        $email = (string) ContactChannel::normalise(ContactChannel::EMAIL, $invitedEmail);
 
         $referral = self::query()->firstOrCreate(
             [
@@ -153,7 +162,10 @@ class Referral extends Model
                 }
 
                 if ($invitedEmail !== null) {
-                    $q->orWhere('invited_email', strtolower($invitedEmail));
+                    $q->orWhere('invited_email', (string) ContactChannel::normalise(
+                        ContactChannel::EMAIL,
+                        $invitedEmail
+                    ));
                 }
             })
             ->orderBy('created_at');
