@@ -6,50 +6,48 @@
  * пришлось бы монтировать страницу с Konva-холстом и jsdom-заглушками.
  *
  * Здесь фиксируем ровно те инварианты, из-за которых поля вообще существуют:
- *  - цена переводится в копейки и никогда не становится нулевой (сервер
- *    отвергает `price < 1` — молча записанный ноль дал бы «на экране 0 ₽,
- *    автосохранение падает»);
+ *  - цена показывается в поле ЦЕЛЫМИ рублями (дробные копейки там не
+ *    редактируются);
  *  - пустой ввод цены ряда — это СНЯТИЕ переопределения, а не ошибка;
  *  - границы полей фона/статики совпадают с тем, что ждёт сервер;
  *  - отрицательный угол поворота приводится к [0, 360), а не остаётся
  *    отрицательным, как дал бы `% 360`.
+ *
+ * САМА КОНВЕРСИЯ РУБЛЕЙ В КОПЕЙКИ ПРОВЕРЯЕТСЯ В `tests/Unit/money.test.ts`:
+ * она переехала во владельца (`@/lib/money`), и держать её тесты здесь значило
+ * бы держать вторую копию уже и в тестах.
  */
 import { describe, expect, it } from 'vitest'
 import {
   clampFloatOrNull,
   clampIntOrNull,
   normalizeRotation,
+  priceRubField,
   requiredNonNegativeError,
   roundOrNull,
   rowPriceError,
-  rubToMinor,
 } from '../../../resources/js/pages/hall-editor/hallEditorFields'
 
-describe('rubToMinor', () => {
-  it('переводит рубли в копейки', () => {
-    expect(rubToMinor(850)).toBe(85_000)
-    expect(rubToMinor('1250.50')).toBe(125_050)
+describe('priceRubField', () => {
+  it('показывает копейки в рублях', () => {
+    expect(priceRubField(150_000)).toBe('1500')
+    expect(priceRubField(85_000)).toBe('850')
   })
 
-  it('округляет дробные копейки, а не обрезает их', () => {
-    expect(rubToMinor(0.015)).toBe(2)
-    expect(rubToMinor(1.004)).toBe(100)
+  it('округляет до целых рублей — поле правит целые', () => {
+    expect(priceRubField(155_050)).toBe('1551')
+    expect(priceRubField(1)).toBe('0')
   })
 
-  it('никогда не отдаёт ноль или отрицательное значение', () => {
-    // 0.001 ₽ = 0.1 копейки → округление дало бы 0, но нижняя граница 1 копейка.
-    expect(rubToMinor(0.001)).toBe(1)
-    expect(rubToMinor(0)).toBeNull()
-    expect(rubToMinor(-5)).toBeNull()
+  it('НЕ делит на 100 дважды', () => {
+    // Регрессия: здесь стояло `String(Math.round((groupSeatPriceRub) / 100))`,
+    // где `groupSeatPriceRub` уже был в рублях. Место за 1500 ₽ показывалось
+    // как 15 ₽ — в сто раз дешевле, чем оно стоит.
+    expect(priceRubField(150_000)).not.toBe('15')
   })
 
-  it('отклоняет нечисловой ввод', () => {
-    expect(rubToMinor('')).toBeNull()
-    expect(rubToMinor('abc')).toBeNull()
-    expect(rubToMinor(null)).toBeNull()
-    expect(rubToMinor(undefined)).toBeNull()
-    expect(rubToMinor(Number.NaN)).toBeNull()
-    expect(rubToMinor(Number.POSITIVE_INFINITY)).toBeNull()
+  it('ноль — это «0», а не пустая строка', () => {
+    expect(priceRubField(0)).toBe('0')
   })
 })
 

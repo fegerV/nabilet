@@ -24,6 +24,7 @@ import { ApiError } from '@/lib/api'
 import { anchorDemoUrl, fetchPayment, initiatePayment, newIdempotencyKey, recallPaymentId, rememberPaymentId } from '@/lib/payments'
 import { trackEvent } from '@/lib/metrika'
 import { money } from '@/lib/format'
+import { minorToRub } from '@/lib/money'
 
 const route = useRoute()
 const router = useRouter()
@@ -153,8 +154,10 @@ function reportOutcome(outcome: 'success' | 'fail'): void {
   outcomeReported = outcome
   if (outcome === 'success') {
     // revenue — в РУБЛЯХ: `paidMinor` в копейках (контракт money()).
+    // `Math.round` остаётся: счётчик метрики принимает целое, и округление —
+    // решение метрики, а не конверсии единиц.
     void trackEvent('payment_success', {
-      revenue: Math.round(paidMinor.value / 100),
+      revenue: Math.round(minorToRub(paidMinor.value)),
       orderId: cart.orderId ?? undefined,
       items: cart.count,
     }).catch(() => {})

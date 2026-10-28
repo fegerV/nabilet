@@ -17,6 +17,7 @@ import {
   type TicketVariables,
 } from '@/lib/ticketBuilder'
 import { dateTime, time } from '@/lib/format'
+import { minorToRub } from '@/lib/money'
 import type { TicketTemplateConfig } from '@/lib/types'
 
 const props = defineProps<{
@@ -73,7 +74,13 @@ const variables = computed<TicketVariables>(() => ({
     holder: props.ticket.holder ?? '',
     // Символ валюты отдельной переменной: макет сам решает, ставить ли его
     // рядом с числом. Формат числа — как на витрине (пробел между разрядами).
-    price: new Intl.NumberFormat('ru-RU').format((props.ticket.priceMinor ?? 0) / 100),
+    //
+    // ЕДИНСТВЕННОЕ МЕСТО, ГДЕ ЦЕНА НЕ ОКРУГЛЯЕТСЯ. `money()` на витрине
+    // отбрасывает копейки (`maximumFractionDigits: 0`), а билет — документ, и
+    // напечатать на нём 1 551 ₽ за место, которое стоит 1 550,50 ₽, хуже, чем
+    // напечатать «1 550,5». Решение записано здесь, а не спрятано в конверсии:
+    // `minorToRub()` возвращает точное значение, округляет вызывающий.
+    price: new Intl.NumberFormat('ru-RU').format(minorToRub(props.ticket.priceMinor ?? 0)),
     currency: '₽',
   },
   seat: {

@@ -26,6 +26,7 @@ import NSegmented from '@/components/ui/NSegmented.vue'
 import { useUiStore } from '@/stores/ui'
 import { money, plural } from '@/lib/format'
 import { buildSeatPricePalette, effectiveSeatPrice } from '@/lib/hall'
+import { minorToRub, rubToMinor } from '@/lib/money'
 import { cn } from '@/lib/cn'
 import { ApiError, get, send } from '@/lib/api'
 import { usePersistedRef } from '@/lib/usePersistedRef'
@@ -76,10 +77,10 @@ import {
   clampFloatOrNull,
   clampIntOrNull,
   normalizeRotation,
+  priceRubField,
   requiredNonNegativeError,
   roundOrNull,
   rowPriceError,
-  rubToMinor,
 } from './hallEditorFields'
 
 /* ── Константы ─────────────────────────────────────────────────────── */
@@ -2291,12 +2292,20 @@ const reassignOptions = computed(() =>
     .filter((s) => s.id !== selectedSectorId.value)
     .map((s) => ({ value: s.id, label: s.name })),
 )
-/** Цена (₽) первого выделенного места — для группового поля «Цена всех выбранных». */
-const groupSeatPriceRub = computed(() => {
+/**
+ * Цена (в КОПЕЙКАХ) первого выделенного места — для группового поля «Цена всех
+ * выбранных».
+ *
+ * Единица в имени — не педантизм. Здесь стояло `groupSeatPriceRub` со значением
+ * `effectiveSeatPrice(…) / 100` (то есть уже в рублях), а шаблон делил его на
+ * 100 ещё раз: место за 1500 ₽ показывалось как 15 ₽. Пока переменная хранит
+ * копейки, «поделить ещё раз» видно как ошибку, а не как правку формата.
+ */
+const groupSeatPriceMinor = computed(() => {
   for (const sector of sectors.value) {
     for (const seat of sector.seats) {
       if (selectedSeatIds.value.has(seat.id)) {
-        return effectiveSeatPrice(seat, sector) / 100
+        return effectiveSeatPrice(seat, sector)
       }
     }
   }
@@ -2335,7 +2344,7 @@ function setSectorPriceRub(v: unknown): void {
 const sectorPriceError = computed<string | undefined>(() => {
   const s = selectedSector.value
   if (!s) return undefined
-  return rowPriceError(s.priceMinor / 100)
+  return rowPriceError(minorToRub(s.priceMinor))
 })
 
 /** Число мест за банкетным столом (инспектор): 1..60, центр стола сохраняется. */
@@ -2397,7 +2406,7 @@ function rowPriceInputError(row: number): string | undefined {
   if (!s) return undefined
   const v = s.rowPrices[row]
   if (v === undefined) return undefined
-  return rowPriceError(v / 100)
+  return rowPriceError(minorToRub(v))
 }
 
 /**
@@ -2584,7 +2593,7 @@ function setSeatPriceRub(value: number | null): void {
   let changed = 0
   for (const sector of sectors.value) {
     for (const seat of sector.seats) {
-      const next = value == null || !Number.isFinite(value) || value <= 0 ? null : Math.round(value * 100)
+      const next = rubToMinor(value)
       if (selectedSeatIds.value.has(seat.id) && seat.priceMinor !== next) {
         seat.priceMinor = next
         changed += 1
@@ -2934,7 +2943,7 @@ function reassignSelectedSeats(targetSectorId: string): void {
           <div class="space-y-3 p-3">
             <NInput :model-value="selectedSector.name" label="Название" :disabled="isLocked" @update:model-value="setSectorName" />
             <NInput
-              :model-value="String(Math.round(selectedSector.priceMinor / 100))"
+              :model-value="priceRubField(selectedSector.priceMinor)"
               label="Цена по умолчанию, ₽"
               type="number"
               :disabled="isLocked"
@@ -2996,7 +3005,7 @@ function reassignSelectedSeats(targetSectorId: string): void {
                     >Ряд {{ row }}</button>
                     <span class="flex-none text-2xs tabular-nums text-subtle">{{ seatsInRow(selectedSector, row).length }}</span>
                     <input
-                      :value="selectedSector.rowPrices[row] != null ? Math.round(selectedSector.rowPrices[row] / 100) : ''"
+                      :value="selectedSector.rowPrices[row] != null ? Math.round(minorToRub(selectedSector.rowPrices[row])) : ''"
                       type="number"
                       min="1"
                       step="1"
@@ -3088,20 +3097,20 @@ function reassignSelectedSeats(targetSectorId: string): void {
                 @update:model-value="setSeatKind"
               />
               <NInput
-                :model-value="String(Math.round((singleSelectedSeat.priceMinor ?? 0) / 100))"
+                :model-value="priceRubField(singleSelectedSeat.priceMinor ?? 0)"
                 label="Цена места, ₽"
                 type="number"
                 :min="0"
                 hint="Пусто — цена ряда/сектора"
                 :disabled="isLocked"
-                :error="rowPriceError((singleSelectedSeat.priceMinor ?? 0) / 100)"
+                :error="rowPriceError(minorToRub(singleSelectedSeat.priceMinor ?? 0))"
                 @update:model-value="(v: string | number) => setSeatPriceRub(String(v).trim() === '' ? null : Number(v))"
               />
             </template>
             <p v-else class="text-xs text-subtle">Групповые операции действуют на все выделенные места.</p>
             <template v-if="selectedSeatIds.size > 1">
               <NInput
-                :model-value="String(Math.round((groupSeatPriceRub) / 100))"
+                :model-value="priceRubField(groupSeatPriceMinor)"
                 label="Цена всех выбранных, ₽"
                 type="number"
                 :min="0"
@@ -3208,9 +3217,9 @@ function reassignSelectedSeats(targetSectorId: string): void {
               />
               <NInput
                 v-if="selectedStatic.kind === 'standing'"
-                :model-value="String(Math.round((selectedStatic.priceMinor ?? 0) / 100))"
+                :model-value="priceRubField(selectedStatic.priceMinor ?? 0)"
                 label="Цена за место, ₽" type="number" :min="1" :disabled="isLocked"
-                :error="rowPriceError((selectedStatic.priceMinor ?? 0) / 100)"
+                :error="rowPriceError(minorToRub(selectedStatic.priceMinor ?? 0))"
                 @update:model-value="(v: string | number) => setStandingPriceRub(selectedStatic!, v)"
               />
             </div>

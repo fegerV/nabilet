@@ -17,6 +17,7 @@ import { useUiStore } from '@/stores/ui'
 import { get, send } from '@/lib/api'
 import { fetchInventory, type InventoryItem } from '@/lib/inventory'
 import { money } from '@/lib/format'
+import { minorToRub, rubToMinor } from '@/lib/money'
 
 const route = useRoute()
 const router = useRouter()
@@ -161,11 +162,15 @@ async function load(): Promise<void> {
 
 const changedCount = computed(() => rows.value.filter((r) => r.priceRub.trim() !== '').length)
 
-/** Ввод в рублях → минорные единицы; пустой ввод не участвует в запросе. */
+/**
+ * Ввод в рублях → минорные единицы; пустой ввод не участвует в запросе.
+ *
+ * `allowZero` — потому что бесплатный ряд здесь легален, в отличие от цены
+ * сетки зала: там ноль отвергает серверная валидация. Само умножение на 100 —
+ * правило `lib/money`, а не этой страницы.
+ */
 function toMinor(value: string): number | null {
-  const n = Number(String(value).replace(',', '.'))
-  if (!Number.isFinite(n) || n < 0) return null
-  return Math.round(n * 100)
+  return rubToMinor(value, { allowZero: true })
 }
 
 const invalidEntries = computed(() =>
@@ -208,7 +213,7 @@ async function apply(): Promise<void> {
 
 /** Быстрое заполнение всех полей текущими ценами (чтобы править от них). */
 function fillCurrent(): void {
-  for (const r of rows.value) r.priceRub = String(r.currentMinor / 100)
+  for (const r of rows.value) r.priceRub = String(minorToRub(r.currentMinor))
 }
 
 watch(() => route.params.id, () => void load())

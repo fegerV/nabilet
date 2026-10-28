@@ -4,11 +4,16 @@
  * Деньги в проекте хранятся целыми minor units (ТЗ §3), поэтому форматтер
  * принимает копейки и никогда не работает с float. Русские склонения вынесены
  * сюда же: «3 билета», а не «3 билет(ов)» — это первое, что выдаёт машинный UI.
+ *
+ * Само деление на 100 живёт не здесь, а в `lib/money.ts`: конверсия единиц —
+ * одно правило, и `money()` его вызывает, а не повторяет.
  */
+
+import { minorToRub } from './money'
 
 export function money(minor: number, opts: { currency?: string; compact?: boolean } = {}): string {
   const { currency = '₽', compact = false } = opts
-  const value = minor / 100
+  const value = minorToRub(minor)
 
   if (compact && Math.abs(value) >= 1000) {
     const short = new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 1 }).format(value / 1000)

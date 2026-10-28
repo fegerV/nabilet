@@ -29,6 +29,7 @@ import NCard from '@/components/ui/NCard.vue'
 import NPageHeader from '@/components/ui/NPageHeader.vue'
 import { useUiStore } from '@/stores/ui'
 import { get, send } from '@/lib/api'
+import { minorToRub, rubToMinor } from '@/lib/money'
 
 interface ClubLevel {
   slug: string
@@ -75,10 +76,6 @@ const levelOptions = computed(() =>
   levels.value.map((l) => ({ value: l.slug, label: `${l.name} (от ${l.min_paid_orders})` })),
 )
 
-function toRub(minor: number): number {
-  return Math.round(minor) / 100
-}
-
 async function load(): Promise<void> {
   loading.value = true
   error.value = null
@@ -95,8 +92,8 @@ async function load(): Promise<void> {
     }
     referralForm.value = {
       enabled: Boolean(data?.referral_enabled),
-      inviter_rub: toRub(Number(data?.referral_inviter_bonus ?? 30000)),
-      invited_rub: toRub(Number(data?.referral_invited_bonus ?? 30000)),
+      inviter_rub: minorToRub(Number(data?.referral_inviter_bonus ?? 30000)),
+      invited_rub: minorToRub(Number(data?.referral_invited_bonus ?? 30000)),
     }
     accessSaved.value = JSON.stringify(accessForm.value)
     referralSaved.value = JSON.stringify(referralForm.value)
@@ -127,8 +124,10 @@ async function saveReferral(): Promise<void> {
   try {
     const body = {
       referral_enabled: referralForm.value.enabled,
-      referral_inviter_bonus: Math.round(referralForm.value.inviter_rub * 100),
-      referral_invited_bonus: Math.round(referralForm.value.invited_rub * 100),
+      // Ноль здесь — законная награда (`ReferralPolicy::normalize` держит
+      // диапазон `[0, MAX_BONUS]`), поэтому `allowZero`, а не отказ.
+      referral_inviter_bonus: rubToMinor(referralForm.value.inviter_rub, { allowZero: true }) ?? 0,
+      referral_invited_bonus: rubToMinor(referralForm.value.invited_rub, { allowZero: true }) ?? 0,
     }
     await send('/admin/loyalty/settings', 'PUT', body)
     referralSaved.value = JSON.stringify(referralForm.value)
