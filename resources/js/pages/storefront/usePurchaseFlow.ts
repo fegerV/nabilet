@@ -39,7 +39,7 @@ import {
   newIdempotencyKey,
 } from '@/lib/payments'
 import { customerAuthMessage, customerUser, isCustomerSession, loginCustomer, type CustomerUser } from '@/lib/customer'
-import { MINOR_UNITS_PER_BONUS, spendCapMinor } from '@/lib/loyalty'
+import { applyBonuses } from '@/lib/loyalty'
 import { clearRememberedReferralCode, rememberedReferralCode } from '@/lib/referral'
 import { money, plural } from '@/lib/format'
 import { trackEvent } from '@/lib/metrika'
@@ -135,26 +135,37 @@ export function usePurchaseFlow(options: UsePurchaseFlowOptions) {
    * здесь только предпросмотр: оно не может быть истиной, потому что баланс
    * мог измениться в другой вкладке между отрисовкой и нажатием.
    */
-  const bonusCapMinor = computed(() =>
-    spendCapMinor(cart.subtotalMinor, cart.discountMinor, loyalty.bonus?.balance ?? 0),
-  )
-
   /** Галочка списания по умолчанию снята: трата бонусов должна быть осознанной. */
   const useBonuses = ref(false)
 
-  const bonusMinor = computed(() => (useBonuses.value ? bonusCapMinor.value : 0))
-
-  /** Итог — сумма позиций минус бонусы. Именно её выставляет сервер. */
-  const totalMinor = computed(() => Math.max(0, cart.totalMinor - bonusMinor.value))
-
-  const bonusCapUnits = computed(() => Math.floor(bonusCapMinor.value / MINOR_UNITS_PER_BONUS))
-
-  const canUseBonuses = computed(
-    () => loyalty.bonus !== null && loyalty.bonusesCount > 0 && bonusCapMinor.value > 0,
+  /**
+   * Правило применения бонусов — один владелец: `applyBonuses()` из `@/lib/loyalty`.
+   * Здесь только передаём корзину и флаг; все пять величин считаются там.
+   * Ниже — тонкие обёртки, чтобы остальной код страницы не менялся.
+   */
+  const bonus = computed(() =>
+    applyBonuses({
+      subtotalMinor: cart.subtotalMinor,
+      discountMinor: cart.discountMinor,
+      balanceMinor: loyalty.bonus?.balance ?? 0,
+      cartTotalMinor: cart.totalMinor,
+      useBonuses: useBonuses.value,
+    }),
   )
 
-  const bonusLeftUnits = computed(() =>
-    Math.floor(Math.max(0, (loyalty.bonus?.balance ?? 0) - bonusCapMinor.value) / MINOR_UNITS_PER_BONUS),
+  const bonusCapMinor = computed(() => bonus.value.capMinor)
+  const bonusMinor = computed(() => bonus.value.appliedMinor)
+  const totalMinor = computed(() => bonus.value.totalMinor)
+  const bonusCapUnits = computed(() => bonus.value.capUnits)
+  const bonusLeftUnits = computed(() => bonus.value.leftUnits)
+
+  /**
+   * Блок бонусов вообще показывается: счёт загружен, на нём что-то есть и лимит
+   * списания положителен. Это UI-ворота, а не величина из `applyBonuses()`:
+   * гость или пустой счёт блок не видит, иначе показывали бы «спишите 0 бонусов».
+   */
+  const canUseBonuses = computed(
+    () => loyalty.bonus !== null && loyalty.bonusesCount > 0 && bonusCapMinor.value > 0,
   )
 
   const bonusLabel = computed(

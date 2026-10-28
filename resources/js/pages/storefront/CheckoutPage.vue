@@ -50,7 +50,7 @@ import { ApiError } from '@/lib/api'
 import { anchorDemoUrl, initiatePayment, newIdempotencyKey, rememberPaymentId } from '@/lib/payments'
 import { trackEvent } from '@/lib/metrika'
 import { money, plural, ticketsLabel } from '@/lib/format'
-import { MINOR_UNITS_PER_BONUS, spendCapMinor } from '@/lib/loyalty'
+import { applyBonuses } from '@/lib/loyalty'
 import { clearRememberedReferralCode, rememberedReferralCode } from '@/lib/referral'
 import { cn } from '@/lib/cn'
 
@@ -164,28 +164,41 @@ const emailOk = computed(() => EMAIL_RE.test(email.value) && emailConfirm.value.
  *   пуст», и показывать «спишите 0 бонусов» значило бы обещать то, чего нет.
  * ─────────────────────────────────────────────────────────────────────────── */
 
-/** Сколько можно списать в этом заказе (минорные единицы). */
-const bonusCapMinor = computed(() =>
-  spendCapMinor(cart.subtotalMinor, cart.discountMinor, loyalty.bonus?.balance ?? 0),
-)
-
 /** Покупатель решил платить бонусами. По умолчанию — нет: списание должно быть осознанным. */
 const useBonuses = ref(false)
 
 /**
+ * Правило применения бонусов — один владелец: `applyBonuses()` из `@/lib/loyalty`.
+ * Здесь только передаём корзину и флаг; все пять величин считаются там. Ниже —
+ * тонкие обёртки, чтобы остальной код страницы не менялся.
+ */
+const bonus = computed(() =>
+  applyBonuses({
+    subtotalMinor: cart.subtotalMinor,
+    discountMinor: cart.discountMinor,
+    balanceMinor: loyalty.bonus?.balance ?? 0,
+    cartTotalMinor: cart.totalMinor,
+    useBonuses: useBonuses.value,
+  }),
+)
+
+/** Сколько можно списать в этом заказе (минорные единицы). */
+const bonusCapMinor = computed(() => bonus.value.capMinor)
+
+/**
  * Сколько реально спишем, в минорных единицах.
  *
- * Лимит уже ограничен остатком после скидки, то есть ровно тем, что покупатель
- * платит (`cart.totalMinor`), поэтому отдельного «не больше заказа» здесь не
- * нужно — это свойство `spendCapMinor`, а не дополнительная проверка.
+ * Лимит уже ограничен остатком после скидки (`spendCapMinor`), поэтому
+ * отдельного «не больше заказа» здесь не нужно — это свойство владельца, а не
+ * дополнительная проверка на странице.
  */
-const bonusMinor = computed(() => (useBonuses.value ? bonusCapMinor.value : 0))
+const bonusMinor = computed(() => bonus.value.appliedMinor)
 
 /** Итог — сумма позиций минус бонусы. Именно её выставляет сервер (`orders.total_amount`). */
-const totalMinor = computed(() => Math.max(0, cart.totalMinor - bonusMinor.value))
+const totalMinor = computed(() => bonus.value.totalMinor)
 
 /** Тот же лимит в бонусах — то число, которое видит и называет покупатель. */
-const bonusCapUnits = computed(() => Math.floor(bonusCapMinor.value / MINOR_UNITS_PER_BONUS))
+const bonusCapUnits = computed(() => bonus.value.capUnits)
 
 /** Блок вообще показывается: счёт загружен и на нём что-то есть. */
 const canUseBonuses = computed(
@@ -201,9 +214,7 @@ const canUseBonuses = computed(
  * списали) и бесполезно по смыслу — покупатель читает эту строку, чтобы решить,
  * ставить галочку или нет, и ему нужно знать, что будет ПОСЛЕ.
  */
-const bonusLeftUnits = computed(() =>
-  Math.floor(Math.max(0, (loyalty.bonus?.balance ?? 0) - bonusCapMinor.value) / MINOR_UNITS_PER_BONUS),
-)
+const bonusLeftUnits = computed(() => bonus.value.leftUnits)
 
 /** Имена полей §66 → имена полей формы. */
 const SERVER_FIELD_MAP: Record<string, string> = {

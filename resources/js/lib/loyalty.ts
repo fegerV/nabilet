@@ -358,3 +358,51 @@ export function spendCapMinor(
 
   return Math.min(cap, ceiling, balanceMinor)
 }
+
+/* ── Применение бонусов в чекауте — ЕДИНСТВЕННЫЙ ВЛАДЕЛЕЦ ЭТОГО ПРАВИЛА ──────
+ * Раньше те же пять величин (лимит, применённая сумма, итог, лимит в бонусах,
+ * остаток) считались ДВАЖДЫ — в `usePurchaseFlow` (предпросмотр на витрине) и
+ * в `CheckoutPage` (там же и отправка `bonus_amount`). Формулы были
+ * побайтово равны, поэтому расхождения не было — но копия несла в себе именно
+ * ту беду, от которой её писали защитить: стоило поменять лимит в одном месте
+ * (например, добавить «не больше заказа» к потолку), как вторая страница
+ * продолжила бы показывать старый итог, а сервер вернул бы 422 на новый.
+ *
+ * Владелец — эта чистая функция; страницы только ПЕРЕДАЮТ ей корзину и флаг.
+ * `spendCapMinor` здесь вызывается один раз на всю программу.
+ */
+export interface BonusApplicationInput {
+  /** Подытог до скидки — основа 30%-лимита (`spendCapMinor`). */
+  subtotalMinor: number
+  /** Скидка (промокод) — задаёт потолок «не больше остатка после скидки». */
+  discountMinor: number
+  /** Баланс бонусов покупателя в минорах. */
+  balanceMinor: number
+  /** Итог корзины после скидки — из него вычитаются применённые бонусы. */
+  cartTotalMinor: number
+  /** Покупатель согласился списать бонусы. */
+  useBonuses: boolean
+}
+
+export interface BonusApplication {
+  /** Максимум к списанию, миноры (＝ `spendCapMinor(...)`). */
+  capMinor: number
+  /** Реально списано, миноры (0, если `useBonuses` снят). */
+  appliedMinor: number
+  /** Итог к оплате после бонусов (не меньше 0). */
+  totalMinor: number
+  /** Лимит в бонусах — то число, которое называет покупатель. */
+  capUnits: number
+  /** Бонусов, остающихся ПОСЛЕ списания (для подписи у галочки). */
+  leftUnits: number
+}
+
+export function applyBonuses(input: BonusApplicationInput): BonusApplication {
+  const capMinor = spendCapMinor(input.subtotalMinor, input.discountMinor, input.balanceMinor)
+  const appliedMinor = input.useBonuses ? capMinor : 0
+  const totalMinor = Math.max(0, input.cartTotalMinor - appliedMinor)
+  const capUnits = Math.floor(capMinor / MINOR_UNITS_PER_BONUS)
+  const leftUnits = Math.floor(Math.max(0, input.balanceMinor - capMinor) / MINOR_UNITS_PER_BONUS)
+
+  return { capMinor, appliedMinor, totalMinor, capUnits, leftUnits }
+}
