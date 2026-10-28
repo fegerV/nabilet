@@ -2,10 +2,19 @@
  * `lib/raffles` — клиент розыгрышей «счастливый билет» (фаза 5).
  *
  * ЗДЕСЬ ПРОВЕРЯЮТСЯ ПРАВИЛА ФОРМЫ, А НЕ СЕТЬ
- *   Перевод ISO ↔ `datetime-local` и классы бейджей — зеркало контракта
- *   сервера: расхождение означало бы «форма сохранила дату, которую сервер
- *   прочтёт иначе» или «бейдж показал статус, которого нет». Сеть замокана
- *   так же, как в `referral.test.ts`.
+ *   Перевод ISO ↔ `datetime-local` и СПИСОК значений статусов — зеркало
+ *   контракта сервера: расхождение означало бы «форма сохранила дату, которую
+ *   сервер прочтёт иначе» или «форма предложила статус, которого нет». Сеть
+ *   замокана так же, как в `referral.test.ts`.
+ *
+ * ПОДПИСИ И ЦВЕТА УЕХАЛИ К ВЛАДЕЛЬЦУ
+ *   Здесь остались только значения контракта. Подписи и цвета статусов
+ *   розыгрыша — в `lib/statusLabels.ts`, вместе с остальными словарями.
+ *   Раньше в этом файле жил `raffleStatusClass()`, и тест на него
+ *   (`expect(...).toContain('indigo')`) ЗАКРЕПЛЯЛ цвет из дефолтной палитры
+ *   Tailwind — он рисуется, но обходит токены проекта, поэтому проверка была
+ *   зелёной и защищала не то: правило палитры, а не «статус выглядит как
+ *   статус».
  *
  * ОБЁРТКА ОТВЕТА
  *   Все функции читают конверт `{ data: … }`, но `list`-эндпоинты отдают свои
@@ -14,13 +23,12 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '@/lib/api'
+import { findStatusMeta, statusOptions } from '@/lib/statusLabels'
 import {
   RAFFLE_STATUSES,
-  RAFFLE_STATUS_LABELS,
   fetchMyRaffles,
   fetchRaffleResults,
   fromLocalInput,
-  raffleStatusClass,
   toLocalInput,
 } from '@/lib/raffles'
 
@@ -75,20 +83,27 @@ describe('lib/raffles: даты формы', () => {
 })
 
 describe('lib/raffles: словарь статусов', () => {
-  it('классы бейджей — по одному на каждый статус', () => {
-    // Все статусы словаря схемы (ck_raffles_status) должны быть подписаны:
-    // статус без класса показывался бы серым «какой-то» плашкой.
+  it('значения контракта совпадают со словарём подписей', () => {
+    // Список остался здесь, потому что это значения КОНТРАКТА (`ck_raffles_status`).
+    // Подписи и цвета — у владельца. Если списки разойдутся, форма предложит
+    // статус, которого бейдж не знает, и он покажется сырым кодом.
     expect(RAFFLE_STATUSES).toEqual(['draft', 'active', 'drawn', 'cancelled'])
-    for (const status of RAFFLE_STATUSES) {
-      expect(RAFFLE_STATUS_LABELS[status]).toBeTruthy()
-      expect(raffleStatusClass(status)).toContain('bg-')
-    }
+    expect(statusOptions('raffle').map((option) => option.value)).toEqual([...RAFFLE_STATUSES])
   })
 
-  it('активный — mint, отменённый — rose, разыгранный — indigo', () => {
-    expect(raffleStatusClass('active')).toContain('mint')
-    expect(raffleStatusClass('cancelled')).toContain('rose')
-    expect(raffleStatusClass('drawn')).toContain('indigo')
+  it('каждый статус розыгрыша подписан, и `drawn` — цветом «получилось»', () => {
+    // Раньше здесь стояло `expect(raffleStatusClass('drawn')).toContain('indigo')`.
+    // `indigo` — цвет дефолтной палитры Tailwind: он рисуется, но «Разыгран» —
+    // единственное ПОЛОЖИТЕЛЬНОЕ терминальное состояние — оставался
+    // единственным синим элементом интерфейса. Тест закреплял это как норму.
+    // Теперь проверяется тон из семантической палитры проекта.
+    for (const status of RAFFLE_STATUSES) {
+      expect(findStatusMeta('raffle', status), status).not.toBeNull()
+    }
+
+    expect(findStatusMeta('raffle', 'drawn')?.tone).toBe('brand')
+    expect(findStatusMeta('raffle', 'cancelled')?.tone).toBe('rose')
+    expect(findStatusMeta('raffle', 'active')?.tone).toBe('mint')
   })
 })
 

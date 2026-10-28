@@ -12,6 +12,7 @@ import QRCode from 'qrcode'
 import NStatusBadge from '@/components/ui/NStatusBadge.vue'
 import TicketCanvas from '@/components/storefront/TicketCanvas.vue'
 import { money, dateFull, time } from '@/lib/format'
+import { findStatusMeta } from '@/lib/statusLabels'
 import type { TicketCard as TicketCardType } from '@/lib/types'
 import { cn } from '@/lib/cn'
 
@@ -53,14 +54,42 @@ watch(
 )
 
 const inactive = props.ticket.status !== 'issued'
-const inactiveLabel: Record<string, string> = {
-  used: 'Использован',
-  cancelled: 'Отменён',
+
+/**
+ * Осознанные отклонения от словаря — и ТОЛЬКО они.
+ *
+ * Словарь (`lib/statusLabels.ts`) обещает, что статус называется одинаково
+ * везде. Здесь два случая, где «одинаково» — неправильно, и оба про читателя
+ * этой подписи, а не про состояние билета:
+ *
+ *  - `issued` → «Покажите на входе». Подпись стоит под QR, то есть это
+ *    ИНСТРУКЦИЯ. Человек уже держит билет в руках; «Действителен» ему ничего
+ *    не говорит, а «покажите» — говорит.
+ *  - `refunded` → «Возврат оформлен». «Возврат» — существительное-ярлык. В
+ *    момент, когда человека не пускают на вход, ему важно, что возврат уже
+ *    ОФОРМЛЕН, а не как называется состояние билета.
+ *
+ * Раньше обе строки лежали внутри копии словаря (`inactiveLabel`), вперемешку
+ * с четырьмя честными копиями. Отличить осознанное отклонение от случайного
+ * расхождения было нельзя — а случайное выглядело бы ровно так же
+ * правдоподобно. Теперь отклонения перечислены отдельно от словаря, и всё,
+ * чего здесь нет, приходит от владельца.
+ */
+const QR_CAPTION_OVERRIDES: Partial<Record<string, string>> = {
+  issued: 'Покажите на входе',
   refunded: 'Возврат оформлен',
-  expired: 'Истёк',
-  revoked: 'Отозван',
 }
-const qrCaption = computed(() => inactiveLabel[props.ticket.status] ?? 'Покажите на входе')
+
+/**
+ * Незнакомый статус — тоже «Покажите на входе»: сырой английский код под QR
+ * бесполезен покупателю, а промолчать нельзя — подпись объясняет, что делать.
+ */
+const qrCaption = computed(
+  () =>
+    QR_CAPTION_OVERRIDES[props.ticket.status] ??
+    findStatusMeta('ticket', props.ticket.status)?.label ??
+    'Покажите на входе',
+)
 </script>
 
 <template>

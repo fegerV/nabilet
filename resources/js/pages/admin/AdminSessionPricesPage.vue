@@ -261,7 +261,9 @@ onMounted(load)
             сейчас:
             <template v-if="r.mixed">{{ money(r.minMinor) }} — {{ money(r.maxMinor) }}</template>
             <template v-else>{{ money(r.currentMinor) }}</template>
-            <span v-if="r.mixed" class="ml-1 text-amber-500">разные цены</span>
+            <!-- `amber` — дефолтная палитра Tailwind: рисуется, но обходит
+                 семантику проекта, где «внимание» — это `sun`. -->
+            <span v-if="r.mixed" class="ml-1 text-sun-500">разные цены</span>
           </div>
         </div>
         <NInput v-model="r.priceRub" label="Новая цена, ₽" type="number" min="0" step="0.01" placeholder="не менять" class="w-40" />

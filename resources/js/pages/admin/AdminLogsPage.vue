@@ -158,7 +158,11 @@ function levelClass(level: string): string {
     case 'ERROR':
       return 'bg-rose-500/15 text-rose-400'
     case 'WARNING':
-      return 'bg-amber-500/15 text-amber-400'
+      // `amber` — цвет дефолтной палитры Tailwind: он рисуется, но обходит
+      // семантику проекта. «Ожидание/внимание» здесь — `sun` (он же цвет
+      // hold'а, таймера и статуса «Ждём оплаты»), поэтому предупреждение
+      // должно выглядеть так же, как остальные предупреждения интерфейса.
+      return 'bg-sun-500/15 text-sun-400'
     case 'NOTICE':
     case 'INFO':
       return 'bg-sky-500/15 text-sky-400'

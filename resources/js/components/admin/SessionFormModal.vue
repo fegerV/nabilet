@@ -21,6 +21,7 @@ import NInput from '@/components/ui/NInput.vue'
 import NSelect from '@/components/ui/NSelect.vue'
 import NModal from '@/components/ui/NModal.vue'
 import { ApiError, get, send } from '@/lib/api'
+import { statusOptions } from '@/lib/statusLabels'
 import {
   buildSessionPayload,
   emptySessionForm,
@@ -55,13 +56,21 @@ const props = withDefaults(
 
 const emit = defineEmits<{ 'update:open': [value: boolean]; saved: [] }>()
 
-const STATUS_OPTIONS = [
-  { value: 'scheduled', label: 'Запланирован' },
-  { value: 'on_sale', label: 'В продаже' },
-  { value: 'held', label: 'Проведён' },
-  { value: 'completed', label: 'Завершён' },
-  { value: 'cancelled', label: 'Отменён' },
-]
+/**
+ * Состояния сеанса — из словаря, а не списком.
+ *
+ * Здесь стоял СВОЙ список: `scheduled, on_sale, held, completed, cancelled`.
+ * Он был снят с бэкенда до того, как `SessionStateMachine::all()` вычистил из
+ * словаря `held` (это состояние позиции инвентаря, в `ck_sessions_status` его
+ * нет) и вернул `draft`, `sold_out` и `closed`. Копия пережила исправление:
+ * администратор выбирал «Проведён», форма отправляла `held`, и сервер отвечал
+ * 422 — ровно тем правилом, которое этот список когда-то и породил. А три
+ * настоящих состояния выбрать было нельзя.
+ *
+ * Теперь список приходит от владельца словаря, и разойтись с машиной состояний
+ * он не может: `statusOptions()` читает тот же объект, что и бейдж статуса.
+ */
+const STATUS_OPTIONS = statusOptions('session')
 
 const form = ref<SessionFormState>(emptySessionForm())
 const saving = ref(false)

@@ -21,17 +21,12 @@
  */
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import NBadge from '@/components/ui/NBadge.vue'
 import NButton from '@/components/ui/NButton.vue'
 import NEmptyState from '@/components/ui/NEmptyState.vue'
+import NStatusBadge from '@/components/ui/NStatusBadge.vue'
 import { ApiError } from '@/lib/api'
 import { dateTime, plural } from '@/lib/format'
-import {
-  RAFFLE_STATUS_LABELS,
-  fetchMyRaffles,
-  raffleStatusClass,
-  type RaffleParticipation,
-} from '@/lib/raffles'
+import { fetchMyRaffles, type RaffleParticipation } from '@/lib/raffles'
 
 const router = useRouter()
 
@@ -95,7 +90,7 @@ function myWin(raffle: RaffleParticipation): RaffleParticipation['won'][number] 
           <div class="min-w-0">
             <div class="flex flex-wrap items-center gap-2">
               <h2 class="text-sm font-semibold text-content">{{ raffle.title }}</h2>
-              <NBadge :class="raffleStatusClass(raffle.status)">{{ RAFFLE_STATUS_LABELS[raffle.status] }}</NBadge>
+              <NStatusBadge kind="raffle" :status="raffle.status" />
             </div>
             <p class="mt-1 text-xs text-subtle">
               {{ raffle.entries_count }} {{ plural(raffle.entries_count, 'билет', 'билета', 'билетов') }} в розыгрыше

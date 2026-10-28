@@ -26,6 +26,49 @@ export type TicketStatus = 'issued' | 'used' | 'cancelled' | 'refunded' | 'expir
  */
 export type EventStatus = 'draft' | 'scheduled' | 'published' | 'completed' | 'cancelled' | 'archived'
 
+/**
+ * Статусы `sessions.status` — словарь бэкенда.
+ *
+ * Раньше этого типа НЕ БЫЛО ВООБЩЕ: `SessionFormState.status` и
+ * `SessionRecord.status` были просто `string`, и поэтому компилятор молчал,
+ * пока по трём файлам ходил словарь `scheduled | on_sale | held | completed |
+ * cancelled`. Он разошёлся с машиной в обе стороны ровно так же, как когда-то
+ * `EventStatus`:
+ *
+ *  - `held` — состояние позиции инвентаря (`InventoryItemStateMachine::HELD`),
+ *    попавшее в словарь сеанса копированием из соседнего. В `ck_sessions_status`
+ *    его нет. Бэкенд вычистил его ещё в `SessionStateMachine::all()` (запись с
+ *    ним проходила валидацию и падала на MySQL — 500 вместо 422), а ФРОНТЕНД
+ *    остался на старом списке: форма предлагала «Проведён», отправляла `held` и
+ *    получала 422 уже на новом правиле.
+ *  - `draft`, `sold_out` и `closed` отсутствовали, хотя машина их знает, а
+ *    `sold_out` и `closed` — обязательные состояния продаж
+ *    (`on_sale ⇄ sold_out → closed`). Выставить их из админки было нельзя.
+ *
+ * Источник истины — `SessionStateMachine::all()`; тот же список закреплён
+ * ограничением `ck_sessions_status` и сверяется гейтом
+ * `tools/verify-state-machines.php`. Совпадение этого типа с PHP-словарём
+ * стережёт `tests/Unit/statusVocabularyParity.test.ts`.
+ */
+export type SessionStatus =
+  | 'draft'
+  | 'scheduled'
+  | 'on_sale'
+  | 'sold_out'
+  | 'closed'
+  | 'completed'
+  | 'cancelled'
+
+/**
+ * Статусы `raffles.status` — словарь `RaffleStateMachine`.
+ *
+ * Тип живёт здесь, а не в `lib/raffles.ts`, по одной причине: подписи статусов
+ * собираются в `lib/statusLabels.ts`, который обязан оставаться чистым — он
+ * попадает в бандл вместе с `NStatusBadge`. Импорт из `lib/raffles.ts` притащил
+ * бы туда клиент API (`lib/api`) ради четырёх строковых литералов.
+ */
+export type RaffleStatus = 'draft' | 'active' | 'drawn' | 'cancelled'
+
 export type CheckinResult =
   | 'valid'
   | 'already_used'

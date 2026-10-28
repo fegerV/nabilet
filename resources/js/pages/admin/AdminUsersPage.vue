@@ -23,6 +23,7 @@ import NEmptyState from '@/components/ui/NEmptyState.vue'
 import { useUiStore } from '@/stores/ui'
 import { get, send } from '@/lib/api'
 import { dateTime } from '@/lib/format'
+import { statusOptions } from '@/lib/statusLabels'
 import type { Column } from '@/components/ui/NDataTable.vue'
 
 interface ApiRole {
@@ -184,11 +185,8 @@ const editForm = ref({
 })
 const roleToAdd = ref('')
 
-const STATUS_OPTIONS = [
-  { value: 'active', label: 'Активен' },
-  { value: 'inactive', label: 'Неактивен' },
-  { value: 'banned', label: 'Заблокирован' },
-]
+/** Тот же словарь, что и у бейджа: `users.status` — три состояния `UserStatus`. */
+const STATUS_OPTIONS = statusOptions('user')
 
 const roleOptions = computed(() =>
   roles.value.map((r) => ({ value: String(r.id), label: r.name ?? r.slug ?? `#${r.id}` })),

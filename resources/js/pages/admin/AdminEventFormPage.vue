@@ -40,6 +40,7 @@ import { useUiStore } from '@/stores/ui'
 import { ApiError, get, request, send, upload } from '@/lib/api'
 import { storageSrc } from '@/lib/mediaLibrary'
 import { dateFull, time } from '@/lib/format'
+import { statusOptions } from '@/lib/statusLabels'
 import {
   buildSessionPayload,
   emptySessionForm,
@@ -438,13 +439,13 @@ function scrollToSessions(): void {
  * создаём прямо из формы создания мероприятия вместе с ним — один экран, один
  * клик. Справочники площадок/залов грузим параллельно с прочим.
  */
-const SESSION_STATUS_OPTIONS = [
-  { value: 'scheduled', label: 'Запланирован' },
-  { value: 'on_sale', label: 'В продаже' },
-  { value: 'held', label: 'Проведён' },
-  { value: 'completed', label: 'Завершён' },
-  { value: 'cancelled', label: 'Отменён' },
-]
+/**
+ * Второй экземпляр того же списка. В `SessionFormModal` лежала побайтово
+ * одинаковая копия — включая `held`, которого у сеанса не существует. Две
+ * копии одного словаря означают, что исправлять пришлось бы обе, и вторую
+ * обязательно забыли бы. Список — из `statusOptions('session')`.
+ */
+const SESSION_STATUS_OPTIONS = statusOptions('session')
 
 /** Мероприятие уже создано, а сеанс — нет: храним id для ссылки на карточку. */
 const eventCreatedId = ref<number | null>(null)

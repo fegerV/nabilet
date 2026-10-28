@@ -22,12 +22,12 @@
  */
 import { onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import NBadge from '@/components/ui/NBadge.vue'
 import NButton from '@/components/ui/NButton.vue'
 import NEmptyState from '@/components/ui/NEmptyState.vue'
+import NStatusBadge from '@/components/ui/NStatusBadge.vue'
 import { ApiError } from '@/lib/api'
 import { dateTime, plural } from '@/lib/format'
-import { RAFFLE_STATUS_LABELS, fetchRaffleResults, raffleStatusClass, type RaffleResults } from '@/lib/raffles'
+import { fetchRaffleResults, type RaffleResults } from '@/lib/raffles'
 
 const route = useRoute()
 
@@ -91,7 +91,7 @@ function windowLabel(): string {
         <p class="text-2xs font-semibold uppercase tracking-[0.18em] text-subtle">Розыгрыш</p>
         <div class="mt-1 flex flex-wrap items-center gap-3">
           <h1 class="font-display text-2xl font-bold tracking-tight text-content">{{ raffle.title }}</h1>
-          <NBadge :class="raffleStatusClass(raffle.status)">{{ RAFFLE_STATUS_LABELS[raffle.status] }}</NBadge>
+          <NStatusBadge kind="raffle" :status="raffle.status" />
         </div>
         <p v-if="raffle.description" class="mt-2 text-sm text-muted">{{ raffle.description }}</p>
       </header>

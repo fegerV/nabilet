@@ -14,6 +14,7 @@ import { computed, onMounted, ref } from 'vue'
 import NEmptyState from '@/components/ui/NEmptyState.vue'
 import { get } from '@/lib/api'
 import { money, dateLong } from '@/lib/format'
+import { statusLabel } from '@/lib/statusLabels'
 import { revenueByDay } from '@/lib/stats'
 
 /** Денежная часть заказа — схема `MoneyTotals` контракта (минорные единицы). */
@@ -107,22 +108,21 @@ const CARDS = computed(() => [
   { label: 'Успешных оплат', value: `${successRate.value}%`, hint: `${payments.value.length} попыток` },
 ])
 
+/**
+ * Своего словаря подписей здесь нет и быть не должно.
+ *
+ * Раньше тут лежала карта на восемь статусов заказа, побайтово равная словарю
+ * `statusLabels`. Копия выглядела безобидно («нужна только подпись, без
+ * цвета»), но жила на отдельном экране, который никто не сверяет с таблицей
+ * заказов: переименуй статус в одном месте — аналитика продолжит показывать
+ * старое название, и заметит это только тот, кто специально сравнит два
+ * экрана. Подпись спрашиваем у владельца.
+ */
 const statusRows = computed(() => {
   const map = new Map<string, number>()
   for (const order of orders.value) map.set(order.status, (map.get(order.status) ?? 0) + 1)
   return [...map.entries()].sort((a, b) => b[1] - a[1])
 })
-
-const STATUS_LABELS: Record<string, string> = {
-  pending: 'Создан',
-  awaiting_payment: 'Ждём оплаты',
-  paid: 'Оплачен',
-  payment_failed: 'Оплата не прошла',
-  cancelled: 'Отменён',
-  expired: 'Истёк',
-  refunded: 'Возврат',
-  partially_refunded: 'Частичный возврат',
-}
 </script>
 
 <template>
@@ -173,7 +173,7 @@ const STATUS_LABELS: Record<string, string> = {
         <p class="mb-3 text-sm font-semibold text-content">Заказы по статусам</p>
         <div v-if="statusRows.length" class="space-y-2">
           <div v-for="[status, count] in statusRows" :key="status" class="flex items-center gap-3">
-            <span class="w-40 flex-none text-sm text-muted">{{ STATUS_LABELS[status] ?? status }}</span>
+            <span class="w-40 flex-none text-sm text-muted">{{ statusLabel('order', status) }}</span>
             <span class="h-2.5 flex-1 overflow-hidden rounded-full bg-surface-3">
               <span
                 class="block h-full rounded-full bg-brand-500"

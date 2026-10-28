@@ -27,9 +27,9 @@ import NCard from '@/components/ui/NCard.vue'
 import NInput from '@/components/ui/NInput.vue'
 import NModal from '@/components/ui/NModal.vue'
 import NPageHeader from '@/components/ui/NPageHeader.vue'
+import NStatusBadge from '@/components/ui/NStatusBadge.vue'
 import { useUiStore } from '@/stores/ui'
 import {
-  RAFFLE_STATUS_LABELS,
   activateAdminRaffle,
   cancelAdminRaffle,
   createAdminRaffle,
@@ -38,13 +38,11 @@ import {
   fetchAdminRaffle,
   fromLocalInput,
   notifyAdminRaffle,
-  raffleStatusClass,
   toLocalInput,
   updateAdminRaffle,
   type RaffleDetail,
   type RaffleListItem,
   type RafflePrizeDraft,
-  type RaffleStatus,
 } from '@/lib/raffles'
 
 const ui = useUiStore()
@@ -218,10 +216,6 @@ async function runAction(kind: 'activate' | 'cancel' | 'draw' | 'notify', public
   }
 }
 
-function statusLabel(status: RaffleStatus): string {
-  return RAFFLE_STATUS_LABELS[status] ?? status
-}
-
 function formatDate(value: string | null): string {
   if (!value) return '—'
   const date = new Date(value)
@@ -261,7 +255,7 @@ function formatDate(value: string | null): string {
           <div class="min-w-0 flex-1">
             <div class="flex items-center gap-2">
               <p class="truncate font-medium text-content">{{ raffle.title }}</p>
-              <NBadge :class="raffleStatusClass(raffle.status)">{{ statusLabel(raffle.status) }}</NBadge>
+              <NStatusBadge kind="raffle" :status="raffle.status" />
             </div>
             <p class="mt-0.5 text-xs text-white/40">
               Окно: {{ formatDate(raffle.starts_at) }} — {{ formatDate(raffle.ends_at) }}
@@ -303,7 +297,7 @@ function formatDate(value: string | null): string {
     <!-- Выбранный розыгрыш -->
     <NCard v-if="selected" class="mt-5" title="Розыгрыш" :description="selected.description ?? undefined">
       <template #actions>
-        <NBadge :class="raffleStatusClass(selected.status)">{{ statusLabel(selected.status) }}</NBadge>
+        <NStatusBadge kind="raffle" :status="selected.status" />
       </template>
 
       <dl class="grid gap-3 sm:grid-cols-3">
@@ -330,7 +324,9 @@ function formatDate(value: string | null): string {
             :key="prize.public_id"
             class="flex items-center gap-3 rounded-lg bg-surface-2 px-3 py-2 text-sm"
           >
-            <span class="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-indigo-500/20 text-xs font-semibold text-indigo-300">
+            <!-- `indigo` — цвет дефолтной палитры Tailwind: рисуется, но
+                 обходит токены проекта. Номер места — акцент, значит `brand`. -->
+            <span class="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-brand-500/20 text-xs font-semibold text-brand-300">
               {{ prize.place }}
             </span>
             <span class="min-w-0 flex-1 truncate text-content">{{ prize.title }}</span>
@@ -353,7 +349,7 @@ function formatDate(value: string | null): string {
             </span>
             <span class="min-w-0 flex-1 truncate text-content">{{ winner.prize_title }}</span>
             <span class="text-xs text-white/40">заказ {{ winner.order_number }} · {{ winner.customer_email }}</span>
-            <NBadge :class="winner.notified ? 'bg-mint-500/15 text-mint-400' : 'bg-sun-500/15 text-sun-400'">
+            <NBadge :tone="winner.notified ? 'mint' : 'sun'">
               {{ winner.notified ? 'письмо ушло' : 'письмо не ушло' }}
             </NBadge>
           </li>

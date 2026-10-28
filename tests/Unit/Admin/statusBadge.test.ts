@@ -103,6 +103,41 @@ describe('NStatusBadge', () => {
     expect(mountBadge('event', 'archived').text()).toBe('Архив')
   })
 
+  it('подписывает все семь состояний сеанса, включая `sold_out` и `closed`', () => {
+    // Раньше здесь стоял список из пяти состояний, снятый с бэкенда до правки:
+    // в нём был `held` — состояние позиции инвентаря, которого у сеанса нет, —
+    // и не было `draft`, `sold_out`, `closed`. Поэтому три настоящих состояния
+    // показывались сырым английским кодом, а `held` подписывался словом
+    // «Открыт», которого не бывает ни у одного сеанса.
+    //
+    // Список теперь один на весь фронтенд (`lib/statusLabels.ts`) и сверяется
+    // с `SessionStateMachine::all()` в `statusVocabularyParity.test.ts`.
+    expect(mountBadge('session', 'draft').text()).toBe('Черновик')
+    expect(mountBadge('session', 'scheduled').text()).toBe('Запланирован')
+    expect(mountBadge('session', 'on_sale').text()).toBe('В продаже')
+    expect(mountBadge('session', 'sold_out').text()).toBe('Продано')
+    expect(mountBadge('session', 'closed').text()).toBe('Продажи закрыты')
+    expect(mountBadge('session', 'completed').text()).toBe('Завершён')
+    expect(mountBadge('session', 'cancelled').text()).toBe('Отменён')
+  })
+
+  it('рисует розыгрыш тоном из палитры, а не руками подобранным классом', () => {
+    // Плашки розыгрышей красились функцией `raffleStatusClass`, которая
+    // подмешивала Tailwind-классы в `NBadge` через `:class` — «тесная копия
+    // палитры». `drawn` был покрашен в `indigo`: цвет дефолтной палитры
+    // Tailwind, он рисуется, но обходит токены проекта — единственное
+    // ПОЛОЖИТЕЛЬНОЕ терминальное состояние оставалось единственным синим
+    // элементом интерфейса и теряло `ring`, который дают настоящие тона.
+    // Проверяем и подпись, и цвет.
+    const drawn = mountBadge('raffle', 'drawn')
+    expect(drawn.text()).toBe('Разыгран')
+    expect(drawn.find('span').classes().join(' ')).toContain('brand')
+
+    const cancelled = mountBadge('raffle', 'cancelled')
+    expect(cancelled.text()).toBe('Отменён')
+    expect(cancelled.find('span').classes().join(' ')).toContain('rose')
+  })
+
   it('на неизвестном статусе показывает сам код, а не пустую ячейку', async () => {
     // Словарь EVENT теперь закрыт полностью, но запасной вариант обязан
     // остаться: API может отдать статус, которого эта сборка ещё не знает, а

@@ -16,17 +16,29 @@
  */
 
 import { get, send } from '@/lib/api'
+import type { RaffleStatus } from '@/lib/types'
 
-/** Статусы розыгрыша — тесная копия словаря `ck_raffles_status`. */
-export const RAFFLE_STATUSES = ['draft', 'active', 'drawn', 'cancelled'] as const
-export type RaffleStatus = (typeof RAFFLE_STATUSES)[number]
+/**
+ * Статусы розыгрыша — значения `RaffleStateMachine` и `ck_raffles_status`.
+ *
+ * ПОДПИСЕЙ И ЦВЕТОВ ЗДЕСЬ БОЛЬШЕ НЕТ. Тут жили `RAFFLE_STATUS_LABELS` и
+ * `raffleStatusClass()`, причём второй — «тесной копией палитры админки»:
+ * он выписывал Tailwind-классы руками и подмешивался в `NBadge` через
+ * `:class`, поверх собственных классов бейджа. Копия палитры успела разойтись:
+ * `drawn` был покрашен в `indigo` — цвет ДЕФОЛТНОЙ палитры Tailwind, которого
+ * нет среди токенов проекта. Он рисуется (палитра расширена, а не заменена),
+ * но «Разыгран» — единственное ПОЛОЖИТЕЛЬНОЕ терминальное состояние — выпадал
+ * из семантики и оставался единственным синим элементом интерфейса. Заодно все
+ * плашки розыгрышей потеряли `ring`, который настоящие тона `NBadge` дают:
+ * копия воспроизвела фон и текст, но не всё правило.
+ *
+ * Файл остаётся клиентом API: значения статусов — часть контракта (они
+ * приходят в ответе), а подписи и цвета — часть интерфейса, и живут они в
+ * `lib/statusLabels.ts` вместе с остальными словарями.
+ */
+export const RAFFLE_STATUSES: readonly RaffleStatus[] = ['draft', 'active', 'drawn', 'cancelled']
 
-export const RAFFLE_STATUS_LABELS: Record<RaffleStatus, string> = {
-  draft: 'Черновик',
-  active: 'Набирает участников',
-  drawn: 'Разыгран',
-  cancelled: 'Отменён',
-}
+export type { RaffleStatus }
 
 export interface RafflePrize {
   public_id: string
@@ -200,18 +212,4 @@ export async function fetchMyRaffles(): Promise<RaffleParticipation[]> {
 /** GET /raffles/{public_id} — публичная страница результатов. */
 export async function fetchRaffleResults(publicId: string): Promise<RaffleResults> {
   return unwrap<RaffleResults>(get<{ data: RaffleResults }>(`/raffles/${publicId}`))
-}
-
-/** Класс бейджа статуса — тесная копия палитры админки. */
-export function raffleStatusClass(status: RaffleStatus): string {
-  switch (status) {
-    case 'active':
-      return 'bg-mint-500/15 text-mint-400'
-    case 'drawn':
-      return 'bg-indigo-500/15 text-indigo-300'
-    case 'cancelled':
-      return 'bg-rose-500/15 text-rose-400'
-    default:
-      return 'bg-surface-3 text-subtle'
-  }
 }
