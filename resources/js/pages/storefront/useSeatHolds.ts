@@ -20,6 +20,7 @@ import { useUiStore } from '@/stores/ui'
 import { holdSeat, releaseSeat, fetchCart, type InventoryItem, type HoldResponse } from '@/lib/inventory'
 import { ApiError } from '@/lib/api'
 import { trackEvent } from '@/lib/metrika'
+import { plural, seatsLabel, ticketsLabel } from '@/lib/format'
 import type { Seat } from '@/lib/hall'
 import { rowNumberOf, seatNumberOf, sectorNameOf, toNumber } from './useSeatInventory'
 
@@ -87,7 +88,9 @@ export function useSeatHolds(options: UseSeatHoldsOptions) {
     // Таймер — от серверного expires_at, а не от локальных 600 секунд.
     if (cartData.expires_at) cart.setHoldExpiry(cartData.expires_at)
     if (restored > 0) {
-      ui.notify('brand', 'Выбор восстановлен', `Сервер ещё держит для вас мест: ${restored}.`)
+      // `restored` считает ПОЗИЦИИ корзины, а не места: танцпол qty=3 — это одна
+      // позиция и три билета. Поэтому склоняем «позицию», а не «место».
+      ui.notify('brand', 'Выбор восстановлен', `Сервер ещё держит для вас ${plural(restored, 'позицию', 'позиции', 'позиций')}.`)
     }
   }
 
@@ -133,7 +136,10 @@ export function useSeatHolds(options: UseSeatHoldsOptions) {
         ui.notify(
           'sun',
           'Выбор обновлён',
-          `Сервер больше не держит ${dropped} мест(а) — они сняты с выбора.`,
+          // Здесь `dropped` — именно места (по одному на `cart.toggle`), в отличие
+          // от `restored` выше. Было «${dropped} мест(а)» — скобочный костыль,
+          // расписавшийся в том, что правило склонения не применено.
+          `Сервер больше не держит ${seatsLabel(dropped)} — они сняты с выбора.`,
         )
       }
       if (cart.count > 0 && serverCart?.expires_at) cart.setHoldExpiry(serverCart.expires_at)
@@ -336,7 +342,7 @@ export function useSeatHolds(options: UseSeatHoldsOptions) {
   }
 
   function onLimit(): void {
-    ui.notify('sun', 'Больше нельзя', `За один раз можно взять не больше ${maxTickets.value} билетов`)
+    ui.notify('sun', 'Больше нельзя', `За один раз можно взять не больше ${ticketsLabel(maxTickets.value)}`)
   }
 
   /** Снятие места из сводки. Ошибка DELETE больше не глотается молча: если сервер

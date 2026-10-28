@@ -301,7 +301,8 @@ describe('HallEditorPage — инструменты правки', () => {
     await rowButton!.trigger('click')
     await flushPromises()
 
-    expect(wrapper.text()).toContain('Выбрано мест')
+    // Заголовок панели выделения теперь «Выбрано: N места» — через seatsLabel().
+    expect(wrapper.text()).toContain('Выбрано:')
     for (const label of ['⇤ Влево', '↔ Центр X', 'Вправо ⇥', '⤒ Вверх', '↕ Центр Y', 'Вниз ⤓']) {
       const found = wrapper.findAll('button').some((b) => b.text().trim() === label)
       expect(found, `нет кнопки «${label}»`).toBe(true)

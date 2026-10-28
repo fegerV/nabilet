@@ -14,7 +14,7 @@ import NSegmented from '@/components/ui/NSegmented.vue'
 import NStatusBadge from '@/components/ui/NStatusBadge.vue'
 import NDataTable from '@/components/ui/NDataTable.vue'
 import { get } from '@/lib/api'
-import { dateFull, time } from '@/lib/format'
+import { dateFull, plural, time } from '@/lib/format'
 import type { Column } from '@/components/ui/NDataTable.vue'
 import { cn } from '@/lib/cn'
 
@@ -124,7 +124,7 @@ function create(): void {
         <h1 class="text-2xl font-bold tracking-tight text-content">Мероприятия</h1>
         <p class="mt-1 text-sm text-muted">
           <template v-if="loading">Загрузка…</template>
-          <template v-else>{{ rows.length }} мероприятий</template>
+          <template v-else>{{ rows.length }} {{ plural(rows.length, 'мероприятие', 'мероприятия', 'мероприятий') }}</template>
         </p>
       </div>
       <div class="flex gap-2">

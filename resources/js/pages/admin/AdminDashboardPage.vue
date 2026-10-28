@@ -21,7 +21,8 @@ import NEmptyState from '@/components/ui/NEmptyState.vue'
 import NCard from '@/components/ui/NCard.vue'
 import NPageHeader from '@/components/ui/NPageHeader.vue'
 import { get } from '@/lib/api'
-import { money, relative, dateLong, ticketsLabel } from '@/lib/format'
+import { money, plural, relative, dateLong, ticketsLabel } from '@/lib/format'
+import { attentionTasks } from '@/lib/attention'
 import { revenueByDay } from '@/lib/stats'
 import type { Column } from '@/components/ui/NDataTable.vue'
 
@@ -237,57 +238,27 @@ const COLUMNS: Column[] = [
 
 /* ── Требует внимания: считается из данных, а не выдумано ──────────────── */
 
+/**
+ * Считаем числа, фразы собирает `attentionTasks()`.
+ *
+ * Разделение не косметическое: пока тексты собирались здесь, в них жили три
+ * бинарных копии правила склонения (`n === 1 ? 'мероприятие' : 'мероприятий'`),
+ * и для 2–4 обзор писал «2 мероприятий». Скопировать правило было легко именно
+ * потому, что рядом не было ничего, что можно ВЫЗВАТЬ.
+ */
 const tasks = computed(() => {
-  const list: Array<{ id: string; text: string; action: string; to: string; urgent: boolean }> = []
-
   const staleAwaiting = orders.value.filter((o) => {
     if (o.status !== 'awaiting_payment') return false
     const at = new Date(o.created_at ?? '').getTime()
     return !Number.isNaN(at) && now - at > 3600000
   }).length
-  if (staleAwaiting) {
-    list.push({
-      id: 'awaiting',
-      text: `${staleAwaiting} ${staleAwaiting === 1 ? 'заказ ждёт' : 'заказов ждут'} оплаты больше часа`,
-      action: 'Проверить',
-      to: '/admin/orders',
-      urgent: true,
-    })
-  }
 
-  const drafts = events.value.filter((e) => e.status === 'draft').length
-  if (drafts) {
-    list.push({
-      id: 'drafts',
-      text: `${drafts} ${drafts === 1 ? 'мероприятие' : 'мероприятий'} ещё в черновиках`,
-      action: 'Опубликовать',
-      to: '/admin/events',
-      urgent: true,
-    })
-  }
-
-  const failed = payments.value.filter((p) => p.status === 'failed').length
-  if (failed) {
-    list.push({
-      id: 'failed-payments',
-      text: `${failed} ${failed === 1 ? 'неудачный платёж' : 'неудачных платежей'}`,
-      action: 'Разобрать',
-      to: '/admin/payments',
-      urgent: true,
-    })
-  }
-
-  if (!payments.value.some((p) => p.status === 'succeeded')) {
-    list.push({
-      id: 'no-payments',
-      text: 'Ни одного успешного платежа — проверьте приём денег',
-      action: 'Настроить',
-      to: '/admin/integrations',
-      urgent: false,
-    })
-  }
-
-  return list
+  return attentionTasks({
+    staleAwaiting,
+    drafts: events.value.filter((e) => e.status === 'draft').length,
+    failedPayments: payments.value.filter((p) => p.status === 'failed').length,
+    hasSucceededPayment: payments.value.some((p) => p.status === 'succeeded'),
+  })
 })
 
 /* ── Топ мероприятий по выручке ────────────────────────────────────────── */
@@ -315,7 +286,9 @@ const period = computed(() =>
 
 /** Подпись к обзору: привязывает цифры к моменту, а в загрузке не врёт числом. */
 const headerSubtitle = computed(() =>
-  loading.value ? 'Загрузка данных…' : `${period.value} · ${orders.value.length} заказов в системе`,
+  loading.value
+    ? 'Загрузка данных…'
+    : `${period.value} · ${plural(orders.value.length, 'заказ', 'заказа', 'заказов')} в системе`,
 )
 </script>
 

@@ -19,7 +19,7 @@
  *  тап по месту работает и без предварительного зума.
  */
 import { computed, ref, watch } from 'vue'
-import { money, plural } from '@/lib/format'
+import { money, plural, seatsLabel, ticketsLabel } from '@/lib/format'
 import type { InventoryItem } from '@/lib/inventory'
 import { seatStateFromStatus, isSeatPickable } from '@/lib/seatStatus'
 import { buildSeatPricePalette, groupTableSeatPoints, type TableMark } from '@/lib/hall'
@@ -658,7 +658,7 @@ function isPickable(item: InventoryItem): boolean {
   <div class="overflow-hidden rounded-xl border border-line bg-surface-2">
     <div class="flex flex-col gap-2 border-b border-line px-3 py-2 text-2xs text-subtle">
       <div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-        <span>{{ seats.length }} мест<template v-if="danceZones.length"> · стоячие зоны {{ standingTotal }} билетов</template></span>
+        <span>{{ seatsLabel(seats.length) }}<template v-if="danceZones.length"> · стоячие зоны {{ ticketsLabel(standingTotal) }}</template></span>
       </div>
 
       <!--

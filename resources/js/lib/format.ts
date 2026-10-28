@@ -23,7 +23,22 @@ export function money(minor: number, opts: { currency?: string; compact?: boolea
   return `${new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 0 }).format(value)} ${currency}`
 }
 
-/** Склонение: plural(3, 'билет', 'билета', 'билетов') → 'билета'. */
+/**
+ * Склонение: plural(3, 'билет', 'билета', 'билетов') → 'билета'.
+ *
+ * ПРАВИЛО ОДНО НА ДВА ЯЗЫКА. Ровно то же правило живёт на сервере
+ * (`Core\Support\RuText::plural()`), потому что часть подписей собирается в
+ * письмах и PDF. Языки разные — сверка автоматической быть не может, поэтому
+ * таблица проверок в `tests/Unit/format.test.ts` повторяет таблицу
+ * `tests/Unit/RuTextTest.php` число-в-число: если правило поменяют в одном
+ * месте, вторая таблица об этом не узнает, но обе хотя бы закрепляют ОДИН
+ * набор границ (11–14, 21–24, 101–114).
+ *
+ * ПОЧЕМУ НЕЛЬЗЯ «НА ПАЛЬЦАХ». На дашборде администратора стояло
+ * `n === 1 ? 'мероприятие' : 'мероприятий'` — бинарная копия этого правила, в
+ * которой потерялась форма для 2–4. Два черновика давали «2 мероприятий ещё в
+ * черновиках». Копия выглядит безобидно, потому что верна для 1 и для 5.
+ */
 export function plural(n: number, one: string, few: string, many: string): string {
   const mod10 = n % 10
   const mod100 = n % 100
@@ -38,6 +53,11 @@ export function seatsLabel(n: number): string {
 
 export function ticketsLabel(n: number): string {
   return `${n} ${plural(n, 'билет', 'билета', 'билетов')}`
+}
+
+/** Ряды в сетке зала: «1 ряд», «3 ряда», «12 рядов». */
+export function rowsLabel(n: number): string {
+  return `${n} ${plural(n, 'ряд', 'ряда', 'рядов')}`
 }
 
 const MONTHS_GEN = [

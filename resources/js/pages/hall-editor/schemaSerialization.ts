@@ -16,6 +16,7 @@ import type { EBackground, ESector, ESeat, EStatic, SeatKind, SectorShape, Stati
 import { SEAT, GAP, ROW_GAP, tableLayout } from './seatGeometry'
 import { unwrapSchemaRoot } from './schemaImport'
 import { nodePriceMinor, nodePriceOrNull, seatPriceOverride } from '@/lib/hall'
+import { seatsLabel } from '@/lib/format'
 
 /** Версия формата схемы (§54). */
 export const SCHEMA_VERSION = '1.0'
@@ -561,7 +562,7 @@ export function danceZoneFor(
     y: cy - R * 0.6,
     width: R * 2,
     height: R * 1.2,
-    text: `Танцпол · ${dance.seats.length} мест`,
+    text: `Танцпол · ${seatsLabel(dance.seats.length)}`,
     capacity: dance.seats.length,
   }
 }

@@ -24,7 +24,7 @@ import NSelect from '@/components/ui/NSelect.vue'
 import NBadge from '@/components/ui/NBadge.vue'
 import NSegmented from '@/components/ui/NSegmented.vue'
 import { useUiStore } from '@/stores/ui'
-import { money, plural } from '@/lib/format'
+import { money, plural, rowsLabel, seatsLabel } from '@/lib/format'
 import { buildSeatPricePalette, effectiveSeatPrice } from '@/lib/hall'
 import { minorToRub, rubToMinor } from '@/lib/money'
 import { cn } from '@/lib/cn'
@@ -309,7 +309,7 @@ function generateSector(): void {
 
   sectors.value.push(sector)
   selectedSectorId.value = sector.id
-  ui.notify('mint', 'Сектор создан', `${sector.seats.length} мест, ${rows} рядов${shape === 'arc' ? ', амфитеатр' : ''}`)
+  ui.notify('mint', 'Сектор создан', `${seatsLabel(sector.seats.length)}, ${rowsLabel(rows)}${shape === 'arc' ? ', амфитеатр' : ''}`)
 }
 
 function addRowToSelected(): void {
@@ -335,7 +335,7 @@ function addRowToSelected(): void {
   // Для дуги appendRowToSector пересчитывает центровку по X и сдвигает
   // старые места, чтобы новый (самый широкий) ряд остался симметричным.
   const { row: nextRow } = appendRowToSector(sector, seatsPerRow, nextId)
-  ui.notify('mint', `Ряд ${nextRow} добавлен`, `${seatsPerRow} мест${sector.shape === 'arc' ? ', по дуге' : ''}`)
+  ui.notify('mint', `Ряд ${nextRow} добавлен`, `${seatsLabel(seatsPerRow)}${sector.shape === 'arc' ? ', по дуге' : ''}`)
 }
 
 /** Номера рядов выбранного сектора — для списка операций с рядами (§48). */
@@ -381,7 +381,7 @@ function removeRow(row: number): void {
   selectedSeatIds.value = new Set()
   const rows = rowNumbers(sector)
   activeRow.value = rows.length > 0 ? rows[Math.min(row - 1, rows.length - 1)] : null
-  ui.notify('mint', `Ряд ${row} удалён`, `${removed} мест`)
+  ui.notify('mint', `Ряд ${row} удалён`, seatsLabel(removed))
 }
 
 /** Вставить ряд ниже активного, копируя число мест ряда-соседа. */
@@ -398,7 +398,7 @@ function addRowAfter(row: number): void {
   const created = insertRowAfter(sector, row, count, nextId)
   selectedSeatIds.value = new Set(seatsInRow(sector, created).map((s) => s.id))
   activeRow.value = created
-  ui.notify('mint', `Ряд ${created} вставлен`, `${count} мест`)
+  ui.notify('mint', `Ряд ${created} вставлен`, seatsLabel(count))
 }
 
 /** Перенумеровать места во всех рядах сектора слева направо, 1..N. */
@@ -458,7 +458,7 @@ function alignSelected(edge: AlignEdge): void {
     editorHistory.undo()
     return
   }
-  ui.notify('mint', 'Выровнено', `${seats.length} мест`)
+  ui.notify('mint', 'Выровнено', seatsLabel(seats.length))
 }
 
 /** Равномерно распределить выделенные места по горизонтали или вертикали. */
@@ -474,7 +474,7 @@ function distributeSelected(axis: 'x' | 'y'): void {
     editorHistory.undo()
     return
   }
-  ui.notify('mint', axis === 'x' ? 'Распределено по горизонтали' : 'Распределено по вертикали', `${seats.length} мест`)
+  ui.notify('mint', axis === 'x' ? 'Распределено по горизонтали' : 'Распределено по вертикали', seatsLabel(seats.length))
 }
 
 /**
@@ -1098,7 +1098,7 @@ function duplicateSelection(): void {
     }
     sector.seats.push(...additions)
   }
-  ui.notify('brand', 'Дублировано', `${selectedSeatIds.value.size} мест`)
+  ui.notify('brand', 'Дублировано', seatsLabel(selectedSeatIds.value.size))
 }
 
 /* ── Автосохранение (§52): 500 ms debounce, состояния ──────────────── */
@@ -1471,7 +1471,7 @@ function exportSchema(): void {
           newVersion()
         }
         const count = sectors.value.reduce((acc, s) => acc + s.seats.length, 0)
-        ui.notify('mint', 'Схема импортирована', `${sectors.value.length} секторов, ${count} мест`)
+        ui.notify('mint', 'Схема импортирована', `${sectors.value.length} ${plural(sectors.value.length, 'сектор', 'сектора', 'секторов')}, ${seatsLabel(count)}`)
       } catch (e) {
         sectors.value = before.sectors
         statics.value = before.statics
@@ -1843,7 +1843,7 @@ function draw(): void {
       group.add(new Konva.Text({
         x: cx + R + 6,
         y: cy - 6,
-        text: `Танцпол · ${sector.seats.length} мест`,
+        text: `Танцпол · ${seatsLabel(sector.seats.length)}`,
         fontSize: 11,
         fill: '#596273',
         listening: false,
@@ -2370,7 +2370,7 @@ function alignTableSeats(sector: ESector): void {
   snapshot()
   alignTableSeatsEvenly(sector)
   selectedSectorId.value = sector.id
-  ui.notify('mint', 'Места выровнены по кольцу', `${sector.name} · ${seatsTotal} мест`)
+  ui.notify('mint', 'Места выровнены по кольцу', `${sector.name} · ${seatsLabel(seatsTotal)}`)
 }
 
 /** Сколько банкетных столов в схеме — для доступности кнопки «Выровнять все столы». */
@@ -2575,7 +2575,7 @@ function setSeatKindForSelection(kind: SeatKind): void {
     return
   }
   const label = KIND_OPTIONS.find((o) => o.value === kind)?.label ?? kind
-  ui.notify('mint', 'Тип места изменён', `${label} · ${changed} мест`)
+  ui.notify('mint', 'Тип места изменён', `${label} · ${seatsLabel(changed)}`)
 }
 
 /**
@@ -2605,7 +2605,7 @@ function setSeatPriceRub(value: number | null): void {
     return
   }
   if (selectedSeatIds.value.size > 1) {
-    ui.notify('mint', 'Цена обновлена', `${changed} мест`)
+    ui.notify('mint', 'Цена обновлена', seatsLabel(changed))
   }
 }
 
@@ -3080,7 +3080,7 @@ function reassignSelectedSeats(targetSectorId: string): void {
         <div v-if="selectedSeatIds.size > 0" class="surface-card overflow-hidden">
           <div class="border-b border-line px-3 py-2.5">
             <h2 class="text-sm font-semibold text-content">
-              {{ selectedSeatIds.size === 1 ? 'Место' : `Выбрано мест: ${selectedSeatIds.size}` }}
+              {{ selectedSeatIds.size === 1 ? 'Место' : `Выбрано: ${seatsLabel(selectedSeatIds.size)}` }}
             </h2>
           </div>
           <div class="space-y-3 p-3">

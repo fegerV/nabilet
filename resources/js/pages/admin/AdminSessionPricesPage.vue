@@ -16,7 +16,7 @@ import NInput from '@/components/ui/NInput.vue'
 import { useUiStore } from '@/stores/ui'
 import { get, send } from '@/lib/api'
 import { fetchInventory, type InventoryItem } from '@/lib/inventory'
-import { money } from '@/lib/format'
+import { money, plural, rowsLabel, seatsLabel } from '@/lib/format'
 import { minorToRub, rubToMinor } from '@/lib/money'
 
 const route = useRoute()
@@ -198,11 +198,11 @@ async function apply(): Promise<void> {
       `/inventory/sessions/${sessionId.value}/prices`, 'PATCH', { rows: payloadRows, session_only: sessionOnly.value },
     )
     const d = res.data
-    savedSummary.value = `Обновлено рядов: ${d.rows_updated}, свободных мест: ${d.items_updated}, позиций в корзинах: ${d.cart_items_updated}.`
+    savedSummary.value = `Обновлено: ${rowsLabel(d.rows_updated)}, ${seatsLabel(d.items_updated)}, ${plural(d.cart_items_updated, 'позиция', 'позиции', 'позиций')} в корзинах.`
       + (sessionOnly.value
         ? ' Цены применены только к этому сеансу — сетка зала не тронута.'
         : ' Цены также записаны в сетку зала и унаследуются будущими сеансами.')
-    ui.notify('mint', 'Цены применены', `Сеанс #${sessionId.value}: ${payloadRows.length} рядов`)
+    ui.notify('mint', 'Цены применены', `Сеанс #${sessionId.value}: ${rowsLabel(payloadRows.length)}`)
     await load()
   } catch (e) {
     saveError.value = e instanceof Error ? e.message : String(e)
@@ -260,7 +260,7 @@ onMounted(load)
         <div>
           <div class="text-sm font-medium text-content">
             {{ r.label }}
-            <span class="ml-1 text-xs text-subtle">({{ r.kind === 'standing' ? 'стоячая зона' : `${r.seatsCount} мест` }})</span>
+            <span class="ml-1 text-xs text-subtle">({{ r.kind === 'standing' ? 'стоячая зона' : seatsLabel(r.seatsCount) }})</span>
           </div>
           <div class="text-xs text-muted tabular-nums">
             сейчас:
