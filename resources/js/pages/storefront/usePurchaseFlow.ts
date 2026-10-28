@@ -42,6 +42,7 @@ import { customerAuthMessage, customerUser, isCustomerSession, loginCustomer, ty
 import { applyBonuses } from '@/lib/loyalty'
 import { clearRememberedReferralCode, rememberedReferralCode } from '@/lib/referral'
 import { money, plural } from '@/lib/format'
+import { phoneError } from '@/lib/phone'
 import { trackEvent } from '@/lib/metrika'
 
 /** Где покупатель находится внутри виджета. */
@@ -109,7 +110,8 @@ export function usePurchaseFlow(options: UsePurchaseFlowOptions) {
     if (email.value.trim() !== '' && emailConfirm.value.trim() !== email.value.trim()) {
       out.emailConfirm = 'Адреса не совпадают — проверьте e-mail'
     }
-    if (phone.value.replace(/\D/g, '').length !== 11) out.phone = 'Телефон — 11 цифр, начиная с 7'
+    const phoneErr = phoneError(phone.value)
+    if (phoneErr) out.phone = phoneErr
     if (!agree.value) out.agree = 'Без согласия на оферту билет не выпустим'
     return out
   })

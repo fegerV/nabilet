@@ -50,6 +50,7 @@ import { ApiError } from '@/lib/api'
 import { anchorDemoUrl, initiatePayment, newIdempotencyKey, rememberPaymentId } from '@/lib/payments'
 import { trackEvent } from '@/lib/metrika'
 import { money, plural, ticketsLabel } from '@/lib/format'
+import { phoneError } from '@/lib/phone'
 import { applyBonuses } from '@/lib/loyalty'
 import { clearRememberedReferralCode, rememberedReferralCode } from '@/lib/referral'
 import { cn } from '@/lib/cn'
@@ -125,7 +126,8 @@ const localErrors = computed(() => {
   if (email.value.trim() !== '' && emailConfirm.value.trim() !== email.value.trim()) {
     out.emailConfirm = 'Адреса не совпадают — проверьте e-mail'
   }
-  if (phone.value.replace(/\D/g, '').length !== 11) out.phone = 'Телефон — 11 цифр, начиная с 7'
+  const phoneErr = phoneError(phone.value)
+  if (phoneErr) out.phone = phoneErr
   if (!agree.value) out.agree = 'Без согласия на оферту билет не выпустим'
   return out
 })
