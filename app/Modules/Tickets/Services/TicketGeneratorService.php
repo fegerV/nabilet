@@ -7,6 +7,7 @@ namespace Nabilet\Modules\Tickets\Services;
 use Illuminate\Support\Facades\Log;
 use Nabilet\Core\Support\AssetUrl;
 use Nabilet\Core\Support\Money;
+use Nabilet\Core\Support\RuText;
 use Nabilet\Modules\Tickets\Domain\Qr\QrCapacityException;
 use Nabilet\Modules\Tickets\Domain\Qr\QrEncoder;
 use Nabilet\Modules\Tickets\Domain\Qr\QrPngRenderer;
@@ -128,11 +129,11 @@ class TicketGeneratorService
             'order_id' => (int) $order->id,
             'ticket_number' => (string) $ticket->ticket_number,
             'event_name' => (string) ($event?->title ?? 'Мероприятие'),
-            'event_date' => $session?->starts_at?->format('d.m.Y H:i') ?? '',
+            'event_date' => RuText::stamp($session?->starts_at) ?? '',
             // Время отдельной строкой: конструктор предлагает `{{event.time}}`, и
             // без этого поля переменная подставлялась пустой строкой — дизайнер
             // видел на макете время, а покупатель не видел ничего.
-            'event_time' => $session?->starts_at?->format('H:i') ?? '',
+            'event_time' => RuText::clock($session?->starts_at) ?? '',
             'venue_name' => (string) ($session?->venue?->name ?? ''),
             'seats' => $seatLabel,
             // Ряд и место по отдельности — для макетов, где они стоят в разных

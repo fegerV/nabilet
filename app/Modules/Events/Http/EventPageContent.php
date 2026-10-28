@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Nabilet\Modules\Events\Http;
 
 use Nabilet\Core\Support\Money;
+use Nabilet\Core\Support\RuText;
 use Nabilet\Modules\Events\Domain\EventStatus;
 use Nabilet\Modules\Events\Models\Event;
 
@@ -102,7 +103,7 @@ final class EventPageContent
                 ? 'Мероприятие состоялось. Билеты больше не продаются.'
                 : sprintf(
                     'Мероприятие состоялось %s. Билеты больше не продаются.',
-                    $startsAt->format('d.m.Y'),
+                    RuText::stampDate($startsAt),
                 ),
             EventStatus::CANCELLED => 'Мероприятие отменено. Билеты не продаются.',
             default => null,
@@ -331,7 +332,10 @@ final class EventPageContent
             return null;
         }
 
-        $line = sprintf('Дата и время: %s', $startsAt->format('d.m.Y, H:i'));
+        // Запятая между датой и временем была здесь единственной на десять
+        // мест: письма, билет и `event_date` печатают метку без неё, и она же
+        // закреплена тестом. Одна строка не повод держать второе написание.
+        $line = sprintf('Дата и время: %s', RuText::stamp($startsAt));
 
         $total = $event->sessions->count();
 

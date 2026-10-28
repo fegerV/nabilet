@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Nabilet\Core\Support\Money;
+use Nabilet\Core\Support\RuText;
 use Nabilet\Modules\Notifications\Mail\TemplateMail;
 use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Orders\StateMachines\OrderStateMachine;
@@ -123,7 +124,7 @@ final class UnpaidOrderReminderSweeper
 
         if ($context !== null && $context->event_title !== null) {
             $startsAt = $context->starts_at !== null
-                ? CarbonImmutable::parse($context->starts_at)->format('d.m.Y H:i')
+                ? RuText::stamp($context->starts_at)
                 : null;
 
             $lines[] = $startsAt !== null

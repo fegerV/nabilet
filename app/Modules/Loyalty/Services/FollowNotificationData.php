@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Nabilet\Modules\Loyalty\Services;
 
 use Carbon\CarbonInterface;
+use Nabilet\Core\Support\RuText;
 use Nabilet\Modules\Events\Models\Event;
 use Nabilet\Modules\Loyalty\Models\EventFollow;
 use Nabilet\Modules\Sessions\Models\Session;
@@ -39,7 +40,9 @@ final class FollowNotificationData
             // Та же переменная и то же значение, что в заказных письмах: дата
             // СЕАНСА. Одно имя на один смысл во всех шаблонах — администратор
             // не должен угадывать, чем `session_date` отличается от `event_date`.
-            'event_date' => $session->starts_at?->format('d.m.Y H:i') ?? '',
+            // «То же значение» теперь обеспечено вызовом `RuText::stamp()`, а не
+            // совпадением двух литералов `d.m.Y H:i` в трёх файлах.
+            'event_date' => RuText::stamp($session->starts_at) ?? '',
             'venue_name' => (string) ($session->venue?->name ?? ''),
             'action_url' => $this->actionUrl($event),
             'sales_note' => $this->salesNote($session),
@@ -90,7 +93,7 @@ final class FollowNotificationData
         $opensAt = $session->sales_start_at;
 
         if ($opensAt instanceof CarbonInterface && $opensAt->isFuture()) {
-            return 'Продажи откроются ' . $opensAt->format('d.m.Y H:i') . '.';
+            return 'Продажи откроются ' . RuText::stamp($opensAt) . '.';
         }
 
         return 'Продажи скоро начнутся.';

@@ -8,6 +8,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Nabilet\Core\Support\RuText;
 use Nabilet\Modules\Cart\Domain\CartStatus;
 use Nabilet\Modules\Notifications\Mail\TemplateMail;
 use Throwable;
@@ -105,7 +106,7 @@ final class AbandonedCartReminderSweeper
             ->select('events.title as event_title', 'sessions.starts_at as starts_at')
             ->first();
 
-        $expiresAt = CarbonImmutable::parse($cart->expires_at)->format('H:i');
+        $expiresAt = RuText::clock($cart->expires_at);
 
         $lines = [
             'Здравствуйте!',
@@ -113,7 +114,7 @@ final class AbandonedCartReminderSweeper
 
         if ($context !== null && $context->event_title !== null) {
             $startsAt = $context->starts_at !== null
-                ? CarbonImmutable::parse($context->starts_at)->format('d.m.Y H:i')
+                ? RuText::stamp($context->starts_at)
                 : null;
 
             $lines[] = sprintf(

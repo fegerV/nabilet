@@ -9,6 +9,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Nabilet\Core\Errors\DomainRuleViolation;
 use Nabilet\Core\Errors\NotFoundError;
+use Nabilet\Core\Support\RuText;
 use Nabilet\Modules\Loyalty\Domain\RaffleDraw;
 use Nabilet\Modules\Loyalty\Jobs\BackfillRaffleEntriesJob;
 use Nabilet\Modules\Loyalty\Jobs\NotifyRaffleWinnersJob;
@@ -297,7 +298,7 @@ final class RaffleService
 
             if ($locked->status === Raffle::STATUS_DRAWN) {
                 throw new DomainRuleViolation(
-                    sprintf('Тираж по этому розыгрышу уже проведён (%s).', $locked->drawn_at?->format('d.m.Y H:i') ?? 'дата не записана'),
+                    sprintf('Тираж по этому розыгрышу уже проведён (%s).', RuText::stamp($locked->drawn_at) ?? 'дата не записана'),
                     'RAFFLE_ALREADY_DRAWN',
                 );
             }

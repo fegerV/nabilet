@@ -8,6 +8,7 @@ use Illuminate\Contracts\Support\Htmlable;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\HtmlString;
 use Nabilet\Core\Support\Money;
+use Nabilet\Core\Support\RuText;
 use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Orders\StateMachines\OrderStateMachine;
 use Nabilet\Modules\Tickets\Domain\TicketPalette;
@@ -39,7 +40,7 @@ class OrderNotificationData
             'customer_name' => $this->customerName($order),
             'order_number' => (string) $order->order_number,
             'event_name' => (string) ($order->event?->title ?? ''),
-            'event_date' => $order->session?->starts_at?->format('d.m.Y H:i') ?? '',
+            'event_date' => RuText::stamp($order->session?->starts_at) ?? '',
             'venue_name' => (string) ($order->session?->venue?->name ?? ''),
             'total' => $this->money($order),
         ];
