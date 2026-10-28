@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Nabilet\Modules\Sessions\Http\Controllers;
 
 use Nabilet\Core\Errors\ValidationError;
+use Nabilet\Core\Support\Paging;
 use Nabilet\Modules\HallSchemas\Domain\SchemaVersionState;
 use Nabilet\Modules\Sessions\Models\Session;
 use Nabilet\Modules\Sessions\StateMachines\SessionStateMachine;
@@ -25,7 +26,9 @@ class SessionController extends Controller
     public function index(Request $request): JsonResponse
     {
         $filters = $request->only(['event_id', 'hall_id', 'status']);
-        $perPage = (int) $request->get('per_page', 20);
+        // Без клампа `?per_page=1000000` уходил в пагинатор как есть и читал
+        // всю таблицу — тот же дефект, что закрыт в остальных списках (`Paging`).
+        $perPage = Paging::limit((int) $request->get('per_page', 20), 20, 100);
         
         $query = Session::query()->with(['event', 'hall', 'venue', 'schemaVersion']);
         

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Embed\Http\Controllers;
 
+use Nabilet\Core\Support\Paging;
+
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -109,7 +111,7 @@ final class EmbedController extends Controller
 
         $model = $this->access->event($event, $organizationId);
 
-        $perPage = max(1, min(100, (int) $request->get('per_page', 20)));
+        $perPage = Paging::limit((int) $request->get('per_page', 20), 20, 100);
 
         $sessions = Session::query()
             ->where('event_id', $model->id)

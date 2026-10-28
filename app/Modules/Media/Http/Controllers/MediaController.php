@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Nabilet\Core\Errors\ValidationError;
 use Nabilet\Core\Errors\NotFoundError;
+use Nabilet\Core\Support\Paging;
 use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Media\Domain\MediaEntityType;
 use Nabilet\Modules\Media\Domain\MediaRole;
@@ -470,7 +471,7 @@ class MediaController extends Controller
 
         // Верхняя граница обязательна: без неё `?per_page=1000000` — это способ
         // положить сервер одним запросом, который выглядит безобидно.
-        return max(1, min(100, $perPage));
+        return Paging::limit($perPage, 24, 100);
     }
 
     /**

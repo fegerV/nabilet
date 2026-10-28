@@ -7,6 +7,7 @@ namespace Nabilet\Modules\Tickets\Http\Controllers;
 use Nabilet\Core\Errors\NotFoundError;
 use Nabilet\Core\Http\ContentType;
 use Nabilet\Core\Support\StaffRole;
+use Nabilet\Core\Support\Paging;
 use Nabilet\Modules\Cart\Models\Cart;
 use Nabilet\Modules\Cart\Support\CartToken;
 use Nabilet\Modules\Orders\Models\Order;
@@ -108,7 +109,7 @@ class TicketController extends Controller
     public function index(Request $request): JsonResponse
     {
         $filters = $request->only(['order_id', 'session_id', 'user_id', 'status']);
-        $perPage = max(1, min(100, (int) $request->get('per_page', 20)));
+        $perPage = Paging::limit((int) $request->get('per_page', 20), 20, 100);
 
         // Only relations that actually exist on the Ticket model. `session`,
         // `seat` and `inventoryItem` were invented here and threw

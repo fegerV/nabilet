@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Nabilet\Core\Errors\NotFoundError;
 use Nabilet\Core\Errors\ValidationError;
+use Nabilet\Core\Support\Paging;
 use Nabilet\Core\Support\PublicationStatus;
 use Nabilet\Modules\Venues\Models\Hall;
 use Nabilet\Modules\Venues\Halls\Services\HallService;
@@ -37,7 +38,8 @@ class HallController extends Controller
 
     public function index(string $venuePublicId, Request $request): HallCollection
     {
-        $limit = (int) $request->get('limit', 15);
+        // Без клампа `?limit=1000000` уходил в пагинатор как есть (см. `Paging`).
+        $limit = Paging::limit((int) $request->get('limit', 15), 15, 100);
         // `$venuePublicId`, не int: путь приводился к числу до вызова метода,
         // поэтому `/venues/1abc/halls` отдавал залы площадки 1. Площадка
         // ищется по public_id, отсутствие — 404 из сервиса.

@@ -6,6 +6,7 @@ namespace Nabilet\Modules\Events\Http\Controllers;
 
 use Nabilet\Core\Errors\ValidationError;
 use Nabilet\Core\Support\StaffRole;
+use Nabilet\Core\Support\Paging;
 use Nabilet\Core\Support\UserOrganization;
 use Nabilet\Modules\Content\Models\Redirect;
 use Nabilet\Modules\Events\Domain\EventStatus;
@@ -59,7 +60,7 @@ class EventController extends Controller
         // таблицу. ListEventsRequest с тем же правилом в контроллере не
         // применяется, поэтому клампим здесь — единственная точка входа
         // `GET /api/v1/events`.
-        $perPage = min(100, max(1, (int) $request->get('per_page', 20)));
+        $perPage = Paging::limit((int) $request->get('per_page', 20), 20, 100);
         
         $events = $this->eventService->paginate($filters, $perPage);
         

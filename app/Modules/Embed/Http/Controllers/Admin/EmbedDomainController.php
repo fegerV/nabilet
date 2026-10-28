@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Embed\Http\Controllers\Admin;
 
+use Nabilet\Core\Support\Paging;
+
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -42,7 +44,7 @@ final class EmbedDomainController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $perPage = min(100, max(1, (int) $request->query('per_page', '50')));
+        $perPage = Paging::limit((int) $request->query('per_page', '50'), 50, 100);
 
         $domains = EmbedDomain::query()
             ->when($request->query('organization_id'), fn ($q, $id) => $q->where('organization_id', $id))

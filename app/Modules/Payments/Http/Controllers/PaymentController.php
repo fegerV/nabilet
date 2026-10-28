@@ -9,6 +9,7 @@ use Nabilet\Core\Errors\NotFoundError;
 use Nabilet\Core\Errors\ValidationError;
 use Nabilet\Core\Idempotency\IdempotencyHeader;
 use Nabilet\Core\Support\StaffRole;
+use Nabilet\Core\Support\Paging;
 use Nabilet\Core\Support\UserOrganization;
 use Nabilet\Modules\Cart\Models\Cart;
 use Nabilet\Modules\Cart\Support\CartToken;
@@ -43,7 +44,7 @@ class PaymentController extends Controller
         // а сервис на его отсутствие отвечает пустым результатом — список
         // платежей был пуст всегда.
         $filters = $request->only(['order_id', 'status', 'provider', 'organization_id', 'user_id']);
-        $perPage = max(1, min(100, (int) $request->get('per_page', 20)));
+        $perPage = Paging::limit((int) $request->get('per_page', 20), 20, 100);
 
         if (! StaffRole::isStaff($request->user())) {
             // Обычный пользователь: скоуп — свои платежи. Принудительно, а не

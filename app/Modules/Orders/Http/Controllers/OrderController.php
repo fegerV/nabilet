@@ -9,6 +9,7 @@ use Nabilet\Core\Errors\DomainRuleViolation;
 use Nabilet\Core\Errors\NotFoundError;
 use Nabilet\Core\Database\IdentifierLookup;
 use Nabilet\Core\Support\StaffRole;
+use Nabilet\Core\Support\Paging;
 use Nabilet\Modules\Cart\Models\Cart;
 use Nabilet\Modules\Cart\Services\CartCheckoutService;
 use Nabilet\Modules\Cart\Support\CartToken;
@@ -394,6 +395,6 @@ class OrderController extends Controller
     /** Верхняя граница page size: `?per_page=100000` — это выборка всей таблицы. */
     private function perPage(Request $request): int
     {
-        return max(1, min(100, (int) $request->get('per_page', 20)));
+        return Paging::limit((int) $request->get('per_page', 20), 20, 100);
     }
 }

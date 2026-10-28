@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Loyalty\Http\Controllers;
 
+use Nabilet\Core\Support\Paging;
+
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -81,6 +83,6 @@ class BonusController extends Controller
 
     private function perPage(Request $request): int
     {
-        return max(1, min(100, (int) $request->get('per_page', 25)));
+        return Paging::limit((int) $request->get('per_page', 25), 25, 100);
     }
 }

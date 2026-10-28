@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Pricing\Http\Controllers;
 
+use Nabilet\Core\Support\Paging;
+
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -44,7 +46,7 @@ class PromoCodeController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $perPage = max(1, min(100, (int) $request->query('per_page', '25')));
+        $perPage = Paging::limit((int) $request->query('per_page', '25'), 25, 100);
         $page = max(1, (int) $request->query('page', '1'));
 
         $paginator = $this->promos->listForOrganization($this->organizationId(), $perPage, $page);

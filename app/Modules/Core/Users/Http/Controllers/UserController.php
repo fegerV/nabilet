@@ -9,6 +9,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Nabilet\Core\Errors\NotFoundError;
 use Nabilet\Core\Errors\ValidationError;
+use Nabilet\Core\Support\Paging;
 use Nabilet\Core\Support\UserOrganization;
 use Nabilet\Modules\Auth\Validation\PasswordRules;
 use Nabilet\Modules\Core\Users\Domain\UserStatus;
@@ -34,7 +35,7 @@ class UserController
 
     public function index(Request $request): JsonResponse
     {
-        $limit = (int) $request->get('limit', 15);
+        $limit = Paging::limit((int) $request->get('limit', 15), 15, 100);
         $users = $this->service->searchUsers('', $limit);
 
         return response()->json([
@@ -164,7 +165,7 @@ class UserController
     public function search(Request $request): JsonResponse
     {
         $query = $request->get('q', '');
-        $limit = (int) $request->get('limit', 15);
+        $limit = Paging::limit((int) $request->get('limit', 15), 15, 100);
 
         $users = $this->service->searchUsers($query, $limit);
 

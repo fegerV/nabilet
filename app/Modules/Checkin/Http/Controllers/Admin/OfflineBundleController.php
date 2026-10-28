@@ -11,6 +11,7 @@ use Nabilet\Core\Errors\AuthError;
 use Nabilet\Core\Errors\NotFoundError;
 use Nabilet\Core\Database\IdentifierLookup;
 use Nabilet\Core\Support\StaffRole;
+use Nabilet\Core\Support\Paging;
 use Nabilet\Modules\Checkin\Domain\CheckinDevice as CheckinDeviceStatus;
 use Nabilet\Modules\Checkin\Services\DeviceTokenIssuer;
 use Nabilet\Modules\Checkin\Services\OfflineBundleService;
@@ -44,7 +45,7 @@ final class OfflineBundleController extends Controller
         // (`IdentifierLookup::firstOrFail`). Здесь стояла своя копия политики
         // 404, побайтово равная такой же копии в `CheckinDeviceController`.
         $model = IdentifierLookup::firstOrFail(CheckinDevice::class, $device, 'Device');
-        $perPage = min(100, max(1, (int) $request->query('per_page', 50)));
+        $perPage = Paging::limit((int) $request->query('per_page', 50), 50, 100);
 
         $bundles = $model->offlineBundles()
             ->orderByDesc('generated_at')

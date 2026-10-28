@@ -7,6 +7,7 @@ namespace Nabilet\Modules\Core\Organizations\Http\Controllers;
 use Illuminate\Routing\Controller;
 use Nabilet\Core\Errors\DomainRuleViolation;
 use Nabilet\Core\Errors\NotFoundError;
+use Nabilet\Core\Support\Paging;
 use Nabilet\Modules\Core\Organizations\Models\Organization;
 use Nabilet\Modules\Core\Organizations\Services\OrganizationService;
 use Nabilet\Modules\Core\Organizations\Http\Requests\StoreOrganizationRequest;
@@ -41,7 +42,8 @@ class OrganizationController extends Controller
 
     public function index(Request $request): OrganizationCollection
     {
-        $limit = (int) $request->get('limit', 15);
+        // Без клампа `?limit=1000000` уходил в пагинатор как есть (см. `Paging`).
+        $limit = Paging::limit((int) $request->get('limit', 15), 15, 100);
 
         return new OrganizationCollection($this->service->all($limit));
     }

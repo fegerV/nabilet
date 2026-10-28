@@ -8,6 +8,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Nabilet\Core\Database\IdentifierLookup;
+use Nabilet\Core\Support\Paging;
 use Nabilet\Modules\Checkin\Domain\CheckinDevice as DevicePolicy;
 use Nabilet\Modules\Checkin\Services\DeviceTokenIssuer;
 use Nabilet\Modules\Tickets\Models\CheckinDevice;
@@ -39,7 +40,7 @@ final class CheckinDeviceController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $perPage = min(100, max(1, (int) $request->query('per_page', 50)));
+        $perPage = Paging::limit((int) $request->query('per_page', 50), 50, 100);
 
         $devices = CheckinDevice::query()
             ->when($request->query('organization_id'), fn ($q, $id) => $q->where('organization_id', $id))

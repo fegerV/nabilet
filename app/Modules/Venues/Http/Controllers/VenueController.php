@@ -7,6 +7,7 @@ namespace Nabilet\Modules\Venues\Http\Controllers;
 use Nabilet\Core\Errors\ConflictError;
 use Nabilet\Core\Errors\ValidationError;
 use Nabilet\Core\Support\LikePattern;
+use Nabilet\Core\Support\Paging;
 use Nabilet\Core\Support\PublicationStatus;
 use Nabilet\Core\Support\UserOrganization;
 use Nabilet\Modules\Venues\Models\Venue;
@@ -19,7 +20,9 @@ class VenueController extends Controller
     public function index(Request $request): JsonResponse
     {
         $filters = $request->only(['organization_id', 'city']);
-        $perPage = (int) $request->get('per_page', 20);
+        // Без клампа `?per_page=1000000` уходил в пагинатор как есть и читал
+        // всю таблицу — тот же дефект, что закрыт в остальных списках (`Paging`).
+        $perPage = Paging::limit((int) $request->get('per_page', 20), 20, 100);
         
         $query = Venue::query()->with(['halls', 'organization']);
         

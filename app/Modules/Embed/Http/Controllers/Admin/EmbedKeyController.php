@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Embed\Http\Controllers\Admin;
 
+use Nabilet\Core\Support\Paging;
+
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -43,7 +45,7 @@ final class EmbedKeyController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $perPage = min(100, max(1, (int) $request->query('per_page', '50')));
+        $perPage = Paging::limit((int) $request->query('per_page', '50'), 50, 100);
 
         // `key_hash` скрыт на модели (`$hidden`), поэтому `toArray()` его не
         // отдаст даже здесь: секрет не должен уезжать в ответ списка.

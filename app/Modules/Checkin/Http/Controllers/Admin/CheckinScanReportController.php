@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Checkin\Http\Controllers\Admin;
 
+use Nabilet\Core\Support\Paging;
+
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -28,7 +30,7 @@ final class CheckinScanReportController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $perPage = min(200, max(1, (int) $request->query('per_page', 50)));
+        $perPage = Paging::limit((int) $request->query('per_page', 50), 50, 200);
 
         $scans = TicketScan::query()
             // Сеанс: сканы лежат с `session_id` на самой строке, join не нужен.

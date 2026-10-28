@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Pricing\Services;
 
+use Nabilet\Core\Support\Paging;
+
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
@@ -60,7 +62,7 @@ final class PromoCodeService
         return PromoCode::query()
             ->where('organization_id', $organizationId)
             ->orderByDesc('id')
-            ->paginate(perPage: max(1, min(100, $perPage)), page: max(1, $page));
+            ->paginate(perPage: Paging::limit($perPage, 25, 100), page: max(1, $page));
     }
 
     public function findForOrganization(int $organizationId, string $publicId): PromoCode

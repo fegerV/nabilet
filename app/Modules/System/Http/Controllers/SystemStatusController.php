@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Log;
+use Nabilet\Core\Support\Paging;
 use Nabilet\Modules\System\Services\HealthProbe;
 use Nabilet\Modules\System\Services\LogReader;
 
@@ -121,7 +122,7 @@ class SystemStatusController extends Controller
      */
     public function viewLogs(Request $request, LogReader $reader): JsonResponse
     {
-        $lines = max(1, min(500, (int) $request->get('lines', 100)));
+        $lines = Paging::limit((int) $request->get('lines', 100), 100, 500);
         $offset = max(0, (int) $request->get('offset', 0));
 
         $levels = array_values(array_filter(array_map(
