@@ -212,6 +212,50 @@ class EarlyAccessTest extends TestCase
         ], $headers)->assertStatus(422);
     }
 
+    /**
+     * Кламп часов работает и в обход HTTP-валидации.
+     *
+     * HTTP-граница отклоняет `hours=0` и `hours=100_000` (422) — см. тест выше.
+     * Но `save()` зовут и напрямую: сид, миграция, команда. Там валидации нет,
+     * поэтому окно обязан привести сам сервис (`clampHours`): [1, MAX_HOURS].
+     * Без этого клампа «0 часов» записался бы как 0, а «100000» — как есть.
+     */
+    public function test_save_clamps_the_window_even_without_http_validation(): void
+    {
+        $service = app(LoyaltySettingsService::class);
+
+        $service->save(enabled: true, hours: 0, minLevelSlug: 'friend');
+        self::assertSame('1', $this->storedHours(), 'save() обязан записать клампнутое 1, а не сырое 0');
+
+        $service->save(enabled: true, hours: 100_000, minLevelSlug: 'friend');
+        self::assertSame(
+            (string) LoyaltySettingsService::MAX_HOURS,
+            $this->storedHours(),
+            'save() обязан записать клампнутый MAX_HOURS, а не 100000',
+        );
+
+        // И читатель тоже отдаёт клампнутое значение.
+        self::assertSame(LoyaltySettingsService::MAX_HOURS, $service->forAdmin()['hours']);
+    }
+
+    /**
+     * Сырое `early_access_hours` в `settings` — НЕ через `forAdmin()`.
+     *
+     * Нужно именно сырое значение: `forAdmin()` клампует и на чтении, поэтому
+     * проверка через него не отличила бы «save() записал кламп» от «save()
+     * записал сырое, а прочитали клампнутым». Сторож должен падать, если кламп
+     * убрать из `save()`.
+     */
+    private function storedHours(): ?string
+    {
+        $raw = DB::table('settings')
+            ->where('scope', LoyaltySettingsService::SCOPE)
+            ->where('setting_key', LoyaltySettingsService::KEY_HOURS)
+            ->value('value_json');
+
+        return $raw === null ? null : (string) $raw;
+    }
+
     // ── 2-3. гейт продаж ──
 
     public function test_a_guest_cannot_open_a_cart_before_the_public_start(): void

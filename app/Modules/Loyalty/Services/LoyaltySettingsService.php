@@ -105,13 +105,13 @@ final class LoyaltySettingsService
             'enabled' => array_key_exists(self::KEY_ENABLED, $values)
                 ? (bool) $values[self::KEY_ENABLED]
                 : false,
-            'hours' => max(1, min(self::MAX_HOURS, $hours)),
+            'hours' => $this->clampHours($hours),
             'min_level_slug' => (string) ($values[self::KEY_MIN_LEVEL_SLUG] ?? self::DEFAULT_MIN_LEVEL_SLUG),
             'referral_enabled' => array_key_exists(self::KEY_REFERRAL_ENABLED, $values)
                 ? (bool) $values[self::KEY_REFERRAL_ENABLED]
                 : self::DEFAULT_REFERRAL_ENABLED,
-            'referral_inviter_bonus' => max(0, (int) ($values[self::KEY_REFERRAL_INVITER_BONUS] ?? self::DEFAULT_REFERRAL_INVITER_BONUS)),
-            'referral_invited_bonus' => max(0, (int) ($values[self::KEY_REFERRAL_INVITED_BONUS] ?? self::DEFAULT_REFERRAL_INVITED_BONUS)),
+            'referral_inviter_bonus' => ReferralPolicy::normalize((int) ($values[self::KEY_REFERRAL_INVITER_BONUS] ?? self::DEFAULT_REFERRAL_INVITER_BONUS)),
+            'referral_invited_bonus' => ReferralPolicy::normalize((int) ($values[self::KEY_REFERRAL_INVITED_BONUS] ?? self::DEFAULT_REFERRAL_INVITED_BONUS)),
             'levels' => $this->levels->tiers(),
         ];
     }
@@ -123,7 +123,7 @@ final class LoyaltySettingsService
     public function save(bool $enabled, int $hours, string $minLevelSlug): void
     {
         $this->writeValue(self::KEY_ENABLED, $enabled);
-        $this->writeValue(self::KEY_HOURS, max(1, min(self::MAX_HOURS, $hours)));
+        $this->writeValue(self::KEY_HOURS, $this->clampHours($hours));
         $this->writeValue(self::KEY_MIN_LEVEL_SLUG, $minLevelSlug);
     }
 
@@ -138,8 +138,8 @@ final class LoyaltySettingsService
     public function saveReferral(bool $enabled, int $inviterBonus, int $invitedBonus): void
     {
         $this->writeValue(self::KEY_REFERRAL_ENABLED, $enabled);
-        $this->writeValue(self::KEY_REFERRAL_INVITER_BONUS, max(0, $inviterBonus));
-        $this->writeValue(self::KEY_REFERRAL_INVITED_BONUS, max(0, $invitedBonus));
+        $this->writeValue(self::KEY_REFERRAL_INVITER_BONUS, ReferralPolicy::normalize($inviterBonus));
+        $this->writeValue(self::KEY_REFERRAL_INVITED_BONUS, ReferralPolicy::normalize($invitedBonus));
     }
 
     /**
@@ -207,5 +207,17 @@ final class LoyaltySettingsService
     private function writeValue(string $key, mixed $value): void
     {
         $this->store->write(self::SCOPE, $key, $value);
+    }
+
+    /**
+     * Привести окно раннего доступа к [1, MAX_HOURS] — единственный владелец правила.
+     *
+     * Раньше `max(1, min(self::MAX_HOURS, $hours))` стоял дважды: в `forAdmin()`
+     * (защита от испорченного значения в БД) и в `save()` (защита от прямого вызова
+     * в обход HTTP-валидации: сид, миграция, команда). Формула одна — вызов один.
+     */
+    private function clampHours(int $hours): int
+    {
+        return max(1, min(self::MAX_HOURS, $hours));
     }
 }

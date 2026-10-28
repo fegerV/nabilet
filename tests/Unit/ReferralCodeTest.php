@@ -99,6 +99,31 @@ final class ReferralCodeTest extends TestCase
         $this->assertSame(ReferralPolicy::MAX_BONUS, $reward->invitedAmount);
     }
 
+    /**
+     * `normalize()` — единственный владелец диапазона [0, MAX_BONUS].
+     *
+     * ЗАЧЕМ ОТДЕЛЬНО. Раньше `max(0, …)` был скопирован в `LoyaltySettingsService`
+     * четырежды и БЕЗ потолка — обрезанная копия правила, которое уже жило здесь.
+     * Теперь и `reward()`, и сервис настроек зовут этот метод, поэтому тест держит
+     * оба конца диапазона и «внутри ничего не меняется» (иначе кламп схлопывал бы
+     * нормальные суммы).
+     */
+    public function test_normalize_owns_the_bonus_range(): void
+    {
+        // Пол: отрицательная награда — «списать бонусы за друга», такой операции нет.
+        $this->assertSame(0, ReferralPolicy::normalize(-1));
+        $this->assertSame(0, ReferralPolicy::normalize(-999_999));
+
+        // Потолок: ₽10 000 — предел ручной настройки; выше — опечатка.
+        $this->assertSame(ReferralPolicy::MAX_BONUS, ReferralPolicy::normalize(ReferralPolicy::MAX_BONUS + 1));
+        $this->assertSame(ReferralPolicy::MAX_BONUS, ReferralPolicy::normalize(999_999_999));
+
+        // Внутри диапазона и на границах — без изменений.
+        $this->assertSame(0, ReferralPolicy::normalize(0));
+        $this->assertSame(30_000, ReferralPolicy::normalize(30_000));
+        $this->assertSame(ReferralPolicy::MAX_BONUS, ReferralPolicy::normalize(ReferralPolicy::MAX_BONUS));
+    }
+
     public function test_reward_keeps_enabled_flag_even_with_zero_amounts(): void
     {
         // «Ноль другу» — это половина выключенной награды, а не выключенная

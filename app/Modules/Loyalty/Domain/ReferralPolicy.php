@@ -34,12 +34,22 @@ final class ReferralPolicy
     {
         return new ReferralReward(
             $enabled,
-            self::clamp($inviterAmount),
-            self::clamp($invitedAmount),
+            self::normalize($inviterAmount),
+            self::normalize($invitedAmount),
         );
     }
 
-    private static function clamp(int $amount): int
+    /**
+     * Привести сумму награды к [0, MAX_BONUS] — ЕДИНСТВЕННЫЙ владелец этого диапазона.
+     *
+     * ЗАЧЕМ ПУБЛИЧНЫЙ. Раньше `max(0, …)` был скопирован в `LoyaltySettingsService`
+     * четырежды (чтение формы и запись, по обеим сторонам рефералки), причём БЕЗ
+     * потолка — то есть это была обрезанная копия правила, которое здесь уже было.
+     * Граница HTTP и так отклоняет выход за `MAX_BONUS` (422), но прямой вызов
+     * сервиса (сид, миграция, команда) потолок не проверял. Теперь обе стороны
+     * зовут один метод: пол в нуле и потолок в `MAX_BONUS` — в одном месте.
+     */
+    public static function normalize(int $amount): int
     {
         return max(0, min(self::MAX_BONUS, $amount));
     }
