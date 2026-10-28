@@ -28,6 +28,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import NButton from '@/components/ui/NButton.vue'
 import NInput from '@/components/ui/NInput.vue'
 import { request } from '@/lib/api'
+import { humanSize } from '@/lib/format'
 
 interface LogEntry {
   date: string
@@ -171,11 +172,7 @@ function levelClass(level: string): string {
   }
 }
 
-function formatSize(bytes: number): string {
-  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} МБ`
-  if (bytes >= 1024) return `${Math.round(bytes / 1024)} КБ`
-  return `${bytes} Б`
-}
+// «N Б / КБ / МБ» — единственный владелец: lib/format.ts::humanSize.
 
 /** Имя файла `laravel-2026-10-22.log` → `22.10.2026`. */
 function fileLabel(name: string): string {
@@ -268,7 +265,7 @@ onBeforeUnmount(() => {
         @click="selectFile(item.name)"
       >
         {{ fileLabel(item.name) }}
-        <span class="ml-1 opacity-70">{{ formatSize(item.size) }}</span>
+        <span class="ml-1 opacity-70">{{ humanSize(item.size) }}</span>
       </button>
     </section>
 

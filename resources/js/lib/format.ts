@@ -168,3 +168,25 @@ export function relative(iso: string, now: Date = new Date()): string {
   const d = Math.round(diff / 86400)
   return `${d} ${plural(d, 'день', 'дня', 'дней')} назад`
 }
+
+/**
+ * Читаемый размер файла — один владелец, а не копия в каждой странице.
+ *
+ * РАНЬШЕ ПРАВИЛО БЫЛО РАЗМНОЖЕНО. `humanSize` жил в `lib/mediaLibrary.ts` (его
+ * домен — файлы), а `AdminLogsPage.vue` определял рядом свой `formatSize` с тем
+ * же исходом, только переписанный иначе (`Math.round(bytes / 1024)` против
+ * `(bytes / 1024).toFixed(0)`), и `AdminEventFormPage.vue` встраивал
+ * `file.size / 1024 / 1024` прямо в строку ошибки и подпись превью. Копии были
+ * эквивалентны, пока их не тронут: правка одной (добавить ГБ, сменить округление
+ * КБ) разошлась бы с остальными, и лог стал бы показывать «10 МБ» там, где «10.0 МБ».
+ *
+ * Здесь — единственный владелец (рядом с `money`/`plural`/`formatDate`: всё, что
+ * превращает «число» в «человеческую строку», живёт в `format.ts`).
+ * `mediaLibrary.ts` его ре-экспортирует, чтобы старые импортёры не поменялись.
+ */
+export function humanSize(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 Б'
+  if (bytes < 1024) return `${bytes} Б`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} КБ`
+  return `${(bytes / 1024 / 1024).toFixed(1)} МБ`
+}

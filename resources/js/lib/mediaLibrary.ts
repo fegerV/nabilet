@@ -10,10 +10,14 @@
  * заметит, а связь с мероприятием пропадает из подписи. Поэтому правила живут
  * вне компонента и проверяются `vitest`-ом напрямую.
  *
- * `humanSize` живёт ЗДЕСЬ, хотя им пользуется и галерея мероприятия
- * (`lib/eventGallery.ts`): функция общая, и вторая её копия разошлась бы с
- * первой ровно так же, как когда-то разошлись три копии сборки URL ассетов.
+ * `humanSize` — единственный владелец теперь в `lib/format.ts` (рядом с
+ * `money`/`plural`/`formatDate`); отсюда он только ре-экспортируется, чтобы
+ * старые импортёры (`eventGallery.ts`, `MediaPicker`, `AdminMediaPage`) не
+ * поменялись. Вторая копия когда-то разошлась бы с первой ровно так же, как
+ * три копии сборки URL ассетов, — поэтому форматтер размера живёт в одном месте.
  */
+
+import { humanSize } from './format'
 
 /** Связь файла с объектом — элемент поля `links` в ответе `MediaAssetResource`. */
 export interface MediaLinkRef {
@@ -87,13 +91,9 @@ export const MEDIA_TYPES_LABEL = 'jpg, png, webp, avif, gif, pdf, mp4, webm'
 /** Совпадает с `MAX_SIZE_KB` в `MediaController` (10240 КБ). */
 export const MEDIA_MAX_BYTES = 10 * 1024 * 1024
 
-/** Читаемый размер файла. */
-export function humanSize(bytes: number): string {
-  if (!Number.isFinite(bytes) || bytes <= 0) return '0 Б'
-  if (bytes < 1024) return `${bytes} Б`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} КБ`
-  return `${(bytes / 1024 / 1024).toFixed(1)} МБ`
-}
+// Читаемый размер файла — единственный владелец: lib/format.ts::humanSize.
+// Ре-экспорт, чтобы импортёры из `@/lib/mediaLibrary` не поменялись.
+export { humanSize }
 
 /**
  * К какому виду относится файл.

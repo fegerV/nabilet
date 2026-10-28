@@ -39,7 +39,7 @@ import MediaPicker from '@/components/admin/MediaPicker.vue'
 import { useUiStore } from '@/stores/ui'
 import { ApiError, get, request, send, upload } from '@/lib/api'
 import { storageSrc } from '@/lib/mediaLibrary'
-import { dateFull, time, formatDateTimeLong } from '@/lib/format'
+import { dateFull, time, formatDateTimeLong, humanSize } from '@/lib/format'
 import { statusOptions } from '@/lib/statusLabels'
 import {
   buildSessionPayload,
@@ -161,7 +161,7 @@ function setPosterFile(file: File | null): void {
     return
   }
   if (file.size > POSTER_MAX_BYTES) {
-    posterError.value = `Файл ${(file.size / 1024 / 1024).toFixed(1)} МБ превышает лимит 5 МБ.`
+    posterError.value = `Файл ${humanSize(file.size)} превышает лимит 5 МБ.`
     return
   }
   posterFile.value = file
@@ -967,7 +967,7 @@ const publishedAtText = computed<string | null>(() => {
             <input ref="fileInput" type="file" accept="image/jpeg,image/png,image/webp" class="hidden" @change="onPosterInputChange" />
             <p v-if="posterFile" class="text-sm text-content">
               Выбран файл: <b>{{ posterFile.name }}</b>
-              <span class="text-xs text-subtle">({{ (posterFile.size / 1024 / 1024).toFixed(2) }} МБ, будет загружен при сохранении)</span>
+              <span class="text-xs text-subtle">({{ humanSize(posterFile.size) }}, будет загружен при сохранении)</span>
             </p>
             <div class="flex flex-wrap items-center gap-2">
               <NButton variant="secondary" size="sm" @click="mediaOpen = true">Выбрать из медиатеки</NButton>

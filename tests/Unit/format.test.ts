@@ -25,7 +25,7 @@
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { plural, rowsLabel, seatsLabel, ticketsLabel, formatDate, formatDateTimeLong, formatMonthYear, formatDateTimeShort } from '@/lib/format'
+import { plural, rowsLabel, seatsLabel, ticketsLabel, formatDate, formatDateTimeLong, formatMonthYear, formatDateTimeShort, humanSize } from '@/lib/format'
 
 describe('plural', () => {
   /**
@@ -230,6 +230,36 @@ describe('один владелец склонения', () => {
         if (DATE_API.test(codeOnly(readFileSync(file, 'utf8')))) {
           offenders.push(relative)
         }
+      }
+
+      expect(offenders, offenders.join('\n')).toEqual([])
+    })
+  })
+
+  describe('размер файла: один владелец в format.ts', () => {
+    it('humanSize — «0 Б» / «512 Б» / «2 КБ» / «3.0 МБ»', () => {
+      expect(humanSize(0)).toBe('0 Б')
+      expect(humanSize(512)).toBe('512 Б')
+      expect(humanSize(2048)).toBe('2 КБ')
+      expect(humanSize(3 * 1024 * 1024)).toBe('3.0 МБ')
+      expect(humanSize(-5)).toBe('0 Б')
+      expect(humanSize(Number.NaN)).toBe('0 Б')
+      expect(humanSize(Number.POSITIVE_INFINITY)).toBe('0 Б')
+    })
+
+    it('нигде больше нет второго форматтера размера', () => {
+      // Вернуть копию (`formatSize`, свой `humanSize`) или ручную математику
+      // `bytes / 1024 / 1024` / `bytes / (1024 * 1024)` — упадёт по имени файла.
+      const root = join(process.cwd(), 'resources', 'js')
+      const offenders: string[] = []
+      const SIZE_FN = /function\s+(?:humanSize|formatSize)\b|const\s+(?:humanSize|formatSize)\s*=/
+      const SIZE_MATH = /\/\s*1024\s*\/\s*1024|\(\s*1024\s*\*\s*1024\s*\)/
+
+      for (const file of sourceFiles(root)) {
+        const relative = file.slice(root.length + 1).replace(/\\/g, '/')
+        if (relative === 'lib/format.ts' || relative === 'lib/mediaLibrary.ts') continue
+        const src = codeOnly(readFileSync(file, 'utf8'))
+        if (SIZE_FN.test(src) || SIZE_MATH.test(src)) offenders.push(relative)
       }
 
       expect(offenders, offenders.join('\n')).toEqual([])
