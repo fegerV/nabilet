@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Str;
 use Nabilet\Modules\Orders\Models\Order;
+use Nabilet\Modules\Core\Tenancy\TenantScoped;
 
 /**
  * @property int $id
@@ -28,11 +29,12 @@ use Nabilet\Modules\Orders\Models\Order;
  * @property \Carbon\CarbonImmutable|null $paid_at
  * @property \Carbon\CarbonImmutable $updated_at
  *
- * Колонок organization_id/method/webhook_url/succeeded_at/failure_* в payments НЕТ.
+ * `organization_id` добавлен фазой 1 (nullable); method/webhook_url/succeeded_at/failure_* НЕТ.
  */
 class Payment extends Model
 {
     use HasPublicId;
+    use TenantScoped;
 
     protected $table = 'payments';
 

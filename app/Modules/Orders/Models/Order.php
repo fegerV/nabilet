@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Nabilet\Modules\Orders\Models;
 
 use Nabilet\Modules\Core\Models\Concerns\HasPublicId;
+use Nabilet\Modules\Core\Tenancy\TenantScoped;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -46,6 +47,7 @@ use Nabilet\Modules\Tickets\Models\Ticket;
 class Order extends Model
 {
     use HasPublicId;
+    use TenantScoped;
 
     protected $table = 'orders';
 

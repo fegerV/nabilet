@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Nabilet\Modules\Core\Models\Concerns\HasPublicId;
+use Nabilet\Modules\Core\Tenancy\TenantScoped;
 use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Orders\Models\OrderItem;
 use Nabilet\Modules\Events\Models\Event;
@@ -30,6 +31,7 @@ use Nabilet\Modules\Venues\Models\StandingZone;
 class Ticket extends Model
 {
     use HasPublicId;
+    use TenantScoped;
 
     protected $table = 'tickets';
 

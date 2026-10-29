@@ -86,6 +86,8 @@
 | `app/Modules/System/Console/TenancyBackfillOrganizationCommand.php` | Команда `tenancy:backfill-organization`: идемпотентный бэкфилл из родителя; `--dry-run` (UPDATE в транзакции с откатом), `--table`, отчёт о нераспределённых NULL |
 | `bootstrap/app.php` | Команда зарегистрирована в `withCommands` |
 | `tests/Unit/TenancyPhase1ConsistencyTest.php` | Сторож: набор таблиц миграции обязан совпадать с набором шагов команды бэкфилла |
+| `app/Modules/Core/Tenancy/TenantScoped.php` | Фаза 2: трейт `TenantScoped` — авто-заполнение `organization_id` при `creating` из контекста, отклонение несовпадения, опциональный глобальный читающий скоуп (fail-closed, off по умолчанию) |
+| `app/Modules/Orders/Models/Order.php`, `app/Modules/Payments/Models/Payment.php`, `app/Modules/Tickets/Models/Ticket.php` | Фаза 2: применён write-side `TenantScoped` (глобальный скоуп выключен до аудита системных путей чтения) |
 | `docs/SECURITY-GAPS-REMEDIATION-2026-10-29.md` | Этот документ |
 
 Проверки: `php -l` по изменённым файлам — без ошибок; `php tests/run.php` —
@@ -96,7 +98,7 @@
 
 | Риск | Почему не закрыт в этом проходе |
 |------|--------------------------------|
-| `organization_id` у 70 таблиц | Фаза 1 применена к dev-БД: миграция колонок прошла (`php artisan migrate`), `tenancy:backfill-organization` отработал (остаток NULL = 0). Далее — фаза 2 (`TenantScoped` + перевод репозиториев) и фаза 3 (`NOT NULL`/FK) — §3 |
+| `organization_id` у 70 таблиц | Фаза 1 применена к dev-БД. Фаза 2 частично: трейт `TenantScoped` реализован и включён на записи для `Order`/`Payment`/`Ticket`. **Глобальный читающий скоуп выключен** — включение на модель требует предварительного аудита/оборачивания системных путей чтения в `withoutScope()` (§3.3). Затем фаза 3 (`NOT NULL`/FK) |
 | Списки/отчёты вне Orders/Payments/Tickets/Checkin | Проверены только пути, где аудит нашёл живую утечку; остальные закрываются общим `TenantScoped` в фазе 2 |
 | `PaymentController::store` и `OrderController::resendTicket` вне `auth:api` | Staff-ветки там не единственная защита; полноценно закрывается контекстом + схемой в фазе 2 |
 
@@ -440,6 +442,13 @@ WHERE p.organization_id <> o.organization_id;
 3. **Фаза 1 применена** к dev-БД: `php artisan migrate` (40 колонок на месте),
    `php artisan tenancy:backfill-organization` (остаток NULL = 0). Гейт
    перехода к фазе 3 — по всем таблицам класса A `null_org = 0` (§3.3).
-4. **После бэкфилла:** фаза 2 — `TenantScoped`, затем фаза 3 — `NOT NULL`/FK.
-5. **Постоянно:** `php artisan config:validate` в деплое, `php tests/run.php` и
+4. **Фаза 2 (продолжение):** трейт `TenantScoped` реализован, write-side включён
+   для `Order`/`Payment`/`Ticket` (полный набор зелёный). Осталось:
+   (а) аудит системных путей чтения (задания, вебхуки, sweepers) и оборачивание
+   их в `OrganizationContext::withoutScope()`; (б) затем включение глобального
+   читающего скоупа по-модельно (`tenantScopeEnabled(): true`); (в) перевод
+   репозиториев класса A на прямой `where('organization_id', …)` после того, как
+   запись заполняет колонку.
+5. **Фаза 3:** `NOT NULL`/FK после нулевого гейта `null_org = 0`.
+6. **Постоянно:** `php artisan config:validate` в деплое, `php tests/run.php` и
    `php vendor/bin/phpunit` в CI.
