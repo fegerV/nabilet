@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Nabilet\Modules\Orders\Services;
 
 use Nabilet\Core\Errors\InvalidStateTransitionError;
+use Nabilet\Core\Errors\NotFoundError;
 use Nabilet\Core\StateMachine\StateMachine;
 use Nabilet\Modules\Inventory\StateMachines\InventoryItemStateMachine;
 use Nabilet\Modules\Inventory\Models\InventoryItem;
@@ -53,6 +54,24 @@ class OrderService
                     ->whereKey($itemData['inventory_item_id'])
                     ->lockForUpdate()
                     ->firstOrFail();
+
+                // Организация заказа и организация позиции склада обязаны
+                // совпадать. До этой проверки клиент мог прислать
+                // `organization_id` одной организации, а позицию — из сеанса
+                // другой: заказ попадал в чужой тенант, а билеты выпускались по
+                // сеансу исходной. Сравнение идёт по владельцу сеанса
+                // (`sessions.event_id → events.organization_id`), а не по
+                // доверенному полю запроса.
+                $itemOrganizationId = $item->session?->event?->organization_id;
+
+                if ($itemOrganizationId === null
+                    || (int) $itemOrganizationId !== (int) ($data['organization_id'] ?? 0)
+                ) {
+                    throw new NotFoundError(
+                        'InventoryItem',
+                        (string) $itemData['inventory_item_id'],
+                    );
+                }
 
                 $quantity = max(1, (int) ($itemData['quantity'] ?? 1));
 
@@ -129,14 +148,30 @@ class OrderService
         });
     }
 
-    public function findOrder(int $orderId, ?int $organizationId = null): ?Order
+    /**
+     * Заказ по id в пределах организации. Организация обязательна: без неё
+     * чужой заказ стал бы виден. Для системных контекстов используйте
+     * `findOrderAny()`.
+     */
+    public function findOrder(int $orderId, int $organizationId): ?Order
     {
         return $this->repository->find($orderId, $organizationId);
     }
 
-    public function findByPublicId(string $publicId, ?int $organizationId = null): ?Order
+    /** Системный поиск без скоупа организации (вебхуки, задания). */
+    public function findOrderAny(int $orderId): ?Order
+    {
+        return $this->repository->findAny($orderId);
+    }
+
+    public function findByPublicId(string $publicId, int $organizationId): ?Order
     {
         return $this->repository->findByPublicId($publicId, $organizationId);
+    }
+
+    public function findAnyByPublicId(string $publicId): ?Order
+    {
+        return $this->repository->findAnyByPublicId($publicId);
     }
 
     /**

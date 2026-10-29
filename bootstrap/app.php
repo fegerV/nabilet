@@ -131,6 +131,12 @@ return Application::configure(basePath: dirname(__DIR__))
         // существовало бы: `artisan config:validate` отвечал бы «Command not
         // defined», и гейт молча ничего не проверял.
         \Nabilet\Modules\System\Console\ConfigValidateCommand::class,
+        // Идемпотентный бэкфилл `organization_id` таблиц класса A (фаза 1
+        // мультитенантности). Не по расписанию — ручной шаг перед переходом к
+        // `NOT NULL`/FK (фаза 3). Регистрация обязательна по той же причине,
+        // что и у `config:validate`: модульные провайдеры не бутятся, и команды
+        // вне `app/Console/Commands/` Laravel не находит сам.
+        \Nabilet\Modules\System\Console\TenancyBackfillOrganizationCommand::class,
     ])
     ->withMiddleware(function (Middleware $middleware): void {
         // ── Global stack, in order ───────────────────────────────────────────

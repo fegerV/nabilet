@@ -153,12 +153,12 @@ class RaffleTest extends TestCase
      */
     private function paidOrder(User $user): Order
     {
-        [, , , $inventoryId] = $this->seedSellableSeat(available: 1);
+        [$organizationId, , , $inventoryId] = $this->seedSellableSeat(available: 1);
 
         $service = app(OrderService::class);
 
         $order = $service->createOrder([
-            'organization_id' => $this->seedOrganization(),
+            'organization_id' => $organizationId,
             'user_id' => $user->id,
             'customer_email' => $user->email,
             'items' => [['inventory_item_id' => $inventoryId, 'quantity' => 1]],
@@ -174,18 +174,6 @@ class RaffleTest extends TestCase
         (new EnterRafflesJob(orderId: $order->id))->handle($this->raffles());
 
         return $order;
-    }
-
-    private function seedOrganization(): int
-    {
-        return (int) DB::table('organizations')->insertGetId([
-            'public_id' => (string) Str::ulid()->toBase32(),
-            'name' => 'Buyer Org',
-            'slug' => 'buyer-org-' . Str::random(6),
-            'status' => 'active',
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
     }
 
     // ── 1. автоматическое участие по оплате ──────────────────────────────────

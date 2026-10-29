@@ -67,8 +67,9 @@ class TicketScanService
         ?string $qrPayload = null,
         ?string $clientScanId = null,
         ?\DateTimeImmutable $scannedAt = null,
+        ?int $organizationId = null,
     ): array {
-        return DB::transaction(function () use ($ticketId, $sessionId, $deviceId, $qrPayload, $clientScanId, $scannedAt) {
+        return DB::transaction(function () use ($ticketId, $sessionId, $deviceId, $qrPayload, $clientScanId, $scannedAt, $organizationId) {
             // Идемпотентный повтор приходит ДО любых изменений: билет уже
             // погашен этим же самым сканом, и второй раз его гасить нечем.
             if ($clientScanId !== null && $deviceId !== null) {
@@ -79,6 +80,19 @@ class TicketScanService
 
                 if ($existing !== null) {
                     $ticket = Ticket::query()->whereKey($existing->ticket_id)->first();
+
+                    // Повтор не должен становиться обходом арендатора: устройство
+                    // организации B не получает исход скана билета организации A
+                    // даже при совпавшем client_scan_id.
+                    if ($ticket === null
+                        || ! $this->belongsToOrganization($organizationId, $this->ticketOrganizationId($ticket))
+                    ) {
+                        return [
+                            'success' => false,
+                            'message' => 'Ticket not found',
+                            'reason' => 'TICKET_NOT_FOUND',
+                        ];
+                    }
 
                     return [
                         'success' => in_array($existing->result, [ScanOutcome::ADMITTED, ScanOutcome::CONFLICT_REVOKED], true),
@@ -142,6 +156,18 @@ class TicketScanService
                 }
             }
 
+            // Межарендаторский доступ: билет другой организации неотличим от
+            // несуществующего. `null` — внутренний вызов без HTTP-контекста
+            // (например, `TicketService::checkInTicket`), для него проверка не
+            // выполняется; все HTTP-входы передают организацию явно.
+            if (! $this->belongsToOrganization($organizationId, $this->ticketOrganizationId($ticket))) {
+                return [
+                    'success' => false,
+                    'message' => 'Ticket not found',
+                    'reason' => 'TICKET_NOT_FOUND',
+                ];
+            }
+
             // tickets.session_id is a first-class column (spec schema); there is
             // no inventoryItem relation on Ticket and going through it produced
             // "Call to undefined relationship" errors at runtime.
@@ -149,6 +175,16 @@ class TicketScanService
                 return [
                     'success' => false,
                     'message' => 'Ticket does not belong to this session',
+                    'reason' => 'WRONG_SESSION',
+                ];
+            }
+
+            // Сеанс тоже обязан принадлежать той же организации: иначе билет
+            // организации A можно было бы «проверить» на сеансе организации B.
+            if (! $this->belongsToOrganization($organizationId, $this->sessionOrganizationId($sessionId))) {
+                return [
+                    'success' => false,
+                    'message' => 'Session not found',
                     'reason' => 'WRONG_SESSION',
                 ];
             }
@@ -208,16 +244,33 @@ class TicketScanService
     /**
      * Verify if a ticket can be checked in without recording the scan.
      *
+     * `$organizationId` — организация запроса (устройства или сотрудника).
+     * Чужой билет и чужой сеанс отвечают так же, как несуществующие: иначе
+     * проверка превращается в способ узнать, что билет с таким QR существует
+     * у другого арендатора.
+     *
      * @return array{valid: bool, reason?: string, result?: string}
      */
-    public function canCheckin(Ticket $ticket, int $sessionId, ?int $deviceId = null): array
-    {
+    public function canCheckin(
+        Ticket $ticket,
+        int $sessionId,
+        ?int $deviceId = null,
+        ?int $organizationId = null,
+    ): array {
+        if (! $this->belongsToOrganization($organizationId, $this->ticketOrganizationId($ticket))) {
+            return ['valid' => false, 'result' => ScanOutcome::NOT_FOUND, 'reason' => 'TICKET_NOT_FOUND'];
+        }
+
         if ((int) $ticket->session_id !== $sessionId) {
             // Ключ `result` обязан быть: контроллер читает именно его
             // (`$decision['result']`), и без него вердикт скатывается в
             // `unknown_ticket` вместо `wrong_session`/`wrong_event`. Различие
             // session/event дальше берётся из сравнения event_id в контроллере.
             return ['valid' => false, 'result' => ScanOutcome::WRONG_SESSION, 'reason' => 'WRONG_SESSION'];
+        }
+
+        if (! $this->belongsToOrganization($organizationId, $this->sessionOrganizationId($sessionId))) {
+            return ['valid' => false, 'result' => ScanOutcome::NOT_FOUND, 'reason' => 'TICKET_NOT_FOUND'];
         }
 
         $outcome = $this->checkinEvaluator->evaluate(
@@ -283,14 +336,33 @@ class TicketScanService
         ?string $clientScanId = null,
         bool $deviceAdmitted = true,
         ?\DateTimeImmutable $scannedAt = null,
+        ?int $organizationId = null,
     ): array {
-        return DB::transaction(function () use ($ticketPublicId, $bundleHash, $deviceId, $clientScanId, $deviceAdmitted, $scannedAt) {
+        return DB::transaction(function () use ($ticketPublicId, $bundleHash, $deviceId, $clientScanId, $deviceAdmitted, $scannedAt, $organizationId) {
             $ticket = Ticket::query()
                 ->where('public_id', $ticketPublicId)
                 ->lockForUpdate()
                 ->first();
 
             if (!$ticket) {
+                return [
+                    'success' => false,
+                    'message' => 'Ticket not found',
+                    'reason' => 'TICKET_NOT_FOUND',
+                ];
+            }
+
+            // Межарендаторский доступ: билет и сеанс обязаны принадлежать
+            // организации устройства. Чужой билет неотличим от несуществующего.
+            if (! $this->belongsToOrganization($organizationId, $this->ticketOrganizationId($ticket))) {
+                return [
+                    'success' => false,
+                    'message' => 'Ticket not found',
+                    'reason' => 'TICKET_NOT_FOUND',
+                ];
+            }
+
+            if (! $this->belongsToOrganization($organizationId, $this->sessionOrganizationId((int) $ticket->session_id))) {
                 return [
                     'success' => false,
                     'message' => 'Ticket not found',
@@ -438,6 +510,50 @@ class TicketScanService
             'message' => 'Concurrent scan detected, please retry',
             'reason' => 'CONCURRENT_SCAN',
         ];
+    }
+
+    /**
+     * Проверка арендатора для путей сканирования.
+     *
+     * `null` в `$expectedOrganizationId` — внутренний вызов без HTTP-контекста
+     * (`TicketService::checkInTicket`), проверка не выполняется. Все HTTP-входы
+     * передают организацию явно.
+     */
+    private function belongsToOrganization(?int $expectedOrganizationId, ?int $actualOrganizationId): bool
+    {
+        if ($expectedOrganizationId === null) {
+            return true;
+        }
+
+        return $actualOrganizationId !== null && $expectedOrganizationId === $actualOrganizationId;
+    }
+
+    /**
+     * Организация билета — через его заказ: `tickets` собственной колонки
+     * `organization_id` не имеет, а `orders.organization_id` — обязательная.
+     */
+    private function ticketOrganizationId(object $ticket): ?int
+    {
+        $orderId = $ticket->order_id ?? null;
+
+        if ($orderId === null) {
+            return null;
+        }
+
+        $organizationId = DB::table('orders')->where('id', $orderId)->value('organization_id');
+
+        return $organizationId !== null ? (int) $organizationId : null;
+    }
+
+    /** Организация сеанса — через событие (`sessions.event_id → events.organization_id`). */
+    private function sessionOrganizationId(int $sessionId): ?int
+    {
+        $organizationId = DB::table('sessions')
+            ->join('events', 'events.id', '=', 'sessions.event_id')
+            ->where('sessions.id', $sessionId)
+            ->value('events.organization_id');
+
+        return $organizationId !== null ? (int) $organizationId : null;
     }
 
     /**

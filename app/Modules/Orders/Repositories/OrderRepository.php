@@ -44,27 +44,41 @@ class OrderRepository
      * (`OrderService::findOrder()` — тоже), но это мина, а не безобидный
      * остаток: первый же вызов — 500.
      */
-    public function find(int $id, ?int $organizationId = null): ?Order
+    /**
+     * Заказ по внутреннему id строго в пределах организации.
+     *
+     * Организация обязательна: без неё чужой заказ стал бы виден. Для системных
+     * контекстов (вебхуки, задания) есть `findAny()`.
+     */
+    public function find(int $id, int $organizationId): ?Order
     {
-        $query = $this->model->with(['items.inventoryItem', 'payments']);
-        
-        if ($organizationId) {
-            $query->where('organization_id', $organizationId);
-        }
-        
-        return $query->find($id);
+        return $this->model->with(['items.inventoryItem', 'payments'])
+            ->where('organization_id', $organizationId)
+            ->find($id);
+    }
+
+    /**
+     * Заказ без скоупа организации — только для системных контекстов.
+     */
+    public function findAny(int $id): ?Order
+    {
+        return $this->model->with(['items.inventoryItem', 'payments'])->find($id);
     }
 
     /** Заказ по `public_id`. Про `customer` в `with()` — см. `find()`. */
-    public function findByPublicId(string $publicId, ?int $organizationId = null): ?Order
+    public function findByPublicId(string $publicId, int $organizationId): ?Order
     {
-        $query = $this->model->where('public_id', $publicId);
-        
-        if ($organizationId) {
-            $query->where('organization_id', $organizationId);
-        }
-        
-        return $query->with(['items.inventoryItem', 'payments'])->first();
+        return $this->model->where('public_id', $publicId)
+            ->where('organization_id', $organizationId)
+            ->with(['items.inventoryItem', 'payments'])
+            ->first();
+    }
+
+    public function findAnyByPublicId(string $publicId): ?Order
+    {
+        return $this->model->where('public_id', $publicId)
+            ->with(['items.inventoryItem', 'payments'])
+            ->first();
     }
 
     public function findByOrganization(int $organizationId, array $filters = [], int $limit = 15): LengthAwarePaginator

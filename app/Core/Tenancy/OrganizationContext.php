@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Nabilet\Core\Tenancy;
 
+use Nabilet\Core\Errors\NotFoundError;
 use Nabilet\Core\Errors\TenantContextMissingError;
 
 /**
@@ -137,19 +138,59 @@ final class OrganizationContext
     }
 
     /**
+     * Принадлежит ли ресурс активной организации запроса.
+     *
+     * ЭТО ПРОВЕРКА ДЛЯ ЧТЕНИЯ, А НЕ ДЛЯ ЗАПИСИ. Она намеренно мягкая: без
+     * контекста, с `null` вместо организации или с чужой организацией отвечает
+     * `false`, а не бросает исключение. Вызывающий сам решает, что это значит:
+     * элемент списка пропускается, а конкретный ресурс получает 404 через
+     * `assertCanAccess()`. Так «нет контекста» не превращается в 500 на каждом
+     * публичном маршруте, но и не расширяет выборку до всех арендаторов.
+     *
+     * Почему не `StaffRole::isStaff()`: роль отвечает на вопрос «сотрудник ли
+     * это», а не «чей это сотрудник». Сотрудник организации A не должен видеть
+     * заказ организации B только потому, что у него есть роль `admin`.
+     */
+    public function allows(int|string|null $organizationId): bool
+    {
+        if ($this->bypassDepth > 0) {
+            return true;
+        }
+
+        if ($organizationId === null || $organizationId === '' || $this->organizationId === null) {
+            return false;
+        }
+
+        return (string) $organizationId === $this->organizationId;
+    }
+
+    /**
+     * Fail-closed доступ к конкретному ресурсу: чужая организация неотличима от
+     * несуществующей записи.
+     *
+     * 404, а не 403 — по той же причине, что и в `NotFoundError`: 403 подтвердил
+     * бы, что запись с таким id существует у другого арендатора (IDOR/BOLA).
+     */
+    public function assertCanAccess(
+        int|string|null $organizationId,
+        string $resource = 'resource',
+        string|int $resourceId = '',
+    ): void {
+        if (! $this->allows($organizationId)) {
+            throw new NotFoundError(ucfirst($resource), $resourceId);
+        }
+    }
+
+    /**
      * Assert that the given organization id matches the active one.
      * Used at the edge of every write to stop a caller from smuggling a foreign
      * organization_id into a payload.
+     *
+     * Отсутствие контекста — тоже отказ, а не 500: см. `assertCanAccess()`.
      */
-    public function assertOwns(?string $organizationId, string $resource = 'resource'): void
+    public function assertOwns(int|string|null $organizationId, string $resource = 'resource'): void
     {
-        if ($this->bypassDepth > 0) {
-            return;
-        }
-
-        if ($organizationId !== $this->id()) {
-            throw new \Nabilet\Core\Errors\NotFoundError(ucfirst($resource), (string) $organizationId);
-        }
+        $this->assertCanAccess($organizationId, $resource, (string) ($organizationId ?? ''));
     }
 
     /** @param callable(?string): void $listener */

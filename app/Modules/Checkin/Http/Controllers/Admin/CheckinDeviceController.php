@@ -8,7 +8,10 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Nabilet\Core\Database\IdentifierLookup;
+use Nabilet\Core\Errors\ValidationError;
 use Nabilet\Core\Support\Paging;
+use Nabilet\Core\Support\UserOrganization;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Checkin\Domain\CheckinDevice as DevicePolicy;
 use Nabilet\Modules\Checkin\Services\DeviceTokenIssuer;
 use Nabilet\Modules\Tickets\Models\CheckinDevice;
@@ -35,15 +38,29 @@ use Nabilet\Modules\Tickets\Models\CheckinDevice;
 final class CheckinDeviceController extends Controller
 {
     public function __construct(
-        private readonly DeviceTokenIssuer $issuer
+        private readonly DeviceTokenIssuer $issuer,
+        private readonly OrganizationContext $context,
     ) {}
 
     public function index(Request $request): JsonResponse
     {
         $perPage = Paging::limit((int) $request->query('per_page', 50), 50, 100);
+        $organizationId = $this->organizationId($request);
+
+        // Чужой organization_id в query не расширяет выборку: он отвергается,
+        // чтобы клиент не решил, что получил запрошенный срез.
+        $requested = $request->query('organization_id');
+
+        if ($requested !== null
+            && (! is_scalar($requested) || (int) $requested !== $organizationId)
+        ) {
+            throw new ValidationError([
+                'organization_id' => ['organization_id does not belong to this account.'],
+            ]);
+        }
 
         $devices = CheckinDevice::query()
-            ->when($request->query('organization_id'), fn ($q, $id) => $q->where('organization_id', $id))
+            ->where('organization_id', $organizationId)
             ->orderByDesc('id')
             ->paginate($perPage);
 
@@ -66,6 +83,14 @@ final class CheckinDeviceController extends Controller
             'platform' => ['nullable', 'string', 'max:32'],
             'app_version' => ['nullable', 'string', 'max:50'],
         ]);
+
+        // Выдать устройство можно только своей организации: чужой
+        // organization_id в теле — 404, как несуществующая организация.
+        $this->context->assertCanAccess(
+            (int) $validated['organization_id'],
+            'Organization',
+            (string) $validated['organization_id'],
+        );
 
         $issued = $this->issuer->issue(
             organizationId: (int) $validated['organization_id'],
@@ -90,6 +115,9 @@ final class CheckinDeviceController extends Controller
         // (`IdentifierLookup::firstOrFail`). Здесь стояла своя копия политики
         // 404, побайтово равная такой же копии в `OfflineBundleController`.
         $model = IdentifierLookup::firstOrFail(CheckinDevice::class, $device, 'Device');
+
+        // Устройство другой организации неотличимо от несуществующего.
+        $this->context->assertCanAccess($model->organization_id, 'Device', $device);
 
         $validated = $request->validate([
             'name' => ['sometimes', 'string', 'max:255'],
@@ -126,5 +154,22 @@ final class CheckinDeviceController extends Controller
         }
 
         return response()->json(['data' => $model->fresh()]);
+    }
+
+    /**
+     * Организация администратора. Без неё список не расширяется до всех
+     * арендаторов — это 422, а не молчаливая выдача чужих устройств.
+     */
+    private function organizationId(Request $request): int
+    {
+        $organizationId = $this->context->idOrNull() ?? UserOrganization::id($request->user());
+
+        if ($organizationId === null) {
+            throw new ValidationError([
+                'organization_id' => ['organization_id is required for this account.'],
+            ]);
+        }
+
+        return $organizationId;
     }
 }

@@ -11,6 +11,7 @@ use Nabilet\Core\Idempotency\IdempotencyHeader;
 use Nabilet\Core\Support\StaffRole;
 use Nabilet\Core\Support\Paging;
 use Nabilet\Core\Support\UserOrganization;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Cart\Models\Cart;
 use Nabilet\Modules\Cart\Support\CartToken;
 use Nabilet\Modules\Orders\Models\Order;
@@ -35,7 +36,8 @@ use Illuminate\Routing\Controller;
 class PaymentController extends Controller
 {
     public function __construct(
-        private readonly PaymentService $paymentService
+        private readonly PaymentService $paymentService,
+        private readonly OrganizationContext $context,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -50,7 +52,7 @@ class PaymentController extends Controller
             // Обычный пользователь: скоуп — свои платежи. Принудительно, а не
             // «если не задан», иначе чужой user_id в query вернул бы чужие.
             $filters['user_id'] = $request->user()->id;
-        } elseif (empty($filters['organization_id'])) {
+        } else {
             // Сотрудник: скоуп — его организация. Сервис fail-closed (без скоупа
             // отдаёт пустой результат), поэтому организация обязана быть
             // заполнена. Именно её отсутствие и делало список пустым раньше.
@@ -60,11 +62,24 @@ class PaymentController extends Controller
             // Само членство — `UserOrganization`, как и везде: здесь стоял
             // `->value()` без сортировки, то есть у сотрудника с двумя
             // членствами ответ зависел от порядка строк в MySQL.
-            $organizationId = UserOrganization::id($request->user());
+            $organizationId = $this->context->idOrNull() ?? UserOrganization::id($request->user());
 
             if ($organizationId === null) {
                 throw new ValidationError([
                     'organization_id' => ['organization_id is required for this account.'],
+                ]);
+            }
+
+            // `organization_id` из query не расширяет выборку: чужое значение
+            // отвергается. Раньше оно уходило в репозиторий как есть, и admin
+            // организации A мог запросить платежи организации B.
+            $requested = $filters['organization_id'] ?? null;
+
+            if ($requested !== null
+                && (! is_scalar($requested) || (int) $requested !== $organizationId)
+            ) {
+                throw new ValidationError([
+                    'organization_id' => ['organization_id does not belong to this account.'],
                 ]);
             }
 
@@ -198,7 +213,7 @@ class PaymentController extends Controller
      * оплатить» обрывался на последнем шаге.
      *
      * Право даёт одно из трёх:
-     *   1. сотрудник (admin/manager) — видит и оплачивает любой заказ;
+     *   1. сотрудник (admin/manager) — видит и оплачивает заказы СВОЕЙ организации;
      *   2. владелец — заказ привязан к аккаунту и совпадает с `$request->user()`;
      *   3. гость, предъявивший `X-Cart-Token` той корзины, из которой создан заказ.
      *
@@ -214,7 +229,9 @@ class PaymentController extends Controller
      */
     private function mayPay(Request $request, Order $order): bool
     {
-        if (StaffRole::isStaff($request->user())) {
+        if (StaffRole::isStaff($request->user())
+            && $this->context->allows($order->organization_id)
+        ) {
             return true;
         }
 
@@ -300,13 +317,24 @@ class PaymentController extends Controller
      */
     private function assertCanSee(Request $request, Payment $payment): void
     {
-        if (StaffRole::isStaff($request->user())) {
+        $order = $payment->order;
+
+        // Владелец заказа или гость с capability-токеном — доступ есть
+        // независимо от роли: сотрудник тоже может быть покупателем.
+        if ($order !== null && $this->holdsRequestAccess($request, $order)) {
             return;
         }
 
-        $order = $payment->order;
+        // Сотрудник — только в пределах активной организации. Раньше здесь
+        // стоял безусловный `return`, и admin организации A читал платёж
+        // организации B, зная его id.
+        if (StaffRole::isStaff($request->user())) {
+            $this->context->assertCanAccess(
+                $order?->organization_id,
+                'Payment',
+                (string) $payment->public_id,
+            );
 
-        if ($order !== null && $this->holdsRequestAccess($request, $order)) {
             return;
         }
 

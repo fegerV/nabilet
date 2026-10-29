@@ -388,7 +388,21 @@ final class CartCheckoutService
             // converted вЂ” persist the sale so it appears in the admin orders list.
             $session = $cart->session()->first();
             $event = $session?->event()->first();
-            $organizationId = $event->organization_id ?? $session?->venue?->organization_id ?? 1;
+            $organizationId = $event?->organization_id ?? $session?->venue?->organization_id;
+
+            // Fail-closed: организация заказа НЕ угадывается. Колонки
+            // `events.organization_id` и `venues.organization_id` — NOT NULL
+            // (аудиты R-7/C-4), а сам сеанс уже найден выше
+            // (`Session::findOrFailBySessionId`), поэтому недоопределённость —
+            // ошибка целостности данных, а не повод молча приписать заказ
+            // организации №1. Прежний фолбэк `?? 1` тихо перекладывал чужой
+            // заказ в арендатора №1 — точку пересечения с его данными.
+            if ($organizationId === null) {
+                throw new DomainRuleViolation(
+                    'Cannot resolve organization for the cart session.',
+                    'CART_ORGANIZATION_UNRESOLVED',
+                );
+            }
 
             // РђРєРєР°СѓРЅС‚ РїРѕРєСѓРїР°С‚РµР»СЏ: Р·Р°РєР°Р· РїРѕР»СѓС‡Р°РµС‚ РІР»Р°РґРµР»СЊС†Р°, Р° РїСЂРѕРјРѕРєРѕРґ вЂ”
             // Р»РёС‡РЅРѕСЃС‚СЊ, РїРѕ РєРѕС‚РѕСЂРѕР№ СЃС‡РёС‚Р°РµС‚СЃСЏ Р»РёРјРёС‚.

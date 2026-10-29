@@ -36,6 +36,13 @@ final class ResolveOrganizationContext
 
     public function handle(Request $request, Closure $next): Response
     {
+        // Каждый запрос начинается с чистого контекста. Модуль — singleton
+        // приложения, и в долгоживущем процессе (Octane, тестовый HTTP-клиент,
+        // где несколько запросов идут через один контейнер) значение прошлого
+        // запроса иначе переживёт своего пользователя: следующий запрос без
+        // членства унаследовал бы чужую организацию.
+        $this->context->clear();
+
         if ($this->isSystemPath($request)) {
             return $this->context->withoutScope(fn (): Response => $next($request));
         }

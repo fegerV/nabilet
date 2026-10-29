@@ -60,30 +60,45 @@ class PaymentRepository
         return $query->orderByDesc('created_at')->paginate($limit);
     }
 
-    public function find(int $id, ?int $organizationId = null): ?Payment
+    /**
+     * Платёж по внутреннему id строго в пределах организации.
+     *
+     * Организация обязательна: без неё чужой платёж (по `order.organization_id`)
+     * стал бы виден. Для системных контекстов (вебхуки, reconcile) есть
+     * `findAny()`.
+     */
+    public function find(int $id, int $organizationId): ?Payment
     {
-        $query = $this->model->with(['order', 'transactions']);
-
-        if ($organizationId) {
-            $query->whereHas('order', function ($q) use ($organizationId) {
+        return $this->model->with(['order', 'transactions'])
+            ->whereHas('order', function ($q) use ($organizationId) {
                 $q->where('organization_id', $organizationId);
-            });
-        }
-
-        return $query->find($id);
+            })
+            ->find($id);
     }
 
-    public function findByPublicId(string $publicId, ?int $organizationId = null): ?Payment
+    /**
+     * Платёж без скоупа организации — только для системных контекстов.
+     */
+    public function findAny(int $id): ?Payment
     {
-        $query = $this->model->where('public_id', $publicId);
+        return $this->model->with(['order', 'transactions'])->find($id);
+    }
 
-        if ($organizationId) {
-            $query->whereHas('order', function ($q) use ($organizationId) {
+    public function findByPublicId(string $publicId, int $organizationId): ?Payment
+    {
+        return $this->model->where('public_id', $publicId)
+            ->whereHas('order', function ($q) use ($organizationId) {
                 $q->where('organization_id', $organizationId);
-            });
-        }
+            })
+            ->with(['order', 'transactions'])
+            ->first();
+    }
 
-        return $query->with(['order', 'transactions'])->first();
+    public function findAnyByPublicId(string $publicId): ?Payment
+    {
+        return $this->model->where('public_id', $publicId)
+            ->with(['order', 'transactions'])
+            ->first();
     }
 
     public function findByOrder(int $orderId): Collection

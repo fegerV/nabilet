@@ -73,7 +73,12 @@ final class CheckerController extends Controller
         }
 
         $sessionId = $this->sessions->resolve($request->input('session_id'));
-        $decision = $this->scans->canCheckin($ticket, $sessionId, $device->id);
+        $decision = $this->scans->canCheckin(
+            $ticket,
+            $sessionId,
+            $device->id,
+            (int) $device->organization_id,
+        );
         $verdict = CheckinVerdict::fromOutcome(
             (string) ($decision['result'] ?? CheckinVerdict::UNKNOWN_TICKET),
             $this->sameEvent($ticket, $sessionId)
@@ -106,6 +111,7 @@ final class CheckerController extends Controller
             qrPayload: (string) $request->input('qr_payload'),
             clientScanId: (string) $request->input('client_scan_id'),
             scannedAt: $request->scannedAt(),
+            organizationId: (int) $device->organization_id,
         );
 
         return $this->fromScanResult($result, $sessionId);
@@ -170,6 +176,7 @@ final class CheckerController extends Controller
                 clientScanId: $clientScanId,
                 deviceAdmitted: $deviceAdmitted,
                 scannedAt: $scannedAt,
+                organizationId: (int) $device->organization_id,
             );
 
             $verdict = CheckinVerdict::fromOutcome((string) ($outcome['result'] ?? ''));

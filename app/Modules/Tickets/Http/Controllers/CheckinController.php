@@ -6,6 +6,11 @@ namespace Nabilet\Modules\Tickets\Http\Controllers;
 
 use Nabilet\Modules\Tickets\Models\Ticket;
 use Nabilet\Modules\Tickets\Services\TicketScanService;
+use Nabilet\Core\Errors\NotFoundError;
+use Nabilet\Core\Errors\ValidationError;
+use Nabilet\Core\Support\UserOrganization;
+use Nabilet\Core\Tenancy\OrganizationContext;
+use Nabilet\Modules\Tickets\Models\CheckinDevice;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -13,7 +18,8 @@ use Illuminate\Routing\Controller;
 class CheckinController extends Controller
 {
     public function __construct(
-        private readonly TicketScanService $scanService
+        private readonly TicketScanService $scanService,
+        private readonly OrganizationContext $context,
     ) {}
 
     public function scan(Request $request): JsonResponse
@@ -28,11 +34,14 @@ class CheckinController extends Controller
             'session_id' => ['bail', 'required', 'integer', 'exists:sessions,id'],
         ]);
 
+        $organizationId = $this->organizationId($request);
+
         $result = $this->scanService->scan(
             (int) ($validated['ticket_id'] ?? 0),
             (int) $validated['session_id'],
-            isset($validated['device_id']) ? (int) $validated['device_id'] : null,
-            $validated['qr_payload'] ?? null
+            $this->deviceId($validated['device_id'] ?? null, $organizationId),
+            $validated['qr_payload'] ?? null,
+            organizationId: $organizationId,
         );
 
         return response()->json(['data' => $result]);
@@ -71,12 +80,16 @@ class CheckinController extends Controller
 
         $ticket = Ticket::where('public_id', $verified['ticketId'])->firstOrFail();
 
-        $isValid = $this->scanService->canCheckin($ticket, (int) $validated['session_id']);
+        $isValid = $this->scanService->canCheckin(
+            $ticket,
+            (int) $validated['session_id'],
+            organizationId: $this->organizationId($request),
+        );
 
         return response()->json([
             'data' => [
                 'ticket_id' => $ticket->id,
-                'is_valid' => $isValid,
+                'is_valid' => (bool) $isValid['valid'],
                 'status' => $ticket->status,
             ],
         ]);
@@ -89,5 +102,48 @@ class CheckinController extends Controller
         return response()->json([
             'data' => $scans,
         ]);
+    }
+
+    /**
+     * Организация сотрудника, от имени которого идёт чекин.
+     *
+     * Без организации запрос не расширяется до всех арендаторов: это 422, а не
+     * молчаливый пропуск проверки.
+     */
+    private function organizationId(Request $request): int
+    {
+        $organizationId = $this->context->idOrNull() ?? UserOrganization::id($request->user());
+
+        if ($organizationId === null) {
+            throw new ValidationError([
+                'organization_id' => ['organization_id is required for this account.'],
+            ]);
+        }
+
+        return $organizationId;
+    }
+
+    /**
+     * Устройство из тела запроса обязано принадлежать той же организации:
+     * иначе скан можно записать на чужой сканер.
+     */
+    private function deviceId(mixed $deviceId, int $organizationId): ?int
+    {
+        if ($deviceId === null || $deviceId === '') {
+            return null;
+        }
+
+        $id = (int) $deviceId;
+
+        $exists = CheckinDevice::query()
+            ->whereKey($id)
+            ->where('organization_id', $organizationId)
+            ->exists();
+
+        if (! $exists) {
+            throw new NotFoundError('Device', (string) $deviceId);
+        }
+
+        return $id;
     }
 }

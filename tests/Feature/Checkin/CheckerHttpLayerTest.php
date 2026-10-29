@@ -155,8 +155,14 @@ class CheckerHttpLayerTest extends TestCase
             ])->assertOk()
             ->assertJsonPath('data.result', 'wrong_session');
 
-        // Билет первого сеанса на скане чужого мероприятия.
-        [, , $otherSessionId] = $this->seedSellableSeat(available: 1, eventTitle: 'Другое событие');
+        // Билет первого сеанса на скане чужого мероприятия ТОЙ ЖЕ организации.
+        // Организация общая намеренно: межтенантный сеанс должен отвечать
+        // `unknown_ticket`, и это проверяется отдельным тестом ниже.
+        [, , $otherSessionId] = $this->seedSellableSeat(
+            available: 1,
+            eventTitle: 'Другое событие',
+            organizationId: $organizationId,
+        );
 
         $this->withToken($this->tokenOf($this->issueDevice($organizationId)))
             ->postJson('/api/v1/checkin/validate', [
@@ -168,6 +174,35 @@ class CheckerHttpLayerTest extends TestCase
         // Защита от случайной перепутанности: сеансы разного события и правда
         // разные, иначе wrong_event никогда бы не сработал.
         $this->assertNotSame($sessionId, $sameEventSessionId);
+    }
+
+    /**
+     * Билет одного арендатора на устройстве другого неотличим от
+     * несуществующего — и на чтении (`validate`), и на записи (`use`).
+     */
+    public function test_a_device_cannot_validate_or_use_a_ticket_of_another_organization(): void
+    {
+        [$ownOrganizationId] = $this->seedSellableSeat(available: 1);
+        [, , $foreignSessionId, , $foreignTicket] = $this->seedTicket();
+        $device = $this->issueDevice($ownOrganizationId);
+
+        $this->withToken($this->tokenOf($device))
+            ->postJson('/api/v1/checkin/validate', [
+                'qr_payload' => $foreignTicket->qr_payload,
+                'session_id' => $foreignSessionId,
+            ])->assertOk()
+            ->assertJsonPath('data.result', 'unknown_ticket');
+
+        $this->withToken($this->tokenOf($device))
+            ->postJson('/api/v1/checkin/use', [
+                'qr_payload' => $foreignTicket->qr_payload,
+                'session_id' => $foreignSessionId,
+                'client_scan_id' => self::SECOND_SCAN,
+            ])->assertOk()
+            ->assertJsonPath('data.result', 'unknown_ticket');
+
+        $this->assertSame('issued', (string) $foreignTicket->fresh()->status);
+        $this->assertDatabaseCount('ticket_scans', 0);
     }
 
     /* ------------------------------------------------------------------ */
@@ -379,6 +414,35 @@ class CheckerHttpLayerTest extends TestCase
             ->assertJsonPath('data.status', 'revoked');
 
         $this->assertSame('revoked', (string) $device->fresh()->status);
+    }
+
+    /**
+     * Админ организации A не видит, не выдаёт и не отзывает устройства
+     * организации B: чужой идентификатор — 404, как несуществующий.
+     */
+    public function test_admin_cannot_manage_another_organizations_devices(): void
+    {
+        [$ownOrganizationId] = $this->seedSellableSeat(available: 1);
+        [$foreignOrganizationId] = $this->seedSellableSeat(available: 1);
+        $foreignDevice = $this->issueDevice($foreignOrganizationId);
+
+        $this->actingAsStaff($ownOrganizationId);
+
+        $this->postJson('/api/v1/admin/checkin/devices', [
+            'organization_id' => $foreignOrganizationId,
+            'name' => 'Чужое устройство',
+        ])->assertNotFound();
+
+        $this->getJson('/api/v1/admin/checkin/devices')
+            ->assertOk()
+            ->assertJsonCount(0, 'data');
+
+        $this->patchJson(
+            '/api/v1/admin/checkin/devices/' . $foreignDevice->public_id,
+            ['status' => 'revoked'],
+        )->assertNotFound();
+
+        $this->assertSame('active', (string) $foreignDevice->fresh()->status);
     }
 
     /**

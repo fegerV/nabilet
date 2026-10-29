@@ -19,33 +19,48 @@ class TicketRepository
         protected Ticket $model
     ) {}
 
-    public function find(int $id, ?int $organizationId = null): ?Ticket
+    /**
+     * Билет по внутреннему id строго в пределах организации.
+     *
+     * Организация обязательна: без неё чужой билет (по `order.organization_id`)
+     * стал бы виден. Для системных контекстов (вебхуки, задания) есть
+     * `findAny()`.
+     */
+    public function find(int $id, int $organizationId): ?Ticket
     {
         // tickets carries session_id/event_id directly (nabilet_core_spec), so
         // there is no `inventoryItem` relation on Ticket — eager-loading one
         // that does not exist crashed every lookup.
-        $query = $this->model->with(['order.items.inventoryItem', 'scans']);
-
-        if ($organizationId) {
-            $query->whereHas('order', function ($q) use ($organizationId) {
+        return $this->model->with(['order.items.inventoryItem', 'scans'])
+            ->whereHas('order', function ($q) use ($organizationId) {
                 $q->where('organization_id', $organizationId);
-            });
-        }
-
-        return $query->find($id);
+            })
+            ->find($id);
     }
 
-    public function findByPublicId(string $publicId, ?int $organizationId = null): ?Ticket
+    /**
+     * Билет без скоупа организации — только для системных контекстов.
+     */
+    public function findAny(int $id): ?Ticket
     {
-        $query = $this->model->where('public_id', $publicId);
+        return $this->model->with(['order.items.inventoryItem', 'scans'])->find($id);
+    }
 
-        if ($organizationId) {
-            $query->whereHas('order', function ($q) use ($organizationId) {
+    public function findByPublicId(string $publicId, int $organizationId): ?Ticket
+    {
+        return $this->model->where('public_id', $publicId)
+            ->whereHas('order', function ($q) use ($organizationId) {
                 $q->where('organization_id', $organizationId);
-            });
-        }
+            })
+            ->with(['order.items.inventoryItem', 'scans'])
+            ->first();
+    }
 
-        return $query->with(['order.items.inventoryItem', 'scans'])->first();
+    public function findAnyByPublicId(string $publicId): ?Ticket
+    {
+        return $this->model->where('public_id', $publicId)
+            ->with(['order.items.inventoryItem', 'scans'])
+            ->first();
     }
 
     public function findByOrder(int $orderId): Collection

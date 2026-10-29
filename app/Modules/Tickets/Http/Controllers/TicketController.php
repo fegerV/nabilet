@@ -5,9 +5,12 @@ declare(strict_types=1);
 namespace Nabilet\Modules\Tickets\Http\Controllers;
 
 use Nabilet\Core\Errors\NotFoundError;
+use Nabilet\Core\Errors\ValidationError;
 use Nabilet\Core\Http\ContentType;
 use Nabilet\Core\Support\StaffRole;
 use Nabilet\Core\Support\Paging;
+use Nabilet\Core\Support\UserOrganization;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Cart\Models\Cart;
 use Nabilet\Modules\Cart\Support\CartToken;
 use Nabilet\Modules\Orders\Models\Order;
@@ -24,14 +27,19 @@ use Illuminate\Support\Str;
  *
  * Авторизация обязательна (routes/api.php). Разграничение по владельцу:
  * у `tickets` нет колонки `user_id` — владелец определяется через
- * `ticket.order.user_id`. Сотрудник (admin/manager) видит все билеты —
- * ему это нужно для чекина и поддержки; обычный пользователь только свои.
+ * `ticket.order.user_id`. Сотрудник (admin/manager) видит билеты своей
+ * организации — ему это нужно для чекина и поддержки; обычный пользователь
+ * только свои.
  *
  * Чужой билет — 404, не 403: 403 подтвердил бы, что билет существует
  * (перебор/IDOR, см. `NotFoundError`).
  */
 class TicketController extends Controller
 {
+    public function __construct(
+        private readonly OrganizationContext $context,
+    ) {}
+
     /**
      * Билеты текущего покупателя (витрина «Мои билеты»).
      *
@@ -120,8 +128,23 @@ class TicketController extends Controller
             // Принудительно, а не «если не задан»: иначе чужой user_id в query
             // вернул бы чужие билеты.
             $query->whereHas('order', fn ($q) => $q->where('user_id', $request->user()->id));
-        } elseif (isset($filters['user_id'])) {
-            $query->whereHas('order', fn ($q) => $q->where('user_id', $filters['user_id']));
+        } else {
+            // Сотрудник видит билеты ТОЛЬКО своей организации. Раньше фильтра
+            // организации здесь не было вовсе: `GET /tickets` без `user_id`
+            // отдавал билеты всех арендаторов.
+            $organizationId = $this->context->idOrNull() ?? UserOrganization::id($request->user());
+
+            if ($organizationId === null) {
+                throw new ValidationError([
+                    'organization_id' => ['organization_id is required for this account.'],
+                ]);
+            }
+
+            $query->whereHas('order', fn ($q) => $q->where('organization_id', $organizationId));
+
+            if (isset($filters['user_id'])) {
+                $query->whereHas('order', fn ($q) => $q->where('user_id', $filters['user_id']));
+            }
         }
 
         if (isset($filters['order_id'])) {
@@ -248,14 +271,28 @@ class TicketController extends Controller
      */
     private function assertCanSee(Request $request, Ticket $ticket): void
     {
-        if (StaffRole::isStaff($request->user())) {
+        $user = $request->user();
+        $ownerId = $ticket->order?->user_id;
+
+        // Владелец проходит независимо от роли: сотрудник тоже может быть
+        // покупателем и открывать свой билет из другой организации.
+        if ($user !== null && $ownerId !== null && (int) $ownerId === (int) $user->id) {
             return;
         }
 
-        $ownerId = $ticket->order?->user_id;
+        // Сотрудник — только в пределах активной организации. Безусловный
+        // `return` здесь отдавал билет чужого тенанта вместе с `qr_payload`,
+        // то есть подписанным пропуском на вход.
+        if (StaffRole::isStaff($user)) {
+            $this->context->assertCanAccess(
+                $ticket->order?->organization_id,
+                'Ticket',
+                (string) $ticket->public_id,
+            );
 
-        if ($ownerId === null || (int) $ownerId !== (int) $request->user()->id) {
-            throw new NotFoundError('Ticket', (string) $ticket->public_id);
+            return;
         }
+
+        throw new NotFoundError('Ticket', (string) $ticket->public_id);
     }
 }

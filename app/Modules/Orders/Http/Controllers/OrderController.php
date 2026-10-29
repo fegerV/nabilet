@@ -7,9 +7,12 @@ namespace Nabilet\Modules\Orders\Http\Controllers;
 use Nabilet\Core\Errors\AppError;
 use Nabilet\Core\Errors\DomainRuleViolation;
 use Nabilet\Core\Errors\NotFoundError;
+use Nabilet\Core\Errors\ValidationError;
 use Nabilet\Core\Database\IdentifierLookup;
 use Nabilet\Core\Support\StaffRole;
 use Nabilet\Core\Support\Paging;
+use Nabilet\Core\Support\UserOrganization;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Cart\Models\Cart;
 use Nabilet\Modules\Cart\Services\CartCheckoutService;
 use Nabilet\Modules\Cart\Support\CartToken;
@@ -32,8 +35,8 @@ use Illuminate\Routing\Controller;
  * Авторизация обязательна на всех действиях (см. routes/api.php). Здесь —
  * разграничение по владельцу:
  *
- *   - сотрудник (admin/manager) видит все заказы и может фильтровать по
- *     `user_id` / `organization_id`;
+ *   - сотрудник (admin/manager) видит заказы своей организации и может
+ *     фильтровать их по `user_id`;
  *   - обычный пользователь всегда ограничен своим `user_id`, даже если передал
  *     чужой в query, — иначе фильтр превращается в способ выгрузить чужие заказы;
  *   - чужой заказ для не-сотрудника — 404, не 403: 403 подтвердил бы
@@ -45,6 +48,7 @@ class OrderController extends Controller
         private readonly OrderService $orderService,
         private readonly RefundService $refundService,
         private readonly CartCheckoutService $cartCheckout,
+        private readonly OrganizationContext $context,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -61,6 +65,34 @@ class OrderController extends Controller
 
         if (! StaffRole::isStaff($request->user())) {
             $filters['user_id'] = $request->user()->id;
+        } else {
+            // Сотрудник видит заказы ТОЛЬКО своей организации. Раньше здесь не
+            // подставлялся `organization_id`, а `OrderRepository::paginateAll()`
+            // при пустом фильтре отдаёт всю таблицу — то есть admin организации A
+            // видел заказы организации B.
+            //
+            // `organization_id` из query не расширяет выборку: чужое значение
+            // отвергается, а не молча игнорируется, чтобы клиент не решил, что
+            // получил запрошенный срез.
+            $organizationId = $this->context->idOrNull() ?? UserOrganization::id($request->user());
+
+            if ($organizationId === null) {
+                throw new ValidationError([
+                    'organization_id' => ['organization_id is required for this account.'],
+                ]);
+            }
+
+            $requested = $filters['organization_id'] ?? null;
+
+            if ($requested !== null
+                && (! is_scalar($requested) || (int) $requested !== $organizationId)
+            ) {
+                throw new ValidationError([
+                    'organization_id' => ['organization_id does not belong to this account.'],
+                ]);
+            }
+
+            $filters['organization_id'] = $organizationId;
         }
 
         $orders = $this->orderService->paginate($filters, $perPage);
@@ -198,6 +230,15 @@ class OrderController extends Controller
             $data['user_id'] = $request->user()->id;
         } else {
             $data['user_id'] ??= $request->user()->id;
+
+            // Сотрудник вправе оформить заказ на клиента, но только в СВОЕЙ
+            // организации. Раньше `organization_id` из тела принимался как есть,
+            // и admin организации A создавал заказ в организации B.
+            $this->context->assertCanAccess(
+                $data['organization_id'] ?? null,
+                'Organization',
+                (string) ($data['organization_id'] ?? ''),
+            );
         }
 
         $order = $this->orderService->createOrder($data);
@@ -362,7 +403,7 @@ class OrderController extends Controller
      */
     private function holdsRequestAccess(Request $request, Order $order): bool
     {
-        if (StaffRole::isStaff($request->user())) {
+        if (StaffRole::isStaff($request->user()) && $this->context->allows($order->organization_id)) {
             return true;
         }
 
@@ -389,13 +430,31 @@ class OrderController extends Controller
      */
     private function assertCanSee(Request $request, Order $order): void
     {
-        if (StaffRole::isStaff($request->user())) {
+        $user = $request->user();
+
+        // Сначала — владелец: сотрудник тоже может быть покупателем, и свой
+        // заказ в другой организации ему закрывать незачем.
+        if ($user !== null
+            && $order->user_id !== null
+            && (int) $order->user_id === (int) $user->id
+        ) {
             return;
         }
 
-        if ($order->user_id === null || (int) $order->user_id !== (int) $request->user()->id) {
-            throw new NotFoundError('Order', (string) $order->public_id);
+        // Затем — сотрудник, но только в пределах активной организации.
+        // `StaffRole::isStaff()` сам по себе не отвечает, ЧЬИМ сотрудником
+        // является пользователь; раньше этот `return` открывал любой заказ.
+        if (StaffRole::isStaff($user)) {
+            $this->context->assertCanAccess(
+                $order->organization_id,
+                'Order',
+                (string) $order->public_id,
+            );
+
+            return;
         }
+
+        throw new NotFoundError('Order', (string) $order->public_id);
     }
 
     /** Верхняя граница page size: `?per_page=100000` — это выборка всей таблицы. */

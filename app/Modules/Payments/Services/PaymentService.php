@@ -414,14 +414,30 @@ class PaymentService
         });
     }
 
-    public function findPayment(int $paymentId, ?int $organizationId = null): ?Payment
+    /**
+     * Платёж по id в пределах организации. Организация обязательна:
+     * без неё чужой платёж (по `order.organization_id`) стал бы виден.
+     * Для системных контекстов используйте `findPaymentAny()`.
+     */
+    public function findPayment(int $paymentId, int $organizationId): ?Payment
     {
         return $this->repository->find($paymentId, $organizationId);
     }
 
-    public function findByPublicId(string $publicId, ?int $organizationId = null): ?Payment
+    /** Системный поиск без скоупа организации (вебхуки, reconcile). */
+    public function findPaymentAny(int $paymentId): ?Payment
+    {
+        return $this->repository->findAny($paymentId);
+    }
+
+    public function findByPublicId(string $publicId, int $organizationId): ?Payment
     {
         return $this->repository->findByPublicId($publicId, $organizationId);
+    }
+
+    public function findAnyByPublicId(string $publicId): ?Payment
+    {
+        return $this->repository->findAnyByPublicId($publicId);
     }
 
     public function processWebhook(string $provider, array $payload): Payment

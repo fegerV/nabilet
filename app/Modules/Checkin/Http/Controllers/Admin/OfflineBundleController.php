@@ -12,6 +12,7 @@ use Nabilet\Core\Errors\NotFoundError;
 use Nabilet\Core\Database\IdentifierLookup;
 use Nabilet\Core\Support\StaffRole;
 use Nabilet\Core\Support\Paging;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Checkin\Domain\CheckinDevice as CheckinDeviceStatus;
 use Nabilet\Modules\Checkin\Services\DeviceTokenIssuer;
 use Nabilet\Modules\Checkin\Services\OfflineBundleService;
@@ -37,6 +38,7 @@ final class OfflineBundleController extends Controller
     public function __construct(
         private readonly OfflineBundleService $bundles,
         private readonly SessionLocator $sessions,
+        private readonly OrganizationContext $context,
     ) {}
 
     public function index(Request $request, string $device): JsonResponse
@@ -45,6 +47,10 @@ final class OfflineBundleController extends Controller
         // (`IdentifierLookup::firstOrFail`). Здесь стояла своя копия политики
         // 404, побайтово равная такой же копии в `CheckinDeviceController`.
         $model = IdentifierLookup::firstOrFail(CheckinDevice::class, $device, 'Device');
+
+        // Список бандлов чужого устройства — 404, как несуществующее.
+        $this->context->assertCanAccess($model->organization_id, 'Device', $device);
+
         $perPage = Paging::limit((int) $request->query('per_page', 50), 50, 100);
 
         $bundles = $model->offlineBundles()
@@ -78,9 +84,19 @@ final class OfflineBundleController extends Controller
             throw new NotFoundError('Event', (string) $validated['event_id']);
         }
 
+        // И устройство, и событие обязаны принадлежать организации сотрудника:
+        // иначе бандл собрал бы билеты чужого арендатора и отдал их своему.
+        $this->context->assertCanAccess($model->organization_id, 'Device', $device);
+        $this->context->assertCanAccess($event->organization_id, 'Event', (string) $validated['event_id']);
+
         $session = isset($validated['session_id']) && $validated['session_id'] !== ''
             ? Session::query()->findOrFail($this->sessions->resolve((string) $validated['session_id']))
             : null;
+
+        // Сеанс другого события сделал бы бандл «на этот сеанс» из чужих билетов.
+        if ($session !== null && (int) $session->event_id !== (int) $event->id) {
+            throw new NotFoundError('Session', (string) $validated['session_id']);
+        }
 
         $bundle = $this->bundles->issue($model, $event, $session);
 
@@ -98,13 +114,18 @@ final class OfflineBundleController extends Controller
         $device = $this->deviceIdOrStaff($request);
 
         if ($device === null) {
-            // Сотрудник: без изменения состояния бандла.
+            // Сотрудник: только бандл своей организации и без изменения
+            // состояния бандла. Чужой — 404, как несуществующий.
+            $this->context->assertCanAccess($model->organization_id, 'OfflineBundle', $bundle);
+
             return response()->json(['data' => $this->bundles->present($model)]);
         }
 
         // Устройство читает только СВОЙ бандл: чужой — 404
         // (неотличим от несуществующего, анти-IDOR).
-        if ((int) $model->checkin_device_id !== $device->id) {
+        if ((int) $model->checkin_device_id !== $device->id
+            || (int) $model->organization_id !== (int) $device->organization_id
+        ) {
             throw new NotFoundError('OfflineBundle', $bundle);
         }
 

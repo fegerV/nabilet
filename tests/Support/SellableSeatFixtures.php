@@ -34,10 +34,15 @@ trait SellableSeatFixtures
         int $available,
         int $priceAmount = 5_000_000,
         string $eventTitle = 'Тестовое событие',
+        ?int $organizationId = null,
     ): array {
         $now = now()->toDateTimeString();
 
-        $organizationId = (int) DB::table('organizations')->insertGetId([
+        // Организация по умолчанию новая: большинству тестов нужен изолированный
+        // арендатор. Передача существующей нужна тестам «второе событие ТОГО ЖЕ
+        // арендатора» — иначе они незаметно проверяли бы межтенантный отказ
+        // вместо различия wrong_session/wrong_event.
+        $organizationId ??= (int) DB::table('organizations')->insertGetId([
             'public_id' => (string) Str::ulid()->toBase32(),
             'name' => 'Test Org',
             'slug' => 'test-org-' . Str::random(6),

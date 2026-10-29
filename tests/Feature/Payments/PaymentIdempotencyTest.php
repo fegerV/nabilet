@@ -293,7 +293,14 @@ class PaymentIdempotencyTest extends TestCase
 
     private function pendingOrder(int $quantity = 1): Order
     {
-        [$organizationId, , , $inventoryId] = $this->seedSellableSeat(available: 10);
+        // Переиспользуем организацию, если она уже задана в этом тесте: иначе
+        // каждый вызов создавал бы нового арендатора, и администратор
+        // (привязанный к организации первого заказа) не увидел бы следующий —
+        // межтенантная закалка `PaymentController::mayPay()` отвечала бы 404.
+        [$organizationId, , , $inventoryId] = $this->seedSellableSeat(
+            available: 10,
+            organizationId: $this->organizationId !== 0 ? $this->organizationId : null,
+        );
 
         $this->organizationId = $organizationId;
 

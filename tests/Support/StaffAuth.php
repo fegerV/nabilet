@@ -58,6 +58,17 @@ trait StaffAuth
             'created_at' => $now,
         ]);
 
+        // Роль отвечает на вопрос «сотрудник ли это», членство — «ЧЕЙ это
+        // сотрудник». `ResolveOrganizationContext` и контроллеры читают второе
+        // из `user_organization`; без этой строки контекст оставался пустым, и
+        // любой tenant-scoped админский путь в тесте отвечал бы 500/404.
+        DB::table('user_organization')->insert([
+            'user_id' => $userId,
+            'organization_id' => $organizationId,
+            'role_id' => $roleId,
+            'created_at' => $now,
+        ]);
+
         $this->actingAs(User::query()->findOrFail($userId), 'api');
 
         return (string) $roleId;
