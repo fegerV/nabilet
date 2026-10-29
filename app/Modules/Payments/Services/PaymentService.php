@@ -10,6 +10,7 @@ use Nabilet\Core\Errors\ValidationError;
 use Nabilet\Core\StateMachine\StateMachine;
 use Nabilet\Core\Support\HoldGrace;
 use Nabilet\Core\Support\Money;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Orders\Models\SeatHold;
 use Nabilet\Modules\Orders\Services\OrderService;
@@ -441,6 +442,13 @@ class PaymentService
     }
 
     public function processWebhook(string $provider, array $payload): Payment
+    {
+        return app(OrganizationContext::class)->withoutScope(
+            fn (): Payment => $this->processWebhookScoped($provider, $payload)
+        );
+    }
+
+    private function processWebhookScoped(string $provider, array $payload): Payment
     {
         return DB::transaction(function () use ($provider, $payload) {
             $eventType = (string) ($payload['event'] ?? $payload['event_type'] ?? '');

@@ -6,6 +6,7 @@ namespace Nabilet\Modules\Payments\Services;
 
 use Nabilet\Core\Errors\DomainRuleViolation;
 use Nabilet\Core\Support\Money;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Payments\Models\Payment;
 use Nabilet\Modules\Payments\Models\Refund;
 use Nabilet\Modules\Payments\Domain\RefundLedger;
@@ -43,6 +44,13 @@ final class RefundService
      * @return Payment Свежая копия платежа после фиксации возврата.
      */
     public function refund(Payment $payment, ?int $amount = null, ?string $reason = null): Payment
+    {
+        return app(OrganizationContext::class)->withoutScope(
+            fn (): Payment => $this->refundScoped($payment, $amount, $reason)
+        );
+    }
+
+    private function refundScoped(Payment $payment, ?int $amount, ?string $reason): Payment
     {
         return DB::transaction(function () use ($payment, $amount, $reason): Payment {
             // Блокируем строку платежа на время транзакции: без этого два
