@@ -9,6 +9,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Foundation\Bus\PendingDispatch;
 use Illuminate\Queue\InteractsWithQueue;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Loyalty\Services\ReferralService;
 use Nabilet\Modules\Orders\Models\Order;
 
@@ -62,17 +63,19 @@ class RewardReferralJob implements ShouldQueue
 
     public function handle(ReferralService $referrals): void
     {
-        $order = Order::query()->find($this->orderId);
+        app(OrganizationContext::class)->withoutScope(function () use ($referrals): void {
+            $order = Order::query()->find($this->orderId);
 
-        // Заказ удалён (каскад унёс и его следы) — награжать не за что.
-        if ($order === null) {
-            return;
-        }
+            // Заказ удалён (каскад унёс и его следы) — награжать не за что.
+            if ($order === null) {
+                return;
+            }
 
-        // Решение «платить ли» принимает сервис: там же лежат проверка
-        // включённой программы, поиск приглашения и сторона-получатель.
-        // Дублировать её здесь значило бы иметь два места, которые могут
-        // разойтись.
-        $referrals->rewardForOrder($order);
+            // Решение «платить ли» принимает сервис: там же лежат проверка
+            // включённой программы, поиск приглашения и сторона-получатель.
+            // Дублировать её здесь значило бы иметь два места, которые могут
+            // разойтись.
+            $referrals->rewardForOrder($order);
+        });
     }
 }

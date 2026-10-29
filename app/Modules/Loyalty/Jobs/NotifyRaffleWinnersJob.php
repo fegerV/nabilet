@@ -9,6 +9,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Foundation\Bus\PendingDispatch;
 use Illuminate\Queue\InteractsWithQueue;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Loyalty\Models\Raffle;
 use Nabilet\Modules\Loyalty\Models\RaffleWinner;
 use Nabilet\Modules\Loyalty\Services\RaffleService;
@@ -62,22 +63,24 @@ class NotifyRaffleWinnersJob implements ShouldQueue
 
     public function handle(RaffleService $raffles, TransactionalMailService $mail): void
     {
-        $raffle = Raffle::query()->find($this->raffleId);
+        app(OrganizationContext::class)->withoutScope(function () use ($raffles, $mail): void {
+            $raffle = Raffle::query()->find($this->raffleId);
 
-        // Розыгрыш удалён — каскад унёс победителей, слать некому и нечего.
-        if ($raffle === null) {
-            return;
-        }
+            // Розыгрыш удалён — каскад унёс победителей, слать некому и нечего.
+            if ($raffle === null) {
+                return;
+            }
 
-        // Уведомлять есть смысл только после тиража: победители
-        // появляются в нём, и до него список пуст.
-        if ($raffle->status !== Raffle::STATUS_DRAWN) {
-            return;
-        }
+            // Уведомлять есть смысл только после тиража: победители
+            // появляются в нём, и до него список пуст.
+            if ($raffle->status !== Raffle::STATUS_DRAWN) {
+                return;
+            }
 
-        foreach ($raffles->winnersPendingNotification($raffle) as $winner) {
-            $this->notify($mail, $winner);
-        }
+            foreach ($raffles->winnersPendingNotification($raffle) as $winner) {
+                $this->notify($mail, $winner);
+            }
+        });
     }
 
     private function notify(TransactionalMailService $mail, RaffleWinner $winner): void

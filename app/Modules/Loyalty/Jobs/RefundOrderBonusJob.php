@@ -9,6 +9,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Foundation\Bus\PendingDispatch;
 use Illuminate\Queue\InteractsWithQueue;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Loyalty\Services\BonusService;
 use Nabilet\Modules\Orders\Models\Order;
 
@@ -61,17 +62,19 @@ class RefundOrderBonusJob implements ShouldQueue
 
     public function handle(BonusService $bonus): void
     {
-        $order = Order::query()->find($this->orderId);
+        app(OrganizationContext::class)->withoutScope(function () use ($bonus): void {
+            $order = Order::query()->find($this->orderId);
 
-        // Заказ удалён — возвращать нечего и некуда: строка журнала ссылается на
-        // него через FK `ON DELETE SET NULL`.
-        if ($order === null) {
-            return;
-        }
+            // Заказ удалён — возвращать нечего и некуда: строка журнала ссылается на
+            // него через FK `ON DELETE SET NULL`.
+            if ($order === null) {
+                return;
+            }
 
-        // Решение «возвращать ли» принимает сервис: там же проверка
-        // `bonus_amount` и владельца. Дублировать её здесь значило бы иметь два
-        // места, которые могут разойтись.
-        $bonus->refundForOrder($order);
+            // Решение «возвращать ли» принимает сервис: там же проверка
+            // `bonus_amount` и владельца. Дублировать её здесь значило бы иметь два
+            // места, которые могут разойтись.
+            $bonus->refundForOrder($order);
+        });
     }
 }

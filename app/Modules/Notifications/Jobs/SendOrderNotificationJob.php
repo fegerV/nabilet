@@ -8,6 +8,7 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Notifications\Services\MailSettings;
 use Nabilet\Modules\Notifications\Services\OrderNotificationData;
 use Nabilet\Modules\Notifications\Services\TransactionalMailService;
@@ -70,49 +71,51 @@ class SendOrderNotificationJob implements ShouldQueue
         OrderNotificationData $data,
         MailSettings $settings,
     ): void {
-        $order = Order::query()->find($this->orderId);
+        app(OrganizationContext::class)->withoutScope(function () use ($mail, $data, $settings): void {
+            $order = Order::query()->find($this->orderId);
 
-        if ($order === null) {
-            return;
-        }
+            if ($order === null) {
+                return;
+            }
 
-        if ($this->reminder) {
-            // Заказ мог отменить или вернуть его между постановкой в очередь и
-            // отправкой. Напоминание по такому заказу звало бы человека на
-            // мероприятие без билета, поэтому сверяем статус с PAID, а не с
-            // `expectedStatus` (который равен коду шаблона).
-            if ($order->status !== OrderStateMachine::PAID) {
+            if ($this->reminder) {
+                // Заказ мог отменить или вернуть его между постановкой в очередь и
+                // отправкой. Напоминание по такому заказу звало бы человека на
+                // мероприятие без билета, поэтому сверяем статус с PAID, а не с
+                // `expectedStatus` (который равен коду шаблона).
+                if ($order->status !== OrderStateMachine::PAID) {
+                    return;
+                }
+
+                $mail->send(
+                    code: $this->expectedStatus,
+                    recipient: (string) $order->customer_email,
+                    variables: $data->build($order),
+                    userId: $order->user_id,
+                    bcc: $this->copyRecipient($order, $settings),
+                );
+
+                return;
+            }
+
+            $code = OrderNotificationCodes::forStatus($this->expectedStatus);
+
+            if ($code === null) {
+                return;
+            }
+
+            if ($order->status !== $this->expectedStatus) {
                 return;
             }
 
             $mail->send(
-                code: $this->expectedStatus,
+                code: $code,
                 recipient: (string) $order->customer_email,
                 variables: $data->build($order),
                 userId: $order->user_id,
                 bcc: $this->copyRecipient($order, $settings),
             );
-
-            return;
-        }
-
-        $code = OrderNotificationCodes::forStatus($this->expectedStatus);
-
-        if ($code === null) {
-            return;
-        }
-
-        if ($order->status !== $this->expectedStatus) {
-            return;
-        }
-
-        $mail->send(
-            code: $code,
-            recipient: (string) $order->customer_email,
-            variables: $data->build($order),
-            userId: $order->user_id,
-            bcc: $this->copyRecipient($order, $settings),
-        );
+        });
     }
 
     /**

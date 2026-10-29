@@ -9,6 +9,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Foundation\Bus\PendingDispatch;
 use Illuminate\Queue\InteractsWithQueue;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Loyalty\Services\RaffleService;
 use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Orders\StateMachines\OrderStateMachine;
@@ -63,20 +64,22 @@ class EnterRafflesJob implements ShouldQueue
 
     public function handle(RaffleService $raffles): void
     {
-        $order = Order::query()->find($this->orderId);
+        app(OrganizationContext::class)->withoutScope(function () use ($raffles): void {
+            $order = Order::query()->find($this->orderId);
 
-        // Заказ удалён (каскад унёс и его следы) — участвовать нечему.
-        if ($order === null) {
-            return;
-        }
+            // Заказ удалён (каскад унёс и его следы) — участвовать нечему.
+            if ($order === null) {
+                return;
+            }
 
-        // Заказ мог быть возвращён между оплатой и исполнением. Возврат
-        // участия не отзывает (см. `RaffleService`), но и не создаёт: билет
-        // заводит оплаченный заказ, а не заказ с историей оплаты.
-        if ($order->status !== OrderStateMachine::PAID) {
-            return;
-        }
+            // Заказ мог быть возвращён между оплатой и исполнением. Возврат
+            // участия не отзывает (см. `RaffleService`), но и не создаёт: билет
+            // заводит оплаченный заказ, а не заказ с историей оплаты.
+            if ($order->status !== OrderStateMachine::PAID) {
+                return;
+            }
 
-        $raffles->enterForOrder($order);
+            $raffles->enterForOrder($order);
+        });
     }
 }

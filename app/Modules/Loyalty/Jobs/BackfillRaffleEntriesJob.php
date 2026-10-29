@@ -9,6 +9,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Foundation\Bus\PendingDispatch;
 use Illuminate\Queue\InteractsWithQueue;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Loyalty\Models\Raffle;
 use Nabilet\Modules\Loyalty\Services\RaffleService;
 
@@ -58,13 +59,15 @@ class BackfillRaffleEntriesJob implements ShouldQueue
 
     public function handle(RaffleService $raffles): void
     {
-        $raffle = Raffle::query()->find($this->raffleId);
+        app(OrganizationContext::class)->withoutScope(function () use ($raffles): void {
+            $raffle = Raffle::query()->find($this->raffleId);
 
-        // Розыгрыш удалён — каскад унёс призы, билеты и победителей.
-        if ($raffle === null) {
-            return;
-        }
+            // Розыгрыш удалён — каскад унёс призы, билеты и победителей.
+            if ($raffle === null) {
+                return;
+            }
 
-        $raffles->backfill($raffle);
+            $raffles->backfill($raffle);
+        });
     }
 }

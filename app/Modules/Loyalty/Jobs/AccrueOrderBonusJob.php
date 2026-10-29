@@ -9,6 +9,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Foundation\Bus\PendingDispatch;
 use Illuminate\Queue\InteractsWithQueue;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Loyalty\Services\BonusService;
 use Nabilet\Modules\Orders\Models\Order;
 
@@ -65,16 +66,18 @@ class AccrueOrderBonusJob implements ShouldQueue
 
     public function handle(BonusService $bonus): void
     {
-        $order = Order::query()->find($this->orderId);
+        app(OrganizationContext::class)->withoutScope(function () use ($bonus): void {
+            $order = Order::query()->find($this->orderId);
 
-        // Заказ удалён (каскад унёс и его следы) — начислять не за что.
-        if ($order === null) {
-            return;
-        }
+            // Заказ удалён (каскад унёс и его следы) — начислять не за что.
+            if ($order === null) {
+                return;
+            }
 
-        // Решение «начислять ли» принимает сервис: там же лежит проверка статуса
-        // и привязки к покупателю. Дублировать её здесь значило бы иметь два
-        // места, которые могут разойтись.
-        $bonus->accrueForOrder($order);
+            // Решение «начислять ли» принимает сервис: там же лежит проверка статуса
+            // и привязки к покупателю. Дублировать её здесь значило бы иметь два
+            // места, которые могут разойтись.
+            $bonus->accrueForOrder($order);
+        });
     }
 }
