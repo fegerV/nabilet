@@ -446,14 +446,18 @@ WHERE p.organization_id <> o.organization_id;
    `php artisan tenancy:backfill-organization` (остаток NULL = 0). Гейт
    перехода к фазе 3 — по всем таблицам класса A `null_org = 0` (§3.3).
 4. **Фаза 2 (продолжение):** трейт `TenantScoped` реализован, write-side включён
-   для `Order`/`Payment`/`Ticket`, поведение покрыто `TenantScopedWriteTest`.
-   Включение глобального читающего скоупа на `Order` **эмпирически проверено**: оно
-   ломает ~180 тестов из ~30 модулей (задания, sweepers, webhooks, сервисы
-   писем/лояльности/reconcile читают заказы без контекста). Поэтому порядок такой:
-   (а) миграция системного слоя на `OrganizationContext::withoutScope()` (аудит по
-   списку падающих тестов); (б) затем включение скоупа по-модельно
-   (`tenantScopeEnabled(): true`); (в) перевод репозиториев класса A на прямой
-   `where('organization_id', …)` после того, как запись заполняет колонку.
+   для `Order`/`Payment`/`Ticket`, поведение покрыто `TenantScopedWriteTest` и
+   `TenantScopedReadTest`. Включение глобального читающего скоупа на `Order`
+   **эмпирически проверено**: оно ломает ~150 тестов из ~28 файлов. Ключевой блокер —
+   не только фоновые джобы (уже обёрнуты в `withoutScope()`: Accrue/RefundBonus,
+   EnterRaffles, RewardReferral, Backfill/NotifyRaffleWinners, SendOrderNotification),
+   но **синхронные обсерверы** (`OrderLoyaltyObserver` и др.), вызываемые из
+   `OrderService::markPaid()` и подобных в рамках HTTP-запроса (контекст есть) или
+   из тестов напрямую (контекста нет). Полное включение — крупная отдельная
+   миграция: (а) обработка синхронных обсерверов/сервисов, (б) задание контекста
+   в test-harness для прямых вызовов сервисов, (в) затем флип
+   `tenantScopeEnabled(): true`, (г) перевод репозиториев класса A на прямой
+   `where('organization_id', …)`.
 5. **Фаза 3:** `NOT NULL`/FK после нулевого гейта `null_org = 0`.
 6. **Постоянно:** `php artisan config:validate` в деплое, `php tests/run.php` и
    `php vendor/bin/phpunit` в CI.
