@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Matrix\Domain;
 
+use Nabilet\Core\Support\Text;
+
 /**
  * Текстовое сообщение Matrix и его полезная нагрузка.
  *
@@ -60,7 +62,7 @@ final class MatrixMessage
      */
     public static function sanitize(string $body): string
     {
-        $clean = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/', '', $body) ?? $body;
+        $clean = Text::stripControlChars($body, false);
 
         // Сначала CRLF → LF, потом одиночные CR: иначе первый шаг оставил бы
         // голые `\r` от старого Mac-стиля переводов.

@@ -6,6 +6,7 @@ namespace Nabilet\Modules\Storefront\Services;
 
 use Illuminate\Support\Arr;
 use Nabilet\Core\Support\CssColor;
+use Nabilet\Core\Support\Text;
 use Nabilet\Modules\Storefront\Models\StorefrontSetting;
 
 /**
@@ -490,7 +491,7 @@ final class StorefrontService
         if (! is_string($value) && ! is_numeric($value)) {
             return $default;
         }
-        $clean = trim(preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/u', '', (string) $value) ?? '');
+        $clean = trim(Text::stripControlChars((string) $value, true));
 
         return $clean === '' ? $default : mb_substr($clean, 0, $max);
     }
