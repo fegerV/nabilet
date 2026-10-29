@@ -147,55 +147,80 @@ class YandexDiskBackupService
     }
 
     /**
-     * Загрузка файла на Яндекс.Диск
+     * Загрузка файла на Яндекс.Диск.
+     *
+     * @param  string  $filePath  локальный путь к файлу
+     * @param  string|null  $remotePath  путь на Диске (по умолчанию — из конфига)
+     * @param  bool  $deleteLocal  удалить локальный файл после успешной выгрузки
+     * @return array{success: bool, remote_path: string, url: string|null}
+     *
+     * Файловый хэндл закрывается в `finally` (раньше `fopen`-хэндл утекал:
+     * `curl_close` его не закрывает). На обе фазы (получение upload_url и сама
+     * загрузка) выставлен таймаут и проверяется `curl_errno` — «тихая» пустая
+     * строка вместо ответа или зависший сокет не должны выглядеть как успех.
      */
-    public function uploadToYandexDisk($filePath, $remotePath = null)
+    public function uploadToYandexDisk($filePath, $remotePath = null, bool $deleteLocal = true)
     {
-        if (!file_exists($filePath)) {
+        if (!is_file($filePath)) {
             throw new \RuntimeException("File not found: {$filePath}");
         }
 
         $fileName = basename($filePath);
         $remotePath = $remotePath ?? rtrim((string) config('services.yandex_disk.backups_path', '/backups'), '/') . "/{$fileName}";
 
-        // Получаем URL для загрузки
+        // 1. Получаем upload_url.
         $ch = curl_init();
         curl_setopt($ch, CURLOPT_URL, $this->uploadUrl . "?path=" . urlencode($remotePath) . "&overwrite=true");
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, [
-            "Authorization: OAuth {$this->oauthToken}",
-        ]);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, ["Authorization: OAuth {$this->oauthToken}"]);
 
         $response = curl_exec($ch);
+        $errno = curl_errno($ch);
         curl_close($ch);
 
-        $data = json_decode($response, true);
-        
-        if (!isset($data['upload_url'])) {
+        if ($errno !== 0 || ! $response) {
             throw new \RuntimeException('Failed to get upload URL from Yandex Disk');
         }
 
-        // Загружаем файл
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, $data['upload_url']);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_PUT, true);
-        curl_setopt($ch, CURLOPT_INFILE, fopen($filePath, 'r'));
-        curl_setopt($ch, CURLOPT_INFILESIZE, filesize($filePath));
-        curl_setopt($ch, CURLOPT_HTTPHEADER, [
-            "Authorization: OAuth {$this->oauthToken}",
-        ]);
+        $data = json_decode((string) $response, true);
 
-        $response = curl_exec($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
+        if (empty($data['upload_url'])) {
+            throw new \RuntimeException('Failed to get upload URL from Yandex Disk');
+        }
 
-        if ($httpCode !== 201 && $httpCode !== 200) {
+        // 2. Загружаем файл.
+        $fh = fopen($filePath, 'rb');
+
+        if ($fh === false) {
+            throw new \RuntimeException("Cannot open file for upload: {$filePath}");
+        }
+
+        try {
+            $ch = curl_init();
+            curl_setopt($ch, CURLOPT_URL, $data['upload_url']);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_PUT, true);
+            curl_setopt($ch, CURLOPT_INFILE, $fh);
+            curl_setopt($ch, CURLOPT_INFILESIZE, filesize($filePath));
+            curl_setopt($ch, CURLOPT_TIMEOUT, 120);
+            curl_setopt($ch, CURLOPT_HTTPHEADER, ["Authorization: OAuth {$this->oauthToken}"]);
+
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $errno = curl_errno($ch);
+            curl_close($ch);
+        } finally {
+            fclose($fh);
+        }
+
+        if ($errno !== 0 || ($httpCode !== 201 && $httpCode !== 200)) {
             throw new \RuntimeException('Failed to upload file to Yandex Disk');
         }
 
-        // Удаляем локальный файл после успешной загрузки
-        unlink($filePath);
+        if ($deleteLocal) {
+            @unlink($filePath);
+        }
 
         return [
             'success' => true,
@@ -205,9 +230,11 @@ class YandexDiskBackupService
     }
 
     /**
-     * Полный бэкап системы (БД + файлы)
+     * Полный бэкап системы (БД + файлы).
+     *
+     * @param  bool  $deleteLocal  удалить локальный архив после успешной выгрузки
      */
-    public function createFullBackup()
+    public function createFullBackup(bool $deleteLocal = true)
     {
         $timestamp = date('Y-m-d_H-i-s');
         $backupDir = storage_path("app/backups/full_{$timestamp}");
@@ -233,7 +260,7 @@ class YandexDiskBackupService
         // Загружаем на Яндекс.Диск
         $remoteDir = rtrim((string) config('services.yandex_disk.backups_path', '/backups'), '/');
 
-        return $this->uploadToYandexDisk($archivePath, "{$remoteDir}/full_{$timestamp}.zip");
+        return $this->uploadToYandexDisk($archivePath, "{$remoteDir}/full_{$timestamp}.zip", $deleteLocal);
     }
 
     /**

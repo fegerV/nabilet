@@ -43,10 +43,12 @@ final class RunBackupCommand extends Command
             return self::FAILURE;
         }
 
+        $keepLocal = (bool) $this->option('keep-local');
+
         try {
             $result = $this->option('database-only')
-                ? $this->backupDatabaseOnly($service)
-                : $service->createFullBackup();
+                ? $this->backupDatabaseOnly($service, $keepLocal)
+                : $service->createFullBackup(deleteLocal: ! $keepLocal);
         } catch (\Throwable $e) {
             Log::error('Backup failed', [
                 'exception' => $e->getMessage(),
@@ -66,21 +68,16 @@ final class RunBackupCommand extends Command
     /**
      * @return array{success: bool, remote_path: string|null, url: string|null}
      */
-    private function backupDatabaseOnly(YandexDiskBackupService $service): array
+    private function backupDatabaseOnly(YandexDiskBackupService $service, bool $keepLocal): array
     {
         $path = $service->createDatabaseBackup();
 
         $remoteDir = rtrim((string) config('services.yandex_disk.backups_path', '/backups'), '/');
 
-        $result = $service->uploadToYandexDisk($path, $remoteDir . '/' . basename($path));
-
-        if ((bool) $this->option('keep-local')) {
-            // `uploadToYandexDisk` удаляет локальный файл после успешной выгрузки;
-            // здесь восстанавливать его нечем — поэтому предупреждаем явно, а не
-            // молча игнорируем флаг.
-            $this->warn('--keep-local не поддерживается для --database-only: локальный файл удаляется после выгрузки.');
-        }
-
-        return $result;
+        return $service->uploadToYandexDisk(
+            $path,
+            $remoteDir . '/' . basename($path),
+            deleteLocal: ! $keepLocal,
+        );
     }
 }

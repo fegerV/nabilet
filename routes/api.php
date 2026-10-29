@@ -110,6 +110,9 @@ $moduleRoutes = [
     // Файл обязан быть подключён здесь — `loadRoutesFrom()` из провайдера
     // зарегистрировал бы те же пути в корне, вне /api/v1 и его middleware.
     __DIR__ . '/../app/Modules/Matrix/routes/api.php',
+    // Бэкапы: ручное скачивание локальных копий (админка) — `/admin/backups`.
+    // Локальные копии появляются при запуске `backup:run --keep-local`.
+    __DIR__ . '/../app/Modules/Backups/routes/api.php',
 ];
 
 foreach ($moduleRoutes as $routeFile) {

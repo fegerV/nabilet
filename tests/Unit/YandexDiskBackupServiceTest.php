@@ -156,6 +156,21 @@ final class YandexDiskBackupServiceTest extends TestCase
     }
 
     /**
+     * `uploadToYandexDisk` принимает флаг `deleteLocal` — локальный файл можно
+     * сохранить для ручного скачивания (админка).
+     */
+    public function testUploadSignatureSupportsKeepingTheLocalFile(): void
+    {
+        $method = new \ReflectionMethod(YandexDiskBackupService::class, 'uploadToYandexDisk');
+
+        $params = $method->getParameters();
+        $names = array_map(static fn (\ReflectionParameter $p): string => $p->getName(), $params);
+
+        $this->assertContains('deleteLocal', $names);
+        $this->assertSame(true, $params[2]->getDefaultValue());
+    }
+
+    /**
      * Кавычка и обратный слэш в пароле не ломают INI-файл.
      *
      * Пароль со `"` закрыл бы значение раньше времени, а `\` в конце — экранировал
