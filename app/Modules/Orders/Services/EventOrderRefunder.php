@@ -6,6 +6,7 @@ namespace Nabilet\Modules\Orders\Services;
 
 use Illuminate\Support\Facades\DB;
 use Nabilet\Core\Errors\DomainRuleViolation;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Events\Models\Event;
 use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Orders\StateMachines\OrderStateMachine;
@@ -58,6 +59,13 @@ final class EventOrderRefunder
      * @return array{refunded: int, refund_failures: list<array{order: string, error: string}>}
      */
     public function refundEventOrders(Event $event, string $reason): array
+    {
+        return app(OrganizationContext::class)->withoutScope(
+            fn (): array => $this->refundEventOrdersScoped($event, $reason)
+        );
+    }
+
+    private function refundEventOrdersScoped(Event $event, string $reason): array
     {
         $orderIds = DB::table('order_items')
             ->join('orders', 'orders.id', '=', 'order_items.order_id')

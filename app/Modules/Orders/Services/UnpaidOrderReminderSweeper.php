@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Nabilet\Core\Support\Money;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Core\Support\RuText;
 use Nabilet\Modules\Notifications\Mail\TemplateMail;
 use Nabilet\Modules\Orders\Models\Order;
@@ -52,6 +53,13 @@ final class UnpaidOrderReminderSweeper
      * @return array{sent: int, failed: int}
      */
     public function remind(): array
+    {
+        return app(OrganizationContext::class)->withoutScope(
+            fn (): array => $this->remindScoped()
+        );
+    }
+
+    private function remindScoped(): array
     {
         $cutoff = CarbonImmutable::now()
             ->subMinutes(self::MIN_AGE_MINUTES)

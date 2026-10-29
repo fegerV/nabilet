@@ -7,6 +7,7 @@ namespace Nabilet\Modules\Orders\Services;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Core\Support\PublicId;
 use Nabilet\Modules\Notifications\Jobs\SendOrderNotificationJob;
 use Nabilet\Modules\Orders\Models\Order;
@@ -83,6 +84,13 @@ final class OrderReminderSweeper
      * @return array{sent: int, skipped: int, orders: list<int>}
      */
     public function sweep(bool $dryRun = false, ?int $limit = null): array
+    {
+        return app(OrganizationContext::class)->withoutScope(
+            fn (): array => $this->sweepScoped($dryRun, $limit)
+        );
+    }
+
+    private function sweepScoped(bool $dryRun, ?int $limit): array
     {
         $limit ??= self::BATCH_LIMIT;
 

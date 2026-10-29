@@ -8,6 +8,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Nabilet\Core\Support\HoldGrace;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Cart\Domain\CartStatus;
 use Nabilet\Modules\Inventory\StateMachines\InventoryItemStateMachine;
 use Nabilet\Modules\Cart\Models\Cart;
@@ -67,6 +68,13 @@ final class StaleOrderExpirer
      * @return int количество заказов, переведённых в `expired`
      */
     public function expireStaleOrders(): int
+    {
+        return app(OrganizationContext::class)->withoutScope(
+            fn (): int => $this->expireStaleOrdersScoped()
+        );
+    }
+
+    private function expireStaleOrdersScoped(): int
     {
         $deadline = HoldGrace::cutoff()->toDateTimeString();
 

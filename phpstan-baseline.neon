@@ -602,11 +602,6 @@ parameters:
 			path: app/Modules/Orders/Repositories/OrderRepository.php
 
 		-
-			message: "#^Method Nabilet\\\\Modules\\\\Orders\\\\Services\\\\EventOrderRefunder\\:\\:refundEventOrders\\(\\) should return array\\{refunded\\: int, refund_failures\\: array\\<int, array\\{order\\: string, error\\: string\\}\\>\\} but returns array\\{refunded\\: int\\<0, max\\>, refund_failures\\: array\\<int\\<0, max\\>, array\\{order\\: string, code\\: string, message\\: string\\}\\>\\}\\.$#"
-			count: 1
-			path: app/Modules/Orders/Services/EventOrderRefunder.php
-
-		-
 			message: "#^Parameter \\#1 \\$payment of method Nabilet\\\\Modules\\\\Payments\\\\Services\\\\RefundService\\:\\:refund\\(\\) expects Nabilet\\\\Modules\\\\Payments\\\\Models\\\\Payment, stdClass given\\.$#"
 			count: 1
 			path: app/Modules/Orders/Services/EventOrderRefunder.php

@@ -89,6 +89,8 @@
 | `app/Modules/Core/Tenancy/TenantScoped.php` | Фаза 2: трейт `TenantScoped` — авто-заполнение `organization_id` при `creating` из контекста, отклонение несовпадения, опциональный глобальный читающий скоуп (fail-closed, off по умолчанию) |
 | `app/Modules/Orders/Models/Order.php`, `app/Modules/Payments/Models/Payment.php`, `app/Modules/Tickets/Models/Ticket.php` | Фаза 2: применён write-side `TenantScoped` (глобальный скоуп выключен до аудита системных путей чтения) |
 | `tests/Feature/Core/TenantScopedWriteTest.php` | Явная проверка write-side: заполнение org из контекста, отклонение чужой org, создание без контекста |
+| `tests/Feature/Core/TenantScopedReadTest.php` | Проверка читающей стороны глобального скоупа: с контекстом фильтрует; без контекста бросает; внутри `withoutScope()` видно всё |
+| `app/Modules/Orders/Services/StaleOrderExpirer.php`, `OrderReminderSweeper.php`, `UnpaidOrderReminderSweeper.php`, `EventOrderRefunder.php` | Фоновые сервисы заказов обёрнуты в `OrganizationContext::withoutScope()` — первый блок миграции системного слоя (подготовка к включению скоупа) |
 | `docs/SECURITY-GAPS-REMEDIATION-2026-10-29.md` | Этот документ |
 
 Проверки: `php -l` по изменённым файлам — без ошибок; `php tests/run.php` —
