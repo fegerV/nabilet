@@ -464,6 +464,16 @@ WHERE p.organization_id <> o.organization_id;
    валидированными (полный набор зелёный, 1198 тестов).
     **ИТОГ:** глобальный читающий скоуп на `Order` **включён** (`tenantScopeEnabled(): true`)
     и весь набор проходит — `OK (1198 tests, 4892 assertions)`, PHPStan `No errors`.
-5. **Фаза 3:** `NOT NULL`/FK после нулевого гейта `null_org = 0`.
+5. **Фаза 3 (подготовлена, не включена):** миграция `NOT NULL` + FK на
+   `organizations` + составные UNIQUE `(organization_id, id)` для родительских
+   таблиц была написана и применена к dev-БД, но **откачена** после проверки:
+   тесты дали 658 ошибок. Причина — `TenantScoped` включён только на
+   `Order`/`Payment`/`Ticket`, а остальные ~36 таблиц класса A (carts, sessions,
+   halls, sectors и т.д.) пишутся напрямую (`DB::table`) без организации. Чтобы
+   включить фазу 3, нужно сперва либо расширить `TenantScoped`/писателей на все
+   таблицы класса A, либо перевести прямые вставки на контекст. Подготовленная
+   миграция сохранена в `docs/` как образец; код-гейт «null_org = 0» уже пройден.
+6. **Постоянно:** `php artisan config:validate` в деплое, `php tests/run.php` и
+   `php vendor/bin/phpunit` в CI.
 6. **Постоянно:** `php artisan config:validate` в деплое, `php tests/run.php` и
    `php vendor/bin/phpunit` в CI.
