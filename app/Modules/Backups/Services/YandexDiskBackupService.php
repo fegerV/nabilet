@@ -29,6 +29,16 @@ class YandexDiskBackupService
     }
 
     /**
+     * Экземпляр шифровальщика: ключ из конфига `nabilet.backup.encryption_key`.
+     */
+    protected function encryptor(): BackupEncryptor
+    {
+        return new BackupEncryptor(
+            (string) config('nabilet.backup.encryption_key', '')
+        );
+    }
+
+    /**
      * Команда дампа БД.
      *
      * ПАРОЛЬ НЕ ПЕРЕДАЁТСЯ АРГУМЕНТОМ КОМАНДНОЙ СТРОКИ (аудит
@@ -78,8 +88,10 @@ class YandexDiskBackupService
 
     /**
      * Создание бэкапа базы данных.
+     *
+     * @param  bool  $encrypt  зашифровать перед выгрузкой (AES-256-CBC)
      */
-    public function createDatabaseBackup()
+    public function createDatabaseBackup(bool $encrypt = false)
     {
         $connection = (array) config('database.connections.mysql');
 
@@ -118,6 +130,13 @@ class YandexDiskBackupService
             }
 
             throw new \RuntimeException("Failed to create database backup (mysqldump exited with {$exitCode})");
+        }
+
+        if ($encrypt) {
+            $encrypted = $this->encryptor()->encryptFile($backupPath);
+            @unlink($backupPath);
+
+            return $encrypted;
         }
 
         return $backupPath;
@@ -233,8 +252,9 @@ class YandexDiskBackupService
      * Полный бэкап системы (БД + файлы).
      *
      * @param  bool  $deleteLocal  удалить локальный архив после успешной выгрузки
+     * @param  bool  $encrypt  зашифровать архив перед выгрузкой (AES-256-CBC)
      */
-    public function createFullBackup(bool $deleteLocal = true)
+    public function createFullBackup(bool $deleteLocal = true, bool $encrypt = false)
     {
         $timestamp = date('Y-m-d_H-i-s');
         $backupDir = storage_path("app/backups/full_{$timestamp}");
@@ -257,10 +277,20 @@ class YandexDiskBackupService
         // Очищаем временную директорию
         $this->deleteDirectory($backupDir);
 
+        // Шифрование архива перед выгрузкой.
+        $uploadPath = $archivePath;
+        $remoteName = "full_{$timestamp}.zip";
+
+        if ($encrypt) {
+            $uploadPath = $this->encryptor()->encryptFile($archivePath);
+            @unlink($archivePath);
+            $remoteName .= '.enc';
+        }
+
         // Загружаем на Яндекс.Диск
         $remoteDir = rtrim((string) config('services.yandex_disk.backups_path', '/backups'), '/');
 
-        return $this->uploadToYandexDisk($archivePath, "{$remoteDir}/full_{$timestamp}.zip", $deleteLocal);
+        return $this->uploadToYandexDisk($uploadPath, "{$remoteDir}/{$remoteName}", $deleteLocal);
     }
 
     /**

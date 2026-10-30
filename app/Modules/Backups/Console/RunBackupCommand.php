@@ -23,7 +23,8 @@ final class RunBackupCommand extends Command
 {
     protected $signature = 'backup:run
         {--database-only : Только дамп БД, без файлов storage}
-        {--keep-local : Не удалять локальную копию после выгрузки}';
+        {--keep-local : Не удалять локальную копию после выгрузки}
+        {--no-encrypt : НЕ шифровать бэкап (по умолчанию шифруем, если задан ключ)}';
 
     protected $description = 'Создать резервную копию и выгрузить её во внешнее хранилище (Яндекс.Диск)';
 
@@ -45,10 +46,20 @@ final class RunBackupCommand extends Command
 
         $keepLocal = (bool) $this->option('keep-local');
 
+        // Шифрование по умолчанию: если ключ не задан — предупреждаем и идём
+        // без шифрования (сохранение обратной совместимости), но громко.
+        $encrypt = ! (bool) $this->option('no-encrypt');
+        $hasKey = (string) (config('nabilet.backup.encryption_key') ?? '') !== '';
+
+        if ($encrypt && ! $hasKey) {
+            $this->warn('NABILET_BACKUP_ENCRYPTION_KEY не задан — бэкап пойдёт БЕЗ шифрования.');
+            $encrypt = false;
+        }
+
         try {
             $result = $this->option('database-only')
-                ? $this->backupDatabaseOnly($service, $keepLocal)
-                : $service->createFullBackup(deleteLocal: ! $keepLocal);
+                ? $this->backupDatabaseOnly($service, $keepLocal, $encrypt)
+                : $service->createFullBackup(deleteLocal: ! $keepLocal, encrypt: $encrypt);
         } catch (\Throwable $e) {
             Log::error('Backup failed', [
                 'exception' => $e->getMessage(),
@@ -68,9 +79,9 @@ final class RunBackupCommand extends Command
     /**
      * @return array{success: bool, remote_path: string|null, url: string|null}
      */
-    private function backupDatabaseOnly(YandexDiskBackupService $service, bool $keepLocal): array
+    private function backupDatabaseOnly(YandexDiskBackupService $service, bool $keepLocal, bool $encrypt): array
     {
-        $path = $service->createDatabaseBackup();
+        $path = $service->createDatabaseBackup($encrypt);
 
         $remoteDir = rtrim((string) config('services.yandex_disk.backups_path', '/backups'), '/');
 

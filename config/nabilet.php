@@ -6,6 +6,15 @@ return [
     'version' => '1.0.0',
 
     /*
+     * Шифрование бэкапов (AES-256-CBC). Ключ — из `.env`:
+     * `NABILET_BACKUP_ENCRYPTION_KEY`. Пустой ключ означает «шифрование
+     * выключено»; команда `backup:run` предупредит и пойдёт без шифрования.
+     */
+    'backup' => [
+        'encryption_key' => env('NABILET_BACKUP_ENCRYPTION_KEY', ''),
+    ],
+
+    /*
      * Создавать ли демо-данные сидера `NabiletAdminSeeder` (организация
      * «NABILET Demo» и три учётки с паролями из исходников, включая
      * admin@nabilet.local/admin123 с полной ролью администратора).

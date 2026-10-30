@@ -42,11 +42,19 @@ final class HmacSignatureCopyTest extends TestCase
      */
     private const RAW_DIGEST_CONSUMER = '/Core/Support/QrSigner.php';
 
+    /**
+     * Дополнительный законный потребитель сырого дайджеста: `BackupEncryptor`
+     * использует HMAC как криптографическую контрольную сумму зашифрованного
+     * файла бэкапа. Это НЕ подпись провода и НЕ сравнение в обход постоянного
+     * времени — это отдельный, осознанный контекст целостности файла.
+     */
+    private const FILE_HMAC_CONSUMER = '/Modules/Backups/Services/BackupEncryptor.php';
+
     public function testTheHmacPrimitiveLivesOnlyInItsOwner(): void
     {
         $this->assertSame(
             [],
-            $this->filesWhere('~hash_hmac\s*\(~', [self::HMAC_OWNER]),
+            $this->filesWhere('~hash_hmac\s*\(~', [self::HMAC_OWNER, self::FILE_HMAC_CONSUMER]),
             'вторая копия вычисления HMAC: подпись должна считаться через HmacSignature',
         );
     }
@@ -71,7 +79,7 @@ final class HmacSignatureCopyTest extends TestCase
     {
         $this->assertSame(
             [],
-            $this->filesWhere('~HmacSignature::digest\s*\(~', [self::HMAC_OWNER, self::RAW_DIGEST_CONSUMER]),
+            $this->filesWhere('~HmacSignature::digest\s*\(~', [self::HMAC_OWNER, self::RAW_DIGEST_CONSUMER, self::FILE_HMAC_CONSUMER]),
             'сырой дайджест вместо sign()/verify(): сравнение в обход постоянного времени',
         );
     }

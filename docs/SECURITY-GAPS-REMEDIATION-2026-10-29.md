@@ -464,6 +464,12 @@ WHERE p.organization_id <> o.organization_id;
    валидированными (полный набор зелёный, 1198 тестов).
     **ИТОГ:** глобальный читающий скоуп на `Order` **включён** (`tenantScopeEnabled(): true`)
     и весь набор проходит — `OK (1198 tests, 4892 assertions)`, PHPStan `No errors`.
+
+**Бэкапы: шифрование.** Добавлено шифрование бэкапов AES-256-CBC
+(`BackupEncryptor`, HMAC-SHA256 для целостности) перед выгрузкой на Яндекс.Диск.
+Ключ — `NABILET_BACKUP_ENCRYPTION_KEY`; команда `backup:run` шифрует по умолчанию
+(если ключ задан), флаг `--no-encrypt` отключает. Восстановление — `BackupEncryptor::decrypt()`.
+Покрыто `tests/Unit/BackupEncryptorTest.php`.
 5. **Фаза 3 (подготовлена, не включена):** миграция `NOT NULL` + FK на
    `organizations` + составные UNIQUE `(organization_id, id)` для родительских
    таблиц была написана и применена к dev-БД, но **откачена** после проверки:
