@@ -447,17 +447,21 @@ WHERE p.organization_id <> o.organization_id;
    перехода к фазе 3 — по всем таблицам класса A `null_org = 0` (§3.3).
 4. **Фаза 2 (продолжение):** трейт `TenantScoped` реализован, write-side включён
    для `Order`/`Payment`/`Ticket`, поведение покрыто `TenantScopedWriteTest` и
-   `TenantScopedReadTest`. Включение глобального читающего скоупа на `Order`
-   **эмпирически проверено**: оно ломает ~150 тестов из ~28 файлов. Ключевой блокер —
-   не только фоновые джобы (уже обёрнуты в `withoutScope()`: Accrue/RefundBonus,
+   `TenantScopedReadTest`. Проведена широкая миграция системных путей на
+   `OrganizationContext::withoutScope()`: фоновые джобы (Accrue/RefundBonus,
    EnterRaffles, RewardReferral, Backfill/NotifyRaffleWinners, SendOrderNotification),
-   но **синхронные обсерверы** (`OrderLoyaltyObserver` и др.), вызываемые из
-   `OrderService::markPaid()` и подобных в рамках HTTP-запроса (контекст есть) или
-   из тестов напрямую (контекста нет). Полное включение — крупная отдельная
-   миграция: (а) обработка синхронных обсерверов/сервисов, (б) задание контекста
-   в test-harness для прямых вызовов сервисов, (в) затем флип
-   `tenantScopeEnabled(): true`, (г) перевод репозиториев класса A на прямой
-   `where('organization_id', …)`.
+   сервисы (`PaymentService::createPayment/initiatePayment/processWebhook`,
+   `RefundService::refund`, `TicketGeneratorService::generateTicketData`,
+   `RecommendationService::forUser`, sweepers заказов, `EventOrderRefunder`),
+   обсервер `OrderLoyaltyObserver`, а также прямые тестовые чтения
+   (`TicketEmailTemplateTest`, `BonusSpendTest`).
+   **Фундаментальное открытие:** глобальный скоуп на `Order` семантически
+   несовместим с owner/guest-маршрутами (`OrderController::show` и др.), которые
+   читают заказ по праву владельца/гостевого токена через route-model-binding, а не
+   по организации запроса. Включение глобального скоупа потребует явной обработки
+   этих маршрутов в точке авторизации (или `resolveRouteBinding`), поэтому скоуп
+   остаётся выключенным, а write-side + системные обёртки — включёнными и
+   валидированными (полный набор зелёный, 1198 тестов).
 5. **Фаза 3:** `NOT NULL`/FK после нулевого гейта `null_org = 0`.
 6. **Постоянно:** `php artisan config:validate` в деплое, `php tests/run.php` и
    `php vendor/bin/phpunit` в CI.

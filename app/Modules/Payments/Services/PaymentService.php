@@ -110,6 +110,13 @@ class PaymentService
      */
     public function initiatePayment(int $orderId, array $data = []): array
     {
+        return app(OrganizationContext::class)->withoutScope(
+            fn (): array => $this->initiatePaymentScoped($orderId, $data)
+        );
+    }
+
+    private function initiatePaymentScoped(int $orderId, array $data): array
+    {
         $providerName = PaymentProviderRegistry::defaultProviderName();
         $idempotencyKey = $this->normalizeIdempotencyKey($data['idempotency_key'] ?? null);
 
@@ -371,6 +378,13 @@ class PaymentService
      *               currency?: string|null, payment_url?: string|null, idempotency_key?: string|null}  $data
      */
     public function createPayment(int $orderId, array $data): Payment
+    {
+        return app(OrganizationContext::class)->withoutScope(
+            fn (): Payment => $this->createPaymentScoped($orderId, $data)
+        );
+    }
+
+    private function createPaymentScoped(int $orderId, array $data): Payment
     {
         return DB::transaction(function () use ($orderId, $data) {
             // Идемпотентность по (provider, idempotency_key) — UNIQUE в схеме.

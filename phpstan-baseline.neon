@@ -727,11 +727,6 @@ parameters:
 			path: app/Modules/Payments/Services/PaymentService.php
 
 		-
-			message: "#^Offset 'metadata' on array\\{provider\\?\\: string, provider_payment_id\\?\\: string\\|null, amount\\?\\: int\\|null, currency\\?\\: string\\|null, payment_url\\?\\: string\\|null, idempotency_key\\?\\: string\\|null\\} on left side of \\?\\? does not exist\\.$#"
-			count: 1
-			path: app/Modules/Payments/Services/PaymentService.php
-
-		-
 			message: "#^Parameter \\#1 \\$paymentData of method Nabilet\\\\Modules\\\\Payments\\\\Providers\\\\PaymentProviderInterface\\:\\:createPayment\\(\\) expects array\\{amount\\: int, currency\\: string, order_id\\: int, description\\: string, customer_email\\?\\: string, success_url\\?\\: string, failure_url\\?\\: string\\}, array\\{order_id\\: numeric\\-string, amount\\: int, currency\\: mixed, description\\: non\\-falsy\\-string, success_url\\: string, idempotency_key\\: string\\} given\\.$#"
 			count: 1
 			path: app/Modules/Payments/Services/PaymentService.php

@@ -9,6 +9,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Nabilet\Core\Support\AssetUrl;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Notifications\Services\OrderNotificationData;
 use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Tickets\Domain\Qr\QrEncoder;
@@ -74,6 +75,11 @@ final class TicketEmailTemplateTest extends TestCase
         parent::setUp();
 
         $this->organizationId = $this->seedOrganization();
+
+        // Глобальный скоуп `Order` (фаза 2) фильтрует запросы по активной
+        // организации. Тест живёт в контексте своей организации — задаём его,
+        // чтобы прямые `Order::query()` в тесте видели созданные заказы.
+        app(OrganizationContext::class)->set((string) $this->organizationId);
 
         // Постер задан: без него нечего проверять в блоке «афиша».
         $this->eventId = $this->seedEvent($this->organizationId, poster: 'events/posters/afisha.jpg');

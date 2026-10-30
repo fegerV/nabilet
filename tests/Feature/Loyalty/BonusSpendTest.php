@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Nabilet\Core\Errors\DomainRuleViolation;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Cart\Support\CartToken;
 use Nabilet\Modules\Loyalty\Domain\BonusReason;
 use Nabilet\Modules\Loyalty\Jobs\AccrueOrderBonusJob;
@@ -157,7 +158,12 @@ class BonusSpendTest extends TestCase
 
     private function orderByPublicId(string $publicId): Order
     {
-        return Order::query()->where('public_id', $publicId)->firstOrFail();
+        // Тест читает конкретный заказ по public_id вне HTTP-контекста
+        // (гостевое checkout не устанавливает организацию). Глобальный скоуп
+        // `Order` (фаза 2) в этом случае нужно обойти явно.
+        return app(OrganizationContext::class)->withoutScope(
+            fn (): Order => Order::query()->where('public_id', $publicId)->firstOrFail()
+        );
     }
 
     private function balanceOf(int $userId): int

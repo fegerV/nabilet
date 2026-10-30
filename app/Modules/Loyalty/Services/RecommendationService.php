@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Nabilet\Modules\Loyalty\Services;
 
 use Illuminate\Database\Eloquent\Collection;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Core\Users\Models\User;
 use Nabilet\Modules\Events\Domain\EventStatus;
 use Nabilet\Modules\Events\Models\Event;
@@ -59,6 +60,13 @@ final class RecommendationService
      *                                 сеансами, в порядке показа
      */
     public function forUser(User $user, int $limit): Collection
+    {
+        return app(OrganizationContext::class)->withoutScope(
+            fn (): Collection => $this->forUserScoped($user, $limit)
+        );
+    }
+
+    private function forUserScoped(User $user, int $limit): Collection
     {
         $limit = RecommendationPolicy::clampLimit($limit);
         $userId = $user->getKey();

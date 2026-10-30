@@ -6,6 +6,7 @@ namespace Nabilet\Modules\Tickets\Services;
 
 use Illuminate\Support\Facades\Log;
 use Nabilet\Core\Support\AssetUrl;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Core\Support\Money;
 use Nabilet\Core\Support\RuText;
 use Nabilet\Modules\Tickets\Domain\Qr\QrCapacityException;
@@ -77,6 +78,13 @@ class TicketGeneratorService
      * }
      */
     public function generateTicketData(Ticket $ticket): array
+    {
+        return app(OrganizationContext::class)->withoutScope(
+            fn (): array => $this->generateTicketDataScoped($ticket)
+        );
+    }
+
+    private function generateTicketDataScoped(Ticket $ticket): array
     {
         $ticket->loadMissing([
             'order.user',
