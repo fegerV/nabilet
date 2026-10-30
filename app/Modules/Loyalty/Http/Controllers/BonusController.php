@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Loyalty\Http\Controllers;
 
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Nabilet\Core\Support\Paging;
+use Nabilet\Core\Tenancy\OrganizationContext;
 
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -63,12 +65,15 @@ class BonusController extends Controller
         /** @var User $user */
         $user = $request->user();
 
-        $transactions = BonusTransaction::query()
-            ->forUser($user->getKey())
-            // Заказ нужен ради `public_id` в ответе; без `with` ресурс вернул бы
-            // ключ `order_id` отсутствующим, а не `null`.
-            ->with('order')
-            ->paginate($this->perPage($request));
+        $transactions = app(OrganizationContext::class)->withoutScope(
+            fn (): LengthAwarePaginator => BonusTransaction::query()
+                ->forUser($user->getKey())
+                // Заказ нужен ради `public_id` в ответе; без `with` ресурс вернул бы
+                // ключ `order_id` отсутствующим, а не `null`. Заказ читается вне
+                // tenant-скоупа: журнал — кросс-тенантный агрегат по покупателю.
+                ->with('order')
+                ->paginate($this->perPage($request))
+        );
 
         return response()->json([
             'data' => BonusTransactionResource::collection($transactions->items())->resolve($request),

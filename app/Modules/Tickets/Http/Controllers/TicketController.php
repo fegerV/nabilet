@@ -74,7 +74,11 @@ class TicketController extends Controller
         $user = auth('api')->user();
 
         if ($user !== null) {
-            $orderIds = Order::query()->where('user_id', $user->getKey())->pluck('id');
+            // Owner-список «мои билеты» фильтруется по `user_id` — глобальный
+            // tenant-скоуп здесь не нужен (и не имеет контекста у покупателя).
+            $orderIds = app(OrganizationContext::class)->withoutScope(
+                fn () => Order::query()->where('user_id', $user->getKey())->pluck('id')
+            );
         }
 
         $token = CartToken::fromRequest($request);
@@ -90,7 +94,9 @@ class TicketController extends Controller
 
             if ($cartIds->isNotEmpty()) {
                 $orderIds = $orderIds->merge(
-                    Order::query()->whereIn('cart_id', $cartIds)->pluck('id')
+                    app(OrganizationContext::class)->withoutScope(
+                        fn () => Order::query()->whereIn('cart_id', $cartIds)->pluck('id')
+                    )
                 );
             }
         }
@@ -103,11 +109,15 @@ class TicketController extends Controller
             return response()->json(['data' => []]);
         }
 
-        $tickets = Ticket::query()
-            ->with(['orderItem', 'session.venue', 'seat.row.sector', 'standingZone', 'event.ticketTemplate', 'order'])
-            ->whereIn('order_id', $orderIds)
-            ->orderByDesc('created_at')
-            ->get();
+        // Идемпотентный список «мои билеты» уже ограничен `order_id` из
+        // `orderIds` (владелец/токен). Eager-load `order` здесь — вне tenant-скоупа.
+        $tickets = app(OrganizationContext::class)->withoutScope(
+            fn () => Ticket::query()
+                ->with(['orderItem', 'session.venue', 'seat.row.sector', 'standingZone', 'event.ticketTemplate', 'order'])
+                ->whereIn('order_id', $orderIds)
+                ->orderByDesc('created_at')
+                ->get()
+        );
 
         return response()->json([
             'data' => TicketCardResource::collection($tickets),

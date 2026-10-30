@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Orders\Models;
 
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Core\Models\Concerns\HasPublicId;
 use Nabilet\Modules\Core\Tenancy\TenantScoped;
 
@@ -48,6 +49,28 @@ class Order extends Model
 {
     use HasPublicId;
     use TenantScoped;
+
+    protected static function tenantScopeEnabled(): bool
+    {
+        return true;
+    }
+
+    /**
+     * Резолв route-model-binding вне глобального тенант-скоупа.
+     *
+     * Заказ адресуется по id в маршрутах, где доступ проверяется ПОСЛЕ резолва:
+     * `OrderController::show()` — `assertCanSee()` (владелец/гость/сотрудник),
+     * `cancel`/`refund` — middleware `admin`, embed — токен+origin. Если резолвить
+     * под глобальным скоупом (фаза 2), маршрут без активной организации упал бы
+     * `TenantContextMissingError` ещё до проверки доступа. Поэтому резолв работает
+     * вне скоупа, а авторизация остаётся там, где она и была.
+     */
+    public function resolveRouteBinding($value, $field = null): ?Model
+    {
+        return app(OrganizationContext::class)->withoutScope(
+            fn (): ?Model => parent::resolveRouteBinding($value, $field)
+        );
+    }
 
     protected $table = 'orders';
 

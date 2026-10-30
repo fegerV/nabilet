@@ -8,6 +8,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Auth\Services\SessionIssuer;
 use Nabilet\Modules\Core\Users\Models\User;
 use Nabilet\Modules\Loyalty\Domain\ReferralCode as ReferralCodeRules;
@@ -197,7 +198,9 @@ class ReferralTest extends TestCase
 
     private function orderByPublicId(string $publicId): Order
     {
-        return Order::query()->where('public_id', $publicId)->firstOrFail();
+        return app(OrganizationContext::class)->withoutScope(
+            fn (): Order => Order::query()->where('public_id', $publicId)->firstOrFail()
+        );
     }
 
     /** Прогон награды так, как это сделал бы воркер очереди. */

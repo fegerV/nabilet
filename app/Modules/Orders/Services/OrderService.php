@@ -6,6 +6,7 @@ namespace Nabilet\Modules\Orders\Services;
 
 use Nabilet\Core\Errors\InvalidStateTransitionError;
 use Nabilet\Core\Errors\NotFoundError;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Core\StateMachine\StateMachine;
 use Nabilet\Modules\Inventory\StateMachines\InventoryItemStateMachine;
 use Nabilet\Modules\Inventory\Models\InventoryItem;
@@ -190,7 +191,13 @@ class OrderService
         // теперь сам понимает `organization_id` (и `user_id`, и диапазон дат),
         // а прежнее разделение давало два разных набора фильтров — в одном
         // `user_id` работал, в другом молча игнорировался.
-        return $this->repository->paginateAll($filters, $perPage);
+        //
+        // Список заказов УЖЕ фильтруется явно вызывающим: `mine()` — по `user_id`,
+        // staff-`index()` — по `organization_id`. Глобальный tenant-скоуп здесь
+        // избыточен и ломал бы owner-списки без контекста, поэтому обходим его.
+        return app(OrganizationContext::class)->withoutScope(
+            fn (): LengthAwarePaginator => $this->repository->paginateAll($filters, $perPage)
+        );
     }
 
     /**

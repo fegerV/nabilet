@@ -8,6 +8,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Auth\Services\SessionIssuer;
 use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Orders\Services\OrderService;
@@ -209,7 +210,9 @@ class LoyaltyLevelTest extends TestCase
         // сработало Eloquent-событие `updated` и обсервер пересчитал уровень.
         // `Order::save()` не ловит невалидные переходы (машина состояний живёт в
         // `OrderService`), поэтому это честный путь, по которому ходят возвраты.
-        $refunded = Order::query()->findOrFail($third->id);
+        $refunded = app(OrganizationContext::class)->withoutScope(
+            fn (): Order => Order::query()->findOrFail($third->id)
+        );
         $refunded->status = 'refunded';
         $refunded->save();
 

@@ -214,10 +214,12 @@ class OrderController extends Controller
             // ни `totals`, ни `items[].event_title`, а `order_id` — это тот же
             // `public_id` под другим именем. Заказ уже создан в транзакции,
             // поэтому читаем его и отдаём его ресурсом.
-            $order = Order::query()
-                ->with('items')
-                ->where('public_id', (string) $result['order_id'])
-                ->firstOrFail();
+            $order = app(OrganizationContext::class)->withoutScope(
+                fn (): Order => Order::query()
+                    ->with('items')
+                    ->where('public_id', (string) $result['order_id'])
+                    ->firstOrFail()
+            );
 
             return response()->json(['data' => new OrderResource($order)], 201);
         }
@@ -347,7 +349,9 @@ class OrderController extends Controller
             'email' => ['nullable', 'email:rfc', 'max:255'],
         ]);
 
-        $order = Order::query()->where('public_id', (string) $validated['order'])->first();
+        $order = app(OrganizationContext::class)->withoutScope(
+            fn (): ?Order => Order::query()->where('public_id', (string) $validated['order'])->first()
+        );
 
         if ($order === null || ! $this->holdsRequestAccess($request, $order)) {
             throw new NotFoundError('Order', (string) $validated['order']);

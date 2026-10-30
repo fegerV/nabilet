@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Nabilet\Modules\Loyalty\Services;
 
 use Illuminate\Support\Facades\DB;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Core\Users\Models\User;
 use Nabilet\Modules\Loyalty\Domain\LoyaltyTierPolicy;
 use Nabilet\Modules\Loyalty\Models\LoyaltyLevel;
@@ -46,10 +47,15 @@ final class LoyaltyLevelService
     /** Число оплаченных заказов покупателя. */
     public function paidOrdersCount(User $user): int
     {
-        return Order::query()
-            ->where('user_id', $user->getKey())
-            ->where('status', OrderStateMachine::PAID)
-            ->count();
+        // Уровень считается по покупателю ПОПЕРЁК организаций — легитимный
+        // кросс-тенантный агрегат (как рекомендации). Глобальный скоуп `Order`
+        // здесь не нужен и ломал бы публичный /me/loyalty-level без контекста.
+        return app(OrganizationContext::class)->withoutScope(
+            fn (): int => Order::query()
+                ->where('user_id', $user->getKey())
+                ->where('status', OrderStateMachine::PAID)
+                ->count()
+        );
     }
 
     /**

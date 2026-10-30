@@ -8,6 +8,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Nabilet\Core\Errors\NotFoundError;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Core\Users\Models\User;
 use Nabilet\Modules\Loyalty\Http\Resources\RaffleResultsResource;
 use Nabilet\Modules\Loyalty\Models\Raffle;
@@ -70,6 +71,11 @@ class RaffleController extends Controller
         // «билетов было N», и отдельный запрос под него — лишний круг.
         $raffle->loadCount('entries');
 
-        return RaffleResultsResource::make($raffle->load(['orderedPrizes', 'winners']))->response();
+        // Публичная страница результатов не имеет tenant-контекста, а победитель
+        // резолвится через `entry.order` (маскировка адреса). Глобальный скоуп
+        // `Order` здесь обходится: наружу уходит только маскированный display.
+        return app(OrganizationContext::class)->withoutScope(
+            fn () => RaffleResultsResource::make($raffle->load(['orderedPrizes', 'winners']))->response()
+        );
     }
 }

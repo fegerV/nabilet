@@ -462,6 +462,8 @@ WHERE p.organization_id <> o.organization_id;
    этих маршрутов в точке авторизации (или `resolveRouteBinding`), поэтому скоуп
    остаётся выключенным, а write-side + системные обёртки — включёнными и
    валидированными (полный набор зелёный, 1198 тестов).
+    **ИТОГ:** глобальный читающий скоуп на `Order` **включён** (`tenantScopeEnabled(): true`)
+    и весь набор проходит — `OK (1198 tests, 4892 assertions)`, PHPStan `No errors`.
 5. **Фаза 3:** `NOT NULL`/FK после нулевого гейта `null_org = 0`.
 6. **Постоянно:** `php artisan config:validate` в деплое, `php tests/run.php` и
    `php vendor/bin/phpunit` в CI.

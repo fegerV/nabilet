@@ -7,6 +7,7 @@ namespace Nabilet\Core\Database;
 use Illuminate\Database\Eloquent\Model;
 use Nabilet\Core\Errors\NotFoundError;
 use Nabilet\Core\Support\DatabaseId;
+use Nabilet\Core\Tenancy\OrganizationContext;
 
 /**
  * «Число в пути — это внутренний id, всё остальное — public_id».
@@ -61,11 +62,15 @@ final class IdentifierLookup
         /** @var TModel $instance */
         $instance = new $model();
 
-        $query = $instance->newQuery();
-
-        return DatabaseId::isNumeric($value)
-            ? $query->whereKey((int) $value)->first()
-            : $query->where('public_id', $value)->first();
+        // Резолв идентификатора ничего не раскрывает: доступ проверяется в
+        // контроллере ПОСЛЕ резолва. Для моделей с глобальным tenant-скоупом
+        // (например `Order`) резолв вне скоупа обязателен — иначе маршрут без
+        // активной организации упал бы ещё до проверки авторизации.
+        return app(OrganizationContext::class)->withoutScope(
+            static fn (): ?Model => DatabaseId::isNumeric($value)
+                ? $instance->newQuery()->whereKey((int) $value)->first()
+                : $instance->newQuery()->where('public_id', $value)->first()
+        );
     }
 
     /**

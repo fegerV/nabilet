@@ -7,6 +7,7 @@ namespace Nabilet\Modules\Cart\Services;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Nabilet\Core\Errors\ConflictError;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Core\Errors\DomainRuleViolation;
 use Nabilet\Core\Errors\NotFoundError;
 use Nabilet\Core\Errors\ValidationError;
@@ -644,11 +645,14 @@ final class CartCheckoutService
             return null;
         }
 
-        $order = Order::query()
-            ->where('cart_id', $cartId)
-            ->orderBy('id')
-            ->with('items')
-            ->first();
+        // Replay гостевого checkout ищет заказ по `cart_id` — без tenant-контекста.
+        $order = app(OrganizationContext::class)->withoutScope(
+            fn () => Order::query()
+                ->where('cart_id', $cartId)
+                ->orderBy('id')
+                ->with('items')
+                ->first()
+        );
 
         if ($order === null) {
             return null;

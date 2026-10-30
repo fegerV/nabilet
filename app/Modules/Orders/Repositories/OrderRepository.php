@@ -6,6 +6,7 @@ namespace Nabilet\Modules\Orders\Repositories;
 
 use Illuminate\Support\Facades\DB;
 use Nabilet\Core\Support\LikePattern;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Orders\Models\OrderItem;
 use Nabilet\Modules\Orders\StateMachines\OrderStateMachine;
@@ -209,18 +210,24 @@ class OrderRepository
      */
     public function getRevenueByOrganization(int $organizationId, string $dateFrom, string $dateTo): int
         {
-            return (int) $this->model->where('organization_id', $organizationId)
-                ->where('status', OrderStateMachine::PAID)
-                ->whereBetween('created_at', [$dateFrom, $dateTo])
-                ->sum('total_amount');
+            // Метод уже явно фильтрует по `organization_id` — глобальный скоуп
+            // здесь избыточен, а отчёты вызываются и из staff-контекста.
+            return app(OrganizationContext::class)->withoutScope(
+                fn (): int => (int) $this->model->where('organization_id', $organizationId)
+                    ->where('status', OrderStateMachine::PAID)
+                    ->whereBetween('created_at', [$dateFrom, $dateTo])
+                    ->sum('total_amount')
+            );
         }
 
     public function getCountByStatus(int $organizationId): array
     {
-        return $this->model->where('organization_id', $organizationId)
-            ->select('status', \DB::raw('count(*) as count'))
-            ->groupBy('status')
-            ->pluck('count', 'status')
-            ->toArray();
+        return app(OrganizationContext::class)->withoutScope(
+            fn (): array => $this->model->where('organization_id', $organizationId)
+                ->select('status', \DB::raw('count(*) as count'))
+                ->groupBy('status')
+                ->pluck('count', 'status')
+                ->toArray()
+        );
     }
 }

@@ -13,6 +13,7 @@ use Nabilet\Core\Errors\ConflictError;
 use Nabilet\Core\Errors\DomainRuleViolation;
 use Nabilet\Core\Errors\NotFoundError;
 use Nabilet\Core\Support\Money;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Cart\Models\Cart;
 use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Orders\Models\PromoCode;
@@ -197,6 +198,16 @@ final class PromoCodeService
      * Полная доменная оценка кода против корзины.
      */
     public function evaluateForCart(PromoCode $code, Cart $cart): PromoEvaluation
+    {
+        // Оценка лимитов промокода (per_user_limit, first_purchase) считается по
+        // покупателю ПОПЕРЁК организаций — это легитимный кросс-тенантный агрегат.
+        // Глобальный скоуп `Order` здесь не нужен и ломал бы checkout без контекста.
+        return app(OrganizationContext::class)->withoutScope(
+            fn (): PromoEvaluation => $this->evaluateForCartScoped($code, $cart)
+        );
+    }
+
+    private function evaluateForCartScoped(PromoCode $code, Cart $cart): PromoEvaluation
     {
         [$lines, $priorOrders, $userRedemptions] = $this->buildContext($cart, $code);
 
