@@ -10,6 +10,7 @@ use Illuminate\Http\Request;
 use Nabilet\Core\Errors\AuthError;
 use Nabilet\Core\Errors\NotFoundError;
 use Nabilet\Core\Support\Sha256Hex;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Analytics\Models\EmbedDomain;
 use Nabilet\Modules\Cart\Models\Cart;
 use Nabilet\Modules\Embed\Domain\EmbedOrigin;
@@ -336,7 +337,12 @@ final class EmbedAccessService
             return null;
         }
 
-        return $model::query()
+        // Lookup по public_id/цифровому id — НЕ решение о доступе: каждой
+        // найденной моделью следом занимается свой проверочный метод
+        // (организация события, токен корзины). Резолвер служит и скоупнутым
+        // моделям (Order, Cart), а embed-запросы тенант-контекста не имеют —
+        // читаем в bypass и оставляем отказ за явными проверками ниже.
+        return app(OrganizationContext::class)->withoutScope(fn () => $model::query()
             ->with($with)
             ->where(function ($query) use ($reference): void {
                 $query->where('public_id', $reference);
@@ -345,6 +351,6 @@ final class EmbedAccessService
                     $query->orWhere('id', (int) $reference);
                 }
             })
-            ->first();
+            ->first());
     }
 }

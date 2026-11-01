@@ -245,11 +245,15 @@ final class CartItemService
         }
 
         return DB::transaction(function () use ($sessionId, $itemId, $token) {
-            $cart = Cart::query()
-                ->where('session_id', $sessionId)
-                ->where('status', CartStatus::ACTIVE)
-                ->where('cart_token', $token)
-                ->firstOrFail();
+            // Корзина — capability токена: гость без контекста, поиск удаляемой
+            // позиции начинается с корзины — в bypass.
+            $cart = app(OrganizationContext::class)->withoutScope(
+                fn () => Cart::query()
+                    ->where('session_id', $sessionId)
+                    ->where('status', CartStatus::ACTIVE)
+                    ->where('cart_token', $token)
+                    ->firstOrFail()
+            );
 
             // Позиция — ребёнок корзины токена (capability): у гостя контекста
             // нет, поиск удаляемой позиции — в bypass.
@@ -326,12 +330,16 @@ final class CartItemService
         }
 
         return DB::transaction(function () use ($sessionId, $token): array {
-            $cart = Cart::query()
-                ->where('session_id', $sessionId)
-                ->where('status', CartStatus::ACTIVE)
-                ->where('cart_token', $token)
-                ->lockForUpdate()
-                ->first();
+            // Корзина — capability токена: гость без контекста, продление
+            // холда начинается с корзины — в bypass.
+            $cart = app(OrganizationContext::class)->withoutScope(
+                fn () => Cart::query()
+                    ->where('session_id', $sessionId)
+                    ->where('status', CartStatus::ACTIVE)
+                    ->where('cart_token', $token)
+                    ->lockForUpdate()
+                    ->first()
+            );
 
             $now = CarbonImmutable::now();
             // РќРµ РІРѕСЃРєСЂРµСЃРёС‚СЊ РёСЃС‚С‘РєС€СѓСЋ РєРѕСЂР·РёРЅСѓ: sweeper РјРѕРі СѓР¶Рµ РІРµСЂРЅСѓС‚СЊ РјРµСЃС‚Р°

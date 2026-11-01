@@ -338,17 +338,22 @@ class CartController extends Controller
      */
     private function ownedCart(Request $request, string $cartPublicId, string $token): ?Cart
     {
-        return Cart::query()
-            ->where('public_id', $cartPublicId)
-            ->where('status', CartStatus::ACTIVE)
-            ->where(function ($query) use ($token, $request): void {
-                $query->where('cart_token', $token);
+        // Корзина — capability токена / владелец аккаунта: у гостя контекста
+        // нет, lookup — в bypass. Владение решают фильтры `cart_token`/
+        // `user_id` внутри запроса — чужой public_id остаётся 404.
+        return app(OrganizationContext::class)->withoutScope(
+            fn () => Cart::query()
+                ->where('public_id', $cartPublicId)
+                ->where('status', CartStatus::ACTIVE)
+                ->where(function ($query) use ($token, $request): void {
+                    $query->where('cart_token', $token);
 
-                if (($user = $request->user()) !== null) {
-                    $query->orWhere('user_id', $user->getKey());
-                }
-            })
-            ->first();
+                    if (($user = $request->user()) !== null) {
+                        $query->orWhere('user_id', $user->getKey());
+                    }
+                })
+                ->first()
+        );
     }
 
     /** Лимит позиций на заказ — из конфига, тот же, что у `addItem()`. */

@@ -49,6 +49,37 @@ class Cart extends Model
         'total_amount' => 'string',
     ];
 
+    /**
+     * Глобальный читающий скоуп (двенадцатая модель после Order, Payment,
+     * Ticket, Refund, TicketScan, CheckinDevice, OfflineBundle,
+     * PaymentTransaction, OrderItem, SeatHold и CartItem).
+     *
+     * Запись и так защищена трейтом (организация выводится из сеанса через
+     * TenantResolver; фаза 3 сделала колонку NOT NULL): корзину чужой
+     * организации создать нельзя.
+     *
+     * Чтение живёт по capability токена корзины (`cart_token`), а не по
+     * организации HTTP-запроса: гости работают без тенант-контекста, владение
+     * корзиной объявляется фильтром по токену/`user_id` внутри запроса. Пути
+     * в нужном режиме:
+     *   - витрина (`CartController`, включая `ownedCart`), полная очистка
+     *     и `getOrCreateCart` (`CartService`) — в bypass;
+     *   - сервис позиций (`CartItemService`: удаление позиции, продление
+     *     холда) и чекаут (`CartCheckoutService`) — в bypass;
+     *   - проверка права оплаты по токену (`OrderController`,
+     *     `PaymentController`, `EmbedController::callerHoldsCart`) — в bypass;
+     *   - промокоды по корзине (`PromoCodeController::resolveCart`) — в bypass;
+     *   - embed-путь (`EmbedAccessService::findByReference` — lookup,
+     *     решение о доступе после) — в bypass;
+     *   - пересчёт цен активных корзин (`InventoryService`) — системный
+     *     путь в bypass; sweeper просроченных заказов (`StaleOrderExpirer`)
+     *     уже целиком в bypass с шага `Order`.
+     */
+    protected static function tenantScopeEnabled(): bool
+    {
+        return true;
+    }
+
     public function user(): BelongsTo
         {
             return $this->belongsTo(User::class);

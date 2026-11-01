@@ -133,6 +133,19 @@
 | `app/Modules/Inventory/Services/InventoryService.php` | Пересчёт цен открытых корзин — системный путь (переоценка сеанса): выборка позиций по ЯВНОМУ списку склада и суммы по корзинам — в bypass |
 | `phpstan-baseline.neon` | Ratchet почищен (шаг вскрыл устаревшие записи): удалены `modelKeys`-на-CartItemService, `lockOwnedByPublicId`/`convert`-на-CartCheckoutService, `fresh()`-на-CartItemService — типы стали mixed после bypass-обёрток; счётчик `update()`-на-stdClass 6→4 |
 | `tests/Feature/Core/TenantScopedReadTest.php` | Нативный скоуп `CartItem`: без контекста отказ, с контекстом фильтр, в bypass видны все |
+| `app/Modules/Cart/Models/Cart.php` | Фаза 2, чтение: глобальный скоуп включён на `Cart` — двенадцатая модель. Запись защищена трейтом (организация из сеанса через `TenantResolver`, фаза 3 — NOT NULL). Чтение живёт по capability токена корзины (`cart_token`), а не по организации HTTP-запроса: корзина гостя идентифицируется токеном, владелец аккаунта — `user_id` |
+| `app/Modules/Cart/Services/CartService.php` | `getOrCreateCart` и `clearCart`: поиск активной корзины по сеансу+токену — в bypass (гость без контекста; создание корзины идёт мимо скоупа — организация выводится из сеанса) |
+| `app/Modules/Cart/Services/CartItemService.php` | Дополнение (корзины): поиск корзины при удалении позиции и при продлении холда — в bypass |
+| `app/Modules/Cart/Http/Controllers/CartController.php` | Дополнение: `ownedCart` (общая точка владения для `showByPublicId`/`addItemTo`/`removeItemFrom`) — в bypass; чужая корзина остаётся 404 по фильтру токен/`user_id` |
+| `app/Modules/Orders/Http/Controllers/OrderController.php` | Дополнение: проверка права оплаты гостем (`mayPay` — заказ уже авторизован, владение решает сравнение токена корзины) — в bypass |
+| `app/Modules/Payments/Http/Controllers/PaymentController.php` | Дополнение: `holdsRequestAccess` — тот же токен-capability путь оплаты — в bypass |
+| `app/Modules/Tickets/Http/Controllers/TicketController.php` | Дополнение: «мои билеты» гостя — id корзин по токену (capability, `strlen >= 32`) — в bypass, слияние с order-списком покупателя |
+| `app/Modules/Pricing/Http/Controllers/PromoCodeController.php` | `resolveCart`: обе ветки резолва корзины (по токену и по id из запроса) — в bypass; гостевой путь проверки промокода без контекста |
+| `app/Modules/Embed/Http/Controllers/EmbedController.php` | Дополнение: перечитывание корзины после добавления позиции, `callerHoldsCart` и чтение созданного заказа в ответе `createOrder` — в bypass. Чтение заказа чинит латентный 500: ветка жила без контекста с шага `Order` (embed-тесты её не достигали — все негативные) |
+| `app/Modules/Embed/Services/EmbedAccessService.php` | `findByReference` — в bypass: lookup по `public_id`/id — НЕ решение о доступе (следом идут явные проверки организации события и токена корзины). Резолвер служит скоупнутым `Order`/`Cart`, а embed-запросы контекста не имеют |
+| `app/Modules/Inventory/Services/InventoryService.php` | Дополнение (/cart): выборка активных корзин при переоценке цен сеанса — системный путь, контекст вызывающего не сужает выборку |
+| `phpstan-baseline.neon` | Ratchet шага `Cart`: запись `items()`-на-`stdClass` удалена (сайт ушёл в mixed), счётчик `update()`-на-`stdClass` на `CartItemService` 4→3 |
+| `tests/Feature/Core/TenantScopedReadTest.php` | Нативный скоуп `Cart`: без контекста отказ, с контекстом фильтр, в bypass видны все |
 | `tests/Feature/Core/TenantScopedReadTest.php` | Нативный скоуп `OrderItem`: без контекста отказ, с контекстом фильтр, в bypass видны все |
 | `tests/Feature/Core/TenantScopedReadTest.php` | Нативный скоуп `SeatHold`: без контекста отказ, с контекстом фильтр, в bypass видны все |
 | `tests/Feature/Core/TenantScopedReadTest.php` | Нативный скоуп `PaymentTransaction`: без контекста отказ, с контекстом фильтр, в bypass видны все |
@@ -155,7 +168,7 @@ dev-БД: 40 колонок `organization_id NOT NULL`, 40 FK `fk_<table>_org`.
 
 | Риск | Почему не закрыт в этом проходе |
 |------|--------------------------------|
-| `organization_id` у 70 таблиц | **Закрыт структурно.** Фазы 0–3 завершены: 40 таблиц класса A — `NOT NULL` + FK; запись наполняет тенанта из контекста/родителя; глобальный читающий скоуп включён на `Order`, `Payment`, `Ticket`, `Refund`, `TicketScan`, `CheckinDevice`, `OfflineBundle`, `PaymentTransaction`, `OrderItem`, `SeatHold` и `CartItem`, остальные модели — точечно по мере аудита их системных путей чтения (§3.3) |
+| `organization_id` у 70 таблиц | **Закрыт структурно.** Фазы 0–3 завершены: 40 таблиц класса A — `NOT NULL` + FK; запись наполняет тенанта из контекста/родителя; глобальный читающий скоуп включён на `Order`, `Payment`, `Ticket`, `Refund`, `TicketScan`, `CheckinDevice`, `OfflineBundle`, `PaymentTransaction`, `OrderItem`, `SeatHold`, `CartItem` и `Cart`, остальные модели — точечно по мере аудита их системных путей чтения (§3.3) |
 | Списки/отчёты вне Orders/Payments/Tickets/Checkin | Проверены только пути, где аудит нашёл живую утечку; остальные закрываются общим `TenantScoped` в фазе 2 |
 | `PaymentController::store` и `OrderController::resendTicket` вне `auth:api` | Staff-ветки там не единственная защита; полноценно закрывается контекстом + схемой в фазе 2 |
 

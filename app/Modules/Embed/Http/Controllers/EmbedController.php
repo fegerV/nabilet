@@ -255,7 +255,11 @@ final class EmbedController extends Controller
             $request->user('api'),
         );
 
-        $fresh = Cart::query()->with('items.inventoryItem')->find($model->id);
+        // Корзина с позициями — дети capability-токена: витрина-эмбед отвечает
+        // гостю без тенант-контекста, перечитывание после добавления — в bypass.
+        $fresh = app(OrganizationContext::class)->withoutScope(
+            fn () => Cart::query()->with('items.inventoryItem')->find($model->id)
+        );
 
         return response()->json(['data' => new CartResource($fresh)], 201);
     }
@@ -302,10 +306,15 @@ final class EmbedController extends Controller
             'promo_code' => $validated['promo_code'] ?? null,
         ], $token);
 
-        $order = Order::query()
-            ->with(['items', 'payments'])
-            ->where('public_id', $result['order_id'])
-            ->firstOrFail();
+        // Заказ только что создан чекаутом этой корзины: чтение для ответа —
+        // в bypass, у гостя контекста нет (дети корзины, доступ решён
+        // EmbedAccessService выше).
+        $order = app(OrganizationContext::class)->withoutScope(
+            fn () => Order::query()
+                ->with(['items', 'payments'])
+                ->where('public_id', $result['order_id'])
+                ->firstOrFail()
+        );
 
         return response()->json(['data' => new OrderResource($order)], 201);
     }
@@ -390,10 +399,14 @@ final class EmbedController extends Controller
     /** Does the caller hold the cart this order was created from? */
     private function callerHoldsCart(int $cartId, string $token): bool
     {
-        return Cart::query()
-            ->where('id', $cartId)
-            ->where('cart_token', $token)
-            ->exists();
+        // Токен корзины — capability гостя: чтение `Cart` в bypass, владение
+        // решает сравнение токена в фильтре — чужая корзина тоже «не держится».
+        return app(OrganizationContext::class)->withoutScope(
+            fn () => Cart::query()
+                ->where('id', $cartId)
+                ->where('cart_token', $token)
+                ->exists()
+        );
     }
 
     /**

@@ -587,7 +587,12 @@ class InventoryService
      */
     protected function recalculateAffectedCarts(): int
     {
-        $carts = Cart::query()->where('status', CartStatus::ACTIVE)->get();
+        // Активные корзины для пересчёта после переоценки — системный путь:
+        // контекст вызывающего (консоль/сотрудник) не должен сужать выборку
+        // корзин, цены в которых уже разошлись с позициями склада.
+        $carts = app(OrganizationContext::class)->withoutScope(
+            fn () => Cart::query()->where('status', CartStatus::ACTIVE)->get()
+        );
         $recalculated = 0;
 
         foreach ($carts as $cart) {

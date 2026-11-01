@@ -88,9 +88,13 @@ class TicketController extends Controller
         // accept short account-derived tokens; otherwise a guessed short token
         // could disclose another buyer's tickets.
         if ($token !== null && strlen($token) >= 32) {
-            $cartIds = Cart::query()
-                ->where('cart_token', $token)
-                ->pluck('id');
+            // Корзины по гостевому токену — capability: у гостя контекста нет,
+            // список id корзин для «моих билетов» — в bypass.
+            $cartIds = app(OrganizationContext::class)->withoutScope(
+                fn () => Cart::query()
+                    ->where('cart_token', $token)
+                    ->pluck('id')
+            );
 
             if ($cartIds->isNotEmpty()) {
                 $orderIds = $orderIds->merge(

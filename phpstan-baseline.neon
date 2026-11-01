@@ -107,14 +107,10 @@ parameters:
 			path: app/Modules/Cart/Services/CartItemService.php
 
 		-
-			message: "#^Cannot call method items\\(\\) on stdClass\\.$#"
-			count: 1
+			message: "#^Cannot call method update\\(\\) on stdClass\\.$#"
+			count: 3
 			path: app/Modules/Cart/Services/CartItemService.php
 
-		-
-			message: "#^Cannot call method update\\(\\) on stdClass\\.$#"
-			count: 4
-			path: app/Modules/Cart/Services/CartItemService.php
 		-
 			message: "#^Parameter \\#2 \\$inventoryItem of method Nabilet\\\\Modules\\\\Cart\\\\Services\\\\CartItemService\\:\\:createHold\\(\\) expects Nabilet\\\\Modules\\\\Inventory\\\\Models\\\\InventoryItem, stdClass given\\.$#"
 			count: 1

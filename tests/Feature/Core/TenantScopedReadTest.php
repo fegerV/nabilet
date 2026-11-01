@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Nabilet\Core\Errors\TenantContextMissingError;
 use Nabilet\Core\Tenancy\OrganizationContext;
+use Nabilet\Modules\Cart\Models\Cart;
 use Nabilet\Modules\Cart\Models\CartItem;
 use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Orders\Models\OrderItem;
@@ -527,6 +528,56 @@ final class TenantScopedReadTest extends TestCase
             app(OrganizationContext::class)->withoutScope(fn () => CartItem::query()->count()),
             'withoutScope() обязан видеть позиции корзин всех организаций'
         );
+    }
+
+    /**
+     * Скоуп `Cart`: корзина гостя — capability токена корзины (не организация
+     * HTTP-запроса). Корзина маркируется сеансом той же FK-цепочки.
+     */
+    public function test_cart_read_scope_is_native(): void
+    {
+        $orgA = $this->organization();
+        $orgB = $this->organization();
+
+        $this->makeCart($orgA);
+        $this->makeCart($orgB);
+
+        // Без контекста — отказ, а не «показать все корзины».
+        try {
+            Cart::query()->count();
+            $this->fail('Ожидался TenantContextMissingError без контекста');
+        } catch (TenantContextMissingError $e) {
+            $this->addToAssertionCount(1);
+        }
+
+        app(OrganizationContext::class)->set((string) $orgA);
+        $this->assertSame(1, Cart::query()->count(), 'чужие корзины не видны');
+
+        $this->assertSame(
+            2,
+            app(OrganizationContext::class)->withoutScope(fn () => Cart::query()->count()),
+            'withoutScope() обязан видеть корзины всех организаций'
+        );
+    }
+
+    private function makeCart(int $organizationId): void
+    {
+        [$orgId, $eventId, $sessionId] = $this->seedSellableSeat(
+            available: 2,
+            organizationId: $organizationId,
+        );
+        \assert($orgId === $organizationId);
+
+        $now = now()->toDateTimeString();
+
+        // status берёт дефолт 'active' — активная корзина.
+        DB::table('carts')->insert([
+            'public_id' => (string) Str::ulid()->toBase32(),
+            'organization_id' => $organizationId,
+            'session_id' => $sessionId,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
     }
 
     private function makeCartItem(int $organizationId): void

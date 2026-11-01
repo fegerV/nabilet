@@ -201,7 +201,11 @@ class PromoCodeController extends Controller
         $token = trim((string) $request->input('cart_token', ''));
 
         if ($token !== '') {
-            $cart = Cart::query()->where('cart_token', $token)->where('status', CartStatus::ACTIVE)->first();
+            // Корзина — capability токена: гостевой путь промокода работает
+            // без тенант-контекста, lookup — в bypass.
+            $cart = app(OrganizationContext::class)->withoutScope(
+                fn () => Cart::query()->where('cart_token', $token)->where('status', CartStatus::ACTIVE)->first()
+            );
 
             if ($cart === null) {
                 // NotFoundError(resource, resourceId): код составляется классом
@@ -215,7 +219,11 @@ class PromoCodeController extends Controller
         $cartId = $request->input('cart_id');
 
         if (is_string($cartId) && ctype_digit($cartId)) {
-            $cart = Cart::query()->whereKey((int) $cartId)->where('status', CartStatus::ACTIVE)->first();
+            // Тот же гостевой путь: id корзины из тела запроса, контекста
+            // у гостя нет — lookup в bypass.
+            $cart = app(OrganizationContext::class)->withoutScope(
+                fn () => Cart::query()->whereKey((int) $cartId)->where('status', CartStatus::ACTIVE)->first()
+            );
 
             if ($cart === null) {
                 throw new NotFoundError('cart', $cartId);

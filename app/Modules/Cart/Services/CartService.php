@@ -67,11 +67,17 @@ class CartService
      */
     public function getOrCreateCart(string $sessionId, string $token, ?User $buyer = null): Cart
     {
-        $cart = Cart::query()
-            ->where('session_id', $sessionId)
-            ->where('status', CartStatus::ACTIVE)
-            ->where('cart_token', $token)
-            ->first();
+        // Корзина — capability токена: гость работает без тенант-контекста,
+        // поиск активной корзины покупателя — в bypass. Владение объявлено
+        // фильтром по токену; создание ниже идёт мимо скоупа (организация
+        // выводится из сеанса через TenantResolver).
+        $cart = app(OrganizationContext::class)->withoutScope(
+            fn () => Cart::query()
+                ->where('session_id', $sessionId)
+                ->where('status', CartStatus::ACTIVE)
+                ->where('cart_token', $token)
+                ->first()
+        );
 
         if (!$cart) {
             $session = Session::findOrFailBySessionId($sessionId);
@@ -153,11 +159,14 @@ class CartService
         }
 
         return DB::transaction(function () use ($sessionId, $token) {
-            $cart = Cart::query()
-                ->where('session_id', $sessionId)
-                ->where('status', CartStatus::ACTIVE)
-                ->where('cart_token', $token)
-                ->first();
+            // Корзина — capability токена: гость без контекста, поиск — в bypass.
+            $cart = app(OrganizationContext::class)->withoutScope(
+                fn () => Cart::query()
+                    ->where('session_id', $sessionId)
+                    ->where('status', CartStatus::ACTIVE)
+                    ->where('cart_token', $token)
+                    ->first()
+            );
 
             if (!$cart) {
                 return false;

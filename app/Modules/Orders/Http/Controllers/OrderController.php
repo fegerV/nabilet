@@ -447,10 +447,14 @@ class OrderController extends Controller
             return false;
         }
 
-        return Cart::query()
-            ->where('id', $order->cart_id)
-            ->where('cart_token', $token)
-            ->exists();
+        // Токен корзины — capability гостя: заказ уже авторизован выше,
+        // владение решает сравнение токена в фильтре — чтение в bypass.
+        return app(OrganizationContext::class)->withoutScope(
+            fn () => Cart::query()
+                ->where('id', $order->cart_id)
+                ->where('cart_token', $token)
+                ->exists()
+        );
     }
 
     /**
