@@ -56,6 +56,7 @@ final class TenantResolver
         'refunds' => ['order_id', 'orders'],
         'tickets' => ['order_id', 'orders'],
         'ticket_scans' => ['ticket_id', 'tickets'],
+        'offline_bundles' => ['checkin_device_id', 'checkin_devices'],
 
         // Залы и схемы
         'halls' => ['venue_id', 'venues'],

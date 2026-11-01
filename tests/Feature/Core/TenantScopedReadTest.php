@@ -13,6 +13,7 @@ use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Payments\Models\Payment;
 use Nabilet\Modules\Payments\Models\Refund;
 use Nabilet\Modules\Tickets\Models\CheckinDevice;
+use Nabilet\Modules\Tickets\Models\OfflineBundle;
 use Nabilet\Modules\Tickets\Models\Ticket;
 use Nabilet\Modules\Tickets\Models\TicketScan;
 use Nabilet\Tests\Support\SellableSeatFixtures;
@@ -289,6 +290,37 @@ final class TenantScopedReadTest extends TestCase
         );
     }
 
+    /**
+     * Скоуп `OfflineBundle`: бандл — подписанный снимок билетов, уезжающий
+     * на устройство чекера; чужой бандл = вся аудитория зала у чужого
+     * устройства. Сын устройства и события, строки пишутся прямо в таблицу.
+     */
+    public function test_offline_bundle_read_scope_is_native(): void
+    {
+        $orgA = $this->organization();
+        $orgB = $this->organization();
+
+        $this->makeBundle($orgA);
+        $this->makeBundle($orgB);
+
+        // Без контекста — отказ, а не «показать все бандлы».
+        try {
+            OfflineBundle::query()->count();
+            $this->fail('Ожидался TenantContextMissingError без контекста');
+        } catch (TenantContextMissingError $e) {
+            $this->addToAssertionCount(1);
+        }
+
+        app(OrganizationContext::class)->set((string) $orgA);
+        $this->assertSame(1, OfflineBundle::query()->count(), 'чужие бандлы не видны');
+
+        $this->assertSame(
+            2,
+            app(OrganizationContext::class)->withoutScope(fn () => OfflineBundle::query()->count()),
+            'withoutScope() обязан видеть бандлы всех организаций'
+        );
+    }
+
     private function makeRefund(int $organizationId): void
     {
         $order = $this->makeOrder($organizationId);
@@ -387,6 +419,34 @@ final class TenantScopedReadTest extends TestCase
             'organization_id' => $organizationId,
             'name' => 'Чекер ' . strtoupper(Str::random(6)),
             'device_token_hash' => hash('sha256', (string) Str::ulid()),
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+    }
+
+    /**
+     * Бандл — сын устройства (makeDevice) с сеансом из того же арендатора
+     * (seedSellableSeat). Схема_version/counts/status берут дефолты колонок;
+     * hash бандла уникален сам по себе, как у боевого OfflineBundleBuilder
+     * (device-scoped Sha256Hex).
+     */
+    private function makeBundle(int $organizationId): void
+    {
+        [, $eventId, $sessionId] = $this->seedSellableSeat(
+            available: 2,
+            organizationId: $organizationId,
+        );
+
+        $now = now()->toDateTimeString();
+
+        DB::table('offline_bundles')->insert([
+            'public_id' => (string) Str::ulid()->toBase32(),
+            'organization_id' => $organizationId,
+            'checkin_device_id' => $this->makeDevice($organizationId),
+            'event_id' => $eventId,
+            'session_id' => $sessionId,
+            'bundle_hash' => hash('sha256', (string) Str::ulid()),
+            'generated_at' => $now,
             'created_at' => $now,
             'updated_at' => $now,
         ]);

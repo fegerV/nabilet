@@ -114,6 +114,10 @@
 | `app/Modules/Tickets/Models/CheckinDevice.php` | Фаза 2 + запись: подключён трейт `TenantScoped` (модель его не использовала вовсе — единственный писатель `DeviceTokenIssuer::issue` передавал организацию сам, без защиты от записи чужому тенанту) и включён глобальный читающий скоуп — шестая модель после `Order`, `Payment`, `Ticket`, `Refund`, `TicketScan`. Резолв по токену чекера — capability — идёт в bypass, активный арендатор ставится из найденного устройства. Route-binding не нужен — устройство резолвится `IdentifierLookup` (сам в bypass) по строковому параметру |
 | `app/Modules/Checkin/Http/Middleware/AuthenticateChecker.php` | Lookup по `device_token_hash` в bypass: организации в контексте ещё нет — она ставится ИЗ найденного устройства строкой ниже (без изменений) |
 | `app/Modules/Checkin/Http/Controllers/Admin/OfflineBundleController.php` | `deviceIdOrStaff`: lookup устройства по токену в bypass; после нахождения контекст ставится из устройства — иначе `touch` (телеметрия `last_seen`) молча терялась бы на скоупе без контекста |
+| `app/Modules/Tickets/Models/OfflineBundle.php` | Фаза 2 + запись: подключён трейт `TenantScoped` (модель его не использовала вовсе — единственный писатель `OfflineBundleService::issue` передавал организацию сам) и включён глобальный читающий скоуп — седьмая модель после `Order`, `Payment`, `Ticket`, `Refund`, `TicketScan`, `CheckinDevice`. Идемпотентный повтор выпуска ищет бандл по хешу того же устройства (хеш device-scoped) под контекстом — не в bypass |
+| `app/Modules/Checkin/Http/Controllers/Admin/OfflineBundleController.php` | `show`: бандл резолвится в bypass ДО того, как токен чекера поставит арендатора в контекст (иначе у устройства был бы 500 вместо 404); доступ по-прежнему решают `assertCanAccess` (сотрудник) и сравнение организации/устройства (чекер) |
+| `app/Modules/Core/Tenancy/TenantResolver.php` | Карта родителей дополнена: `offline_bundles` → `checkin_device_id` → `checkin_devices` (устройства — конец цепочки, у них своя `organization_id`) — системная запись бандла без контекста выводит тенанта из родителя |
+| `tests/Feature/Core/TenantScopedReadTest.php` | Нативный скоуп `OfflineBundle`: без контекста отказ, с контекстом фильтр, в bypass видны все |
 | `tests/Feature/Core/TenantScopedReadTest.php` | Нативный скоуп `CheckinDevice`: без контекста отказ, с контекстом фильтр, в bypass видны все |
 | `tests/Unit/TenancyPhase1ConsistencyTest.php` | Сторож расширен: список таблиц фазы 3 обязан совпадать со списком фазы 1 |
 | `tests/Support/SellableSeatFixtures.php` и фикстуры feature-тестов | Все прямые вставки строк класса A заполняют `organization_id` из уже известного родителя |
@@ -130,7 +134,7 @@ dev-БД: 40 колонок `organization_id NOT NULL`, 40 FK `fk_<table>_org`.
 
 | Риск | Почему не закрыт в этом проходе |
 |------|--------------------------------|
-| `organization_id` у 70 таблиц | **Закрыт структурно.** Фазы 0–3 завершены: 40 таблиц класса A — `NOT NULL` + FK; запись наполняет тенанта из контекста/родителя; глобальный читающий скоуп включён на `Order`, `Payment`, `Ticket`, `Refund`, `TicketScan` и `CheckinDevice`, остальные модели — точечно по мере аудита их системных путей чтения (§3.3) |
+| `organization_id` у 70 таблиц | **Закрыт структурно.** Фазы 0–3 завершены: 40 таблиц класса A — `NOT NULL` + FK; запись наполняет тенанта из контекста/родителя; глобальный читающий скоуп включён на `Order`, `Payment`, `Ticket`, `Refund`, `TicketScan`, `CheckinDevice` и `OfflineBundle`, остальные модели — точечно по мере аудита их системных путей чтения (§3.3) |
 | Списки/отчёты вне Orders/Payments/Tickets/Checkin | Проверены только пути, где аудит нашёл живую утечку; остальные закрываются общим `TenantScoped` в фазе 2 |
 | `PaymentController::store` и `OrderController::resendTicket` вне `auth:api` | Staff-ветки там не единственная защита; полноценно закрывается контекстом + схемой в фазе 2 |
 

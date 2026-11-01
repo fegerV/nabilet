@@ -14,13 +14,43 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Nabilet\Modules\Core\Organizations\Models\Organization;
 use Nabilet\Modules\Events\Models\Event;
 use Nabilet\Modules\Sessions\Models\Session;
+use Nabilet\Modules\Core\Tenancy\TenantScoped;
 
 /** Eloquent mapping for the signed, device-bound offline ticket bundle. */
 class OfflineBundle extends Model
 {
     use HasPublicId;
+    use TenantScoped;
 
     protected $table = 'offline_bundles';
+
+    /**
+     * Глобальный читающий скоуп (седьмая модель после Order, Payment, Ticket,
+     * Refund, TicketScan и CheckinDevice).
+     *
+     * Трейт подключён тем же шагом: до него модель не использовала
+     * `TenantScoped` вовсе — единственный писатель
+     * (`OfflineBundleService::issue`) передавал `organization_id` сам, без
+     * защиты от записи чужому тенанту; совпадение с контекстом теперь
+     * проверяет трейт.
+     *
+     * Существующие пути чтения уже живут в нужном режиме и остаются в нём:
+     *   - выпуск бандла (`OfflineBundleService::issue`) идёт под контекстом
+     *     устройства/сотрудника: `$device->organization_id` проверен
+     *     `assertCanAccess` ещё до выпуска, а idемпотентный повтор ищет бандл
+     *     по хешу того же устройства (хеш device-scoped) — контекст не мешает;
+     *   - чтение бандла по имени (`OfflineBundleController::show`) резолвится
+     *     в bypass ДО того, как токен чекера поставит арендатора в контекст;
+     *     доступ решают `assertCanAccess` (сотрудник) и сравнение организации
+     *     устройства (чекер) — чужой бандл остаётся 404;
+     *   - список бандлов устройства — дети авторизованного устройства, у
+     *     сотрудника контекст организации уже стоит.
+     * Бандл не адресуется route-binding'ом модели — строковый параметр пути.
+     */
+    protected static function tenantScopeEnabled(): bool
+    {
+        return true;
+    }
 
     protected $fillable = [
         'public_id',

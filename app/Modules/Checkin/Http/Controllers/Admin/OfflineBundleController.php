@@ -105,7 +105,13 @@ final class OfflineBundleController extends Controller
 
     public function show(Request $request, string $bundle): JsonResponse
     {
-        $model = OfflineBundle::query()->where('public_id', $bundle)->first();
+        // Резолвим в bypass: у чекера организации в контексте ещё нет — её
+        // ставит deviceIdOrStaff() ниже из найденного устройства. Доступ
+        // решают assertCanAccess (сотрудник) и сравнение организации/устройства
+        // (чекер) — чужой бандл остаётся 404, как несуществующий.
+        $model = $this->context->withoutScope(
+            fn (): ?OfflineBundle => OfflineBundle::query()->where('public_id', $bundle)->first()
+        );
 
         if ($model === null) {
             throw new NotFoundError('OfflineBundle', $bundle);
