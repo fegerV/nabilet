@@ -34,6 +34,24 @@ class PaymentTransaction extends Model
 
     protected $table = 'payment_transactions';
 
+    /**
+     * Глобальный читающий скоуп (восьмая модель после Order, Payment, Ticket,
+     * Refund, TicketScan, CheckinDevice и OfflineBundle).
+     *
+     * Запись и так была защищена трейтом: организация выводится из платежа
+     * через TenantResolver. Чтения уже живут в нужном режиме и остаются в нём:
+     *   - транзакции читаются детьми авторизованного платежа: show/refund
+     *     (`PaymentController`) и выпуск (`createPaymentScoped`) — в bypass;
+     *   - список платежей сотрудника — под его организацией (фильтры
+     *     совпадают); покупателя — bypass вокруг детей собственных платежей;
+     *   - вебхуки и reconcile (`processWebhookScoped`) — в bypass целиком.
+     * Транзакция не адресуется в маршрутах — route-binding не нужен.
+     */
+    protected static function tenantScopeEnabled(): bool
+    {
+        return true;
+    }
+
     protected $fillable = [
         'payment_id',
         'provider_event_id',

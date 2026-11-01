@@ -11,6 +11,7 @@ use Nabilet\Core\Errors\TenantContextMissingError;
 use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Payments\Models\Payment;
+use Nabilet\Modules\Payments\Models\PaymentTransaction;
 use Nabilet\Modules\Payments\Models\Refund;
 use Nabilet\Modules\Tickets\Models\CheckinDevice;
 use Nabilet\Modules\Tickets\Models\OfflineBundle;
@@ -319,6 +320,63 @@ final class TenantScopedReadTest extends TestCase
             app(OrganizationContext::class)->withoutScope(fn () => OfflineBundle::query()->count()),
             'withoutScope() обязан видеть бандлы всех организаций'
         );
+    }
+
+    /**
+     * Скоуп `PaymentTransaction`: карточка процессинга (authorization/capture/
+     * refund/failure) — сын платежа. Строки пишутся прямо в таблицу поверх
+     * свежего платежа: здесь важен только читающий контур.
+     */
+    public function test_payment_transaction_read_scope_is_native(): void
+    {
+        $orgA = $this->organization();
+        $orgB = $this->organization();
+
+        $this->makeTransaction($orgA);
+        $this->makeTransaction($orgB);
+
+        // Без контекста — отказ, а не «показать все транзакции».
+        try {
+            PaymentTransaction::query()->count();
+            $this->fail('Ожидался TenantContextMissingError без контекста');
+        } catch (TenantContextMissingError $e) {
+            $this->addToAssertionCount(1);
+        }
+
+        app(OrganizationContext::class)->set((string) $orgA);
+        $this->assertSame(1, PaymentTransaction::query()->count(), 'чужие транзакции не видны');
+
+        $this->assertSame(
+            2,
+            app(OrganizationContext::class)->withoutScope(fn () => PaymentTransaction::query()->count()),
+            'withoutScope() обязан видеть транзакции всех организаций'
+        );
+    }
+
+    private function makeTransaction(int $organizationId): void
+    {
+        $order = $this->makeOrder($organizationId);
+        $now = now()->toDateTimeString();
+
+        $paymentId = (int) DB::table('payments')->insertGetId([
+            'public_id' => (string) Str::ulid()->toBase32(),
+            'organization_id' => $organizationId,
+            'order_id' => $order->id,
+            'provider' => 'yookassa',
+            'amount' => $order->total_amount,
+            'currency' => 'RUB',
+            'status' => 'succeeded',
+            'idempotency_key' => (string) Str::ulid()->toBase32(),
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+
+        DB::table('payment_transactions')->insert([
+            'payment_id' => $paymentId,
+            'organization_id' => $organizationId,
+            'type' => 'authorization',
+            'created_at' => $now,
+        ]);
     }
 
     private function makeRefund(int $organizationId): void

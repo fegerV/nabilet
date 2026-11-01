@@ -86,7 +86,13 @@ class PaymentController extends Controller
             $filters['organization_id'] = $organizationId;
         }
 
-        $payments = $this->paymentService->paginate($filters, $perPage);
+        // Покупатель читает транзакции детей СВОИХ платежей (фильтр по
+        // user_id выше) без тенант-контекста: со включённым скоупом
+        // `PaymentTransaction` eager-load в списке отказал бы. Сотрудник
+        // идёт под своей организацией — скоуп лишь повторяет её же фильтр.
+        $payments = StaffRole::isStaff($request->user())
+            ? $this->paymentService->paginate($filters, $perPage)
+            : $this->context->withoutScope(fn () => $this->paymentService->paginate($filters, $perPage));
 
         return response()->json([
             'data' => $payments,
