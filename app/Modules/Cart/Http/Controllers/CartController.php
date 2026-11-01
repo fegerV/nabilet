@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Nabilet\Modules\Cart\Http\Controllers;
 
 use Nabilet\Modules\Cart\Http\Resources\CartResource;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Cart\Domain\CartStatus;
 use Nabilet\Modules\Cart\Models\Cart;
 use Nabilet\Modules\Cart\Services\CartCheckoutService;
@@ -80,17 +81,22 @@ class CartController extends Controller
 
         [$token, $isNew] = $this->resolveToken($request);
 
-        $cart = Cart::query()
-            ->where('session_id', $validated['session_id'])
-            ->where('status', CartStatus::ACTIVE)
-            ->where('cart_token', $token)
-            // `seat.row.sector` нужны `CartItemResource` целиком: он отдаёт
-            // покупателю «Ряд N · Сектор». Без этой цепочки каждая позиция
-            // догружала связи по одной (N+1) — а до правки ресурса запрос падал
-            // с 500 ещё раньше, на `whenLoaded()` у модели.
-            ->with(['items.inventoryItem', 'items.inventoryItem.seat.row.sector'])
-            ->orderBy('id')
-            ->first();
+        // Позиции корзины — дети корзины (capability-токен): список отдаётся
+        // гостю без тенант-контекста, eager `items` на скоупе `CartItem`
+        // отказал бы. Владелец корзины объявлен самим фильтром по токену.
+        $cart = app(OrganizationContext::class)->withoutScope(
+            fn () => Cart::query()
+                ->where('session_id', $validated['session_id'])
+                ->where('status', CartStatus::ACTIVE)
+                ->where('cart_token', $token)
+                // `seat.row.sector` нужны `CartItemResource` целиком: он отдаёт
+                // покупателю «Ряд N · Сектор». Без этой цепочки каждая позиция
+                // догружала связи по одной (N+1) — а до правки ресурса запрос падал
+                // с 500 ещё раньше, на `whenLoaded()` у модели.
+                ->with(['items.inventoryItem', 'items.inventoryItem.seat.row.sector'])
+                ->orderBy('id')
+                ->first()
+        );
 
         return $this->withTokenHeader(response()->json([
             'data' => $cart ? new CartResource($cart) : null,
@@ -157,7 +163,11 @@ class CartController extends Controller
             $request->user('api'),
         );
 
-        $cart = $cartItem->cart()->with('items')->first();
+        // Позиции — дети корзины (capability-токен): у гостя контекста нет,
+        // перечитывание корзины с позициями — в bypass.
+        $cart = app(OrganizationContext::class)->withoutScope(
+            fn () => $cartItem->cart()->with('items')->first()
+        );
 
         return $this->withTokenHeader(response()->json([
             'message' => 'Item added to cart successfully',
@@ -198,7 +208,9 @@ class CartController extends Controller
         $cart = $this->carts->getOrCreateCart((string) $validated['session_id'], $token, $request->user('api'));
 
         return $this->withTokenHeader(response()->json([
-            'data' => new CartResource($cart->load('items.inventoryItem.seat.row.sector')),
+            'data' => new CartResource(app(OrganizationContext::class)->withoutScope(
+                fn () => $cart->load('items.inventoryItem.seat.row.sector')
+            )),
         ], 201), $token, $isNew);
     }
 
@@ -218,18 +230,23 @@ class CartController extends Controller
     {
         [$token, $isNew] = $this->resolveToken($request);
 
-        $cart = Cart::query()
-            ->where('public_id', $cart)
-            ->where('status', CartStatus::ACTIVE)
-            ->where(function ($query) use ($token, $request): void {
-                $query->where('cart_token', $token);
+        // Позиции — дети корзины (capability-токен/владелец): eager `items`
+        // на скоупе `CartItem` отказал бы без контекста; владение решает
+        // фильтр `cart_token`/`user_id` ниже — чужой public_id уже 404.
+        $cart = app(OrganizationContext::class)->withoutScope(
+            fn () => Cart::query()
+                ->where('public_id', $cart)
+                ->where('status', CartStatus::ACTIVE)
+                ->where(function ($query) use ($token, $request): void {
+                    $query->where('cart_token', $token);
 
-                if (($user = $request->user()) !== null) {
-                    $query->orWhere('user_id', $user->getKey());
-                }
-            })
-            ->with(['items.inventoryItem', 'items.inventoryItem.seat.row.sector'])
-            ->first();
+                    if (($user = $request->user()) !== null) {
+                        $query->orWhere('user_id', $user->getKey());
+                    }
+                })
+                ->with(['items.inventoryItem', 'items.inventoryItem.seat.row.sector'])
+                ->first()
+        );
 
         if ($cart === null) {
             return $this->withTokenHeader(response()->json([
@@ -280,7 +297,11 @@ class CartController extends Controller
             $request->user('api'),
         );
 
-        $cart = $cartItem->cart()->with('items')->first();
+        // Позиции — дети корзины (capability-токен): у гостя контекста нет,
+        // перечитывание корзины с позициями — в bypass.
+        $cart = app(OrganizationContext::class)->withoutScope(
+            fn () => $cartItem->cart()->with('items')->first()
+        );
 
         return $this->withTokenHeader(response()->json([
             'data' => new CartResource($cart),

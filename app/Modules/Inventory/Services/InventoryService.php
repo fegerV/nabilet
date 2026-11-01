@@ -6,6 +6,7 @@ namespace Nabilet\Modules\Inventory\Services;
 
 use Nabilet\Core\Errors\ConflictError;
 use Nabilet\Core\Errors\NotFoundError;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Core\Support\PublicId;
 use Nabilet\Modules\Cart\Models\Cart;
 use Nabilet\Modules\Cart\Domain\CartStatus;
@@ -549,11 +550,17 @@ class InventoryService
         }
 
         $updated = 0;
-        $items = CartItem::query()
-            ->whereIn('inventory_item_id', $inventoryItemIds)
-            ->whereHas('cart', fn ($q) => $q->where('status', CartStatus::ACTIVE))
-            ->with('inventoryItem:id,price_amount')
-            ->get();
+        // Пересчёт цен по открытым корзинам — системный путь (переоценка
+        // сеанса): позиции читаются по ЯВНОМУ списку inventory_item_id,
+        // в bypass — контекст вызывающего (консоль/сотрудник) не должен
+        // сужать выборку корзин, у которых цена уже разошлась.
+        $items = app(OrganizationContext::class)->withoutScope(
+            fn () => CartItem::query()
+                ->whereIn('inventory_item_id', $inventoryItemIds)
+                ->whereHas('cart', fn ($q) => $q->where('status', CartStatus::ACTIVE))
+                ->with('inventoryItem:id,price_amount')
+                ->get()
+        );
 
         foreach ($items as $item) {
             $newUnit = (int) ($item->inventoryItem?->price_amount ?? $item->unit_price);
@@ -584,9 +591,13 @@ class InventoryService
         $recalculated = 0;
 
         foreach ($carts as $cart) {
-            $total = (int) CartItem::query()
-                ->where('cart_id', $cart->id)
-                ->sum('total_price');
+            // Пересчёт корзин после переоценки — системный путь (см.
+            // syncOpenCartItems): сумма позиций — в bypass.
+            $total = (int) app(OrganizationContext::class)->withoutScope(
+                fn () => CartItem::query()
+                    ->where('cart_id', $cart->id)
+                    ->sum('total_price')
+            );
 
             if ((int) ($cart->total_amount ?? 0) !== $total) {
                 $cart->forceFill(['total_amount' => (string) $total])->save();

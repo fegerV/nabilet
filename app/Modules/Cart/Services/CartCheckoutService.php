@@ -110,13 +110,16 @@ final class CartCheckoutService
                 // CART_EXPIRED РІРјРµСЃС‚Рѕ С‡РµСЃС‚РЅРѕРіРѕ РїРѕРІС‚РѕСЂР°.
                 $expired = false;
 
-                $cart = Cart::query()
+                // Позиции корзины — дети корзины гостя (capability-токен):
+                // чекаут идёт без тенант-контекста, eager `items` на скоупе
+                // `CartItem` отказал бы. Владелец объявлен токеном в фильтре.
+                $cart = app(OrganizationContext::class)->withoutScope(fn () => Cart::query()
                     ->where('session_id', $sessionId)
                     ->where('status', CartStatus::ACTIVE)
                     ->where('cart_token', $token)
                     ->with(['items.inventoryItem'])
                     ->lockForUpdate()
-                    ->first();
+                    ->first());
 
                 if ($cart === null) {
                     // D-8/S8: 404 РЅР° РїРѕРІС‚РѕСЂРЅС‹Р№ checkout РїРѕСЃР»Рµ СѓСЃРїРµС€РЅРѕРіРѕ РѕС„РѕСЂРјР»РµРЅРёСЏ
@@ -214,7 +217,10 @@ final class CartCheckoutService
     {
         $token = trim((string) $token);
 
-        return Cart::query()
+        // Позиции — дети корзины (capability-токен/владелец): eager `items`
+        // на скоупе `CartItem` отказал бы без контекста; владение решает
+        // фильтр `user_id`/`cart_token` ниже.
+        return app(OrganizationContext::class)->withoutScope(fn () => Cart::query()
             ->where('public_id', $publicId)
             ->where('status', CartStatus::ACTIVE)
             ->where(function ($query) use ($token, $userId): void {
@@ -228,7 +234,7 @@ final class CartCheckoutService
             })
             ->with(['items.inventoryItem'])
             ->lockForUpdate()
-            ->firstOrFail();
+            ->firstOrFail());
     }
 
     /**

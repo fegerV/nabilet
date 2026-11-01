@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Nabilet\Modules\Embed\Http\Controllers;
 
 use Nabilet\Core\Support\Paging;
+use Nabilet\Core\Tenancy\OrganizationContext;
 
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -205,7 +206,13 @@ final class EmbedController extends Controller
         // Bearer-токеном: ранний доступ клуба (фаза 3b) работает и здесь.
         // Гвард явный — пути embed публичные, дефолтный гвард `web` (сессия).
         $cart = $this->carts->getOrCreateCart((string) $session->id, $token, $request->user('api'));
-        $cart->load('items.inventoryItem');
+
+        // Позиции — дети корзины (capability-токен): витрина-эмбед отвечает
+        // гостю без тенант-контекста, eager `items` на скоупе `CartItem`
+        // отказал бы. Корзина только что создана этой же сессией виджета.
+        app(OrganizationContext::class)->withoutScope(
+            fn () => $cart->load('items.inventoryItem')
+        );
 
         return response()
             ->json([

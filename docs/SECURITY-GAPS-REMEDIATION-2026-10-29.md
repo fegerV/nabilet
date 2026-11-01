@@ -124,6 +124,15 @@
 | `app/Modules/Cart/Services/CartItemService.php` | Держки — дети корзины (capability-токен): снятие держек при удалении позиции, продление (`extendHold`), освобождение корзины (`releaseCartInventory`), подбор держки при повторном добавлении (`growHold`) — в bypass как children-only пути гостя |
 | `app/Modules/Orders/Services/OrderService.php` | Дополнение: освобождение активных держек при отмене заказа — в bypass (сервис зовут и в обход HTTP: тесты, каскад отмены события) |
 | `tests/Feature/InventoryRepositoryContractTest.php` | Контракт-тест дёргает репозиторий напрямую (`getHeldCount` — whereHas по связи `holds`): тест-аналог системного пути, обёрнут в bypass; в проде метод пока не вызывается, fail-closed остаётся |
+| `app/Modules/Cart/Models/CartItem.php` | Фаза 2, чтение: глобальный скоуп включён на `CartItem` — одиннадцатая модель. Запись уже защищена трейтом (организация из корзины через `TenantResolver`) — она же отсекает запись «в чужую корзину». Чтение живёт по capability токена корзины (`cart_token`), а не по организации HTTP-запроса: позиция — ребёнок корзины гостя. Позиция не адресуется в маршрутах — route-binding не нужен |
+| `app/Modules/Cart/Services/CartItemService.php` | Дополнение (позиции): поиск существующей позиции при добавлении, позиция при удалении, `exists()` при продлении, пересчёт суммы корзины — в bypass как children-only пути гостя |
+| `app/Modules/Cart/Services/CartService.php` | Полная очистка корзины по токену: удаление позиций — в bypass (гость без контекста) |
+| `app/Modules/Cart/Services/CartCheckoutService.php` | Чекаут: обе точки поиска корзины с eager `items.inventoryItem` (по токену и по `public_id`) — в bypass; дальше циклы и сводка читают кэшированные связи, запросов не порождают |
+| `app/Modules/Cart/Http/Controllers/CartController.php` | Витрина: показ/создание/добавление (eager `items` ×5) — в bypass; владелец корзины объявлен фильтром по `cart_token`/`user_id` внутри запроса |
+| `app/Modules/Embed/Http/Controllers/EmbedController.php` | Дополнение: `createCart` грузит `items.inventoryItem` в bypass — витрина-эмбед отвечает гостю без контекста; реальный доступ решает `EmbedAccessService` через сессию → событие |
+| `app/Modules/Inventory/Services/InventoryService.php` | Пересчёт цен открытых корзин — системный путь (переоценка сеанса): выборка позиций по ЯВНОМУ списку склада и суммы по корзинам — в bypass |
+| `phpstan-baseline.neon` | Ratchet почищен (шаг вскрыл устаревшие записи): удалены `modelKeys`-на-CartItemService, `lockOwnedByPublicId`/`convert`-на-CartCheckoutService, `fresh()`-на-CartItemService — типы стали mixed после bypass-обёрток; счётчик `update()`-на-stdClass 6→4 |
+| `tests/Feature/Core/TenantScopedReadTest.php` | Нативный скоуп `CartItem`: без контекста отказ, с контекстом фильтр, в bypass видны все |
 | `tests/Feature/Core/TenantScopedReadTest.php` | Нативный скоуп `OrderItem`: без контекста отказ, с контекстом фильтр, в bypass видны все |
 | `tests/Feature/Core/TenantScopedReadTest.php` | Нативный скоуп `SeatHold`: без контекста отказ, с контекстом фильтр, в bypass видны все |
 | `tests/Feature/Core/TenantScopedReadTest.php` | Нативный скоуп `PaymentTransaction`: без контекста отказ, с контекстом фильтр, в bypass видны все |
@@ -146,7 +155,7 @@ dev-БД: 40 колонок `organization_id NOT NULL`, 40 FK `fk_<table>_org`.
 
 | Риск | Почему не закрыт в этом проходе |
 |------|--------------------------------|
-| `organization_id` у 70 таблиц | **Закрыт структурно.** Фазы 0–3 завершены: 40 таблиц класса A — `NOT NULL` + FK; запись наполняет тенанта из контекста/родителя; глобальный читающий скоуп включён на `Order`, `Payment`, `Ticket`, `Refund`, `TicketScan`, `CheckinDevice`, `OfflineBundle`, `PaymentTransaction`, `OrderItem` и `SeatHold`, остальные модели — точечно по мере аудита их системных путей чтения (§3.3) |
+| `organization_id` у 70 таблиц | **Закрыт структурно.** Фазы 0–3 завершены: 40 таблиц класса A — `NOT NULL` + FK; запись наполняет тенанта из контекста/родителя; глобальный читающий скоуп включён на `Order`, `Payment`, `Ticket`, `Refund`, `TicketScan`, `CheckinDevice`, `OfflineBundle`, `PaymentTransaction`, `OrderItem`, `SeatHold` и `CartItem`, остальные модели — точечно по мере аудита их системных путей чтения (§3.3) |
 | Списки/отчёты вне Orders/Payments/Tickets/Checkin | Проверены только пути, где аудит нашёл живую утечку; остальные закрываются общим `TenantScoped` в фазе 2 |
 | `PaymentController::store` и `OrderController::resendTicket` вне `auth:api` | Staff-ветки там не единственная защита; полноценно закрывается контекстом + схемой в фазе 2 |
 

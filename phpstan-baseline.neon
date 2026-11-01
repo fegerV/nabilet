@@ -87,16 +87,6 @@ parameters:
 			path: app/Modules/Cart/Services/CartCheckoutService.php
 
 		-
-			message: "#^Method Nabilet\\\\Modules\\\\Cart\\\\Services\\\\CartCheckoutService\\:\\:lockOwnedByPublicId\\(\\) should return Nabilet\\\\Modules\\\\Cart\\\\Models\\\\Cart but returns stdClass\\.$#"
-			count: 1
-			path: app/Modules/Cart/Services/CartCheckoutService.php
-
-		-
-			message: "#^Parameter \\#1 \\$cart of method Nabilet\\\\Modules\\\\Cart\\\\Services\\\\CartCheckoutService\\:\\:convert\\(\\) expects Nabilet\\\\Modules\\\\Cart\\\\Models\\\\Cart, stdClass given\\.$#"
-			count: 1
-			path: app/Modules/Cart/Services/CartCheckoutService.php
-
-		-
 			message: "#^Call to an undefined static method Nabilet\\\\Modules\\\\Cart\\\\Models\\\\CartItem\\:\\:create\\(\\)\\.$#"
 			count: 1
 			path: app/Modules/Cart/Services/CartItemService.php
@@ -117,20 +107,14 @@ parameters:
 			path: app/Modules/Cart/Services/CartItemService.php
 
 		-
-			message: "#^Cannot call method fresh\\(\\) on stdClass\\.$#"
-			count: 1
-			path: app/Modules/Cart/Services/CartItemService.php
-
-		-
 			message: "#^Cannot call method items\\(\\) on stdClass\\.$#"
 			count: 1
 			path: app/Modules/Cart/Services/CartItemService.php
 
 		-
 			message: "#^Cannot call method update\\(\\) on stdClass\\.$#"
-			count: 5
+			count: 4
 			path: app/Modules/Cart/Services/CartItemService.php
-
 		-
 			message: "#^Parameter \\#2 \\$inventoryItem of method Nabilet\\\\Modules\\\\Cart\\\\Services\\\\CartItemService\\:\\:createHold\\(\\) expects Nabilet\\\\Modules\\\\Inventory\\\\Models\\\\InventoryItem, stdClass given\\.$#"
 			count: 1

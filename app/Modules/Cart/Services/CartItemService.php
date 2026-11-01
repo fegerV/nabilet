@@ -171,12 +171,15 @@ final class CartItemService
                 );
             }
 
-            // Check if item already exists in cart
-            $existingItem = CartItem::query()
-                ->where('cart_id', $cart->id)
-                ->where('inventory_item_id', $inventoryItemId)
-                ->lockForUpdate()
-                ->first();
+            // Позиции — дети корзины (capability-токен): у гостя тенант-контекста
+            // нет, поиск существующей позиции при добавлении — в bypass.
+            $existingItem = app(OrganizationContext::class)->withoutScope(
+                fn () => CartItem::query()
+                    ->where('cart_id', $cart->id)
+                    ->where('inventory_item_id', $inventoryItemId)
+                    ->lockForUpdate()
+                    ->first()
+            );
 
             if ($existingItem) {
                 // Update quantity
@@ -248,10 +251,14 @@ final class CartItemService
                 ->where('cart_token', $token)
                 ->firstOrFail();
 
-            $cartItem = CartItem::query()
-                ->where('id', $itemId)
-                ->where('cart_id', $cart->id)
-                ->firstOrFail();
+            // Позиция — ребёнок корзины токена (capability): у гостя контекста
+            // нет, поиск удаляемой позиции — в bypass.
+            $cartItem = app(OrganizationContext::class)->withoutScope(
+                fn () => CartItem::query()
+                    ->where('id', $itemId)
+                    ->where('cart_id', $cart->id)
+                    ->firstOrFail()
+            );
 
             $cartItem->delete();
 
@@ -333,7 +340,13 @@ final class CartItemService
                 throw ConflictError::cartExpired();
             }
 
-            if (!$cart->items()->exists()) {
+            // exists() по позициям — чтение `CartItem` (дети корзины токена):
+            // в bypass, у гостя контекста нет.
+            $hasItems = app(OrganizationContext::class)->withoutScope(
+                fn (): bool => $cart->items()->exists()
+            );
+
+            if (!$hasItems) {
                 throw new ConflictError('The cart is empty.', 'CART_EMPTY');
             }
 
@@ -491,8 +504,11 @@ final class CartItemService
      */
     private function recalculateCartTotal(Cart $cart): void
     {
-        $total = CartItem::where('cart_id', $cart->id)
-            ->sum('total_price');
+        // Позиции — дети корзины токена (capability): пересчёт суммы вызывается
+        // из гостевых addItem/removeItem — в bypass.
+        $total = app(OrganizationContext::class)->withoutScope(
+            fn () => CartItem::where('cart_id', $cart->id)->sum('total_price')
+        );
 
         $cart->update([
             'total_amount' => (string) $total,

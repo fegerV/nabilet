@@ -7,6 +7,7 @@ namespace Nabilet\Modules\Cart\Services;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Nabilet\Core\Errors\DomainRuleViolation;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Cart\Models\Cart;
 use Nabilet\Modules\Cart\Models\CartItem;
 use Nabilet\Modules\Cart\Domain\CartStatus;
@@ -162,7 +163,12 @@ class CartService
                 return false;
             }
 
-            CartItem::where('cart_id', $cart->id)->delete();
+            // Позиции — дети корзины (capability-токен): полная очистка идёт
+            // гостем без тенант-контекста, на скоупе `CartItem` удаление
+            // отказало бы.
+            app(OrganizationContext::class)->withoutScope(
+                fn () => CartItem::where('cart_id', $cart->id)->delete()
+            );
 
             $cart->update([
                 'total_amount' => '0',

@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Nabilet\Core\Errors\TenantContextMissingError;
 use Nabilet\Core\Tenancy\OrganizationContext;
+use Nabilet\Modules\Cart\Models\CartItem;
 use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Orders\Models\OrderItem;
 use Nabilet\Modules\Orders\Models\SeatHold;
@@ -494,6 +495,68 @@ final class TenantScopedReadTest extends TestCase
             'quantity' => 1,
             'expires_at' => now()->addMinutes(15)->toDateTimeString(),
             'created_at' => $now,
+        ]);
+    }
+
+    /**
+     * Скоуп `CartItem`: позиция корзины — ребёнок корзины гостя (capability
+     * токена корзины, не организация HTTP-запроса). Позиции маркируются
+     * ценой из позиции склада той же FK-цепочки.
+     */
+    public function test_cart_item_read_scope_is_native(): void
+    {
+        $orgA = $this->organization();
+        $orgB = $this->organization();
+
+        $this->makeCartItem($orgA);
+        $this->makeCartItem($orgB);
+
+        // Без контекста — отказ, а не «показать все позиции корзин».
+        try {
+            CartItem::query()->count();
+            $this->fail('Ожидался TenantContextMissingError без контекста');
+        } catch (TenantContextMissingError $e) {
+            $this->addToAssertionCount(1);
+        }
+
+        app(OrganizationContext::class)->set((string) $orgA);
+        $this->assertSame(1, CartItem::query()->count(), 'чужие позиции корзин не видны');
+
+        $this->assertSame(
+            2,
+            app(OrganizationContext::class)->withoutScope(fn () => CartItem::query()->count()),
+            'withoutScope() обязан видеть позиции корзин всех организаций'
+        );
+    }
+
+    private function makeCartItem(int $organizationId): void
+    {
+        [$orgId, $eventId, $sessionId, $inventoryId] = $this->seedSellableSeat(
+            available: 2,
+            organizationId: $organizationId,
+        );
+        \assert($orgId === $organizationId);
+
+        $now = now()->toDateTimeString();
+
+        // status берёт дефолт 'active' — активная корзина.
+        $cartId = (int) DB::table('carts')->insertGetId([
+            'public_id' => (string) Str::ulid()->toBase32(),
+            'organization_id' => $organizationId,
+            'session_id' => $sessionId,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+
+        DB::table('cart_items')->insert([
+            'cart_id' => $cartId,
+            'organization_id' => $organizationId,
+            'inventory_item_id' => $inventoryId,
+            'quantity' => 1,
+            'unit_price' => 100,
+            'total_price' => 100,
+            'created_at' => $now,
+            'updated_at' => $now,
         ]);
     }
 
