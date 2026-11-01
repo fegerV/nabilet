@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Nabilet\Core\Support\Money;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Carbon\CarbonImmutable;
 use Nabilet\Modules\Inventory\Models\InventoryItem;
 use Nabilet\Modules\Inventory\Repositories\InventoryItemRepository;
@@ -198,11 +199,20 @@ final class InventoryRepositoryContractTest extends TestCase
 
             $repository = new InventoryItemRepository(new InventoryItem());
             $this->assertSame(5, $repository->getSoldCount($sessionId));
-            $this->assertSame(1, $repository->getHeldCount($sessionId));
+
+            // whereHas по связи `holds` читает `SeatHold` под включённым
+            // скоупом: контракт-тест дёргает репозиторий напрямую — тест-аналог
+            // системного пути, обязанный идти в bypass. В проде метод пока
+            // не вызывается, поэтому его fail-closed-режим остаётся как есть.
+            $this->assertSame(1, app(OrganizationContext::class)->withoutScope(
+                fn () => $repository->getHeldCount($sessionId)
+            ));
 
             DB::table('seat_holds')->where('id', $holdId)->update(['converted_at' => $now]);
             $this->assertSame(7, $repository->getSoldCount($sessionId));
-            $this->assertSame(0, $repository->getHeldCount($sessionId));
+            $this->assertSame(0, app(OrganizationContext::class)->withoutScope(
+                fn () => $repository->getHeldCount($sessionId)
+            ));
 
             // An expired hold may remain unreleased until cleanup; it must not
             // inflate the sold metric, but it is no longer an active hold.
@@ -220,7 +230,9 @@ final class InventoryRepositoryContractTest extends TestCase
                 'created_at' => $now->copy()->subMinutes(2),
             ]);
             $this->assertSame(7, $repository->getSoldCount($sessionId));
-            $this->assertSame(0, $repository->getHeldCount($sessionId));
+            $this->assertSame(0, app(OrganizationContext::class)->withoutScope(
+                fn () => $repository->getHeldCount($sessionId)
+            ));
         } finally {
             DB::statement('SET FOREIGN_KEY_CHECKS=1');
         }

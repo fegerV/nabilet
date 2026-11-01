@@ -11,6 +11,7 @@ use Nabilet\Core\Errors\TenantContextMissingError;
 use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Orders\Models\OrderItem;
+use Nabilet\Modules\Orders\Models\SeatHold;
 use Nabilet\Modules\Payments\Models\Payment;
 use Nabilet\Modules\Payments\Models\PaymentTransaction;
 use Nabilet\Modules\Payments\Models\Refund;
@@ -430,6 +431,68 @@ final class TenantScopedReadTest extends TestCase
             'unit_price' => 100,
             'total_amount' => 100,
             'event_title_snapshot' => 'Тестовое событие',
+            'created_at' => $now,
+        ]);
+    }
+
+    /**
+     * Скоуп `SeatHold`: держка места — ребёнок корзины гостя (capability
+     * токена корзины, не организация HTTP-запроса). Корзина собирается здесь
+     * же из сеанса той же FK-цепочки; держка пишется прямо в таблицу.
+     */
+    public function test_seat_hold_read_scope_is_native(): void
+    {
+        $orgA = $this->organization();
+        $orgB = $this->organization();
+
+        $this->makeSeatHold($orgA);
+        $this->makeSeatHold($orgB);
+
+        // Без контекста — отказ, а не «показать все держки».
+        try {
+            SeatHold::query()->count();
+            $this->fail('Ожидался TenantContextMissingError без контекста');
+        } catch (TenantContextMissingError $e) {
+            $this->addToAssertionCount(1);
+        }
+
+        app(OrganizationContext::class)->set((string) $orgA);
+        $this->assertSame(1, SeatHold::query()->count(), 'чужие держки не видны');
+
+        $this->assertSame(
+            2,
+            app(OrganizationContext::class)->withoutScope(fn () => SeatHold::query()->count()),
+            'withoutScope() обязан видеть держки всех организаций'
+        );
+    }
+
+    private function makeSeatHold(int $organizationId): void
+    {
+        [$orgId, $eventId, $sessionId, $inventoryId] = $this->seedSellableSeat(
+            available: 2,
+            organizationId: $organizationId,
+        );
+        \assert($orgId === $organizationId);
+
+        $now = now()->toDateTimeString();
+
+        // status берёт дефолт 'active'; expires_at держки = TTL корзины.
+        $cartId = (int) DB::table('carts')->insertGetId([
+            'public_id' => (string) Str::ulid()->toBase32(),
+            'organization_id' => $organizationId,
+            'session_id' => $sessionId,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+
+        DB::table('seat_holds')->insert([
+            'public_id' => (string) Str::ulid()->toBase32(),
+            'organization_id' => $organizationId,
+            'inventory_item_id' => $inventoryId,
+            'session_id' => $sessionId,
+            'cart_id' => $cartId,
+            'quantity' => 1,
+            'expires_at' => now()->addMinutes(15)->toDateTimeString(),
             'created_at' => $now,
         ]);
     }

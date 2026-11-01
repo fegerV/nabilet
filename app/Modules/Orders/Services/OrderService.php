@@ -291,11 +291,15 @@ class OrderService
             });
 
             // Снять активные холды корзины — иначе sweeper вернёт quantity повторно.
-            \Nabilet\Modules\Orders\Models\SeatHold::query()
-                ->where('cart_id', $order->cart_id ?? 0)
-                ->whereNull('converted_at')
-                ->whereNull('released_at')
-                ->update(['released_at' => now()]);
+            // Держки — дети корзины (capability-токен): сервис зовут и в обход
+            // HTTP (тесты, каскад отмены события), контекста там нет.
+            app(OrganizationContext::class)->withoutScope(function () use ($order): void {
+                \Nabilet\Modules\Orders\Models\SeatHold::query()
+                    ->where('cart_id', $order->cart_id ?? 0)
+                    ->whereNull('converted_at')
+                    ->whereNull('released_at')
+                    ->update(['released_at' => now()]);
+            });
 
             $order = $this->repository->cancel($order);
 

@@ -43,6 +43,34 @@ class SeatHold extends Model
 
     protected $table = 'seat_holds';
 
+    /**
+     * Глобальный читающий скоуп (десятая модель после Order, Payment, Ticket,
+     * Refund, TicketScan, CheckinDevice, OfflineBundle, PaymentTransaction и
+     * OrderItem).
+     *
+     * Запись и так защищена трейтом (организация выводится из корзины через
+     * TenantResolver): `createHold` гостя не имеет контекста — организация
+     * приходит из родительской корзины, подмена чужой отсекается.
+     *
+     * Чтение живёт ВНИЗ ПО CAPABILITY, а не по организации HTTP-запроса:
+     * держки — дети корзины гостя, корзину идентифицирует токен
+     * (`cart_token`), а не тенант-контекст. Пути уже в нужном режиме:
+     *   - операции корзины (`CartItemService`: снятие держек позиции,
+     *     продление, освобождение, подбор hold при повторном добавлении) —
+     *     в bypass вокруг токена корзины;
+     *   - валидация/конвертация при оплате (`PaymentService`) — внутри
+     *     `processWebhookScoped` (bypass);
+     *   - снятие при отмене заказа (`OrderService::cancelOrder`) — в bypass;
+     *   - sweeper'ы (`HoldSweeper`, `StaleOrderExpirer`, `SeatHoldLifecycle`)
+     *     ходят сырым `DB::table` — Eloquent-скоуп их не касается.
+     * Связи `InventoryItem::seatHolds()`/`Session::seatHolds()` без
+     * вызывающих; держа не адресуется в маршрутах напрямую.
+     */
+    protected static function tenantScopeEnabled(): bool
+    {
+        return true;
+    }
+
     protected $fillable = [
         'public_id',
         'inventory_item_id',

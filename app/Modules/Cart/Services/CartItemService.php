@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\DB;
 use Nabilet\Core\Errors\ConflictError;
 use Nabilet\Core\Errors\DomainRuleViolation;
 use Nabilet\Core\Errors\ValidationError;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Cart\Domain\CartStatus;
 use Nabilet\Modules\Cart\Support\DbRetry;
 use Nabilet\Modules\Cart\Models\Cart;
@@ -274,12 +275,18 @@ final class CartItemService
             }
 
             // РЎРЅСЏС‚СЊ СЃРѕРѕС‚РІРµС‚СЃС‚РІСѓСЋС‰РёР№ seat_hold (РёРЅР°С‡Рµ sweeper РІРµСЂРЅС‘С‚ quantity РїРѕРІС‚РѕСЂРЅРѕ).
-            SeatHold::query()
-                ->where('cart_id', $cart->id)
-                ->where('inventory_item_id', $cartItem->inventory_item_id)
-                ->whereNull('converted_at')
-                ->whereNull('released_at')
-                ->update(['released_at' => CarbonImmutable::now()]);
+            // Держки — дети корзины, идентифицированной capability-токеном:
+            // у гостя тенант-контекста нет, со включённым скоупом
+            // `SeatHold` обновление молча отказало бы (sweeper вернул бы
+            // quantity повторно).
+            app(OrganizationContext::class)->withoutScope(function () use ($cart, $cartItem): void {
+                SeatHold::query()
+                    ->where('cart_id', $cart->id)
+                    ->where('inventory_item_id', $cartItem->inventory_item_id)
+                    ->whereNull('converted_at')
+                    ->whereNull('released_at')
+                    ->update(['released_at' => CarbonImmutable::now()]);
+            });
 
             $this->recalculateCartTotal($cart);
 
@@ -330,12 +337,16 @@ final class CartItemService
                 throw new ConflictError('The cart is empty.', 'CART_EMPTY');
             }
 
-            $activeHolds = SeatHold::query()
-                ->where('cart_id', $cart->id)
-                ->whereNull('released_at')
-                ->whereNull('converted_at')
-                ->lockForUpdate()
-                ->get(['id']);
+            // Держки — дети корзины (capability-токен): у гостя тенант-контекста
+            // нет, чтение для продления — в bypass.
+            $activeHolds = app(OrganizationContext::class)->withoutScope(
+                fn () => SeatHold::query()
+                    ->where('cart_id', $cart->id)
+                    ->whereNull('released_at')
+                    ->whereNull('converted_at')
+                    ->lockForUpdate()
+                    ->get(['id'])
+            );
 
             if ($activeHolds->isEmpty()) {
                 throw ConflictError::cartExpired();
@@ -349,9 +360,11 @@ final class CartItemService
             // РџСЂРѕР»РѕРЅРіРёСЂСѓРµРј С‚РѕР»СЊРєРѕ Р·Р°Р±Р»РѕРєРёСЂРѕРІР°РЅРЅС‹Рµ Р°РєС‚РёРІРЅС‹Рµ С…РѕР»РґС‹: СЃРЅСЏС‚С‹Рµ РїСЂРё
             // РѕС‚РјРµРЅРµ РјРµСЃС‚Р° РёР»Рё СѓР¶Рµ РєРѕРЅРІРµСЂС‚РёСЂРѕРІР°РЅРЅС‹Рµ РІ Р·Р°РєР°Р· С‚СЂРѕРіР°С‚СЊ РЅРµР»СЊР·СЏ. Р’ С‚РѕР№
             // Р¶Рµ С‚СЂР°РЅР·Р°РєС†РёРё СЌС‚Рѕ РёСЃРєР»СЋС‡Р°РµС‚ РіРѕРЅРєСѓ СЃРѕ sweeper'РѕРј Рё checkout.
-            SeatHold::query()
-                ->whereIn('id', $activeHolds->modelKeys())
-                ->update(['expires_at' => $newExpires]);
+            app(OrganizationContext::class)->withoutScope(function () use ($activeHolds, $newExpires): void {
+                SeatHold::query()
+                    ->whereIn('id', $activeHolds->modelKeys())
+                    ->update(['expires_at' => $newExpires]);
+            });
 
             return ['expires_at' => $newExpires->toIso8601String()];
         });
@@ -375,30 +388,36 @@ final class CartItemService
         // РћРґРёРЅ РёСЃС‚РѕС‡РЅРёРє РёСЃС‚РёРЅС‹ вЂ” seat_holds: РѕРЅРё СЃРѕР·РґР°СЋС‚СЃСЏ РЅР° addItem СЃ С‚РѕС‡РЅРѕР№
         // quantity РєР°Р¶РґРѕРіРѕ РјРµСЃС‚Р°. Р’РѕР·РІСЂР°С‚ РґРµР»Р°РµРј СЃС‚СЂРѕРіРѕ РїРѕ РµС‰С‘ РЅРµ СЃРЅСЏС‚С‹Рј С…РѕР»РґР°Рј,
         // РїРѕСЌС‚РѕРјСѓ РґРІРѕР№РЅРѕРіРѕ РІРѕР·РІСЂР°С‚Р° РЅРµС‚ РґР°Р¶Рµ РµСЃР»Рё РєРѕСЂР·РёРЅР° С‡РёСЃС‚РёР»Р°СЃСЊ С‡Р°СЃС‚РёС‡РЅРѕ.
-        $holds = SeatHold::query()
-            ->where('cart_id', $cart->id)
-            ->whereNull('converted_at')
-            ->whereNull('released_at')
-            ->get();
+        // Держки — дети корзины (capability-токен): цикл освобождения целиком
+        // в bypass — и чтение держек, и их `update()`; вызывается из чекаута
+        // при истечении корзины и из `StaleOrderExpirer` (системные пути без
+        // контекста).
+        app(OrganizationContext::class)->withoutScope(function () use ($cart): void {
+            $holds = SeatHold::query()
+                ->where('cart_id', $cart->id)
+                ->whereNull('converted_at')
+                ->whereNull('released_at')
+                ->get();
 
-        foreach ($holds as $hold) {
-            $inventoryItem = InventoryItem::query()
-                ->where('id', $hold->inventory_item_id)
-                ->first();
+            foreach ($holds as $hold) {
+                $inventoryItem = InventoryItem::query()
+                    ->where('id', $hold->inventory_item_id)
+                    ->first();
 
-            // РњРµСЃС‚Рѕ СѓР¶Рµ РѕРїР»Р°С‡РµРЅРѕ (sold) вЂ” РІРѕР·РІСЂР°С‰Р°С‚СЊ РЅРµР»СЊР·СЏ.
-            if ($inventoryItem !== null && $inventoryItem->status !== InventoryItemStateMachine::SOLD) {
-                $inventoryItem->increment('available_quantity', (int) $hold->quantity);
+                // РњРµСЃС‚Рѕ СѓР¶Рµ РѕРїР»Р°С‡РµРЅРѕ (sold) вЂ” РІРѕР·РІСЂР°С‰Р°С‚СЊ РЅРµР»СЊР·СЏ.
+                if ($inventoryItem !== null && $inventoryItem->status !== InventoryItemStateMachine::SOLD) {
+                    $inventoryItem->increment('available_quantity', (int) $hold->quantity);
 
-                if ((int) $inventoryItem->available_quantity >= (int) $inventoryItem->capacity) {
-                    $inventoryItem->update(['status' => InventoryItemStateMachine::AVAILABLE]);
-                } elseif ($inventoryItem->status === InventoryItemStateMachine::SOLD_OUT) {
-                    $inventoryItem->update(['status' => InventoryItemStateMachine::HELD]);
+                    if ((int) $inventoryItem->available_quantity >= (int) $inventoryItem->capacity) {
+                        $inventoryItem->update(['status' => InventoryItemStateMachine::AVAILABLE]);
+                    } elseif ($inventoryItem->status === InventoryItemStateMachine::SOLD_OUT) {
+                        $inventoryItem->update(['status' => InventoryItemStateMachine::HELD]);
+                    }
                 }
-            }
 
-            $hold->update(['released_at' => CarbonImmutable::now()]);
-        }
+                $hold->update(['released_at' => CarbonImmutable::now()]);
+            }
+        });
     }
 
     /**
@@ -444,13 +463,17 @@ final class CartItemService
      */
     private function growHold(Cart $cart, InventoryItem $inventoryItem, int $quantity): void
     {
-        $hold = SeatHold::query()
-            ->where('cart_id', $cart->id)
-            ->where('inventory_item_id', $inventoryItem->id)
-            ->whereNull('released_at')
-            ->whereNull('converted_at')
-            ->lockForUpdate()
-            ->first();
+        // Держка — ребёнок корзины (capability-токен): у гостя контекста нет,
+        // подбор активной держки при повторном добавлении — в bypass.
+        $hold = app(OrganizationContext::class)->withoutScope(
+            fn () => SeatHold::query()
+                ->where('cart_id', $cart->id)
+                ->where('inventory_item_id', $inventoryItem->id)
+                ->whereNull('released_at')
+                ->whereNull('converted_at')
+                ->lockForUpdate()
+                ->first()
+        );
 
         if ($hold === null) {
             // Р›РµРіР°СЃРё-РєРѕСЂР·РёРЅР° Р±РµР· РјР°С‚РµСЂРёР°Р»РёР·РѕРІР°РЅРЅРѕРіРѕ С…РѕР»РґР° (СЃРѕР·РґР°РЅР° РґРѕ A13) вЂ”

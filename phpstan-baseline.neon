@@ -97,11 +97,6 @@ parameters:
 			path: app/Modules/Cart/Services/CartCheckoutService.php
 
 		-
-			message: "#^Call to an undefined method Illuminate\\\\Support\\\\Collection\\<int, stdClass\\>\\:\\:modelKeys\\(\\)\\.$#"
-			count: 1
-			path: app/Modules/Cart/Services/CartItemService.php
-
-		-
 			message: "#^Call to an undefined static method Nabilet\\\\Modules\\\\Cart\\\\Models\\\\CartItem\\:\\:create\\(\\)\\.$#"
 			count: 1
 			path: app/Modules/Cart/Services/CartItemService.php
@@ -133,7 +128,7 @@ parameters:
 
 		-
 			message: "#^Cannot call method update\\(\\) on stdClass\\.$#"
-			count: 6
+			count: 5
 			path: app/Modules/Cart/Services/CartItemService.php
 
 		-
