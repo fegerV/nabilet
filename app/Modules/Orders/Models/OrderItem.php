@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Orders\Models;
 
+use Nabilet\Modules\Core\Tenancy\TenantScoped;
+
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Nabilet\Modules\Inventory\Models\InventoryItem;
@@ -27,6 +29,7 @@ use Nabilet\Modules\Inventory\Models\InventoryItem;
  */
 class OrderItem extends Model
 {
+    use TenantScoped;
     public const UPDATED_AT = null;
 
     protected $table = 'order_items';

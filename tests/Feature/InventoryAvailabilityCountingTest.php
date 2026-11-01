@@ -103,6 +103,7 @@ final class InventoryAvailabilityCountingTest extends TestCase
         ]);
         $sessionId = (int) DB::table('sessions')->insertGetId([
             'public_id' => (string) Str::ulid()->toBase32(),
+            'organization_id' => $this->organizationId,
             'event_id' => $eventId,
             'venue_id' => $venueId,
             'hall_id' => $this->hall->id,

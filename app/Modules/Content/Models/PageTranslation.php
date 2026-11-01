@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Content\Models;
 
+use Nabilet\Modules\Core\Tenancy\TenantScoped;
+
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -17,6 +19,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class PageTranslation extends Model
 {
+    use TenantScoped;
     protected $table = 'page_translations';
 
     protected $fillable = [

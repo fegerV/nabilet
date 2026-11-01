@@ -77,8 +77,24 @@ class InventoryItemRepository
         return $item->fresh();
     }
 
+    /**
+     * Массовая вставка позиций склада.
+     *
+     * `Model::insert()` — НЕ Eloquent-создание: события модели (в том числе
+     * `TenantScoped::creating`) не срабатывают. Поэтому `organization_id`
+     * обязан прийти в данных явно, иначе строка осталась бы без арендатора —
+     * ровно та дыра, из-за которой фаза 3 (NOT NULL) не включалась.
+     */
     public function bulkCreate(array $items): bool
     {
+        foreach ($items as $index => $item) {
+            if (($item['organization_id'] ?? null) === null || $item['organization_id'] === '') {
+                throw new \RuntimeException(
+                    "Inventory bulk insert row #{$index} has no organization_id; tenant is unresolved."
+                );
+            }
+        }
+
         return $this->model->insert($items);
     }
 

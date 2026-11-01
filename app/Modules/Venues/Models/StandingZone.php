@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Venues\Models;
 
+use Nabilet\Modules\Core\Tenancy\TenantScoped;
+
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -14,6 +16,7 @@ use Nabilet\Modules\Core\Models\Concerns\HasPublicId;
  */
 class StandingZone extends Model
 {
+    use TenantScoped;
     use HasPublicId;
 
     protected $table = 'standing_zones';

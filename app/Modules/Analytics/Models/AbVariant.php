@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Analytics\Models;
 
+use Nabilet\Modules\Core\Tenancy\TenantScoped;
+
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -16,6 +18,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class AbVariant extends Model
 {
+    use TenantScoped;
     protected $table = 'ab_variants';
 
     protected $fillable = [

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Loyalty\Models;
 
+use Nabilet\Modules\Core\Tenancy\TenantScoped;
+
 use Nabilet\Modules\Core\Models\Concerns\HasPublicId;
 
 use Nabilet\Modules\Notifications\Domain\NotificationStatus;
@@ -31,6 +33,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class FollowNotification extends Model
 {
+    use TenantScoped;
     use HasPublicId;
 
     /**

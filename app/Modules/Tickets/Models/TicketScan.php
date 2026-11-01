@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Tickets\Models;
 
+use Nabilet\Modules\Core\Tenancy\TenantScoped;
+
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Nabilet\Modules\Core\Models\Concerns\HasPublicId;
@@ -21,6 +23,7 @@ use Nabilet\Modules\Core\Models\Concerns\HasPublicId;
  */
 class TicketScan extends Model
 {
+    use TenantScoped;
     use HasPublicId;
 
     protected $table = 'ticket_scans';

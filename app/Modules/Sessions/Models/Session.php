@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Sessions\Models;
 
+use Nabilet\Modules\Core\Tenancy\TenantScoped;
+
 use Nabilet\Modules\Core\Models\Concerns\HasPublicId;
 
 use Illuminate\Database\Eloquent\Model;
@@ -16,6 +18,7 @@ use Nabilet\Modules\Sessions\Domain\SalesWindow;
  */
 class Session extends Model
 {
+    use TenantScoped;
     use HasPublicId;
 
     protected $table = 'sessions';

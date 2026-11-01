@@ -200,6 +200,7 @@ class InventoryService
                                                             ]);
                                                         $standingItems[] = [
                                                             'public_id' => PublicId::generate(),
+                                                            'organization_id' => $session->organization_id,
                                                             'session_id' => $session->id,
                                                             'type' => 'standing',
                                                             'seat_id' => null,
@@ -225,6 +226,7 @@ class InventoryService
                                             foreach ($seats as $seat) {
                                                 $seatItems[] = [
                                                     'public_id' => PublicId::generate(),
+                                                    'organization_id' => $session->organization_id,
                                                     'session_id' => $session->id,
                                                     'type' => 'seat',
                                                     'seat_id' => $seat->id,

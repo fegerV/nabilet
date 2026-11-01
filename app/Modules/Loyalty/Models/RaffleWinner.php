@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Loyalty\Models;
 
+use Nabilet\Modules\Core\Tenancy\TenantScoped;
+
 use Nabilet\Modules\Core\Models\Concerns\HasPublicId;
 
 use Illuminate\Database\Eloquent\Builder;
@@ -38,6 +40,7 @@ use Nabilet\Modules\Core\Users\Models\User;
  */
 class RaffleWinner extends Model
 {
+    use TenantScoped;
     use HasPublicId;
 
     /**

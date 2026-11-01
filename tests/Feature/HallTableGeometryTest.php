@@ -145,6 +145,7 @@ final class HallTableGeometryTest extends TestCase
 
         $sessionId = DB::table('sessions')->insertGetId([
             'public_id' => (string) Str::ulid()->toBase32(),
+            'organization_id' => $this->organizationId,
             'event_id' => $eventId,
             'venue_id' => $this->hall->venue_id,
             'hall_id' => $this->hall->id,

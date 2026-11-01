@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Cart\Models;
 
+use Nabilet\Modules\Core\Tenancy\TenantScoped;
+
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Nabilet\Modules\Inventory\Models\InventoryItem;
@@ -20,6 +22,7 @@ use Nabilet\Modules\Inventory\Models\InventoryItem;
  */
 class CartItem extends Model
 {
+    use TenantScoped;
     protected $table = 'cart_items';
 
     protected $fillable = [

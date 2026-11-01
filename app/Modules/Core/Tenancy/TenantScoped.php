@@ -16,10 +16,12 @@ use Nabilet\Core\Tenancy\OrganizationContext;
  * Два эффекта:
  *
  *   1. ЗАПИСЬ. При `creating` заполняет `organization_id` из активного контекста
- *      запроса, если колонка не задана. Если задана явно и расходится с
- *      контекстом — `NotFoundError` (неотличимо от несуществующего ресурса).
- *      Колонка НЕ в `$fillable`: значение приходит только из контекста, а не из
- *      тела запроса.
+ *      запроса, если колонка не задана. Если контекста нет (вебхук, гостевой
+ *      checkout, консоль), организация выводится из РОДИТЕЛЯ через
+ *      `TenantResolver` — билет из заказа, заказ из сеанса и т.д. Если задана
+ *      явно и расходится с контекстом или родителем — `NotFoundError`
+ *      (неотличимо от несуществующего ресурса). Колонка НЕ в `$fillable`:
+ *      значение приходит только из контекста/родителя, а не из тела запроса.
  *
  *   2. ЧТЕНИЕ (опционально). Если модель включила глобальный скоуп
  *      (`protected static bool $tenantScopeEnabled = true;`), каждый запрос
@@ -87,22 +89,45 @@ trait TenantScoped
 
         $context = app(OrganizationContext::class);
 
+        // Организация родителя: единственный источник истины там, где контекста
+        // запроса нет (вебхук, гостевой checkout, консоль). Считается ДО ветки
+        // явного значения, чтобы поймать попытку записать строку чужому тенанту.
+        $fromParent = TenantResolver::fromAttributes($model->getTable(), $model->getAttributes());
+
         if ($given !== null) {
-            if (! $context->isBypassing() && $context->isSet() && (string) $given !== $context->tryId()) {
+            $tenant = (string) $given;
+
+            if (! $context->isBypassing() && $context->isSet() && $tenant !== $context->tryId()) {
+                throw new NotFoundError(ucfirst(class_basename(static::class)), $column);
+            }
+
+            if ($fromParent !== null && $tenant !== (string) $fromParent) {
                 throw new NotFoundError(ucfirst(class_basename(static::class)), $column);
             }
 
             return;
         }
 
-        if ($context->isBypassing() || ! $context->isSet()) {
-            // Нет контекста — не угадываем организацию. Для обязательных колонок
-            // дальше сработает NOT NULL (фаза 3); для системных созданий это
-            // намеренно допустимо.
+        if ($context->isSet()) {
+            if ($fromParent !== null && (string) $fromParent !== $context->tryId()) {
+                // Строка одного арендатора не может ссылаться на родителя
+                // другого: это тот же IDOR, только на записи.
+                throw new NotFoundError(ucfirst(class_basename(static::class)), $column);
+            }
+
+            $model->setAttribute($column, $context->id());
+
             return;
         }
 
-        $model->setAttribute($column, $context->id());
+        if ($fromParent !== null) {
+            $model->setAttribute($column, $fromParent);
+
+            return;
+        }
+
+        // Ни контекста, ни родителя — не угадываем. Для обязательных колонок
+        // дальше сработает NOT NULL; для системных таблиц это допустимо.
     }
 
     protected static function tenantColumn(): string

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Analytics\Models;
 
+use Nabilet\Modules\Core\Tenancy\TenantScoped;
+
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Nabilet\Modules\Core\Users\Models\User;
@@ -18,6 +20,7 @@ use Nabilet\Modules\Core\Users\Models\User;
  */
 class AbAssignment extends Model
 {
+    use TenantScoped;
     protected $table = 'ab_assignments';
 
     protected $fillable = [

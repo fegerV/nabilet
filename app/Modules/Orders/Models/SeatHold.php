@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Orders\Models;
 
+use Nabilet\Modules\Core\Tenancy\TenantScoped;
+
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Nabilet\Core\Support\HoldGrace;
@@ -27,6 +29,7 @@ use Nabilet\Modules\Cart\Models\Cart;
  */
 class SeatHold extends Model
 {
+    use TenantScoped;
     use HasPublicId;
 
     /**

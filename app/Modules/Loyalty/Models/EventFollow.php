@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Loyalty\Models;
 
+use Nabilet\Modules\Core\Tenancy\TenantScoped;
+
 use Nabilet\Modules\Core\Models\Concerns\HasPublicId;
 use Nabilet\Modules\Loyalty\Models\Concerns\RemembersUserEvent;
 use Illuminate\Database\Eloquent\Builder;
@@ -27,6 +29,7 @@ use Nabilet\Modules\Events\Models\Event;
  */
 class EventFollow extends Model
 {
+    use TenantScoped;
     use HasPublicId;
     use RemembersUserEvent;
 
