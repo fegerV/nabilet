@@ -155,6 +155,11 @@
 | `app/Modules/Webhooks/Http/Controllers/WebhookSubscriptionController.php` | Список доставок вебхука — дети уже авторизованного вебхука под контекстом сотрудника: фильтр организации совпадает, обёртка не потребовалась |
 | `tests/Feature/Webhooks/OutboundWebhookDeliveryTest.php` | Прямые чтения доставки/счётчик fan-out в тестах — в bypass как тест-аналоги системного пути; создание через `WebhookDispatchService` осталось под скоупом-записью |
 | `tests/Feature/Core/TenantScopedReadTest.php` | Нативный скоуп `WebhookDelivery`: без контекста отказ, с контекстом фильтр, в bypass видны все |
+| `app/Modules/Analytics/Models/AbAssignment.php` | Фаза 2, чтение: глобальный скоуп включён на `AbAssignment` — пятнадцатая модель. Запись защищена трейтом (организация из A/B-эксперимента через `TenantResolver`; фаза 3 — NOT NULL + FK). Читателей в app/tests нет — включение fail-closed задел на будущее A/B. Зафиксирован дрейф модели от схемы: `ab_experiment_id`/`visitor_id`/`ab_variant_id` против реальных `experiment_id`/`anonymous_id`/`variant_id` |
+| `app/Modules/Analytics/Models/AbVariant.php` | Фаза 2, чтение: глобальный скоуп включён на `AbVariant` — шестнадцатая модель. Тот же fail-closed задел без читателей; дрейф: `weight`/`configuration` против реальных `allocation_percent`/`payload_json` |
+| `app/Modules/Analytics/Models/AbMetric.php` | Фаза 2, чтение: глобальный скоуп включён на `AbMetric` — семнадцатая модель. Тот же fail-closed задел; дрейф: `name`/`goal_type`/`configuration` против реальных `metric_name`/`metric_value` |
+| `app/Modules/Analytics/Models/AbExperiment.php` | Без правок, замечание: родительский `ab_experiments` вне тенант-обвязки — `organization_id` nullable без FK, трейта нет. Пока A/B не собран, таблица не читается и не пишется; к моменту появления путей нужна миграция NOT NULL + FK + трейт, иначе бэкфилл детей читает nullable-колонку |
+| `tests/Feature/Core/TenantScopedReadTest.php` | Нативный скоуп AB-кластера (общий тест на три модели + посев `ab_experiments`/`ab_variants`/`ab_assignments`/`ab_metrics` сырыми вставками): без контекста отказ на всех, с контекстом фильтр, в bypass видны все |
 | `tests/Feature/Core/TenantScopedReadTest.php` | Нативный скоуп `OrderItem`: без контекста отказ, с контекстом фильтр, в bypass видны все |
 | `tests/Feature/Core/TenantScopedReadTest.php` | Нативный скоуп `SeatHold`: без контекста отказ, с контекстом фильтр, в bypass видны все |
 | `tests/Feature/Core/TenantScopedReadTest.php` | Нативный скоуп `PaymentTransaction`: без контекста отказ, с контекстом фильтр, в bypass видны все |
@@ -177,7 +182,7 @@ dev-БД: 40 колонок `organization_id NOT NULL`, 40 FK `fk_<table>_org`.
 
 | Риск | Почему не закрыт в этом проходе |
 |------|--------------------------------|
-| `organization_id` у 70 таблиц | **Закрыт структурно.** Фазы 0–3 завершены: 40 таблиц класса A — `NOT NULL` + FK; запись наполняет тенанта из контекста/родителя; глобальный читающий скоуп включён на `Order`, `Payment`, `Ticket`, `Refund`, `TicketScan`, `CheckinDevice`, `OfflineBundle`, `PaymentTransaction`, `OrderItem`, `SeatHold`, `CartItem`, `Cart`, `PromoCodeRedemption` и `WebhookDelivery`, остальные модели — точечно по мере аудита их системных путей чтения (§3.3) |
+| `organization_id` у 70 таблиц | **Закрыт структурно.** Фазы 0–3 завершены: 40 таблиц класса A — `NOT NULL` + FK; запись наполняет тенанта из контекста/родителя; глобальный читающий скоуп включён на `Order`, `Payment`, `Ticket`, `Refund`, `TicketScan`, `CheckinDevice`, `OfflineBundle`, `PaymentTransaction`, `OrderItem`, `SeatHold`, `CartItem`, `Cart`, `PromoCodeRedemption`, `WebhookDelivery`, `AbAssignment`, `AbVariant` и `AbMetric`, остальные модели — точечно по мере аудита их системных путей чтения (§3.3) |
 | Списки/отчёты вне Orders/Payments/Tickets/Checkin | Проверены только пути, где аудит нашёл живую утечку; остальные закрываются общим `TenantScoped` в фазе 2 |
 | `PaymentController::store` и `OrderController::resendTicket` вне `auth:api` | Staff-ветки там не единственная защита; полноценно закрывается контекстом + схемой в фазе 2 |
 

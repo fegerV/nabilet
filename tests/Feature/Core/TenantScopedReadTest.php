@@ -9,6 +9,9 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Nabilet\Core\Errors\TenantContextMissingError;
 use Nabilet\Core\Tenancy\OrganizationContext;
+use Nabilet\Modules\Analytics\Models\AbAssignment;
+use Nabilet\Modules\Analytics\Models\AbMetric;
+use Nabilet\Modules\Analytics\Models\AbVariant;
 use Nabilet\Modules\Cart\Models\Cart;
 use Nabilet\Modules\Cart\Models\CartItem;
 use Nabilet\Modules\Orders\Models\Order;
@@ -621,6 +624,45 @@ final class TenantScopedReadTest extends TestCase
         );
     }
 
+    /**
+     * Скоуп AB-кластера (`AbAssignment`, `AbVariant`, `AbMetric`): все три
+     * резолвят организацию через общего родителя `ab_experiments`. Активных
+     * читателей нет — тест фиксирует fail-closed задел: без контекста отказ,
+     * с контекстом фильтр, в bypass видны все.
+     */
+    public function test_ab_cluster_read_scope_is_native(): void
+    {
+        $orgA = $this->organization();
+        $orgB = $this->organization();
+
+        $this->makeAbCluster($orgA);
+        $this->makeAbCluster($orgB);
+
+        $models = [AbAssignment::class, AbVariant::class, AbMetric::class];
+
+        // Без контекста — отказ на каждой модели, а не «показать все строки».
+        foreach ($models as $model) {
+            try {
+                $model::query()->count();
+                $this->fail("Ожидался TenantContextMissingError без контекста для {$model}");
+            } catch (TenantContextMissingError $e) {
+                $this->addToAssertionCount(1);
+            }
+        }
+
+        app(OrganizationContext::class)->set((string) $orgA);
+
+        foreach ($models as $model) {
+            $this->assertSame(1, $model::query()->count(), "чужие строки {$model} не видны");
+
+            $this->assertSame(
+                2,
+                app(OrganizationContext::class)->withoutScope(fn () => $model::query()->count()),
+                "withoutScope() обязан видеть строки {$model} всех организаций"
+            );
+        }
+    }
+
     private function makeCart(int $organizationId): void
     {
         [$orgId, $eventId, $sessionId] = $this->seedSellableSeat(
@@ -690,6 +732,49 @@ final class TenantScopedReadTest extends TestCase
             'payload_json' => json_encode(['ok' => true]),
             'created_at' => $now,
             'organization_id' => $organizationId,
+        ]);
+    }
+
+    /**
+     * Эксперимент с вариантом, присвоением и метрикой одной организации —
+     * общий посев для fail-closed скоуп-теста AB-кластера. Вставки сырые
+     * (DB::table): модели кластера отписывают несуществующие колонки —
+     * дрейф мёртвого кода, зафиксированный в документе шага.
+     */
+    private function makeAbCluster(int $organizationId): void
+    {
+        $now = now()->toDateTimeString();
+
+        $experimentId = (int) DB::table('ab_experiments')->insertGetId([
+            'public_id' => (string) Str::ulid()->toBase32(),
+            'organization_id' => $organizationId,
+            'name' => 'checkout-button-test',
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+
+        $variantId = (int) DB::table('ab_variants')->insertGetId([
+            'organization_id' => $organizationId,
+            'experiment_id' => $experimentId,
+            'name' => 'control',
+            'allocation_percent' => 50,
+        ]);
+
+        DB::table('ab_assignments')->insert([
+            'organization_id' => $organizationId,
+            'experiment_id' => $experimentId,
+            'variant_id' => $variantId,
+            'anonymous_id' => (string) Str::uuid(),
+            'assigned_at' => $now,
+        ]);
+
+        DB::table('ab_metrics')->insert([
+            'organization_id' => $organizationId,
+            'experiment_id' => $experimentId,
+            'variant_id' => $variantId,
+            'metric_name' => 'checkout_started',
+            'metric_value' => 1,
+            'occurred_at' => $now,
         ]);
     }
 

@@ -23,6 +23,25 @@ class AbAssignment extends Model
     use TenantScoped;
     protected $table = 'ab_assignments';
 
+    /**
+     * Глобальный читающий скоуп (пятнадцатая модель после Order, Payment,
+     * Ticket, Refund, TicketScan, CheckinDevice, OfflineBundle,
+     * PaymentTransaction, OrderItem, SeatHold, CartItem, Cart,
+     * PromoCodeRedemption и WebhookDelivery).
+     *
+     * Запись защищена трейтом (организация выводится из A/B-эксперимента
+     * через TenantResolver: `ab_assignments` → `ab_experiments`; фаза 3
+     * сделала колонку NOT NULL). Присвоение не адресуется в маршрутах —
+     * route-binding не нужен. Читателей в приложении сейчас нет: A/B-
+     * функциональность не собрана. Включение скоупа — fail-closed задел:
+     * будущее чтение без контекста получит явный отказ, а не данные чужих
+     * организаций.
+     */
+    protected static function tenantScopeEnabled(): bool
+    {
+        return true;
+    }
+
     protected $fillable = [
         'ab_experiment_id',
         'user_id',
