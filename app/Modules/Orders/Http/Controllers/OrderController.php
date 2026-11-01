@@ -122,7 +122,14 @@ class OrderController extends Controller
         // только схема `Order` — `payments`/`tickets`/`user` в неё не входят и
         // наружу не выносятся: `user` — это PII сотрудника, а `payments` клиент
         // читает своим ресурсом через `GET /payments`.
-        $order->load(['items', 'payments', 'tickets', 'user']);
+        //
+        // Чтение детей — через УЖЕ авторизованного родителя (`assertCanSee` выше):
+        // доступ к ним определяется принадлежностью заказу, а не организацией
+        // запроса. Это тот же путь, что у вебхука, поэтому без bypass скоуп
+        // `Payment` не пропустил бы покупателя без staff-организации в контексте.
+        $this->context->withoutScope(function () use ($order): void {
+            $order->load(['items', 'payments', 'tickets', 'user']);
+        });
 
         return response()->json(['data' => new OrderResource($order)]);
     }

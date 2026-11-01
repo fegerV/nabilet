@@ -8,6 +8,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Nabilet\Core\Errors\DomainRuleViolation;
 use Nabilet\Core\Errors\InvalidStateTransitionError;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Orders\Services\OrderService;
 use Nabilet\Modules\Orders\StateMachines\OrderStateMachine;
@@ -350,7 +351,11 @@ class OrderWritePathTest extends TestCase
         ]);
 
         $paymentId = $this->seedSucceededPayment($order->id, self::PRICE);
-        $payment = \Nabilet\Modules\Payments\Models\Payment::query()->findOrFail($paymentId);
+        // Аналог вебхука: чтение платежа и его заказа без организации —
+        // скоупы `Payment` и `Order` включены, у теста нет HTTP-контекста.
+        $payment = app(OrganizationContext::class)->withoutScope(
+            fn () => \Nabilet\Modules\Payments\Models\Payment::query()->findOrFail($paymentId)
+        );
 
         $this->service->applyPayment($order->fresh(), $payment);
         $this->assertSame(OrderStateMachine::PAID, DB::table('orders')->where('id', $order->id)->value('status'));
@@ -371,8 +376,13 @@ class OrderWritePathTest extends TestCase
         ]);
 
         // Оплачена только половина суммы заказа.
-        $payment = \Nabilet\Modules\Payments\Models\Payment::query()
-            ->findOrFail($this->seedSucceededPayment($order->id, self::PRICE));
+        // Аналог вебхука: чтение платежа и его заказа без организации — см.
+        // комментарий в test_apply_payment_is_idempotent.
+        $payment = app(OrganizationContext::class)->withoutScope(
+            fn () => \Nabilet\Modules\Payments\Models\Payment::query()->findOrFail(
+                $this->seedSucceededPayment($order->id, self::PRICE)
+            )
+        );
 
         $this->service->applyPayment($order->fresh(), $payment);
 

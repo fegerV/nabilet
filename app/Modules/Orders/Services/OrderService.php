@@ -316,28 +316,34 @@ class OrderService
 
     public function applyPayment(Order $order, Payment $payment): Order
     {
-        return DB::transaction(function () use ($order, $payment) {
-            // If already paid, this is a replay — idempotent.
-            if ($order->status === OrderStateMachine::PAID) {
-                return $order->fresh();
-            }
-
-            // Check if fully paid
-            $paidAmount = (int) $order->payments()
-                ->where('payments.status', PaymentStateMachine::SUCCEEDED)
-                ->sum('amount');
-
-            if ($paidAmount >= (int) $order->total_amount) {
-                // Прямой pending -> paid запрещён машиной; но здесь платёж уже
-                // прошёл (webhook succeeded), поэтому переводим через awaiting.
-                if ($order->status === OrderStateMachine::PENDING) {
-                    $this->markAwaitingPayment($order->fresh());
+        // Сумма считается по детям конкретного заказа, который уже прошёл
+        // авторизацию у вызывающего (вебхук — через владельца платежа, тесты —
+        // напрямую). Дети читаются через родителя, как в OrderController::show,
+        // поэтому читающий скоуп здесь не участвует.
+        return app(OrganizationContext::class)->withoutScope(
+            fn (): Order => DB::transaction(function () use ($order, $payment) {
+                // If already paid, this is a replay — idempotent.
+                if ($order->status === OrderStateMachine::PAID) {
+                    return $order->fresh();
                 }
-                $this->markPaid($order->fresh());
-            }
 
-            return $order->fresh();
-        });
+                // Check if fully paid
+                $paidAmount = (int) $order->payments()
+                    ->where('payments.status', PaymentStateMachine::SUCCEEDED)
+                    ->sum('amount');
+
+                if ($paidAmount >= (int) $order->total_amount) {
+                    // Прямой pending -> paid запрещён машиной; но здесь платёж уже
+                    // прошёл (webhook succeeded), поэтому переводим через awaiting.
+                    if ($order->status === OrderStateMachine::PENDING) {
+                        $this->markAwaitingPayment($order->fresh());
+                    }
+                    $this->markPaid($order->fresh());
+                }
+
+                return $order->fresh();
+            })
+        );
     }
 
     public function getOrdersByOrganization(int $organizationId, array $filters = [], int $limit = 15)

@@ -10,6 +10,7 @@ use Illuminate\Support\Str;
 use Nabilet\Core\Errors\TenantContextMissingError;
 use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Orders\Models\Order;
+use Nabilet\Modules\Payments\Models\Payment;
 use Tests\TestCase;
 
 /**
@@ -99,5 +100,56 @@ final class TenantScopedReadTest extends TestCase
             app(OrganizationContext::class)->withoutScope(fn () => ScopedOrder::query()->count()),
             'withoutScope() обязан видеть все строки'
         );
+    }
+
+    /**
+     * Скоуп оплачивается на НАСТОЯЩЕЙ модели: `Payment` включает читающий
+     * скоуп сам (`tenantScopeEnabled(): true`), без тестовой обёртки.
+     *
+     * Платежи пишутся прямо в таблицу: здесь важен только читающий контур,
+     * а он не зависит от того, как появилась строка.
+     */
+    public function test_payment_read_scope_is_native(): void
+    {
+        $orgA = $this->organization();
+        $orgB = $this->organization();
+
+        $this->makePayment($this->makeOrder($orgA), $orgA);
+        $this->makePayment($this->makeOrder($orgB), $orgB);
+
+        // Без контекста — отказ, а не «показать всё».
+        try {
+            Payment::query()->count();
+            $this->fail('Ожидался TenantContextMissingError без контекста');
+        } catch (TenantContextMissingError $e) {
+            $this->addToAssertionCount(1);
+        }
+
+        app(OrganizationContext::class)->set((string) $orgA);
+        $this->assertSame(1, Payment::query()->count(), 'чужие платежи не видны');
+
+        $this->assertSame(
+            2,
+            app(OrganizationContext::class)->withoutScope(fn () => Payment::query()->count()),
+            'withoutScope() обязан видеть платежи всех организаций'
+        );
+    }
+
+    private function makePayment(Order $order, int $organizationId): void
+    {
+        $now = now()->toDateTimeString();
+
+        DB::table('payments')->insert([
+            'public_id' => (string) Str::ulid()->toBase32(),
+            'organization_id' => $organizationId,
+            'order_id' => $order->id,
+            'provider' => 'yookassa',
+            'amount' => $order->total_amount,
+            'currency' => 'RUB',
+            'status' => 'pending',
+            'idempotency_key' => (string) Str::ulid()->toBase32(),
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
     }
 }

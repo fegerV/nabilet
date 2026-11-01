@@ -97,6 +97,9 @@
 | `app/Modules/Inventory/Repositories/InventoryItemRepository.php` | `bulkCreate()` — это `Model::insert()`, события модели не срабатывают: строка без `organization_id` теперь отвергается, а не пишется «ничьей» |
 | `app/Modules/Events/Console/SyncArtistsCommand.php` | `artist_event` через `sync()` получает `organization_id` из события: пивот пишется конструктором запросов, в обход событий модели |
 | `tests/Feature/Core/TenantResolverWriteTest.php` | Наследование организации от родителя, отказ при чужом контексте/явном чужом `organization_id`, отсутствие цепочки у глобальных таблиц |
+| `app/Modules/Payments/Models/Payment.php` | Фаза 2, чтение: глобальный скоуп включён на `Payment` — вторая модель после `Order`. Системные пути уже обёрнуты в `withoutScope()`: `initiatePayment`/`createPayment`/`processWebhook`, `reconcile` (`stuckPayments`), `confirmDemoPayment` (демо-шлюз читает платёж без организации) |
+| `app/Modules/Orders/Http/Controllers/OrderController.php`, `app/Modules/Orders/Services/OrderService.php` | Детей авторизованного заказа читаем через родителя: `show` грузит `payments` в `withoutScope()` (покупатель без staff-организации), `applyPayment` считает сумму платежей заказа вне скоупа (вебхук и тесты) |
+| `tests/Feature/Core/TenantScopedReadTest.php` | Нативный скоуп `Payment`: без контекста отказ, с контекстом фильтр, в bypass видны все |
 | `tests/Unit/TenancyPhase1ConsistencyTest.php` | Сторож расширен: список таблиц фазы 3 обязан совпадать со списком фазы 1 |
 | `tests/Support/SellableSeatFixtures.php` и фикстуры feature-тестов | Все прямые вставки строк класса A заполняют `organization_id` из уже известного родителя |
 | `docs/SECURITY-GAPS-REMEDIATION-2026-10-29.md` | Этот документ |
@@ -112,7 +115,7 @@ dev-БД: 40 колонок `organization_id NOT NULL`, 40 FK `fk_<table>_org`.
 
 | Риск | Почему не закрыт в этом проходе |
 |------|--------------------------------|
-| `organization_id` у 70 таблиц | **Закрыт структурно.** Фазы 0–3 завершены: 40 таблиц класса A — `NOT NULL` + FK; запись наполняет тенанта из контекста/родителя; глобальный читающий скоуп `Order` включён. Осталось только расширять читающий скоуп на остальные модели по мере аудита их системных путей (§3.3) |
+| `organization_id` у 70 таблиц | **Закрыт структурно.** Фазы 0–3 завершены: 40 таблиц класса A — `NOT NULL` + FK; запись наполняет тенанта из контекста/родителя; глобальный читающий скоуп включён на `Order` и `Payment`, остальные модели — точечно по мере аудита их системных путей чтения (§3.3) |
 | Списки/отчёты вне Orders/Payments/Tickets/Checkin | Проверены только пути, где аудит нашёл живую утечку; остальные закрываются общим `TenantScoped` в фазе 2 |
 | `PaymentController::store` и `OrderController::resendTicket` вне `auth:api` | Staff-ветки там не единственная защита; полноценно закрывается контекстом + схемой в фазе 2 |
 

@@ -58,6 +58,20 @@ class Payment extends Model
         'paid_at' => 'datetime',
     ];
 
+    /**
+     * Глобальный читающий скоуп.
+     *
+     * Все системные пути чтения платежей уже работают внутри
+     * `OrganizationContext::withoutScope()`: `initiatePayment()`,
+     * `createPayment()`, `processWebhook()`, reconcile и сверка демо-платежа.
+     * Поэтому запрос из HTTP-контекста без организации здесь означает именно
+     * ошибку, а не «покажи все платежи».
+     */
+    protected static function tenantScopeEnabled(): bool
+    {
+        return true;
+    }
+
     protected static function booted(): void
     {
         // `public_id` заполняет трейт HasPublicId; здесь — ключ идемпотентности,

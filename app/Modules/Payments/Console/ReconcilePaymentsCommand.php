@@ -8,6 +8,7 @@ use Illuminate\Console\Command;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use Nabilet\Core\Support\Money;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Payments\Models\Payment;
 use Nabilet\Modules\Payments\Services\PaymentProviderRegistry;
 use Nabilet\Modules\Payments\Services\PaymentService;
@@ -127,6 +128,23 @@ class ReconcilePaymentsCommand extends Command
      * @return Collection<int, Payment>
      */
     private function stuckPayments(): Collection
+    {
+        // Консольная команда — системный путь: организации в контексте нет, а
+        // скоуп `Payment` без неё отказал бы. Сверка обязана видеть платежи всех
+        // организаций: дальше каждый из них проводится через свой вебхук, где
+        // арендатор восстанавливается из заказа.
+        return app(OrganizationContext::class)->withoutScope(
+            fn (): Collection => $this->stuckPaymentsScoped()
+        );
+    }
+
+    /**
+     * Сам запрос вынесен из обёртки: код смысла не меняет, а phpdoc с
+     * дженериком подсказывает phpstan тип элементов коллекции.
+     *
+     * @return Collection<int, Payment>
+     */
+    private function stuckPaymentsScoped(): Collection
     {
         return Payment::query()
             ->whereIn('status', [PaymentStateMachine::PENDING, PaymentStateMachine::WAITING_FOR_CAPTURE])

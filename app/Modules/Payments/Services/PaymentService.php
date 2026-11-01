@@ -335,6 +335,13 @@ class PaymentService
      */
     public function confirmDemoPayment(string $providerPaymentId): Payment
     {
+        return app(OrganizationContext::class)->withoutScope(
+            fn (): Payment => $this->confirmDemoPaymentScoped($providerPaymentId)
+        );
+    }
+
+    private function confirmDemoPaymentScoped(string $providerPaymentId): Payment
+    {
         if (!str_starts_with($providerPaymentId, 'demo_')) {
             throw new DomainRuleViolation(
                 'Not a demo payment',
