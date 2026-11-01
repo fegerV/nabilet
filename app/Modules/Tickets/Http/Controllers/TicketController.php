@@ -189,7 +189,12 @@ class TicketController extends Controller
     {
         $this->assertCanSee($request, $ticket);
 
-        $ticket->load(['order', 'orderItem', 'scans']);
+        // Дети — через уже авторизованный билет: у покупателя организации в
+        // контексте нет (см. assertCanSee), скоупы `Order`/`TicketScan`
+        // отказали бы на ленивой загрузке.
+        $this->context->withoutScope(function () use ($ticket): void {
+            $ticket->load(['order', 'orderItem', 'scans']);
+        });
 
         return response()->json(['data' => $ticket]);
     }
@@ -263,9 +268,12 @@ class TicketController extends Controller
     {
         $this->assertCanSee($request, $ticket);
 
-        $scans = $ticket->scans()
-            ->orderBy('scanned_at', 'desc')
-            ->get();
+        // Сканы — дети авторизованного билета, вне скоупа (см. show()).
+        $scans = $this->context->withoutScope(
+            fn () => $ticket->scans()
+                ->orderBy('scanned_at', 'desc')
+                ->get()
+        );
 
         return response()->json([
             'data' => $scans,

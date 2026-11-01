@@ -28,6 +28,29 @@ class TicketScan extends Model
 
     protected $table = 'ticket_scans';
 
+    /**
+     * Глобальный читающий скоуп (пятая модель после Order, Payment, Ticket и
+     * Refund).
+     *
+     * Существующие пути чтения уже живут в нужном режиме и остаются в нём:
+     *   - запись и анализ скана (`TicketScanService::scan`/`scanFromBundle`)
+     *     идут под токеном устройства в bypass — арендатор проверяется
+     *     `belongsToOrganization` по билету;
+     *   - eager-load `scans` у билетов списка/карточки — дети уже
+     *     авторизованных билетов (`TicketController::show`/`history`,
+     *     `index` целиком в bypass);
+     *   - журнал сканов (`CheckinScanReportController`) читается под
+     *     контекстом сотрудника И своим явным фильтром по организации заказа
+     *     билета — скоуп лишь добавляет фильтр по собственной колонке.
+     * Скан не адресуется в маршрутах напрямую — route-binding не нужен.
+     * HTTP-запрос без организации здесь означает ошибку, а не «показать все
+     * сканы».
+     */
+    protected static function tenantScopeEnabled(): bool
+    {
+        return true;
+    }
+
     /** ticket_scans has no updated_at column in the spec schema. */
     public $timestamps = false;
 

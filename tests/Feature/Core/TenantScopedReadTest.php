@@ -13,6 +13,7 @@ use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Payments\Models\Payment;
 use Nabilet\Modules\Payments\Models\Refund;
 use Nabilet\Modules\Tickets\Models\Ticket;
+use Nabilet\Modules\Tickets\Models\TicketScan;
 use Nabilet\Tests\Support\SellableSeatFixtures;
 use Tests\TestCase;
 
@@ -192,6 +193,38 @@ final class TenantScopedReadTest extends TestCase
     }
 
     /**
+     * Скоуп `TicketScan`: журнал сканов — финансово-доступовый след на входе.
+     * Сын билета, строки пишутся прямо в таблицу поверх `makeTicket()`.
+     */
+    public function test_ticket_scan_read_scope_is_native(): void
+    {
+        $orgA = $this->organization();
+        $orgB = $this->organization();
+
+        $ticketA = $this->makeTicket($orgA);
+        $this->makeScan($ticketA, $orgA);
+        $ticketB = $this->makeTicket($orgB);
+        $this->makeScan($ticketB, $orgB);
+
+        // Без контекста — отказ, а не «показать все сканы».
+        try {
+            TicketScan::query()->count();
+            $this->fail('Ожидался TenantContextMissingError без контекста');
+        } catch (TenantContextMissingError $e) {
+            $this->addToAssertionCount(1);
+        }
+
+        app(OrganizationContext::class)->set((string) $orgA);
+        $this->assertSame(1, TicketScan::query()->count(), 'чужие сканы не видны');
+
+        $this->assertSame(
+            2,
+            app(OrganizationContext::class)->withoutScope(fn () => TicketScan::query()->count()),
+            'withoutScope() обязан видеть сканы всех организаций'
+        );
+    }
+
+    /**
      * Скоуп оплачивается на НАСТОЯЩЕЙ модели: `Refund` включает читающий скоуп
      * сам (`tenantScopeEnabled(): true`).
      *
@@ -255,7 +288,7 @@ final class TenantScopedReadTest extends TestCase
         ]);
     }
 
-    private function makeTicket(int $organizationId): void
+    private function makeTicket(int $organizationId): int
     {
         [$orgId, $eventId, $sessionId, $inventoryId] = $this->seedSellableSeat(
             available: 2,
@@ -278,7 +311,7 @@ final class TenantScopedReadTest extends TestCase
             'created_at' => $now,
         ]);
 
-        DB::table('tickets')->insert([
+        return (int) DB::table('tickets')->insertGetId([
             'public_id' => (string) Str::ulid()->toBase32(),
             'organization_id' => $organizationId,
             'ticket_number' => 'TCK-' . strtoupper(Str::random(10)),
@@ -291,6 +324,23 @@ final class TenantScopedReadTest extends TestCase
             'issued_at' => $now,
             'created_at' => $now,
             'updated_at' => $now,
+        ]);
+    }
+
+    private function makeScan(int $ticketId, int $organizationId): void
+    {
+        $sessionId = (int) DB::table('tickets')->where('id', $ticketId)->value('session_id');
+        $now = now()->toDateTimeString();
+
+        DB::table('ticket_scans')->insert([
+            'public_id' => (string) Str::ulid()->toBase32(),
+            'organization_id' => $organizationId,
+            'ticket_id' => $ticketId,
+            'session_id' => $sessionId,
+            'mode' => 'online',
+            'result' => 'admitted',
+            'scanned_at' => $now,
+            'created_at' => $now,
         ]);
     }
 }

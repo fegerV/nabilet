@@ -109,6 +109,8 @@
 | `app/Modules/Payments/Models/Payment.php` | Дополнение: `resolveRouteBinding()` в bypass (паттерн `Order`/`Ticket`) — `GET /payments/{id}` и `POST /payments/{id}/refund` резолвят платёж до проверки доступа; залогиненный покупатель без staff-организации раньше падал бы 500 ещё на резолве |
 | `app/Modules/Payments/Http/Controllers/PaymentController.php` | Дети авторизованного платежа читаются через родителя в bypass: `assertCanSee` (ленивый `$payment->order` упал бы у покупателя на скоупированном `Order`), `show` (`order/transactions/refunds`), `refund` (`refunds/transactions`) |
 | `tests/Feature/Core/TenantScopedReadTest.php` | Нативный скоуп `Refund`: без контекста отказ, с контекстом фильтр, в bypass видны все |
+| `app/Modules/Tickets/Models/TicketScan.php` | Фаза 2, чтение: глобальный скоуп включён на `TicketScan` — пятая модель после `Order`, `Payment`, `Ticket`, `Refund`. Скан/анализ идут под токеном устройства в bypass; eager-load `scans` — дети авторизованных билетов; журнал сканов читается под контекстом сотрудника со своим фильтром по организации заказа. Route-binding не нужен — скан не адресуется в маршрутах |
+| `app/Modules/Tickets/Http/Controllers/TicketController.php` | Дополнение: `show` и `history` читают `scans` в bypass — дети уже авторизованного билета |
 | `tests/Unit/TenancyPhase1ConsistencyTest.php` | Сторож расширен: список таблиц фазы 3 обязан совпадать со списком фазы 1 |
 | `tests/Support/SellableSeatFixtures.php` и фикстуры feature-тестов | Все прямые вставки строк класса A заполняют `organization_id` из уже известного родителя |
 | `docs/SECURITY-GAPS-REMEDIATION-2026-10-29.md` | Этот документ |
@@ -124,7 +126,7 @@ dev-БД: 40 колонок `organization_id NOT NULL`, 40 FK `fk_<table>_org`.
 
 | Риск | Почему не закрыт в этом проходе |
 |------|--------------------------------|
-| `organization_id` у 70 таблиц | **Закрыт структурно.** Фазы 0–3 завершены: 40 таблиц класса A — `NOT NULL` + FK; запись наполняет тенанта из контекста/родителя; глобальный читающий скоуп включён на `Order`, `Payment`, `Ticket` и `Refund`, остальные модели — точечно по мере аудита их системных путей чтения (§3.3) |
+| `organization_id` у 70 таблиц | **Закрыт структурно.** Фазы 0–3 завершены: 40 таблиц класса A — `NOT NULL` + FK; запись наполняет тенанта из контекста/родителя; глобальный читающий скоуп включён на `Order`, `Payment`, `Ticket`, `Refund` и `TicketScan`, остальные модели — точечно по мере аудита их системных путей чтения (§3.3) |
 | Списки/отчёты вне Orders/Payments/Tickets/Checkin | Проверены только пути, где аудит нашёл живую утечку; остальные закрываются общим `TenantScoped` в фазе 2 |
 | `PaymentController::store` и `OrderController::resendTicket` вне `auth:api` | Staff-ветки там не единственная защита; полноценно закрывается контекстом + схемой в фазе 2 |
 
