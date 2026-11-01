@@ -8,6 +8,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Notifications\Jobs\SendOrderNotificationJob;
 use Nabilet\Modules\Notifications\Mail\TemplateMail;
 use Nabilet\Modules\Notifications\Services\MailSettings;
@@ -122,7 +123,11 @@ class OrderStatusNotificationTest extends TestCase
         $tickets = app(TicketService::class)->issueTicketsForOrder($order->fresh());
         self::assertCount(1, $tickets, 'оплаченный заказ обязан получить билет');
 
-        $ticket = Ticket::query()->where('order_id', $order->id)->firstOrFail();
+        // Чтение выпущенных билетов — в bypass: скоуп `Ticket` включён, а у
+        // теста нет HTTP-контекста (создание шло через системный путь).
+        $ticket = app(OrganizationContext::class)->withoutScope(
+            fn (): Ticket => Ticket::query()->where('order_id', $order->id)->firstOrFail()
+        );
 
         // Выполняем джобу так, как это сделал бы воркер очереди.
         (new SendOrderNotificationJob($order->id, OrderStateMachine::PAID))->handle(

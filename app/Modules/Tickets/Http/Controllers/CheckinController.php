@@ -78,7 +78,12 @@ class CheckinController extends Controller
             ]);
         }
 
-        $ticket = Ticket::where('public_id', $verified['ticketId'])->firstOrFail();
+        // Верификация сотрудника: организация приходит параметром
+        // `canCheckin(organizationId:)` из его членства, скоуп `Ticket` здесь
+        // не является источником правды.
+        $ticket = $this->context->withoutScope(
+            fn () => Ticket::where('public_id', $verified['ticketId'])->firstOrFail()
+        );
 
         $isValid = $this->scanService->canCheckin(
             $ticket,

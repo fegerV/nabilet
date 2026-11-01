@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Nabilet\Modules\Checkin\Services;
 
 use Carbon\CarbonInterface;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Checkin\Domain\BundleTicket;
 use Nabilet\Modules\Checkin\Domain\CheckinDevice as DevicePolicy;
 use Nabilet\Modules\Checkin\Domain\OfflineBundleBuilder;
@@ -43,9 +44,12 @@ final class OfflineBundleService
 {
     public function issue(CheckinDevice $device, Event $event, ?Session $session): OfflineBundle
     {
-        $scope = Ticket::query()
-            ->where('event_id', $event->id)
-            ->when($session !== null, fn ($q) => $q->where('session_id', $session->id));
+        // Бандл выдаётся под аутентификацией устройства/админа, у которых
+        // организации HTTP-контекста нет; организация и устройство уже сверены
+        // вызывающим (`assertCanAccess`). Обе выборки исполняются ВНУТРИ
+        // withoutScope(): builder за пределами bypass не живёт — скоуп
+        // `Ticket` применился бы в момент `get()`.
+        $context = app(OrganizationContext::class);
 
         /** Snapshots вместо сырых строк: BundleTicket::fromSnapshot() принимает
          * только «факты решения» — иначе в бандл случайно просочится владелец. */
@@ -61,14 +65,18 @@ final class OfflineBundleService
             cancelledAt: $ticket->cancelled_at?->toDateTimeImmutable(),
         );
 
-        $validTickets = $scope->clone()
+        $fromScope = fn (): \Illuminate\Database\Eloquent\Builder => Ticket::query()
+            ->where('event_id', $event->id)
+            ->when($session !== null, fn ($q) => $q->where('session_id', $session->id));
+
+        $validTickets = $context->withoutScope(fn (): array => $fromScope()
             ->where('status', TicketStateMachine::ISSUED)
             ->orderBy('public_id')
             ->get()
             ->map(fn (Ticket $t): BundleTicket => BundleTicket::fromSnapshot($toSnapshot($t)))
-            ->all();
+            ->all());
 
-        $revokedTickets = $scope->clone()
+        $revokedTickets = $context->withoutScope(fn (): array => $fromScope()
             ->whereIn('status', [
                 TicketStateMachine::USED,
                 TicketStateMachine::REVOKED,
@@ -78,7 +86,7 @@ final class OfflineBundleService
             ->orderBy('public_id')
             ->get()
             ->map(fn (Ticket $t): BundleTicket => BundleTicket::fromSnapshot($toSnapshot($t)))
-            ->all();
+            ->all());
 
         $plan = (new OfflineBundleBuilder())->build(new OfflineBundleRequest(
             device: new DevicePolicy(

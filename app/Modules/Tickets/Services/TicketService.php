@@ -15,6 +15,7 @@ use Nabilet\Modules\Sessions\Models\Session;
 use Nabilet\Core\Support\QrSigner;
 use Nabilet\Core\Support\Sha256Hex;
 use Nabilet\Modules\Core\Support\PublicId;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -43,6 +44,17 @@ class TicketService
      * машине отсутствует).
      */
     public function issueTicketsForOrder(Order $order): array
+    {
+        // Системный путь: выпуск по факту оплаты идёт через вебхук и задание
+        // очереди — организации запроса там нет. Дети читаются у уже
+        // найденного заказа (ретрай вебхука через `findAny*`), поэтому
+        // читающий скоуп `Ticket`/`Order` здесь не участвует.
+        return app(OrganizationContext::class)->withoutScope(
+            fn (): array => $this->issueTicketsForOrderScoped($order)
+        );
+    }
+
+    private function issueTicketsForOrderScoped(Order $order): array
     {
         return DB::transaction(function () use ($order) {
             if ($order->status !== OrderStateMachine::PAID) {

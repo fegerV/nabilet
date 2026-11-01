@@ -7,6 +7,7 @@ namespace Nabilet\Modules\Tickets\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Core\Models\Concerns\HasPublicId;
 use Nabilet\Modules\Core\Tenancy\TenantScoped;
 use Nabilet\Modules\Orders\Models\Order;
@@ -70,6 +71,41 @@ class Ticket extends Model
         'expired_at' => 'datetime',
         'revoked_at' => 'datetime',
     ];
+
+    /**
+     * Глобальный читающий скоуп (третья модель после Order и Payment).
+     *
+     * Пути со СВОЕЙ защитой арендатора работают в без-скоупном режиме:
+     *   - проверка-in чекера идёт по токену устройства и несёт
+     *     `organizationId` прямо в вызовах `scan()`/`canCheckin()`;
+     *   - «мои билеты» и выпуск билетов читают детей уже авторизованного
+     *     родителя (заказ пользователя / вебхук об оплате).
+     * HTTP-запрос без организации здесь означает ошибку, а не «показать все
+     * билеты».
+     */
+    protected static function tenantScopeEnabled(): bool
+    {
+        return true;
+    }
+
+    /**
+     * Резолв route-model-binding вне глобального тенант-скоупа.
+     *
+     * Те же рассуждения, что у `Order::resolveRouteBinding()`: маршрут адресует
+     * билет по id, а доступ решается ПОСЛЕ резолва (`assertCanSee()` —
+     * владелец/сотрудник, чекин — организация устройства). Резолв под скоупом
+     * валил бы владельца-покупателя `TenantContextMissingError`'ом ещё до
+     * проверки доступа.
+     *
+     * @param  mixed  $value
+     * @param  string|null  $field
+     */
+    public function resolveRouteBinding($value, $field = null): ?Model
+    {
+        return app(OrganizationContext::class)->withoutScope(
+            fn (): ?Model => parent::resolveRouteBinding($value, $field)
+        );
+    }
 
     public function order(): BelongsTo
     {

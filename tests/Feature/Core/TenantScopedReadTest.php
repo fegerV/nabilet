@@ -11,6 +11,8 @@ use Nabilet\Core\Errors\TenantContextMissingError;
 use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Payments\Models\Payment;
+use Nabilet\Modules\Tickets\Models\Ticket;
+use Nabilet\Tests\Support\SellableSeatFixtures;
 use Tests\TestCase;
 
 /**
@@ -36,6 +38,7 @@ class ScopedOrder extends Order
 final class TenantScopedReadTest extends TestCase
 {
     use RefreshDatabase;
+    use SellableSeatFixtures;
 
     protected function tearDown(): void
     {
@@ -148,6 +151,79 @@ final class TenantScopedReadTest extends TestCase
             'currency' => 'RUB',
             'status' => 'pending',
             'idempotency_key' => (string) Str::ulid()->toBase32(),
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+    }
+
+    /**
+     * Скоуп оплачивается на НАСТОЯЩЕЙ модели: `Ticket` включает читающий скоуп
+     * сам (`tenantScopeEnabled(): true`), без тестовой обёртки.
+     *
+     * Билет — сын заказа и позиций склада: вся FK-цепочка (event → session →
+     * inventory → order_item → ticket) собирается фикстурой, строки пишутся
+     * прямо в таблицу — здесь важен только читающий контур.
+     */
+    public function test_ticket_read_scope_is_native(): void
+    {
+        $orgA = $this->organization();
+        $orgB = $this->organization();
+
+        $this->makeTicket($orgA);
+        $this->makeTicket($orgB);
+
+        // Без контекста — отказ, а не «показать все билеты всех арендаторов».
+        try {
+            Ticket::query()->count();
+            $this->fail('Ожидался TenantContextMissingError без контекста');
+        } catch (TenantContextMissingError $e) {
+            $this->addToAssertionCount(1);
+        }
+
+        app(OrganizationContext::class)->set((string) $orgA);
+        $this->assertSame(1, Ticket::query()->count(), 'чужие билеты не видны');
+
+        $this->assertSame(
+            2,
+            app(OrganizationContext::class)->withoutScope(fn () => Ticket::query()->count()),
+            'withoutScope() обязан видеть билеты всех организаций'
+        );
+    }
+
+    private function makeTicket(int $organizationId): void
+    {
+        [$orgId, $eventId, $sessionId, $inventoryId] = $this->seedSellableSeat(
+            available: 2,
+            organizationId: $organizationId,
+        );
+        \assert($orgId === $organizationId);
+
+        $order = $this->makeOrder($organizationId);
+
+        $now = now()->toDateTimeString();
+
+        $orderItemId = (int) DB::table('order_items')->insertGetId([
+            'order_id' => $order->id,
+            'organization_id' => $organizationId,
+            'inventory_item_id' => $inventoryId,
+            'quantity' => 1,
+            'unit_price' => 100,
+            'total_amount' => 100,
+            'event_title_snapshot' => 'Тестовое событие',
+            'created_at' => $now,
+        ]);
+
+        DB::table('tickets')->insert([
+            'public_id' => (string) Str::ulid()->toBase32(),
+            'organization_id' => $organizationId,
+            'ticket_number' => 'TCK-' . strtoupper(Str::random(10)),
+            'order_id' => $order->id,
+            'order_item_id' => $orderItemId,
+            'event_id' => $eventId,
+            'session_id' => $sessionId,
+            'inventory_item_id' => $inventoryId,
+            'qr_token_hash' => hash('sha256', (string) Str::ulid()),
+            'issued_at' => $now,
             'created_at' => $now,
             'updated_at' => $now,
         ]);

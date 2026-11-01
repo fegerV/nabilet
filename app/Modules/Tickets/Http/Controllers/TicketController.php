@@ -169,7 +169,10 @@ class TicketController extends Controller
             $query->where('status', $filters['status']);
         }
 
-        $tickets = $query->paginate($perPage);
+        // Единственная защита списка — явные фильтры по владельцу/организации
+        // выше: покупатель не имеет арендатора в контексте, а eager-load
+        // `order` с включённым скоупом `Order` без организации отказал бы.
+        $tickets = $this->context->withoutScope(fn () => $query->paginate($perPage));
 
         return response()->json([
             'data' => $tickets,

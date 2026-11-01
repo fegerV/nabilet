@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Nabilet\Modules\Tickets\Services;
 
 use Nabilet\Core\Support\QrSigner;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Tickets\Domain\CheckinEvaluator;
 use Nabilet\Modules\Tickets\Domain\ScanMode;
 use Nabilet\Modules\Tickets\Domain\ScanOutcome;
@@ -68,6 +69,24 @@ class TicketScanService
         ?string $clientScanId = null,
         ?\DateTimeImmutable $scannedAt = null,
         ?int $organizationId = null,
+    ): array {
+        // Проверка-in идёт по токену устройства: организации HTTP-контекста
+        // здесь нет (и не нужно) — арендатор проверяется ниже явно через
+        // `belongsToOrganization($organizationId, ...)`, который передают все
+        // HTTP-входы. Читающий скоуп `Ticket` глушился бы этим обходом и так.
+        return app(OrganizationContext::class)->withoutScope(
+            fn (): array => $this->scanScoped($ticketId, $sessionId, $deviceId, $qrPayload, $clientScanId, $scannedAt, $organizationId)
+        );
+    }
+
+    private function scanScoped(
+        int $ticketId,
+        int $sessionId,
+        ?int $deviceId,
+        ?string $qrPayload,
+        ?string $clientScanId,
+        ?\DateTimeImmutable $scannedAt,
+        ?int $organizationId,
     ): array {
         return DB::transaction(function () use ($ticketId, $sessionId, $deviceId, $qrPayload, $clientScanId, $scannedAt, $organizationId) {
             // Идемпотентный повтор приходит ДО любых изменений: билет уже
@@ -337,6 +356,22 @@ class TicketScanService
         bool $deviceAdmitted = true,
         ?\DateTimeImmutable $scannedAt = null,
         ?int $organizationId = null,
+    ): array {
+        // Тот же аргумент, что у `scan()`: организация приходит параметром
+        // (устройство из бандла), HTTP-контекст отсутствует.
+        return app(OrganizationContext::class)->withoutScope(
+            fn (): array => $this->scanFromBundleScoped($ticketPublicId, $bundleHash, $deviceId, $clientScanId, $deviceAdmitted, $scannedAt, $organizationId)
+        );
+    }
+
+    private function scanFromBundleScoped(
+        string $ticketPublicId,
+        ?string $bundleHash,
+        int $deviceId,
+        ?string $clientScanId,
+        bool $deviceAdmitted,
+        ?\DateTimeImmutable $scannedAt,
+        ?int $organizationId,
     ): array {
         return DB::transaction(function () use ($ticketPublicId, $bundleHash, $deviceId, $clientScanId, $deviceAdmitted, $scannedAt, $organizationId) {
             $ticket = Ticket::query()

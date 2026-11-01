@@ -100,6 +100,11 @@
 | `app/Modules/Payments/Models/Payment.php` | Фаза 2, чтение: глобальный скоуп включён на `Payment` — вторая модель после `Order`. Системные пути уже обёрнуты в `withoutScope()`: `initiatePayment`/`createPayment`/`processWebhook`, `reconcile` (`stuckPayments`), `confirmDemoPayment` (демо-шлюз читает платёж без организации) |
 | `app/Modules/Orders/Http/Controllers/OrderController.php`, `app/Modules/Orders/Services/OrderService.php` | Детей авторизованного заказа читаем через родителя: `show` грузит `payments` в `withoutScope()` (покупатель без staff-организации), `applyPayment` считает сумму платежей заказа вне скоупа (вебхук и тесты) |
 | `tests/Feature/Core/TenantScopedReadTest.php` | Нативный скоуп `Payment`: без контекста отказ, с контекстом фильтр, в bypass видны все |
+| `app/Modules/Tickets/Models/Ticket.php` | Фаза 2, чтение: глобальный скоуп включён на `Ticket` — третья модель после `Order` и `Payment`. Route-binding резолвится в bypass, доступ решается после (`assertCanSee`, организация устройства). Системные пути со своей защитой арендатора живут в bypass: выпуск билетов по оплаченному заказу (`TicketService::issueTicketsForOrder`, дети уже найденного вебхуком заказа), скан билета (`TicketScanService::scan`/`scanFromBundle` — арендатор проверяется `belongsToOrganization` по токену устройства), офлайн-бандл чекера (`OfflineBundleService::issue`), синхронизация чекера (`TicketLocator`), платёжное уведомление (`SendOrderNotificationJob` уже читал всё внутри bypass) |
+| `app/Modules/Tickets/Http/Controllers/TicketController.php`, `app/Modules/Tickets/Http/Controllers/CheckinController.php`, `app/Modules/Checkin/Http/Controllers/CheckerController.php` | Списки и верификации с УЖЕ явной авторизацией: `index` фильтрует по владельцу/организации сам — paginate в bypass; чекин верифицирует билет по токену устройства/членству сотрудника — чтение билета в bypass |
+| `app/Modules/Inventory/Http/Controllers/InventoryController.php` | Публичная витрина доступности: счётчик проданных билетов сеанса читается в bypass — арендатор определяется сеансом, у гостя организации в контексте нет |
+| `tests/Feature/Core/TenantScopedReadTest.php` | Нативный скоуп `Ticket`: без контекста отказ, с контекстом фильтр, в bypass видны все (FK-цепочка собирается фикстурой) |
+| `tests/Feature/Events/EventCancellationCascadeTest.php`, `tests/Feature/Notifications/OrderStatusNotificationTest.php`, `tests/Feature/Orders/OrderWritePathTest.php` | Тест-читатели билетов/платежей без HTTP-контекста переведены на `withoutScope()` — тот же режим, в котором живут системные пути |
 | `tests/Unit/TenancyPhase1ConsistencyTest.php` | Сторож расширен: список таблиц фазы 3 обязан совпадать со списком фазы 1 |
 | `tests/Support/SellableSeatFixtures.php` и фикстуры feature-тестов | Все прямые вставки строк класса A заполняют `organization_id` из уже известного родителя |
 | `docs/SECURITY-GAPS-REMEDIATION-2026-10-29.md` | Этот документ |
@@ -115,7 +120,7 @@ dev-БД: 40 колонок `organization_id NOT NULL`, 40 FK `fk_<table>_org`.
 
 | Риск | Почему не закрыт в этом проходе |
 |------|--------------------------------|
-| `organization_id` у 70 таблиц | **Закрыт структурно.** Фазы 0–3 завершены: 40 таблиц класса A — `NOT NULL` + FK; запись наполняет тенанта из контекста/родителя; глобальный читающий скоуп включён на `Order` и `Payment`, остальные модели — точечно по мере аудита их системных путей чтения (§3.3) |
+| `organization_id` у 70 таблиц | **Закрыт структурно.** Фазы 0–3 завершены: 40 таблиц класса A — `NOT NULL` + FK; запись наполняет тенанта из контекста/родителя; глобальный читающий скоуп включён на `Order`, `Payment` и `Ticket`, остальные модели — точечно по мере аудита их системных путей чтения (§3.3) |
 | Списки/отчёты вне Orders/Payments/Tickets/Checkin | Проверены только пути, где аудит нашёл живую утечку; остальные закрываются общим `TenantScoped` в фазе 2 |
 | `PaymentController::store` и `OrderController::resendTicket` вне `auth:api` | Staff-ветки там не единственная защита; полноценно закрывается контекстом + схемой в фазе 2 |
 

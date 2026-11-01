@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Nabilet\Modules\Inventory\Http\Controllers;
 
 use Nabilet\Modules\Inventory\Http\Requests\UpdateRowPricesRequest;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Inventory\StateMachines\InventoryItemStateMachine;
 use Nabilet\Modules\Inventory\Models\InventoryItem;
 use Nabilet\Modules\Inventory\Services\InventoryService;
@@ -219,10 +220,16 @@ class InventoryController extends Controller
 
         $capacity = (int) InventoryItem::query()->where('session_id', $sessionId)->sum('capacity');
         $availableTickets = (int) InventoryItem::query()->where('session_id', $sessionId)->sum('available_quantity');
-        $soldTickets = (int) Ticket::query()
-            ->where('session_id', $sessionId)
-            ->whereIn('status', [TicketStateMachine::ISSUED, TicketStateMachine::USED])
-            ->count();
+        // Публичная витрина доступности: арендатор определяется СЕАНСОМ
+        // (`sessions` → событие → организация), а не HTTP-контекстом, которого у
+        // гостя нет. С включённым скоупом `Ticket` счётчик обязан читаться в
+        // bypass — иначе витрина падала бы отказом вместо «продано N».
+        $soldTickets = (int) app(OrganizationContext::class)->withoutScope(
+            fn (): int => Ticket::query()
+                ->where('session_id', $sessionId)
+                ->whereIn('status', [TicketStateMachine::ISSUED, TicketStateMachine::USED])
+                ->count()
+        );
 
         // Резерв — то, что уже разобрано корзинами/холдами, но ещё не оплачено.
         // Отрицательным быть не может: если билеты проданы, а позиции ещё не

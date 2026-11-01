@@ -8,6 +8,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Nabilet\Core\Errors\ConflictError;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Events\Models\Event;
 use Nabilet\Modules\Events\Services\EventPublicationService;
 use Nabilet\Modules\Orders\Services\EventOrderRefunder;
@@ -76,7 +77,11 @@ final class EventCancellationCascadeTest extends TestCase
         ]);
 
         $this->assertSame(OrderStateMachine::PAID, $order->fresh()->status);
-        $ticket = Ticket::query()->where('order_id', $order->id)->first();
+        // Тест без HTTP-контекста: чтение выпущенного билета — в bypass
+        // (создание шло через системный путь вебхука).
+        $ticket = app(OrganizationContext::class)->withoutScope(
+            fn (): ?Ticket => Ticket::query()->where('order_id', $order->id)->first()
+        );
         $this->assertNotNull($ticket, 'оплаченный заказ обязан иметь билет');
         $this->assertSame('issued', $ticket->status);
 
@@ -109,8 +114,11 @@ final class EventCancellationCascadeTest extends TestCase
         );
 
         // Билеты аннулированы в статус refunded — CheckinEvaluator его отвергает,
-        // QR перестаёт проходить check-in (это и есть эффект отзыва).
-        $this->assertSame('refunded', (string) $ticket->fresh()->status);
+        // QR перестаёт проходить check-in (это и есть эффект отзыва). Тот же
+        // bypass, что выше: у теста нет организации в контексте.
+        $this->assertSame('refunded', (string) app(OrganizationContext::class)->withoutScope(
+            fn (): Ticket => $ticket->fresh()
+        )->status);
     }
 
     public function test_plain_cancel_still_refuses_while_money_is_outstanding(): void

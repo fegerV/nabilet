@@ -8,6 +8,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Routing\Controller;
 use Nabilet\Core\Errors\AuthError;
 use Nabilet\Core\Errors\ValidationError;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Checkin\Http\Middleware\AuthenticateChecker;
 use Nabilet\Modules\Checkin\Http\Requests\CheckinSyncRequest;
 use Nabilet\Modules\Checkin\Http\Requests\CheckinUseRequest;
@@ -66,7 +67,12 @@ final class CheckerController extends Controller
             return $this->respond(CheckinVerdict::INVALID_SIGNATURE, null, 200);
         }
 
-        $ticket = Ticket::query()->where('public_id', $verified['ticketId'])->first();
+        // Устройство чекера аутентифицировано токеном, а не организацией
+        // HTTP-контекста: скоуп `Ticket` тут не участвует, арендатора ниже
+        // проверяет `canCheckin(..., (int) $device->organization_id)`.
+        $ticket = app(OrganizationContext::class)->withoutScope(
+            fn (): ?Ticket => Ticket::query()->where('public_id', $verified['ticketId'])->first()
+        );
 
         if ($ticket === null) {
             return $this->respond(CheckinVerdict::UNKNOWN_TICKET, null, 200);

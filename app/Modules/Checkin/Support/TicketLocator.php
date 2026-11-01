@@ -6,6 +6,7 @@ namespace Nabilet\Modules\Checkin\Support;
 
 use Nabilet\Core\Errors\ValidationError;
 use Nabilet\Core\Support\DatabaseId;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Tickets\Models\Ticket;
 
 /**
@@ -40,7 +41,12 @@ final class TicketLocator
                 throw new ValidationError(['ticket_id' => ['Unknown ticket id.']]);
             }
 
-            $publicId = Ticket::query()->whereKey($id)->value('public_id');
+            // Синхронизация чекера идёт под токеном устройства, не под
+            // организацией HTTP-контекста: принадлежность билета устройству
+            // проверяет scanFromBundle() по organizationId параметру.
+            $publicId = app(OrganizationContext::class)->withoutScope(
+                fn () => Ticket::query()->whereKey($id)->value('public_id')
+            );
 
             if ($publicId === null) {
                 throw new ValidationError(['ticket_id' => ['Unknown ticket id.']]);
@@ -49,7 +55,9 @@ final class TicketLocator
             return (string) $publicId;
         }
 
-        $exists = Ticket::query()->where('public_id', $value)->exists();
+        $exists = app(OrganizationContext::class)->withoutScope(
+            fn (): bool => Ticket::query()->where('public_id', $value)->exists()
+        );
 
         if (! $exists) {
             throw new ValidationError(['ticket_id' => ['Unknown ticket public id.']]);
