@@ -47,6 +47,23 @@ class PromoCodeRedemption extends Model
     protected $table = 'promo_code_redemptions';
 
     /**
+     * Глобальный читающий скоуп (тринадцатая модель после Order, Payment,
+     * Ticket, Refund, TicketScan, CheckinDevice, OfflineBundle,
+     * PaymentTransaction, OrderItem, SeatHold, CartItem и Cart).
+     *
+     * Запись защищена трейтом (организация выводится из промокода через
+     * TenantResolver). Чтение — это per_user_limit и идемпотентная чистка
+     * расхода при чекауте: потребитель один — `PromoCodeService`, который
+     * живёт в гостевом чекауте без тенант-контекста, поэтому все три точки
+     * (re-check под локом, чистка, `userRedemptions`) — в bypass. Расход не
+     * адресуется в маршрутах — route-binding не нужен.
+     */
+    protected static function tenantScopeEnabled(): bool
+    {
+        return true;
+    }
+
+    /**
      * У таблицы нет `created_at` / `updated_at` — только `redeemed_at`.
      *
      * `false`, а не `const CREATED_AT = 'redeemed_at'`: второе заставило бы

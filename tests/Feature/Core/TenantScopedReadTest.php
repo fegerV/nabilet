@@ -12,6 +12,7 @@ use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Cart\Models\Cart;
 use Nabilet\Modules\Cart\Models\CartItem;
 use Nabilet\Modules\Orders\Models\Order;
+use Nabilet\Modules\Orders\Models\PromoCodeRedemption;
 use Nabilet\Modules\Orders\Models\OrderItem;
 use Nabilet\Modules\Orders\Models\SeatHold;
 use Nabilet\Modules\Payments\Models\Payment;
@@ -560,6 +561,36 @@ final class TenantScopedReadTest extends TestCase
         );
     }
 
+    /**
+     * Скоуп `PromoCodeRedemption`: расход промокода — ребёнок пары
+     * (промокод, заказ) одной организации.
+     */
+    public function test_promo_code_redemption_read_scope_is_native(): void
+    {
+        $orgA = $this->organization();
+        $orgB = $this->organization();
+
+        $this->makePromoCodeRedemption($orgA);
+        $this->makePromoCodeRedemption($orgB);
+
+        // Без контекста — отказ, а не «показать все расходы промокодов».
+        try {
+            PromoCodeRedemption::query()->count();
+            $this->fail('Ожидался TenantContextMissingError без контекста');
+        } catch (TenantContextMissingError $e) {
+            $this->addToAssertionCount(1);
+        }
+
+        app(OrganizationContext::class)->set((string) $orgA);
+        $this->assertSame(1, PromoCodeRedemption::query()->count(), 'чужие расходы не видны');
+
+        $this->assertSame(
+            2,
+            app(OrganizationContext::class)->withoutScope(fn () => PromoCodeRedemption::query()->count()),
+            'withoutScope() обязан видеть расходы всех организаций'
+        );
+    }
+
     private function makeCart(int $organizationId): void
     {
         [$orgId, $eventId, $sessionId] = $this->seedSellableSeat(
@@ -577,6 +608,32 @@ final class TenantScopedReadTest extends TestCase
             'session_id' => $sessionId,
             'created_at' => $now,
             'updated_at' => $now,
+        ]);
+    }
+
+    private function makePromoCodeRedemption(int $organizationId): void
+    {
+        $order = $this->makeOrder($organizationId);
+        $now = now()->toDateTimeString();
+
+        // Дефолты promo_codes (percent 0, scope 'all', статус 'active') покрывают
+        // всё, кроме ключей и меток; уникальность (организация, код) соблюдается
+        // тем, что каждая строка — в своей организации.
+        $promoId = (int) DB::table('promo_codes')->insertGetId([
+            'public_id' => (string) Str::ulid()->toBase32(),
+            'organization_id' => $organizationId,
+            'code' => 'TESTCODE',
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+
+        DB::table('promo_code_redemptions')->insert([
+            'promo_code_id' => $promoId,
+            'order_id' => $order->id,
+            'user_id' => null,
+            'discount_amount' => 100,
+            'redeemed_at' => $now,
+            'organization_id' => $organizationId,
         ]);
     }
 

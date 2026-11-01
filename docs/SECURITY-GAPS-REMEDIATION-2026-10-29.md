@@ -146,6 +146,8 @@
 | `app/Modules/Inventory/Services/InventoryService.php` | Дополнение (/cart): выборка активных корзин при переоценке цен сеанса — системный путь, контекст вызывающего не сужает выборку |
 | `phpstan-baseline.neon` | Ratchet шага `Cart`: запись `items()`-на-`stdClass` удалена (сайт ушёл в mixed), счётчик `update()`-на-`stdClass` на `CartItemService` 4→3 |
 | `tests/Feature/Core/TenantScopedReadTest.php` | Нативный скоуп `Cart`: без контекста отказ, с контекстом фильтр, в bypass видны все |
+| `app/Modules/Orders/Models/PromoCodeRedemption.php` | Фаза 2, чтение: глобальный скоуп включён на `PromoCodeRedemption` — тринадцатая модель. Запись защищена трейтом (организация из промокода через `TenantResolver`). Потребитель чтений один — `PromoCodeService` в гостевом чекауте; расход не адресуется в маршрутах — route-binding не нужен |
+| `app/Modules/Pricing/Services/PromoCodeService.php` | Три точки чтения расхода — в bypass: re-check `per_user_limit` под локом при `redeem`, идемпотентная чистка расхода перед вставкой, `userRedemptions()` (limит из контекста оценки `buildContext`) — чекаут живёт без тенант-контекста |
 | `tests/Feature/Core/TenantScopedReadTest.php` | Нативный скоуп `OrderItem`: без контекста отказ, с контекстом фильтр, в bypass видны все |
 | `tests/Feature/Core/TenantScopedReadTest.php` | Нативный скоуп `SeatHold`: без контекста отказ, с контекстом фильтр, в bypass видны все |
 | `tests/Feature/Core/TenantScopedReadTest.php` | Нативный скоуп `PaymentTransaction`: без контекста отказ, с контекстом фильтр, в bypass видны все |
@@ -168,7 +170,7 @@ dev-БД: 40 колонок `organization_id NOT NULL`, 40 FK `fk_<table>_org`.
 
 | Риск | Почему не закрыт в этом проходе |
 |------|--------------------------------|
-| `organization_id` у 70 таблиц | **Закрыт структурно.** Фазы 0–3 завершены: 40 таблиц класса A — `NOT NULL` + FK; запись наполняет тенанта из контекста/родителя; глобальный читающий скоуп включён на `Order`, `Payment`, `Ticket`, `Refund`, `TicketScan`, `CheckinDevice`, `OfflineBundle`, `PaymentTransaction`, `OrderItem`, `SeatHold`, `CartItem` и `Cart`, остальные модели — точечно по мере аудита их системных путей чтения (§3.3) |
+| `organization_id` у 70 таблиц | **Закрыт структурно.** Фазы 0–3 завершены: 40 таблиц класса A — `NOT NULL` + FK; запись наполняет тенанта из контекста/родителя; глобальный читающий скоуп включён на `Order`, `Payment`, `Ticket`, `Refund`, `TicketScan`, `CheckinDevice`, `OfflineBundle`, `PaymentTransaction`, `OrderItem`, `SeatHold`, `CartItem`, `Cart` и `PromoCodeRedemption`, остальные модели — точечно по мере аудита их системных путей чтения (§3.3) |
 | Списки/отчёты вне Orders/Payments/Tickets/Checkin | Проверены только пути, где аудит нашёл живую утечку; остальные закрываются общим `TenantScoped` в фазе 2 |
 | `PaymentController::store` и `OrderController::resendTicket` вне `auth:api` | Staff-ветки там не единственная защита; полноценно закрывается контекстом + схемой в фазе 2 |
 

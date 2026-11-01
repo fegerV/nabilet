@@ -258,11 +258,15 @@ final class PromoCodeService
         // транзакции чекаута, пересчитываем использования с lockForUpdate —
         // параллельному оформлению придётся ждать лок и увидеть свежий счёт.
         if ($code->per_user_limit !== null && $userId !== null) {
-            $used = PromoCodeRedemption::query()
-                ->where('promo_code_id', $code->id)
-                ->where('user_id', $userId)
-                ->lockForUpdate()
-                ->count();
+            // Расход кода — строки промо-редемпшенов: чекаут идёт без тенант-
+            // контекста, re-check лимита покупателя под локом — в bypass.
+            $used = app(OrganizationContext::class)->withoutScope(
+                fn () => PromoCodeRedemption::query()
+                    ->where('promo_code_id', $code->id)
+                    ->where('user_id', $userId)
+                    ->lockForUpdate()
+                    ->count()
+            );
 
             if ($used >= $code->per_user_limit) {
                 throw new ConflictError(
@@ -297,10 +301,14 @@ final class PromoCodeService
             );
         }
 
-        PromoCodeRedemption::query()
-            ->where('order_id', $order->id)
-            ->where('promo_code_id', $code->id)
-            ->delete();
+        // Идемпотентная чистка расхода перед вставкой: чекаут — гость без
+        // контекста, на скоупе `PromoCodeRedemption` удаление отказало бы.
+        app(OrganizationContext::class)->withoutScope(
+            fn () => PromoCodeRedemption::query()
+                ->where('order_id', $order->id)
+                ->where('promo_code_id', $code->id)
+                ->delete()
+        );
 
         PromoCodeRedemption::create([
             'promo_code_id' => $code->id,
@@ -322,10 +330,14 @@ final class PromoCodeService
             return 0;
         }
 
-        return PromoCodeRedemption::query()
-            ->where('promo_code_id', $code->id)
-            ->where('user_id', $userId)
-            ->count();
+        // per_user_limit — расход кода покупателем: чекаут живёт без
+        // тенант-контекста, чтение — в bypass.
+        return app(OrganizationContext::class)->withoutScope(
+            fn () => PromoCodeRedemption::query()
+                ->where('promo_code_id', $code->id)
+                ->where('user_id', $userId)
+                ->count()
+        );
     }
 
     /**
