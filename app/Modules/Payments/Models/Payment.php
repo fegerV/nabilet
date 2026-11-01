@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Str;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Core\Tenancy\TenantScoped;
 
@@ -70,6 +71,26 @@ class Payment extends Model
     protected static function tenantScopeEnabled(): bool
     {
         return true;
+    }
+
+    /**
+     * Резолв route-model-binding вне глобального тенант-скоупа.
+     *
+     * Тот же паттерн, что у `Order`/`Ticket`: `GET /payments/{payment}` и
+     * `POST /payments/{payment}/refund` адресуют платёж по id, а доступ
+     * решается ПОСЛЕ резолва (`assertCanSee()` — владелец заказа, гость с
+     * capability-токеном корзины, сотрудник своей организации). Залогиненный
+     * покупатель не имеет организации в контексте — резолв под скоупом валил бы
+     * его 500 `TenantContextMissingError` ещё до проверки доступа.
+     *
+     * @param  mixed  $value
+     * @param  string|null  $field
+     */
+    public function resolveRouteBinding($value, $field = null): ?Model
+    {
+        return app(OrganizationContext::class)->withoutScope(
+            fn (): ?Model => parent::resolveRouteBinding($value, $field)
+        );
     }
 
     protected static function booted(): void

@@ -11,6 +11,7 @@ use Nabilet\Core\Errors\TenantContextMissingError;
 use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Payments\Models\Payment;
+use Nabilet\Modules\Payments\Models\Refund;
 use Nabilet\Modules\Tickets\Models\Ticket;
 use Nabilet\Tests\Support\SellableSeatFixtures;
 use Tests\TestCase;
@@ -188,6 +189,70 @@ final class TenantScopedReadTest extends TestCase
             app(OrganizationContext::class)->withoutScope(fn () => Ticket::query()->count()),
             'withoutScope() обязан видеть билеты всех организаций'
         );
+    }
+
+    /**
+     * Скоуп оплачивается на НАСТОЯЩЕЙ модели: `Refund` включает читающий скоуп
+     * сам (`tenantScopeEnabled(): true`).
+     *
+     * Возврат — сын платежа и заказа: обе строки создаются тут же; здесь важен
+     * только читающий контур, а он не зависит от того, как появились строки.
+     */
+    public function test_refund_read_scope_is_native(): void
+    {
+        $orgA = $this->organization();
+        $orgB = $this->organization();
+
+        $this->makeRefund($orgA);
+        $this->makeRefund($orgB);
+
+        // Без контекста — отказ, а не «показать все возвраты».
+        try {
+            Refund::query()->count();
+            $this->fail('Ожидался TenantContextMissingError без контекста');
+        } catch (TenantContextMissingError $e) {
+            $this->addToAssertionCount(1);
+        }
+
+        app(OrganizationContext::class)->set((string) $orgA);
+        $this->assertSame(1, Refund::query()->count(), 'чужие возвраты не видны');
+
+        $this->assertSame(
+            2,
+            app(OrganizationContext::class)->withoutScope(fn () => Refund::query()->count()),
+            'withoutScope() обязан видеть возвраты всех организаций'
+        );
+    }
+
+    private function makeRefund(int $organizationId): void
+    {
+        $order = $this->makeOrder($organizationId);
+        $now = now()->toDateTimeString();
+
+        $paymentId = (int) DB::table('payments')->insertGetId([
+            'public_id' => (string) Str::ulid()->toBase32(),
+            'organization_id' => $organizationId,
+            'order_id' => $order->id,
+            'provider' => 'yookassa',
+            'amount' => $order->total_amount,
+            'currency' => 'RUB',
+            'status' => 'succeeded',
+            'idempotency_key' => (string) Str::ulid()->toBase32(),
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+
+        DB::table('refunds')->insert([
+            'public_id' => (string) Str::ulid()->toBase32(),
+            'organization_id' => $organizationId,
+            'order_id' => $order->id,
+            'payment_id' => $paymentId,
+            'amount' => $order->total_amount,
+            'currency' => 'RUB',
+            'status' => 'requested',
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
     }
 
     private function makeTicket(int $organizationId): void

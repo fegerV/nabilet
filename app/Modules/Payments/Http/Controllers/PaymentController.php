@@ -103,7 +103,12 @@ class PaymentController extends Controller
     {
         $this->assertCanSee($request, $payment);
 
-        $payment->load(['order', 'transactions', 'refunds']);
+        // Дети — через уже авторизованного родителя: у покупателя организации
+        // в контексте нет (см. assertCanSee ниже), скоупы `Order`/`Refund`
+        // отказали бы на ленивой загрузке.
+        $this->context->withoutScope(function () use ($payment): void {
+            $payment->load(['order', 'transactions', 'refunds']);
+        });
 
         return response()->json(['data' => $payment]);
     }
@@ -302,7 +307,10 @@ class PaymentController extends Controller
         );
 
         return response()->json([
-            'data' => $payment->load(['refunds', 'transactions']),
+            // Дети URL-авторизованного платежа — в bypass, как в show().
+            'data' => $this->context->withoutScope(
+                fn () => $payment->load(['refunds', 'transactions'])
+            ),
         ]);
     }
 
@@ -317,7 +325,11 @@ class PaymentController extends Controller
      */
     private function assertCanSee(Request $request, Payment $payment): void
     {
-        $order = $payment->order;
+        // Заказ — ребёнок уже найденного платежа (route-binding), решение о
+        // доступе принимается ниже по владельцу/токену корзины/членству.
+        // Покупатель без staff-организации не имеет контекста, поэтому чтение
+        // ребёнка — в bypass (см. OrderController::show).
+        $order = $this->context->withoutScope(fn () => $payment->order);
 
         // Владелец заказа или гость с capability-токеном — доступ есть
         // независимо от роли: сотрудник тоже может быть покупателем.

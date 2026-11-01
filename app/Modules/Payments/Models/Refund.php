@@ -32,6 +32,23 @@ class Refund extends Model
 
     protected $table = 'refunds';
 
+    /**
+     * Глобальный читающий скоуп (четвёртая модель после Order, Payment и Ticket).
+     *
+     * Все существующие пути чтения возвратов уже живут в без-скоупном режиме и
+     * остаются в нём: сверка вебхука (`PaymentService::processWebhook`),
+     * расчёт остатка при инициации возврата (`RefundService::refund` — там же
+     * пишутся новые возвраты), загрузка `refunds` у УЖЕ авторизованного платежа
+     * (`PaymentController::show`/`refund`). Возврат не адресуется в маршрутах
+     * напрямую — route-binding не нужен.
+     * HTTP-запрос без организации здесь означает ошибку, а не «показать все
+     * возвраты».
+     */
+    protected static function tenantScopeEnabled(): bool
+    {
+        return true;
+    }
+
     protected $fillable = [
         'public_id',
         'order_id',
