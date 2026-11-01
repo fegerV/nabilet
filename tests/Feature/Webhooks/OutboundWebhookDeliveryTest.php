@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Webhooks\Domain\RetryPolicy;
 use Nabilet\Modules\Webhooks\Jobs\SendWebhookDeliveryJob;
 use Nabilet\Modules\Webhooks\Services\WebhookDispatchService;
@@ -35,7 +36,11 @@ class OutboundWebhookDeliveryTest extends TestCase
             'status' => 'paid',
         ], $organizationId));
 
-        $delivery = WebhookDelivery::query()->firstOrFail();
+        // Чтение доставки — прямой запрос без контекста: тест-аналог системного
+        // пути (в проде модель читают queue-воркер и крон), в bypass.
+        $delivery = app(OrganizationContext::class)->withoutScope(
+            fn () => WebhookDelivery::query()->firstOrFail()
+        );
         self::assertSame('order.paid', $delivery->event_name);
 
         app(SendWebhookDeliveryJob::class, ['deliveryId' => $delivery->id, 'jitter' => 0.5])
@@ -85,7 +90,10 @@ class OutboundWebhookDeliveryTest extends TestCase
             'url' => 'https://example.com/a/b',
         ], $organizationId);
 
-        $delivery = WebhookDelivery::query()->firstOrFail();
+        // Тест-аналог системного пути (см. выше): чтение — в bypass.
+        $delivery = app(OrganizationContext::class)->withoutScope(
+            fn () => WebhookDelivery::query()->firstOrFail()
+        );
 
         app(SendWebhookDeliveryJob::class, ['deliveryId' => $delivery->id, 'jitter' => 0.5])
             ->handle(app(RetryPolicy::class), app(WebhookEndpointGuard::class));
@@ -160,7 +168,9 @@ class OutboundWebhookDeliveryTest extends TestCase
             $eventId,
         ));
 
-        self::assertSame(1, WebhookDelivery::query()->count());
+        self::assertSame(1, app(OrganizationContext::class)->withoutScope(
+            fn () => WebhookDelivery::query()->count()
+        ));
         self::assertSame(1, DB::table('jobs')->count());
     }
 

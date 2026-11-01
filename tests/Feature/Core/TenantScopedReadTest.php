@@ -13,6 +13,7 @@ use Nabilet\Modules\Cart\Models\Cart;
 use Nabilet\Modules\Cart\Models\CartItem;
 use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Orders\Models\PromoCodeRedemption;
+use Nabilet\Modules\Webhooks\Models\WebhookDelivery;
 use Nabilet\Modules\Orders\Models\OrderItem;
 use Nabilet\Modules\Orders\Models\SeatHold;
 use Nabilet\Modules\Payments\Models\Payment;
@@ -591,6 +592,35 @@ final class TenantScopedReadTest extends TestCase
         );
     }
 
+    /**
+     * Скоуп `WebhookDelivery`: доставка — ребёнок вебхука организации.
+     */
+    public function test_webhook_delivery_read_scope_is_native(): void
+    {
+        $orgA = $this->organization();
+        $orgB = $this->organization();
+
+        $this->makeWebhookDelivery($orgA);
+        $this->makeWebhookDelivery($orgB);
+
+        // Без контекста — отказ, а не «показать все доставки».
+        try {
+            WebhookDelivery::query()->count();
+            $this->fail('Ожидался TenantContextMissingError без контекста');
+        } catch (TenantContextMissingError $e) {
+            $this->addToAssertionCount(1);
+        }
+
+        app(OrganizationContext::class)->set((string) $orgA);
+        $this->assertSame(1, WebhookDelivery::query()->count(), 'чужие доставки не видны');
+
+        $this->assertSame(
+            2,
+            app(OrganizationContext::class)->withoutScope(fn () => WebhookDelivery::query()->count()),
+            'withoutScope() обязан видеть доставки всех организаций'
+        );
+    }
+
     private function makeCart(int $organizationId): void
     {
         [$orgId, $eventId, $sessionId] = $this->seedSellableSeat(
@@ -633,6 +663,32 @@ final class TenantScopedReadTest extends TestCase
             'user_id' => null,
             'discount_amount' => 100,
             'redeemed_at' => $now,
+            'organization_id' => $organizationId,
+        ]);
+    }
+
+    private function makeWebhookDelivery(int $organizationId): void
+    {
+        $now = now()->toDateTimeString();
+
+        // secret_encrypted в тесте — произвольный текст: джоба расшифровывает
+        // его только при сетевом вызове, читающий скоуп это не затрагивает.
+        $webhookId = (int) DB::table('webhooks')->insertGetId([
+            'public_id' => (string) Str::ulid()->toBase32(),
+            'organization_id' => $organizationId,
+            'url' => 'https://partner.example.test/hook',
+            'secret_encrypted' => 'not-a-real-secret',
+            'events_json' => json_encode(['order.paid']),
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+
+        DB::table('webhook_deliveries')->insert([
+            'webhook_id' => $webhookId,
+            'delivery_id' => (string) Str::uuid(),
+            'event_name' => 'order.paid',
+            'payload_json' => json_encode(['ok' => true]),
+            'created_at' => $now,
             'organization_id' => $organizationId,
         ]);
     }

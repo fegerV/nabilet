@@ -8,6 +8,7 @@ use Nabilet\Modules\Webhooks\Models\Webhook;
 use Nabilet\Modules\Webhooks\Models\WebhookDelivery;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Orders\Support\OrderEventName;
 use Nabilet\Modules\Webhooks\Jobs\SendWebhookDeliveryJob;
 
@@ -70,18 +71,25 @@ class WebhookDispatchService
             // Создание записи доставки и задачи на первый POST атомарны. Иначе
             // сбой между INSERT webhook_deliveries и постановкой job оставил бы
             // строку без next_retry_at — навсегда невидимую sweeper-команде.
+            //
+            // Fan-out зовётся из обсёрверов заказов и очередей — тенант-контекста
+            // может не быть; идемпотентность firstOrCreate — чтение+создание
+            // `WebhookDelivery` в bypass: организация зафиксирована фильтром
+            // выборки вебхуков выше (все итерируемые вебхуки — целевой).
             $created = DB::transaction(function () use ($webhook, $eventId, $eventName, $payload): bool {
-                $delivery = WebhookDelivery::query()->firstOrCreate(
-                    [
-                        'webhook_id' => $webhook->id,
-                        'delivery_id' => $eventId,
-                    ],
-                    [
-                        'event_name' => $eventName,
-                        'payload_json' => $payload,
-                        'attempt' => 1,
-                        'created_at' => now(),
-                    ],
+                $delivery = app(OrganizationContext::class)->withoutScope(
+                    fn () => WebhookDelivery::query()->firstOrCreate(
+                        [
+                            'webhook_id' => $webhook->id,
+                            'delivery_id' => $eventId,
+                        ],
+                        [
+                            'event_name' => $eventName,
+                            'payload_json' => $payload,
+                            'attempt' => 1,
+                            'created_at' => now(),
+                        ],
+                    )
                 );
 
                 if (! $delivery->wasRecentlyCreated) {

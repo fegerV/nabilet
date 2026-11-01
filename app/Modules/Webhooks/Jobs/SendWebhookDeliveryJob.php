@@ -7,6 +7,7 @@ namespace Nabilet\Modules\Webhooks\Jobs;
 use Nabilet\Core\Http\ContentType;
 use Nabilet\Core\Support\HmacSignature;
 use Nabilet\Core\Support\SignedPayload;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Webhooks\Models\Webhook;
 use Nabilet\Modules\Webhooks\Models\WebhookDelivery;
 use DateTimeImmutable;
@@ -70,7 +71,13 @@ class SendWebhookDeliveryJob implements ShouldQueue
 
     public function handle(RetryPolicy $policy, WebhookEndpointGuard $endpointGuard): void
     {
-        $delivery = WebhookDelivery::query()->find($this->deliveryId);
+        // Queue-воркер работает без тенант-контекста (в sync-драйвере тестов
+        // контекст запроса сохраняется, в проде `database` queue — нет):
+        // lookup доставки по id — системный путь, в bypass. Принадлежность
+        // вебхука проверяется обязанностью отправителя, а не контекстом.
+        $delivery = app(OrganizationContext::class)->withoutScope(
+            fn () => WebhookDelivery::query()->find($this->deliveryId)
+        );
 
         if ($delivery === null || $delivery->delivered_at !== null) {
             return;

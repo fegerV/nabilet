@@ -148,6 +148,13 @@
 | `tests/Feature/Core/TenantScopedReadTest.php` | Нативный скоуп `Cart`: без контекста отказ, с контекстом фильтр, в bypass видны все |
 | `app/Modules/Orders/Models/PromoCodeRedemption.php` | Фаза 2, чтение: глобальный скоуп включён на `PromoCodeRedemption` — тринадцатая модель. Запись защищена трейтом (организация из промокода через `TenantResolver`). Потребитель чтений один — `PromoCodeService` в гостевом чекауте; расход не адресуется в маршрутах — route-binding не нужен |
 | `app/Modules/Pricing/Services/PromoCodeService.php` | Три точки чтения расхода — в bypass: re-check `per_user_limit` под локом при `redeem`, идемпотентная чистка расхода перед вставкой, `userRedemptions()` (limит из контекста оценки `buildContext`) — чекаут живёт без тенант-контекста |
+| `app/Modules/Webhooks/Models/WebhookDelivery.php` | Фаза 2, чтение: глобальный скоуп включён на `WebhookDelivery` — четырнадцатая модель. Запись защищена трейтом (организация из вебхука через `TenantResolver`). Доставка не адресуется в маршрутах — route-binding не нужен |
+| `app/Modules/Webhooks/Services/WebhookDispatchService.php` | Fan-out (`dispatch`, зовётся из обсёрверов заказов и очередей без контекста): идемпотентный `firstOrCreate` доставки — в bypass; организация зафиксирована фильтром выборки активных вебхуков |
+| `app/Modules/Webhooks/Jobs/SendWebhookDeliveryJob.php` | `handle`: lookup доставки в queue-воркере (в проде `database` queue — без тенант-контекста) — в bypass |
+| `app/Modules/Webhooks/Console/RetryPendingWebhookDeliveriesCommand.php` | Крон-консоль повторов: выборка кандидатов под локом — в bypass (системный путь; гонка уже закрыта транзакцией с `next_retry_at`) |
+| `app/Modules/Webhooks/Http/Controllers/WebhookSubscriptionController.php` | Список доставок вебхука — дети уже авторизованного вебхука под контекстом сотрудника: фильтр организации совпадает, обёртка не потребовалась |
+| `tests/Feature/Webhooks/OutboundWebhookDeliveryTest.php` | Прямые чтения доставки/счётчик fan-out в тестах — в bypass как тест-аналоги системного пути; создание через `WebhookDispatchService` осталось под скоупом-записью |
+| `tests/Feature/Core/TenantScopedReadTest.php` | Нативный скоуп `WebhookDelivery`: без контекста отказ, с контекстом фильтр, в bypass видны все |
 | `tests/Feature/Core/TenantScopedReadTest.php` | Нативный скоуп `OrderItem`: без контекста отказ, с контекстом фильтр, в bypass видны все |
 | `tests/Feature/Core/TenantScopedReadTest.php` | Нативный скоуп `SeatHold`: без контекста отказ, с контекстом фильтр, в bypass видны все |
 | `tests/Feature/Core/TenantScopedReadTest.php` | Нативный скоуп `PaymentTransaction`: без контекста отказ, с контекстом фильтр, в bypass видны все |
@@ -170,7 +177,7 @@ dev-БД: 40 колонок `organization_id NOT NULL`, 40 FK `fk_<table>_org`.
 
 | Риск | Почему не закрыт в этом проходе |
 |------|--------------------------------|
-| `organization_id` у 70 таблиц | **Закрыт структурно.** Фазы 0–3 завершены: 40 таблиц класса A — `NOT NULL` + FK; запись наполняет тенанта из контекста/родителя; глобальный читающий скоуп включён на `Order`, `Payment`, `Ticket`, `Refund`, `TicketScan`, `CheckinDevice`, `OfflineBundle`, `PaymentTransaction`, `OrderItem`, `SeatHold`, `CartItem`, `Cart` и `PromoCodeRedemption`, остальные модели — точечно по мере аудита их системных путей чтения (§3.3) |
+| `organization_id` у 70 таблиц | **Закрыт структурно.** Фазы 0–3 завершены: 40 таблиц класса A — `NOT NULL` + FK; запись наполняет тенанта из контекста/родителя; глобальный читающий скоуп включён на `Order`, `Payment`, `Ticket`, `Refund`, `TicketScan`, `CheckinDevice`, `OfflineBundle`, `PaymentTransaction`, `OrderItem`, `SeatHold`, `CartItem`, `Cart`, `PromoCodeRedemption` и `WebhookDelivery`, остальные модели — точечно по мере аудита их системных путей чтения (§3.3) |
 | Списки/отчёты вне Orders/Payments/Tickets/Checkin | Проверены только пути, где аудит нашёл живую утечку; остальные закрываются общим `TenantScoped` в фазе 2 |
 | `PaymentController::store` и `OrderController::resendTicket` вне `auth:api` | Staff-ветки там не единственная защита; полноценно закрывается контекстом + схемой в фазе 2 |
 

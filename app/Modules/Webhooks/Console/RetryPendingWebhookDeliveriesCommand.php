@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Nabilet\Modules\Webhooks\Console;
 
 use Nabilet\Modules\Webhooks\Models\WebhookDelivery;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Nabilet\Modules\Webhooks\Jobs\SendWebhookDeliveryJob;
@@ -61,9 +62,14 @@ class RetryPendingWebhookDeliveriesCommand extends Command
         // dispatch потеряло бы повтор навсегда. Обязателен database queue;
         // connection `database` пишет в jobs через то же соединение.
         $dispatched = DB::transaction(function () use ($limit): int {
-            $pending = $this->dueDeliveries($limit)
-                ->lockForUpdate()
-                ->get();
+            // Крон-консоль работает без тенант-контекста: выборка кандидатов
+            // на повтор — системный путь, в bypass (гонка уже закрыта
+            // lockForUpdate + снятием next_retry_at в той же транзакции).
+            $pending = app(OrganizationContext::class)->withoutScope(
+                fn () => $this->dueDeliveries($limit)
+                    ->lockForUpdate()
+                    ->get()
+            );
 
             foreach ($pending as $delivery) {
                 $delivery->update(['next_retry_at' => null]);

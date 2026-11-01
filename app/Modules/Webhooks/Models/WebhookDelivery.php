@@ -29,6 +29,24 @@ class WebhookDelivery extends Model
     protected $table = 'webhook_deliveries';
 
     /**
+     * Глобальный читающий скоуп (четырнадцатая модель после Order, Payment,
+     * Ticket, Refund, TicketScan, CheckinDevice, OfflineBundle,
+     * PaymentTransaction, OrderItem, SeatHold, CartItem, Cart и
+     * PromoCodeRedemption).
+     *
+     * Запись защищена трейтом (организация выводится из вебхука через
+     * TenantResolver: `webhook_deliveries` → `webhooks`). Чтение — системные
+     * пути\Queue-воркер и cron-консоль повторов живут без тенант-контекста —
+     * в bypass; список доставок в админке — дети уже авторизованного вебхука
+     * под контекстом сотрудника. Доставка не адресуется в маршрутах —
+     * route-binding не нужен.
+     */
+    protected static function tenantScopeEnabled(): bool
+    {
+        return true;
+    }
+
+    /**
      * В схеме есть только `created_at` — колонки `updated_at` нет. С включёнными
      * таймстемпами Eloquent добавил бы `updated_at` в INSERT и уронил запись
      * на несуществующей колонке.
