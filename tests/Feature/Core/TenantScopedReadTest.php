@@ -12,6 +12,7 @@ use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Payments\Models\Payment;
 use Nabilet\Modules\Payments\Models\Refund;
+use Nabilet\Modules\Tickets\Models\CheckinDevice;
 use Nabilet\Modules\Tickets\Models\Ticket;
 use Nabilet\Modules\Tickets\Models\TicketScan;
 use Nabilet\Tests\Support\SellableSeatFixtures;
@@ -257,6 +258,37 @@ final class TenantScopedReadTest extends TestCase
         );
     }
 
+    /**
+     * Скоуп `CheckinDevice`: устройства чекеров — ключ доступа к журналам
+     * сканов и офлайн-бандлам своего арендатора. Строки пишутся прямо в
+     * таблицу: здесь важен только читающий контур.
+     */
+    public function test_checkin_device_read_scope_is_native(): void
+    {
+        $orgA = $this->organization();
+        $orgB = $this->organization();
+
+        $this->makeDevice($orgA);
+        $this->makeDevice($orgB);
+
+        // Без контекста — отказ, а не «показать все устройства».
+        try {
+            CheckinDevice::query()->count();
+            $this->fail('Ожидался TenantContextMissingError без контекста');
+        } catch (TenantContextMissingError $e) {
+            $this->addToAssertionCount(1);
+        }
+
+        app(OrganizationContext::class)->set((string) $orgA);
+        $this->assertSame(1, CheckinDevice::query()->count(), 'чужие устройства не видны');
+
+        $this->assertSame(
+            2,
+            app(OrganizationContext::class)->withoutScope(fn () => CheckinDevice::query()->count()),
+            'withoutScope() обязан видеть устройства всех организаций'
+        );
+    }
+
     private function makeRefund(int $organizationId): void
     {
         $order = $this->makeOrder($organizationId);
@@ -341,6 +373,22 @@ final class TenantScopedReadTest extends TestCase
             'result' => 'admitted',
             'scanned_at' => $now,
             'created_at' => $now,
+        ]);
+    }
+
+    private function makeDevice(int $organizationId): int
+    {
+        $now = now()->toDateTimeString();
+
+        // status/platform/app_version берут дефолты колонок; хеш токена
+        // уникален сам по себе, как у боевого выпускающего (DeviceTokenIssuer).
+        return (int) DB::table('checkin_devices')->insertGetId([
+            'public_id' => (string) Str::ulid()->toBase32(),
+            'organization_id' => $organizationId,
+            'name' => 'Чекер ' . strtoupper(Str::random(6)),
+            'device_token_hash' => hash('sha256', (string) Str::ulid()),
+            'created_at' => $now,
+            'updated_at' => $now,
         ]);
     }
 }

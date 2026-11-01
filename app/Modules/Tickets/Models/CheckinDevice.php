@@ -13,13 +13,41 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 // нёс трейт `SoftDeletes` при отсутствующей колонке `organizations.deleted_at`,
 // из-за чего эта связь падала с `SQLSTATE[42S22]` при первой же загрузке.
 use Nabilet\Modules\Core\Organizations\Models\Organization;
+use Nabilet\Modules\Core\Tenancy\TenantScoped;
 
 /** Eloquent mapping for `checkin_devices`; the raw device token is never stored. */
 class CheckinDevice extends Model
 {
     use HasPublicId;
+    use TenantScoped;
 
     protected $table = 'checkin_devices';
+
+    /**
+     * Глобальный читающий скоуп (шестая модель после Order, Payment, Ticket,
+     * Refund и TicketScan).
+     *
+     * Трейт подключён тем же шагом: до него модель не использовала
+     * `TenantScoped` вовсе. Единственный писатель (`DeviceTokenIssuer::issue`)
+     * передавал `organization_id` сам, но без защиты от записи чужому
+     * тенанту; проверку совпадения с контекстом теперь делает трейт.
+     *
+     * Существующие пути чтения уже живут в нужном режиме и остаются в нём:
+     *   - аутентификация чекера (`AuthenticateChecker`) и двойная
+     *     идентификация бандла (`OfflineBundleController::deviceIdOrStaff`)
+     *     ищут устройство по хешу токена В bypass — токен и есть capability,
+     *     активный арендатор ставится из найденного устройства следом;
+     *   - админские список/резолв (`CheckinDeviceController`,
+     *     `OfflineBundleController::issue`) ходят под контекстом сотрудника;
+     *   - проверка принадлежности устройства сотруднику
+     *     (`CheckinController::deviceId`) фильтрует по своей организации явно.
+     * HTTP-запрос без организации здесь означает ошибку, а не «показать все
+     * устройства».
+     */
+    protected static function tenantScopeEnabled(): bool
+    {
+        return true;
+    }
 
     protected $fillable = [
         'public_id',

@@ -66,9 +66,15 @@ final class AuthenticateChecker
         // Поиск по хешу, а не по токену: сырой токен в базе не хранится (см.
         // докблок `CheckinDevice`). sha256 — потому что `device_token_hash`
         // CHAR(64) хранит именно его hex-дайджест.
-        $device = CheckinDevice::query()
-            ->where('device_token_hash', $this->hash($token))
-            ->first();
+        //
+        // Токен устройства — capability: организации в контексте ещё нет, она
+        // ставится ИЗ найденного устройства строкой ниже. С включённым скоупом
+        // `CheckinDevice` резолв обязан идти в bypass.
+        $device = $this->context->withoutScope(
+            fn (): ?CheckinDevice => CheckinDevice::query()
+                ->where('device_token_hash', $this->hash($token))
+                ->first()
+        );
 
         if ($device === null) {
             throw new AuthError(

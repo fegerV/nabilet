@@ -147,13 +147,23 @@ final class OfflineBundleController extends Controller
         $token = (string) $request->bearerToken();
 
         if (str_starts_with($token, DeviceTokenIssuer::TOKEN_PREFIX)) {
-            $device = CheckinDevice::query()
-                ->where('device_token_hash', DeviceTokenIssuer::hash($token))
-                ->first();
+            // Токен чекера — capability: организации в контексте ещё нет, она
+            // ставится ИЗ найденного устройства ниже (как в AuthenticateChecker).
+            // С включённым скоупом `CheckinDevice` резолв обязан идти в bypass.
+            $device = $this->context->withoutScope(
+                fn (): ?CheckinDevice => CheckinDevice::query()
+                    ->where('device_token_hash', DeviceTokenIssuer::hash($token))
+                    ->first()
+            );
 
             if ($device === null || $device->status !== CheckinDeviceStatus::STATUS_ACTIVE) {
                 throw AuthError::unauthenticated('Device token is no longer valid.');
             }
+
+            // Дальше весь запрос (touch, чтение бандла) идёт от арендатора
+            // устройства — иначе телеметрия last_seen молча терялась бы на
+            // скоупе без контекста.
+            $this->context->set((string) $device->organization_id);
 
             $this->touch($device);
 
