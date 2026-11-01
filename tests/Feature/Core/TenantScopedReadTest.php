@@ -10,6 +10,7 @@ use Illuminate\Support\Str;
 use Nabilet\Core\Errors\TenantContextMissingError;
 use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Orders\Models\Order;
+use Nabilet\Modules\Orders\Models\OrderItem;
 use Nabilet\Modules\Payments\Models\Payment;
 use Nabilet\Modules\Payments\Models\PaymentTransaction;
 use Nabilet\Modules\Payments\Models\Refund;
@@ -375,6 +376,60 @@ final class TenantScopedReadTest extends TestCase
             'payment_id' => $paymentId,
             'organization_id' => $organizationId,
             'type' => 'authorization',
+            'created_at' => $now,
+        ]);
+    }
+
+    /**
+     * Скоуп `OrderItem`: позиция заказа — сын заказа и строки склада. Строки
+     * пишутся прямо в таблицу (как в makeTicket): здесь важен только читающий
+     * контур.
+     */
+    public function test_order_item_read_scope_is_native(): void
+    {
+        $orgA = $this->organization();
+        $orgB = $this->organization();
+
+        $this->makeOrderItem($orgA);
+        $this->makeOrderItem($orgB);
+
+        // Без контекста — отказ, а не «показать все позиции».
+        try {
+            OrderItem::query()->count();
+            $this->fail('Ожидался TenantContextMissingError без контекста');
+        } catch (TenantContextMissingError $e) {
+            $this->addToAssertionCount(1);
+        }
+
+        app(OrganizationContext::class)->set((string) $orgA);
+        $this->assertSame(1, OrderItem::query()->count(), 'чужие позиции не видны');
+
+        $this->assertSame(
+            2,
+            app(OrganizationContext::class)->withoutScope(fn () => OrderItem::query()->count()),
+            'withoutScope() обязан видеть позиции всех организаций'
+        );
+    }
+
+    private function makeOrderItem(int $organizationId): void
+    {
+        [$orgId, , , $inventoryId] = $this->seedSellableSeat(
+            available: 2,
+            organizationId: $organizationId,
+        );
+        \assert($orgId === $organizationId);
+
+        $order = $this->makeOrder($organizationId);
+        $now = now()->toDateTimeString();
+
+        DB::table('order_items')->insert([
+            'order_id' => $order->id,
+            'organization_id' => $organizationId,
+            'inventory_item_id' => $inventoryId,
+            'quantity' => 1,
+            'unit_price' => 100,
+            'total_amount' => 100,
+            'event_title_snapshot' => 'Тестовое событие',
             'created_at' => $now,
         ]);
     }

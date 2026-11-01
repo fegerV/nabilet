@@ -34,6 +34,24 @@ class OrderItem extends Model
 
     protected $table = 'order_items';
 
+    /**
+     * Глобальный читающий скоуп (девятая модель после Order, Payment, Ticket,
+     * Refund, TicketScan, CheckinDevice, OfflineBundle и PaymentTransaction).
+     *
+     * Запись и так защищена трейтом (организация выводится из заказа через
+     * TenantResolver). Чтения уже живут в нужном режиме и остаются в нём:
+     *   - позиция заказа читается детьми авторизованного билета (`orderItem`
+     *     в eager `TicketController::history`/`index`/`show` и в
+     *     `TicketGeneratorService`, где выпуск идёт от заказа) — в bypass;
+     *   - отдельных путей `OrderItem::query()` в приложении нет; связь
+     *     `Order::orderItems()` без вызывающих.
+     * Позиция не адресуется в маршрутах — route-binding не нужен.
+     */
+    protected static function tenantScopeEnabled(): bool
+    {
+        return true;
+    }
+
     protected $fillable = [
         'order_id',
         'inventory_item_id',

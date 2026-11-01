@@ -145,7 +145,13 @@ class OrderService
                 $inventoryItem->decrement('available_quantity', $orderItem->quantity);
             }
 
-            return $order->load(['items.inventoryItem']);
+            // Дети только что созданного заказа: прямой чекаут (гость) идёт
+            // без тенант-контекста — арендатор заказа проверен выше по сеансу
+            // позиции склада. Со включённым скоупом `OrderItem` eager-load
+            // отказал бы, хотя дети принадлежат созданному здесь же заказу.
+            return app(OrganizationContext::class)->withoutScope(
+                fn (): Order => $order->load(['items.inventoryItem'])
+            );
         });
     }
 
@@ -264,20 +270,25 @@ class OrderService
             // статус места сбрасывается с sold/sold_out/held на available, если
             // после возврата есть свободные (план b: до оплаты status может быть
             // held/sold_out — после отмены место обязано вернуться в продажу).
-            foreach ($order->items as $item) {
-                $inventoryItem = $item->inventoryItem;
+            // Дети отменяемого заказа: доступ решён роутом/assertCanSee выше,
+            // а тесты зовут сервис в обход HTTP без контекста. Со включённым
+            // скоупом `OrderItem` итерация отказала бы на ленивой загрузке.
+            app(OrganizationContext::class)->withoutScope(function () use ($order): void {
+                foreach ($order->items as $item) {
+                    $inventoryItem = $item->inventoryItem;
 
-                if ($inventoryItem === null) {
-                    continue;
+                    if ($inventoryItem === null) {
+                        continue;
+                    }
+
+                    $inventoryItem->increment('available_quantity', $item->quantity);
+
+                    if ((int) $inventoryItem->available_quantity > 0
+                        && in_array($inventoryItem->status, [InventoryItemStateMachine::SOLD, InventoryItemStateMachine::SOLD_OUT, InventoryItemStateMachine::HELD], true)) {
+                        $inventoryItem->update(['status' => InventoryItemStateMachine::AVAILABLE]);
+                    }
                 }
-
-                $inventoryItem->increment('available_quantity', $item->quantity);
-
-                if ((int) $inventoryItem->available_quantity > 0
-                    && in_array($inventoryItem->status, [InventoryItemStateMachine::SOLD, InventoryItemStateMachine::SOLD_OUT, InventoryItemStateMachine::HELD], true)) {
-                    $inventoryItem->update(['status' => InventoryItemStateMachine::AVAILABLE]);
-                }
-            }
+            });
 
             // Снять активные холды корзины — иначе sweeper вернёт quantity повторно.
             \Nabilet\Modules\Orders\Models\SeatHold::query()

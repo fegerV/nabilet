@@ -95,7 +95,13 @@ class OrderController extends Controller
             $filters['organization_id'] = $organizationId;
         }
 
-        $orders = $this->orderService->paginate($filters, $perPage);
+        // Покупатель читает позиции детей СВОИХ заказов (фильтр по user_id
+        // выше — fail-closed): у него тенант-контекста нет, и со включённым
+        // скоупом `OrderItem` eager-load в списке отказал бы. Сотрудник идёт
+        // под своей организацией — скоуп лишь повторяет её же фильтр.
+        $orders = StaffRole::isStaff($request->user())
+            ? $this->orderService->paginate($filters, $perPage)
+            : $this->context->withoutScope(fn () => $this->orderService->paginate($filters, $perPage));
 
         // `data` — СПИСОК заказов, а не объект пагинатора: схема
         // `OrderListResponse` объявляет `data: array<Order>` + `meta`. До правки
@@ -154,7 +160,12 @@ class OrderController extends Controller
             'user_id' => $request->user()->getKey(),
         ] + $request->only(['status', 'date_from', 'date_to']);
 
-        $orders = $this->orderService->paginate($filters, $this->perPage($request));
+        // «Мои заказы» покупателя: дети (позиции) принадлежат СВОИМ заказам —
+        // фильтр по user_id выше fail-closed. У покупателя тенант-контекста
+        // нет, со включённым скоупом `OrderItem` eager-load отказал бы.
+        $orders = $this->context->withoutScope(
+            fn () => $this->orderService->paginate($filters, $this->perPage($request))
+        );
 
         // `data` — СПИСОК заказов, а не объект пагинатора. Схема
         // `OrderListResponse` объявляет `data: array<Order>` + `meta`, и это не
@@ -253,7 +264,13 @@ class OrderController extends Controller
         $order = $this->orderService->createOrder($data);
 
         return response()->json([
-            'data' => new OrderResource($order->fresh()->load('items')),
+            // Ответ созданного заказа: дети авторизованы по построению — заказ
+            // создан этим же запросом, владелец проверен выше. У покупателя
+            // тенант-контекста нет, со включённым скоупом `OrderItem` и
+            // `fresh()` (скупованный `Order`) на ленивой загрузке отказало бы.
+            'data' => new OrderResource(
+                $this->context->withoutScope(fn (): Order => $order->fresh()->load('items'))
+            ),
         ], 201);
     }
 
