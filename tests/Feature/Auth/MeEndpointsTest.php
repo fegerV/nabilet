@@ -122,6 +122,7 @@ class MeEndpointsTest extends TestCase
         $ticketNumber = 'TCK-' . strtoupper(Str::random(8));
 
         $orderItemId = (int) DB::table('order_items')->insertGetId([
+            'organization_id' => (int) DB::table('orders')->where('id', $orderId)->value('organization_id'),
             'order_id' => $orderId,
             'inventory_item_id' => $inventoryItemId,
             'quantity' => 1,
@@ -133,6 +134,7 @@ class MeEndpointsTest extends TestCase
 
         DB::table('tickets')->insert([
             'public_id' => (string) Str::ulid()->toBase32(),
+            'organization_id' => (int) DB::table('orders')->where('id', $orderId)->value('organization_id'),
             'ticket_number' => $ticketNumber,
             'ticket_index' => 1,
             'order_id' => $orderId,

@@ -755,6 +755,7 @@ final class TicketEmailTemplateTest extends TestCase
 
         return (int) DB::table('halls')->insertGetId([
             'public_id' => (string) Str::ulid()->toBase32(),
+            'organization_id' => (int) DB::table('venues')->where('id', $venueId)->value('organization_id'),
             'venue_id' => $venueId,
             'name' => 'Большой зал',
             'status' => 'active',
@@ -796,9 +797,13 @@ final class TicketEmailTemplateTest extends TestCase
     private function seedSeat(int $schemaVersionId): int
     {
         $now = now()->toDateTimeString();
+        $organizationId = (int) DB::table('hall_schema_versions')
+            ->where('id', $schemaVersionId)
+            ->value('organization_id');
 
         $sectorId = (int) DB::table('sectors')->insertGetId([
             'public_id' => (string) Str::ulid()->toBase32(),
+            'organization_id' => $organizationId,
             'schema_version_id' => $schemaVersionId,
             'name' => 'Партер',
             'code' => 'Parter',
@@ -809,6 +814,7 @@ final class TicketEmailTemplateTest extends TestCase
 
         $rowId = (int) DB::table('hall_rows')->insertGetId([
             'public_id' => (string) Str::ulid()->toBase32(),
+            'organization_id' => $organizationId,
             'sector_id' => $sectorId,
             'number' => '1',
             'name' => 'Партер',
@@ -818,6 +824,7 @@ final class TicketEmailTemplateTest extends TestCase
 
         return (int) DB::table('seats')->insertGetId([
             'public_id' => (string) Str::ulid()->toBase32(),
+            'organization_id' => $organizationId,
             'row_id' => $rowId,
             'number' => '12',
             'label' => 'Место 12',
@@ -834,6 +841,7 @@ final class TicketEmailTemplateTest extends TestCase
 
         return (int) DB::table('sessions')->insertGetId([
             'public_id' => (string) Str::ulid()->toBase32(),
+            'organization_id' => (int) DB::table('events')->where('id', $eventId)->value('organization_id'),
             'event_id' => $eventId,
             'venue_id' => $venueId,
             'hall_id' => $hallId,
@@ -852,6 +860,7 @@ final class TicketEmailTemplateTest extends TestCase
 
         return (int) DB::table('inventory_items')->insertGetId([
             'public_id' => (string) Str::ulid()->toBase32(),
+            'organization_id' => (int) DB::table('sessions')->where('id', $sessionId)->value('organization_id'),
             'session_id' => $sessionId,
             'type' => 'seat',
             'seat_id' => $seatId,
@@ -893,6 +902,7 @@ final class TicketEmailTemplateTest extends TestCase
         // У `order_items` нет `updated_at` — строка заказа неизменяема: правка
         // позиции после оплаты была бы подменой факта продажи.
         return (int) DB::table('order_items')->insertGetId([
+            'organization_id' => (int) DB::table('orders')->where('id', $orderId)->value('organization_id'),
             'order_id' => $orderId,
             'inventory_item_id' => $inventoryItemId,
             'quantity' => 1,
@@ -910,6 +920,7 @@ final class TicketEmailTemplateTest extends TestCase
 
         return (int) DB::table('tickets')->insertGetId([
             'public_id' => (string) Str::ulid(),
+            'organization_id' => (int) DB::table('orders')->where('id', $orderId)->value('organization_id'),
             'ticket_number' => 'TCK-TEST-001',
             'ticket_index' => 1,
             'order_id' => $orderId,

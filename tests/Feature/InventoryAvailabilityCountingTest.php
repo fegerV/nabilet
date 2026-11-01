@@ -60,6 +60,7 @@ final class InventoryAvailabilityCountingTest extends TestCase
         ]);
         $hallId = (int) DB::table('halls')->insertGetId([
             'public_id' => (string) Str::ulid()->toBase32(),
+            'organization_id' => $this->organizationId,
             'venue_id' => $venueId,
             'name' => 'Mixed hall',
             'status' => 'active',

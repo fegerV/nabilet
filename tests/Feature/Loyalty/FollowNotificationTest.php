@@ -342,6 +342,7 @@ class FollowNotificationTest extends TestCase
 
         $hallId = (int) DB::table('halls')->insertGetId([
             'public_id' => (string) Str::ulid()->toBase32(),
+            'organization_id' => $organizationId,
             'venue_id' => $venueId,
             'name' => 'Большой зал',
             'status' => 'active',
@@ -351,6 +352,7 @@ class FollowNotificationTest extends TestCase
 
         $schemaVersionId = (int) DB::table('hall_schema_versions')->insertGetId([
             'public_id' => (string) Str::ulid()->toBase32(),
+            'organization_id' => $organizationId,
             'hall_id' => $hallId,
             'version' => 1,
             'status' => 'published',
@@ -381,6 +383,7 @@ class FollowNotificationTest extends TestCase
         // и тест письма не зависит от того, повесился ли обсервер.
         $sessionId = (int) DB::table('sessions')->insertGetId([
             'public_id' => (string) Str::ulid()->toBase32(),
+            'organization_id' => $organizationId,
         ] + $attributes + [
             'created_at' => $now,
             'updated_at' => $now,

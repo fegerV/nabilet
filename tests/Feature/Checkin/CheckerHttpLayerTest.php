@@ -607,6 +607,7 @@ class CheckerHttpLayerTest extends TestCase
         // одно, сеансов два.
         $secondSessionId = (int) DB::table('sessions')->insertGetId([
             'public_id' => (string) Str::ulid()->toBase32(),
+            'organization_id' => $organizationId,
             'event_id' => (int) $first->event_id,
             'venue_id' => (int) $first->venue_id,
             'hall_id' => (int) $first->hall_id,
@@ -624,6 +625,7 @@ class CheckerHttpLayerTest extends TestCase
 
         $secondInventoryId = (int) DB::table('inventory_items')->insertGetId([
             'public_id' => (string) Str::ulid()->toBase32(),
+            'organization_id' => $organizationId,
             'session_id' => $secondSessionId,
             'type' => 'standing',
             'standing_zone_id' => $standingZoneId,

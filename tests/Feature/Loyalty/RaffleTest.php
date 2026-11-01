@@ -8,6 +8,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Auth\Services\SessionIssuer;
 use Nabilet\Modules\Core\Users\Models\User;
 use Nabilet\Modules\Loyalty\Jobs\EnterRafflesJob;
@@ -51,6 +52,17 @@ class RaffleTest extends TestCase
     use SellableSeatFixtures;
 
     private const TOKEN = '11111111-2222-3333-4444-555555555555';
+
+    /**
+     * Организация этого прогона — общая для розыгрыша и администратора.
+     *
+     * `raffles` не имеет однозначного родителя (`docs` фазы 3): организация
+     * приходит из контекста запроса, а тест, вызывающий сервис напрямую,
+     * обязан этот контекст выставить сам. Иначе NOT NULL не даст создать
+     * розыгрыш — ровно та же причина, по которой в бою его выставляет
+     * `ResolveOrganizationContext`.
+     */
+    private ?int $organizationId = null;
 
     protected function setUp(): void
     {
@@ -96,14 +108,7 @@ class RaffleTest extends TestCase
     {
         $now = now();
 
-        DB::table('organizations')->insert([
-            'public_id' => (string) Str::ulid()->toBase32(),
-            'name' => 'Raffle Org',
-            'slug' => 'raffle-org-' . Str::random(6),
-            'status' => 'active',
-            'created_at' => $now,
-            'updated_at' => $now,
-        ]);
+        $organizationId = $this->organization();
 
         $user = $this->user('staff@example.com');
 
@@ -112,12 +117,50 @@ class RaffleTest extends TestCase
 
         DB::table('user_roles')->insert([
             'user_id' => $user->id,
-            'organization_id' => DB::table('organizations')->latest('id')->value('id'),
+            'organization_id' => $organizationId,
             'role_id' => $roleId,
             'created_at' => $now,
         ]);
 
         return User::query()->findOrFail($user->id);
+    }
+
+    /** Организация прогона: создаётся один раз, чтобы розыгрыш и админ жили в одной. */
+    private function organization(): int
+    {
+        if ($this->organizationId !== null) {
+            return $this->organizationId;
+        }
+
+        $now = now();
+
+        return $this->organizationId = (int) DB::table('organizations')->insertGetId([
+            'public_id' => (string) Str::ulid()->toBase32(),
+            'name' => 'Raffle Org',
+            'slug' => 'raffle-org-' . Str::random(6),
+            'status' => 'active',
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+    }
+
+    /**
+     * Создать розыгрыш сервисом напрямую — с контекстом его организации.
+     *
+     * Контекст снимается после вызова: заказы в этих тестах создаются через
+     * `seedSellableSeat()` в СВОЕЙ организации, и оставленный контекст
+     * заставил бы `TenantScoped` отвергнуть явно чужой `organization_id`.
+     */
+    private function createRaffle(array $attributes, array $prizes = []): Raffle
+    {
+        $context = app(OrganizationContext::class);
+        $context->set((string) $this->organization());
+
+        try {
+            return $this->raffles()->create($attributes, $prizes);
+        } finally {
+            $context->clear();
+        }
     }
 
     private function raffles(): RaffleService
@@ -137,7 +180,7 @@ class RaffleTest extends TestCase
      */
     private function activeRaffle(array $prizes, ?string $startsAt = null, ?string $endsAt = null): Raffle
     {
-        $raffle = $this->raffles()->create(
+        $raffle = $this->createRaffle(
             ['title' => 'Счастливый билет', 'description' => 'Тест', 'starts_at' => $startsAt, 'ends_at' => $endsAt],
             $prizes,
         );
@@ -297,7 +340,7 @@ class RaffleTest extends TestCase
 
     public function test_public_results_are_hidden_for_draft(): void
     {
-        $raffle = $this->raffles()->create(['title' => 'Черновик'], [['place' => 1, 'title' => 'Приз']]);
+        $raffle = $this->createRaffle(['title' => 'Черновик'], [['place' => 1, 'title' => 'Приз']]);
 
         $this->getJson('/api/v1/raffles/' . $raffle->public_id)->assertStatus(404);
     }

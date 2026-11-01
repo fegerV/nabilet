@@ -202,6 +202,7 @@ class AnalyticsReportTest extends TestCase
         ]);
 
         $orderItemId = (int) DB::table('order_items')->insertGetId([
+            'organization_id' => $organizationId,
             'order_id' => $orderId,
             'inventory_item_id' => $inventoryItemId,
             'quantity' => $ticketCount,
@@ -216,6 +217,7 @@ class AnalyticsReportTest extends TestCase
         for ($i = 1; $i <= $ticketCount; $i++) {
             DB::table('tickets')->insert([
                 'public_id' => (string) Str::ulid()->toBase32(),
+                'organization_id' => $organizationId,
                 'ticket_number' => 'T-' . Str::random(12),
                 'ticket_index' => $i,
                 'order_id' => $orderId,

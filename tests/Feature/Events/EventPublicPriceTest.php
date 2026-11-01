@@ -101,6 +101,7 @@ class EventPublicPriceTest extends TestCase
 
         $sessionId = (int) DB::table('sessions')->insertGetId([
             'public_id' => (string) Str::ulid()->toBase32(),
+            'organization_id' => $template->organization_id,
             'event_id' => $eventId,
             'venue_id' => $template->venue_id,
             'hall_id' => $template->hall_id,
@@ -114,6 +115,7 @@ class EventPublicPriceTest extends TestCase
 
         DB::table('inventory_items')->insert([
             'public_id' => (string) Str::ulid()->toBase32(),
+            'organization_id' => $template->organization_id,
             'session_id' => $sessionId,
             'type' => 'standing',
             'standing_zone_id' => $zoneId,

@@ -58,6 +58,7 @@ final class HallSchemaSectorGeometryTest extends TestCase
         ]);
         $hallId = DB::table('halls')->insertGetId([
             'public_id' => (string) Str::ulid()->toBase32(),
+            'organization_id' => $organizationId,
             'venue_id' => $venueId,
             'name' => 'Geometry hall',
             'status' => 'active',

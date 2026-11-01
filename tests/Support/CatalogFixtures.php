@@ -274,6 +274,7 @@ trait CatalogFixtures
 
         foreach ($eventIds as $eventId) {
             DB::table('artist_event')->insert([
+                'organization_id' => (int) DB::table('events')->where('id', $eventId)->value('organization_id'),
                 'artist_id' => $artistId,
                 'event_id' => $eventId,
                 'is_headliner' => false,
@@ -301,6 +302,7 @@ trait CatalogFixtures
         $now = now()->toDateTimeString();
 
         return (int) DB::table('event_artists')->insertGetId([
+            'organization_id' => (int) DB::table('events')->where('id', $eventId)->value('organization_id'),
             'event_id' => $eventId,
             'name' => $name,
             'genre' => $genre,

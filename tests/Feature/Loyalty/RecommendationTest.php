@@ -114,6 +114,7 @@ class RecommendationTest extends TestCase
     {
         DB::table('event_favorites')->insert([
             'public_id' => (string) Str::ulid()->toBase32(),
+            'organization_id' => (int) DB::table('events')->where('id', $eventId)->value('organization_id'),
             'user_id' => $userId,
             'event_id' => $eventId,
             'created_at' => now()->toDateTimeString(),
@@ -124,6 +125,7 @@ class RecommendationTest extends TestCase
     {
         DB::table('event_follows')->insert([
             'public_id' => (string) Str::ulid()->toBase32(),
+            'organization_id' => (int) DB::table('events')->where('id', $eventId)->value('organization_id'),
             'user_id' => $userId,
             'event_id' => $eventId,
             'created_at' => now()->toDateTimeString(),

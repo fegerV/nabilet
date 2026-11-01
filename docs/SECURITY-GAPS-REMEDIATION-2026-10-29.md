@@ -12,7 +12,7 @@
 
 | # | Пробел | Статус на 2026-10-29 | Где закрыто / что осталось |
 |---|--------|----------------------|----------------------------|
-| 1 | `organization_id` отсутствует у большинства таблиц; скоуп только через JOIN + `assertOwns()` | **Открыт, структурный; HTTP-слой частично закрыт** | План в §3. 18 из 88 таблиц имеют колонку; `carts`, `cart_items`, `payments`, `tickets` — нет. В этом проходе закрыты живые межтенантные пути Orders/Payments/Tickets/Checkin; структурная гарантия — после фаз 1–2 |
+| 1 | `organization_id` отсутствует у большинства таблиц; скоуп только через JOIN + `assertOwns()` | **Закрыт структурно (фазы 0–3)** | Все 40 таблиц класса A получили `organization_id NOT NULL` + FK на `organizations`; запись заполняет тенанта из контекста или родителя. Глобальный читающий скоуп на `Order` включён; остальные модели читаются через явные проверки §3.3 |
 | 2 | Фолбэк QR-подписи на `APP_KEY` | **Закрыт** | `QrSignerFactory` — единственная точка сборки, без фолбэка. В этом проходе удалены мёртвые методы `TicketService::generateQrCode()` / `verifyQrCodeSignature()`, которые сохраняли старый фолбэк |
 | 3 | Stored XSS через загрузку SVG/PDF/MP4 | **Закрыт** | `svg` убран из `MediaController::ALLOWED_TYPES`; для PDF — `Content-Disposition: attachment`, CSP `sandbox`, `nosniff` в `docker/nginx/default.conf` |
 | 4 | Смена пароля/блокировка не отзывает сессии | **Закрыт** | `UserService::updateUser()` отзывает все сессии в одной транзакции при смене пароля и при статусе ≠ `active` |
@@ -91,17 +91,28 @@
 | `tests/Feature/Core/TenantScopedWriteTest.php` | Явная проверка write-side: заполнение org из контекста, отклонение чужой org, создание без контекста |
 | `tests/Feature/Core/TenantScopedReadTest.php` | Проверка читающей стороны глобального скоупа: с контекстом фильтрует; без контекста бросает; внутри `withoutScope()` видно всё |
 | `app/Modules/Orders/Services/StaleOrderExpirer.php`, `OrderReminderSweeper.php`, `UnpaidOrderReminderSweeper.php`, `EventOrderRefunder.php` | Фоновые сервисы заказов обёрнуты в `OrganizationContext::withoutScope()` — первый блок миграции системного слоя (подготовка к включению скоупа) |
+| `database/migrations/2026_11_02_000100_enforce_organization_id_on_tenant_tables.php` | **Фаза 3**: для тех же 40 таблиц `organization_id` стал `NOT NULL` и получил FK `fk_<table>_org` на `organizations(id)` с `ON DELETE CASCADE`. Перед изменением миграция считает NULL и падает с требованием `tenancy:backfill-organization`. **Применена к dev-БД** |
+| `app/Modules/Core/Tenancy/TenantResolver.php` | Карта `таблица → [внешний ключ, родитель]`: организация выводится из родителя, когда контекста запроса нет (вебхук, гостевой checkout, консоль, очередь). Рекурсивный подъём до `organization_id`, защита от циклов |
+| `app/Modules/Core/Tenancy/TenantScoped.php` | Фаза 3, запись: `TenantScoped` добавлен всем 31 модели класса A. Приоритет — контекст, затем родитель; конфликт контекста и родителя или явно чужой `organization_id` — `NotFoundError` (fail-closed) |
+| `app/Modules/Inventory/Repositories/InventoryItemRepository.php` | `bulkCreate()` — это `Model::insert()`, события модели не срабатывают: строка без `organization_id` теперь отвергается, а не пишется «ничьей» |
+| `app/Modules/Events/Console/SyncArtistsCommand.php` | `artist_event` через `sync()` получает `organization_id` из события: пивот пишется конструктором запросов, в обход событий модели |
+| `tests/Feature/Core/TenantResolverWriteTest.php` | Наследование организации от родителя, отказ при чужом контексте/явном чужом `organization_id`, отсутствие цепочки у глобальных таблиц |
+| `tests/Unit/TenancyPhase1ConsistencyTest.php` | Сторож расширен: список таблиц фазы 3 обязан совпадать со списком фазы 1 |
+| `tests/Support/SellableSeatFixtures.php` и фикстуры feature-тестов | Все прямые вставки строк класса A заполняют `organization_id` из уже известного родителя |
 | `docs/SECURITY-GAPS-REMEDIATION-2026-10-29.md` | Этот документ |
 
-Проверки: `php -l` по изменённым файлам — без ошибок; `php tests/run.php` —
-1023 метода, 0 падений (включая новые `CartOrganizationResolutionTest`, `TenantRepositoryScopeGuardTest` и `TenancyPhase1ConsistencyTest`); `php vendor/bin/phpstan analyse` — `No errors`. Feature/`phpunit`-тесты и применение миграций фазы 1 требуют живой MySQL
-(`127.0.0.1:3307`), в этом окружении недоступной.
+Проверки после фаз 0–3: `php -l` по изменённым файлам — без ошибок; unit-набор
+`php tests/run.php` — 0 падений (включая `TenancyPhase1ConsistencyTest`,
+`TenantRepositoryScopeGuardTest`, `CartOrganizationResolutionTest`); feature/`phpunit`
+— `OK (1205 tests, 4911 assertions)` на живой MySQL `127.0.0.1:3307`;
+`php vendor/bin/phpstan analyse` — `No errors`. Миграции фаз 1 и 3 применены к
+dev-БД: 40 колонок `organization_id NOT NULL`, 40 FK `fk_<table>_org`.
 
 ### 2.1 Что осталось открытым после правок
 
 | Риск | Почему не закрыт в этом проходе |
 |------|--------------------------------|
-| `organization_id` у 70 таблиц | Фаза 1 применена к dev-БД. Фаза 2 частично: трейт `TenantScoped` реализован и включён на записи для `Order`/`Payment`/`Ticket`. **Глобальный читающий скоуп выключен** — включение на модель требует предварительного аудита/оборачивания системных путей чтения в `withoutScope()` (§3.3). Затем фаза 3 (`NOT NULL`/FK) |
+| `organization_id` у 70 таблиц | **Закрыт структурно.** Фазы 0–3 завершены: 40 таблиц класса A — `NOT NULL` + FK; запись наполняет тенанта из контекста/родителя; глобальный читающий скоуп `Order` включён. Осталось только расширять читающий скоуп на остальные модели по мере аудита их системных путей (§3.3) |
 | Списки/отчёты вне Orders/Payments/Tickets/Checkin | Проверены только пути, где аудит нашёл живую утечку; остальные закрываются общим `TenantScoped` в фазе 2 |
 | `PaymentController::store` и `OrderController::resendTicket` вне `auth:api` | Staff-ветки там не единственная защита; полноценно закрывается контекстом + схемой в фазе 2 |
 

@@ -131,6 +131,7 @@ final class SyncArtistsCommand extends Command
             ->orderBy('event_artists.id')
             ->get([
                 'event_artists.event_id as event_id',
+                'events.organization_id as event_organization_id',
                 'event_artists.name as name',
                 'event_artists.genre as genre',
                 'event_artists.bio as bio',
@@ -191,6 +192,11 @@ final class SyncArtistsCommand extends Command
             $groups[$key]['events'][$eventId] = [
                 'is_headliner' => $isHeadliner || ($previous['is_headliner'] ?? false),
                 'sort_order' => $previous['sort_order'] ?? (int) $row->sort_order,
+                // `artist_event` — строка класса A (фаза 3). `sync()` пишет
+                // пивот конструктором запросов, события модели не срабатывают,
+                // поэтому арендатор передаётся явно — из события, к которому
+                // относится ребро.
+                'organization_id' => (int) $row->event_organization_id,
             ];
         }
 

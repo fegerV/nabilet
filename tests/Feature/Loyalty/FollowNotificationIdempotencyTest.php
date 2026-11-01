@@ -100,6 +100,7 @@ class FollowNotificationIdempotencyTest extends TestCase
 
         $row = [
             'public_id' => (string) Str::ulid()->toBase32(),
+            'organization_id' => $follow->organization_id,
             'follow_id' => $follow->id,
             'user_id' => $follow->user_id,
             'event_id' => $follow->event_id,
@@ -135,6 +136,7 @@ class FollowNotificationIdempotencyTest extends TestCase
 
         DB::table('follow_notifications')->insert([
             'public_id' => (string) Str::ulid()->toBase32(),
+            'organization_id' => $follow->organization_id,
             'follow_id' => $follow->id,
             'user_id' => $follow->user_id,
             'event_id' => $follow->event_id,

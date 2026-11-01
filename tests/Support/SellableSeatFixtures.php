@@ -73,6 +73,7 @@ trait SellableSeatFixtures
 
         $hallId = (int) DB::table('halls')->insertGetId([
             'public_id' => (string) Str::ulid()->toBase32(),
+            'organization_id' => $organizationId,
             'venue_id' => $venueId,
             'name' => 'Большой зал',
             'status' => 'active',
@@ -82,6 +83,7 @@ trait SellableSeatFixtures
 
         $schemaVersionId = (int) DB::table('hall_schema_versions')->insertGetId([
             'public_id' => (string) Str::ulid()->toBase32(),
+            'organization_id' => $organizationId,
             'hall_id' => $hallId,
             'version' => 1,
             'status' => 'published',
@@ -92,6 +94,7 @@ trait SellableSeatFixtures
 
         $sessionId = (int) DB::table('sessions')->insertGetId([
             'public_id' => (string) Str::ulid()->toBase32(),
+            'organization_id' => $organizationId,
             'event_id' => $eventId,
             'venue_id' => $venueId,
             'hall_id' => $hallId,
@@ -107,6 +110,7 @@ trait SellableSeatFixtures
 
         $inventoryItemId = (int) DB::table('inventory_items')->insertGetId([
             'public_id' => (string) Str::ulid()->toBase32(),
+            'organization_id' => $organizationId,
             'session_id' => $sessionId,
             'type' => 'standing',
             'standing_zone_id' => $standingZoneId,
@@ -126,8 +130,16 @@ trait SellableSeatFixtures
     {
         $now = now()->toDateTimeString();
 
+        // Организация сектора — организация версии схемы. Читаем, а не
+        // передаём параметром: сигнатуру используют существующие тесты, а
+        // значение всё равно обязано совпасть с родителем (NOT NULL + FK).
+        $organizationId = DB::table('hall_schema_versions')
+            ->where('id', $schemaVersionId)
+            ->value('organization_id');
+
         $sectorId = (int) DB::table('sectors')->insertGetId([
             'public_id' => (string) Str::ulid()->toBase32(),
+            'organization_id' => $organizationId,
             'schema_version_id' => $schemaVersionId,
             'name' => 'Партер',
             'code' => 'P-' . Str::random(4),
@@ -138,6 +150,7 @@ trait SellableSeatFixtures
 
         return (int) DB::table('standing_zones')->insertGetId([
             'public_id' => (string) Str::ulid()->toBase32(),
+            'organization_id' => $organizationId,
             'sector_id' => $sectorId,
             'name' => 'Танцпол',
             'capacity' => 100,
@@ -152,8 +165,13 @@ trait SellableSeatFixtures
     {
         $now = now()->toDateTimeString();
 
+        $organizationId = DB::table('orders')
+            ->where('id', $orderId)
+            ->value('organization_id');
+
         return (int) DB::table('payments')->insertGetId([
             'public_id' => (string) Str::ulid()->toBase32(),
+            'organization_id' => $organizationId,
             'order_id' => $orderId,
             'provider' => 'yookassa',
             'provider_payment_id' => 'test-' . Str::random(10),

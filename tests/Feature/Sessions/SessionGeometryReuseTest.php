@@ -454,6 +454,7 @@ final class SessionGeometryReuseTest extends TestCase
 
         return (int) DB::table('halls')->insertGetId([
             'public_id' => (string) Str::ulid()->toBase32(),
+            'organization_id' => (int) DB::table('venues')->where('id', $venueId)->value('organization_id'),
             'venue_id' => $venueId,
             'name' => $name,
             'status' => 'active',

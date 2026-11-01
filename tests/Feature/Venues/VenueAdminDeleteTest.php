@@ -100,6 +100,7 @@ final class VenueAdminDeleteTest extends TestCase
 
         $hallId = (int) DB::table('halls')->insertGetId([
             'public_id' => (string) Str::ulid()->toBase32(),
+            'organization_id' => $organizationId,
             'venue_id' => $venueId,
             'name' => 'Основной зал',
             'status' => 'active',

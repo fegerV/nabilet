@@ -53,6 +53,7 @@ final class HallSchemaSingleLiveVersionTest extends TestCase
         ]);
         $hallId = (int) DB::table('halls')->insertGetId([
             'public_id' => (string) Str::ulid()->toBase32(),
+            'organization_id' => $organizationId,
             'venue_id' => $venueId,
             'name' => 'Single live hall',
             'status' => 'active',
@@ -140,6 +141,7 @@ final class HallSchemaSingleLiveVersionTest extends TestCase
         $now = now();
         $otherHallId = (int) DB::table('halls')->insertGetId([
             'public_id' => (string) Str::ulid()->toBase32(),
+            'organization_id' => $this->hall->organization_id,
             'venue_id' => $this->hall->venue_id,
             'name' => 'Another hall ' . Str::random(6),
             'status' => 'active',

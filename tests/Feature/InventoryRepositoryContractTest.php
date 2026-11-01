@@ -161,9 +161,15 @@ final class InventoryRepositoryContractTest extends TestCase
 
         try {
             $sessionId = 982301;
+            // FK-проверки выключены ради искусственных идентификаторов выше;
+            // NOT NULL у organization_id всё равно действует, а строке для
+            // подсчёта достаточно любого числа — реальную организацию здесь не
+            // проверяем.
+            $organizationId = 982301;
             $now = now();
             $inventoryId = DB::table('inventory_items')->insertGetId([
                 'public_id' => (string) Str::ulid()->toBase32(),
+                'organization_id' => $organizationId,
                 'session_id' => $sessionId,
                 'type' => 'standing',
                 'seat_id' => null,
@@ -179,6 +185,7 @@ final class InventoryRepositoryContractTest extends TestCase
             ]);
             $holdId = DB::table('seat_holds')->insertGetId([
                 'public_id' => (string) Str::ulid()->toBase32(),
+                'organization_id' => $organizationId,
                 'inventory_item_id' => $inventoryId,
                 'session_id' => $sessionId,
                 'cart_id' => 982301,
@@ -202,6 +209,7 @@ final class InventoryRepositoryContractTest extends TestCase
             DB::table('inventory_items')->where('id', $inventoryId)->update(['available_quantity' => 2]);
             DB::table('seat_holds')->insert([
                 'public_id' => (string) Str::ulid()->toBase32(),
+                'organization_id' => $organizationId,
                 'inventory_item_id' => $inventoryId,
                 'session_id' => $sessionId,
                 'cart_id' => 982302,

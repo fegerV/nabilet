@@ -266,6 +266,7 @@ class PaymentInitiationGuardsTest extends TestCase
         $this->provider->onCreate = function () use ($order): void {
             DB::table('payments')->insert([
                 'public_id' => (string) Str::ulid()->toBase32(),
+                'organization_id' => $order->organization_id,
                 'order_id' => $order->id,
                 'provider' => 'yookassa',
                 'provider_payment_id' => 'racer_payment_1',
