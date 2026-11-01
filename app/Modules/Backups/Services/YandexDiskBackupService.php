@@ -294,6 +294,247 @@ class YandexDiskBackupService
     }
 
     /**
+     * Каталог бэкапов на Яндекс.Диске (без завершающего слэша).
+     */
+    public function remoteBackupsDir(): string
+    {
+        return rtrim((string) config('services.yandex_disk.backups_path', '/backups'), '/');
+    }
+
+    /**
+     * Список резервных копий на Яндекс.Диске.
+     *
+     * Возвращаются только файлы, чьё имя соответствует формату бэкапа:
+     * посторонние файлы в каталоге не должны даже рассматриваться как
+     * кандидаты на удаление. Отсутствие каталога — не ошибка (первый бэкап его
+     * создаст), а вот сетевой сбой или 401 — ошибка: ротация fail-closed, при
+     * неясном ответе ничего не удаляется.
+     *
+     * @return list<array{name: string, path: string}>
+     */
+    public function listRemoteBackups(): array
+    {
+        $token = (string) ($this->oauthToken ?? '');
+
+        if ($token === '') {
+            throw new \RuntimeException('YANDEX_DISK_OAUTH_TOKEN is not configured; cannot list remote backups.');
+        }
+
+        $dir = $this->remoteBackupsDir();
+        $offset = 0;
+        $limit = 200;
+        $rawItems = [];
+
+        while (true) {
+            $url = 'https://cloud-api.yandex.net/v1/disk/resources?' . http_build_query([
+                'path' => $dir,
+                'limit' => $limit,
+                'offset' => $offset,
+                'fields' => '_embedded.total,_embedded.items.name,_embedded.items.path,_embedded.items.type',
+            ]);
+
+            $ch = curl_init();
+            curl_setopt($ch, CURLOPT_URL, $url);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+            curl_setopt($ch, CURLOPT_HTTPHEADER, ["Authorization: OAuth {$token}"]);
+
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $errno = curl_errno($ch);
+            curl_close($ch);
+
+            // Каталога ещё нет — это не ошибка.
+            if ($httpCode === 404) {
+                return [];
+            }
+
+            if ($errno !== 0 || $httpCode !== 200 || ! is_string($response)) {
+                throw new \RuntimeException("Failed to list remote backups (HTTP {$httpCode}).");
+            }
+
+            $data = json_decode($response, true);
+
+            if (! is_array($data)) {
+                throw new \RuntimeException('Failed to parse the Yandex Disk backup listing.');
+            }
+
+            $embedded = is_array($data['_embedded'] ?? null) ? $data['_embedded'] : [];
+            $page = is_array($embedded['items'] ?? null) ? $embedded['items'] : [];
+            $total = (int) ($embedded['total'] ?? count($page));
+
+            foreach ($page as $item) {
+                if (is_array($item)) {
+                    $rawItems[] = $item;
+                }
+            }
+
+            $offset += $limit;
+
+            if ($page === [] || $offset >= $total) {
+                break;
+            }
+        }
+
+        $result = [];
+
+        foreach ($rawItems as $item) {
+            $name = (string) ($item['name'] ?? '');
+            $path = (string) ($item['path'] ?? '');
+
+            if (($item['type'] ?? '') !== 'file' || ! BackupRotation::isBackupName($name) || $path === '') {
+                continue;
+            }
+
+            $result[] = ['name' => $name, 'path' => $path];
+        }
+
+        return $result;
+    }
+
+    /**
+     * Удалить резервную копию на Яндекс.Диске.
+     *
+     * Путь ДОЛЖЕН лежать в настроенном каталоге бэкапов и заканчиваться именем
+     * в формате бэкапа — сервис не должен уметь удалять произвольные файлы
+     * Диска, даже если его об этом попросят. 404 трактуется как «уже удалено»:
+     * повторный запуск ротации идемпотентен.
+     */
+    public function deleteRemoteBackup(string $path): void
+    {
+        $token = (string) ($this->oauthToken ?? '');
+
+        if ($token === '') {
+            throw new \RuntimeException('YANDEX_DISK_OAUTH_TOKEN is not configured; cannot delete remote backups.');
+        }
+
+        $dir = $this->remoteBackupsDir();
+        $name = basename($path);
+
+        if (! BackupRotation::isBackupName($name) || ! str_contains($path, $dir . '/')) {
+            throw new \RuntimeException("Refusing to delete a non-backup remote path: {$path}");
+        }
+
+        $url = 'https://cloud-api.yandex.net/v1/disk/resources?' . http_build_query([
+            'path' => $path,
+            'permanently' => 'true',
+        ]);
+
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'DELETE');
+        curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, ["Authorization: OAuth {$token}"]);
+
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $errno = curl_errno($ch);
+        curl_close($ch);
+
+        if ($httpCode === 404) {
+            return;
+        }
+
+        if ($errno !== 0 || ! in_array($httpCode, [200, 202, 204], true)) {
+            throw new \RuntimeException("Failed to delete remote backup (HTTP {$httpCode}).");
+        }
+    }
+
+    /**
+     * Ротация локальных копий в `storage/app/backups`.
+     *
+     * @param  list<string>  $protect  имена, которые нельзя удалять
+     * @return array{deleted: list<string>, failed: array<string, string>, kept: int}
+     */
+    public function rotateLocalBackups(int $keep, array $protect = [], bool $dryRun = false): array
+    {
+        $dir = storage_path('app/backups');
+
+        if (! is_dir($dir)) {
+            return ['deleted' => [], 'failed' => [], 'kept' => 0];
+        }
+
+        $names = [];
+
+        foreach (glob($dir . '/*') ?: [] as $path) {
+            // Директории (недоделанный `full_*`) и посторонние файлы не трогаем.
+            if (is_file($path)) {
+                $names[] = basename($path);
+            }
+        }
+
+        $valid = array_values(array_filter($names, [BackupRotation::class, 'isBackupName']));
+        $expired = BackupRotation::selectExpired($valid, $keep, $protect);
+
+        $deleted = [];
+        $failed = [];
+
+        foreach ($expired as $name) {
+            $path = $dir . '/' . $name;
+
+            if ($dryRun) {
+                $deleted[] = $name;
+                continue;
+            }
+
+            if (@unlink($path)) {
+                $deleted[] = $name;
+            } else {
+                $failed[$name] = 'unlink failed';
+            }
+        }
+
+        return [
+            'deleted' => $deleted,
+            'failed' => $failed,
+            'kept' => count($valid) - count($expired),
+        ];
+    }
+
+    /**
+     * Ротация копий на Яндекс.Диске.
+     *
+     * @param  list<string>  $protect  имена, которые нельзя удалять
+     * @return array{deleted: list<string>, failed: array<string, string>, kept: int}
+     */
+    public function rotateRemoteBackups(int $keep, array $protect = [], bool $dryRun = false): array
+    {
+        $items = $this->listRemoteBackups();
+
+        $paths = [];
+
+        foreach ($items as $item) {
+            $paths[$item['name']] = $item['path'];
+        }
+
+        $expired = BackupRotation::selectExpired(array_keys($paths), $keep, $protect);
+
+        $deleted = [];
+        $failed = [];
+
+        foreach ($expired as $name) {
+            if ($dryRun) {
+                $deleted[] = $name;
+                continue;
+            }
+
+            try {
+                $this->deleteRemoteBackup($paths[$name]);
+                $deleted[] = $name;
+            } catch (\Throwable $e) {
+                $failed[$name] = $e->getMessage();
+            }
+        }
+
+        return [
+            'deleted' => $deleted,
+            'failed' => $failed,
+            'kept' => count($paths) - count($expired),
+        ];
+    }
+
+    /**
      * Копирование директории
      */
     private function copyDirectory($source, $dest)

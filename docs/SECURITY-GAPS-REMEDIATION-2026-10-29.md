@@ -470,6 +470,19 @@ WHERE p.organization_id <> o.organization_id;
 Ключ — `NABILET_BACKUP_ENCRYPTION_KEY`; команда `backup:run` шифрует по умолчанию
 (если ключ задан), флаг `--no-encrypt` отключает. Восстановление — `BackupEncryptor::decrypt()`.
 Покрыто `tests/Unit/BackupEncryptorTest.php`.
+
+**Бэкапы: ротация.** `BackupRotation` — чистый класс политики: удаляются только
+файлы формата `db_<база>_YYYY-MM-DD_HH-MM-SS.sql[.enc]` /
+`full_YYYY-MM-DD_HH-MM-SS.zip[.enc]`; полные архивы и дампы БД — независимые
+очереди; только что созданная копия защищена явно (даже при `--keep=0`), а
+несуществующая дата или путь с навигацией не считаются бэкапом. `backup:run`
+чистит старое ПОСЛЕ успешной выгрузки (`--keep=N`, `--no-rotate`); ручная
+команда `backup:rotate` поддерживает `--dry-run`, `--local-only`,
+`--remote-only`. Хранение по умолчанию — `NABILET_BACKUP_KEEP=7`. Сбой ротации
+не отменяет успешный бэкап: пишется предупреждение. Покрыто
+`tests/Unit/BackupRotationTest.php` и
+`tests/Feature/Backups/BackupRotationCommandTest.php`. Итог: unit 1037 методов,
+feature `OK (1200 tests, 4903 assertions)`, PHPStan `No errors`.
 5. **Фаза 3 (подготовлена, не включена):** миграция `NOT NULL` + FK на
    `organizations` + составные UNIQUE `(organization_id, id)` для родительских
    таблиц была написана и применена к dev-БД, но **откачена** после проверки:
