@@ -11,6 +11,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Nabilet\Core\Database\IdentifierLookup;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Embed\Services\EmbedTokenIssuer;
 use Nabilet\Modules\System\Models\ApiKey;
 
@@ -41,6 +42,7 @@ final class EmbedKeyController extends Controller
 {
     public function __construct(
         private readonly EmbedTokenIssuer $issuer,
+        private readonly OrganizationContext $context,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -99,7 +101,12 @@ final class EmbedKeyController extends Controller
     {
         // Разрешение идентификатора и отказ при «не нашли» — у одного владельца
         // (`IdentifierLookup::firstOrFail`), а не своей копией политики 404.
+        // Lookup живёт в bypass и находит и чужие ключи, поэтому сразу за ним
+        // стоит сверка владельца: отзыв чужого ключа — это вывод чужого канала
+        // продаж из строя, а чужой ключ неотличим от несуществующего (404,
+        // IDOR-запрет).
         $model = IdentifierLookup::firstOrFail(ApiKey::class, $key, 'Embed key');
+        $this->context->assertCanAccess($model->organization_id, 'Embed key', $key);
 
         $request->validate([
             // ТОЛЬКО `revoked: true`. Отзыв необратим, и это не удобство, а

@@ -37,8 +37,9 @@ class EmbedDomain extends Model
      *
      * Origin-проверка виджета (`EmbedAccessService::assertOriginAllowed`) —
      * bypass: гость без контекста, организация уже выведена из ключа.
-     * `update`/`destroy` адресуются `IdentifierLookup` (bypass по design) —
-     * живой изоляции там нет, отдельный аудит.
+     * `update`/`destroy` адресуются `IdentifierLookup` (bypass по design),
+     * владелец найденной строки сверяется с контекстом в контроллере —
+     * чужой домен неотличим от несуществующего (404).
      */
     protected static function tenantScopeEnabled(): bool
     {

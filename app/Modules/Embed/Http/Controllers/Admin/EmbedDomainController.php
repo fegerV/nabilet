@@ -12,6 +12,7 @@ use Illuminate\Routing\Controller;
 use Nabilet\Core\Database\IdentifierLookup;
 use Nabilet\Core\Errors\ConflictError;
 use Nabilet\Core\Errors\ValidationError;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Analytics\Models\EmbedDomain;
 use Nabilet\Modules\Embed\Domain\EmbedOrigin;
 
@@ -42,6 +43,10 @@ use Nabilet\Modules\Embed\Domain\EmbedOrigin;
  */
 final class EmbedDomainController extends Controller
 {
+    public function __construct(
+        private readonly OrganizationContext $context,
+    ) {}
+
     public function index(Request $request): JsonResponse
     {
         $perPage = Paging::limit((int) $request->query('per_page', '50'), 50, 100);
@@ -126,6 +131,12 @@ final class EmbedDomainController extends Controller
     {
         $row = IdentifierLookup::firstOrFail(EmbedDomain::class, $embedDomain, 'Embed domain');
 
+        // Домен другой организации неотличим от несуществующего: 404, а не 403 —
+        // числовой перебор не должен подтверждать существование чужой записи
+        // (IDOR). Lookup живёт в bypass, поэтому эта сверка — единственная
+        // живая изоляция пути.
+        $this->context->assertCanAccess($row->organization_id, 'Embed domain', $embedDomain);
+
         $validated = $request->validate([
             'active' => ['required', 'boolean'],
         ]);
@@ -138,6 +149,10 @@ final class EmbedDomainController extends Controller
     public function destroy(string $embedDomain): JsonResponse
     {
         $row = IdentifierLookup::firstOrFail(EmbedDomain::class, $embedDomain, 'Embed domain');
+
+        // Та же сверка владельца, что и в `update`: чужой домен — 404,
+        // удаление чужого whitelist-конфига недостижимо (IDOR).
+        $this->context->assertCanAccess($row->organization_id, 'Embed domain', $embedDomain);
 
         $row->delete();
 

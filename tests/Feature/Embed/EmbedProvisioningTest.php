@@ -6,6 +6,7 @@ namespace Tests\Feature\Embed;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Nabilet\Core\Support\Sha256Hex;
 use Nabilet\Modules\Embed\Domain\EmbedScope;
 use Nabilet\Modules\Embed\Services\EmbedTokenIssuer;
@@ -373,5 +374,81 @@ class EmbedProvisioningTest extends TestCase
 
         $this->patchJson('/api/v1/admin/embed/domains/999999', ['active' => false])
             ->assertStatus(404);
+    }
+
+    // ── изоляция арендаторов (аудит IdentifierLookup-путей) ─────────────────
+
+    /**
+     * Чужой ключ не отзывается.
+     *
+     * Отзыв адресуется `IdentifierLookup`, чей lookup живёт в bypass и находит
+     * в том числе ключи других арендаторов. Без сверки владельца сразу после
+     * lookup'а числовой перебор отзывал бы чужой ключ — выводил бы из строя
+     * чужой канал продаж. Теперь чужой ключ — 404, неотличим от несуществующего
+     * (IDOR-запрет): 403 подтвердил бы, что ключ с таким id существует.
+     */
+    public function test_a_foreign_embed_key_cannot_be_revoked(): void
+    {
+        [$organizationId] = $this->seedPublishedEvent();
+        $otherOrg = $this->otherOrganization();
+        $this->actingAsStaff($organizationId);
+
+        // Своей веткой выпуска чужой ключ не получить: владельца наполняет
+        // staff-контекст, поэтому «чужая строка» — только сырая вставка.
+        $this->seedEmbedKey($otherOrg);
+        $foreignId = (int) DB::table('api_keys')->where('organization_id', $otherOrg)->value('id');
+
+        $this->patchJson("/api/v1/admin/embed/keys/{$foreignId}", ['revoked' => true])
+            ->assertStatus(404);
+
+        // Отказ не изменил чужую строку: ключ остался живым.
+        $this->assertNull(DB::table('api_keys')->where('id', $foreignId)->value('revoked_at'));
+    }
+
+    /** Чужой домен whitelist не выключается. */
+    public function test_a_foreign_domain_cannot_be_toggled(): void
+    {
+        [$organizationId] = $this->seedPublishedEvent();
+        $otherOrg = $this->otherOrganization();
+        $this->actingAsStaff($organizationId);
+
+        $this->seedEmbedDomain($otherOrg, 'foreign.example');
+        $foreignId = (int) DB::table('embed_domains')->where('organization_id', $otherOrg)->value('id');
+
+        $this->patchJson("/api/v1/admin/embed/domains/{$foreignId}", ['active' => false])
+            ->assertStatus(404);
+
+        // Чужая запись не изменилась: домен по-прежнему активен.
+        $this->assertTrue((bool) DB::table('embed_domains')->where('id', $foreignId)->value('active'));
+    }
+
+    /** Чужой домен whitelist не удаляется. */
+    public function test_a_foreign_domain_cannot_be_deleted(): void
+    {
+        [$organizationId] = $this->seedPublishedEvent();
+        $otherOrg = $this->otherOrganization();
+        $this->actingAsStaff($organizationId);
+
+        $this->seedEmbedDomain($otherOrg, 'foreign.example');
+        $foreignId = (int) DB::table('embed_domains')->where('organization_id', $otherOrg)->value('id');
+
+        $this->deleteJson("/api/v1/admin/embed/domains/{$foreignId}")
+            ->assertStatus(404);
+
+        // Чужая запись осталась на месте.
+        $this->assertSame(1, DB::table('embed_domains')->where('id', $foreignId)->count());
+    }
+
+    /** Второй арендатор для проверок изоляции. */
+    private function otherOrganization(): int
+    {
+        return (int) DB::table('organizations')->insertGetId([
+            'public_id' => (string) Str::ulid()->toBase32(),
+            'name' => 'Соседняя организация',
+            'slug' => 'org-' . Str::random(6),
+            'status' => 'active',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
     }
 }

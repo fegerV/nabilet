@@ -271,10 +271,12 @@
 | `app/Modules/Embed/Services/EmbedAccessService.php` | `organizationFromToken`: lookup ключа по `key_hash` в bypass — аутентификация происходит ДО контекста, организация выводится ИЗ ключа (хеш unguessable, перебор неотличим от шума). `assertOriginAllowed`: whitelist доменов в bypass — витрина виджета гостевая, владелец уже выведен из ключа, фильтр по organization_id тот же |
 | `app/Modules/Embed/Services/EmbedTokenIssuer.php` | Выпуск: владелец ключа — организация staff-контекста (трейт), org-аргумент остался только для политики выпуска; запрос «на чужую организацию» молча вернётся ключом своей — живая изоляция, как у остальных admin-store |
 | `app/Modules/Analytics/Models/EmbedDomain.php` | Фаза 2, чтение: глобальный скоуп включён на `EmbedDomain` — сорок вторая модель. Whitelist доменов виджета — конфиг организатора; `organization_id` (NOT NULL) выведен из `$fillable`. Составной `uq_embed_domains_org_domain` сохраняет пер-организационную семантику гонки `createOrFirst`: дубль в своей организации — 409, одинаковый домен у двух организаций — две легальные строки |
-| `app/Modules/Embed/Http/Controllers/Admin/EmbedKeyController.php` | Список ключей остался под контекстом — параметр `?organization_id=` остался для совместимости и сужает уже свой список (кросс-чтение, закрывавшееся лишь при явном совпадении параметра, теперь закрыто скоупом); отзыв адресуется `IdentifierLookup` (bypass по design) — живой изоляции нет, отдельный аудит |
-| `app/Modules/Embed/Http/Controllers/Admin/EmbedDomainController.php` | `store`: `createOrFirst` больше не принимает `organization_id` из запроса — владелец наполняется из staff-контекста трейтом (required-валидация сохранена, значение перестало решать, ЧЬЯ строка). `index` — под скоупом; `update`/`destroy` — через `IdentifierLookup` (bypass по design — отдельный аудит) |
+| `app/Modules/Embed/Http/Controllers/Admin/EmbedKeyController.php` | Список ключей остался под контекстом — параметр `?organization_id=` остался для совместимости и сужает уже свой список (кросс-чтение, закрывавшееся лишь при явном совпадении параметра, теперь закрыто скоупом); отзыв адресуется `IdentifierLookup` (bypass по design) — владелец найденного ключа сверяется с контекстом сразу после lookup'а (шаг «Аудит IdentifierLookup-путей» ниже), чужой ключ — 404 |
+| `app/Modules/Embed/Http/Controllers/Admin/EmbedDomainController.php` | `store`: `createOrFirst` больше не принимает `organization_id` из запроса — владелец наполняется из staff-контекста трейтом (required-валидация сохранена, значение перестало решать, ЧЬЯ строка). `index` — под скоупом; `update`/`destroy` — через `IdentifierLookup` (bypass по design) со сверкой владельца сразу после lookup'а (шаг «Аудит IdentifierLookup-путей» ниже) |
 | `tests/Feature/Core/TenantScopedReadTest.php` | (Embed-шаг) Нативные скоупы ключа и домена (`test_api_key_read_scope_is_native` + `test_embed_domain_read_scope_is_native`) на фикстурах `makeApiKeyRow` (у таблицы нет `updated_at`) и `makeEmbedDomainRow`: без контекста отказ, с контекстом фильтр, в bypass видны все |
 | `tests/Feature/Core/TenantScopedReadTest.php` | (Аудит nullable) Храповик `test_nullable_shared_models_have_no_read_scope`: `TicketTemplate`/`Page`/`MediaAsset`/`StorefrontSetting`/`AbExperiment` читаются без контекста и с контекстом **все** строки — решение «NULL = общая строка» зафиксировано; подключение `TenantScoped` любой из них упадёт этим тестом и потребует либо правки решения и документа, либо bypass-обёрток у каждого публичного читателя («общие» строки иначе невидимы гостям, а NULL-макеты TicketTemplate легально читаются чужими организациями — `belongsToOrganization()`) |
+| `app/Modules/Embed/Http/Controllers/Admin/EmbedDomainController.php`, `app/Modules/Embed/Http/Controllers/Admin/EmbedKeyController.php` | (Аудит IdentifierLookup-путей) `update`/`destroy` домена и отзыв ключа: сразу после bypass-lookup'а добавлена сверка владельца с контекстом — чужая строка 404 (`assertCanAccess`, IDOR-запрет), а не правка/удаление чужого конфига перебором id; докблоки `ApiKey`/`EmbedDomain` переформулированы |
+| `tests/Feature/Embed/EmbedProvisioningTest.php` | (Аудит IdentifierLookup-путей) Три теста изоляции: чужой ключ не отзывается, чужой домен не выключается и не удаляется — 404 без изменения чужой строки; «чужие» строки — сырые вставки `EmbedFixtures` для второго арендатора (свой store чужой ключ создать не может — владельца наполняет контекст) |
 | `tests/Feature/Core/TenantScopedReadTest.php` | Нативный скоуп `OrderItem`: без контекста отказ, с контекстом фильтр, в bypass видны все |
 | `tests/Feature/Core/TenantScopedReadTest.php` | Нативный скоуп `SeatHold`: без контекста отказ, с контекстом фильтр, в bypass видны все |
 | `tests/Feature/Core/TenantScopedReadTest.php` | Нативный скоуп `PaymentTransaction`: без контекста отказ, с контекстом фильтр, в bypass видны все |
@@ -331,6 +333,27 @@ per-user — Consents/Referrals; потомки — читаются через 
 (`TenantContextMissingError` без контекста) и потребует либо правки решения и этого
 документа, либо bypass-обёрток у каждого публичного читателя. `audit_logs` вне
 периметра §3.3: системный журнал платформы.
+
+### 2.0.1 Аудит ownership-проверок IdentifierLookup-путей
+
+`IdentifierLookup` сам живёт в bypass (подбор строки по id/public_id неотличим от
+шума перебора), поэтому каждый его адресат обязан сверять владельца найденной
+строки с контекстом **сам** — сразу после lookup'а. Снят полный список вызовов
+(6 точек), для каждой зафиксирован источник изоляции:
+
+| Путь | Источник изоляции |
+|------|-------------------|
+| `CheckinDeviceController::update` | `assertCanAccess(organization_id)` сразу после lookup'а (было) |
+| `OfflineBundleController::index` | `assertCanAccess` по устройству (было) |
+| `OfflineBundleController::issue` | `assertCanAccess` по устройству **и** по событию (было; event-lookup под скоупом — чужой `event_id` даёт 404 ещё до проверки) |
+| `OrderController::refund` | `assertCanSee` → `assertCanAccess` по организации заказа (было); прямое исключение — сотрудник-покупатель видит свой заказ в чужой организации осознанно (докблок `assertCanSee`) |
+| `EmbedDomainController::update`/`destroy` | **Добавлено**: `assertCanAccess(organization_id)` — изоляции не было |
+| `EmbedKeyController::update` (отзыв) | **Добавлено**: `assertCanAccess(organization_id)` — изоляции не было; отзыв чужого ключа = вывод чужого канала продаж из строя |
+
+Семантика едина с остальными fail-closed путями: чужая строка — 404, а не 403
+(IDOR-запрет). Покрытие — три теста в `EmbedProvisioningTest` (отзыв чужого ключа,
+включение и удаление чужого домена), «чужие» строки — сырые вставки второго
+арендатора.
 
 ### 2.1 Что осталось открытым после правок
 
