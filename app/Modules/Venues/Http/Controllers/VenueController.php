@@ -41,7 +41,13 @@ class VenueController extends Controller
             );
         }
         
-        $venues = $query->paginate($perPage);
+        // Пагинация читает eager `halls` — скоупнутая модель (см. докблок
+        // `Hall`): у гостя публичного каталога контекста нет — исполнение
+        // запроса в bypass. Сама выборка площадок фильтруется параметрами
+        // каталога; Venue скоупа не имеет.
+        $venues = app(OrganizationContext::class)->withoutScope(
+            fn () => $query->paginate($perPage)
+        );
         
         return response()->json([
             'data' => $venues,

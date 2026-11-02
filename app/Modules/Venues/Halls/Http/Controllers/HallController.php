@@ -11,6 +11,7 @@ use Nabilet\Core\Errors\NotFoundError;
 use Nabilet\Core\Errors\ValidationError;
 use Nabilet\Core\Support\Paging;
 use Nabilet\Core\Support\PublicationStatus;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Venues\Models\Hall;
 use Nabilet\Modules\Venues\Halls\Services\HallService;
 use Nabilet\Modules\Venues\Halls\Http\Resources\HallResource;
@@ -58,7 +59,18 @@ class HallController extends Controller
 
     public function show(string $publicId): HallResource
     {
-        return new HallResource($this->findOrFail($publicId));
+        // Публичная страница зала (без auth): lookup зала — в bypass. Адрес
+        // решает unguessable `public_id` (ULID), ресурс читает только
+        // колонки строки и когда-то загруженные связи.
+        $hall = app(OrganizationContext::class)->withoutScope(
+            fn (): ?Hall => $this->service->findByPublicId($publicId)
+        );
+
+        if ($hall === null) {
+            throw new NotFoundError('Hall', $publicId);
+        }
+
+        return new HallResource($hall);
     }
 
     public function store(Request $request): HallResource
@@ -137,7 +149,15 @@ class HallController extends Controller
      */
     public function publishedSchema(string $publicId): JsonResponse
     {
-        $hall = $this->findOrFail($publicId);
+        // Публичная схема для витрины мест (без auth): lookup зала — в bypass
+        // (как в show), опубликованная версия схемы — в bypass внутри сервиса.
+        $hall = app(OrganizationContext::class)->withoutScope(
+            fn (): ?Hall => $this->service->findByPublicId($publicId)
+        );
+
+        if ($hall === null) {
+            throw new NotFoundError('Hall', $publicId);
+        }
 
         $version = $this->service->getPublishedSchemaVersion($hall);
 

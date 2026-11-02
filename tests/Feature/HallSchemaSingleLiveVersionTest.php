@@ -8,6 +8,7 @@ use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Venues\Models\Hall;
 use Nabilet\Modules\Venues\Models\HallSchemaVersion;
 use Tests\TestCase;
@@ -60,7 +61,9 @@ final class HallSchemaSingleLiveVersionTest extends TestCase
             'created_at' => $now,
             'updated_at' => $now,
         ]);
-        $this->hall = Hall::query()->findOrFail($hallId);
+        $this->hall = app(OrganizationContext::class)->withoutScope(
+            fn () => Hall::query()->findOrFail($hallId)
+        );
     }
 
     private function makeVersion(int $version, string $status): HallSchemaVersion

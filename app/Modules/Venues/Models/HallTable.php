@@ -46,6 +46,18 @@ class HallTable extends Model
         'metadata_json',
     ];
 
+    /**
+     * Глобальный читающий скоуп (тридцать пятая модель — см. докблок `Hall`).
+     * Карта: `sector_id` → `sectors`. Читателей в проде нет: столы живут
+     * в `schema_json` и `inventory_items`, из таблиц их создаёт только
+     * админская сборка инвентаря (`InventoryService`) — скоуп здесь чистое
+     * fail-closed ограждение.
+     */
+    protected static function tenantScopeEnabled(): bool
+    {
+        return true;
+    }
+
     protected function casts(): array
     {
         return [

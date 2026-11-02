@@ -96,16 +96,10 @@ final class EmbedController extends Controller
 
         $model = $this->access->event($event, $organizationId);
 
-        // `sessions.venue` is eager-loaded although `EventResource` reads it
-        // through `sessions`: without it the resource lazy-loads one venue per
-        // session. `EventController::show()` loads `sessions` alone, and this is
-        // the same response with fewer queries, not a different one.
-        //
-        // Переводы — скоупнутые чтения (двадцать шестая модель): виджет не
-        // имеет tenant-контекста (embed-ключ, а не bearer-токен) — загрузка
-        // в bypass; владение уже решено проверкой ключа выше.
+        // `sessions.hall` лениво читается ресурсом (`hall?->name`), а зал —
+        // скоупнутая модель: грузим под bypass вместе с venue.
         app(OrganizationContext::class)->withoutScope(
-            fn () => $model->load(['category', 'translations', 'sessions.venue'])
+            fn () => $model->load(['category', 'translations', 'sessions.hall', 'sessions.venue'])
         );
 
         // Availability is attached as an attribute BEFORE rendering: without it
@@ -160,7 +154,12 @@ final class EmbedController extends Controller
 
         $model = $this->access->session($session, $organizationId);
 
-        $model->load('schemaVersion');
+        // Версия схемы зала — скоупнутая модель (тридцатая): у виджета нет
+        // тенант-контекста (capability-ключ, организация проверена выше) —
+        // загружаем в bypass. Геометрия дальше собирается из её JSON-колонки.
+        app(OrganizationContext::class)->withoutScope(
+            fn () => $model->load('schemaVersion')
+        );
 
         // Инвентарь сеанса — публичная карта зала: embed-запрос идёт по
         // capability ключа (организация проверена authorize выше), тенант-

@@ -11,6 +11,7 @@ use Nabilet\Modules\Venues\Halls\Domain\SchemaPayloadNormalizer;
 use Nabilet\Modules\Venues\Halls\Http\Resources\SchemaVersionResource;
 use Nabilet\Modules\Venues\Halls\Services\HallService;
 use Nabilet\Modules\Venues\Models\Hall;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Tests\TestCase;
 
 /**
@@ -66,7 +67,7 @@ final class HallSchemaPayloadContractTest extends TestCase
             'updated_at' => $now,
         ]);
 
-        $this->hall = Hall::query()->findOrFail($hallId);
+        $this->hall = $this->scoped(fn () => Hall::query()->findOrFail($hallId));
         $this->service = app(HallService::class);
     }
 
@@ -111,7 +112,7 @@ final class HallSchemaPayloadContractTest extends TestCase
 
     public function test_empty_row_prices_are_persisted_as_a_json_object_not_an_array(): void
     {
-        $draft = $this->service->createSchemaDraft($this->hall, $this->payload(), 1);
+        $draft = $this->scoped(fn () => $this->service->createSchemaDraft($this->hall, $this->payload(), 1));
 
         $raw = (string) DB::table('hall_schema_versions')->where('id', $draft->id)->value('schema_json');
 
@@ -127,9 +128,9 @@ final class HallSchemaPayloadContractTest extends TestCase
 
     public function test_api_returns_row_prices_as_an_object(): void
     {
-        $draft = $this->service->createSchemaDraft($this->hall, $this->payload(), 1);
+        $draft = $this->scoped(fn () => $this->service->createSchemaDraft($this->hall, $this->payload(), 1));
 
-        $resource = (new SchemaVersionResource($draft->fresh()))->toArray(request());
+        $resource = (new SchemaVersionResource($this->scoped(fn () => $draft->fresh())))->toArray(request());
         $json = json_encode($resource['schema'], JSON_UNESCAPED_UNICODE);
 
         self::assertStringContainsString('"rowPrices":{}', (string) $json);
@@ -140,12 +141,12 @@ final class HallSchemaPayloadContractTest extends TestCase
         $payload = $this->payload();
         $payload['sectors'][0]['rowPrices'] = [1 => 150000, 2 => 90000];
 
-        $draft = $this->service->createSchemaDraft($this->hall, $payload, 1);
+        $draft = $this->scoped(fn () => $this->service->createSchemaDraft($this->hall, $payload, 1));
 
         $raw = (string) DB::table('hall_schema_versions')->where('id', $draft->id)->value('schema_json');
         self::assertMatchesRegularExpression('/"rowPrices":\s*\{\s*"1":\s*150000,\s*"2":\s*90000\s*\}/', $raw);
 
-        $resource = (new SchemaVersionResource($draft->fresh()))->toArray(request());
+        $resource = (new SchemaVersionResource($this->scoped(fn () => $draft->fresh())))->toArray(request());
         $json = (string) json_encode($resource['schema'], JSON_UNESCAPED_UNICODE);
         self::assertMatchesRegularExpression('/"rowPrices":\s*\{\s*"1":\s*150000,\s*"2":\s*90000\s*\}/', $json);
     }
@@ -185,5 +186,16 @@ final class HallSchemaPayloadContractTest extends TestCase
         self::assertSame(['canvas' => ['width' => 1, 'height' => 1]], SchemaPayloadNormalizer::normalize([
             'canvas' => ['width' => 1, 'height' => 1],
         ]));
+    }
+
+    /**
+     * Тест-аналог админского HTTP-пути: в проде эти операции идут из
+     * `auth:api` + `admin`, контекст ставит `ResolveOrganizationContext`;
+     * тест зовёт сервис напрямую, поэтому читающие и пишущие запросы
+     * (включая SELECT внутри lockForUpdate) обёрнуты в bypass.
+     */
+    private function scoped(callable $callback): mixed
+    {
+        return app(OrganizationContext::class)->withoutScope($callback);
     }
 }

@@ -12,6 +12,7 @@ use Nabilet\Core\Errors\ConflictError;
 use Nabilet\Core\Errors\DomainRuleViolation;
 use Nabilet\Core\Errors\NotFoundError;
 use Nabilet\Core\Errors\ValidationError;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\HallSchemas\Domain\SchemaVersion as DomainSchemaVersion;
 use Nabilet\Modules\HallSchemas\Domain\SchemaVersionPolicy;
 use Nabilet\Modules\HallSchemas\Domain\SchemaVersionState;
@@ -218,7 +219,12 @@ class HallService
             throw new NotFoundError('Venue', $venuePublicId);
         }
 
-        return $this->repository->findByVenue((int) $venueId, $limit);
+        // Каталог залов на витрине вызывается гостем (`GET /venues/{id}/halls`
+        // без auth): зал — скоупнутая модель, читаем в bypass. Выборку получает
+        // lookup площадки по unguessable `public_id` — чужая площадка даёт 404.
+        return app(OrganizationContext::class)->withoutScope(
+            fn () => $this->repository->findByVenue((int) $venueId, $limit)
+        );
     }
 
         /**
@@ -226,11 +232,20 @@ class HallService
          */
         public function findAll(): LengthAwarePaginator
         {
-            return $this->repository->paginate(100);
+            // Публичный маршрут `GET /halls` (решение видимости в
+            // docs/REVIEW-spec-bundle.md не закрыто) — у гостя контекста нет:
+            // читаем в bypass, контракт ответа не меняет.
+            return app(OrganizationContext::class)->withoutScope(
+                fn () => $this->repository->paginate(100)
+            );
         }
 
     public function findByPublicId(string $publicId): ?Hall
     {
+        // НЕ в bypass: метод общий для витрины и админки (update/destroy
+        // резолвят зал тем же lookup'ом) — фильтр организации остаётся
+        // живой изоляцией админских путей; витринные show/publishedSchema
+        // делают собственный lookup в bypass в контроллере.
         return $this->repository->findByPublicId($publicId);
     }
 
@@ -244,14 +259,18 @@ class HallService
      *
      * Статус — из `SchemaVersionState`: `Hall::currentSchemaVersion()` ищет то
      * же самое через отношение, и два литерала в двух местах разошлись бы молча.
+     *
+     * Публичная схема для витрины мест читается гостем — в bypass.
      */
     public function getPublishedSchemaVersion(Hall $hall): ?HallSchemaVersion
     {
-        return HallSchemaVersion::query()
-            ->where('hall_id', $hall->id)
-            ->where('status', SchemaVersionState::PUBLISHED)
-            ->orderByDesc('version')
-            ->first();
+        return app(OrganizationContext::class)->withoutScope(
+            fn () => HallSchemaVersion::query()
+                ->where('hall_id', $hall->id)
+                ->where('status', SchemaVersionState::PUBLISHED)
+                ->orderByDesc('version')
+                ->first()
+        );
     }
 
     public function createSchemaDraft(Hall $hall, array $payload, int $userId, ?int $versionId = null, ?int $expectedRevision = null): HallSchemaVersion

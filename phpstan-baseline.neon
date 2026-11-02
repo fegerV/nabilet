@@ -922,11 +922,6 @@ parameters:
 			path: app/Modules/Venues/Halls/Services/HallService.php
 
 		-
-			message: "#^Method Nabilet\\\\Modules\\\\Venues\\\\Halls\\\\Services\\\\HallService\\:\\:getPublishedSchemaVersion\\(\\) should return Nabilet\\\\Modules\\\\Venues\\\\Models\\\\HallSchemaVersion\\|null but returns stdClass\\|null\\.$#"
-			count: 1
-			path: app/Modules/Venues/Halls/Services/HallService.php
-
-		-
 			message: "#^Parameter \\#1 \\$hall of method Nabilet\\\\Modules\\\\Venues\\\\Halls\\\\Repositories\\\\HallRepository\\:\\:createSchemaVersion\\(\\) expects Nabilet\\\\Modules\\\\Venues\\\\Models\\\\Hall, stdClass given\\.$#"
 			count: 1
 			path: app/Modules/Venues/Halls/Services/HallService.php

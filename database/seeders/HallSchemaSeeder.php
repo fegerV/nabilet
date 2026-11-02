@@ -53,35 +53,41 @@ abstract class HallSchemaSeeder extends Seeder
             return;
         }
 
-        $hall = Hall::query()
-            ->where('venue_id', $this->resolveVenueId())
-            ->where('name', $this->hallName())
-            ->first();
+        // Сидер — системный путь провижининга (`db:seed` из консоли, без
+        // tenant-контекста): зал, версия схемы и строка каталога — скоупнутые
+        // чтения и INSERT, весь прогон в bypass, как queue-джобы.
+        // Идемпотентность решает поиск существующей версии.
+        app(\Nabilet\Core\Tenancy\OrganizationContext::class)->withoutScope(function (): void {
+            $hall = Hall::query()
+                ->where('venue_id', $this->resolveVenueId())
+                ->where('name', $this->hallName())
+                ->first();
 
-        if ($hall !== null && $hall->schemaVersions()->exists()) {
-            $this->command?->info(static::class . ': schema version already exists — skipped.');
+            if ($hall !== null && $hall->schemaVersions()->exists()) {
+                $this->command?->info(static::class . ': schema version already exists — skipped.');
 
-            return;
-        }
+                return;
+            }
 
-        $payload = $this->schemaPayload();
+            $payload = $this->schemaPayload();
 
-        if ($hall === null) {
-            $hall = $this->createHall();
-        }
+            if ($hall === null) {
+                $hall = $this->createHall();
+            }
 
-        $userId = (int) (DB::table('users')->orderBy('id')->value('id') ?? 1);
+            $userId = (int) (DB::table('users')->orderBy('id')->value('id') ?? 1);
 
-        $version = app(HallService::class)->createSchemaDraft($hall, $payload, $userId);
-        app(HallService::class)->publishSchemaVersion((int) $version->id, $userId, (string) $hall->public_id);
+            $version = app(HallService::class)->createSchemaDraft($hall, $payload, $userId);
+            app(HallService::class)->publishSchemaVersion((int) $version->id, $userId, (string) $hall->public_id);
 
-        $this->command?->info(sprintf(
-            '%s: schema v%d published (%d sectors, %d seats).',
-            static::class,
-            $version->id,
-            count($payload['sectors']),
-            array_sum(array_map(static fn (array $s): int => count($s['seats'] ?? []), $payload['sectors'])),
-        ));
+            $this->command?->info(sprintf(
+                '%s: schema v%d published (%d sectors, %d seats).',
+                static::class,
+                $version->id,
+                count($payload['sectors']),
+                array_sum(array_map(static fn (array $s): int => count($s['seats'] ?? []), $payload['sectors'])),
+            ));
+        });
     }
 
     /** Площадка по слагу каталога; на свежей базе создаётся строкой каталога. */

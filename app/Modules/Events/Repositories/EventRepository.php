@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Events\Repositories;
 
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Inventory\StateMachines\InventoryItemStateMachine;
 use Nabilet\Modules\Events\Models\Event;
 use Illuminate\Database\Eloquent\Builder;
@@ -34,9 +35,15 @@ class EventRepository
      */
     public function paginate(array $filters = [], int $perPage = 20): LengthAwarePaginator
     {
-        $paginator = $this->applyFilters($filters)
-            ->with(['category', 'sessions.venue', 'sessions.hall'])
-            ->paginate($perPage);
+        // Публичный каталог (`GET /events` без auth): eager `sessions.hall`
+        // читает скоупнутый зал, у гостя контекста нет — исполнение запроса
+        // в bypass. Адресация решается фильтрами каталога; гидрации ниже —
+        // сырые DB-запросы, скоуп их не задевает.
+        $paginator = app(OrganizationContext::class)->withoutScope(
+            fn () => $this->applyFilters($filters)
+                ->with(['category', 'sessions.venue', 'sessions.hall'])
+                ->paginate($perPage)
+        );
 
         $this->hydrateAvailableSeats($paginator->getCollection());
         $this->hydrateMinPrice($paginator->getCollection());

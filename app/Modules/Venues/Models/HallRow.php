@@ -36,6 +36,16 @@ class HallRow extends Model
         'rotation',
     ];
 
+    /**
+     * Глобальный читающий скоуп (тридцать вторая модель — см. докблок `Hall`).
+     * Карта: `sector_id` → `sectors`. Читатели — админская сборка геометрии
+     * (контекст есть); на витрине ряды ездят внутри `schema_json`.
+     */
+    protected static function tenantScopeEnabled(): bool
+    {
+        return true;
+    }
+
     protected function casts(): array
     {
         return [

@@ -68,8 +68,13 @@ final class InventoryAvailabilityCountingTest extends TestCase
             'created_at' => $now,
             'updated_at' => $now,
         ]);
-        $this->hall = Hall::query()->findOrFail($hallId);
+        // Тест-аналог системного пути: сборка инвентарной доступности живёт в
+        // витрине/виджете без контекста — чтение зала в bypass.
+        $this->hall = app(OrganizationContext::class)->withoutScope(
+            fn () => Hall::query()->findOrFail($hallId)
+        );
 
+        // Запись версии резолвит организацию через родительский chain трейта.
         $this->version = HallSchemaVersion::create([
             'hall_id' => $this->hall->id,
             'version' => 1,

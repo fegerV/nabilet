@@ -39,6 +39,17 @@ class HallSchemaVersion extends Model
         'published_at',
     ];
 
+    /**
+     * Глобальный читающий скоуп (тридцатая модель — см. докблок `Hall`).
+     * Карта: `hall_id` → `halls`. Читатели — публичная витрина мест
+     * (опубликованная версия схемы, bypass в `HallService`) и embed-сидмап;
+     * версии схемы редактируются только в админке (контекст есть).
+     */
+    protected static function tenantScopeEnabled(): bool
+    {
+        return true;
+    }
+
     protected function casts(): array
     {
         return [

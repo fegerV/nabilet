@@ -67,8 +67,12 @@ final class HallTableGeometryTest extends TestCase
             'updated_at' => $now,
         ]);
         $this->organizationId = $organizationId;
-        $this->hall = Hall::query()->findOrFail($hallId);
+        $this->hall = app(OrganizationContext::class)->withoutScope(
+            fn () => Hall::query()->findOrFail($hallId)
+        );
 
+        // Запись версии резолвит организацию через родительский chain трейта
+        // (hall_schema_versions -> halls), INSERT возможен и без контекста.
         $this->version = HallSchemaVersion::create([
             'hall_id' => $this->hall->id,
             'version' => 1,
@@ -202,14 +206,18 @@ final class HallTableGeometryTest extends TestCase
 
     public function test_generate_from_schema_populates_hall_tables(): void
     {
-        self::assertSame(0, HallTable::query()->count());
+        self::assertSame(0, app(OrganizationContext::class)->withoutScope(
+            fn () => HallTable::query()->count()
+        ));
 
         $created = $this->generateInventory($this->makeSession());
 
         // Продаются места за столами: 8 + 6 = 14 позиций.
         self::assertSame(14, $created);
 
-        $tables = HallTable::query()->orderBy('id')->get();
+        $tables = app(OrganizationContext::class)->withoutScope(
+            fn () => HallTable::query()->orderBy('id')->get()
+        );
         self::assertCount(2, $tables, 'Оба стола должны попасть в hall_tables');
         self::assertSame('Стол 1', $tables[0]->name);
         self::assertSame(8, $tables[0]->capacity);
@@ -230,13 +238,17 @@ final class HallTableGeometryTest extends TestCase
         $session = $this->makeSession();
 
         $this->generateInventory($session);
-        self::assertSame(2, HallTable::query()->count());
+        self::assertSame(2, app(OrganizationContext::class)->withoutScope(
+            fn () => HallTable::query()->count()
+        ));
 
         $this->generateInventory($session);
 
         // Сектора пересоздаются, а hall_tables висит на них через
         // ON DELETE CASCADE — старые строки обязаны исчезнуть вместе с ними.
-        self::assertSame(2, HallTable::query()->count(), 'Повторная генерация не должна удваивать столы');
+        self::assertSame(2, app(OrganizationContext::class)->withoutScope(
+            fn () => HallTable::query()->count()
+        ), 'Повторная генерация не должна удваивать столы');
     }
 
     /**

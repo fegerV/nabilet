@@ -32,6 +32,17 @@ class StandingZone extends Model
         'currency',
     ];
 
+    /**
+     * Глобальный читающий скоуп (тридцать четвёртая модель — см. докблок
+     * `Hall`). Карта: `sector_id` → `sectors`. Читатели — админская сборка
+     * геометрии; витрина читает стоячие зоны из `schema_json` и
+     * `inventory_items`.
+     */
+    protected static function tenantScopeEnabled(): bool
+    {
+        return true;
+    }
+
     protected function casts(): array
     {
         return [

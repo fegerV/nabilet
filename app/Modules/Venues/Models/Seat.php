@@ -40,6 +40,20 @@ class Seat extends Model
         'metadata_json',
     ];
 
+    /**
+     * Глобальный читающий скоуп (тридцать третья модель — см. докблок `Hall`).
+     * Карта: `row_id` → `hall_rows`. Витрина мест читает координаты из
+     * `schema_json`, а сами места живут в `inventory_items` (своё скоуп-шаг
+     * InventoryItem): таблица `seats` адресуется админскими сборками геометрии
+     * и скоуп здесь fail-closed ограждение. Связь `inventoryItems` в
+     * фолбэке ресурса сеанса разрешается под контекстом админки либо в
+     * агрегате `hydrateAvailableSeats` — уже в bypass с шага InventoryItem.
+     */
+    protected static function tenantScopeEnabled(): bool
+    {
+        return true;
+    }
+
     protected function casts(): array
     {
         return [

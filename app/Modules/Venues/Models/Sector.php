@@ -38,6 +38,18 @@ class Sector extends Model
         'capacity',
     ];
 
+    /**
+     * Глобальный читающий скоуп (тридцать первая модель — см. докблок `Hall`).
+     * Карта: `schema_version_id` → `hall_schema_versions`. Читатели —
+     * геометрия схемы (админский инвентарь под контекстом); витрина места
+     * берёт сектора из `schema_json`, а не из таблиц — eager `sectors` в
+     * публичных цепочках не встречается, скоуп здесь fail-closed.
+     */
+    protected static function tenantScopeEnabled(): bool
+    {
+        return true;
+    }
+
     protected function casts(): array
     {
         return [

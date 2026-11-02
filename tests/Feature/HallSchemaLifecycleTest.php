@@ -14,6 +14,7 @@ use Nabilet\Modules\Venues\Halls\Http\Resources\SchemaVersionResource;
 use Nabilet\Modules\Venues\Halls\Services\HallService;
 use Illuminate\Database\QueryException;
 use Nabilet\Modules\Venues\Models\Hall;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Tests\TestCase;
 
 final class HallSchemaLifecycleTest extends TestCase
@@ -57,69 +58,69 @@ final class HallSchemaLifecycleTest extends TestCase
             'updated_at' => $now,
         ]);
 
-        $this->hall = Hall::query()->findOrFail($hallId);
+        $this->hall = $this->scoped(fn () => Hall::query()->findOrFail($hallId));
         $this->service = app(HallService::class);
     }
 
     public function test_stale_revision_is_rejected_after_successful_draft_update(): void
     {
         $firstPayload = $this->sellableSchema(1000);
-        $draft = $this->service->createSchemaDraft($this->hall, $firstPayload, 1);
+        $draft = $this->scoped(fn () => $this->service->createSchemaDraft($this->hall, $firstPayload, 1));
 
         self::assertSame(1, (int) $draft->revision);
 
-        $updated = $this->service->createSchemaDraft(
+        $updated = $this->scoped(fn () => $this->service->createSchemaDraft(
             $this->hall,
             $this->sellableSchema(2000),
             1,
             (int) $draft->id,
             1,
-        );
+        ));
         self::assertSame(2, (int) $updated->revision);
 
         try {
-            $this->service->createSchemaDraft(
+            $this->scoped(fn () => $this->service->createSchemaDraft(
                 $this->hall,
                 $this->sellableSchema(3000),
                 1,
                 (int) $draft->id,
                 1,
-            );
+            ));
             self::fail('A stale base revision must not overwrite a newer draft.');
         } catch (ConflictError $error) {
             self::assertSame('SCHEMA_DRAFT_CONFLICT', $error->errorCode);
             self::assertSame(2, $error->context['current_revision']);
         }
 
-        self::assertEquals($this->sellableSchema(2000), $updated->fresh()->schema_json);
+        self::assertEquals($this->sellableSchema(2000), $this->scoped(fn () => $updated->fresh())->schema_json);
     }
 
     public function test_republishing_archives_the_previous_version_atomically(): void
     {
-        $first = $this->service->createSchemaDraft($this->hall, $this->sellableSchema(1000), 1);
-        $this->service->publishSchemaVersion((int) $first->id, 1, (string) $this->hall->public_id);
+        $first = $this->scoped(fn () => $this->service->createSchemaDraft($this->hall, $this->sellableSchema(1000), 1));
+        $this->scoped(fn () => $this->service->publishSchemaVersion((int) $first->id, 1, (string) $this->hall->public_id));
 
-        $second = $this->service->createSchemaDraft($this->hall, $this->sellableSchema(2000), 1);
-        $published = $this->service->publishSchemaVersion((int) $second->id, 1, (string) $this->hall->public_id);
+        $second = $this->scoped(fn () => $this->service->createSchemaDraft($this->hall, $this->sellableSchema(2000), 1));
+        $published = $this->scoped(fn () => $this->service->publishSchemaVersion((int) $second->id, 1, (string) $this->hall->public_id));
 
         self::assertSame('published', $published->status);
-        self::assertSame('archived', $first->fresh()->status);
-        self::assertSame(1, $this->hall->schemaVersions()->where('status', 'published')->count());
+        self::assertSame('archived', $this->scoped(fn () => $first->fresh())->status);
+        self::assertSame(1, $this->scoped(fn () => $this->hall->schemaVersions()->where('status', 'published')->count()));
         self::assertSame(2, (int) $published->version);
     }
 
     public function test_archive_is_scoped_to_the_hall_and_requires_a_published_version(): void
     {
-        $draft = $this->service->createSchemaDraft($this->hall, $this->sellableSchema(1000), 1);
+        $draft = $this->scoped(fn () => $this->service->createSchemaDraft($this->hall, $this->sellableSchema(1000), 1));
         try {
-            $this->service->archiveSchemaVersion((int) $draft->id, (string) Str::ulid()->toBase32());
+            $this->scoped(fn () => $this->service->archiveSchemaVersion((int) $draft->id, (string) Str::ulid()->toBase32()));
             self::fail('A version must not be archivable through another hall scope.');
         } catch (NotFoundError) {
-            self::assertSame('draft', $draft->fresh()->status);
+            self::assertSame('draft', $this->scoped(fn () => $draft->fresh())->status);
         }
 
         try {
-            $this->service->archiveSchemaVersion((int) $draft->id, (string) $this->hall->public_id);
+            $this->scoped(fn () => $this->service->archiveSchemaVersion((int) $draft->id, (string) $this->hall->public_id));
             self::fail('A draft must not be archived.');
         } catch (ConflictError $error) {
             self::assertSame('SCHEMA_VERSION_NOT_PUBLISHED', $error->errorCode);
@@ -128,55 +129,55 @@ final class HallSchemaLifecycleTest extends TestCase
 
     public function test_database_trigger_enforces_revision_and_frozen_lifecycle_transitions(): void
     {
-        $draft = $this->service->createSchemaDraft($this->hall, $this->sellableSchema(1000), 1);
+        $draft = $this->scoped(fn () => $this->service->createSchemaDraft($this->hall, $this->sellableSchema(1000), 1));
 
         try {
             DB::table('hall_schema_versions')->where('id', $draft->id)->update(['revision' => 4]);
             self::fail('A draft revision cannot jump by more than one.');
         } catch (QueryException) {
-            self::assertSame(1, (int) $draft->fresh()->revision);
+            self::assertSame(1, (int) $this->scoped(fn () => $draft->fresh())->revision);
         }
 
         DB::table('hall_schema_versions')->where('id', $draft->id)->update([
             'schema_json' => json_encode($this->sellableSchema(1500), JSON_THROW_ON_ERROR),
             'revision' => 2,
         ]);
-        self::assertSame(2, (int) $draft->fresh()->revision);
+        self::assertSame(2, (int) $this->scoped(fn () => $draft->fresh())->revision);
 
         foreach (['archived', 'published'] as $invalidDraftStatus) {
             try {
                 DB::table('hall_schema_versions')->where('id', $draft->id)->update(['status' => $invalidDraftStatus]);
                 self::fail("A draft must not transition directly to {$invalidDraftStatus} through SQL.");
             } catch (QueryException) {
-                self::assertSame('draft', $draft->fresh()->status);
+                self::assertSame('draft', $this->scoped(fn () => $draft->fresh())->status);
             }
         }
 
-        $this->service->publishSchemaVersion((int) $draft->id, 1, (string) $this->hall->public_id);
+        $this->scoped(fn () => $this->service->publishSchemaVersion((int) $draft->id, 1, (string) $this->hall->public_id));
         foreach ([['status' => 'draft'], ['schema_json' => json_encode($this->sellableSchema(3000), JSON_THROW_ON_ERROR)]] as $invalidPublishedUpdate) {
             try {
                 DB::table('hall_schema_versions')->where('id', $draft->id)->update($invalidPublishedUpdate);
                 self::fail('A published version cannot be downgraded or have its geometry rewritten through SQL.');
             } catch (QueryException) {
-                self::assertSame('published', $draft->fresh()->status);
+                self::assertSame('published', $this->scoped(fn () => $draft->fresh())->status);
             }
         }
 
         DB::table('hall_schema_versions')->where('id', $draft->id)->update(['status' => 'archived']);
-        self::assertSame('archived', $draft->fresh()->status);
+        self::assertSame('archived', $this->scoped(fn () => $draft->fresh())->status);
 
         try {
             DB::table('hall_schema_versions')->where('id', $draft->id)->update(['status' => 'published']);
             self::fail('An archived version must not be restored through SQL.');
         } catch (QueryException) {
-            self::assertSame('archived', $draft->fresh()->status);
+            self::assertSame('archived', $this->scoped(fn () => $draft->fresh())->status);
         }
 
         try {
             DB::table('hall_schema_versions')->where('id', $draft->id)->delete();
             self::fail('An archived version must not be deleted through SQL.');
         } catch (QueryException) {
-            self::assertSame('archived', $draft->fresh()->status);
+            self::assertSame('archived', $this->scoped(fn () => $draft->fresh())->status);
         }
     }
 
@@ -192,7 +193,7 @@ final class HallSchemaLifecycleTest extends TestCase
 
         foreach ($payloads as $payload) {
             try {
-                $this->service->createSchemaDraft($this->hall, $payload, 1);
+                $this->scoped(fn () => $this->service->createSchemaDraft($this->hall, $payload, 1));
                 self::fail('Malformed schema collections must be rejected.');
             } catch (ValidationError) {
                 self::assertTrue(true);
@@ -213,7 +214,7 @@ final class HallSchemaLifecycleTest extends TestCase
                 'text' => 'Фан-зона',
             ]],
         ];
-        $draft = $this->service->createSchemaDraft($this->hall, $payload, 1);
+        $draft = $this->scoped(fn () => $this->service->createSchemaDraft($this->hall, $payload, 1));
         $inventorySchema = $draft->toInventoryFormat();
 
         self::assertTrue(HallService::payloadHasSeats($payload));
@@ -227,20 +228,20 @@ final class HallSchemaLifecycleTest extends TestCase
             'priceMinor' => 100000,
             'seats' => [],
         ]];
-        $wrappedDraft = $this->service->createSchemaDraft(
+        $wrappedDraft = $this->scoped(fn () => $this->service->createSchemaDraft(
             $this->hall,
             $wrappedPayload,
             1,
             (int) $draft->id,
             (int) $draft->revision,
-        );
+        ));
         $wrappedInventory = $wrappedDraft->toInventoryFormat();
         self::assertSame(275000, $wrappedInventory[0]['rows'][0]['price_amount']);
 
         $invalidCapacity = $payload;
         $invalidCapacity['staticObjects'][0]['capacity'] = '12';
         try {
-            $this->service->createSchemaDraft($this->hall, $invalidCapacity, 1);
+            $this->scoped(fn () => $this->service->createSchemaDraft($this->hall, $invalidCapacity, 1));
             self::fail('A standing-zone capacity must be a positive JSON integer.');
         } catch (ValidationError) {
             self::assertTrue(true);
@@ -248,7 +249,7 @@ final class HallSchemaLifecycleTest extends TestCase
 
         unset($payload['staticObjects'][0]['priceMinor']);
         try {
-            $this->service->createSchemaDraft($this->hall, $payload, 1);
+            $this->scoped(fn () => $this->service->createSchemaDraft($this->hall, $payload, 1));
             self::fail('A sellable standing zone must not silently become free inventory.');
         } catch (ValidationError) {
             self::assertTrue(true);
@@ -267,24 +268,24 @@ final class HallSchemaLifecycleTest extends TestCase
         self::assertNull($legacy->revision);
         self::assertSame(1, (int) (new SchemaVersionResource($legacy))->toArray(request())['revision']);
 
-        $updated = $this->service->createSchemaDraft(
+        $updated = $this->scoped(fn () => $this->service->createSchemaDraft(
             $this->hall,
             $this->sellableSchema(2000),
             1,
             (int) $legacy->id,
             1,
-        );
+        ));
 
         self::assertSame(2, (int) $updated->revision);
     }
 
     public function test_hall_with_published_schema_cannot_be_deleted_through_service_or_cascade(): void
     {
-        $draft = $this->service->createSchemaDraft($this->hall, $this->sellableSchema(1000), 1);
-        $this->service->publishSchemaVersion((int) $draft->id, 1, (string) $this->hall->public_id);
+        $draft = $this->scoped(fn () => $this->service->createSchemaDraft($this->hall, $this->sellableSchema(1000), 1));
+        $this->scoped(fn () => $this->service->publishSchemaVersion((int) $draft->id, 1, (string) $this->hall->public_id));
 
         try {
-            $this->service->deleteHall($this->hall);
+            $this->scoped(fn () => $this->service->deleteHall($this->hall));
             self::fail('The service must refuse to delete a hall with a frozen schema.');
         } catch (ConflictError $error) {
             self::assertSame('HALL_HAS_FROZEN_SCHEMA_VERSIONS', $error->errorCode);
@@ -294,24 +295,24 @@ final class HallSchemaLifecycleTest extends TestCase
             DB::table('hall_schema_versions')->where('id', $draft->id)->delete();
             self::fail('The database must refuse a direct delete of a published schema version.');
         } catch (QueryException) {
-            self::assertSame('published', $draft->fresh()->status);
+            self::assertSame('published', $this->scoped(fn () => $draft->fresh())->status);
         }
 
         try {
             DB::table('halls')->where('id', $this->hall->id)->delete();
             self::fail('The database must refuse a hall delete that would cascade-delete a published version.');
         } catch (QueryException) {
-            self::assertTrue(Hall::query()->whereKey($this->hall->id)->exists());
-            self::assertSame('published', $draft->fresh()->status);
+            self::assertTrue($this->scoped(fn () => Hall::query()->whereKey($this->hall->id)->exists()));
+            self::assertSame('published', $this->scoped(fn () => $draft->fresh())->status);
         }
     }
 
     public function test_hall_with_only_drafts_can_be_deleted(): void
     {
-        $draft = $this->service->createSchemaDraft($this->hall, $this->sellableSchema(1000), 1);
+        $draft = $this->scoped(fn () => $this->service->createSchemaDraft($this->hall, $this->sellableSchema(1000), 1));
 
-        self::assertTrue($this->service->deleteHall($this->hall));
-        self::assertFalse(Hall::query()->whereKey($this->hall->id)->exists());
+        self::assertTrue($this->scoped(fn () => $this->service->deleteHall($this->hall)));
+        self::assertFalse($this->scoped(fn () => Hall::query()->whereKey($this->hall->id)->exists()));
         self::assertDatabaseMissing('hall_schema_versions', ['id' => $draft->id]);
     }
 
@@ -327,7 +328,7 @@ final class HallSchemaLifecycleTest extends TestCase
         ];
 
         try {
-            $this->service->createSchemaDraft($this->hall, $duplicate, 1);
+            $this->scoped(fn () => $this->service->createSchemaDraft($this->hall, $duplicate, 1));
             self::fail('Duplicate seat identifiers and numbering must be rejected.');
         } catch (ValidationError) {
             self::assertTrue(true);
@@ -347,7 +348,7 @@ final class HallSchemaLifecycleTest extends TestCase
         ];
 
         try {
-            $this->service->createSchemaDraft($this->hall, $overlap, 1);
+            $this->scoped(fn () => $this->service->createSchemaDraft($this->hall, $overlap, 1));
             self::fail('Overlapping seat geometry must be rejected independently of duplicate ids/numbers.');
         } catch (ValidationError) {
             self::assertTrue(true);
@@ -359,7 +360,7 @@ final class HallSchemaLifecycleTest extends TestCase
         $unpricedEditorSchema = $this->sellableSchema(1000);
         unset($unpricedEditorSchema['sectors'][0]['priceMinor']);
         try {
-            $this->service->createSchemaDraft($this->hall, $unpricedEditorSchema, 1);
+            $this->scoped(fn () => $this->service->createSchemaDraft($this->hall, $unpricedEditorSchema, 1));
             self::fail('Editor seats without a price would become zero-priced inventory.');
         } catch (ValidationError) {
             self::assertTrue(true);
@@ -368,7 +369,7 @@ final class HallSchemaLifecycleTest extends TestCase
         $legacySchema = $this->sellableSchema(1000);
         $legacySchema['sectors'][0]['price'] = $legacySchema['sectors'][0]['priceMinor'];
         unset($legacySchema['sectors'][0]['priceMinor']);
-        $legacyDraft = $this->service->createSchemaDraft($this->hall, $legacySchema, 1);
+        $legacyDraft = $this->scoped(fn () => $this->service->createSchemaDraft($this->hall, $legacySchema, 1));
         self::assertSame(1000, $legacyDraft->toInventoryFormat()[0]['rows'][0]['price_amount']);
 
         $unpricedRowsSchema = [
@@ -381,7 +382,7 @@ final class HallSchemaLifecycleTest extends TestCase
             ]],
         ];
         try {
-            $this->service->createSchemaDraft($this->hall, $unpricedRowsSchema, 1);
+            $this->scoped(fn () => $this->service->createSchemaDraft($this->hall, $unpricedRowsSchema, 1));
             self::fail('Imported rows without price_amount would become zero-priced inventory.');
         } catch (ValidationError) {
             self::assertTrue(true);
@@ -405,5 +406,16 @@ final class HallSchemaLifecycleTest extends TestCase
                 ]],
             ]],
         ];
+    }
+
+    /**
+     * Тест-аналог админского HTTP-пути: в проде эти операции идут из
+     * `auth:api` + `admin`, контекст ставит `ResolveOrganizationContext`;
+     * тест зовёт сервис напрямую, поэтому читающие и пишущие запросы
+     * (включая SELECT внутри lockForUpdate) обёрнуты в bypass.
+     */
+    private function scoped(callable $callback): mixed
+    {
+        return app(OrganizationContext::class)->withoutScope($callback);
     }
 }

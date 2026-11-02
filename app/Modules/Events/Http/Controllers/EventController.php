@@ -95,8 +95,11 @@ class EventController extends Controller
             // Переводы — скоупнутые чтения (двадцать шестая модель): у гостя
             // витрины контекста нет, в bypass. Адрес события уже решён
             // lookup'ом — здесь читается только контент выбранного события.
+            // `sessions.hall` и `sessions.venue` грузим сразу: ресурс сеанса
+            // читает их лениво, а зал — скоупнутая модель, ленивый доступ
+            // вне bypass был бы отказом (и N+1).
             app(OrganizationContext::class)->withoutScope(
-                fn () => $event->load(['category', 'translations', 'sessions'])
+                fn () => $event->load(['category', 'translations', 'sessions.hall', 'sessions.venue'])
             );
 
             // Доступность сеансов — агрегатом до рендеринга: фолбэк ресурса

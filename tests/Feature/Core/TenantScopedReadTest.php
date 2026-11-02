@@ -25,6 +25,13 @@ use Nabilet\Modules\Loyalty\Models\RaffleWinner;
 use Nabilet\Modules\Content\Models\PageTranslation;
 use Nabilet\Modules\Events\Models\EventTranslation;
 use Nabilet\Modules\Venues\Models\VenueTranslation;
+use Nabilet\Modules\Venues\Models\Hall;
+use Nabilet\Modules\Venues\Models\HallRow;
+use Nabilet\Modules\Venues\Models\HallSchemaVersion;
+use Nabilet\Modules\Venues\Models\HallTable;
+use Nabilet\Modules\Venues\Models\Seat;
+use Nabilet\Modules\Venues\Models\Sector;
+use Nabilet\Modules\Venues\Models\StandingZone;
 use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Orders\Models\PromoCodeRedemption;
 use Nabilet\Modules\Webhooks\Models\WebhookDelivery;
@@ -826,6 +833,55 @@ final class TenantScopedReadTest extends TestCase
         }
     }
 
+    /**
+     * Скоупschema зала (`Hall`, `HallSchemaVersion`, `Sector`, `HallRow`,
+     * `Seat`, `StandingZone`, `HallTable`): витринные пути — каталог залов,
+     * публичная схема для карты мест и embed-сидмап (все в bypass), админские
+     * CRUD схемы и сборка инвентаря остаются под фильтром. Тест фиксирует
+     * fail-closed на всех семи моделях: без контекста отказ, с контекстом
+     * фильтр, в bypass видны все.
+     */
+    public function test_halls_read_scope_is_native(): void
+    {
+        $orgA = $this->organization();
+        $orgB = $this->organization();
+
+        $this->makeHallCluster($orgA);
+        $this->makeHallCluster($orgB);
+
+        $models = [
+            Hall::class,
+            HallSchemaVersion::class,
+            Sector::class,
+            HallRow::class,
+            Seat::class,
+            StandingZone::class,
+            HallTable::class,
+        ];
+
+        // Без контекста — отказ на каждой модели, а не «показать все строки».
+        foreach ($models as $model) {
+            try {
+                $model::query()->count();
+                $this->fail("Ожидался TenantContextMissingError без контекста для {$model}");
+            } catch (TenantContextMissingError $e) {
+                $this->addToAssertionCount(1);
+            }
+        }
+
+        app(OrganizationContext::class)->set((string) $orgA);
+
+        foreach ($models as $model) {
+            $this->assertSame(1, $model::query()->count(), "чужие строки {$model} не видны");
+
+            $this->assertSame(
+                2,
+                app(OrganizationContext::class)->withoutScope(fn () => $model::query()->count()),
+                "withoutScope() обязан видеть строки {$model} всех организаций"
+            );
+        }
+    }
+
     private function makeCart(int $organizationId): void
     {
         [$orgId, $eventId, $sessionId] = $this->seedSellableSeat(
@@ -1101,6 +1157,95 @@ final class TenantScopedReadTest extends TestCase
             'organization_id' => $organizationId,
             'locale' => 'ru',
             'title' => 'Перевод страницы',
+        ]);
+    }
+
+    /**
+     * Кластер схемы зала одной организации — общий посев для fail-closed
+     * скоуп-теста залов. Полная цепочка: площадка → зал → версия схемы →
+     * сектор → (ряд → место | стоячая зона | стол). Вставки сырые
+     * (организация прописывается явно, INSERT скоуп-контекста не требует),
+     * статусы берут дефолты миграций.
+     */
+    private function makeHallCluster(int $organizationId): void
+    {
+        $now = now()->toDateTimeString();
+
+        $venueId = (int) DB::table('venues')->insertGetId([
+            'organization_id' => $organizationId,
+            'public_id' => (string) Str::ulid()->toBase32(),
+            'name' => 'Площадка зала',
+            'slug' => 'hall-venue-' . (string) Str::ulid()->toBase32(),
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+
+        $hallId = (int) DB::table('halls')->insertGetId([
+            'organization_id' => $organizationId,
+            'public_id' => (string) Str::ulid()->toBase32(),
+            'venue_id' => $venueId,
+            'name' => 'Зал',
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+
+        $versionId = (int) DB::table('hall_schema_versions')->insertGetId([
+            'organization_id' => $organizationId,
+            'public_id' => (string) Str::ulid()->toBase32(),
+            'hall_id' => $hallId,
+            'version' => 1,
+            'schema_json' => json_encode(['sectors' => []]),
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+
+        $sectorId = (int) DB::table('sectors')->insertGetId([
+            'organization_id' => $organizationId,
+            'public_id' => (string) Str::ulid()->toBase32(),
+            'schema_version_id' => $versionId,
+            'name' => 'Партер',
+            'code' => 'parterre',
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+
+        $rowId = (int) DB::table('hall_rows')->insertGetId([
+            'organization_id' => $organizationId,
+            'public_id' => (string) Str::ulid()->toBase32(),
+            'sector_id' => $sectorId,
+            'number' => '1',
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+
+        DB::table('seats')->insert([
+            'organization_id' => $organizationId,
+            'public_id' => (string) Str::ulid()->toBase32(),
+            'row_id' => $rowId,
+            'number' => '1',
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+
+        DB::table('standing_zones')->insert([
+            'organization_id' => $organizationId,
+            'public_id' => (string) Str::ulid()->toBase32(),
+            'sector_id' => $sectorId,
+            'name' => 'Танцпол',
+            'capacity' => 50,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+
+        DB::table('hall_tables')->insert([
+            'organization_id' => $organizationId,
+            'public_id' => (string) Str::ulid()->toBase32(),
+            'sector_id' => $sectorId,
+            'name' => 'Стол',
+            'width' => 100,
+            'height' => 60,
+            'created_at' => $now,
+            'updated_at' => $now,
         ]);
     }
 

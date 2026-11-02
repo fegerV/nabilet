@@ -10,6 +10,7 @@ use Illuminate\Support\Str;
 use Nabilet\Core\Errors\ValidationError;
 use Nabilet\Modules\Venues\Halls\Services\HallService;
 use Nabilet\Modules\Venues\Models\Hall;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Tests\TestCase;
 
 /**
@@ -66,7 +67,7 @@ final class HallSchemaSectorGeometryTest extends TestCase
             'updated_at' => $now,
         ]);
 
-        $this->hall = Hall::query()->findOrFail($hallId);
+        $this->hall = $this->scoped(fn () => Hall::query()->findOrFail($hallId));
         $this->service = app(HallService::class);
     }
 
@@ -123,7 +124,7 @@ final class HallSchemaSectorGeometryTest extends TestCase
 
     public function test_two_sectors_placed_apart_are_not_reported_as_overlapping(): void
     {
-        $draft = $this->service->createSchemaDraft($this->hall, $this->twoSectorsEditorFormat(), 1);
+        $draft = $this->scoped(fn () => $this->service->createSchemaDraft($this->hall, $this->twoSectorsEditorFormat(), 1));
 
         self::assertSame('draft', $draft->status);
         self::assertSame(2, count($draft->schema_json['sectors']));
@@ -137,7 +138,7 @@ final class HallSchemaSectorGeometryTest extends TestCase
         $payload['sectors'][1]['y'] = 140;
 
         try {
-            $this->service->createSchemaDraft($this->hall, $payload, 1);
+            $this->scoped(fn () => $this->service->createSchemaDraft($this->hall, $payload, 1));
             self::fail('Ожидалась ValidationError: сектора действительно наложены');
         } catch (ValidationError $e) {
             self::assertArrayHasKey('sectors.1.seats.0.position', $e->errors);
@@ -146,7 +147,7 @@ final class HallSchemaSectorGeometryTest extends TestCase
 
     public function test_inventory_format_keeps_sector_offsets(): void
     {
-        $draft = $this->service->createSchemaDraft($this->hall, $this->twoSectorsEditorFormat(), 1);
+        $draft = $this->scoped(fn () => $this->service->createSchemaDraft($this->hall, $this->twoSectorsEditorFormat(), 1));
 
         $sectors = $draft->toInventoryFormat();
         self::assertCount(2, $sectors);
@@ -199,7 +200,7 @@ final class HallSchemaSectorGeometryTest extends TestCase
             ];
         }
 
-        $draft = $this->service->createSchemaDraft($this->hall, [
+        $draft = $this->scoped(fn () => $this->service->createSchemaDraft($this->hall, [
             'version' => '1.0',
             'canvas' => ['width' => 900, 'height' => 700],
             'sectors' => [[
@@ -210,7 +211,7 @@ final class HallSchemaSectorGeometryTest extends TestCase
             'staticObjects' => [
                 ['id' => 'st-1', 'kind' => 'stage', 'x' => 100, 'y' => 20, 'width' => 300, 'height' => 60],
             ],
-        ], 1);
+        ], 1));
 
         // Стол продаётся как обычный сектор: одно кольцо = один ряд из N мест.
         self::assertTrue(HallService::payloadHasSeats($draft->schema_json));
@@ -232,7 +233,7 @@ final class HallSchemaSectorGeometryTest extends TestCase
     public function test_decor_only_schema_is_refused_with_a_stable_code(): void
     {
         // Столы и сцена — только декорации: продавать нечего.
-        $draft = $this->service->createSchemaDraft($this->hall, [
+        $draft = $this->scoped(fn () => $this->service->createSchemaDraft($this->hall, [
             'version' => '1.0',
             'canvas' => ['width' => 900, 'height' => 620],
             'sectors' => [],
@@ -240,12 +241,12 @@ final class HallSchemaSectorGeometryTest extends TestCase
                 ['id' => 'd1', 'kind' => 'table', 'x' => 200, 'y' => 200, 'width' => 120, 'height' => 80],
                 ['id' => 'd2', 'kind' => 'stage', 'x' => 300, 'y' => 40, 'width' => 300, 'height' => 60],
             ],
-        ], 1);
+        ], 1));
 
         self::assertFalse(HallService::payloadHasSeats($draft->schema_json));
 
         try {
-            $this->service->publishSchemaVersion((int) $draft->id, 1, (string) $this->hall->public_id);
+            $this->scoped(fn () => $this->service->publishSchemaVersion((int) $draft->id, 1, (string) $this->hall->public_id));
             self::fail('Ожидалась ValidationError: в схеме нет продаваемых мест');
         } catch (ValidationError $e) {
             // Клиент ветвится на `code`, а не на текст: код обязан доехать.
@@ -253,5 +254,16 @@ final class HallSchemaSectorGeometryTest extends TestCase
             self::assertSame(422, $e->status);
             self::assertArrayHasKey('schema', $e->errors);
         }
+    }
+
+    /**
+     * Тест-аналог админского HTTP-пути: в проде эти операции идут из
+     * `auth:api` + `admin`, контекст ставит `ResolveOrganizationContext`;
+     * тест зовёт сервис напрямую, поэтому читающие и пишущие запросы
+     * (включая SELECT внутри lockForUpdate) обёрнуты в bypass.
+     */
+    private function scoped(callable $callback): mixed
+    {
+        return app(OrganizationContext::class)->withoutScope($callback);
     }
 }

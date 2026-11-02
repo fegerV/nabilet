@@ -371,7 +371,11 @@ final class SessionGeometryReuseTest extends TestCase
 
     private function versionModel(int $schemaVersionId): HallSchemaVersion
     {
-        return HallSchemaVersion::query()->findOrFail($schemaVersionId);
+        // Тест-аналог системного пути: версия читается из очереди сборки
+        // инвентаря (контекста нет) — в bypass.
+        return app(OrganizationContext::class)->withoutScope(
+            fn () => HallSchemaVersion::query()->findOrFail($schemaVersionId)
+        );
     }
 
     /** Сеанс без инвентаря — чтобы позвать сервис напрямую. */
