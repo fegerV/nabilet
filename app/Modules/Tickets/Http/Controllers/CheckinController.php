@@ -37,11 +37,11 @@ class CheckinController extends Controller
         $organizationId = $this->organizationId($request);
 
         $result = $this->scanService->scan(
-            (int) ($validated['ticket_id'] ?? 0),
-            (int) $validated['session_id'],
-            $this->deviceId($validated['device_id'] ?? null, $organizationId),
-            $validated['qr_payload'] ?? null,
+            ticketId: (int) ($validated['ticket_id'] ?? 0),
+            sessionId: (int) $validated['session_id'],
             organizationId: $organizationId,
+            deviceId: $this->deviceId($validated['device_id'] ?? null, $organizationId),
+            qrPayload: $validated['qr_payload'] ?? null,
         );
 
         return response()->json(['data' => $result]);

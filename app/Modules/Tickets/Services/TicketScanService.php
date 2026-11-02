@@ -57,6 +57,9 @@ class TicketScanService
      *   живёт в приложении устройства и переживает перезапуск, ключ заголовка —
      *  нет. Оба нужны, и ни один не заменяет другой.
      *
+     * @param int $organizationId организация запроса (устройства или сотрудника);
+     *   обязательна (план §3.1): забыть арендатора — ошибка типов, а не
+     *   молчаливый пропуск проверки
      * @param string|null $clientScanId UUID устройства; null — внутренний вызов
      * @param \DateTimeImmutable|null $scannedAt момент сканирования для офлайн-пакета
      * @return array{success: bool, message: string, result?: string, ticket?: Ticket, scan?: TicketScan, reason?: string, replay?: bool}
@@ -64,11 +67,11 @@ class TicketScanService
     public function scan(
         int $ticketId,
         int $sessionId,
+        int $organizationId,
         ?int $deviceId = null,
         ?string $qrPayload = null,
         ?string $clientScanId = null,
         ?\DateTimeImmutable $scannedAt = null,
-        ?int $organizationId = null,
     ): array {
         // Проверка-in идёт по токену устройства: организации HTTP-контекста
         // здесь нет (и не нужно) — арендатор проверяется ниже явно через
@@ -86,7 +89,7 @@ class TicketScanService
         ?string $qrPayload,
         ?string $clientScanId,
         ?\DateTimeImmutable $scannedAt,
-        ?int $organizationId,
+        int $organizationId,
     ): array {
         return DB::transaction(function () use ($ticketId, $sessionId, $deviceId, $qrPayload, $clientScanId, $scannedAt, $organizationId) {
             // Идемпотентный повтор приходит ДО любых изменений: билет уже
@@ -263,18 +266,18 @@ class TicketScanService
     /**
      * Verify if a ticket can be checked in without recording the scan.
      *
-     * `$organizationId` — организация запроса (устройства или сотрудника).
-     * Чужой билет и чужой сеанс отвечают так же, как несуществующие: иначе
-     * проверка превращается в способ узнать, что билет с таким QR существует
-     * у другого арендатора.
+     * `$organizationId` — организация запроса (устройства или сотрудника),
+     * обязательна (план §3.1). Чужой билет и чужой сеанс отвечают так же, как
+     * несуществующие: иначе проверка превращается в способ узнать, что билет
+     * с таким QR существует у другого арендатора.
      *
      * @return array{valid: bool, reason?: string, result?: string}
      */
     public function canCheckin(
         Ticket $ticket,
         int $sessionId,
+        int $organizationId,
         ?int $deviceId = null,
-        ?int $organizationId = null,
     ): array {
         if (! $this->belongsToOrganization($organizationId, $this->ticketOrganizationId($ticket))) {
             return ['valid' => false, 'result' => ScanOutcome::NOT_FOUND, 'reason' => 'TICKET_NOT_FOUND'];
@@ -350,12 +353,12 @@ class TicketScanService
      */
     public function scanFromBundle(
         string $ticketPublicId,
+        int $organizationId,
         ?string $bundleHash,
         int $deviceId,
         ?string $clientScanId = null,
         bool $deviceAdmitted = true,
         ?\DateTimeImmutable $scannedAt = null,
-        ?int $organizationId = null,
     ): array {
         // Тот же аргумент, что у `scan()`: организация приходит параметром
         // (устройство из бандла), HTTP-контекст отсутствует.
@@ -371,7 +374,7 @@ class TicketScanService
         ?string $clientScanId,
         bool $deviceAdmitted,
         ?\DateTimeImmutable $scannedAt,
-        ?int $organizationId,
+        int $organizationId,
     ): array {
         return DB::transaction(function () use ($ticketPublicId, $bundleHash, $deviceId, $clientScanId, $deviceAdmitted, $scannedAt, $organizationId) {
             $ticket = Ticket::query()
@@ -550,16 +553,14 @@ class TicketScanService
     /**
      * Проверка арендатора для путей сканирования.
      *
-     * `null` в `$expectedOrganizationId` — внутренний вызов без HTTP-контекста
-     * (`TicketService::checkInTicket`), проверка не выполняется. Все HTTP-входы
-     * передают организацию явно.
+     * Ожидаемая организация обязательна (план §3.1): «внутренних вызовов без
+     * организации» больше не существует — каждый публичный метод службы
+     * принимает арендатора явно, и забыть его — ошибка типов, а не молчаливый
+     * пропуск проверки. `null` в фактической организации (бит без заказа,
+     * обрыв цепочки родителя) — отказ, а не «любой арендатор».
      */
-    private function belongsToOrganization(?int $expectedOrganizationId, ?int $actualOrganizationId): bool
+    private function belongsToOrganization(int $expectedOrganizationId, ?int $actualOrganizationId): bool
     {
-        if ($expectedOrganizationId === null) {
-            return true;
-        }
-
         return $actualOrganizationId !== null && $expectedOrganizationId === $actualOrganizationId;
     }
 

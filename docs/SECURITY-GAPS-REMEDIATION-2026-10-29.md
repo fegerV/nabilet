@@ -279,6 +279,9 @@
 | `tests/Feature/Embed/EmbedProvisioningTest.php` | (Аудит IdentifierLookup-путей) Три теста изоляции: чужой ключ не отзывается, чужой домен не выключается и не удаляется — 404 без изменения чужой строки; «чужие» строки — сырые вставки `EmbedFixtures` для второго арендатора (свой store чужой ключ создать не может — владельца наполняет контекст) |
 | `app/Modules/Payments/Http/Controllers/PaymentController.php` | (Аудит путей вне `auth:api`, риск §2.1) `resolveOrder()`: скоупнутый `Order` читался БЕЗ bypass — у гостя (маршрут открыт витрине, контекста нет) это `TenantContextMissingError`/500 вместо платёжной ссылки; чтение перенесено в bypass, доступ решает только `mayPay()` (сотрудник — `allows()` по организации заказа, владелец — `user_id`, гость — capability-токен корзины), скоуп ничего в решение не добавлял. `OrderController::resendTicket` проверен — закрыт уже был (bypass-lookup + `holdsRequestAccess`: staff → `allows`, гость → токен), правки не потребовал |
 | `tests/Feature/Payments/PaymentGuestAccessTest.php` | (Аудит путей вне `auth:api`) Четыре теста гостевой ветки `POST /payments`, не покрытой никем (вся прежняя оплата ходила админом): гость с capability-токеном начинает оплату (раньше — 500), без токена и с чужим токеном — 404 без строки в `payments`, сотрудник чужой организации — 404 |
+| `app/Modules/Tickets/Services/TicketScanService.php` | (План §3.1, необязательный скоуп) `organizationId` сделан обязательным в `scan`/`canCheckin`/`scanFromBundle` (третьим аргументом), `belongsToOrganization` — строгая: ветка «вызов без организации = проверка не выполняется» удалена, забыть арендатора теперь ошибка типов, а не молчаливый пропуск. Единственный вызов без организации (`TicketService::checkInTicket`) выводит арендатора из заказа билета (`orders.organization_id` NOT NULL); HTTP-входы (Checker/Checkin) передавали его и раньше — вызовы переведены на именованные аргументы |
+| `app/Modules/Core/Organizations/Repositories/OrganizationRepository.php` | (План §3.1) `findBySlug($slug, $organizationId = null)` переименован в `$excludeId` — параметр не скоуп, а «исключить себя при проверке уникальности slug» (organizations — глобальная таблица класса C); имя прежнее маскировало его под тенант-фильтр |
+| `tests/Feature/Checkin/CheckerHttpLayerTest.php` | (План §3.1) Прямой вызов `TicketScanService::scan` в тесте отчёта сканов дополнен `organizationId` |
 | `tests/Feature/Core/TenantScopedReadTest.php` | Нативный скоуп `OrderItem`: без контекста отказ, с контекстом фильтр, в bypass видны все |
 | `tests/Feature/Core/TenantScopedReadTest.php` | Нативный скоуп `SeatHold`: без контекста отказ, с контекстом фильтр, в bypass видны все |
 | `tests/Feature/Core/TenantScopedReadTest.php` | Нативный скоуп `PaymentTransaction`: без контекста отказ, с контекстом фильтр, в bypass видны все |
@@ -403,7 +406,11 @@ PaymentRepository::find(int $id, ?int $organizationId = null)  // null → лю�
 ```
 
 Такая сигнатура делает «забыли передать организацию» валидным вызовом. Это нужно
-убрать независимо от схемы.
+убрать независимо от схемы. Убрано: finders разделены на
+`find(…, int $organizationId)` и явные `findAny()` для системных вызовов
+(`TicketRepository`, `TicketService::findTicketAny`); в службе гашения билетов
+организация обязательна в `scan`/`canCheckin`/`scanFromBundle`, проверка
+арендатора строга (см. строки «План §3.1» в сводной выше).
 
 ### 3.2 Целевая модель
 

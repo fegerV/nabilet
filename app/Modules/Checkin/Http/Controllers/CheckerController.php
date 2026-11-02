@@ -80,10 +80,10 @@ final class CheckerController extends Controller
 
         $sessionId = $this->sessions->resolve($request->input('session_id'));
         $decision = $this->scans->canCheckin(
-            $ticket,
-            $sessionId,
-            $device->id,
-            (int) $device->organization_id,
+            ticket: $ticket,
+            sessionId: $sessionId,
+            organizationId: (int) $device->organization_id,
+            deviceId: $device->id,
         );
         $verdict = CheckinVerdict::fromOutcome(
             (string) ($decision['result'] ?? CheckinVerdict::UNKNOWN_TICKET),

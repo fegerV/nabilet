@@ -555,6 +555,7 @@ class CheckerHttpLayerTest extends TestCase
         app(TicketScanService::class)->scan(
             ticketId: 0,
             sessionId: $sessionId,
+            organizationId: $organizationId,
             deviceId: $device->id,
             qrPayload: $ticket->qr_payload,
         );

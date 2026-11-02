@@ -23,14 +23,18 @@ class OrganizationRepository
         return $this->model->where('public_id', $publicId)->first();
     }
 
-    public function findBySlug(string $slug, ?int $organizationId = null): ?Organization
+    public function findBySlug(string $slug, ?int $excludeId = null): ?Organization
     {
         $query = $this->model->where('slug', $slug);
-        
-        if ($organizationId) {
-            $query->where('id', '!=', $organizationId);
+
+        // Второй аргумент — не скоуп, а «исключить эту организацию»: проверка
+        // уникальности slug при переименовании. Имя прежнее отвечало «арендатор
+        // выборки», которым он не является (organizations — глобальная таблица,
+        // класс C).
+        if ($excludeId) {
+            $query->where('id', '!=', $excludeId);
         }
-        
+
         return $query->first();
     }
 

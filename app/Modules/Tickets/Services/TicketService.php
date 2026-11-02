@@ -219,11 +219,23 @@ class TicketService
      * the pure CheckinEvaluator (evaluate(ScanRequest, ?TicketSnapshot)) and is
      * owned by TicketScanService; this method delegates so that callers of
      * TicketService keep working without re-implementing the door rules here.
+     *
+     * Арендатор выводится из заказа билета (`orders.organization_id` NOT NULL):
+     * делегат обязан работать и вне HTTP-контекста, а организация в
+     * `TicketScanService::scan()` обязательна (план §3.1) — «вызова без
+     * арендатора» больше не существует.
      */
     public function checkInTicket(Ticket $ticket, int $checkinDeviceId, ?string $location = null): array
     {
+        $organizationId = (int) DB::table('orders')->where('id', (int) $ticket->order_id)->value('organization_id');
+
         return app(\Nabilet\Modules\Tickets\Services\TicketScanService::class)
-            ->scan((int) $ticket->id, (int) $ticket->session_id, $checkinDeviceId);
+            ->scan(
+                ticketId: (int) $ticket->id,
+                sessionId: (int) $ticket->session_id,
+                organizationId: $organizationId,
+                deviceId: $checkinDeviceId,
+            );
     }
 
     /**
