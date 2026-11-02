@@ -175,6 +175,15 @@
 | `tests/Feature/Sessions/SessionGeometryReuseTest.php` | Хелпер `generateInventory`: 4 прямых вызова `generateFromSchema` в bypass |
 | `tests/Feature/HallTableGeometryTest.php` | Хелпер `generateInventory`: 2 прямых вызова `generateFromSchema` в bypass |
 | `tests/Feature/Core/TenantScopedReadTest.php` | Нативный скоуп `InventoryItem` на фикстуре `seedSellableSeat`: без контекста отказ, с контекстом фильтр, в bypass видны все |
+| `app/Modules/Loyalty/Models/EventFavorite.php` | Фаза 2, чтение: глобальный скоуп включён на `EventFavorite` — девятнадцатая модель. Запись защищена трейтом (организация из мероприятия через `TenantResolver`: `event_favorites` → `events`; фаза 3 — NOT NULL). Модель не адресуется в маршрутах; витринное чтение — владельческий список `/me/favorites` под `auth:api` (решает `user_id`, контекста у покупателя нет), скоуп — fail-closed ограждение будущих читателей |
+| `app/Modules/Loyalty/Models/EventFollow.php` | Фаза 2, чтение: глобальный скоуп включён на `EventFollow` — двадцатая модель. Аналогично `event_follows` → `events`; витринный список `/me/follows` и системная рассылка подписчикам — в bypass |
+| `app/Modules/Loyalty/Models/FollowNotification.php` | Фаза 2, чтение: глобальный скоуп включён на `FollowNotification` — двадцать первая модель. Журнал разрешений на письмо живёт только в системном пути рассылки (`NotifyFollowersOfNewSessionJob`, queue без контекста); покупателей и админку не адресует |
+| `app/Modules/Loyalty/Services/FavoriteService.php` | `add`/`remove`/`isFavorite`/`forUser` — bypass: `remember()` делает SELECT (`createOrFirst`), массовый DELETE идёт через Builder; владение решает фильтр `user_id`, организация строки выводится трейтом из мероприятия |
+| `app/Modules/Loyalty/Services/FollowService.php` | `subscribe`/`unsubscribe`/`isFollowing`/`forUser` — bypass зеркально избранным |
+| `app/Modules/Loyalty/Jobs/NotifyFollowersOfNewSessionJob.php` | Системный job-путь (queue без контекста): chunk-чтение `EventFollow::query()->forEvent()` вместе с `FollowNotification::claim` (SELECT под скоупом + `takeOver` — массовый UPDATE) — одно bypass-замыкание на всю рассылку |
+| `tests/Feature/Loyalty/FollowNotificationIdempotencyTest.php` | `seedFollowWithSession` (remember) и 10 вызовов `claim` через хелпер `claimScoped` в bypass; delete подписки в bypass — тест-аналог прод-вызовов (покупатель + queue) |
+| `tests/Feature/Loyalty/FollowNotificationTest.php` | `follow()` (remember) и журнальные ассерты через хелперы `journalRows`/`journalCount`/`journalFirstOrFail`/`journalTemplates` в bypass — прямые `FollowNotification::query` из тела тестов убраны |
+| `tests/Feature/Core/TenantScopedReadTest.php` | Нативный скоуп Loyalty-кластера (`EventFavorite`/`EventFollow`/`FollowNotification`) на фикстуре `makeLoyaltyCluster`: без контекста отказ на всех трёх, с контекстом фильтр, в bypass видны все |
 | `tests/Feature/Core/TenantScopedReadTest.php` | Нативный скоуп `OrderItem`: без контекста отказ, с контекстом фильтр, в bypass видны все |
 | `tests/Feature/Core/TenantScopedReadTest.php` | Нативный скоуп `SeatHold`: без контекста отказ, с контекстом фильтр, в bypass видны все |
 | `tests/Feature/Core/TenantScopedReadTest.php` | Нативный скоуп `PaymentTransaction`: без контекста отказ, с контекстом фильтр, в bypass видны все |
@@ -197,7 +206,7 @@ dev-БД: 40 колонок `organization_id NOT NULL`, 40 FK `fk_<table>_org`.
 
 | Риск | Почему не закрыт в этом проходе |
 |------|--------------------------------|
-| `organization_id` у 70 таблиц | **Закрыт структурно.** Фазы 0–3 завершены: 40 таблиц класса A — `NOT NULL` + FK; запись наполняет тенанта из контекста/родителя; глобальный читающий скоуп включён на `Order`, `Payment`, `Ticket`, `Refund`, `TicketScan`, `CheckinDevice`, `OfflineBundle`, `PaymentTransaction`, `OrderItem`, `SeatHold`, `CartItem`, `Cart`, `PromoCodeRedemption`, `WebhookDelivery`, `AbAssignment`, `AbVariant`, `AbMetric` и `InventoryItem`, остальные модели — точечно по мере аудита их системных путей чтения (§3.3) |
+| `organization_id` у 70 таблиц | **Закрыт структурно.** Фазы 0–3 завершены: 40 таблиц класса A — `NOT NULL` + FK; запись наполняет тенанта из контекста/родителя; глобальный читающий скоуп включён на `Order`, `Payment`, `Ticket`, `Refund`, `TicketScan`, `CheckinDevice`, `OfflineBundle`, `PaymentTransaction`, `OrderItem`, `SeatHold`, `CartItem`, `Cart`, `PromoCodeRedemption`, `WebhookDelivery`, `AbAssignment`, `AbVariant`, `AbMetric`, `InventoryItem`, `EventFavorite`, `EventFollow` и `FollowNotification`, остальные модели — точечно по мере аудита их системных путей чтения (§3.3) |
 | Списки/отчёты вне Orders/Payments/Tickets/Checkin | Проверены только пути, где аудит нашёл живую утечку; остальные закрываются общим `TenantScoped` в фазе 2 |
 | `PaymentController::store` и `OrderController::resendTicket` вне `auth:api` | Staff-ветки там не единственная защита; полноценно закрывается контекстом + схемой в фазе 2 |
 

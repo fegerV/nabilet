@@ -70,6 +70,20 @@ class FollowNotification extends Model
         'error_message',
     ];
 
+    /**
+     * Глобальный читающий скоуп (двадцать первая модель — см. докблок
+     * `EventFavorite`). Запись защищена трейтом (организация выводится из
+     * мероприятия через TenantResolver: `follow_notifications` → `events`).
+     * Журнал разрешения на письмо живёт только в системном пути рассылки
+     * (`NotifyFollowersOfNewSessionJob`, queue без контекста) — чтения
+     * `claim()`/`takeOver()` в bypass; покупателей и админку журнал не
+     * адресует, route-binding не нужен.
+     */
+    protected static function tenantScopeEnabled(): bool
+    {
+        return true;
+    }
+
     protected function casts(): array
     {
         return [

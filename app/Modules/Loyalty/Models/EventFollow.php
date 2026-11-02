@@ -41,6 +41,19 @@ class EventFollow extends Model
         'event_id',
     ];
 
+    /**
+     * Глобальный читающий скоуп (двадцатая модель — см. докблок
+     * `EventFavorite`). Запись защищена трейтом (`event_follows` → `events`).
+     * Витринное чтение — владельческий список `/me/follows` под `auth:api`;
+     * системное — рассылка подписчикам в `NotifyFollowersOfNewSessionJob`
+     * (queue без контекста) — в bypass. Владение на витрине решает фильтр
+     * `user_id`, маршрутам модель не адресуется.
+     */
+    protected static function tenantScopeEnabled(): bool
+    {
+        return true;
+    }
+
     protected function casts(): array
     {
         return [

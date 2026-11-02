@@ -9,6 +9,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Foundation\Bus\PendingDispatch;
 use Illuminate\Queue\InteractsWithQueue;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Loyalty\Models\EventFollow;
 use Nabilet\Modules\Loyalty\Models\FollowNotification;
 use Nabilet\Modules\Loyalty\Services\FollowNotificationData;
@@ -115,13 +116,19 @@ class NotifyFollowersOfNewSessionJob implements ShouldQueue
             return;
         }
 
-        EventFollow::query()
-            ->forEvent($session->event_id)
-            ->chunkById(self::CHUNK, function ($follows) use ($mail, $data, $session): void {
-                foreach ($follows as $follow) {
-                    $this->notify($mail, $data, $session, $follow);
-                }
-            });
+        // Системный путь рассылки (queue, без тенант-контекста): массовое
+        // чтение подписчиков события и журнал разрешений — в bypass.
+        // Получатели вытекают из `event_follows.event_id` — организации
+        // мероприятия.
+        app(OrganizationContext::class)->withoutScope(function () use ($mail, $session, $data): void {
+            EventFollow::query()
+                ->forEvent($session->event_id)
+                ->chunkById(self::CHUNK, function ($follows) use ($mail, $data, $session): void {
+                    foreach ($follows as $follow) {
+                        $this->notify($mail, $data, $session, $follow);
+                    }
+                });
+        });
     }
 
     private function notify(

@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Core\Users\Models\User;
 use Nabilet\Modules\Loyalty\Jobs\NotifyFollowersOfNewSessionJob;
 use Nabilet\Modules\Loyalty\Models\EventFollow;
@@ -73,7 +74,7 @@ class FollowNotificationTest extends TestCase
         // Журнал: строка на подписчика, статус `sent`, ссылка на запись
         // транспорта. Без `notification_id` связь «какое письмо» восстановилась
         // бы только по совпадению адреса и времени.
-        $rows = FollowNotification::query()->get();
+        $rows = $this->journalRows();
         self::assertCount(2, $rows);
         self::assertSame(['sent', 'sent'], $rows->pluck('status')->sort()->values()->all());
         self::assertTrue($rows->every(
@@ -97,7 +98,7 @@ class FollowNotificationTest extends TestCase
         $this->runJob($session->id, FollowNotificationCodes::NEW_SESSION);
 
         Mail::assertSentCount(1);
-        self::assertSame(1, FollowNotification::query()->count());
+        self::assertSame(1, $this->journalCount());
     }
 
     public function test_follower_without_email_is_marked_failed_instead_of_sent(): void
@@ -114,12 +115,14 @@ class FollowNotificationTest extends TestCase
             'first_name' => 'Без',
             'last_name' => 'Почты',
         ]);
-        EventFollow::remember($user->id, $eventId);
+        app(OrganizationContext::class)->withoutScope(
+            fn (): EventFollow => EventFollow::remember($user->id, $eventId)
+        );
 
         $this->runJob($session->id, FollowNotificationCodes::NEW_SESSION);
 
         Mail::assertNothingSent();
-        $row = FollowNotification::query()->firstOrFail();
+        $row = $this->journalFirstOrFail();
         self::assertSame(FollowNotification::STATUS_FAILED, $row->status);
         self::assertStringContainsString('адреса', (string) $row->error_message);
     }
@@ -139,7 +142,7 @@ class FollowNotificationTest extends TestCase
         $this->runJob($session->id, FollowNotificationCodes::NEW_SESSION);
 
         Mail::assertNothingSent();
-        self::assertSame(0, FollowNotification::query()->count());
+        self::assertSame(0, $this->journalCount());
     }
 
     public function test_two_reasons_produce_two_separate_mails(): void
@@ -157,7 +160,7 @@ class FollowNotificationTest extends TestCase
         Mail::assertSentCount(2);
         self::assertSame(
             [FollowNotificationCodes::NEW_SESSION, FollowNotificationCodes::SALES_OPEN],
-            FollowNotification::query()->orderBy('id')->pluck('template_code')->all(),
+            $this->journalTemplates(),
         );
     }
 
@@ -179,7 +182,7 @@ class FollowNotificationTest extends TestCase
         $this->runJob($session->id, FollowNotificationCodes::NEW_SESSION);
 
         Mail::assertNothingSent();
-        self::assertSame(0, FollowNotification::query()->count());
+        self::assertSame(0, $this->journalCount());
     }
 
     /**
@@ -207,7 +210,7 @@ class FollowNotificationTest extends TestCase
         $this->runJob($session->id, FollowNotificationCodes::SALES_OPEN);
 
         Mail::assertNothingSent();
-        self::assertSame(0, FollowNotification::query()->count());
+        self::assertSame(0, $this->journalCount());
     }
 
     public function test_new_session_mail_still_announces_a_session_without_sales(): void
@@ -242,7 +245,7 @@ class FollowNotificationTest extends TestCase
         $this->runJob($session->id, 'follow.does_not_exist');
 
         Mail::assertNothingSent();
-        self::assertSame(0, FollowNotification::query()->count());
+        self::assertSame(0, $this->journalCount());
     }
 
     // ── обсервер ───────────────────────────────────────────────────────────
@@ -405,7 +408,11 @@ class FollowNotificationTest extends TestCase
             'last_name' => $lastName,
         ]);
 
-        return EventFollow::remember($user->id, $eventId);
+        // Тест-аналог витринного пути: подписку создаёт покупатель (сервис
+        // в bypass — `remember()` делает SELECT под скоупом).
+        return app(OrganizationContext::class)->withoutScope(
+            fn (): EventFollow => EventFollow::remember($user->id, $eventId)
+        );
     }
 
     private function runJob(int $sessionId, string $templateCode): void
@@ -413,6 +420,34 @@ class FollowNotificationTest extends TestCase
         (new NotifyFollowersOfNewSessionJob($sessionId, $templateCode))->handle(
             app(TransactionalMailService::class),
             app(FollowNotificationData::class),
+        );
+    }
+
+    /**
+     * Журнал целиком: тест-аналог очереди рассылки (queue — bypass).
+     *
+     * @return \Illuminate\Database\Eloquent\Collection<int, FollowNotification>
+     */
+    private function journalRows(): \Illuminate\Database\Eloquent\Collection
+    {
+        return app(OrganizationContext::class)->withoutScope(fn () => FollowNotification::query()->get());
+    }
+
+    private function journalCount(): int
+    {
+        return app(OrganizationContext::class)->withoutScope(fn () => FollowNotification::query()->count());
+    }
+
+    private function journalFirstOrFail(): FollowNotification
+    {
+        return app(OrganizationContext::class)->withoutScope(fn () => FollowNotification::query()->firstOrFail());
+    }
+
+    /** @return array<int, string> */
+    private function journalTemplates(): array
+    {
+        return app(OrganizationContext::class)->withoutScope(
+            fn () => FollowNotification::query()->orderBy('id')->pluck('template_code')->all()
         );
     }
 }

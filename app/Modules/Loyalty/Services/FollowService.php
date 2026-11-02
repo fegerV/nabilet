@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Loyalty\Services;
 
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Core\Users\Models\User;
 use Nabilet\Modules\Events\Models\Event;
 use Nabilet\Modules\Loyalty\Models\EventFollow;
@@ -27,7 +28,13 @@ class FollowService
         // «повторное действие возвращает ту же строку» одно на оба случая и
         // живёт в `RemembersUserEvent`. Здесь сохраняется доменное имя
         // «подписаться», потому что это язык сервиса, а не копия реализации.
-        return EventFollow::remember($user->getKey(), $event->getKey());
+        //
+        // Витринный путь покупателя (`auth:api`, без staff-роли): контекста
+        // нет, а `remember()` внутри делает SELECT — в bypass (см. докблок
+        // `FavoriteService::add`).
+        return app(OrganizationContext::class)->withoutScope(
+            fn (): EventFollow => EventFollow::remember($user->getKey(), $event->getKey())
+        );
     }
 
     /**
@@ -36,18 +43,24 @@ class FollowService
      */
     public function unsubscribe(User $user, Event $event): bool
     {
-        return EventFollow::query()
-            ->where('user_id', $user->getKey())
-            ->where('event_id', $event->getKey())
-            ->delete() > 0;
+        // Владельческая подписка: доступ решает `user_id`; массовый DELETE
+        // через Builder проходит скоуп — в bypass.
+        return app(OrganizationContext::class)->withoutScope(function () use ($user, $event): bool {
+            return EventFollow::query()
+                ->where('user_id', $user->getKey())
+                ->where('event_id', $event->getKey())
+                ->delete() > 0;
+        });
     }
 
     public function isFollowing(User $user, Event $event): bool
     {
-        return EventFollow::query()
-            ->where('user_id', $user->getKey())
-            ->where('event_id', $event->getKey())
-            ->exists();
+        return app(OrganizationContext::class)->withoutScope(function () use ($user, $event): bool {
+            return EventFollow::query()
+                ->where('user_id', $user->getKey())
+                ->where('event_id', $event->getKey())
+                ->exists();
+        });
     }
 
     /**
@@ -61,13 +74,16 @@ class FollowService
      */
     public function forUser(User $user): \Illuminate\Database\Eloquent\Collection
     {
-        return EventFollow::query()
-            ->where('user_id', $user->getKey())
-            ->with(['event' => static fn ($query) => $query->with(['sessions' => static fn ($sessions) => $sessions
-                ->where('starts_at', '>=', now())
-                ->orderBy('starts_at'),
-            ])])
-            ->orderByDesc('created_at')
-            ->get();
+        // См. комментарий в `FavoriteService::forUser` — без аннотации
+        // возвращаемого типа у bypass-замыкания.
+        return app(OrganizationContext::class)->withoutScope(fn () =>
+            EventFollow::query()
+                ->where('user_id', $user->getKey())
+                ->with(['event' => static fn ($query) => $query->with(['sessions' => static fn ($sessions) => $sessions
+                    ->where('starts_at', '>=', now())
+                    ->orderBy('starts_at'),
+                ])])
+                ->orderByDesc('created_at')
+                ->get());
     }
 }

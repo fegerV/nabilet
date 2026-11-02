@@ -7,6 +7,7 @@ namespace Tests\Feature\Loyalty;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Loyalty\Models\EventFollow;
 use Nabilet\Modules\Loyalty\Models\FollowNotification;
 use Nabilet\Tests\Support\SellableSeatFixtures;
@@ -51,7 +52,14 @@ class FollowNotificationIdempotencyTest extends TestCase
             'updated_at' => now()->toDateTimeString(),
         ]);
 
-        $follow = EventFollow::remember($userId, $eventId);
+        /**
+         * Тест-аналог системного пути: в проде подписку создаёт покупатель
+         * (сервис в bypass), журнал — рассылка в queue (bypass). Оба вызова —
+         * в bypass, арендатора выводит трейт из мероприятия.
+         */
+        $follow = app(OrganizationContext::class)->withoutScope(
+            fn (): EventFollow => EventFollow::remember($userId, $eventId)
+        );
 
         return [$follow, $sessionId];
     }
@@ -60,24 +68,28 @@ class FollowNotificationIdempotencyTest extends TestCase
     {
         [$follow, $sessionId] = $this->seedFollowWithSession();
 
-        $first = FollowNotification::claim(
-            $follow->id,
-            $follow->user_id,
-            $follow->event_id,
-            $sessionId,
-            self::TEMPLATE,
+        $first = app(OrganizationContext::class)->withoutScope(
+            fn (): ?FollowNotification => FollowNotification::claim(
+                $follow->id,
+                $follow->user_id,
+                $follow->event_id,
+                $sessionId,
+                self::TEMPLATE,
+            )
         );
 
         $this->assertInstanceOf(FollowNotification::class, $first);
         $this->assertSame(FollowNotification::STATUS_QUEUED, $first->status);
         $this->assertNull($first->sent_at, 'строка создаётся ДО отправки — отправка ещё не подтверждена');
 
-        $second = FollowNotification::claim(
-            $follow->id,
-            $follow->user_id,
-            $follow->event_id,
-            $sessionId,
-            self::TEMPLATE,
+        $second = app(OrganizationContext::class)->withoutScope(
+            fn (): ?FollowNotification => FollowNotification::claim(
+                $follow->id,
+                $follow->user_id,
+                $follow->event_id,
+                $sessionId,
+                self::TEMPLATE,
+            )
         );
 
         $this->assertNull($second, 'второй процесс получил отказ: по этой тройке письмо уже рассылают');
@@ -88,8 +100,10 @@ class FollowNotificationIdempotencyTest extends TestCase
     {
         [$follow, $sessionId] = $this->seedFollowWithSession();
 
-        FollowNotification::claim($follow->id, $follow->user_id, $follow->event_id, $sessionId, self::TEMPLATE);
-        FollowNotification::claim($follow->id, $follow->user_id, $follow->event_id, $sessionId, 'follow.last_seats');
+        app(OrganizationContext::class)->withoutScope(function () use ($follow, $sessionId): void {
+            FollowNotification::claim($follow->id, $follow->user_id, $follow->event_id, $sessionId, self::TEMPLATE);
+            FollowNotification::claim($follow->id, $follow->user_id, $follow->event_id, $sessionId, 'follow.last_seats');
+        });
 
         $this->assertSame(2, DB::table('follow_notifications')->count());
     }
@@ -188,13 +202,16 @@ class FollowNotificationIdempotencyTest extends TestCase
     {
         [$follow, $sessionId] = $this->seedFollowWithSession();
 
-        FollowNotification::claim($follow->id, $follow->user_id, $follow->event_id, $sessionId, self::TEMPLATE);
+        $this->claimScoped($follow->id, $follow->user_id, $follow->event_id, $sessionId, self::TEMPLATE);
         $this->assertSame(1, DB::table('follow_notifications')->count());
 
         // Отписка удаляет строку подписки — и её журнал уходит с ней
         // (`fk_follow_notifications_follow ON DELETE CASCADE`). Иначе таблица
         // копила бы записи о письмах, которые больше некому адресовать.
-        EventFollow::query()->whereKey($follow->id)->delete();
+        // Массовый DELETE через Builder проходит скоуп — тест-аналог в bypass.
+        app(OrganizationContext::class)->withoutScope(
+            fn () => EventFollow::query()->whereKey($follow->id)->delete()
+        );
 
         $this->assertSame(0, DB::table('follow_notifications')->count());
     }
@@ -216,13 +233,13 @@ class FollowNotificationIdempotencyTest extends TestCase
             'updated_at' => now()->toDateTimeString(),
         ]);
 
-        $row = FollowNotification::claim($follow->id, $follow->user_id, $follow->event_id, $sessionId, self::TEMPLATE);
+        $row = $this->claimScoped($follow->id, $follow->user_id, $follow->event_id, $sessionId, self::TEMPLATE);
         $this->assertNotNull($row);
         $row->markSent($notificationId);
 
         // Письмо ушло — «повторить» нечего даже в теории. Повтор джобы через
         // сутки ничего не сделает, и это главный смысл журнала.
-        $this->assertNull(FollowNotification::claim(
+        $this->assertNull($this->claimScoped(
             $follow->id,
             $follow->user_id,
             $follow->event_id,
@@ -235,14 +252,14 @@ class FollowNotificationIdempotencyTest extends TestCase
     {
         [$follow, $sessionId] = $this->seedFollowWithSession();
 
-        $row = FollowNotification::claim($follow->id, $follow->user_id, $follow->event_id, $sessionId, self::TEMPLATE);
+        $row = $this->claimScoped($follow->id, $follow->user_id, $follow->event_id, $sessionId, self::TEMPLATE);
         $this->assertNotNull($row);
         $row->markFailed('SMTP отказал: 421');
 
         // Транспорт сказал «нет» — письмо не ушло, и повтор джобы обязан его
         // догнать. Захват возвращает ту же строку: второго письма о том же
         // поводе не будет, а это — доберётся.
-        $retry = FollowNotification::claim(
+        $retry = $this->claimScoped(
             $follow->id,
             $follow->user_id,
             $follow->event_id,
@@ -260,13 +277,13 @@ class FollowNotificationIdempotencyTest extends TestCase
     {
         [$follow, $sessionId] = $this->seedFollowWithSession();
 
-        FollowNotification::claim($follow->id, $follow->user_id, $follow->event_id, $sessionId, self::TEMPLATE);
+        $this->claimScoped($follow->id, $follow->user_id, $follow->event_id, $sessionId, self::TEMPLATE);
 
         // `queued`, который только что создан: его держит живая попытка. Два
         // `updated()` подряд ставят две джобы, и без этой защиты вторая отправила
         // бы письмо повторно — ровно ту жалобу «письмо пришло дважды», для
         // разбора которой журнал и ведут.
-        $this->assertNull(FollowNotification::claim(
+        $this->assertNull($this->claimScoped(
             $follow->id,
             $follow->user_id,
             $follow->event_id,
@@ -279,7 +296,7 @@ class FollowNotificationIdempotencyTest extends TestCase
     {
         [$follow, $sessionId] = $this->seedFollowWithSession();
 
-        FollowNotification::claim($follow->id, $follow->user_id, $follow->event_id, $sessionId, self::TEMPLATE);
+        $this->claimScoped($follow->id, $follow->user_id, $follow->event_id, $sessionId, self::TEMPLATE);
 
         // Воркера убили между захватом и отметкой об отправке. Очередь вернёт
         // джобу только через `retry_after`, то есть много позже аренды, — и
@@ -289,7 +306,7 @@ class FollowNotificationIdempotencyTest extends TestCase
             'updated_at' => now()->subMinutes(10)->toDateTimeString(),
         ]);
 
-        $recovered = FollowNotification::claim(
+        $recovered = $this->claimScoped(
             $follow->id,
             $follow->user_id,
             $follow->event_id,
@@ -300,5 +317,22 @@ class FollowNotificationIdempotencyTest extends TestCase
         $this->assertInstanceOf(FollowNotification::class, $recovered);
         $this->assertSame(FollowNotification::STATUS_QUEUED, $recovered->status);
         $this->assertSame(1, DB::table('follow_notifications')->count());
+    }
+
+    /**
+     * Тест-аналог системного пути: в проде `claim()` живёт только в обходе
+     * очереди рассылки (queue без контекста — bypass в джобе); контракт-тест
+     * зовёт его напрямую — так же в bypass.
+     */
+    private function claimScoped(
+        int|string $followId,
+        int|string $userId,
+        int|string $eventId,
+        int|string $sessionId,
+        string $templateCode,
+    ): ?FollowNotification {
+        return app(OrganizationContext::class)->withoutScope(
+            fn (): ?FollowNotification => FollowNotification::claim($followId, $userId, $eventId, $sessionId, $templateCode)
+        );
     }
 }

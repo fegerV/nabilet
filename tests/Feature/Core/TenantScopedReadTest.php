@@ -15,6 +15,9 @@ use Nabilet\Modules\Analytics\Models\AbVariant;
 use Nabilet\Modules\Cart\Models\Cart;
 use Nabilet\Modules\Cart\Models\CartItem;
 use Nabilet\Modules\Inventory\Models\InventoryItem;
+use Nabilet\Modules\Loyalty\Models\EventFavorite;
+use Nabilet\Modules\Loyalty\Models\EventFollow;
+use Nabilet\Modules\Loyalty\Models\FollowNotification;
 use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Orders\Models\PromoCodeRedemption;
 use Nabilet\Modules\Webhooks\Models\WebhookDelivery;
@@ -695,6 +698,46 @@ final class TenantScopedReadTest extends TestCase
         );
     }
 
+    /**
+     * Скоуп Loyalty-чтений (`EventFavorite`, `EventFollow`,
+     * `FollowNotification`): витринное чтение — владельческий список
+     * покупателя (решает `user_id`), системное — очередь рассылки. Тест
+     * фиксирует fail-closed: без контекста отказ, с контекстом фильтр, в
+     * bypass видны все.
+     */
+    public function test_loyalty_read_scope_is_native(): void
+    {
+        $orgA = $this->organization();
+        $orgB = $this->organization();
+
+        [$eventA, $sessionA] = $this->makeLoyaltyCluster($orgA);
+        [$eventB, $sessionB] = $this->makeLoyaltyCluster($orgB);
+
+        $models = [EventFavorite::class, EventFollow::class, FollowNotification::class];
+
+        // Без контекста — отказ на каждой модели, а не «показать все строки».
+        foreach ($models as $model) {
+            try {
+                $model::query()->count();
+                $this->fail("Ожидался TenantContextMissingError без контекста для {$model}");
+            } catch (TenantContextMissingError $e) {
+                $this->addToAssertionCount(1);
+            }
+        }
+
+        app(OrganizationContext::class)->set((string) $orgA);
+
+        foreach ($models as $model) {
+            $this->assertSame(1, $model::query()->count(), "чужие строки {$model} не видны");
+
+            $this->assertSame(
+                2,
+                app(OrganizationContext::class)->withoutScope(fn () => $model::query()->count()),
+                "withoutScope() обязан видеть строки {$model} всех организаций"
+            );
+        }
+    }
+
     private function makeCart(int $organizationId): void
     {
         [$orgId, $eventId, $sessionId] = $this->seedSellableSeat(
@@ -808,6 +851,59 @@ final class TenantScopedReadTest extends TestCase
             'metric_value' => 1,
             'occurred_at' => $now,
         ]);
+    }
+
+    /**
+     * Пользователь с избранным, подпиской и журналом письма одной организации —
+     * общий посев для fail-closed скоуп-теста Loyalty-чтений. Сырые вставки:
+     * арендатор у всех трёх таблиц выводится из `event_id` → `events`.
+     *
+     * @return array{0: int, 1: int} [eventId, sessionId]
+     */
+    private function makeLoyaltyCluster(int $organizationId): array
+    {
+        $now = now()->toDateTimeString();
+
+        $userId = (int) DB::table('users')->insertGetId([
+            'public_id' => (string) Str::ulid()->toBase32(),
+            'email' => sprintf('loyalty-%s@example.com', (string) $organizationId),
+            'status' => 'active',
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+
+        [$organizationId, $eventId, $sessionId] = $this->seedSellableSeat(available: 5, organizationId: $organizationId);
+
+        DB::table('event_favorites')->insert([
+            'public_id' => (string) Str::ulid()->toBase32(),
+            'organization_id' => $organizationId,
+            'user_id' => $userId,
+            'event_id' => $eventId,
+            'created_at' => $now,
+        ]);
+
+        $followId = (int) DB::table('event_follows')->insertGetId([
+            'public_id' => (string) Str::ulid()->toBase32(),
+            'organization_id' => $organizationId,
+            'user_id' => $userId,
+            'event_id' => $eventId,
+            'created_at' => $now,
+        ]);
+
+        DB::table('follow_notifications')->insert([
+            'public_id' => (string) Str::ulid()->toBase32(),
+            'organization_id' => $organizationId,
+            'follow_id' => $followId,
+            'user_id' => $userId,
+            'event_id' => $eventId,
+            'session_id' => $sessionId,
+            'template_code' => 'follow.new_session',
+            'status' => 'queued',
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+
+        return [$eventId, $sessionId];
     }
 
     private function makeCartItem(int $organizationId): void

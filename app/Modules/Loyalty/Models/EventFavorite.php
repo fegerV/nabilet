@@ -45,6 +45,27 @@ class EventFavorite extends Model
         'event_id',
     ];
 
+    /**
+     * Глобальный читающий скоуп (девятнадцатая модель после Order, Payment,
+     * Ticket, Refund, TicketScan, CheckinDevice, OfflineBundle,
+     * PaymentTransaction, OrderItem, SeatHold, CartItem, Cart,
+     * PromoCodeRedemption, WebhookDelivery, AbAssignment, AbVariant, AbMetric
+     * и InventoryItem).
+     *
+     * Запись защищена трейтом (организация выводится из мероприятия через
+     * TenantResolver: `event_favorites` → `events`; фаза 3 — NOT NULL + FK).
+     * Модель не адресуется в маршрутах — route-binding не нужен. Витринное
+     * чтение — владельческий список покупателя под `auth:api` (кабинет
+     * `/me/favorites`): фильтр `user_id` решает доступ целиком, а покупатель
+     * без staff-роли контекста не имеет — сервисные чтения в bypass (см.
+     * `FavoriteService`). Скоуп остаётся fail-closed ограждением для будущих
+     * читателей и сужает выборку системным путям, где контекст есть.
+     */
+    protected static function tenantScopeEnabled(): bool
+    {
+        return true;
+    }
+
     protected function casts(): array
     {
         return [

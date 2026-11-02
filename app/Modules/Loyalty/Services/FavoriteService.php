@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Loyalty\Services;
 
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Core\Users\Models\User;
 use Nabilet\Modules\Events\Models\Event;
 use Nabilet\Modules\Loyalty\Models\EventFavorite;
@@ -27,10 +28,17 @@ class FavoriteService
 {
     /**
      * Добавить в избранное. Повторный вызов возвращает ту же отметку.
+     *
+     * Витринный путь покупателя (`auth:api`, без staff-роли): контекста нет,
+     * а `remember()` внутри делает SELECT (`createOrFirst`) — в bypass.
+     * Владение решает фильтр `user_id`; организация строки выводится трейтом
+     * из мероприятия через TenantResolver.
      */
     public function add(User $user, Event $event): EventFavorite
     {
-        return EventFavorite::remember($user->getKey(), $event->getKey());
+        return app(OrganizationContext::class)->withoutScope(
+            fn (): EventFavorite => EventFavorite::remember($user->getKey(), $event->getKey())
+        );
     }
 
     /**
@@ -39,18 +47,24 @@ class FavoriteService
      */
     public function remove(User $user, Event $event): bool
     {
-        return EventFavorite::query()
-            ->where('user_id', $user->getKey())
-            ->where('event_id', $event->getKey())
-            ->delete() > 0;
+        // Владельческая отметка: доступ решает `user_id` (см. `add`), а
+        // массовый DELETE через Builder проходит скоуп — в bypass.
+        return app(OrganizationContext::class)->withoutScope(function () use ($user, $event): bool {
+            return EventFavorite::query()
+                ->where('user_id', $user->getKey())
+                ->where('event_id', $event->getKey())
+                ->delete() > 0;
+        });
     }
 
     public function isFavorite(User $user, Event $event): bool
     {
-        return EventFavorite::query()
-            ->where('user_id', $user->getKey())
-            ->where('event_id', $event->getKey())
-            ->exists();
+        return app(OrganizationContext::class)->withoutScope(function () use ($user, $event): bool {
+            return EventFavorite::query()
+                ->where('user_id', $user->getKey())
+                ->where('event_id', $event->getKey())
+                ->exists();
+        });
     }
 
     /**
@@ -65,13 +79,17 @@ class FavoriteService
      */
     public function forUser(User $user): \Illuminate\Database\Eloquent\Collection
     {
-        return EventFavorite::query()
-            ->where('user_id', $user->getKey())
-            ->with(['event' => static fn ($query) => $query->with(['sessions' => static fn ($sessions) => $sessions
-                ->where('starts_at', '>=', now())
-                ->orderBy('starts_at'),
-            ])])
-            ->orderByDesc('created_at')
-            ->get();
+        // Аннотация возвращаемого типа у bypass-замыкания намеренно не
+        // ставится: голый `Eloquent\Collection` в позиции return-type ломает
+        // вывод генериков PHPStan (см. конвенцию `TicketController::mine`).
+        return app(OrganizationContext::class)->withoutScope(fn () =>
+            EventFavorite::query()
+                ->where('user_id', $user->getKey())
+                ->with(['event' => static fn ($query) => $query->with(['sessions' => static fn ($sessions) => $sessions
+                    ->where('starts_at', '>=', now())
+                    ->orderBy('starts_at'),
+                ])])
+                ->orderByDesc('created_at')
+                ->get());
     }
 }
