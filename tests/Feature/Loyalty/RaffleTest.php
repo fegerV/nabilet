@@ -122,6 +122,18 @@ class RaffleTest extends TestCase
             'created_at' => $now,
         ]);
 
+        // Членство в `user_organization` — то, откуда
+        // `ResolveOrganizationContext` берёт арендатора для staff-токена
+        // (роль делает пользователя сотрудником, членство говорит, ЧЬИМ).
+        // Без него контекст на админском HTTP-пути пуст, и скоуп Raffle
+        // корректно отказывает. См. `OrganizationContextResolutionTest`.
+        DB::table('user_organization')->insert([
+            'user_id' => $user->id,
+            'organization_id' => $organizationId,
+            'role_id' => $roleId,
+            'created_at' => $now,
+        ]);
+
         return User::query()->findOrFail($user->id);
     }
 
@@ -228,8 +240,8 @@ class RaffleTest extends TestCase
 
         $order = $this->paidOrder($user);
 
-        self::assertSame(1, RaffleEntry::query()->where('raffle_id', $raffle->id)->count());
-        self::assertSame($order->id, RaffleEntry::query()->where('raffle_id', $raffle->id)->value('order_id'));
+        self::assertSame(1, $this->entryCount($raffle->id));
+        self::assertSame($order->id, $this->entryOrderId($raffle->id));
     }
 
     // ── 2. идемпотентность ─────────────────────────────────────────────────
@@ -245,7 +257,7 @@ class RaffleTest extends TestCase
         // ловит UNIQUE (raffle_id, order_id), второго билета не будет.
         (new EnterRafflesJob(orderId: $order->id))->handle($this->raffles());
 
-        self::assertSame(1, RaffleEntry::query()->where('raffle_id', $raffle->id)->count());
+        self::assertSame(1, $this->entryCount($raffle->id));
     }
 
     // ── 3. тираж распределяет призы ─────────────────────────────────────────
@@ -262,9 +274,9 @@ class RaffleTest extends TestCase
             $this->paidOrder($this->user("buyer{$i}@example.com"));
         }
 
-        self::assertSame(3, RaffleEntry::query()->where('raffle_id', $raffle->id)->count());
+        self::assertSame(3, $this->entryCount($raffle->id));
 
-        $winners = $this->raffles()->draw($raffle->fresh());
+        $winners = $this->drawScoped($raffle->fresh());
 
         self::assertCount(3, $winners);
         self::assertSame(
@@ -275,7 +287,7 @@ class RaffleTest extends TestCase
         $drawn = $raffle->fresh();
         self::assertSame(Raffle::STATUS_DRAWN, $drawn->status);
         self::assertNotNull($drawn->drawn_at);
-        self::assertSame(3, RaffleWinner::query()->where('raffle_id', $raffle->id)->count());
+        self::assertSame(3, $this->winnerCount($raffle->id));
     }
 
     // ── 4. тираж не проводится без участников ──────────────────────────────
@@ -309,7 +321,7 @@ class RaffleTest extends TestCase
             $this->paidOrder($this->user("buyer{$i}@example.com"));
         }
 
-        $this->raffles()->draw($raffle->fresh());
+        $this->drawScoped($raffle->fresh());
         self::assertSame(Raffle::STATUS_DRAWN, $raffle->fresh()->status);
 
         $this->postJson('/api/v1/admin/raffles/' . $raffle->public_id . '/draw', [], $this->headers($this->apiToken()))
@@ -324,7 +336,7 @@ class RaffleTest extends TestCase
         $user = $this->user('ivan.petrov@example.com');
         $raffle = $this->activeRaffle([['place' => 1, 'title' => 'Главный приз']]);
         $this->paidOrder($user);
-        $this->raffles()->draw($raffle->fresh());
+        $this->drawScoped($raffle->fresh());
 
         $res = $this->getJson('/api/v1/raffles/' . $raffle->public_id)->assertOk()->json('data');
 
@@ -370,7 +382,7 @@ class RaffleTest extends TestCase
         $user = $this->user('winner@example.com');
         $raffle = $this->activeRaffle([['place' => 1, 'title' => 'Главный приз']]);
         $this->paidOrder($user);
-        $this->raffles()->draw($raffle->fresh());
+        $this->drawScoped($raffle->fresh());
 
         $res = $this->getJson('/api/v1/me/raffles', $this->headers($this->tokenFor($user)))
             ->assertOk()
@@ -382,5 +394,49 @@ class RaffleTest extends TestCase
         self::assertNotEmpty($res[0]['won']);
         self::assertSame(1, $res[0]['won'][0]['place']);
         self::assertSame('Главный приз', $res[0]['won'][0]['prize_title']);
+    }
+
+    // ── тест-аналоги системных путей (bypass) ──────────────────────────────
+
+    /**
+     * Тест-аналог админского тиража: в проде `draw()` зовёт staff-запрос
+     * (POST /admin/raffles/{id}/draw, контекст выставлен мидлварью), тест
+     * зовёт сервис напрямую — в bypass. Связь `prize` дозагружается тут же:
+     * админский ответ лениво тянет её уже под контекстом, тест — в этом же
+     * bypass-замыкании.
+     *
+     * @return \Illuminate\Support\Collection<int, RaffleWinner>
+     */
+    private function drawScoped(Raffle $raffle): \Illuminate\Support\Collection
+    {
+        return app(OrganizationContext::class)->withoutScope(
+            function () use ($raffle): \Illuminate\Support\Collection {
+                $winners = $this->raffles()->draw($raffle);
+                $winners->each(static fn (RaffleWinner $winner): RaffleWinner => $winner->load('prize'));
+
+                return $winners;
+            }
+        );
+    }
+
+    private function entryCount(int $raffleId): int
+    {
+        return app(OrganizationContext::class)->withoutScope(
+            fn (): int => RaffleEntry::query()->where('raffle_id', $raffleId)->count()
+        );
+    }
+
+    private function entryOrderId(int $raffleId): ?int
+    {
+        return app(OrganizationContext::class)->withoutScope(
+            fn (): ?int => RaffleEntry::query()->where('raffle_id', $raffleId)->value('order_id')
+        );
+    }
+
+    private function winnerCount(int $raffleId): int
+    {
+        return app(OrganizationContext::class)->withoutScope(
+            fn (): int => RaffleWinner::query()->where('raffle_id', $raffleId)->count()
+        );
     }
 }

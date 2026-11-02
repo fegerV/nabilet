@@ -64,6 +64,19 @@ class RaffleWinner extends Model
         'notified_at',
     ];
 
+    /**
+     * Глобальный читающий скоуп (двадцать пятая модель — см. докблок
+     * `Raffle`). Запись защищена трейтом (TenantResolver-карта ведёт через
+     * `raffle_id` → `raffles`). Читатели — админский тираж (контекст есть),
+     * публичная страница результатов с маской победителя и queue-джоба
+     * рассылки (без контекста — bypass в `RaffleService`); модель не
+     * адресуется в маршрутах.
+     */
+    protected static function tenantScopeEnabled(): bool
+    {
+        return true;
+    }
+
     protected function casts(): array
     {
         return [

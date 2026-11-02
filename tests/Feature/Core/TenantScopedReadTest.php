@@ -18,6 +18,10 @@ use Nabilet\Modules\Inventory\Models\InventoryItem;
 use Nabilet\Modules\Loyalty\Models\EventFavorite;
 use Nabilet\Modules\Loyalty\Models\EventFollow;
 use Nabilet\Modules\Loyalty\Models\FollowNotification;
+use Nabilet\Modules\Loyalty\Models\Raffle;
+use Nabilet\Modules\Loyalty\Models\RaffleEntry;
+use Nabilet\Modules\Loyalty\Models\RafflePrize;
+use Nabilet\Modules\Loyalty\Models\RaffleWinner;
 use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Orders\Models\PromoCodeRedemption;
 use Nabilet\Modules\Webhooks\Models\WebhookDelivery;
@@ -738,6 +742,47 @@ final class TenantScopedReadTest extends TestCase
         }
     }
 
+    /**
+     * Скоуп Raffle-кластера (`Raffle`, `RaffleEntry`, `RafflePrize`,
+     * `RaffleWinner`): витрина — публичная страница результатов (решает
+     * unguessable `public_id`), кабинет — владельческий список `user_id`,
+     * системные пути — обсервер оплаты и очередь. Тест фиксирует fail-closed
+     * на всех четырёх моделях: без контекста отказ, с контекстом фильтр, в
+     * bypass видны все.
+     */
+    public function test_raffle_read_scope_is_native(): void
+    {
+        $orgA = $this->organization();
+        $orgB = $this->organization();
+
+        $this->makeRaffleCluster($orgA);
+        $this->makeRaffleCluster($orgB);
+
+        $models = [Raffle::class, RaffleEntry::class, RafflePrize::class, RaffleWinner::class];
+
+        // Без контекста — отказ на каждой модели, а не «показать все строки».
+        foreach ($models as $model) {
+            try {
+                $model::query()->count();
+                $this->fail("Ожидался TenantContextMissingError без контекста для {$model}");
+            } catch (TenantContextMissingError $e) {
+                $this->addToAssertionCount(1);
+            }
+        }
+
+        app(OrganizationContext::class)->set((string) $orgA);
+
+        foreach ($models as $model) {
+            $this->assertSame(1, $model::query()->count(), "чужие строки {$model} не видны");
+
+            $this->assertSame(
+                2,
+                app(OrganizationContext::class)->withoutScope(fn () => $model::query()->count()),
+                "withoutScope() обязан видеть строки {$model} всех организаций"
+            );
+        }
+    }
+
     private function makeCart(int $organizationId): void
     {
         [$orgId, $eventId, $sessionId] = $this->seedSellableSeat(
@@ -904,6 +949,60 @@ final class TenantScopedReadTest extends TestCase
         ]);
 
         return [$eventId, $sessionId];
+    }
+
+    /**
+     * Розыгрыш с призом, билетом и победителем одной организации — общий посев
+     * для fail-closed скоуп-теста Raffle-кластера. Сырые вставки: у `raffles`
+     * и `raffle_entries` своя `organization_id` (для билета — из заказа),
+     * приз и победитель висят на розыгрыше. Билет требует FK `order_id` —
+     * заказ создаётся хелпером `makeOrder` той же организации.
+     *
+     * @return array{0: int, 1: int} [raffleId, winnerId]
+     */
+    private function makeRaffleCluster(int $organizationId): array
+    {
+        $now = now()->toDateTimeString();
+
+        $orderId = $this->makeOrder($organizationId)->id;
+
+        $raffleId = (int) DB::table('raffles')->insertGetId([
+            'organization_id' => $organizationId,
+            'public_id' => (string) Str::ulid()->toBase32(),
+            'title' => 'Raffle',
+            'status' => 'active',
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+
+        $prizeId = (int) DB::table('raffle_prizes')->insertGetId([
+            'organization_id' => $organizationId,
+            'public_id' => (string) Str::ulid()->toBase32(),
+            'raffle_id' => $raffleId,
+            'place' => 1,
+            'title' => 'Приз',
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+
+        $entryId = (int) DB::table('raffle_entries')->insertGetId([
+            'organization_id' => $organizationId,
+            'public_id' => (string) Str::ulid()->toBase32(),
+            'raffle_id' => $raffleId,
+            'order_id' => $orderId,
+            'created_at' => $now,
+        ]);
+
+        $winnerId = (int) DB::table('raffle_winners')->insertGetId([
+            'organization_id' => $organizationId,
+            'public_id' => (string) Str::ulid()->toBase32(),
+            'raffle_id' => $raffleId,
+            'raffle_prize_id' => $prizeId,
+            'entry_id' => $entryId,
+            'created_at' => $now,
+        ]);
+
+        return [$raffleId, $winnerId];
     }
 
     private function makeCartItem(int $organizationId): void

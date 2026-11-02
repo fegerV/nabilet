@@ -48,6 +48,19 @@ class RafflePrize extends Model
         'description',
     ];
 
+    /**
+     * Глобальный читающий скоуп (двадцать четвёртая модель — см. докблок
+     * `Raffle`). Запись защищена трейтом (TenantResolver-карта ведёт через
+     * `raffle_id` → `raffles`). Призы живут только в админских путях
+     * (контекст есть — фильтр остаётся живым) и на публичной странице
+     * результатов (без контекста — bypass в `RaffleService`); модель не
+     * адресуется в маршрутах.
+     */
+    protected static function tenantScopeEnabled(): bool
+    {
+        return true;
+    }
+
     protected function casts(): array
     {
         return [

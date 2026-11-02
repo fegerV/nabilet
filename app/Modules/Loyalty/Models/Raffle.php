@@ -61,6 +61,26 @@ class Raffle extends Model
         'drawn_at',
     ];
 
+    /**
+     * Глобальный читающий скоуп (двадцать вторая модель после Order, Payment,
+     * Ticket, Refund, TicketScan, CheckinDevice, OfflineBundle,
+     * PaymentTransaction, OrderItem, SeatHold, CartItem, Cart,
+     * PromoCodeRedemption, WebhookDelivery, AbAssignment, AbVariant, AbMetric,
+     * InventoryItem, EventFavorite, EventFollow и FollowNotification).
+     *
+     * Запись защищена трейтом — `raffles` корень кластера и хранит собственную
+     * `organization_id` (фаза 3 — NOT NULL): однозначного родителя у
+     * розыгрыша нет, арендатора при создании ставит контекст запроса
+     * (`ResolveOrganizationContext`). Публичная витрина (`GET /raffles`,
+     * страница результатов) и системные пути (обсервер оплаты, queue-джобы)
+     * контекста не имеют — их чтения обходят скоуп в bypass (см.
+     * `RaffleService`); админские пути остаются под фильтром.
+     */
+    protected static function tenantScopeEnabled(): bool
+    {
+        return true;
+    }
+
     protected function casts(): array
     {
         return [

@@ -61,7 +61,13 @@ class RaffleController extends Controller
      */
     public function results(string $publicId): JsonResponse
     {
-        $raffle = $this->raffles->findByPublicId($publicId);
+        // Публичная страница без auth: у гостя контекста нет. Владение здесь
+        // решает сам unguessable `public_id` (26 символов) — capability-путь,
+        // как embed-ключ корзины, поэтому lookup и счётчик участников — в
+        // bypass: без него админский фильтр отрезал бы гостя, а не чужих.
+        $raffle = app(OrganizationContext::class)->withoutScope(
+            fn (): ?Raffle => $this->raffles->findByPublicId($publicId)
+        );
 
         if ($raffle === null || !in_array((string) $raffle->status, RaffleStateMachine::visible(), true)) {
             throw new NotFoundError('Raffle', $publicId);
@@ -69,13 +75,16 @@ class RaffleController extends Controller
 
         // Счётчик участников грузится тем же ответом: страница показывает
         // «билетов было N», и отдельный запрос под него — лишний круг.
-        $raffle->loadCount('entries');
-
-        // Публичная страница результатов не имеет tenant-контекста, а победитель
-        // резолвится через `entry.order` (маскировка адреса). Глобальный скоуп
-        // `Order` здесь обходится: наружу уходит только маскированный display.
+        //
+        // Публичная страница результатов не имеет tenant-контекста, а
+        // победитель резолвится через `entry.order` (маскировка адреса).
+        // Загрузка призов, победителей и билетов идёт под тем же bypass —
+        // все три кластерные модели (Raffle, RafflePrize, RaffleWinner,
+        // RaffleEntry) скоупнуты, и ленивая связь у гостя была бы отказом.
         return app(OrganizationContext::class)->withoutScope(
-            fn () => RaffleResultsResource::make($raffle->load(['orderedPrizes', 'winners']))->response()
+            fn () => RaffleResultsResource::make(
+                $raffle->load(['orderedPrizes', 'winners'])->loadCount('entries')
+            )->response()
         );
     }
 }

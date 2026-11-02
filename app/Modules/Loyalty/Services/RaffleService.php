@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\DB;
 use Nabilet\Core\Errors\DomainRuleViolation;
 use Nabilet\Core\Errors\NotFoundError;
 use Nabilet\Core\Support\RuText;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Loyalty\Domain\RaffleDraw;
 use Nabilet\Modules\Loyalty\Jobs\BackfillRaffleEntriesJob;
 use Nabilet\Modules\Loyalty\Jobs\NotifyRaffleWinnersJob;
@@ -423,9 +424,23 @@ final class RaffleService
      * существует для покупателя, второй закончился ничьей, и участие в нём
      * выглядело бы обещанием, которого не будет.
      *
+     * Витринный путь покупателя (`auth:api`, без staff-роли): контекста нет —
+     * в bypass. Владелец выборки — `user_id`: ни один запрос ниже не принимает
+     * чужой идентификатор, посмотреть чужие участия невозможно в принципе.
+     *
      * @return list<array<string, mixed>>
      */
     public function myRaffles(\Nabilet\Modules\Core\Users\Models\User $user): array
+    {
+        return app(OrganizationContext::class)->withoutScope(
+            fn (): array => $this->myRafflesScoped($user)
+        );
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function myRafflesScoped(\Nabilet\Modules\Core\Users\Models\User $user): array
     {
         $raffleIds = RaffleEntry::query()
             ->forUser($user->getKey())

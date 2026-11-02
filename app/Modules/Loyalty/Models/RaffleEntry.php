@@ -61,6 +61,19 @@ class RaffleEntry extends Model
         'user_id',
     ];
 
+    /**
+     * Глобальный читающий скоуп (двадцать третья модель — см. докблок
+     * `Raffle`). Запись защищена трейтом: своя `organization_id` NOT NULL —
+     * при оплате заказа арендатора ставит трейт, TenantResolver-карта ведёт
+     * через `order_id` → `orders`.
+     * Читатели — обсервер оплаты и queue-джобы (без контекста — bypass) и
+     * владельческий список `/me/raffles` покупателя (решает `user_id`).
+     */
+    protected static function tenantScopeEnabled(): bool
+    {
+        return true;
+    }
+
     protected function casts(): array
     {
         return [
