@@ -166,13 +166,16 @@ final class RecommendationService
      */
     private function tasteWeights(array $interactedEventIds): array
     {
-        return Event::query()
+        // События — скоупнутые чтения (сороковая модель): рекомендации
+        // персональны (id-наборы из собственных взаимодействий пользователя),
+        // а витрина «Me» без тенант-контекста — выборка в bypass.
+        return app(OrganizationContext::class)->withoutScope(fn () => Event::query()
             ->whereIn('id', $interactedEventIds)
             ->whereNotNull('category_id')
             ->pluck('category_id')
             ->map(static fn ($id): int => (int) $id)
             ->countBy()
-            ->all();
+            ->all());
     }
 
     /**
@@ -190,7 +193,9 @@ final class RecommendationService
      */
     private function candidateEvents(array $interactedEventIds, array $categoryIds): Collection
     {
-        return Event::query()
+        // См. tasteWeights: персональные рекомендации витрины «Me» — в bypass
+        // (whereHas('sessions') на скоупнутой Session тоже внутри окна).
+        return app(OrganizationContext::class)->withoutScope(fn () => Event::query()
             ->whereIn('category_id', $categoryIds)
             ->where('status', EventStatus::PUBLISHED)
             ->whereNotIn('id', $interactedEventIds)
@@ -199,6 +204,6 @@ final class RecommendationService
                 ->where('starts_at', '>=', now())
                 ->orderBy('starts_at'),
             ])
-            ->get();
+            ->get());
     }
 }

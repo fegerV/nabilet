@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\HtmlString;
 use Nabilet\Core\Support\Money;
 use Nabilet\Core\Support\RuText;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Orders\StateMachines\OrderStateMachine;
 use Nabilet\Modules\Tickets\Domain\TicketPalette;
@@ -34,7 +35,13 @@ class OrderNotificationData
      */
     public function build(Order $order): array
     {
-        $order->loadMissing(['event', 'session.venue', 'user']);
+        // События/сеансы/залы — скоупнутые чтения (Event — сороковая модель):
+        // письма покупателю собирает queue-воркер без контекста — гидрация
+        // в bypass. Заказ уже принадлежит своей организации (FK), bypass
+        // ничего не расширяет.
+        app(OrganizationContext::class)->withoutScope(
+            fn () => $order->loadMissing(['event', 'session.venue', 'user'])
+        );
 
         $variables = [
             'customer_name' => $this->customerName($order),

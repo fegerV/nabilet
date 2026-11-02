@@ -23,6 +23,7 @@ use Nabilet\Modules\Loyalty\Models\RaffleEntry;
 use Nabilet\Modules\Loyalty\Models\RafflePrize;
 use Nabilet\Modules\Loyalty\Models\RaffleWinner;
 use Nabilet\Modules\Content\Models\PageTranslation;
+use Nabilet\Modules\Events\Models\Event;
 use Nabilet\Modules\Events\Models\EventTranslation;
 use Nabilet\Modules\Venues\Models\VenueTranslation;
 use Nabilet\Modules\Venues\Models\Hall;
@@ -961,6 +962,58 @@ final class TenantScopedReadTest extends TestCase
             app(OrganizationContext::class)->withoutScope(fn () => Venue::query()->count()),
             'withoutScope() обязан видеть строки Venue всех организаций'
         );
+    }
+
+    /**
+     * Скоуп события (`Event`): витринные пути — каталог, карточка по id/slug,
+     * SEO-страница, sitemap, рекомендации, follow-страница и embed — bypass
+     * (гость/виджет/робот без контекста, адрес решён unguessable public_id,
+     * глобально-уникальным slug или embed-ключом); админские CRUD/publish/
+     * cancel/gallery остаются под фильтром. Тест фиксирует fail-closed: без
+     * контекста отказ, с контекстом фильтр, в bypass видны все.
+     */
+    public function test_event_read_scope_is_native(): void
+    {
+        $orgA = $this->organization();
+        $orgB = $this->organization();
+
+        $this->makeEventRow($orgA);
+        $this->makeEventRow($orgB);
+
+        try {
+            Event::query()->count();
+            $this->fail('Ожидался TenantContextMissingError без контекста для Event');
+        } catch (TenantContextMissingError $e) {
+            $this->addToAssertionCount(1);
+        }
+
+        app(OrganizationContext::class)->set((string) $orgA);
+
+        $this->assertSame(1, Event::query()->count(), 'чужие строки Event не видны');
+
+        $this->assertSame(
+            2,
+            app(OrganizationContext::class)->withoutScope(fn () => Event::query()->count()),
+            'withoutScope() обязан видеть строки Event всех организаций'
+        );
+    }
+
+    /**
+     * Сырая вставка события: NOT NULL колонки — public_id/organization_id/
+     * title/slug (+ timestamps); статус берёт дефолт миграции (draft).
+     */
+    private function makeEventRow(int $organizationId): void
+    {
+        $now = now()->toDateTimeString();
+
+        DB::table('events')->insert([
+            'public_id' => (string) Str::ulid()->toBase32(),
+            'organization_id' => $organizationId,
+            'title' => 'Событие ' . Str::random(5),
+            'slug' => 'event-' . Str::random(10),
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
     }
 
     /**

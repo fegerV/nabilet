@@ -71,7 +71,13 @@ class EventPageController
      */
     public function show(string $slug, ?string $publicId = null): Response | JsonResponse | RedirectResponse
     {
-        $event = $this->events->findBySlug($slug);
+        // События — скоупнутые чтения (сороковая модель): SEO-страница публична
+        // (без auth), lookup в bypass. `uq_events_slug` глобален — результат
+        // однозначен без организации.
+        $event = app(OrganizationContext::class)->withoutScope(
+            fn () => $this->events->findBySlug($slug)
+        );
+        /** @var Event|null $event */
 
         if ($event === null) {
             // УДАЛЁННОЕ событие — 410 Gone, а не 404 (аудит P-24).
@@ -82,7 +88,9 @@ class EventPageController
             // вернулась. 410 означает «была и не вернётся» — URL снимается из
             // индекса без повторных обходов. Строка при мягком удалении
             // сохраняется, поэтому ответить 410 мы можем: ресурс существовал.
-            if ($this->events->findTrashedBySlug($slug) !== null) {
+            if (app(OrganizationContext::class)->withoutScope(
+                fn () => $this->events->findTrashedBySlug($slug)
+            ) !== null) {
                 return $this->gone($slug);
             }
 

@@ -6,6 +6,7 @@ namespace Nabilet\Modules\Events\Models;
 
 use Nabilet\Core\Support\PublicationStatus;
 use Nabilet\Modules\Core\Models\Concerns\HasPublicId;
+use Nabilet\Modules\Core\Tenancy\TenantScoped;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -43,6 +44,8 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  */
 class Event extends Model
 {
+    use TenantScoped;
+
     use HasPublicId;
 
     use SoftDeletes;
@@ -50,9 +53,33 @@ class Event extends Model
 
     public $timestamps = true;
 
+    /**
+     * Глобальный читающий скоуп (сороковая модель после Order, Payment,
+     * Ticket, Refund, TicketScan, CheckinDevice, OfflineBundle,
+     * PaymentTransaction, OrderItem, SeatHold, CartItem, Cart,
+     * PromoCodeRedemption, WebhookDelivery, кластеров аб-тестов, лояльности,
+     * переводов, схемы зала, Session, PromoCode, Webhook и Venue). Таблица
+     * хранит собственную `organization_id` (фаза 3 — NOT NULL); запись
+     * защищена трейтом, TenantResolver ведёт сюда сеансы, даты, спикеров,
+     * спонсоров, артистов, переводы и промокоды (`event_id`) как потомков.
+     *
+     * `slug` глобально уникален (`uq_events_slug`) — lookup по slug в bypass
+     * однозначен и кросс-орг коллизий не знает (в отличие от площадок).
+     *
+     * Витринные пути (каталог, карточка по id/slug, SEO-страница, sitemap,
+     * рекомендации, follow-страница, системы письма/шаблонов) — bypass в
+     * `EventController`/`EventPageController`/`SitemapService`/
+     * `RecommendationService`/`LoyaltyController`/`TicketTemplateResolver`;
+     * админские CRUD/publish/cancel/gallery остаются под фильтром — живая
+     * изоляция.
+     */
+    protected static function tenantScopeEnabled(): bool
+    {
+        return true;
+    }
+
     protected $fillable = [
         'public_id',
-        'organization_id',
         'category_id',
         // Макет билета для этого мероприятия. NULL — стандартный вид билета
         // (см. TicketTemplateResolver). Необязателен намеренно: требовать шаблон

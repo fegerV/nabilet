@@ -6,6 +6,7 @@ namespace Nabilet\Modules\Loyalty\Http\Controllers;
 
 use Illuminate\Routing\Controller;
 use Nabilet\Core\Errors\NotFoundError;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Events\Models\Event;
 
 /**
@@ -27,7 +28,12 @@ abstract class LoyaltyController extends Controller
 {
     protected function resolveEvent(string $publicId): Event
     {
-        $event = Event::query()->where('public_id', $publicId)->first();
+        // События — скоупнутые чтения (сороковая модель): Абонемент/фолловинг
+        // работают по unguessable public_id без тенант-контекста — lookup
+        // в bypass. Чужой/несуществующий public_id — 404.
+        $event = app(OrganizationContext::class)->withoutScope(
+            fn (): ?Event => Event::query()->where('public_id', $publicId)->first()
+        );
 
         if ($event === null) {
             throw new NotFoundError('Event', $publicId);

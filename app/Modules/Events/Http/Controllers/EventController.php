@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Events\Http\Controllers;
 
+use Nabilet\Core\Errors\NotFoundError;
 use Nabilet\Core\Errors\ValidationError;
 use Nabilet\Core\Support\StaffRole;
 use Nabilet\Core\Support\Paging;
@@ -90,8 +91,22 @@ class EventController extends Controller
         return $user !== null && StaffRole::isStaff($user);
     }
 
-    public function show(Event $event): JsonResponse
+    public function show(int $event): JsonResponse
         {
+            // Публичная карточка (без auth): numeric binding заменён на явный
+            // int-lookup в bypass — binding на скоупнутой модели (сороковая)
+            // без контекста ронял бы маршрут ещё до контроллера. Отсутствие —
+            // 404; authorize-проверка публикации ниже сохранена.
+            /** @var Event|null $model */
+            $model = app(OrganizationContext::class)->withoutScope(
+                fn (): ?Event => $this->eventService->find($event)
+            );
+
+            if ($model === null) {
+                throw new NotFoundError('Event', $event);
+            }
+
+            $event = $model;
             // Переводы — скоупнутые чтения (двадцать шестая модель): у гостя
             // витрины контекста нет, в bypass. Адрес события уже решён
             // lookup'ом — здесь читается только контент выбранного события.
@@ -114,13 +129,21 @@ class EventController extends Controller
 
         public function showBySlug(string $slug): JsonResponse
             {
-                $event = $this->eventService->findBySlug($slug);
+                // События — скоупнутые чтения (сороковая модель): карточка по
+                // slug публична (без auth), lookup в bypass. `uq_events_slug`
+                // глобален — результат однозначен без организации.
+                $event = app(OrganizationContext::class)->withoutScope(
+                    fn () => $this->eventService->findBySlug($slug)
+                );
+                /** @var Event|null $event */
 
                 if ($event === null) {
                     // Удалённое событие — 410, а не 404 (аудит P-24). Витрина
                     // различает эти случаи текстом ошибки, а поисковик — снятием
                     // URL из индекса без повторных обходов.
-                    if ($this->eventService->findTrashedBySlug($slug) !== null) {
+                    if (app(OrganizationContext::class)->withoutScope(
+                        fn () => $this->eventService->findTrashedBySlug($slug)
+                    ) !== null) {
                         return response()->json([
                             'error' => [
                                 'code' => 'EVENT_GONE',

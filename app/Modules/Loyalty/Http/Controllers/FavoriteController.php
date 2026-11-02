@@ -6,6 +6,7 @@ namespace Nabilet\Modules\Loyalty\Http\Controllers;
 
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Core\Users\Models\User;
 use Nabilet\Modules\Events\Models\Event;
 use Nabilet\Modules\Loyalty\Http\Resources\EventFavoriteResource;
@@ -52,7 +53,11 @@ class FavoriteController extends LoyaltyController
         $favorite = $this->favorites->add($user, $event);
 
         return response()->json([
-            'data' => new EventFavoriteResource($favorite->load('event')),
+            // События — скоупнутые чтения (сороковая модель): гидрация для
+            // ресурса — в bypass (аналог forUser, гость без контекста).
+            'data' => new EventFavoriteResource(
+                app(OrganizationContext::class)->withoutScope(fn () => $favorite->load('event'))
+            ),
         ], $existed ? 200 : 201);
     }
 

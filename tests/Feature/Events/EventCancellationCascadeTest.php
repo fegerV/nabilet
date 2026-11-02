@@ -53,7 +53,11 @@ final class EventCancellationCascadeTest extends TestCase
     public function test_cancelling_with_refund_settles_paid_orders_and_revokes_tickets(): void
     {
         [, $eventId, , $inventoryItemId] = $this->seedSellableSeat(available: 2);
-        $event = Event::query()->findOrFail($eventId);
+        // Чтение события — тест-аналог админского пути (контекст ставит
+        // мидлварь, в тесте его нет): в bypass.
+        $event = app(OrganizationContext::class)->withoutScope(
+            fn () => Event::query()->findOrFail($eventId)
+        );
         $event->update(['status' => 'published']);
 
         $order = $this->orders->createOrder([
@@ -124,7 +128,11 @@ final class EventCancellationCascadeTest extends TestCase
     public function test_plain_cancel_still_refuses_while_money_is_outstanding(): void
     {
         [, $eventId, , $inventoryItemId] = $this->seedSellableSeat(available: 2);
-        $event = Event::query()->findOrFail($eventId);
+        // Чтение события — тест-аналог админского пути (контекст ставит
+        // мидлварь, в тесте его нет): в bypass.
+        $event = app(OrganizationContext::class)->withoutScope(
+            fn () => Event::query()->findOrFail($eventId)
+        );
         $event->update(['status' => 'published']);
 
         $order = $this->orders->createOrder([
@@ -164,7 +172,11 @@ final class EventCancellationCascadeTest extends TestCase
     public function test_an_expired_order_does_not_count_as_sold(): void
     {
         [, $eventId, , $inventoryItemId] = $this->seedSellableSeat(available: 2);
-        $event = Event::query()->findOrFail($eventId);
+        // Чтение события — тест-аналог админского пути (контекст ставит
+        // мидлварь, в тесте его нет): в bypass.
+        $event = app(OrganizationContext::class)->withoutScope(
+            fn () => Event::query()->findOrFail($eventId)
+        );
         $event->update(['status' => 'published']);
 
         $this->orders->createOrder([
@@ -191,7 +203,11 @@ final class EventCancellationCascadeTest extends TestCase
     public function test_cancel_with_refunds_succeeds_when_only_expired_orders_exist(): void
     {
         [, $eventId, , $inventoryItemId] = $this->seedSellableSeat(available: 2);
-        $event = Event::query()->findOrFail($eventId);
+        // Чтение события — тест-аналог админского пути (контекст ставит
+        // мидлварь, в тесте его нет): в bypass.
+        $event = app(OrganizationContext::class)->withoutScope(
+            fn () => Event::query()->findOrFail($eventId)
+        );
         $event->update(['status' => 'published']);
 
         $this->orders->createOrder([

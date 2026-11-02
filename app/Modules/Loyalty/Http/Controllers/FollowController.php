@@ -6,6 +6,7 @@ namespace Nabilet\Modules\Loyalty\Http\Controllers;
 
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Core\Users\Models\User;
 use Nabilet\Modules\Loyalty\Http\Resources\EventFollowResource;
 use Nabilet\Modules\Loyalty\Services\FollowService;
@@ -51,7 +52,11 @@ class FollowController extends LoyaltyController
         $follow = $this->follows->subscribe($user, $event);
 
         return response()->json([
-            'data' => new EventFollowResource($follow->load('event')),
+            // События — скоупнутые чтения (сороковая модель): гидрация для
+            // ресурса — в bypass (аналог forUser, гость без контекста).
+            'data' => new EventFollowResource(
+                app(OrganizationContext::class)->withoutScope(fn () => $follow->load('event'))
+            ),
         ], $existed ? 200 : 201);
     }
 

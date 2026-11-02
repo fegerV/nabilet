@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Matrix\Observers;
 
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Matrix\Domain\MatrixNotice;
 use Nabilet\Modules\Matrix\Jobs\SendMatrixMessageJob;
 use Nabilet\Modules\Matrix\Services\MatrixSettings;
@@ -62,7 +63,13 @@ final class OrderMatrixObserver
             'order_number' => (string) $order->order_number,
             'total_minor' => (int) $order->total_amount,
             'currency' => (string) ($order->currency ?: 'RUB'),
-            'event_title' => $order->event?->title,
+            // События — скоупнутые чтения (сороковая модель): observer срабатывает
+            // и из гостевого checkout (контекста нет) — lazy-чтение в bypass;
+            // заказ уже принадлежит своей организации (FK), bypass ничего
+            // не расширяет.
+            'event_title' => app(OrganizationContext::class)->withoutScope(
+                fn () => $order->event?->title
+            ),
             'customer' => (string) ($order->customer_name ?: $order->customer_email),
         ]);
 

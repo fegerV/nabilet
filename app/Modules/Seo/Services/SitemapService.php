@@ -7,6 +7,7 @@ namespace Nabilet\Modules\Seo\Services;
 use Nabilet\Modules\Events\Models\Event;
 use Nabilet\Modules\Events\Domain\EventStatus;
 use Nabilet\Modules\Events\Services\EventCanonicalUrl;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
@@ -135,7 +136,10 @@ class SitemapService
         //
         // Ошибка не проявлялась никак — ни исключением, ни пустым ответом.
         // Именно поэтому она и прожила до аудита.
-        return Event::query()
+        // Публичный sitemap читает робот и гость: события — скоупнутая модель
+        // (сороковая) — выборка в bypass. Видимость фильтруется статусом и
+        // датой публикации выше (см. аудит P-14), организация тут не нужна.
+        return app(OrganizationContext::class)->withoutScope(fn () => Event::query()
             ->whereIn('status', EventStatus::publiclyVisible())
             ->whereNotNull('published_at')
             ->where('published_at', '<=', now())
@@ -145,7 +149,7 @@ class SitemapService
                 ['public_id', 'slug', 'status', 'canonical_url', 'updated_at', 'published_at'],
                 'page',
                 $page
-            );
+            ));
     }
 
     /**
@@ -197,10 +201,12 @@ class SitemapService
      */
     public function generateSitemapIndex(): string
     {
-        $eventCount = Event::query()
+        // События — скоупнутая модель (сороковая), а sitemap — публичный
+        // артефакт всехарендаторского индекса: счётчик в bypass.
+        $eventCount = app(OrganizationContext::class)->withoutScope(fn () => Event::query()
             ->whereIn('status', EventStatus::publiclyVisible())
             ->whereNotNull('published_at')
-            ->count();
+            ->count());
 
         $sitemapCount = (int) ceil($eventCount / self::MAX_URLS_PER_SITEMAP);
 
@@ -279,10 +285,11 @@ class SitemapService
      */
     private function latestContentUpdate(): string
     {
-        $latest = Event::query()
+        // Max-агрегат для lastmod sitemap-индекса: публичный артефакт — в bypass.
+        $latest = app(OrganizationContext::class)->withoutScope(fn () => Event::query()
             ->whereIn('status', EventStatus::publiclyVisible())
             ->whereNotNull('published_at')
-            ->max('updated_at');
+            ->max('updated_at'));
 
         if ($latest === null) {
             return now()->toIso8601String();

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Nabilet\Modules\Tickets\Services;
 
 use Illuminate\Support\Facades\Log;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Events\Models\Event;
 use Nabilet\Modules\Sessions\Models\Session;
 use Nabilet\Modules\Tickets\Models\Ticket;
@@ -62,9 +63,13 @@ class TicketTemplateResolver
             return null;
         }
 
-        $organizationId = Event::query()
+        // События — скоупнутые чтения (сороковая модель), а резолвер шаблонов
+        // зовётся из рендера письма/лика (гость и queue-воркер без контекста):
+        // lookup владельца события в bypass. Прочесть чужой макет резолвер не
+        // даст — belongsToOrganization() ниже.
+        $organizationId = app(OrganizationContext::class)->withoutScope(fn () => Event::query()
             ->whereKey($eventId)
-            ->value('organization_id');
+            ->value('organization_id'));
 
         $organizationId = $organizationId === null ? null : (int) $organizationId;
 
@@ -97,9 +102,11 @@ class TicketTemplateResolver
      */
     private function assignedTemplate(int $eventId, ?int $organizationId): ?TicketTemplate
     {
-        $templateId = Event::query()
+        // События — скоупнутые чтения (сороковая модель), а резолвер зовётся
+        // из рендера письма/карточки билета (гость, queue) — lookup в bypass.
+        $templateId = app(OrganizationContext::class)->withoutScope(fn () => Event::query()
             ->whereKey($eventId)
-            ->value('ticket_template_id');
+            ->value('ticket_template_id'));
 
         if ($templateId === null) {
             return null;

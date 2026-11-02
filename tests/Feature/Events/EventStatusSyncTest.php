@@ -196,7 +196,9 @@ class EventStatusSyncTest extends TestCase
 
         DB::table('events')->where('id', $eventId)->update(['status' => EventStateMachine::DRAFT]);
 
-        $event = \Nabilet\Modules\Events\Models\Event::query()->findOrFail($eventId);
+        $event = app(\Nabilet\Core\Tenancy\OrganizationContext::class)->withoutScope(
+            fn () => \Nabilet\Modules\Events\Models\Event::query()->findOrFail($eventId)
+        );
 
         try {
             $this->app->make(EventService::class)->complete($event);
