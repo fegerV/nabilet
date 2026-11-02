@@ -34,6 +34,8 @@ use Nabilet\Modules\Venues\Models\Sector;
 use Nabilet\Modules\Venues\Models\StandingZone;
 use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Orders\Models\PromoCodeRedemption;
+use Nabilet\Modules\Orders\Models\PromoCode;
+use Nabilet\Modules\Webhooks\Models\Webhook;
 use Nabilet\Modules\Webhooks\Models\WebhookDelivery;
 use Nabilet\Modules\Orders\Models\OrderItem;
 use Nabilet\Modules\Orders\Models\SeatHold;
@@ -880,6 +882,88 @@ final class TenantScopedReadTest extends TestCase
                 "withoutScope() обязан видеть строки {$model} всех организаций"
             );
         }
+    }
+
+    /**
+     * Скоуп конфига организатора (`PromoCode`, `Webhook`): админские CRUD
+     * и подписки остаются под фильтром (живая изоляция), гостевое применение
+     * промокода (валидация/checkout по токену корзины) и системная доставка
+     * вебхуков — bypass. Тест фиксирует fail-closed на обеих моделях:
+     * без контекста отказ, с контекстом фильтр, в bypass видны все.
+     */
+    public function test_promo_and_webhook_read_scope_is_native(): void
+    {
+        $orgA = $this->organization();
+        $orgB = $this->organization();
+
+        $this->makePromoCodeRow($orgA);
+        $this->makePromoCodeRow($orgB);
+        $this->makeWebhookRow($orgA);
+        $this->makeWebhookRow($orgB);
+
+        $models = [
+            PromoCode::class,
+            Webhook::class,
+        ];
+
+        // Без контекста — отказ на каждой модели, а не «показать все строки».
+        foreach ($models as $model) {
+            try {
+                $model::query()->count();
+                $this->fail("Ожидался TenantContextMissingError без контекста для {$model}");
+            } catch (TenantContextMissingError $e) {
+                $this->addToAssertionCount(1);
+            }
+        }
+
+        app(OrganizationContext::class)->set((string) $orgA);
+
+        foreach ($models as $model) {
+            $this->assertSame(1, $model::query()->count(), "чужие строки {$model} не видны");
+
+            $this->assertSame(
+                2,
+                app(OrganizationContext::class)->withoutScope(fn () => $model::query()->count()),
+                "withoutScope() обязан видеть строки {$model} всех организаций"
+            );
+        }
+    }
+
+    /**
+     * Сырая вставка промокода: NOT NULL колонки — public_id/organization_id/
+     * code (+ timestamps); остальные значения берут дефолты миграций.
+     */
+    private function makePromoCodeRow(int $organizationId): void
+    {
+        $now = now()->toDateTimeString();
+
+        DB::table('promo_codes')->insert([
+            'public_id' => (string) Str::ulid()->toBase32(),
+            'organization_id' => $organizationId,
+            'code' => 'PROMO-' . Str::random(6),
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+    }
+
+    /**
+     * Сырая вставка вебхука: NOT NULL колонки — public_id/organization_id/
+     * url/secret_encrypted/events_json (+ timestamps); active/retry_limit —
+     * дефолты.
+     */
+    private function makeWebhookRow(int $organizationId): void
+    {
+        $now = now()->toDateTimeString();
+
+        DB::table('webhooks')->insert([
+            'public_id' => (string) Str::ulid()->toBase32(),
+            'organization_id' => $organizationId,
+            'url' => 'https://example.com/hooks/' . Str::random(6),
+            'secret_encrypted' => 'enc-' . Str::random(24),
+            'events_json' => json_encode(['order.paid']),
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
     }
 
     private function makeCart(int $organizationId): void

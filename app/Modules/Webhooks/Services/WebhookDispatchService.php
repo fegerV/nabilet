@@ -56,10 +56,16 @@ class WebhookDispatchService
             'data' => $data,
         ];
 
-        $webhooks = Webhook::query()
-            ->where('organization_id', $organizationId)
-            ->where('active', true)
-            ->get();
+        // Вебхуки — скоупнутые чтения (тридцать восьмая модель): dispatch
+        // зовётся из обсёрверов и очередей, где тенант-контекста может не
+        // быть — выборка в bypass. Адресат уже зафиксирован фильтром по
+        // `organization_id` (аргумент события) — bypass ничего не расширяет.
+        $webhooks = app(OrganizationContext::class)->withoutScope(
+            fn () => Webhook::query()
+                ->where('organization_id', $organizationId)
+                ->where('active', true)
+                ->get()
+        );
 
         $dispatched = 0;
 

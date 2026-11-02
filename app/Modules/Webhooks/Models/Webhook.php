@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Nabilet\Modules\Core\Models\Concerns\HasPublicId;
+use Nabilet\Modules\Core\Tenancy\TenantScoped;
 use Nabilet\Modules\Core\Organizations\Models\Organization;
 
 /**
@@ -39,12 +40,33 @@ use Nabilet\Modules\Core\Organizations\Models\Organization;
  */
 class Webhook extends Model
 {
+    use TenantScoped;
+
     use HasPublicId;
 
     protected $table = 'webhooks';
 
+    /**
+     * Глобальный читающий скоуп (тридцать восьмая модель после Order,
+     * Payment, Ticket, Refund, TicketScan, CheckinDevice, OfflineBundle,
+     * PaymentTransaction, OrderItem, SeatHold, CartItem, Cart,
+     * PromoCodeRedemption, WebhookDelivery и кластеров аб-тестов, лояльности,
+     * переводов и схемы зала). Вебхуки хранят собственную `organization_id`
+     * (фаза 3 — NOT NULL); запись защищена трейтом (TenantResolver map
+     * дополнительно ведёт `webhook_deliveries` сюда как на родителя).
+     *
+     * Подписки администратора остаются под фильтром (живая изоляция:
+     * index/update/destroy резолвятся по организации staff-контекста).
+     * Системная доставка — dispatch-джоба очереди и lazy `$delivery->webhook`
+     * в `SendWebhookDeliveryJob` — читает подписки в bypass: queue-воркер
+     * без контекста, адресат решён самой строкой (webhook_id).
+     */
+    protected static function tenantScopeEnabled(): bool
+    {
+        return true;
+    }
+
     protected $fillable = [
-        'organization_id',
         'url',
         'secret_encrypted',
         'events_json',

@@ -450,9 +450,14 @@ final class CartCheckoutService
             $promoEvaluation = null;
 
             if (!empty($customer['promo_code'])) {
-                $promoCode = $this->promos->findByCode(
-                    $organizationId,
-                    (string) $customer['promo_code']
+                // Промокоды — скоупнутые чтения (тридцать седьмая модель):
+                // checkout покупателя идёт без контекста, организация решена
+                // выше из сеанса корзины — lookup кода в bypass.
+                $promoCode = app(OrganizationContext::class)->withoutScope(
+                    fn () => $this->promos->findByCode(
+                        $organizationId,
+                        (string) $customer['promo_code']
+                    )
                 );
 
                 if ($promoCode === null) {

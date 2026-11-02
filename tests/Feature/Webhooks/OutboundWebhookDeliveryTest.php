@@ -197,7 +197,12 @@ class OutboundWebhookDeliveryTest extends TestCase
     /** @param list<string> $events */
     private function createWebhook(int $organizationId, array $events, int $retryLimit = 3): Webhook
     {
-        return Webhook::query()->create([
+        // forceFill: у скоупнутого Webhook колонка organization_id выведена
+        // из $fillable (запись наполняет трейт из контекста/родителя), а тест
+        // создаёт подписку без контекста с явным владельцем — как консоль.
+        $webhook = new Webhook();
+
+        $webhook->forceFill([
             'organization_id' => $organizationId,
             'url' => 'https://example.com/hooks/nabilet',
             'secret_encrypted' => Crypt::encryptString('secret-for-test'),
@@ -206,7 +211,9 @@ class OutboundWebhookDeliveryTest extends TestCase
             'events_json' => $events,
             'active' => true,
             'retry_limit' => $retryLimit,
-        ]);
+        ])->save();
+
+        return $webhook;
     }
 
     private function newDelivery(Webhook $webhook): WebhookDelivery

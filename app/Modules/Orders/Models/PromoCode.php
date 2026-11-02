@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Orders\Models;
 
+use Nabilet\Modules\Core\Tenancy\TenantScoped;
+
 use Nabilet\Modules\Core\Models\Concerns\HasPublicId;
 
 use Illuminate\Database\Eloquent\Model;
@@ -31,15 +33,36 @@ use Nabilet\Modules\Pricing\Domain\PromoCodeDefinition;
  */
 class PromoCode extends Model
 {
+    use TenantScoped;
+
     use HasPublicId;
 
     use SoftDeletes;
 
     protected $table = 'promo_codes';
 
+    /**
+     * Глобальный читающий скоуп (тридцать седьмая модель после Order,
+     * Payment, Ticket, Refund, TicketScan, CheckinDevice, OfflineBundle,
+     * PaymentTransaction, OrderItem, SeatHold, CartItem, Cart,
+     * PromoCodeRedemption, WebhookDelivery и кластеров аб-тестов, лояльности
+     * и схемы зала). `promo_codes` хранит собственную `organization_id`
+     * (фаза 3 — NOT NULL); запись защищена трейтом (TenantResolver map
+     * дополнительно ведёт `promo_code_redemptions` сюда как на родителя).
+     *
+     * Админские CRUD остаются под фильтром (живая изоляция, фильтр по
+     * `organization_id` совпадает с контекстом staff). Гостевые пути,
+     * применяющие код к корзине по её токену (валидация и checkout, где
+     * организация выводится из сеанса корзины в bypass), читают код
+     * в bypass в `PromoCodeController::validate`/`CartCheckoutService`.
+     */
+    protected static function tenantScopeEnabled(): bool
+    {
+        return true;
+    }
+
     protected $fillable = [
         'public_id',
-        'organization_id',
         'code',
         'discount_type',
         'value_amount',

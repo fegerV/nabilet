@@ -83,7 +83,13 @@ class SendWebhookDeliveryJob implements ShouldQueue
             return;
         }
 
-        $webhook = $delivery->webhook;
+        // Подписка — скоупнутая модель (тридцать восьмая), а queue-воркер без
+        // контекста: lazy-чтение в bypass. Принадлежность доставки вебхуку
+        // решает сам FK (`webhook_id`), а барьер от чужих подписок даёт bypass
+        // выборки в dispatch (organization_id аргумента события).
+        $webhook = app(OrganizationContext::class)->withoutScope(
+            fn () => $delivery->webhook
+        );
 
         if ($webhook === null) {
             return;

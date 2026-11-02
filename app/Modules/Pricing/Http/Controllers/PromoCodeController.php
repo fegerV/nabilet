@@ -162,7 +162,13 @@ class PromoCodeController extends Controller
 
         $cart = $this->resolveCart($request);
 
-        $promo = $this->promos->findByCode($this->organizationIdFor($cart), $code);
+        // Промокоды — скоупнутые чтения (тридцать седьмая модель): проверка
+        // кода идёт на витрине без тенант-контекста, организация выводится из
+        // сеанса корзины в bypass — lookup кода в bypass. Ответ на чужой код
+        // не раскрывает его существование (valid:false, not_found).
+        $promo = app(OrganizationContext::class)->withoutScope(
+            fn () => $this->promos->findByCode($this->organizationIdFor($cart), $code)
+        );
 
         if ($promo === null) {
             // Не «не найден», а «не применим»: контракт описывает ответ 200 с
