@@ -10,6 +10,7 @@ use Nabilet\Core\Support\LikePattern;
 use Nabilet\Core\Support\Paging;
 use Nabilet\Core\Support\PublicationStatus;
 use Nabilet\Core\Support\UserOrganization;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Venues\Models\Venue;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -59,7 +60,14 @@ class VenueController extends Controller
         // were loaded here and neither is defined on `Venue`, so every call threw
         // RelationNotFoundException → 500. Translations live on
         // `venueTranslations`; hall schemas hang off `halls`, not off the venue.
-        $venue->load(['halls', 'organization', 'venueTranslations']);
+        //
+        // Переводы — скоупнутые чтения (двадцать седьмая модель): страница
+        // площадки публична (без auth), у гостя контекста нет — в bypass.
+        // Адрес решает shallow-binding по route {venue}, читается перевод
+        // выбранного места.
+        app(OrganizationContext::class)->withoutScope(
+            fn () => $venue->load(['halls', 'organization', 'venueTranslations'])
+        );
 
         return response()->json(['data' => $venue]);
     }

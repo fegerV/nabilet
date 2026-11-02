@@ -9,6 +9,7 @@ use Nabilet\Core\Http\NotFoundPage;
 use Nabilet\Core\Support\AssetUrl;
 use Nabilet\Core\Support\Money;
 use Nabilet\Core\Support\PublicationStatus;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Events\Domain\EventRobots;
 use Nabilet\Modules\Events\Domain\EventStatus;
 use Nabilet\Modules\Events\Http\EventPageContent;
@@ -179,7 +180,13 @@ class EventPageController
         // инвентаря всех сеансов события (аудит 1.2): offers нужны только три
         // числа ближайшего сеанса (мин. цена, кол-во доступных, валюта), и они
         // считаются одним запросом в `offerPayload()`.
-        $event->load(['category', 'translations', 'sessions.venue', 'organization', 'artists']);
+        // Переводы — скоупнутые чтения (двадцать шестая модель): страницу
+        // SEO запрашивает гость без контекста, загрузка в bypass. Адрес
+        // события решён lookup'ом по slug — читается контент выбранного
+        // события.
+        app(OrganizationContext::class)->withoutScope(function () use ($event): void {
+            $event->load(['category', 'translations', 'sessions.venue', 'organization', 'artists']);
+        });
 
         // Дата события живёт НЕ в `events` — в таблице нет ни `start_datetime`,
         // ни `start_date`, есть только `published_at` (момент выхода на сайт).

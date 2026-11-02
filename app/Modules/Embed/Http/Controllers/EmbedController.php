@@ -100,7 +100,13 @@ final class EmbedController extends Controller
         // through `sessions`: without it the resource lazy-loads one venue per
         // session. `EventController::show()` loads `sessions` alone, and this is
         // the same response with fewer queries, not a different one.
-        $model->load(['category', 'translations', 'sessions.venue']);
+        //
+        // Переводы — скоупнутые чтения (двадцать шестая модель): виджет не
+        // имеет tenant-контекста (embed-ключ, а не bearer-токен) — загрузка
+        // в bypass; владение уже решено проверкой ключа выше.
+        app(OrganizationContext::class)->withoutScope(
+            fn () => $model->load(['category', 'translations', 'sessions.venue'])
+        );
 
         // Availability is attached as an attribute BEFORE rendering: without it
         // the resource's fallback lazy-loads `InventoryItem` — a scoped model,

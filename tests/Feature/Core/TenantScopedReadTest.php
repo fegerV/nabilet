@@ -22,6 +22,9 @@ use Nabilet\Modules\Loyalty\Models\Raffle;
 use Nabilet\Modules\Loyalty\Models\RaffleEntry;
 use Nabilet\Modules\Loyalty\Models\RafflePrize;
 use Nabilet\Modules\Loyalty\Models\RaffleWinner;
+use Nabilet\Modules\Content\Models\PageTranslation;
+use Nabilet\Modules\Events\Models\EventTranslation;
+use Nabilet\Modules\Venues\Models\VenueTranslation;
 use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Orders\Models\PromoCodeRedemption;
 use Nabilet\Modules\Webhooks\Models\WebhookDelivery;
@@ -783,6 +786,46 @@ final class TenantScopedReadTest extends TestCase
         }
     }
 
+    /**
+     * Скоуп моделей переводов (`EventTranslation`, `VenueTranslation`,
+     * `PageTranslation`): витринное чтение — eager-загрузка в обходе (гость
+     * без контекста), у `PageTranslation` читателей в проде нет вовсе —
+     * fail-closed ограждение. Тест фиксирует отказ без контекста, фильтр
+     * с контекстом, полноту в bypass.
+     */
+    public function test_translations_read_scope_is_native(): void
+    {
+        $orgA = $this->organization();
+        $orgB = $this->organization();
+
+        $this->makeTranslationsCluster($orgA);
+        $this->makeTranslationsCluster($orgB);
+
+        $models = [EventTranslation::class, VenueTranslation::class, PageTranslation::class];
+
+        // Без контекста — отказ на каждой модели, а не «показать все строки».
+        foreach ($models as $model) {
+            try {
+                $model::query()->count();
+                $this->fail("Ожидался TenantContextMissingError без контекста для {$model}");
+            } catch (TenantContextMissingError $e) {
+                $this->addToAssertionCount(1);
+            }
+        }
+
+        app(OrganizationContext::class)->set((string) $orgA);
+
+        foreach ($models as $model) {
+            $this->assertSame(1, $model::query()->count(), "чужие строки {$model} не видны");
+
+            $this->assertSame(
+                2,
+                app(OrganizationContext::class)->withoutScope(fn () => $model::query()->count()),
+                "withoutScope() обязан видеть строки {$model} всех организаций"
+            );
+        }
+    }
+
     private function makeCart(int $organizationId): void
     {
         [$orgId, $eventId, $sessionId] = $this->seedSellableSeat(
@@ -1003,6 +1046,62 @@ final class TenantScopedReadTest extends TestCase
         ]);
 
         return [$raffleId, $winnerId];
+    }
+
+    /**
+     * Переводы события, площадки и страницы одной организации — общий посев
+     * для fail-closed скоуп-теста переводов. Событие берётся из
+     * `seedSellableSeat`, площадка и страница — сырые вставки (NOT NULL без
+     * дефолта: public_id/org/name/slug/timestamps), строки переводов вешаются
+     * на родителей.
+     */
+    private function makeTranslationsCluster(int $organizationId): void
+    {
+        $now = now()->toDateTimeString();
+
+        [, $eventId] = $this->seedSellableSeat(
+            available: 2,
+            organizationId: $organizationId,
+        );
+
+        DB::table('event_translations')->insert([
+            'event_id' => $eventId,
+            'organization_id' => $organizationId,
+            'locale' => 'ru',
+            'title' => 'Перевод мероприятия',
+        ]);
+
+        $venueId = (int) DB::table('venues')->insertGetId([
+            'organization_id' => $organizationId,
+            'public_id' => (string) Str::ulid()->toBase32(),
+            'name' => 'Площадка',
+            'slug' => 'venue-' . (string) Str::ulid()->toBase32(),
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+
+        DB::table('venue_translations')->insert([
+            'venue_id' => $venueId,
+            'organization_id' => $organizationId,
+            'locale' => 'ru',
+            'name' => 'Перевод площадки',
+        ]);
+
+        $pageId = (int) DB::table('pages')->insertGetId([
+            'organization_id' => $organizationId,
+            'public_id' => (string) Str::ulid()->toBase32(),
+            'title' => 'Страница',
+            'slug' => 'page-' . (string) Str::ulid()->toBase32(),
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+
+        DB::table('page_translations')->insert([
+            'page_id' => $pageId,
+            'organization_id' => $organizationId,
+            'locale' => 'ru',
+            'title' => 'Перевод страницы',
+        ]);
     }
 
     private function makeCartItem(int $organizationId): void

@@ -30,6 +30,19 @@ class PageTranslation extends Model
         'meta_description',
     ];
 
+    /**
+     * Глобальный читающий скоуп (двадцать восьмая модель — см. докблок
+     * `EventTranslation`). Запись защищена трейтом (TenantResolver-карта
+     * ведёт через `page_id` → `pages`). Читателей в проде нет:
+     * `PageService::forSlug` собирает документ из самой строки `pages`,
+     * переводы не трогает — скоуп здесь чистый fail-closed ограждением для
+     * будущих читателей, обходить в bypass нечего.
+     */
+    protected static function tenantScopeEnabled(): bool
+    {
+        return true;
+    }
+
     public function page(): BelongsTo
     {
         return $this->belongsTo(Page::class);

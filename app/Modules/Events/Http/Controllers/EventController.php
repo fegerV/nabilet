@@ -8,6 +8,7 @@ use Nabilet\Core\Errors\ValidationError;
 use Nabilet\Core\Support\StaffRole;
 use Nabilet\Core\Support\Paging;
 use Nabilet\Core\Support\UserOrganization;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Content\Models\Redirect;
 use Nabilet\Modules\Events\Domain\EventStatus;
 use Nabilet\Modules\Events\Http\Requests\StoreEventRequest;
@@ -91,7 +92,12 @@ class EventController extends Controller
 
     public function show(Event $event): JsonResponse
         {
-            $event->load(['category', 'translations', 'sessions']);
+            // Переводы — скоупнутые чтения (двадцать шестая модель): у гостя
+            // витрины контекста нет, в bypass. Адрес события уже решён
+            // lookup'ом — здесь читается только контент выбранного события.
+            app(OrganizationContext::class)->withoutScope(
+                fn () => $event->load(['category', 'translations', 'sessions'])
+            );
 
             // Доступность сеансов — агрегатом до рендеринга: фолбэк ресурса
             // лениво тянул бы скоупнутый инвентарь (у гостя контекста нет —
@@ -128,7 +134,13 @@ class EventController extends Controller
                     ], 404);
                 }
 
-                $event->load(['category', 'translations', 'sessions.hall', 'organization', 'galleryLinks.mediaAsset', 'artists']);
+                // Переводы — скоупнутые чтения: у гостя контекста нет, весь
+                // eager-набор грузим в bypass (остальные связи набора
+                // не-скоупнуты — bypass на них безвреден). lookup по slug
+                // решает адрес: читается контент выбранного события.
+                app(OrganizationContext::class)->withoutScope(
+                    fn () => $event->load(['category', 'translations', 'sessions.hall', 'organization', 'galleryLinks.mediaAsset', 'artists'])
+                );
 
                 // «от N ₽» на карточке: минимум по предстоящим сеансам. Без
                 // этого поле в ответе отсутствует и витрина рисует «от 0 ₽» —
