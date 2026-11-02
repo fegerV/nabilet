@@ -16,7 +16,6 @@ use Nabilet\Modules\Events\Http\Resources\EventResource;
 use Nabilet\Modules\Events\Models\Event;
 use Nabilet\Modules\Events\Repositories\EventRepository;
 use Nabilet\Modules\Events\Services\EventPublicationService;
-use Nabilet\Modules\Inventory\StateMachines\InventoryItemStateMachine;
 use Nabilet\Modules\Events\Services\EventService;
 use Nabilet\Modules\Seo\Services\RedirectResolver;
 use Nabilet\Modules\Tickets\Services\TicketTemplateService;
@@ -94,6 +93,11 @@ class EventController extends Controller
         {
             $event->load(['category', 'translations', 'sessions']);
 
+            // Доступность сеансов — агрегатом до рендеринга: фолбэк ресурса
+            // лениво тянул бы скоупнутый инвентарь (у гостя контекста нет —
+            // отказ), а до скоупа это был N+1.
+            $this->eventRepository->hydrateAvailableSeats(new \Illuminate\Database\Eloquent\Collection([$event]));
+
             return response()->json([
                 'data' => new EventResource($event),
             ]);
@@ -131,45 +135,23 @@ class EventController extends Controller
                 // проверено на живом стенде.
                 $event->min_price_amount = $this->eventRepository->minPriceFor($event);
 
+                // Доступность сеансов — ОДИН сгруппированный запрос (аудит 1.2),
+                // атрибут вешается ДО toArray(): ресурс читает его первым, и
+                // фолбэк не лениво тянет инвентарь (скоупнутая `InventoryItem`
+                // у гостя без контекста отказала бы).
+                $this->eventRepository->hydrateAvailableSeats(new \Illuminate\Database\Eloquent\Collection([$event]));
+
                         $resource = new EventResource($event);
                         $data = $resource->toArray(request());
 
                 // Сеансы — покупательским контрактом Vue: id, starts_at, hall, available_seats.
-                //
-                // Доступность считает ОДИН сгруппированный запрос (аудит 1.2):
-                // раньше здесь грузились ВСЕ строки инвентаря каждого сеанса,
-                // а число уже вычислялось фильтром в PHP.
-                //
-                // Считаем СУММУ `available_quantity`, а не COUNT строк: у места
-                // это 1 и разницы нет, но стоячая зона — одна строка на N
-                // билетов. С COUNT «Танцпол» на 800 человек давал «1 место».
-                //
-                // Статус стоячей зоны после первой продажи становится `sold`
-                // (это статус ПОЗИЦИИ, а не признак «распродано» — см.
-                // InventorySoldOnPaymentTest), поэтому для неё решает остаток,
-                // а не `status = available`. Служебные `disabled`/`blocked`
-                // не считаем никогда: такой зоны для сеанса не существует.
-                $availableBySession = \Illuminate\Support\Facades\DB::table('inventory_items')
-                    ->join('sessions', 'sessions.id', '=', 'inventory_items.session_id')
-                    ->where('sessions.event_id', $event->id)
-                    ->where('inventory_items.available_quantity', '>', 0)
-                    ->where(function ($q) {
-                        $q->where('inventory_items.status', InventoryItemStateMachine::AVAILABLE)
-                            ->orWhere(function ($standing) {
-                                $standing->where('inventory_items.type', 'standing')
-                                    ->whereNotIn('inventory_items.status', [InventoryItemStateMachine::DISABLED, InventoryItemStateMachine::BLOCKED]);
-                            });
-                    })
-                    ->groupBy('inventory_items.session_id')
-                    ->selectRaw('inventory_items.session_id as session_id, SUM(inventory_items.available_quantity) as available_seats')
-                    ->pluck('available_seats', 'session_id');
-
+                // Число уже посчитано агрегатом выше и лежит атрибутом сеанса.
                         $data['sessions'] = $event->sessions
                             ->map(fn ($s) => [
                                 'id' => $s->id,
                                 'starts_at' => $s->starts_at?->toIso8601String(),
                                 'hall' => $s->hall?->name,
-                                'available_seats' => (int) ($availableBySession[$s->id] ?? 0),
+                                'available_seats' => (int) $s->available_seats_count,
                             ])
                             ->toArray();
 

@@ -8,6 +8,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Nabilet\Core\Errors\ConflictError;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Core\Users\Models\User;
 use Nabilet\Modules\Inventory\Services\InventoryService;
 use Nabilet\Modules\Sessions\Models\Session;
@@ -208,10 +209,9 @@ final class SessionGeometryReuseTest extends TestCase
     {
         [$hallId, $draftId] = $this->seedDraftHall($this->seatedSchema(2, 2));
 
-        $service = app(InventoryService::class);
         $first = $this->makeSessionModel($hallId, $draftId);
 
-        $this->assertSame(4, $service->generateFromSchema($this->versionModel($draftId), $first));
+        $this->assertSame(4, $this->generateInventory($this->versionModel($draftId), $first));
 
         // Схему дополнили местами. Инвентарь первого сеанса держит прежние места
         // через ON DELETE RESTRICT, поэтому пересборка обязана ОТКАЗАТЬ, а не
@@ -220,7 +220,7 @@ final class SessionGeometryReuseTest extends TestCase
         $this->mutateSchema($draftId, $this->seatedSchema(2, 3));
 
         try {
-            $service->generateFromSchema($this->versionModel($draftId), $this->makeSessionModel($hallId, $draftId));
+            $this->generateInventory($this->versionModel($draftId), $this->makeSessionModel($hallId, $draftId));
             $this->fail('ожидался ConflictError: геометрию уже продаёт другой сеанс');
         } catch (ConflictError $e) {
             // Пин на тип ошибки: 409 и собственный код, а не VALIDATION_ERROR.
@@ -241,12 +241,10 @@ final class SessionGeometryReuseTest extends TestCase
     {
         [$hallId, $draftId] = $this->seedDraftHall($this->seatedSchema(0, 0));
 
-        $service = app(InventoryService::class);
-
         // Схема без мест: геометрия материализуется (сектор), но инвентаря нет —
         // ровно тот случай, когда пересборка безопасна.
         $session = $this->makeSessionModel($hallId, $draftId);
-        $this->assertSame(0, $service->generateFromSchema($this->versionModel($draftId), $session));
+        $this->assertSame(0, $this->generateInventory($this->versionModel($draftId), $session));
 
         // Схему дополнили местами. Ссылок на геометрию нет, поэтому её надо
         // пересобрать, а не считать актуальной.
@@ -254,7 +252,7 @@ final class SessionGeometryReuseTest extends TestCase
 
         $this->assertSame(
             2,
-            $service->generateFromSchema($this->versionModel($draftId), $session),
+            $this->generateInventory($this->versionModel($draftId), $session),
             'устаревшая геометрия без продаж должна пересобираться'
         );
 
@@ -262,6 +260,18 @@ final class SessionGeometryReuseTest extends TestCase
     }
 
     // ── Помощники ───────────────────────────────────────────────────────────
+
+    /**
+     * Тест-аналог системного пути: в проде склад генерируется staff-запросом
+     * `POST /sessions` (контекст выставлен мидлварью), тесты зовут сервис
+     * напрямую в обход HTTP — `generateFromSchema` в bypass.
+     */
+    private function generateInventory(HallSchemaVersion $version, Session $session): int
+    {
+        return app(OrganizationContext::class)->withoutScope(
+            fn () => app(InventoryService::class)->generateFromSchema($version, $session)
+        );
+    }
 
     /**
      * Схема зала в rows-формате (как отдаёт импортёр Афиши).

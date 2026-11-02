@@ -103,21 +103,11 @@ parameters:
 
 		-
 			message: "#^Call to protected method increment\\(\\) of class Illuminate\\\\Database\\\\Eloquent\\\\Model\\.$#"
-			count: 2
-			path: app/Modules/Cart/Services/CartItemService.php
-
-		-
-			message: "#^Cannot call method update\\(\\) on stdClass\\.$#"
-			count: 3
-			path: app/Modules/Cart/Services/CartItemService.php
-
-		-
-			message: "#^Parameter \\#2 \\$inventoryItem of method Nabilet\\\\Modules\\\\Cart\\\\Services\\\\CartItemService\\:\\:createHold\\(\\) expects Nabilet\\\\Modules\\\\Inventory\\\\Models\\\\InventoryItem, stdClass given\\.$#"
 			count: 1
 			path: app/Modules/Cart/Services/CartItemService.php
 
 		-
-			message: "#^Parameter \\#2 \\$inventoryItem of method Nabilet\\\\Modules\\\\Cart\\\\Services\\\\CartItemService\\:\\:growHold\\(\\) expects Nabilet\\\\Modules\\\\Inventory\\\\Models\\\\InventoryItem, stdClass given\\.$#"
+			message: "#^Cannot call method update\\(\\) on stdClass\\.$#"
 			count: 1
 			path: app/Modules/Cart/Services/CartItemService.php
 
@@ -200,11 +190,6 @@ parameters:
 			message: "#^Call to an undefined static method Nabilet\\\\Modules\\\\Core\\\\Users\\\\Models\\\\User\\:\\:create\\(\\)\\.$#"
 			count: 1
 			path: app/Modules/Core/Users/Services/CustomerAccountService.php
-
-		-
-			message: "#^Parameter \\#1 \\$callback of method Illuminate\\\\Support\\\\Collection\\<int,stdClass\\>\\:\\:map\\(\\) expects callable\\(stdClass, int\\)\\: array\\{id\\: mixed, session_id\\: mixed, type\\: mixed, seat_id\\: mixed, standing_zone_id\\: mixed, price_amount\\: mixed, currency\\: mixed, capacity\\: mixed, available_quantity\\: mixed, status\\: mixed\\}, Closure\\(Nabilet\\\\Modules\\\\Inventory\\\\Models\\\\InventoryItem\\)\\: array\\{id\\: mixed, session_id\\: mixed, type\\: mixed, seat_id\\: mixed, standing_zone_id\\: mixed, price_amount\\: mixed, currency\\: mixed, capacity\\: mixed, available_quantity\\: mixed, status\\: mixed\\} given\\.$#"
-			count: 1
-			path: app/Modules/Embed/Http/Controllers/EmbedController.php
 
 		-
 			message: "#^Using nullsafe method call on non\\-nullable type Carbon\\\\CarbonImmutable\\. Use \\-\\> instead\\.$#"
@@ -588,11 +573,6 @@ parameters:
 
 		-
 			message: "#^Anonymous function has an unused use \\$reason\\.$#"
-			count: 1
-			path: app/Modules/Orders/Services/OrderService.php
-
-		-
-			message: "#^Cannot call method decrement\\(\\) on stdClass\\.$#"
 			count: 1
 			path: app/Modules/Orders/Services/OrderService.php
 
@@ -1068,11 +1048,6 @@ parameters:
 
 		-
 			message: "#^Call to an undefined static method Nabilet\\\\Modules\\\\Venues\\\\Models\\\\HallSchemaVersion\\:\\:create\\(\\)\\.$#"
-			count: 1
-			path: tests/Feature/InventoryAvailabilityCountingTest.php
-
-		-
-			message: "#^Call to protected method decrement\\(\\) of class Illuminate\\\\Database\\\\Eloquent\\\\Model\\.$#"
 			count: 1
 			path: tests/Feature/InventoryAvailabilityCountingTest.php
 

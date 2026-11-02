@@ -23,6 +23,7 @@ use Nabilet\Modules\Cart\Support\CartToken;
 use Nabilet\Modules\Embed\Services\EmbedAccessService;
 use Nabilet\Modules\Events\Http\Resources\EventResource;
 use Nabilet\Modules\Events\Models\Event;
+use Nabilet\Modules\Events\Repositories\EventRepository;
 use Nabilet\Modules\Inventory\Models\InventoryItem;
 use Nabilet\Modules\Orders\Http\Resources\OrderResource;
 use Nabilet\Modules\Orders\Models\Order;
@@ -81,6 +82,7 @@ final class EmbedController extends Controller
         private readonly CartItemService $cartItems,
         private readonly CartCheckoutService $checkout,
         private readonly PaymentService $payments,
+        private readonly EventRepository $eventRepository,
     ) {}
 
     // ── Catalogue ────────────────────────────────────────────────────────────
@@ -99,6 +101,11 @@ final class EmbedController extends Controller
         // session. `EventController::show()` loads `sessions` alone, and this is
         // the same response with fewer queries, not a different one.
         $model->load(['category', 'translations', 'sessions.venue']);
+
+        // Availability is attached as an attribute BEFORE rendering: without it
+        // the resource's fallback lazy-loads `InventoryItem` — a scoped model,
+        // and the widget has no tenant context (capability key checked above).
+        $this->eventRepository->hydrateAvailableSeats(new \Illuminate\Database\Eloquent\Collection([$model]));
 
         return response()->json(['data' => new EventResource($model)]);
     }
@@ -149,10 +156,15 @@ final class EmbedController extends Controller
 
         $model->load('schemaVersion');
 
-        $inventory = InventoryItem::query()
-            ->where('session_id', $model->id)
-            ->orderBy('id')
-            ->get();
+        // Инвентарь сеанса — публичная карта зала: embed-запрос идёт по
+        // capability ключа (организация проверена authorize выше), тенант-
+        // контекста у виджета нет — в bypass.
+        $inventory = app(OrganizationContext::class)->withoutScope(
+            fn () => InventoryItem::query()
+                ->where('session_id', $model->id)
+                ->orderBy('id')
+                ->get()
+        );
 
         return response()->json([
             'session' => $this->sessionPayload($model),

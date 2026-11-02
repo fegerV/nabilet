@@ -51,10 +51,16 @@ class OrderService
                 // Блокировка держится до COMMIT, поэтому второй запрос
                 // дожидается конца первого и перечитывает уже уменьшенный
                 // остаток — и получает корректный отказ.
-                $item = InventoryItem::query()
-                    ->whereKey($itemData['inventory_item_id'])
-                    ->lockForUpdate()
-                    ->firstOrFail();
+                // Позиция склада — ребёнок сеанса заказа: прямой чекаут
+                // (`POST /orders` покупателя) идёт без тенант-контекста —
+                // чтение в bypass. Владение решает проверка организации
+                // позиции ниже (арендатор заказа обязан совпасть).
+                $item = app(OrganizationContext::class)->withoutScope(
+                    fn () => InventoryItem::query()
+                        ->whereKey($itemData['inventory_item_id'])
+                        ->lockForUpdate()
+                        ->firstOrFail()
+                );
 
                 // Организация заказа и организация позиции склада обязаны
                 // совпадать. До этой проверки клиент мог прислать

@@ -198,7 +198,11 @@ final class InventoryRepositoryContractTest extends TestCase
             ]);
 
             $repository = new InventoryItemRepository(new InventoryItem());
-            $this->assertSame(5, $repository->getSoldCount($sessionId));
+            // getSoldCount читает инвентарь напрямую: тест-аналог витринного
+            // билборда, обязанный идти в bypass (у контракта нет контекста).
+            $this->assertSame(5, app(OrganizationContext::class)->withoutScope(
+                fn () => $repository->getSoldCount($sessionId)
+            ));
 
             // whereHas по связи `holds` читает `SeatHold` под включённым
             // скоупом: контракт-тест дёргает репозиторий напрямую — тест-аналог
@@ -209,7 +213,9 @@ final class InventoryRepositoryContractTest extends TestCase
             ));
 
             DB::table('seat_holds')->where('id', $holdId)->update(['converted_at' => $now]);
-            $this->assertSame(7, $repository->getSoldCount($sessionId));
+            $this->assertSame(7, app(OrganizationContext::class)->withoutScope(
+                fn () => $repository->getSoldCount($sessionId)
+            ));
             $this->assertSame(0, app(OrganizationContext::class)->withoutScope(
                 fn () => $repository->getHeldCount($sessionId)
             ));
@@ -229,7 +235,9 @@ final class InventoryRepositoryContractTest extends TestCase
                 'converted_at' => null,
                 'created_at' => $now->copy()->subMinutes(2),
             ]);
-            $this->assertSame(7, $repository->getSoldCount($sessionId));
+            $this->assertSame(7, app(OrganizationContext::class)->withoutScope(
+                fn () => $repository->getSoldCount($sessionId)
+            ));
             $this->assertSame(0, app(OrganizationContext::class)->withoutScope(
                 fn () => $repository->getHeldCount($sessionId)
             ));

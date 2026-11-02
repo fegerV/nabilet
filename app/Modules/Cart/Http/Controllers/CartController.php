@@ -164,9 +164,12 @@ class CartController extends Controller
         );
 
         // Позиции — дети корзины (capability-токен): у гостя контекста нет,
-        // перечитывание корзины с позициями — в bypass.
+        // перечитывание корзины с позициями — в bypass. Eager-цепочка нужна
+        // целиком: `CartResource` рендерится ВНЕ замыкания, и без неё
+        // `CartItemResource` лениво тянул бы `inventoryItem.seat.row.sector`
+        // уже за пределами bypass — отказ.
         $cart = app(OrganizationContext::class)->withoutScope(
-            fn () => $cartItem->cart()->with('items')->first()
+            fn () => $cartItem->cart()->with(['items.inventoryItem', 'items.inventoryItem.seat.row.sector'])->first()
         );
 
         return $this->withTokenHeader(response()->json([
@@ -298,9 +301,10 @@ class CartController extends Controller
         );
 
         // Позиции — дети корзины (capability-токен): у гостя контекста нет,
-        // перечитывание корзины с позициями — в bypass.
+        // перечитывание корзины — в bypass. Eager-цепочка целиком: рендеринг
+        // `CartResource` идёт вне замыкания (см. комментарий в `addItem`).
         $cart = app(OrganizationContext::class)->withoutScope(
-            fn () => $cartItem->cart()->with('items')->first()
+            fn () => $cartItem->cart()->with(['items.inventoryItem', 'items.inventoryItem.seat.row.sector'])->first()
         );
 
         return $this->withTokenHeader(response()->json([

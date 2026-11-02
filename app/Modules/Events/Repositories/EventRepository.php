@@ -45,11 +45,20 @@ class EventRepository
     }
 
     /**
-     * Один COUNT по группе сеансов страницы вместо загрузки инвентаря.
+     * Один агрегат сеансов события вместо загрузки инвентаря.
+     *
+     * Вешает на каждый сеанс атрибут `available_seats_count`; `EventResource`
+     * читает его ПЕРВЫМ и лишь при отсутствии падает на коллекцию инвентаря
+     * (фолбэк лениво тянет скоупнутую `InventoryItem` — на витринных путях
+     * гостя без тенант-контекста это отказ, а до фазы скоупа — N+1).
+     *
+     * Вызывается на всех витринных путях рендеринга `EventResource` с
+     * загруженными сеансами: каталог (`paginate`), карточка по id и по slug,
+     * embed-карточка. Сырые `DB::table` — скоуп не задевают.
      *
      * @param Collection<int, Event> $events
      */
-    private function hydrateAvailableSeats(Collection $events): void
+    public function hydrateAvailableSeats(Collection $events): void
     {
         $eventIds = $events->modelKeys();
 

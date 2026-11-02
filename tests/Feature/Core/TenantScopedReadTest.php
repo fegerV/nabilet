@@ -14,6 +14,7 @@ use Nabilet\Modules\Analytics\Models\AbMetric;
 use Nabilet\Modules\Analytics\Models\AbVariant;
 use Nabilet\Modules\Cart\Models\Cart;
 use Nabilet\Modules\Cart\Models\CartItem;
+use Nabilet\Modules\Inventory\Models\InventoryItem;
 use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Orders\Models\PromoCodeRedemption;
 use Nabilet\Modules\Webhooks\Models\WebhookDelivery;
@@ -661,6 +662,37 @@ final class TenantScopedReadTest extends TestCase
                 "withoutScope() обязан видеть строки {$model} всех организаций"
             );
         }
+    }
+
+    /**
+     * Скоуп `InventoryItem`: позиция склада — ребёнок сеанса; фикстура
+     * `seedSellableSeat` создаёт её с организацией владельца.
+     */
+    public function test_inventory_item_read_scope_is_native(): void
+    {
+        $orgA = $this->organization();
+        $orgB = $this->organization();
+
+        [, , , $itemA] = $this->seedSellableSeat(available: 2, organizationId: $orgA);
+        [, , , $itemB] = $this->seedSellableSeat(available: 2, organizationId: $orgB);
+
+        // Без контекста — отказ, а не «показать весь склад».
+        try {
+            InventoryItem::query()->count();
+            $this->fail('Ожидался TenantContextMissingError без контекста');
+        } catch (TenantContextMissingError $e) {
+            $this->addToAssertionCount(1);
+        }
+
+        app(OrganizationContext::class)->set((string) $orgA);
+        $this->assertSame(1, InventoryItem::query()->count(), 'чужой склад не виден');
+        $this->assertSame($itemA, InventoryItem::query()->first()->id);
+
+        $this->assertSame(
+            2,
+            app(OrganizationContext::class)->withoutScope(fn () => InventoryItem::query()->count()),
+            'withoutScope() обязан видеть склад всех организаций'
+        );
     }
 
     private function makeCart(int $organizationId): void

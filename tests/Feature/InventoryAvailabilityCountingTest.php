@@ -7,6 +7,7 @@ namespace Tests\Feature;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Inventory\Models\InventoryItem;
 use Nabilet\Modules\Inventory\Services\InventoryService;
 use Nabilet\Modules\Sessions\Models\Session;
@@ -126,9 +127,21 @@ final class InventoryAvailabilityCountingTest extends TestCase
         return $response->json('data');
     }
 
+    /**
+     * Тест-аналог системного пути: в проде склад генерируется staff-запросом
+     * `POST /sessions` (контекст есть), тесты зовут сервис напрямую в обход
+     * HTTP — generateFromSchema в bypass.
+     */
+    private function generateInventory(): int
+    {
+        return app(OrganizationContext::class)->withoutScope(
+            fn () => app(InventoryService::class)->generateFromSchema($this->version, $this->session)
+        );
+    }
+
     public function test_standing_zone_capacity_is_counted_in_tickets_not_as_one_position(): void
     {
-        $created = app(InventoryService::class)->generateFromSchema($this->version, $this->session);
+        $created = $this->generateInventory();
         self::assertSame(3, $created, '2 места + 1 стоячая зона = 3 позиции склада');
 
         $data = $this->availability();
@@ -147,12 +160,16 @@ final class InventoryAvailabilityCountingTest extends TestCase
 
     public function test_reserved_tickets_are_subtracted_from_available(): void
     {
-        app(InventoryService::class)->generateFromSchema($this->version, $this->session);
+        $this->generateInventory();
 
-        $standing = InventoryItem::query()
-            ->where('session_id', $this->session->id)
-            ->where('type', 'standing')
-            ->firstOrFail();
+        // Прямые Eloquent-манипуляции с инвентарём в тесте — аналог системного
+        // пути обслуживания склада: в bypass.
+        $standing = app(OrganizationContext::class)->withoutScope(
+            fn () => InventoryItem::query()
+                ->where('session_id', $this->session->id)
+                ->where('type', 'standing')
+                ->firstOrFail()
+        );
 
         // 3 билета разобрала корзина (именно так это делает CartItemService).
         $standing->decrement('available_quantity', 3);
@@ -167,9 +184,11 @@ final class InventoryAvailabilityCountingTest extends TestCase
 
     public function test_sold_out_is_true_only_when_no_tickets_remain(): void
     {
-        app(InventoryService::class)->generateFromSchema($this->version, $this->session);
+        $this->generateInventory();
 
-        InventoryItem::query()->where('session_id', $this->session->id)->update(['available_quantity' => 0]);
+        app(OrganizationContext::class)->withoutScope(function (): void {
+            InventoryItem::query()->where('session_id', $this->session->id)->update(['available_quantity' => 0]);
+        });
 
         $data = $this->availability();
 
@@ -182,12 +201,14 @@ final class InventoryAvailabilityCountingTest extends TestCase
 
     public function test_reserved_never_goes_negative(): void
     {
-        app(InventoryService::class)->generateFromSchema($this->version, $this->session);
+        $this->generateInventory();
 
         // Позиции помечены проданными (так делает PaymentService), но билетов
         // в базе нет — вычитание capacity - available - sold дало бы минус.
-        InventoryItem::query()->where('session_id', $this->session->id)
-            ->update(['status' => 'sold', 'available_quantity' => 0]);
+        app(OrganizationContext::class)->withoutScope(function (): void {
+            InventoryItem::query()->where('session_id', $this->session->id)
+                ->update(['status' => 'sold', 'available_quantity' => 0]);
+        });
 
         $data = $this->availability();
 

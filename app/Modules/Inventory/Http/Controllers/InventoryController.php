@@ -39,23 +39,28 @@ class InventoryController extends Controller
 
         $perPage = (int) ($validated['per_page'] ?? 50);
 
-        $query = InventoryItem::query()
-            // `seat.row.sector` нужны витрине: покупатель обязан видеть настоящий
-            // НОМЕР ряда (`hall_rows.number` = 1, 2, …) и имя сектора («Партер»),
-            // а не внутренний `row_id` (13, 14, 15) и захардкоженный «Зал».
-            ->with(['session', 'seat.row.sector', 'standingZone'])
-            ->where('session_id', $validated['session_id'])
-            ->orderBy('id');
+        // Витрина карты зала: гость работает без тенант-контекста (маршрут
+        // без auth), инвентарь сеанса — скоупнутая модель — выборка и пагинация
+        // в bypass. Дочерние `seat.row.sector` скоупа пока не имеют.
+        $items = app(OrganizationContext::class)->withoutScope(function () use ($validated, $perPage) {
+            $query = InventoryItem::query()
+                // `seat.row.sector` нужны витрине: покупатель обязан видеть настоящий
+                // НОМЕР ряда (`hall_rows.number` = 1, 2, …) и имя сектора («Партер»),
+                // а не внутренний `row_id` (13, 14, 15) и захардкоженный «Зал».
+                ->with(['session', 'seat.row.sector', 'standingZone'])
+                ->where('session_id', $validated['session_id'])
+                ->orderBy('id');
 
-        if (isset($validated['status'])) {
-            $query->where('status', $validated['status']);
-        }
+            if (isset($validated['status'])) {
+                $query->where('status', $validated['status']);
+            }
 
-        if (isset($validated['type'])) {
-            $query->where('type', $validated['type']);
-        }
+            if (isset($validated['type'])) {
+                $query->where('type', $validated['type']);
+            }
 
-        $items = $query->paginate($perPage);
+            return $query->paginate($perPage);
+        });
 
         // Покупательский контракт: к `seat` добавляем `row_number` и `sector_name`.
         // `row_id` остаётся — на нём построена группировка рядов в `SeatSelectionPage`.
@@ -170,8 +175,16 @@ class InventoryController extends Controller
         return $stageCenterY > $medianY ? 'bottom' : 'top';
     }
 
-    public function show(InventoryItem $inventoryItem): JsonResponse
+    public function show(int $inventoryItem): JsonResponse
     {
+        // Был route-binding модели (`InventoryItem $inventoryItem`): на
+        // публичном маршруте без auth скоупнутая модель отказала бы прямо в
+        // биндинге (TenantContextMissingError до входа в метод). Параметр —
+        // числовой id (`whereNumber` в маршруте), чтение — в bypass.
+        $inventoryItem = app(OrganizationContext::class)->withoutScope(
+            fn () => InventoryItem::query()->whereKey($inventoryItem)->firstOrFail()
+        );
+
         $inventoryItem->load(['session', 'seat.row.sector', 'standingZone']);
 
         if ($inventoryItem->seat !== null) {
@@ -211,15 +224,26 @@ class InventoryController extends Controller
      */
     public function availability(int $sessionId): JsonResponse
     {
-        $positions = [
-            'available' => InventoryItem::query()->where('session_id', $sessionId)->where('status', InventoryItemStateMachine::AVAILABLE)->count(),
-            'held' => InventoryItem::query()->where('session_id', $sessionId)->where('status', InventoryItemStateMachine::HELD)->count(),
-            'sold' => InventoryItem::query()->where('session_id', $sessionId)->where('status', InventoryItemStateMachine::SOLD)->count(),
-        ];
-        $positions['total'] = $positions['available'] + $positions['held'] + $positions['sold'];
+        // Витрина билборда: гость без контекста, счётчики позиций — в bypass
+        // (со счётчиком sold-билетов ниже уже так с шага Ticket).
+        $availability = app(OrganizationContext::class)->withoutScope(function () use ($sessionId): array {
+            $positions = [
+                'available' => InventoryItem::query()->where('session_id', $sessionId)->where('status', InventoryItemStateMachine::AVAILABLE)->count(),
+                'held' => InventoryItem::query()->where('session_id', $sessionId)->where('status', InventoryItemStateMachine::HELD)->count(),
+                'sold' => InventoryItem::query()->where('session_id', $sessionId)->where('status', InventoryItemStateMachine::SOLD)->count(),
+            ];
+            $positions['total'] = $positions['available'] + $positions['held'] + $positions['sold'];
 
-        $capacity = (int) InventoryItem::query()->where('session_id', $sessionId)->sum('capacity');
-        $availableTickets = (int) InventoryItem::query()->where('session_id', $sessionId)->sum('available_quantity');
+            return [
+                'positions' => $positions,
+                'capacity' => (int) InventoryItem::query()->where('session_id', $sessionId)->sum('capacity'),
+                'available_tickets' => (int) InventoryItem::query()->where('session_id', $sessionId)->sum('available_quantity'),
+            ];
+        });
+
+        $positions = $availability['positions'];
+        $capacity = $availability['capacity'];
+        $availableTickets = $availability['available_tickets'];
         // Публичная витрина доступности: арендатор определяется СЕАНСОМ
         // (`sessions` → событие → организация), а не HTTP-контекстом, которого у
         // гостя нет. С включённым скоупом `Ticket` счётчик обязан читаться в

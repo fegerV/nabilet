@@ -49,6 +49,32 @@ class InventoryItem extends Model
         'metadata_json' => 'array',
     ];
 
+    /**
+     * Глобальный читающий скоуп (восемнадцатая модель после Order, Payment,
+     * Ticket, Refund, TicketScan, CheckinDevice, OfflineBundle,
+     * PaymentTransaction, OrderItem, SeatHold, CartItem, Cart,
+     * PromoCodeRedemption, WebhookDelivery, AbAssignment, AbVariant и
+     * AbMetric).
+     *
+     * Запись защищена трейтом (организация выводится из сеанса через
+     * TenantResolver: `inventory_items` → `sessions`; фаза 3 сделала колонку
+     * NOT NULL). Витринная карта зала по своей природе публична: гость читает
+     * инвентарь сеанса по `session_id` без тенант-контекста (у white-label
+     * витрин контекст ставится по Host, но у витрины на общем домене его
+     * нет), поэтому публичные пути — витрина сеанса, embed-карта, позиции
+     * `GET /inventory` и билборд `availability`, добавление позиции в корзину
+     * — в bypass. Скоуп остаётся fail-closed ограждением для будущих читателей
+     * и сужает выборку staff-путям, где контекст есть и совпадает с
+     * организацией: `updateRowPrices`, пересчёт `seatsInUse`, отчёты.
+     * Системные пути (списание при чекауте, `markInventorySoldForOrder`,
+     * освобождения при отмене/sweeper) либо raw `DB::table`, либо уже в
+     * bypass с шагов Order/Cart.
+     */
+    protected static function tenantScopeEnabled(): bool
+    {
+        return true;
+    }
+
     protected static function boot(): void
     {
         parent::boot();

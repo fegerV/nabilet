@@ -7,6 +7,7 @@ namespace Tests\Feature;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Inventory\Services\InventoryService;
 use Nabilet\Modules\Sessions\Models\Session;
 use Nabilet\Modules\Venues\Models\Hall;
@@ -203,7 +204,7 @@ final class HallTableGeometryTest extends TestCase
     {
         self::assertSame(0, HallTable::query()->count());
 
-        $created = app(InventoryService::class)->generateFromSchema($this->version, $this->makeSession());
+        $created = $this->generateInventory($this->makeSession());
 
         // Продаются места за столами: 8 + 6 = 14 позиций.
         self::assertSame(14, $created);
@@ -226,16 +227,27 @@ final class HallTableGeometryTest extends TestCase
 
     public function test_regeneration_replaces_tables_without_duplicating(): void
     {
-        $service = app(InventoryService::class);
         $session = $this->makeSession();
 
-        $service->generateFromSchema($this->version, $session);
+        $this->generateInventory($session);
         self::assertSame(2, HallTable::query()->count());
 
-        $service->generateFromSchema($this->version, $session);
+        $this->generateInventory($session);
 
         // Сектора пересоздаются, а hall_tables висит на них через
         // ON DELETE CASCADE — старые строки обязаны исчезнуть вместе с ними.
         self::assertSame(2, HallTable::query()->count(), 'Повторная генерация не должна удваивать столы');
+    }
+
+    /**
+     * Тест-аналог системного пути: в проде склад генерируется staff-запросом
+     * `POST /sessions` (контекст выставлен мидлварью), тест зовёт сервис
+     * напрямую в обход HTTP — `generateFromSchema` в bypass.
+     */
+    private function generateInventory(Session $session): int
+    {
+        return app(OrganizationContext::class)->withoutScope(
+            fn () => app(InventoryService::class)->generateFromSchema($this->version, $session)
+        );
     }
 }

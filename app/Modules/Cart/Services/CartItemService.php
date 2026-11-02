@@ -124,11 +124,16 @@ final class CartItemService
                 throw ConflictError::seatUnavailable((string) $inventoryItemId);
             }
 
-            // Verify the inventory item still exists and get its price
-            $inventoryItem = InventoryItem::query()
-                ->where('id', $inventoryItemId)
-                ->lockForUpdate()
-                ->firstOrFail();
+            // Позиция склада — ребёнок сеанса корзины (организация уже решена
+            // фильтрами сеанса/корзины выше): гость без контекста, читаем в
+            // bypass. Атомарный decrement выше — raw `DB::table`, скоуп не
+            // задевает.
+            $inventoryItem = app(OrganizationContext::class)->withoutScope(
+                fn () => InventoryItem::query()
+                    ->where('id', $inventoryItemId)
+                    ->lockForUpdate()
+                    ->firstOrFail()
+            );
 
             // A4: РјРµСЃС‚Рѕ РѕР±СЏР·Р°РЅРѕ РїСЂРёРЅР°РґР»РµР¶Р°С‚СЊ СЃРµР°РЅСЃСѓ РєРѕСЂР·РёРЅС‹. Р‘РµР· РїСЂРѕРІРµСЂРєРё РєР»РёРµРЅС‚
             // РјРѕРі РїРѕР»РѕР¶РёС‚СЊ РІ РєРѕСЂР·РёРЅСѓ СЃРµР°РЅСЃР° S РјРµСЃС‚Рѕ СЃРµР°РЅСЃР° Z вЂ” С…РѕР»Рґ Р·Р°РїРёСЃС‹РІР°Р»СЃСЏ
@@ -267,9 +272,14 @@ final class CartItemService
             $cartItem->delete();
 
             // Р’РµСЂРЅСѓС‚СЊ РјРµСЃС‚Рѕ РІ РїСЂРѕРґР°Р¶Сѓ: С…РѕР»Рґ вЂ” РѕР±СЂР°С‚РёРјР°СЏ РѕРїРµСЂР°С†РёСЏ.
-            $inventoryItem = InventoryItem::query()
-                ->where('id', $cartItem->inventory_item_id)
-                ->first();
+            // Позиция склада — ребёнок корзины/сеанса (гость без контекста),
+            // возврат читает её в bypass; статусы выше/decrement — записи,
+            // защищённые трейтом.
+            $inventoryItem = app(OrganizationContext::class)->withoutScope(
+                fn () => InventoryItem::query()
+                    ->where('id', $cartItem->inventory_item_id)
+                    ->first()
+            );
 
             if ($inventoryItem) {
                 // A5: РІРѕР·РІСЂР°С‰Р°РµРј СЂРѕРІРЅРѕ СЃС‚РѕР»СЊРєРѕ РјРµСЃС‚, СЃРєРѕР»СЊРєРѕ Р±С‹Р»Рѕ РІ РїРѕР·РёС†РёРё. Р Р°РЅСЊС€Рµ

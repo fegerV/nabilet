@@ -10,6 +10,7 @@ use Nabilet\Modules\HallSchemas\Domain\SchemaVersionState;
 use Nabilet\Modules\Sessions\Models\Session;
 use Nabilet\Modules\Sessions\StateMachines\SessionStateMachine;
 use Illuminate\Validation\Rule;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Inventory\Services\InventoryService;
 use Nabilet\Modules\Venues\Models\Hall;
 use Nabilet\Modules\Venues\Models\HallSchemaVersion;
@@ -62,8 +63,14 @@ class SessionController extends Controller
         // `venue` в списке связей, а не только `hall`: администратор выбирает
         // площадку, и в списке сеансов должно быть видно, ЧЬИ это залы. Иначе
         // «Большой зал» у двух площадок неотличим.
-        $session->load(['event', 'hall', 'venue', 'schemaVersion', 'inventoryItems']);
-        
+        //
+        // Карту сеанса показывает и витрина (маршрут без auth): гость работает
+        // без тенант-контекста, а `inventoryItems` — скоупнутая модель, поэтому
+        // вся load-цепочка — в bypass.
+        app(OrganizationContext::class)->withoutScope(fn () => $session->load(
+            ['event', 'hall', 'venue', 'schemaVersion', 'inventoryItems']
+        ));
+
         return response()->json(['data' => $session]);
     }
 
