@@ -44,9 +44,13 @@ use Nabilet\Modules\Core\Models\Concerns\HasPublicId;
  * «когда менялся документ» для sitemap и JSON-LD `dateModified` идёт через
  * `updated_at` обычным способом.
  *
- * ИСПОЛЬЗУЕТСЯ ТОЛЬКО `Page`. `page_translations` в схеме НЕТ (полиглот не
- * предусмотрен v1), `seo_meta` — полиморфная (entity_type/entity_id) и
- * используется внешне, поэтому own-relation отсюда не нужна.
+ * ИСПОЛЬЗУЕТСЯ ТОЛЬКО `Page`. Связи отсюда не описаны: `page_translations`
+ * в схеме есть (см. `nabilet_core_spec/migrations/002_content.sql`: `slug`,
+ * `seo_title`/`seo_description`, `uq_page_translations (page_id, locale)`)
+ * и читается контроллером переводов (`PageTranslationController`), но
+ * перевод не завязан на жизненный цикл документа; `seo_meta` — полиморфная
+ * (entity_type/entity_id) и используется внешне, поэтому own-relation
+ * отсюда не нужна.
  *
  * @property int $id
  * @property string $public_id

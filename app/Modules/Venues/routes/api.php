@@ -23,4 +23,12 @@ Route::prefix('venues')->group(function () {
     Route::get('/{venue}', [VenueController::class, 'show']);
     Route::patch('/{venue}', [VenueController::class, 'update'])->middleware(['auth:api', 'admin']);
     Route::delete('/{venue}', [VenueController::class, 'destroy'])->middleware(['auth:api', 'admin']);
+
+    // Переводы площадки (контракт openapi.yaml:2384-2424, тег Translations).
+    // Список — витринный (без auth, как /{venue}); запись — под админкой
+    // организации: binding `Venue` скоупнутой модели отсекает чужую площадку
+    // 404'ом ещё до контроллера.
+    Route::get('/{venue}/translations', [VenueController::class, 'translations']);
+    Route::put('/{venue}/translations/{locale}', [VenueController::class, 'updateTranslation'])
+        ->middleware(['auth:api', 'admin']);
 });

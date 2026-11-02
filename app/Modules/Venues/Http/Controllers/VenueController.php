@@ -13,6 +13,7 @@ use Nabilet\Core\Support\PublicationStatus;
 use Nabilet\Core\Support\UserOrganization;
 use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Venues\Models\Venue;
+use Nabilet\Modules\Venues\Models\VenueTranslation;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -206,5 +207,114 @@ class VenueController extends Controller
         $venue->delete();
 
         return response()->json(['success' => true, 'message' => 'Venue deleted successfully']);
+    }
+
+    /**
+     * GET /api/v1/venues/{venue}/translations — публичный список переводов
+     * площадки (контракт openapi.yaml:2384, тег Translations).
+     *
+     * То же решение, что в `show()`: витринный путь без auth — у гостя
+     * контекста нет, поэтому и адрес площадки (lookup по unguessable
+     * `public_id`), и читающий скоуп переводов (двадцать седьмая модель)
+     * исполняются в bypass. Чужой/несуществующий public_id — 404 без
+     * различий (нельзя перебором узнать, какие площадки существуют).
+     *
+     * Статус площадки НЕ фильтруется — ровно как в `show()`: у `venues`
+     * витринный показ не привязан к `status`, и список переводов не может
+     * быть строже страницы самой площадки.
+     */
+    public function translations(string $venue): JsonResponse
+    {
+        $context = app(OrganizationContext::class);
+
+        /** @var Venue|null $model */
+        $model = $context->withoutScope(
+            fn (): ?Venue => Venue::query()->where('public_id', $venue)->first()
+        );
+
+        if ($model === null) {
+            throw new NotFoundError('Venue', $venue);
+        }
+
+        $rows = $context->withoutScope(
+            fn () => $model->venueTranslations()->orderBy('locale')->get()
+        );
+
+        return response()->json(['data' => $rows]);
+    }
+
+    /**
+     * PUT /api/v1/venues/{venue}/translations/{locale} — создать или заменить
+     * перевод площадки (контракт openapi.yaml:2399): «upsert» на паре
+     * `uq_venue_translations (venue_id, locale)`.
+     *
+     * ВЛАДЕЛЕЦ РЕШАЕТСЯ BINDING'ОМ. Маршрут под `auth:api` + `admin`, а
+     * `Venue` — скоупнутая модель (тридцать девятая): binding по `public_id`
+     * отфильтровывает чужую площадку ещё до контроллера, и она неотличима от
+     * несуществующей (404). `organization_id` строки перевода при создании
+     * заполняет трейт `TenantScoped` из родителя (TenantResolver-карта
+     * `venue_translations → venue_id → venues`), контекст запроса совпадает
+     * с площадкой по построению.
+     *
+     * $locale нормализуется в нижний регистр: MySQL сравнивает VARCHAR в
+     * `*_ci` collation без учёта регистра, поэтому «RU» и «ru» заняли бы
+     * одно место в `uq_venue_translations`, оставаясь двумя разными ключами
+     * для клиента. Один канонический регистр снимает расщепление.
+     *
+     * @return JsonResponse 200 — запись есть после вызова (создана или заменена)
+     */
+    public function updateTranslation(Request $request, Venue $venue, string $locale): JsonResponse
+    {
+        $locale = $this->normalizeLocale($locale);
+
+        $data = $request->validate([
+            // Max lengths follow the columns: name VARCHAR(255) (nullable в
+            // схеме — строка без названия не запрещена), address VARCHAR(500),
+            // seo_title VARCHAR(500), seo_description VARCHAR(1000),
+            // description TEXT.
+            'name' => ['nullable', 'string', 'max:255'],
+            'description' => ['nullable', 'string'],
+            'address' => ['nullable', 'string', 'max:500'],
+            'seo_title' => ['nullable', 'string', 'max:500'],
+            'seo_description' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        // Replace, а не patch: «Create or replace» в контракте означает, что PUT
+        // фиксирует ПОЛНЫЙ образ перевода — поле, не присланное в запросе,
+        // стирается (nullable-колонка), а не остаётся со старым значением.
+        // Иначе два PUT с разными наборами полей давали бы слияние, которое
+        // невозможно перезаписать.
+        $data = array_merge(['name' => null, 'description' => null, 'address' => null, 'seo_title' => null, 'seo_description' => null], $data);
+
+        $attributes = ['venue_id' => $venue->id, 'locale' => $locale];
+
+        // гонку двух PUT на одну пару (venue, locale) разруливает сам фреймворк:
+        // `updateOrCreate` идёт через `firstOrCreate` → `createOrFirst`, который
+        // ловит нарушение `uq_venue_translations` (с savepoint'ом) и возвращает
+        // строку первого писателя.
+        $translation = VenueTranslation::query()->updateOrCreate($attributes, $data);
+
+        return response()->json(['data' => $translation]);
+    }
+
+    /**
+     * Канонический ключ перевода: нижний регистр, `2-3` буквы языка и до
+     * двух уточнений через дефис (`ru`, `en`, `pt-br`, `zh-hans-cn` длина до
+     * 10 — граница колонки VARCHAR(10)). Подчёркивание отвергается: `ru_RU`
+     * и `ru-RU` — одно и то же, пусть клиент присылает дефис.
+     *
+     * @return string нормализованный locale
+     */
+    private function normalizeLocale(string $locale): string
+    {
+        $normalized = strtolower(trim($locale));
+
+        if (preg_match('/^[a-z]{2,3}(?:-[a-z0-9]{2,8}){0,2}$/', $normalized) !== 1) {
+            throw new ValidationError([
+                'locale' => ['The locale must be a language tag like "ru", "en" or "pt-br".'],
+            ]);
+        }
+
+        return $normalized;
     }
 }

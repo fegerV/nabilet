@@ -113,6 +113,11 @@ $moduleRoutes = [
     // Бэкапы: ручное скачивание локальных копий (админка) — `/admin/backups`.
     // Локальные копии появляются при запуске `backup:run --keep-local`.
     __DIR__ . '/../app/Modules/Backups/routes/api.php',
+    // Переводы редакционных страниц CMS (контракт: /api/v1/pages/{page}/
+    // translations — публичный список и upsert под админкой, openapi.yaml:2426).
+    // До этого файла пути контракта отвечали 404, а колонка
+    // `page_translations.slug` не имела ни писателя, ни читателя.
+    __DIR__ . '/../app/Modules/Content/routes/api.php',
 ];
 
 foreach ($moduleRoutes as $routeFile) {
