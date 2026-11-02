@@ -77,8 +77,12 @@ final class EmbedTokenIssuer
 
         $token = self::generateToken();
 
+        // `organization_id` больше не в `$fillable` (скоуп `ApiKey` — сорок
+        // первая модель): владелец ключа — организация staff-контекста,
+        // трейт наполнит её при вставке. Аргумент ниже оставлен только для
+        // политики выпуска; запрос «на чужую организацию» молча вернётся
+        // ключом своей — живая изоляция, как у остальных admin-store.
         $key = ApiKey::query()->create([
-            'organization_id' => $organizationId,
             'name' => $name,
             'key_prefix' => self::displayPrefix($token),
             'key_hash' => Sha256Hex::of($token),

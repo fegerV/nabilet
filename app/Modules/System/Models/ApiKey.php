@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Nabilet\Modules\Core\Models\Concerns\HasPublicId;
 use Nabilet\Modules\Core\Organizations\Models\Organization;
+use Nabilet\Modules\Core\Tenancy\TenantScoped;
 use Nabilet\Modules\Security\Domain\ApiKey as DomainApiKey;
 
 /**
@@ -35,9 +36,39 @@ use Nabilet\Modules\Security\Domain\ApiKey as DomainApiKey;
  */
 class ApiKey extends Model
 {
+    use TenantScoped;
+
     use HasPublicId;
 
     protected $table = 'api_keys';
+
+    /**
+     * Глобальный читающий скоуп (сорок первая модель, после `Event`). Embed-ключ
+     * — креденшл, от имени которого виджет продаёт билеты организатора, поэтому
+     * чтение — строго по владельцу; запись защищена трейтом. Таблица хранит
+     * собственный `organization_id`, который в схеме NULLABLE, но NULL-строки
+     * производить нельзя и никто не производит: выпуск требует организацию
+     * (`ApiKeyPolicy::issueDecision` + `required` на границе), а bootstrap-гейт
+     * `EmbedAccessService` fail-closed отклоняет org-меньшие ключи — скоуп
+     * NULL-строку не встретит, семантика «общая строка» не вводится.
+     *
+     * Bootstrap: ключ аутентифицирует виджет ДО контекста, организация
+     * ВЫВОДИТСЯ из ключа — lookup по `key_hash` (unguessable 64-hex, перебор
+     * неотличим от случайного шума) в bypass `EmbedAccessService`. Админские
+     * список и выпуск остаются под контекстом — живая изоляция: список видит
+     * только свои ключи (параметр `?organization_id=` больше не открывает
+     * кросс-чтение), владелец нового ключа наполняется из staff-контекста,
+     * поэтому `organization_id` выведен из `$fillable`. Отзыв адресуется
+     * `IdentifierLookup` (bypass по design) — живой изоляции там нет, отдельный
+     * аудит.
+     *
+     * `UPDATED_AT = null` сохранён: у таблицы есть `created_at` и нет
+     * `updated_at`.
+     */
+    protected static function tenantScopeEnabled(): bool
+    {
+        return true;
+    }
 
     /**
      * `api_keys` has `created_at` and no `updated_at` column.
@@ -50,7 +81,6 @@ class ApiKey extends Model
 
     protected $fillable = [
         'public_id',
-        'organization_id',
         'name',
         'key_prefix',
         'key_hash',

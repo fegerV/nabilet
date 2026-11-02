@@ -46,6 +46,9 @@ final class EmbedDomainController extends Controller
     {
         $perPage = Paging::limit((int) $request->query('per_page', '50'), 50, 100);
 
+        // Скоуп фильтрует список владельцем — параметр `?organization_id=`
+        // остался для совместимости и сужает уже свой список (кросс-чтение
+        // закрыто, как и в списке ключей).
         $domains = EmbedDomain::query()
             ->when($request->query('organization_id'), fn ($q, $id) => $q->where('organization_id', $id))
             ->orderBy('domain')
@@ -84,14 +87,18 @@ final class EmbedDomainController extends Controller
             );
         }
 
-        // Гонка на уникальном индексе `uq_embed_domains_org_domain` разрешается
-        // `createOrFirst()`, а не «проверить и вставить»: между проверкой и
-        // вставкой второй запрос успевает вставить ту же строку, и тогда
-        // вылетает 1062 вместо ответа. `wasRecentlyCreated` отвечает на вопрос
-        // «это вставил я», поэтому дубль виден как 409, а не как успех.
+        // `organization_id` больше не масс-присваивается (скоуп `EmbedDomain` —
+        // сорок вторая модель): владелец — организация staff-контекста, трейт
+        // наполнит её и при create, и при дубле после гонки на индексе.
+        // Required-валидация выше сохранена — проверка формы запроса прежняя,
+        // значение просто перестало решать, ЧЬЯ это строка. Гонка на
+        // `uq_embed_domains_org_domain` разрешается `createOrFirst()`, а не
+        // «проверить и вставить»: между проверкой и вставкой второй запрос
+        // успевает вставить ту же строку, и тогда вылетает 1062 вместо ответа.
+        // `wasRecentlyCreated` отвечает на вопрос «это вставил я», поэтому
+        // дубль виден как 409, а не как успех.
         $row = EmbedDomain::query()->createOrFirst(
             [
-                'organization_id' => (int) $validated['organization_id'],
                 'domain' => $domain,
             ],
             ['active' => (bool) ($validated['active'] ?? true)],

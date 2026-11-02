@@ -12,6 +12,7 @@ use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Analytics\Models\AbAssignment;
 use Nabilet\Modules\Analytics\Models\AbMetric;
 use Nabilet\Modules\Analytics\Models\AbVariant;
+use Nabilet\Modules\Analytics\Models\EmbedDomain;
 use Nabilet\Modules\Cart\Models\Cart;
 use Nabilet\Modules\Cart\Models\CartItem;
 use Nabilet\Modules\Inventory\Models\InventoryItem;
@@ -48,6 +49,7 @@ use Nabilet\Modules\Tickets\Models\CheckinDevice;
 use Nabilet\Modules\Tickets\Models\OfflineBundle;
 use Nabilet\Modules\Tickets\Models\Ticket;
 use Nabilet\Modules\Tickets\Models\TicketScan;
+use Nabilet\Modules\System\Models\ApiKey;
 use Nabilet\Tests\Support\SellableSeatFixtures;
 use Tests\TestCase;
 
@@ -999,6 +1001,70 @@ final class TenantScopedReadTest extends TestCase
     }
 
     /**
+     * Скоуп embed-ключа (`ApiKey`): bootstrap-lookup по `key_hash` — bypass в
+     * `EmbedAccessService` (организация выводится ИЗ ключа), админские список
+     * и выпуск — под фильтром. Тест фиксирует fail-closed: без контекста
+     * отказ, с контекстом фильтр, в bypass видны все.
+     */
+    public function test_api_key_read_scope_is_native(): void
+    {
+        $orgA = $this->organization();
+        $orgB = $this->organization();
+
+        $this->makeApiKeyRow($orgA);
+        $this->makeApiKeyRow($orgB);
+
+        try {
+            ApiKey::query()->count();
+            $this->fail('Ожидался TenantContextMissingError без контекста для ApiKey');
+        } catch (TenantContextMissingError $e) {
+            $this->addToAssertionCount(1);
+        }
+
+        app(OrganizationContext::class)->set((string) $orgA);
+
+        $this->assertSame(1, ApiKey::query()->count(), 'чужие строки ApiKey не видны');
+
+        $this->assertSame(
+            2,
+            app(OrganizationContext::class)->withoutScope(fn () => ApiKey::query()->count()),
+            'withoutScope() обязан видеть строки ApiKey всех организаций'
+        );
+    }
+
+    /**
+     * Скоуп домена whitelist (`EmbedDomain`): Origin-проверка виджета — bypass
+     * в `EmbedAccessService` (гость без контекста, владелец выведен из ключа),
+     * админский whitelist — под фильтром. Тест фиксирует fail-closed: без
+     * контекста отказ, с контекстом фильтр, в bypass видны все.
+     */
+    public function test_embed_domain_read_scope_is_native(): void
+    {
+        $orgA = $this->organization();
+        $orgB = $this->organization();
+
+        $this->makeEmbedDomainRow($orgA);
+        $this->makeEmbedDomainRow($orgB);
+
+        try {
+            EmbedDomain::query()->count();
+            $this->fail('Ожидался TenantContextMissingError без контекста для EmbedDomain');
+        } catch (TenantContextMissingError $e) {
+            $this->addToAssertionCount(1);
+        }
+
+        app(OrganizationContext::class)->set((string) $orgA);
+
+        $this->assertSame(1, EmbedDomain::query()->count(), 'чужие строки EmbedDomain не видны');
+
+        $this->assertSame(
+            2,
+            app(OrganizationContext::class)->withoutScope(fn () => EmbedDomain::query()->count()),
+            'withoutScope() обязан видеть строки EmbedDomain всех организаций'
+        );
+    }
+
+    /**
      * Сырая вставка события: NOT NULL колонки — public_id/organization_id/
      * title/slug (+ timestamps); статус берёт дефолт миграции (draft).
      */
@@ -1011,6 +1077,39 @@ final class TenantScopedReadTest extends TestCase
             'organization_id' => $organizationId,
             'title' => 'Событие ' . Str::random(5),
             'slug' => 'event-' . Str::random(10),
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+    }
+
+    /**
+     * Сырая вставка embed-ключа: NOT NULL колонки — public_id/organization_id/
+     * name/key_prefix/key_hash/created_at; у таблицы нет `updated_at`
+     * (UPDATED_AT = null на модели); остальные значения — дефолты миграций.
+     */
+    private function makeApiKeyRow(int $organizationId): void
+    {
+        DB::table('api_keys')->insert([
+            'public_id' => (string) Str::ulid()->toBase32(),
+            'organization_id' => $organizationId,
+            'name' => 'Embed ' . Str::random(4),
+            'key_prefix' => 'nbem_' . Str::random(8),
+            'key_hash' => hash('sha256', Str::random(64)),
+            'created_at' => now(),
+        ]);
+    }
+
+    /**
+     * Сырая вставка домена whitelist: NOT NULL колонки — organization_id/domain/
+     * (+ timestamps); `active` берёт дефолт миграции (1).
+     */
+    private function makeEmbedDomainRow(int $organizationId): void
+    {
+        $now = now()->toDateTimeString();
+
+        DB::table('embed_domains')->insert([
+            'organization_id' => $organizationId,
+            'domain' => 'partner-' . Str::random(6) . '.example',
             'created_at' => $now,
             'updated_at' => $now,
         ]);

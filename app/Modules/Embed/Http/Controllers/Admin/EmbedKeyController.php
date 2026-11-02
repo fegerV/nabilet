@@ -48,7 +48,9 @@ final class EmbedKeyController extends Controller
         $perPage = Paging::limit((int) $request->query('per_page', '50'), 50, 100);
 
         // `key_hash` скрыт на модели (`$hidden`), поэтому `toArray()` его не
-        // отдаст даже здесь: секрет не должен уезжать в ответ списка.
+        // отдаст даже здесь: секрет не должен уезжать в ответ списка. Скоуп
+        // фильтрует список владельцем — параметр `?organization_id=` остался
+        // для совместимости и сужает уже свой список (кросс-чтение закрыто).
         $keys = ApiKey::query()
             ->when($request->query('organization_id'), fn ($q, $id) => $q->where('organization_id', $id))
             ->orderByDesc('id')

@@ -99,9 +99,16 @@ final class EmbedAccessService
             );
         }
 
-        $key = ApiKey::query()
-            ->where('key_hash', Sha256Hex::of($token))
-            ->first();
+        // Bootstrap-lookup: ключ аутентифицирует вызов ДО контекста, организация
+        // выводится ИЗ ключа (сорок первая модель со скоупом), поэтому запрос —
+        // в bypass. Хеш секретен и unguessable, перебор неотличим от случайного
+        // шума — ломать здесь больше нечего, чем уже защищено самим токеном.
+        /** @var ApiKey|null $key */
+        $key = app(OrganizationContext::class)->withoutScope(
+            fn (): ?ApiKey => ApiKey::query()
+                ->where('key_hash', Sha256Hex::of($token))
+                ->first()
+        );
 
         if ($key === null) {
             throw new AuthError(
@@ -173,11 +180,18 @@ final class EmbedAccessService
             );
         }
 
-        $domains = EmbedDomain::query()
-            ->where('organization_id', $organizationId)
-            ->where('active', true)
-            ->pluck('domain')
-            ->all();
+        // Витрина виджета гостевая (контекста нет), организация уже выведена
+        // из embed-ключа: whitelist доменов (сорок вторая модель со скоупом)
+        // читается в bypass по явному владельцу — фильтр ниже тот же, снят
+        // только контекст.
+        /** @var list<string> $domains */
+        $domains = app(OrganizationContext::class)->withoutScope(
+            fn (): array => EmbedDomain::query()
+                ->where('organization_id', $organizationId)
+                ->where('active', true)
+                ->pluck('domain')
+                ->all()
+        );
 
         if ($domains === []) {
             throw new AuthError(
