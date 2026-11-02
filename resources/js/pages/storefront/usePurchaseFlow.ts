@@ -43,6 +43,7 @@ import { applyBonuses } from '@/lib/loyalty'
 import { clearRememberedReferralCode, rememberedReferralCode } from '@/lib/referral'
 import { money, plural } from '@/lib/format'
 import { phoneError } from '@/lib/phone'
+import { postEmbedEvent } from '@/lib/embed-bridge'
 import { trackEvent } from '@/lib/metrika'
 
 /** Где покупатель находится внутри виджета. */
@@ -393,6 +394,14 @@ export function usePurchaseFlow(options: UsePurchaseFlowOptions) {
       // 2. Итог — из ответа сервера, он источник правды о цене.
       cart.setOrder(order.order_id, Number(order.total_amount))
 
+      // Родительская страница узнаёт о заказе: хозяин сайта снимает виджет,
+      // показывает свой блок «заказ N на сумму …» (ТЗ §48–51 — мост виджета).
+      postEmbedEvent('order', {
+        order_id: String(order.order_id),
+        total_minor: Number(order.total_amount),
+        tickets: cart.count,
+      })
+
       if (referralCode.value) clearRememberedReferralCode()
 
       void trackEvent('payment_attempt', {
@@ -410,6 +419,8 @@ export function usePurchaseFlow(options: UsePurchaseFlowOptions) {
           email: email.value.trim(),
         }
         step.value = 'done'
+        // Платёж не начался (ссылки нет), но он Возможен из «Моих билетов».
+        postEmbedEvent('payment', { order_id: String(order.order_id), status: 'pending' })
         ui.notify('sun', 'Нет ссылки на оплату', 'Заказ создан. Оплатить его можно из «Моих билетов».')
         return
       }
@@ -427,10 +438,15 @@ export function usePurchaseFlow(options: UsePurchaseFlowOptions) {
         }
         step.value = 'done'
         cart.release()
+        // Демо-оплата закрыта прямо в рамке — родителю можно снимать виджет.
+        postEmbedEvent('payment', { order_id: String(order.order_id), status: 'completed' })
         ui.notify('mint', 'Оплата прошла', 'Билеты выпущены и отправлены на вашу почту.')
         return
       }
 
+      // Покупатель уходит на страницу провайдера: для виджета это выход из
+      // рамки — родитель должен знать, что рамка сейчас опустеет.
+      postEmbedEvent('payment', { order_id: String(order.order_id), status: 'redirect' })
       window.location.href = anchorDemoUrl(confirmation_url) ?? confirmation_url
     } catch (error) {
       handlePayError(error)

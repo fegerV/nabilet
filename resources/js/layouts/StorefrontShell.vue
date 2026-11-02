@@ -10,13 +10,14 @@
  * Логотип, имя, меню, подвал и видимость поиска/корзины берутся из конфига
  * витрины: площадка настраивает брендинг в админке, а не в коде.
  */
-import { computed, ref, watch } from 'vue'
+import { computed, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUiStore } from '@/stores/ui'
 import { useCartStore } from '@/stores/cart'
 import { useStorefrontStore } from '@/stores/storefront'
 import { customerUser, isCustomerSession } from '@/lib/customer'
 import { useLoyaltyStore } from '@/stores/loyalty'
+import { installEmbedHeightReporter, isInsideIframe, postEmbedEvent } from '@/lib/embed-bridge'
 
 const ui = useUiStore()
 const cart = useCartStore()
@@ -93,6 +94,33 @@ watch(
   },
   { immediate: true },
 )
+
+/*
+ * Мост embed-виджета (ТЗ §48–51). Внутри чужого <iframe> родительская страница
+ * должна узнавать о корзине (счётчик «в корзине N билетов» у хозяина сайта) и
+ * подгонять высоту рамки. На обычной витрине (`window === parent`) код моста
+ * исполнится впустую: ни одного postMessage не уйдёт.
+ */
+const cartStore = useCartStore()
+let stopCartMirror: (() => void) | null = null
+let stopHeightReporter: (() => void) | null = null
+
+if (isInsideIframe()) {
+  stopCartMirror = watch(
+    () => [cartStore.count, cartStore.totalMinor] as const,
+    ([count, totalMinor]) => {
+      postEmbedEvent('cart', { count, total_minor: totalMinor })
+    },
+    { immediate: true },
+  )
+
+  stopHeightReporter = installEmbedHeightReporter()
+
+  onUnmounted(() => {
+    stopCartMirror?.()
+    stopHeightReporter?.()
+  })
+}
 </script>
 
 <template>
