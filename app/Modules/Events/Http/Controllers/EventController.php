@@ -141,8 +141,12 @@ class EventController extends Controller
                 // eager-набор грузим в bypass (остальные связи набора
                 // не-скоупнуты — bypass на них безвреден). lookup по slug
                 // решает адрес: читается контент выбранного события.
+                // `sessions.hall` на `sessions.venue` добавлен не для симметрии:
+                // EventResource берёт площадку из гидрированных сеансов, и ленивый
+                // запрос на скоупнутой Venue (тридцать девятая) за пределами bypass
+                // ронял бы публичную карточку по slug 500-й.
                 app(OrganizationContext::class)->withoutScope(
-                    fn () => $event->load(['category', 'translations', 'sessions.hall', 'organization', 'galleryLinks.mediaAsset', 'artists'])
+                    fn () => $event->load(['category', 'translations', 'sessions.hall', 'sessions.venue', 'organization', 'galleryLinks.mediaAsset', 'artists'])
                 );
 
                 // «от N ₽» на карточке: минимум по предстоящим сеансам. Без

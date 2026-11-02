@@ -106,10 +106,16 @@ class CatalogService
      */
     public function venueBySlug(string $slug): ?Venue
     {
-        return Venue::query()
-            ->where('slug', $slug)
-            ->where('status', PublicationStatus::ACTIVE)
-            ->first();
+        // Витринный lookup лендинга (гость без контекста): площадка — скоупнутая
+        // модель (тридцать девятая) — чтение в bypass. Адрес решает slug
+        // лендинга; карты с одинаковым slug производят неоднозначность `first()`
+        // (см. аудит P-03 ниже) — она не зависит от скоупа.
+        return app(OrganizationContext::class)->withoutScope(
+            fn (): ?Venue => Venue::query()
+                ->where('slug', $slug)
+                ->where('status', PublicationStatus::ACTIVE)
+                ->first()
+        );
     }
 
     /**

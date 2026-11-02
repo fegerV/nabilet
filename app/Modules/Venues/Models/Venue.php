@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Nabilet\Modules\Venues\Models;
 
 use Nabilet\Modules\Core\Models\Concerns\HasPublicId;
+use Nabilet\Modules\Core\Tenancy\TenantScoped;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -16,15 +17,36 @@ use Nabilet\Modules\Sessions\Models\Session;
  */
 class Venue extends Model
 {
+    use TenantScoped;
+
     use HasPublicId;
 
     protected $table = 'venues';
 
     public $timestamps = true;
 
+    /**
+     * Глобальный читающий скоуп (тридцать девятая модель после Order,
+     * Payment, Ticket, Refund, TicketScan, CheckinDevice, OfflineBundle,
+     * PaymentTransaction, OrderItem, SeatHold, CartItem, Cart,
+     * PromoCodeRedemption, WebhookDelivery, кластеров аб-тестов, лояльности,
+     * переводов, схемы зала, Session, PromoCode и Webhook). Таблица хранит
+     * собственную `organization_id` (фаза 3 — NOT NULL); запись защищена
+     * трейтом, TenantResolver ведёт сюда `halls` как потомков.
+     *
+     * Витринные пути (публичный каталог, страница площадки, lookup по slug
+     * для SEO-лендингов, залы площадки) и eager-чтения `sessions.venue` на
+     * гостевых потоках — bypass в `VenueController`/`CatalogService`/
+     * `HallService`/`EventPageController`/`EventRepository`; админские CRUD
+     * и destroy со счётчиком сеансов остаются под фильтром (живая изоляция).
+     */
+    protected static function tenantScopeEnabled(): bool
+    {
+        return true;
+    }
+
     protected $fillable = [
         'public_id',
-        'organization_id',
         'name',
         'slug',
         'description',

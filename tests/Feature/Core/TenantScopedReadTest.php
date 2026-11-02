@@ -32,6 +32,7 @@ use Nabilet\Modules\Venues\Models\HallTable;
 use Nabilet\Modules\Venues\Models\Seat;
 use Nabilet\Modules\Venues\Models\Sector;
 use Nabilet\Modules\Venues\Models\StandingZone;
+use Nabilet\Modules\Venues\Models\Venue;
 use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Orders\Models\PromoCodeRedemption;
 use Nabilet\Modules\Orders\Models\PromoCode;
@@ -930,6 +931,39 @@ final class TenantScopedReadTest extends TestCase
     }
 
     /**
+     * Скоуп площадки (`Venue`): витринный каталог, страница площадки и slug-
+     * lookups SEO-лендингов — bypass (гость без контекста, адрес решён
+     * unguessable public_id/slug лендинга); админские CRUD и счётчики
+     * (destroy) остаются под фильтром. Тест фиксирует fail-closed: без
+     * контекста отказ, с контекстом фильтр, в bypass видны все.
+     */
+    public function test_venue_read_scope_is_native(): void
+    {
+        $orgA = $this->organization();
+        $orgB = $this->organization();
+
+        $this->makeVenueRow($orgA);
+        $this->makeVenueRow($orgB);
+
+        try {
+            Venue::query()->count();
+            $this->fail('Ожидался TenantContextMissingError без контекста для Venue');
+        } catch (TenantContextMissingError $e) {
+            $this->addToAssertionCount(1);
+        }
+
+        app(OrganizationContext::class)->set((string) $orgA);
+
+        $this->assertSame(1, Venue::query()->count(), 'чужие строки Venue не видны');
+
+        $this->assertSame(
+            2,
+            app(OrganizationContext::class)->withoutScope(fn () => Venue::query()->count()),
+            'withoutScope() обязан видеть строки Venue всех организаций'
+        );
+    }
+
+    /**
      * Сырая вставка промокода: NOT NULL колонки — public_id/organization_id/
      * code (+ timestamps); остальные значения берут дефолты миграций.
      */
@@ -961,6 +995,24 @@ final class TenantScopedReadTest extends TestCase
             'url' => 'https://example.com/hooks/' . Str::random(6),
             'secret_encrypted' => 'enc-' . Str::random(24),
             'events_json' => json_encode(['order.paid']),
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+    }
+
+    /**
+     * Сырая вставка площадки: NOT NULL колонки — public_id/organization_id/
+     * name/slug (+ timestamps); статус берёт дефолт миграции.
+     */
+    private function makeVenueRow(int $organizationId): void
+    {
+        $now = now()->toDateTimeString();
+
+        DB::table('venues')->insert([
+            'public_id' => (string) Str::ulid()->toBase32(),
+            'organization_id' => $organizationId,
+            'name' => 'Площадка ' . Str::random(5),
+            'slug' => 'venue-' . Str::random(8),
             'created_at' => $now,
             'updated_at' => $now,
         ]);

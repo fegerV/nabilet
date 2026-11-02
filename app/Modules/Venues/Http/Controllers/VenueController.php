@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Nabilet\Modules\Venues\Http\Controllers;
 
 use Nabilet\Core\Errors\ConflictError;
+use Nabilet\Core\Errors\NotFoundError;
 use Nabilet\Core\Errors\ValidationError;
 use Nabilet\Core\Support\LikePattern;
 use Nabilet\Core\Support\Paging;
@@ -60,8 +61,23 @@ class VenueController extends Controller
         ]);
     }
 
-    public function show(Venue $venue): JsonResponse
+    public function show(string $venue): JsonResponse
     {
+        // Публичная страница площадки (без auth): shallow binding заменён на
+        // lookup по unguessable `public_id` в bypass — гость без контекста,
+        // binding на скоупнутой модели (тридцать девятая) ронял бы маршрут ещё
+        // до контроллера. Чужой/несуществующий public_id — 404.
+        /** @var Venue|null $model */
+        $model = app(OrganizationContext::class)->withoutScope(
+            fn () => Venue::query()->where('public_id', $venue)->first()
+        );
+
+        if ($model === null) {
+            throw new NotFoundError('Venue', $venue);
+        }
+
+        $venue = $model;
+
         // Only relations that exist on the model. `translations` and `hallSchemas`
         // were loaded here and neither is defined on `Venue`, so every call threw
         // RelationNotFoundException → 500. Translations live on

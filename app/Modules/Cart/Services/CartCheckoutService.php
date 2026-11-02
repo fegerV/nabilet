@@ -407,6 +407,12 @@ final class CartCheckoutService
                 $s = $cart->session()->first();
                 $e = $s?->event()->first();
 
+                // Гидрация площадки — здесь же, в bypass: ниже снапшоты
+                // `venue_title_snapshot` и фолбэк организации по `$session->venue`
+                // читаются уже за пределами окна (гость без контекста), а ленивый
+                // запрос на скоупнутой Venue ронял бы checkout 500-й.
+                $s?->load('venue');
+
                 return [$s, $e];
             });
             $organizationId = $event?->organization_id ?? $session?->venue?->organization_id;

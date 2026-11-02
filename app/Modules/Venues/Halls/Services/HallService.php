@@ -213,7 +213,11 @@ class HallService
      */
     public function findByVenue(string $venuePublicId, int $limit = 15): LengthAwarePaginator
     {
-        $venueId = Venue::query()->where('public_id', $venuePublicId)->value('id');
+        // Площадка — скоупнутая модель (тридцать девятая): гость каталога залов
+        // без контекста — lookup в bypass по unguessable `public_id`.
+        $venueId = app(OrganizationContext::class)->withoutScope(
+            fn () => Venue::query()->where('public_id', $venuePublicId)->value('id')
+        );
 
         if ($venueId === null) {
             throw new NotFoundError('Venue', $venuePublicId);
