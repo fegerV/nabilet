@@ -274,6 +274,7 @@
 | `app/Modules/Embed/Http/Controllers/Admin/EmbedKeyController.php` | Список ключей остался под контекстом — параметр `?organization_id=` остался для совместимости и сужает уже свой список (кросс-чтение, закрывавшееся лишь при явном совпадении параметра, теперь закрыто скоупом); отзыв адресуется `IdentifierLookup` (bypass по design) — живой изоляции нет, отдельный аудит |
 | `app/Modules/Embed/Http/Controllers/Admin/EmbedDomainController.php` | `store`: `createOrFirst` больше не принимает `organization_id` из запроса — владелец наполняется из staff-контекста трейтом (required-валидация сохранена, значение перестало решать, ЧЬЯ строка). `index` — под скоупом; `update`/`destroy` — через `IdentifierLookup` (bypass по design — отдельный аудит) |
 | `tests/Feature/Core/TenantScopedReadTest.php` | (Embed-шаг) Нативные скоупы ключа и домена (`test_api_key_read_scope_is_native` + `test_embed_domain_read_scope_is_native`) на фикстурах `makeApiKeyRow` (у таблицы нет `updated_at`) и `makeEmbedDomainRow`: без контекста отказ, с контекстом фильтр, в bypass видны все |
+| `tests/Feature/Core/TenantScopedReadTest.php` | (Аудит nullable) Храповик `test_nullable_shared_models_have_no_read_scope`: `TicketTemplate`/`Page`/`MediaAsset`/`StorefrontSetting`/`AbExperiment` читаются без контекста и с контекстом **все** строки — решение «NULL = общая строка» зафиксировано; подключение `TenantScoped` любой из них упадёт этим тестом и потребует либо правки решения и документа, либо bypass-обёрток у каждого публичного читателя («общие» строки иначе невидимы гостям, а NULL-макеты TicketTemplate легально читаются чужими организациями — `belongsToOrganization()`) |
 | `tests/Feature/Core/TenantScopedReadTest.php` | Нативный скоуп `OrderItem`: без контекста отказ, с контекстом фильтр, в bypass видны все |
 | `tests/Feature/Core/TenantScopedReadTest.php` | Нативный скоуп `SeatHold`: без контекста отказ, с контекстом фильтр, в bypass видны все |
 | `tests/Feature/Core/TenantScopedReadTest.php` | Нативный скоуп `PaymentTransaction`: без контекста отказ, с контекстом фильтр, в bypass видны все |
@@ -292,11 +293,50 @@
 `php vendor/bin/phpstan analyse` — `No errors`. Миграции фаз 1 и 3 применены к
 dev-БД: 40 колонок `organization_id NOT NULL`, 40 FK `fk_<table>_org`.
 
+### 2.0-nullable Аудит моделей с NULLABLE organization_id: решение
+
+Периметр §3.3 исчерпан: у прочих не-скоупнутых моделей собственной
+`organization_id` колонки нет вовсе (системные сущности — Organization/User/Role;
+per-user — Consents/Referrals; потомки — читаются через TenantResolver-родителей).
+Для пяти моделей с NULLABLE колонкой аудит зафиксировал: **NULL — «общая строка»
+по дизайну, читающий скоуп не подключается осознанно**. Их `organization_id`
+обозначает владельца тенант-строки, а не границу чтения.
+
+- `TicketTemplate` — NULL = «общий макет»: FK объявлен `ON DELETE SET NULL`
+  (удаление организации), и `TicketTemplateResolver::belongsToOrganization()`
+  читает NULL-макеты чужой организации легально — это документированное правило
+  фолбэка рендера. Изоляция тенант-строк решена явно и уже живая: `index` фильтрует
+  по контексту (без контекста список пуст), `find()` — `organization_id = контекст`,
+  чужой id — 404 (IDOR-запрет подтверждён тестами); привязка макета к мероприятию
+  чужой организации невозможна (валидация + проверка владельца), а системный рендер
+  письма/карточки билета идёт мимо контекста — под скоупом он потребовал бы ещё
+  bypass-окон без прироста защиты.
+- `Page` — публичный витринный контент без админского CRUD в приложении (создание —
+  только сидер/миграции); `organization_id` в `PageService::toDocument` лишь метит
+  владельца имени в SEO-мета и корректно обрабатывает NULL. Теневой поверхности нет.
+- `MediaAsset` — NULL = «ничейные» строки установщика; документировано в
+  `MediaService::findForOrganization()`: «свои и ничейные считаются доступными»,
+  чужой id — 404. Все админ-чтения идут с явным фильтром владельца
+  (`MediaController::index` — «свои + общие»), публичная выдача — через unguessable
+  `MediaLink`.
+- `StorefrontSetting` — NULL = глобальный дефолт витрины: его читают гости
+  (`StorefrontService::resolve(null)`) и он служит фолбэком тенанта без своей
+  строки (171–172); запись всегда по явному organization_id.
+- `AbExperiment` — прямых читателей в приложении нет: только backfill SQL и
+  скоупнутые потомки AbAssignment/AbVariant/AbMetric; скоуп на родителя не добавил бы
+  ни одной новой границы.
+
+Храповик решения — `test_nullable_shared_models_have_no_read_scope`
+(`TenantScopedReadTest`): подключение `TenantScoped` к любой из пяти упадёт тестом
+(`TenantContextMissingError` без контекста) и потребует либо правки решения и этого
+документа, либо bypass-обёрток у каждого публичного читателя. `audit_logs` вне
+периметра §3.3: системный журнал платформы.
+
 ### 2.1 Что осталось открытым после правок
 
 | Риск | Почему не закрыт в этом проходе |
 |------|--------------------------------|
-| `organization_id` у 70 таблиц | **Закрыт структурно.** Фазы 0–3 завершены: 40 таблиц класса A — `NOT NULL` + FK; запись наполняет тенанта из контекста/родителя; глобальный читающий скоуп включён на `Order`, `Payment`, `Ticket`, `Refund`, `TicketScan`, `CheckinDevice`, `OfflineBundle`, `PaymentTransaction`, `OrderItem`, `SeatHold`, `CartItem`, `Cart`, `PromoCodeRedemption`, `WebhookDelivery`, `AbAssignment`, `AbVariant`, `AbMetric`, `InventoryItem`, `EventFavorite`, `EventFollow`, `FollowNotification`, `Raffle`, `RaffleEntry`, `RafflePrize`, `RaffleWinner`, `EventTranslation`, `VenueTranslation`, `PageTranslation`, `Hall`, `HallSchemaVersion`, `Sector`, `HallRow`, `Seat`, `StandingZone`, `HallTable`, `Session`, `PromoCode`, `Webhook`, `Venue`, `Event`, `ApiKey` и `EmbedDomain`; на nullable-кандидатах скоуп отложен до аудита семантики: `TicketTemplate` (общие макеты, фолбэк `TicketTemplateResolver::defaultTemplate`), `Page` (общие сервисные страницы, `PageService::forSlug` обрабатывает NULL-владельца), `MediaAsset`/`StorefrontSetting` (код читает «общие» строки `whereNull('organization_id')` — MediaService:320/MediaController:188/StorefrontService:215), `AbExperiment` (0 прямых читателей — только backfill SQL и скоупнутые потомки) |
+| `organization_id` у 70 таблиц | **Закрыт структурно.** Фазы 0–3 завершены: 40 таблиц класса A — `NOT NULL` + FK; запись наполняет тенанта из контекста/родителя; глобальный читающий скоуп включён на `Order`, `Payment`, `Ticket`, `Refund`, `TicketScan`, `CheckinDevice`, `OfflineBundle`, `PaymentTransaction`, `OrderItem`, `SeatHold`, `CartItem`, `Cart`, `PromoCodeRedemption`, `WebhookDelivery`, `AbAssignment`, `AbVariant`, `AbMetric`, `InventoryItem`, `EventFavorite`, `EventFollow`, `FollowNotification`, `Raffle`, `RaffleEntry`, `RafflePrize`, `RaffleWinner`, `EventTranslation`, `VenueTranslation`, `PageTranslation`, `Hall`, `HallSchemaVersion`, `Sector`, `HallRow`, `Seat`, `StandingZone`, `HallTable`, `Session`, `PromoCode`, `Webhook`, `Venue`, `Event`, `ApiKey` и `EmbedDomain`; аудит nullable-семантики проведён: `TicketTemplate` (NULL = «общий макет», `belongsToOrganization()` читает их чужой организации легально; админ-пути изолированы владельцем явно), `Page` (публичный витринный контент без админского CRUD; org — метка владельца имени в мета-данных), `MediaAsset` («свои и ничейные» — `findForOrganization()`, публичная выдача через unguessable `MediaLink`), `StorefrontSetting` (NULL = глобальный дефолт витрины для гостей и фолбэка тенанта), `AbExperiment` (0 прямых читателей — backfill SQL и скоупнутые потомки) — все пять остаются без читающего скоупа осознанно, решение закреплено храповиком `test_nullable_shared_models_have_no_read_scope` |
 | Списки/отчёты вне Orders/Payments/Tickets/Checkin | Проверены только пути, где аудит нашёл живую утечку; остальные закрываются общим `TenantScoped` в фазе 2 |
 | `PaymentController::store` и `OrderController::resendTicket` вне `auth:api` | Staff-ветки там не единственная защита; полноценно закрывается контекстом + схемой в фазе 2 |
 

@@ -10,9 +10,11 @@ use Illuminate\Support\Str;
 use Nabilet\Core\Errors\TenantContextMissingError;
 use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Analytics\Models\AbAssignment;
+use Nabilet\Modules\Analytics\Models\AbExperiment;
 use Nabilet\Modules\Analytics\Models\AbMetric;
 use Nabilet\Modules\Analytics\Models\AbVariant;
 use Nabilet\Modules\Analytics\Models\EmbedDomain;
+use Nabilet\Modules\Content\Models\Page;
 use Nabilet\Modules\Cart\Models\Cart;
 use Nabilet\Modules\Cart\Models\CartItem;
 use Nabilet\Modules\Inventory\Models\InventoryItem;
@@ -23,6 +25,7 @@ use Nabilet\Modules\Loyalty\Models\Raffle;
 use Nabilet\Modules\Loyalty\Models\RaffleEntry;
 use Nabilet\Modules\Loyalty\Models\RafflePrize;
 use Nabilet\Modules\Loyalty\Models\RaffleWinner;
+use Nabilet\Modules\Media\Models\MediaAsset;
 use Nabilet\Modules\Content\Models\PageTranslation;
 use Nabilet\Modules\Events\Models\Event;
 use Nabilet\Modules\Events\Models\EventTranslation;
@@ -38,6 +41,8 @@ use Nabilet\Modules\Venues\Models\Venue;
 use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Orders\Models\PromoCodeRedemption;
 use Nabilet\Modules\Orders\Models\PromoCode;
+use Nabilet\Modules\Storefront\Models\StorefrontSetting;
+use Nabilet\Modules\Tickets\Models\TicketTemplate;
 use Nabilet\Modules\Webhooks\Models\Webhook;
 use Nabilet\Modules\Webhooks\Models\WebhookDelivery;
 use Nabilet\Modules\Orders\Models\OrderItem;
@@ -1065,6 +1070,65 @@ final class TenantScopedReadTest extends TestCase
     }
 
     /**
+     * Заключение аудита nullable-семантики: модели с NULLABLE organization_id,
+     * где NULL — «общая строка» ПО ДИЗАЙНУ, не получают читающего скоупа.
+     * Храповик: подключение `TenantScoped` любой из них упадёт здесь
+     * (`TenantContextMissingError` без контекста) и потребует либо осознанной
+     * правки решения и документа, либо bypass-обёрток у каждого публичного
+     * читателя — «общие» строки иначе невидимы гостям, а NULL-макеты
+     * TicketTemplate легально читаются и чужими организациями.
+     *
+     * Выводы по каждой (§nullable-аудит в SECURITY-GAPS-REMEDIATION):
+     *   - `TicketTemplate`: NULL = «общий макет» (FK `ON DELETE SET NULL`
+     *     при удалении организации); `belongsToOrganization()` читает их
+     *     чужой организации легально; админ-пути изолированы явным
+     *     владельцем (`index`/`find()`, чужой id — 404);
+     *   - `Page`: публичный витринный контент без админского CRUD — org
+     *     лишь метит владельца имени в мета-данных документа;
+     *   - `MediaAsset`: NULL = «ничейные» строки установщика;
+     *     `findForOrganization()` читает «свои и ничейные», чужой id — 404;
+     *     публичная выдача — через unguessable `MediaLink`;
+     *   - `StorefrontSetting`: NULL = глобальный дефолт витрины (гость +
+     *     фолбэк организации), чтение по явному organization_id/global;
+     *   - `AbExperiment`: прямых читателей в приложении нет (backfill SQL
+     *     и скоупнутые потомки AbAssignment/AbVariant/AbMetric).
+     */
+    public function test_nullable_shared_models_have_no_read_scope(): void
+    {
+        $orgA = $this->organization();
+        $orgB = $this->organization();
+
+        $this->makeTicketTemplateRow($orgA);
+        $this->makeTicketTemplateRow($orgB);
+        $this->makePageRow($orgA);
+        $this->makePageRow($orgB);
+        $this->makeMediaAssetRow($orgA);
+        $this->makeMediaAssetRow($orgB);
+        $this->makeStorefrontSettingRow($orgA);
+        $this->makeStorefrontSettingRow($orgB);
+        $this->makeAbExperimentRow($orgA);
+        $this->makeAbExperimentRow($orgB);
+
+        // Без контекста читаются все строки — fail-closed у этих моделей нет.
+        $this->assertSame(2, TicketTemplate::query()->count());
+        $this->assertSame(2, Page::query()->count());
+        $this->assertSame(2, MediaAsset::query()->count());
+        $this->assertSame(2, StorefrontSetting::query()->count());
+        $this->assertSame(2, AbExperiment::query()->count());
+
+        // Контекст тоже не фильтрует: глобального скоупа у моделей нет,
+        // изоляция их тенант-строк решена явными фильтрами владельца
+        // на каждом пути (см. выводы в докблоке теста).
+        app(OrganizationContext::class)->set((string) $orgA);
+
+        $this->assertSame(2, TicketTemplate::query()->count());
+        $this->assertSame(2, Page::query()->count());
+        $this->assertSame(2, MediaAsset::query()->count());
+        $this->assertSame(2, StorefrontSetting::query()->count());
+        $this->assertSame(2, AbExperiment::query()->count());
+    }
+
+    /**
      * Сырая вставка события: NOT NULL колонки — public_id/organization_id/
      * title/slug (+ timestamps); статус берёт дефолт миграции (draft).
      */
@@ -1110,6 +1174,81 @@ final class TenantScopedReadTest extends TestCase
         DB::table('embed_domains')->insert([
             'organization_id' => $organizationId,
             'domain' => 'partner-' . Str::random(6) . '.example',
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+    }
+
+    /** Сырая вставка макета билета: NOT NULL — public_id/name/width/height/template_json (+ timestamps). */
+    private function makeTicketTemplateRow(int $organizationId): void
+    {
+        $now = now()->toDateTimeString();
+
+        DB::table('ticket_templates')->insert([
+            'public_id' => (string) Str::ulid()->toBase32(),
+            'organization_id' => $organizationId,
+            'name' => 'Макет ' . Str::random(4),
+            'width' => 90,
+            'height' => 54,
+            'template_json' => json_encode(['elements' => []], JSON_THROW_ON_ERROR),
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+    }
+
+    /** Сырая вставка страницы: NOT NULL — public_id/title/slug (+ timestamps); content/status — дефолты. */
+    private function makePageRow(int $organizationId): void
+    {
+        $now = now()->toDateTimeString();
+
+        DB::table('pages')->insert([
+            'public_id' => (string) Str::ulid()->toBase32(),
+            'organization_id' => $organizationId,
+            'title' => 'Страница ' . Str::random(4),
+            'slug' => 'page-' . Str::random(8),
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+    }
+
+    /** Сырая вставка медиафайла: NOT NULL — public_id/path/filename/mime_type (+ timestamps); disk/size — дефолты. */
+    private function makeMediaAssetRow(int $organizationId): void
+    {
+        $now = now()->toDateTimeString();
+
+        DB::table('media_assets')->insert([
+            'public_id' => (string) Str::ulid()->toBase32(),
+            'organization_id' => $organizationId,
+            'path' => 'media/' . Str::random(12) . '/' . Str::random(6) . '.png',
+            'filename' => Str::random(8) . '.png',
+            'mime_type' => 'image/png',
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+    }
+
+    /** Сырая вставка конфига витрины: NOT NULL — organization_id/config (+ timestamps). */
+    private function makeStorefrontSettingRow(int $organizationId): void
+    {
+        $now = now()->toDateTimeString();
+
+        DB::table('storefront_settings')->insert([
+            'organization_id' => $organizationId,
+            'config' => json_encode(['version' => 1], JSON_THROW_ON_ERROR),
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+    }
+
+    /** Сырая вставка эксперимента: NOT NULL — public_id/name (+ timestamps); organization_id/status — дефолты. */
+    private function makeAbExperimentRow(int $organizationId): void
+    {
+        $now = now()->toDateTimeString();
+
+        DB::table('ab_experiments')->insert([
+            'public_id' => (string) Str::ulid()->toBase32(),
+            'organization_id' => $organizationId,
+            'name' => 'Эксперимент ' . Str::random(4),
             'created_at' => $now,
             'updated_at' => $now,
         ]);
