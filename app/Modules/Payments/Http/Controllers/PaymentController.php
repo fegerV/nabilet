@@ -196,6 +196,14 @@ class PaymentController extends Controller
      * Числовой вариант распознаётся только если строка ЦЕЛИКОМ из цифр: MySQL
      * сравнивает `id` со строкой, приводя её к числу, поэтому `'1abc'` совпал бы
      * с заказом 1 и открыл бы чужой заказ. Здесь — точное совпадение либо ULID.
+     *
+     * ПОЧЕМУ ПОИСК В BYPASS. Маршрут открыт гостю (оплата — последний шаг
+     * гостевой витрины), а у гостя тенант-контекста нет: скоупнутый запрос
+     * упал бы `TenantContextMissingError` (500) там, где контракт ждёт
+     * платёжную ссылку или 404. Доступ решает исключительно `mayPay()` ниже —
+     * сотрудник по организации заказа, владелец по `user_id`, гость по
+     * capability-токену корзины; скоуп ничего бы сюда не добавил, только
+     * сломал гостевую ветку.
      */
     private function resolveOrder(string $reference): ?Order
     {
@@ -205,11 +213,11 @@ class PaymentController extends Controller
             return null;
         }
 
-        if (ctype_digit($reference)) {
-            return Order::query()->find((int) $reference);
-        }
-
-        return Order::query()->where('public_id', $reference)->first();
+        return $this->context->withoutScope(
+            fn (): ?Order => ctype_digit($reference)
+                ? Order::query()->find((int) $reference)
+                : Order::query()->where('public_id', $reference)->first()
+        );
     }
 
     /**
