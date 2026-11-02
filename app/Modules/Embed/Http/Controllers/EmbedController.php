@@ -121,10 +121,15 @@ final class EmbedController extends Controller
 
         $perPage = Paging::limit((int) $request->get('per_page', 20), 20, 100);
 
-        $sessions = Session::query()
-            ->where('event_id', $model->id)
-            ->orderBy('starts_at')
-            ->paginate($perPage);
+        // Сеансы — скоупнутые чтения (тридцать шестая модель): у виджета нет
+        // тенант-контекста (embed-ключ, организация проверена выше) —
+        // выборка расписания в bypass; событие выше уже решено lookup'ом.
+        $sessions = app(OrganizationContext::class)->withoutScope(
+            fn () => Session::query()
+                ->where('event_id', $model->id)
+                ->orderBy('starts_at')
+                ->paginate($perPage)
+        );
 
         return response()->json([
             'data' => $sessions->getCollection()

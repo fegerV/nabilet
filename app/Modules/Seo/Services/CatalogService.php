@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Core\Support\PublicationStatus;
 use Nabilet\Modules\Content\Domain\PageStatus;
 use Nabilet\Modules\Core\Organizations\Models\Organization;
@@ -812,7 +813,11 @@ class CatalogService
         $now = now()->toDateTimeString();
         $upcoming = $this->upcomingExpression($venueId);
 
-        return $query
+        // Лендинги SEO — публичный всеарендаторский каталог: запрос идёт от
+        // гостя с скоупнутыми сеансами (тридцать шестая модель) — исполнение
+        // в bypass. Выборка фильтруется параметрами лендинга (venue/category),
+        // SQL-джойны ниже сырые и скоуп не задевают.
+        return app(OrganizationContext::class)->withoutScope(fn () => $query
             ->select('events.*')
             ->selectRaw(self::MIN_PRICE_SQL . ' AS min_price', ['available'])
             // Сеансы нужны только для показа даты и площадки — инвентарь для
@@ -837,7 +842,7 @@ class CatalogService
             // 3. Прошедшие — от недавнего к давнему (внутри второй группы ключ
             //    выше у всех NULL, поэтому порядок здесь и решает).
             ->orderByRaw($this->pastExpression($venueId) . ' DESC')
-            ->paginate(self::PER_PAGE, ['*'], 'page', max(1, $page));
+            ->paginate(self::PER_PAGE, ['*'], 'page', max(1, $page)));
     }
 
 }

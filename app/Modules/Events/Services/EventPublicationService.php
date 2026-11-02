@@ -6,6 +6,7 @@ namespace Nabilet\Modules\Events\Services;
 
 use Nabilet\Core\Errors\ConflictError;
 use Nabilet\Core\Errors\NotFoundError;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Events\Domain\Event as DomainEvent;
 use Nabilet\Modules\Events\Domain\EventPublicationPolicy;
 use Nabilet\Modules\Events\Domain\EventStatus;
@@ -129,6 +130,14 @@ final class EventPublicationService
      */
     private function toDomain(Event $event): DomainEvent
     {
+        // Сеансы — скоупнутая модель (тридцать шестая): счётчик нужен политике
+        // публикации и консольному синхронизатору статусов (контекста нет у
+        // обоих системных путей вызова). Читаются только собственные сеансы
+        // переданного события (event_id = X) — bypass ничего не расширяет.
+        $sessionCount = app(OrganizationContext::class)->withoutScope(
+            fn () => $event->sessions()->count()
+        );
+
         return new DomainEvent(
             id: $event->id,
             organizationId: (int) $event->organization_id,
@@ -136,7 +145,7 @@ final class EventPublicationService
             status: (string) $event->status,
             publishedAt: $event->published_at?->toDateTimeImmutable(),
             deletedAt: $event->deleted_at?->toDateTimeImmutable(),
-            sessionCount: $event->sessions()->count(),
+            sessionCount: $sessionCount,
             soldUnits: $this->soldUnits($event),
         );
     }

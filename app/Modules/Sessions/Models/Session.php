@@ -39,6 +39,26 @@ class Session extends Model
         'status',
     ];
 
+    /**
+     * Глобальный читающий скоуп (тридцать шестая модель после Order,
+     * Payment, Ticket, Refund, TicketScan, CheckinDevice, OfflineBundle,
+     * PaymentTransaction, OrderItem, SeatHold, CartItem, Cart,
+     * PromoCodeRedemption, WebhookDelivery, AbAssignment, AbVariant, AbMetric,
+     * InventoryItem, Raffle-, Translation-кластеров и кластера схемы зала).
+     * `sessions` хранит собственную `organization_id` (фаза 3 — NOT NULL);
+     * запись защищена трейтом, TenantResolver-карта ведёт также через
+     * `event_id` → `events`.
+     *
+     * Публичные пути (каталог сеансов и карточка `GET /sessions/*`,
+     * расписание в embed-виджете) контекста не имеют — их чтения обходят
+     * скоуп в bypass в `SessionController`/`EmbedController`; админские CRUD
+     * и системные пути чекера остаются под фильтром (живая изоляция).
+     */
+    protected static function tenantScopeEnabled(): bool
+    {
+        return true;
+    }
+
     protected function casts(): array
     {
         return [

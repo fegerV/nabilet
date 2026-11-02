@@ -397,7 +397,10 @@ final class SessionGeometryReuseTest extends TestCase
             'updated_at' => $now,
         ]);
 
-        return Session::query()->findOrFail($sessionId);
+        // Тест-аналог системного пути сборки инвентаря: чтение сеанса в bypass.
+        return app(OrganizationContext::class)->withoutScope(
+            fn () => Session::query()->findOrFail($sessionId)
+        );
     }
 
     /**

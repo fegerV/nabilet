@@ -162,7 +162,11 @@ final class HallTableGeometryTest extends TestCase
             'updated_at' => $now,
         ]);
 
-        return Session::query()->findOrFail($sessionId);
+        // Тест-аналог системного пути сборки инвентаря (админ-контекст в проде
+        // ставит мидлварь, в тесте его нет): чтение сеанса — в bypass.
+        return app(OrganizationContext::class)->withoutScope(
+            fn () => Session::query()->findOrFail($sessionId)
+        );
     }
 
     public function test_to_inventory_format_carries_shape_and_table_geometry(): void

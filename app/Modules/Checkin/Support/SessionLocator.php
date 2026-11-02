@@ -6,6 +6,7 @@ namespace Nabilet\Modules\Checkin\Support;
 
 use Nabilet\Core\Errors\ValidationError;
 use Nabilet\Core\Support\DatabaseId;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Sessions\Models\Session;
 
 /**
@@ -29,7 +30,16 @@ final class SessionLocator
     {
         if (is_int($value) || DatabaseId::isNumeric($value)) {
             $id = (int) $value;
-            $found = Session::query()->whereKey($id)->value('id');
+
+            // Разрешение идентификатора — нормализация ввода под токеном
+            // устройства (как в TicketLocator): изоляцию выполняет домен
+            // поверх результата — scanFromBundle() сверяет организацию билета
+            // с устройством, sameEvent() — событие сеанса. Скоупнутый поиск
+            // здесь превратил бы контрактный unknown_ticket в 422 «на ровном
+            // месте» — у устройства чужой сеанс не даёт доступ и без этого.
+            $found = app(OrganizationContext::class)->withoutScope(
+                fn () => Session::query()->whereKey($id)->value('id')
+            );
 
             if ($found !== null) {
                 return (int) $found;
@@ -38,7 +48,9 @@ final class SessionLocator
             throw new ValidationError(['session_id' => ['Unknown session id.']]);
         }
 
-        $id = Session::query()->where('public_id', $value)->value('id');
+        $id = app(OrganizationContext::class)->withoutScope(
+            fn () => Session::query()->where('public_id', $value)->value('id')
+        );
 
         if ($id === null) {
             throw new ValidationError(['session_id' => ['Unknown session public id.']]);

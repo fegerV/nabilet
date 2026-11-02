@@ -120,7 +120,11 @@ final class InventoryAvailabilityCountingTest extends TestCase
             'created_at' => $now,
             'updated_at' => $now,
         ]);
-        $this->session = Session::query()->findOrFail($sessionId);
+        // Тест-аналог витринного подсчёта доступности (гость без контекста):
+        // чтение сеанса — в bypass.
+        $this->session = app(OrganizationContext::class)->withoutScope(
+            fn () => Session::query()->findOrFail($sessionId)
+        );
     }
 
     /** @return array<string, mixed> */

@@ -92,7 +92,12 @@ class NotifyFollowersOfNewSessionJob implements ShouldQueue
             return;
         }
 
-        $session = Session::query()->with('event', 'venue')->find($this->sessionId);
+        // Сеанс — скоупнутая модель (тридцать шестая): queue-воркер не имеет
+        // тенант-контекста, чтение в bypass. Инвариант получателя ниже —
+        // `event_follows.event_id`, организация выводится из самого события.
+        $session = app(OrganizationContext::class)->withoutScope(
+            fn () => Session::query()->with('event', 'venue')->find($this->sessionId)
+        );
 
         // Сеанс удалён — каскад унёс и журнал, рассылать нечего. Мероприятие
         // скрыто (`SoftDeletes`) — отношение вернёт null, и это тот же случай:

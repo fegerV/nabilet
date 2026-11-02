@@ -339,7 +339,12 @@ final class CartCheckoutService
             // Р¤Р°Р·Р° 3b: РєР»СѓР±РЅС‹Р№ РїРѕРєСѓРїР°С‚РµР»СЊ РїСЂРѕРІРµСЂСЏРµС‚СЃСЏ С‚РµРј Р¶Рµ СЃРґРІРёРіРѕРј РѕРєРЅР°, С‡С‚Рѕ Рё
             // РЅР° СЃРѕР·РґР°РЅРёРё РєРѕСЂР·РёРЅС‹ вЂ” РёРЅР°С‡Рµ В«СЂР°РЅРЅРёР№ РґРѕСЃС‚СѓРїВ» РѕС‚РєСЂС‹РІР°Р»СЃСЏ Р±С‹ С‚РѕР»СЊРєРѕ РЅР°
             // РєРѕСЂР·РёРЅСѓ, Р° РѕРїР»Р°С‚РёС‚СЊ РјРµСЃС‚Рѕ СЂР°РЅСЊС€Рµ РІСЂРµРјРµРЅРё Р±С‹Р»Рѕ РЅРµР»СЊР·СЏ.
-            $session = Session::findOrFailBySessionId((string) $cart->session_id);
+            // Сеанс — скоупнутая модель (тридцать шестая): checkout покупателя
+            // идёт без тенант-контекста — lookup в bypass. Владение решает
+            // токен корзины, а позиции к моменту спроса уже сверены с сеансом.
+            $session = app(OrganizationContext::class)->withoutScope(
+                fn () => Session::findOrFailBySessionId((string) $cart->session_id)
+            );
 
             $earlyAccessHours = $this->loyaltySettings->earlyAccessHoursForUser(
                 $this->earlyAccessBuyer($cart, $userId, $buyer)
@@ -393,8 +398,17 @@ final class CartCheckoutService
 
             // Create the order: checkout succeeded, seats are sold, cart is
             // converted вЂ” persist the sale so it appears in the admin orders list.
-            $session = $cart->session()->first();
-            $event = $session?->event()->first();
+
+            // Сеанс/событие — скоупнутые модели (тридцать шестая): гость без
+            // контекста — чтение владельца заказа в bypass. Организация была
+            // решена выше (`findOrFailBySessionId` в bypass) и сейчас просто
+            // перепроверяется выводом из самой цепочки сеанса.
+            [$session, $event] = app(OrganizationContext::class)->withoutScope(function () use ($cart) {
+                $s = $cart->session()->first();
+                $e = $s?->event()->first();
+
+                return [$s, $e];
+            });
             $organizationId = $event?->organization_id ?? $session?->venue?->organization_id;
 
             // Fail-closed: организация заказа НЕ угадывается. Колонки

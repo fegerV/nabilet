@@ -392,7 +392,11 @@ class FollowNotificationTest extends TestCase
             'updated_at' => $now,
         ]);
 
-        return [$organizationId, $eventId, Session::query()->findOrFail($sessionId)];
+        // Чтение сеанса — скоупнутая модель, а тест-хелпер вне контекста
+        // (аналог чтения из джобы рассылки): bypass.
+        return [$organizationId, $eventId, app(OrganizationContext::class)->withoutScope(
+            fn () => Session::query()->findOrFail($sessionId)
+        )];
     }
 
     private function follow(

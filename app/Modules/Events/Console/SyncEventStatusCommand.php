@@ -52,40 +52,47 @@ class SyncEventStatusCommand extends Command
 
     public function handle(EventService $events): int
     {
-        $dryRun = (bool) $this->option('dry-run');
-        $limit = max(1, (int) $this->option('limit'));
+        // Команда — системный путь из консоли/планировщика, тенант-контекста
+        // нет: подзапросы `whereHas('sessions')` и счётчик политики публикации
+        // читают скоупнутые сеансы (тридцать шестая модель) — весь прогон в
+        // bypass, как queue-джобы. Изменяются только собственные сеансы
+        // каждого события (event_id), расширения выборки нет.
+        return app(\Nabilet\Core\Tenancy\OrganizationContext::class)->withoutScope(function () use ($events): int {
+            $dryRun = (bool) $this->option('dry-run');
+            $limit = max(1, (int) $this->option('limit'));
 
-        $candidates = $this->pastEvents($limit)->get();
+            $candidates = $this->pastEvents($limit)->get();
 
-        if ($candidates->isEmpty()) {
-            $this->info('Прошедших событий в статусе published нет.');
+            if ($candidates->isEmpty()) {
+                $this->info('Прошедших событий в статусе published нет.');
 
-            return self::SUCCESS;
-        }
-
-        $completed = 0;
-
-        foreach ($candidates as $event) {
-            if ($dryRun) {
-                $this->line(sprintf('  #%d %s → completed (dry-run)', $event->id, $event->slug));
-
-                continue;
+                return self::SUCCESS;
             }
 
-            // Через сервис, а не записью статуса напрямую: `complete()` проверяет
-            // переход по машине состояний. Событие могло измениться между
-            // выборкой и этим моментом (админ отменил его) — тогда переход
-            // запрещён, и запись молча испортила бы данные.
-            $events->complete($event);
+            $completed = 0;
 
-            $completed++;
-        }
+            foreach ($candidates as $event) {
+                if ($dryRun) {
+                    $this->line(sprintf('  #%d %s → completed (dry-run)', $event->id, $event->slug));
 
-        $this->info($dryRun
-            ? sprintf('К завершению: %d событий.', $candidates->count())
-            : sprintf('Переведено в completed: %d событий.', $completed));
+                    continue;
+                }
 
-        return self::SUCCESS;
+                // Через сервис, а не записью статуса напрямую: `complete()` проверяет
+                // переход по машине состояний. Событие могло измениться между
+                // выборкой и этим моментом (админ отменил его) — тогда переход
+                // запрещён, и запись молча испортила бы данные.
+                $events->complete($event);
+
+                $completed++;
+            }
+
+            $this->info($dryRun
+                ? sprintf('К завершению: %d событий.', $candidates->count())
+                : sprintf('Переведено в completed: %d событий.', $completed));
+
+            return self::SUCCESS;
+        });
     }
 
     /**

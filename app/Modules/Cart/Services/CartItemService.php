@@ -94,7 +94,12 @@ final class CartItemService
             // Р”Рћ РїСѓР±Р»РёС‡РЅРѕРіРѕ СЃС‚Р°СЂС‚Р° вЂ” С‚РѕС‚ Р¶Рµ СЃРґРІРёРі РѕРєРЅР°, С‡С‚Рѕ Рё РїСЂРё СЃРѕР·РґР°РЅРёРё РєРѕСЂР·РёРЅС‹.
             $earlyAccessHours = $this->loyaltySettings->earlyAccessHoursForUser($buyer);
 
-            $session = Session::findOrFailBySessionId($sessionId);
+            // Сеанс — скоупнутая модель (тридцать шестая): позиция добавляется
+            // покупателем без тенант-контекста — lookup в bypass. Владение
+            // решает продажный гейт и сверка организации позиции с сеансом.
+            $session = app(OrganizationContext::class)->withoutScope(
+                fn () => Session::findOrFailBySessionId($sessionId)
+            );
 
             if (! $session->isSellableAt(null, $earlyAccessHours)) {
                 throw DomainRuleViolation::salesClosed(

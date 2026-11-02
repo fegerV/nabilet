@@ -80,7 +80,13 @@ class CartService
         );
 
         if (!$cart) {
-            $session = Session::findOrFailBySessionId($sessionId);
+            // Сеанс — скоупнутая модель (тридцать шестая): корзина открывается
+            // гостем по capability-токену без контекста — lookup в bypass.
+            // Владение решается ниже продажным гейтом; позиция при добавлении
+            // сверит организацию сеанса.
+            $session = app(OrganizationContext::class)->withoutScope(
+                fn () => Session::findOrFailBySessionId($sessionId)
+            );
 
             // Sales gate: корзину можно открыть только для сеанса, который
             // реально продаётся прямо сейчас — статус `on_sale` И внутри окна

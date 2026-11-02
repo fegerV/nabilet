@@ -69,7 +69,12 @@ class OrderService
                 // сеансу исходной. Сравнение идёт по владельцу сеанса
                 // (`sessions.event_id → events.organization_id`), а не по
                 // доверенному полю запроса.
-                $itemOrganizationId = $item->session?->event?->organization_id;
+                // Сеанс позиции — скоупнутая модель (тридцать шестая): чекаут
+                // покупателя идёт без контекста, а владение позицией решается
+                // как раз сравнением владельца сеанса — чтение в bypass.
+                $itemOrganizationId = app(OrganizationContext::class)->withoutScope(
+                    fn () => $item->session?->event?->organization_id
+                );
 
                 if ($itemOrganizationId === null
                     || (int) $itemOrganizationId !== (int) ($data['organization_id'] ?? 0)
@@ -136,16 +141,20 @@ class OrderService
             ]);
 
             foreach ($inventoryItems as [$inventoryItem, $quantity]) {
-                $orderItem = $this->repository->addItem($order, [
-                    'inventory_item_id' => $inventoryItem->id,
-                    'quantity' => $quantity,
-                    'unit_price' => $inventoryItem->price_amount,
-                    'total_amount' => $quantity * $inventoryItem->price_amount,
-                    'event_title_snapshot' => $inventoryItem->session?->event?->title
-                        ?? $data['event_title'] ?? '',
-                    'session_title_snapshot' => $inventoryItem->session?->title ?? null,
-                    'venue_title_snapshot' => $inventoryItem->session?->venue?->name ?? null,
-                ]);
+                // Снапшоты читают ленивые связи позиции (session/event/venue) —
+                // скоупнутые модели: тот же гостевой чекаут, чтение в bypass.
+                $orderItem = app(OrganizationContext::class)->withoutScope(function () use ($order, $data, $inventoryItem, $quantity) {
+                    return $this->repository->addItem($order, [
+                        'inventory_item_id' => $inventoryItem->id,
+                        'quantity' => $quantity,
+                        'unit_price' => $inventoryItem->price_amount,
+                        'total_amount' => $quantity * $inventoryItem->price_amount,
+                        'event_title_snapshot' => $inventoryItem->session?->event?->title
+                            ?? $data['event_title'] ?? '',
+                        'session_title_snapshot' => $inventoryItem->session?->title ?? null,
+                        'venue_title_snapshot' => $inventoryItem->session?->venue?->name ?? null,
+                    ]);
+                });
 
                 // Reserve inventory
                 $inventoryItem->decrement('available_quantity', $orderItem->quantity);

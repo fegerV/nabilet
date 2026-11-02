@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Sessions\Http\Controllers;
 
+use Nabilet\Core\Errors\NotFoundError;
 use Nabilet\Core\Errors\ValidationError;
 use Nabilet\Core\Support\Paging;
 use Nabilet\Modules\HallSchemas\Domain\SchemaVersionState;
@@ -45,8 +46,14 @@ class SessionController extends Controller
             $query->where('status', $filters['status']);
         }
         
-        $sessions = $query->paginate($perPage);
-        
+        // Публичный каталог сеансов (без auth): и сами сеансы (тридцать
+        // шестая модель), и связи `hall`/`schemaVersion` — скоупнутые модели,
+        // у гостя контекста нет — исполнение запроса в bypass. Выборка
+        // фильтруется параметрами каталога.
+        $sessions = app(OrganizationContext::class)->withoutScope(
+            fn () => $query->paginate($perPage)
+        );
+
         return response()->json([
             'data' => $sessions,
             'meta' => [
@@ -58,8 +65,22 @@ class SessionController extends Controller
         ]);
     }
 
-    public function show(Session $session): JsonResponse
+    public function show(int $session): JsonResponse
     {
+        // Публичная карточка сеанса (без auth): implicit binding заменён на
+        // lookup в bypass — у гостя контекста нет, binding на скоупнутой
+        // модели давал бы отказ на маршруте. Найдена чужая строка — 404.
+        /** @var Session|null $model */
+        $model = app(OrganizationContext::class)->withoutScope(
+            fn (): ?Session => Session::query()->find($session)
+        );
+
+        if ($model === null) {
+            throw new NotFoundError('Session', (string) $session);
+        }
+
+        $session = $model;
+
         // `venue` в списке связей, а не только `hall`: администратор выбирает
         // площадку, и в списке сеансов должно быть видно, ЧЬИ это залы. Иначе
         // «Большой зал» у двух площадок неотличим.

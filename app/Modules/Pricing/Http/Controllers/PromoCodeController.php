@@ -349,10 +349,15 @@ class PromoCodeController extends Controller
     {
         $sessionId = (string) $cart->session_id;
 
-        $session = Session::query()
-            ->where('id', $sessionId)
-            ->orWhere('public_id', $sessionId)
-            ->first();
+        // Сеансы — скоупнутые чтения (тридцать шестая модель): проверка кода
+        // работает на витрине/embed без контекста — lookup в bypass.
+        // Организация выводится из события сеанса (Event не-скоупнут).
+        $session = app(OrganizationContext::class)->withoutScope(
+            fn (): ?Session => Session::query()
+                ->where('id', $sessionId)
+                ->orWhere('public_id', $sessionId)
+                ->first()
+        );
 
         $organizationId = $session?->event?->organization_id;
 
