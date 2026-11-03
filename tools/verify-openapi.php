@@ -392,7 +392,11 @@ check('idempotency is documented on the seat-hold, order-creation and payment en
     // REQUIRED here, not merely accepted, and the replay must be documented as a
     // distinct outcome: without both, a double submit starts two payments against
     // one order and the reconciliation sees two charges for one payment.
-    $payment = sliceFrom($raw, "\n  /api/v1/orders/{order}/payment:", 1200);
+    //
+    // The path was amended to the application route (2026-11-03): the app creates
+    // payments at POST /api/v1/payments (order_id in the body); the previously
+    // documented /api/v1/orders/{order}/payment was never served.
+    $payment = sliceFrom($raw, "\n  /api/v1/payments:", 1200);
     assertTrue(
         str_contains($payment, 'IdempotencyKey'),
         'payment initiation must require an Idempotency-Key'

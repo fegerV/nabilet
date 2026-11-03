@@ -25,9 +25,7 @@ tags:
   - name: Admin Raffles
   - name: Admin Venues
   - name: Admin Orders
-  - name: Admin Tickets
   - name: Admin Checkin
-  - name: Admin Analytics
   - name: Admin Embed
   - name: Analytics
   - name: Webhooks
@@ -149,39 +147,37 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '422': { $ref: '#/components/responses/ValidationError' }
 
-  /auth/yandex/start:
+  /auth/{provider}/start:
     get:
       tags: [Auth]
-      summary: Start Yandex OAuth
-      operationId: yandexStart
+      summary: Start OAuth (Yandex, VK)
+      description: >-
+        Web-маршрут вне `/api` (редирект на провайдера). Параметр `provider`
+        принимает `yandex` или `vk` — SOCIAL_PROVIDERS конфига. Спека раньше
+        объявляла четыре отдельных пути (`/auth/yandex/start` и т.д.); роут
+        приложения один и параметризованный, поэтому спека приведена к нему.
+      operationId: providerStart
+      parameters:
+        - in: path
+          name: provider
+          required: true
+          schema: { type: string, enum: [yandex, vk] }
       responses:
         '302': { description: Redirect to the provider }
 
-  /auth/vk/start:
+  /auth/{provider}/callback:
     get:
       tags: [Auth]
-      summary: Start VK OAuth
-      operationId: vkStart
-      responses:
-        '302': { description: Redirect to the provider }
-
-  /auth/yandex/callback:
-    get:
-      tags: [Auth]
-      summary: Yandex OAuth callback
-      operationId: yandexCallback
+      summary: OAuth callback (Yandex, VK)
+      description: >-
+        Web-маршрут вне `/api`: принимает code/state провайдера, привязывает
+        или создаёт пользователя (соц-вход, ТЗ §17) и редиректит в приложение.
+      operationId: providerCallback
       parameters:
-        - $ref: '#/components/parameters/OAuthCode'
-        - $ref: '#/components/parameters/OAuthState'
-      responses:
-        '302': { description: Redirect to application }
-
-  /auth/vk/callback:
-    get:
-      tags: [Auth]
-      summary: VK OAuth callback
-      operationId: vkCallback
-      parameters:
+        - in: path
+          name: provider
+          required: true
+          schema: { type: string, enum: [yandex, vk] }
         - $ref: '#/components/parameters/OAuthCode'
         - $ref: '#/components/parameters/OAuthState'
       responses:
@@ -190,8 +186,16 @@ paths:
   /api/v1/events:
     get:
       tags: [Catalog]
-      summary: List public events
+      summary: List events
+      description: >-
+        Один эндпоинт для витрины и админки. Публичный запрос (без staff-токена)
+        возвращает только опубликованные мероприятия; staff-токен открывает
+        черновики и фильтры `status`/`organization_id` (см. EventController::index,
+        maySeeUnpublished). Раньше админ-список объявлялся отдельным путём
+        `/api/v1/admin/events` — приложение не строит параллельного префикса,
+        спека приведена к фактическому ресурсному пути.
       operationId: listEvents
+      security: []
       parameters:
         - { $ref: '#/components/parameters/Page' }
         - { $ref: '#/components/parameters/PerPage' }
@@ -219,12 +223,37 @@ paths:
         - in: query
           name: availability
           schema: { type: string, enum: [any, available, sold_out] }
+        - in: query
+          name: status
+          description: Фильтр статуса; осмыслен только со staff-токеном.
+          schema: { type: string }
+        - in: query
+          name: organization_id
+          description: Фильтр организации; осмыслен только со staff-токеном.
+          schema: { type: string }
       responses:
         '200':
           description: Event list
           content:
             application/json:
               schema: { $ref: '#/components/schemas/EventListResponse' }
+    post:
+      tags: [Admin Events]
+      summary: Create event
+      operationId: adminCreateEvent
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EventWriteRequest' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EventResponse' }
+        '422': { $ref: '#/components/responses/ValidationError' }
 
   /api/v1/events/by-slug/{slug}:
     get:
@@ -253,7 +282,11 @@ paths:
   /api/v1/events/{event}:
     get:
       tags: [Catalog]
-      summary: Get public event
+      summary: Get event
+      description: >-
+        Публичный ответ скрывает черновики; staff-токен видит мероприятие в
+        любом статусе (тот же эндпоинт обслуживал бывший
+        `GET /api/v1/admin/events/{event}`).
       operationId: getEvent
       parameters:
         - $ref: '#/components/parameters/EventIdPath'
@@ -264,31 +297,45 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/EventResponse' }
         '404': { $ref: '#/components/responses/NotFound' }
-
-  /api/v1/events/{event}/sessions:
-    get:
-      tags: [Sessions]
-      summary: List sessions of event
-      operationId: listEventSessions
+    patch:
+      tags: [Admin Events]
+      summary: Update event
+      description: Staff-эндпоинт на ресурсном пути (бывший `PATCH /api/v1/admin/events/{event}`).
+      operationId: adminUpdateEvent
+      security: [{ bearerAuth: [] }]
       parameters:
         - $ref: '#/components/parameters/EventIdPath'
-        - in: query
-          name: from
-          schema: { type: string, format: date-time }
-        - in: query
-          name: to
-          schema: { type: string, format: date-time }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EventWriteRequest' }
       responses:
         '200':
-          description: Session list
+          description: Updated
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/SessionListResponse' }
+              schema: { $ref: '#/components/schemas/EventResponse' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    delete:
+      tags: [Admin Events]
+      summary: Delete/archive event
+      operationId: adminDeleteEvent
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/EventIdPath'
+      responses:
+        '204': { description: Archived/deleted }
+        '409': { $ref: '#/components/responses/Conflict' }
 
   /api/v1/sessions/{session}:
     get:
       tags: [Sessions]
       summary: Get session
+      description: >-
+        Публичное чтение сеанса; staff-токен дополнительно видит неопубликованные
+        (SessionController::store/update закрыты `auth:api, admin` на этом же
+        ресурсном пути — бывшие `POST/PATCH /api/v1/admin/sessions[/{}]`).
       operationId: getSession
       parameters:
         - $ref: '#/components/parameters/SessionIdPath'
@@ -299,21 +346,47 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/SessionResponse' }
         '404': { $ref: '#/components/responses/NotFound' }
-
-  /api/v1/sessions/{session}/seatmap:
-    get:
-      tags: [Sessions]
-      summary: Get seat map and inventory
-      operationId: getSeatMap
+    patch:
+      tags: [Admin Events]
+      summary: Update session
+      operationId: adminUpdateSession
+      security: [{ bearerAuth: [] }]
       parameters:
         - $ref: '#/components/parameters/SessionIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SessionWriteRequest' }
       responses:
         '200':
-          description: Seat map
+          description: Updated
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/SeatMapResponse' }
-        '404': { $ref: '#/components/responses/NotFound' }
+              schema: { $ref: '#/components/schemas/SessionResponse' }
+
+  /api/v1/sessions:
+    post:
+      tags: [Admin Events]
+      summary: Create session
+      description: >-
+        Создание сеанса на ресурсном пути (бывший `POST /api/v1/admin/sessions`).
+        Список сеансов отдаёт `GET /api/v1/sessions` — объявление списка
+        возвращается в спеку отдельным шагом вместе со страницей сеансов.
+      operationId: adminCreateSession
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SessionWriteRequest' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SessionResponse' }
+        '422': { $ref: '#/components/responses/ValidationError' }
 
   /api/v1/carts:
     post:
@@ -465,6 +538,33 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
         '422': { $ref: '#/components/responses/ValidationError' }
+    get:
+      tags: [Admin Orders]
+      summary: List orders
+      description: >-
+        Ресурсный путь. Фильтры `status`/`payment_status`/`event_id` со
+        staff-токеном (бывший `GET /api/v1/admin/orders`); создание заказа
+        покупателем — POST выше.
+      operationId: adminListOrders
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PerPage'
+        - in: query
+          name: status
+          schema: { type: string }
+        - in: query
+          name: payment_status
+          schema: { type: string }
+        - in: query
+          name: event_id
+          schema: { type: string }
+      responses:
+        '200':
+          description: Orders
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrderListResponse' }
 
   /api/v1/orders/{order}:
     get:
@@ -483,24 +583,30 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
 
-  /api/v1/orders/{order}/payment:
+  /api/v1/payments:
     post:
       tags: [Payments]
       summary: Create payment for order
+      description: >-
+        Фактический способ создать платёж по заказу (PaymentController::store,
+        `order_id` в теле). Спека раньше объявляла `POST /api/v1/orders/{order}/payment`
+        — такого пути в приложении нет; для встроенного модуля (embed) платёж
+        создаётся на `/api/v1/embed/orders/{order}/payment`.
       operationId: createOrderPayment
       security:
         - bearerAuth: []
         - checkoutAuth: []
       parameters:
-        - $ref: '#/components/parameters/OrderIdPath'
         - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
-        required: false
+        required: true
         content:
           application/json:
             schema:
               type: object
+              required: [order_id]
               properties:
+                order_id: { type: string, description: Public ULID заказа }
                 provider:
                   type: string
                   default: yookassa
@@ -540,7 +646,12 @@ paths:
   /api/v1/tickets:
     get:
       tags: [Tickets]
-      summary: List customer tickets
+      summary: List tickets
+      description: >-
+        Без staff-токена — билеты вызывающего пользователя (listMyTickets);
+        staff-токен открывает список по всем покупателям с фильтрами `session_id`
+        и расширенным `status` (TicketController::index — бывший
+        `GET /api/v1/admin/tickets`).
       operationId: listMyTickets
       security: [{ bearerAuth: [] }]
       parameters:
@@ -548,6 +659,10 @@ paths:
         - $ref: '#/components/parameters/PerPage'
         - in: query
           name: status
+          schema: { type: string }
+        - in: query
+          name: session_id
+          description: Фильтр по сеансу; осмыслен только со staff-токеном.
           schema: { type: string }
       responses:
         '200':
@@ -1171,92 +1286,6 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/CheckinSyncResponse' }
 
-  /api/v1/admin/events:
-    get:
-      tags: [Admin Events]
-      summary: List events for admin
-      operationId: adminListEvents
-      security: [{ bearerAuth: [] }]
-      parameters:
-        - $ref: '#/components/parameters/Page'
-        - $ref: '#/components/parameters/PerPage'
-        - in: query
-          name: status
-          schema: { type: string }
-        - in: query
-          name: organization_id
-          schema: { type: string }
-      responses:
-        '200':
-          description: Admin event list
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/EventListResponse' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-    post:
-      tags: [Admin Events]
-      summary: Create event
-      operationId: adminCreateEvent
-      security: [{ bearerAuth: [] }]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/EventWriteRequest' }
-      responses:
-        '201':
-          description: Created
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/EventResponse' }
-        '422': { $ref: '#/components/responses/ValidationError' }
-
-  /api/v1/admin/events/{event}:
-    get:
-      tags: [Admin Events]
-      summary: Get event in admin
-      operationId: adminGetEvent
-      security: [{ bearerAuth: [] }]
-      parameters:
-        - $ref: '#/components/parameters/EventIdPath'
-      responses:
-        '200':
-          description: Event
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/EventResponse' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '404': { $ref: '#/components/responses/NotFound' }
-    patch:
-      tags: [Admin Events]
-      summary: Update event
-      operationId: adminUpdateEvent
-      security: [{ bearerAuth: [] }]
-      parameters:
-        - $ref: '#/components/parameters/EventIdPath'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/EventWriteRequest' }
-      responses:
-        '200':
-          description: Updated
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/EventResponse' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-    delete:
-      tags: [Admin Events]
-      summary: Delete/archive event
-      operationId: adminDeleteEvent
-      security: [{ bearerAuth: [] }]
-      parameters:
-        - $ref: '#/components/parameters/EventIdPath'
-      responses:
-        '204': { description: Archived/deleted }
-        '409': { $ref: '#/components/responses/Conflict' }
-
   /api/v1/admin/raffles:
     get:
       tags: [Admin Raffles]
@@ -1406,51 +1435,15 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
 
-  /api/v1/admin/sessions:
-    post:
-      tags: [Admin Events]
-      summary: Create session
-      operationId: adminCreateSession
-      security: [{ bearerAuth: [] }]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/SessionWriteRequest' }
-      responses:
-        '201':
-          description: Created
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/SessionResponse' }
-        '422': { $ref: '#/components/responses/ValidationError' }
-
-  /api/v1/admin/sessions/{session}:
-    patch:
-      tags: [Admin Events]
-      summary: Update session
-      operationId: adminUpdateSession
-      security: [{ bearerAuth: [] }]
-      parameters:
-        - $ref: '#/components/parameters/SessionIdPath'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/SessionWriteRequest' }
-      responses:
-        '200':
-          description: Updated
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/SessionResponse' }
-
-  /api/v1/admin/venues:
+  /api/v1/venues:
     get:
       tags: [Admin Venues]
       summary: List venues
+      description: >-
+        Ресурсный путь (бывший `GET /api/v1/admin/venues`); публичный запрос
+        видит подмножество, staff-токен — полный список (VenueController::index).
       operationId: adminListVenues
-      security: [{ bearerAuth: [] }]
+      security: []
       parameters:
         - $ref: '#/components/parameters/Page'
         - $ref: '#/components/parameters/PerPage'
@@ -1477,14 +1470,37 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/VenueResponse' }
 
-  /api/v1/admin/venues/{venue}/halls:
-    post:
+  /api/v1/venues/{venue}/halls:
+    get:
       tags: [Admin Venues]
-      summary: Create hall
-      operationId: adminCreateHall
+      summary: List halls of venue
+      description: >-
+        Список залов площадки (Halls-модуль); раньше спека объявляла здесь же
+        создание зала POST'ом, но приложение создаёт залы на `/api/v1/halls` —
+        операция перенесена туда.
+      operationId: listVenueHalls
       security: [{ bearerAuth: [] }]
       parameters:
         - $ref: '#/components/parameters/VenueIdPath'
+      responses:
+        '200':
+          description: Halls of the venue
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/HallResponse' }
+
+  /api/v1/halls:
+    post:
+      tags: [Admin Venues]
+      summary: Create hall
+      description: Создание зала (бывший `POST /api/v1/admin/venues/{venue}/halls`).
+      operationId: adminCreateHall
+      security: [{ bearerAuth: [] }]
       requestBody:
         required: true
         content:
@@ -1497,10 +1513,13 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/HallResponse' }
 
-  /api/v1/admin/halls/{hall}/schema-versions:
+  /api/v1/halls/{hall}/schema-versions:
     get:
       tags: [Admin Venues]
       summary: List schema versions
+      description: >-
+        Версии схемы зала на ресурсном пути (бывший
+        `GET /api/v1/admin/halls/{hall}/schema-versions`).
       operationId: adminListSchemaVersions
       security: [{ bearerAuth: [] }]
       parameters:
@@ -1516,9 +1535,16 @@ paths:
                   data:
                     type: array
                     items: { $ref: '#/components/schemas/HallSchemaVersion' }
+
+  /api/v1/halls/{hall}/schema-versions/draft:
     post:
       tags: [Admin Venues]
-      summary: Create schema version
+      summary: Create schema draft
+      description: >-
+        Приложение создаёт только черновики и только на выделенном пути
+        `/schema-versions/draft` (триггеры жизненного цикла запрещают создание
+        строки сразу в published); бывший `POST /api/v1/admin/halls/{hall}/schema-versions`
+        приведён к фактическому пути.
       operationId: adminCreateSchemaVersion
       security: [{ bearerAuth: [] }]
       parameters:
@@ -1535,14 +1561,22 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/HallSchemaResponse' }
 
-  /api/v1/admin/schema-versions/{schema}/publish:
+  /api/v1/halls/{hall}/schema-versions/{version}/publish:
     post:
       tags: [Admin Venues]
       summary: Publish immutable schema version
+      description: >-
+        Публикация версии по вложенному пути (бывший
+        `POST /api/v1/admin/schema-versions/{schema}/publish`); экспорт/импорт
+        версий в приложении не построены и из спеки сняты.
       operationId: adminPublishSchema
       security: [{ bearerAuth: [] }]
       parameters:
-        - $ref: '#/components/parameters/SchemaIdPath'
+        - $ref: '#/components/parameters/HallIdPath'
+        - in: path
+          name: version
+          required: true
+          schema: { type: integer }
       responses:
         '200':
           description: Published
@@ -1550,79 +1584,6 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/HallSchemaResponse' }
         '409': { $ref: '#/components/responses/Conflict' }
-
-  /api/v1/admin/schema-versions/{schema}/export:
-    get:
-      tags: [Admin Venues]
-      summary: Export hall schema
-      operationId: exportSchema
-      security: [{ bearerAuth: [] }]
-      parameters:
-        - $ref: '#/components/parameters/SchemaIdPath'
-        - in: query
-          name: format
-          required: true
-          schema: { type: string, enum: [json, csv] }
-      responses:
-        '200':
-          description: Export file
-          content:
-            application/json:
-              schema: { type: object }
-            text/csv:
-              schema: { type: string }
-
-  /api/v1/admin/schema-versions/{schema}/import:
-    post:
-      tags: [Admin Venues]
-      summary: Import into new draft schema
-      operationId: importSchema
-      security: [{ bearerAuth: [] }]
-      parameters:
-        - $ref: '#/components/parameters/SchemaIdPath'
-      requestBody:
-        required: true
-        content:
-          multipart/form-data:
-            schema:
-              type: object
-              required: [file, format]
-              properties:
-                file: { type: string, format: binary }
-                format: { type: string, enum: [json, csv] }
-                preview_only: { type: boolean, default: true }
-      responses:
-        '200':
-          description: Import preview/result
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/ImportResult' }
-        '422': { $ref: '#/components/responses/ValidationError' }
-
-  /api/v1/admin/orders:
-    get:
-      tags: [Admin Orders]
-      summary: List orders
-      operationId: adminListOrders
-      security: [{ bearerAuth: [] }]
-      parameters:
-        - $ref: '#/components/parameters/Page'
-        - $ref: '#/components/parameters/PerPage'
-        - in: query
-          name: status
-          schema: { type: string }
-        - in: query
-          name: payment_status
-          schema: { type: string }
-        - in: query
-          name: event_id
-          schema: { type: string }
-      responses:
-        '200':
-          description: Orders
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/OrderListResponse' }
 
   /api/v1/admin/orders/{order}/refund:
     post:
@@ -1645,54 +1606,6 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/RefundResponse' }
-        '409': { $ref: '#/components/responses/Conflict' }
-
-  /api/v1/admin/tickets:
-    get:
-      tags: [Admin Tickets]
-      summary: List tickets
-      operationId: adminListTickets
-      security: [{ bearerAuth: [] }]
-      parameters:
-        - $ref: '#/components/parameters/Page'
-        - $ref: '#/components/parameters/PerPage'
-        - in: query
-          name: session_id
-          schema: { type: string }
-        - in: query
-          name: status
-          schema: { type: string }
-      responses:
-        '200':
-          description: Tickets
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/TicketListResponse' }
-
-  /api/v1/admin/tickets/{ticket}/cancel:
-    post:
-      tags: [Admin Tickets]
-      summary: Cancel ticket
-      operationId: adminCancelTicket
-      security: [{ bearerAuth: [] }]
-      parameters:
-        - $ref: '#/components/parameters/TicketIdPath'
-        - $ref: '#/components/parameters/IdempotencyKey'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [reason]
-              properties:
-                reason: { type: string, maxLength: 500 }
-      responses:
-        '200':
-          description: Cancelled
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/TicketResponse' }
         '409': { $ref: '#/components/responses/Conflict' }
 
   /api/v1/admin/checkin/scans:
@@ -1718,47 +1631,21 @@ paths:
               schema:
                 $ref: '#/components/schemas/TicketScanListResponse'
 
-  /api/v1/admin/analytics/funnel:
-    get:
-      tags: [Admin Analytics]
-      summary: Conversion funnel
-      operationId: analyticsFunnel
-      security: [{ bearerAuth: [] }]
-      parameters:
-        - in: query
-          name: event_id
-          schema: { type: string }
-        - in: query
-          name: from
-          schema: { type: string, format: date-time }
-        - in: query
-          name: to
-          schema: { type: string, format: date-time }
-      responses:
-        '200':
-          description: Funnel
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/FunnelResponse' }
-
-  /api/v1/admin/analytics/events:
-    post:
-      tags: [Admin Analytics]
-      summary: Receive analytics event
-      operationId: captureAnalyticsEvent
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/AnalyticsEventRequest' }
-      responses:
-        '202': { description: Accepted }
-
-  /api/v1/webhooks/yookassa:
+  /api/v1/payments/webhooks/{provider}:
     post:
       tags: [Webhooks]
-      summary: Receive YooKassa webhook
+      summary: Receive payment provider webhook
+      description: >-
+        Фактический путь приёмного вебхука платежей (PaymentController::webhook);
+        канонический провайдер сегодня — `yookassa`. Бывший
+        `POST /api/v1/webhooks/yookassa` приведён к параметризованному пути;
+        остальные провайдеры включаются тем же контроллером.
       operationId: yookassaWebhook
+      parameters:
+        - in: path
+          name: provider
+          required: true
+          schema: { type: string, enum: [yookassa] }
       requestBody:
         required: true
         content:
@@ -1855,10 +1742,14 @@ paths:
               schema: { $ref: '#/components/schemas/HealthResponse' }
 
 
-  /api/v1/admin/halls/{hall}:
-    patch:
+  /api/v1/halls/{hall}:
+    put:
       tags: [Admin Venues]
       summary: Update hall
+      description: >-
+        Ресурсный путь (бывший `PATCH /api/v1/admin/halls/{hall}`); маршрут
+        приложения отвечает на PUT. Чтение и удаление зала — те же
+        `GET/DELETE /api/v1/halls/{hall}`.
       operationId: adminUpdateHall
       security: [{ bearerAuth: [] }]
       parameters:
@@ -1875,88 +1766,6 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/HallResponse' }
         '403': { $ref: '#/components/responses/Forbidden' }
-
-  /api/v1/admin/schema-versions/{schema}:
-    get:
-      tags: [Admin Venues]
-      summary: Get schema version
-      operationId: adminGetSchemaVersion
-      security: [{ bearerAuth: [] }]
-      parameters:
-        - $ref: '#/components/parameters/SchemaIdPath'
-      responses:
-        '200':
-          description: Schema
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/HallSchemaResponse' }
-    patch:
-      tags: [Admin Venues]
-      summary: Update draft schema version
-      operationId: adminUpdateSchemaVersion
-      security: [{ bearerAuth: [] }]
-      parameters:
-        - $ref: '#/components/parameters/SchemaIdPath'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/HallSchemaWriteRequest' }
-      responses:
-        '200':
-          description: Updated draft
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/HallSchemaResponse' }
-        '409': { $ref: '#/components/responses/Conflict' }
-
-  /api/v1/admin/inventory/{inventory}/block:
-    post:
-      tags: [Admin Venues]
-      summary: Block inventory item
-      operationId: adminBlockInventory
-      security: [{ bearerAuth: [] }]
-      parameters:
-        - in: path
-          name: inventory
-          required: true
-          schema: { type: string }
-        - $ref: '#/components/parameters/IdempotencyKey'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                reason: { type: string, maxLength: 500 }
-      responses:
-        '200':
-          description: Inventory blocked
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/InventoryItemResponse' }
-        '409': { $ref: '#/components/responses/Conflict' }
-
-  /api/v1/admin/inventory/{inventory}/unblock:
-    post:
-      tags: [Admin Venues]
-      summary: Unblock inventory item
-      operationId: adminUnblockInventory
-      security: [{ bearerAuth: [] }]
-      parameters:
-        - in: path
-          name: inventory
-          required: true
-          schema: { type: string }
-        - $ref: '#/components/parameters/IdempotencyKey'
-      responses:
-        '200':
-          description: Inventory unblocked
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/InventoryItemResponse' }
-        '409': { $ref: '#/components/responses/Conflict' }
 
   /api/v1/admin/checkin/devices:
     get:
@@ -2163,10 +1972,12 @@ paths:
         '200':
           description: Domain removed
 
-  /api/v1/admin/webhooks:
+  /api/v1/webhook-subscriptions:
     get:
       tags: [System]
       summary: List outbound webhooks
+      description: >-
+        Ресурсный путь модуля Webhooks (бывший `GET/POST /api/v1/admin/webhooks`).
       operationId: adminListWebhooks
       security: [{ bearerAuth: [] }]
       responses:
@@ -2197,10 +2008,12 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/WebhookResponse' }
 
-  /api/v1/admin/webhooks/{webhook}:
-    patch:
+  /api/v1/webhook-subscriptions/{webhook}:
+    put:
       tags: [System]
       summary: Update outbound webhook
+      description: >-
+        Маршрут приложения отвечает на PUT (бывший `PATCH /api/v1/admin/webhooks/{webhook}`).
       operationId: adminUpdateWebhook
       security: [{ bearerAuth: [] }]
       parameters:
@@ -2219,6 +2032,18 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/WebhookResponse' }
+    delete:
+      tags: [System]
+      summary: Delete outbound webhook
+      operationId: adminDeleteWebhook
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: webhook
+          required: true
+          schema: { type: string }
+      responses:
+        '204': { description: Deleted }
 
   /api/v1/embed/carts:
     post:
@@ -2809,11 +2634,6 @@ components:
     HallIdPath:
       in: path
       name: hall
-      required: true
-      schema: { type: string }
-    SchemaIdPath:
-      in: path
-      name: schema
       required: true
       schema: { type: string }
     PublicIdPath:
@@ -3994,47 +3814,6 @@ components:
         og_image: { type: string, nullable: true }
         schema: { type: object, additionalProperties: true, nullable: true }
 
-    ImportResult:
-      type: object
-      properties:
-        dry_run: { type: boolean }
-        imported: { type: integer }
-        errors:
-          type: array
-          items:
-            type: object
-            properties:
-              row: { type: integer, nullable: true }
-              code: { type: string }
-              message: { type: string }
-
-    FunnelResponse:
-      type: object
-      properties:
-        steps:
-          type: array
-          items:
-            type: object
-            properties:
-              event: { type: string }
-              users: { type: integer }
-              rate_from_previous: { type: number }
-              rate_from_first: { type: number }
-
-    AnalyticsEventRequest:
-      type: object
-      required: [name]
-      properties:
-        name: { type: string }
-        anonymous_id: { type: string, format: uuid, nullable: true }
-        user_id: { type: string, nullable: true }
-        session_id: { type: string, nullable: true }
-        event_id: { type: string, nullable: true }
-        page_url: { type: string }
-        referrer: { type: string }
-        properties: { type: object, additionalProperties: true }
-        occurred_at: { type: string, format: date-time }
-
     AsyncJobResponse:
       type: object
       properties:
@@ -4049,11 +3828,6 @@ components:
         checkout_token:
           type: string
           description: One-time displayed access token for anonymous checkout operations.
-
-    InventoryItemResponse:
-      type: object
-      properties:
-        data: { $ref: '#/components/schemas/InventoryItem' }
 
     CheckinDevice:
       type: object
