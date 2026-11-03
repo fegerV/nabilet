@@ -49,6 +49,17 @@ namespace Illuminate\Database\Schema {
         public bool $autoIncrement = false;
         public bool $isPrimary = false;
 
+        /**
+         * `->change()`: переписать уже существующую колонку, а не добавить.
+         *
+         * Миграции используют это, чтобы превращать nullable-колонку в NOT NULL
+         * (фаза 3 мультитенантности: `->nullable(false)->change()`). Рекордер
+         * применяет замену при фолдинге ALTER в таблицу — без флага колонка
+         * дублировалась бы (nullable и NOT NULL одновременно), и сверка с
+         * бандлом видела бы две колонки там, где в схеме одна.
+         */
+        public bool $isModified = false;
+
         /** @var list<array{type: string, name: string|null}> */
         public array $indexes = [];
 
@@ -75,6 +86,14 @@ namespace Illuminate\Database\Schema {
         public function nullable(bool $value = true): self
         {
             $this->isNullable = $value;
+
+            return $this;
+        }
+
+        /** `->change()`: заменить объявление уже существующей колонки. */
+        public function change(): self
+        {
+            $this->isModified = true;
 
             return $this;
         }
@@ -622,6 +641,28 @@ namespace Illuminate\Database\Schema {
             // and any later migration — was invisible to verify-migrations.php and
             // reported as drift ("cart_token missing from migrations", etc.).
             foreach ($blueprint->columns as $col) {
+                if ($col->isModified) {
+                    // `->change()` переписывает существующую колонку: заменяем
+                    // объявление по имени, а не добавляем вторую. Индексы старой
+                    // колонки сохраняются, если новое объявление своих не несёт.
+                    $replaced = false;
+                    foreach ($existing->columns as $i => $old) {
+                        if ($old->name !== $col->name) {
+                            continue;
+                        }
+                        $col->indexes = $col->indexes !== [] ? $col->indexes : $old->indexes;
+                        $existing->columns[$i] = $col;
+                        $replaced = true;
+
+                        break;
+                    }
+                    if (! $replaced) {
+                        $existing->columns[] = $col;
+                    }
+
+                    continue;
+                }
+
                 $existing->columns[] = $col;
             }
 
@@ -725,6 +766,60 @@ namespace Illuminate\Database\Schema {
             return self::recorder()->hasColumn($table, $column);
         }
 
+        /**
+         * Stand-in for Schema::getColumns(). Migrations read the CURRENT shape of
+         * a column to decide whether DDL is needed at all — the tenant-enforcement
+         * migration changes `organization_id` to NOT NULL only when it still is
+         * nullable. The shape mirrors what information_schema reports: `name`,
+         * `nullable`, `default`. Unknown table is an error, same as live.
+         *
+         * @return list<array{name: string, nullable: bool, default: mixed}>
+         */
+        public static function getColumns(string $table): array
+        {
+            $blueprint = self::recorder()->tables[$table] ?? null;
+            if ($blueprint === null) {
+                throw new \RuntimeException(sprintf('Schema::getColumns("%s") — no such table has been created yet', $table));
+            }
+
+            $out = [];
+            foreach ($blueprint->columns as $col) {
+                $out[] = [
+                    'name' => $col->name,
+                    'nullable' => $col->isNullable,
+                    'default' => $col->hasDefault ? $col->default : null,
+                ];
+            }
+
+            return $out;
+        }
+
+        /**
+         * Stand-in for Schema::getForeignKeys(). The tenant-enforcement migration
+         * adds `fk_<table>_org` only when it is absent, so an idempotent rerun
+         * must see the keys previous operations recorded. Both sources of keys
+         * are consulted: inline (column-level) and added by Schema::table calls.
+         *
+         * @return list<array{name: ?string, columns: list<string>, references_table: ?string}>
+         */
+        public static function getForeignKeys(string $table): array
+        {
+            $blueprint = self::recorder()->tables[$table] ?? null;
+            if ($blueprint === null) {
+                throw new \RuntimeException(sprintf('Schema::getForeignKeys("%s") — no such table has been created yet', $table));
+            }
+
+            $out = [];
+            foreach ($blueprint->foreignKeys as $fk) {
+                $out[] = ['name' => $fk->name, 'columns' => [$fk->column], 'references_table' => $fk->table];
+            }
+            foreach (self::recorder()->addedForeignKeys[$table] ?? [] as $fk) {
+                $out[] = ['name' => $fk->name, 'columns' => [$fk->column], 'references_table' => $fk->table];
+            }
+
+            return $out;
+        }
+
         public static function rawStatements(): RawStatements
         {
             return self::$rawStatements ??= new RawStatements();
@@ -758,6 +853,67 @@ namespace Illuminate\Database\Schema {
         public function getDriverName(): string
         {
             return getenv('NABILET_STUB_DRIVER') ?: 'mysql';
+        }
+    }
+}
+
+namespace {
+    /**
+     * Stand-in for the global collect() helper (its home is the GLOBAL namespace:
+     * migrations call `collect(Schema::getColumns(...))` unqualified). The sandbox
+     * does not load the vendor helpers file. Only the two methods the migrations
+     * actually call are implemented on the Collection; anything else should be
+     * added with a comment naming the migration that needs it.
+     */
+    if (! function_exists('collect')) {
+        function collect($items = []): \Illuminate\Support\Collection
+        {
+            return new \Illuminate\Support\Collection((array) $items);
+        }
+    }
+}
+
+namespace Illuminate\Support {
+    /**
+     * Мини-копия `Illuminate\Support\Collection` — только то, что вызывают
+     * миграции из песочницы: `firstWhere` (поиск колонки по имени) и
+     * `contains` (проверка существования FK по имени).
+     */
+    class Collection
+    {
+        public function __construct(private /* readonly */ array $items = [])
+        {
+        }
+
+        public function firstWhere(string $key, mixed $value): array|object|null
+        {
+            foreach ($this->items as $item) {
+                $arr = (array) $item;
+                if (($arr[$key] ?? null) === $value) {
+                    return $item;
+                }
+            }
+
+            return null;
+        }
+
+        /**
+         * @param callable(mixed): bool $callback
+         */
+        public function contains(callable $callback): bool
+        {
+            foreach ($this->items as $item) {
+                if ($callback($item)) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        public function all(): array
+        {
+            return $this->items;
         }
     }
 }
@@ -836,6 +992,22 @@ namespace Illuminate\Support\Facades {
         }
 
         /**
+         * Stand-in for DB::table(). The sandbox records SCHEMA, it has no rows, so
+         * every data probe on a fresh database answers "zero rows". The migration
+         * that enforces tenant ownership uses exactly this: `DB::table($t)
+         * ->whereNull('organization_id')->count() === 0` is the precondition for
+         * the NOT NULL change, and a freshly created database does satisfy it.
+         *
+         * Without this method the migration aborted the whole run with "Call to
+         * undefined method DB::table()", and the verifier stopped before reaching
+         * any later migration (that is how the tenant campaign broke this gate).
+         */
+        public static function table(string $table): DbTableProbe
+        {
+            return new DbTableProbe($table);
+        }
+
+        /**
          * Stand-in for DB::select(). The stub records SCHEMA, it has no rows, so
          * every data probe answers "nothing found". A migration that asserts an
          * invariant on existing data ("no second published schema version per
@@ -849,6 +1021,39 @@ namespace Illuminate\Support\Facades {
         public static function select($query, $bindings = []): array
         {
             return [];
+        }
+    }
+
+    /**
+     * The row-count probe DB::table() returns. Fluent chain is preserved
+     * (`whereNull`, `where`), every terminal count answers zero: the verifier
+     * reasons about an EMPTY database, the only state it can honestly know.
+     */
+    class DbTableProbe
+    {
+        public function __construct(private readonly string $table)
+        {
+        }
+
+        public function whereNull(string ...$columns): self
+        {
+            return $this;
+        }
+
+        public function where(mixed ...$args): self
+        {
+            return $this;
+        }
+
+        public function count(string $expression = '*'): int
+        {
+            return 0;
+        }
+
+        /** Имя таблицы — для отладки сообщения об ошибке, если их когда-нибудь станет много. */
+        public function __toString(): string
+        {
+            return $this->table;
         }
     }
 }

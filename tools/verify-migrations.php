@@ -464,9 +464,17 @@ foreach ($cm[1] as $name) {
     $spec['checks'][$name] = true;
 }
 
-preg_match_all('/CREATE TRIGGER\s+`?(\w+)`?/i', $specSql, $tm);
-foreach ($tm[1] as $name) {
-    $spec['triggers'][$name] = true;
+// Триггеры: CREATE ставит имя, DROP снимает. Бандл заменяет устаревший
+// `trg_schema_version_immutable` (секция 009) тройкой стражей жизненного
+// цикла (секция 024) — снимаются и ставятся в одном файле, поэтому важен
+// ПОСЛЕДНИЙ оператор по каждому имени, как у CHECK-констрейнтов выше.
+preg_match_all('/(CREATE|DROP)\s+TRIGGER\s+(?:IF\s+EXISTS\s+)?`?(\w+)`?/i', $specSql, $tm, PREG_SET_ORDER);
+foreach ($tm as $t) {
+    if (strcasecmp($t[1], 'CREATE') === 0) {
+        $spec['triggers'][$t[2]] = true;
+    } else {
+        unset($spec['triggers'][$t[2]]);
+    }
 }
 
 printf("  spec: %d tables, %d foreign keys, %d CHECK constraints, %d trigger(s)\n",

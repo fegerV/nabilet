@@ -323,8 +323,8 @@ jobs:
           set -e
           Q() { mysql -h 127.0.0.1 -P 3306 -uroot -prootpass -N -B -e "$1" 2>/dev/null; }
           EXPECT_TABLES=88
-          EXPECT_COLUMNS=911
-          EXPECT_TRIGGERS=1
+          EXPECT_COLUMNS=951
+          EXPECT_TRIGGERS=3
 
           for db in nabilet split; do
             tables=$(Q "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='${db}' AND table_type='BASE TABLE';")
@@ -335,7 +335,7 @@ jobs:
           done
 
           triggers=$(Q "SELECT COUNT(*) FROM information_schema.triggers WHERE trigger_schema='nabilet';")
-          [ "$triggers" = "$EXPECT_TRIGGERS" ] || { echo "::error::expected ${EXPECT_TRIGGERS} trigger, found ${triggers}"; exit 1; }
+          [ "$triggers" = "$EXPECT_TRIGGERS" ] || { echo "::error::expected ${EXPECT_TRIGGERS} triggers, found ${triggers}"; exit 1; }
           echo "triggers: ${triggers}"
 
       - name: Consolidated and split must agree
@@ -353,11 +353,12 @@ jobs:
           fi
           echo "consolidated == split ($(wc -l < /tmp/consolidated.tsv) columns)"
 
-      # The trigger is the one integrity rule MySQL cannot express as a CHECK
-      # (a CHECK cannot reference OLD). It is also the easiest thing in the world
+      # The triggers are the integrity rules MySQL cannot express as a CHECK
+      # (a CHECK cannot reference OLD). They are the easiest thing in the world
       # to break silently, so assert both directions: a frozen version cannot be
-      # mutated, and a draft still can.
-      - name: The immutability trigger actually fires
+      # mutated or deleted, and a draft still can (with the revision bump the
+      # lifecycle guard demands).
+      - name: The hall schema lifecycle guards actually fire
         run: |
           set -e
           MY="mysql -h 127.0.0.1 -P 3306 -uroot -prootpass nabilet"
@@ -367,10 +368,12 @@ jobs:
             VALUES (1, 'org_test_aaaaaaaaaaaaaaaaa', 'T', 't', 'active', NOW(6), NOW(6));
           INSERT INTO venues (id, public_id, organization_id, name, slug, created_at, updated_at)
             VALUES (1, 'ven_test_aaaaaaaaaaaaaaaaa', 1, 'V', 'v', NOW(6), NOW(6));
-          INSERT INTO halls (id, public_id, venue_id, name, created_at, updated_at)
-            VALUES (1, 'hal_test_aaaaaaaaaaaaaaaaa', 1, 'H', NOW(6), NOW(6));
-          INSERT INTO hall_schema_versions (id, public_id, hall_id, version, status, schema_json, created_at, updated_at)
-            VALUES (1, 'hsv_test_aaaaaaaaaaaaaaaaa', 1, 1, 'published', '{}', NOW(6), NOW(6));
+          -- organization_id обязателен (секция 025 бандла): строка зала/версии
+          -- без арендатора — ошибка данных, а не легальное состояние.
+          INSERT INTO halls (id, public_id, organization_id, venue_id, name, created_at, updated_at)
+            VALUES (1, 'hal_test_aaaaaaaaaaaaaaaaa', 1, 1, 'H', NOW(6), NOW(6));
+          INSERT INTO hall_schema_versions (id, public_id, organization_id, hall_id, version, status, schema_json, created_at, updated_at)
+            VALUES (1, 'hsv_test_aaaaaaaaaaaaaaaaa', 1, 1, 1, 'published', '{}', NOW(6), NOW(6));
           SQL
 
           # Negative: mutating the payload of a published version must be rejected.
@@ -378,7 +381,7 @@ jobs:
           $MY -e "UPDATE hall_schema_versions SET schema_json = '{\"changed\":true}' WHERE id = 1;" 2>/tmp/trigger.err
           code=$?
           set -e
-          [ "$code" -ne 0 ] || { echo "::error::a published schema version was mutated — the trigger did not fire"; exit 1; }
+          [ "$code" -ne 0 ] || { echo "::error::a published schema version was mutated — the guard did not fire"; exit 1; }
           grep -q "immutable" /tmp/trigger.err || { echo "::error::failed for an unrelated reason: $(cat /tmp/trigger.err)"; exit 1; }
           echo "published payload is immutable"
 
@@ -387,19 +390,29 @@ jobs:
           $MY -e "UPDATE hall_schema_versions SET version = 2 WHERE id = 1;" 2>/dev/null
           code=$?
           set -e
-          [ "$code" -ne 0 ] || { echo "::error::a published version was renumbered — the trigger did not fire"; exit 1; }
+          [ "$code" -ne 0 ] || { echo "::error::a published version was renumbered — the guard did not fire"; exit 1; }
           echo "published version number is immutable"
 
+          # Negative: a published version cannot be deleted at all.
+          set +e
+          $MY -e "DELETE FROM hall_schema_versions WHERE id = 1;" 2>/tmp/delete.err
+          code=$?
+          set -e
+          [ "$code" -ne 0 ] || { echo "::error::a published schema version was deleted — the delete guard did not fire"; exit 1; }
+          grep -q "cannot be deleted" /tmp/delete.err || { echo "::error::failed for an unrelated reason: $(cat /tmp/delete.err)"; exit 1; }
+          echo "published versions cannot be deleted"
+
           # Positive: publishing/archiving is a status change and must still work,
-          # otherwise the trigger would freeze the table permanently.
+          # otherwise the guard would freeze the table permanently.
           $MY -e "UPDATE hall_schema_versions SET status = 'archived' WHERE id = 1;"
           echo "status transitions still allowed"
 
-          # Positive: a draft is still freely editable.
+          # Positive: a draft is still freely editable — when the revision bump
+          # the lifecycle guard demands accompanies the content change.
           $MY <<'SQL'
-          INSERT INTO hall_schema_versions (id, public_id, hall_id, version, status, schema_json, created_at, updated_at)
-            VALUES (2, 'hsv_draft_aaaaaaaaaaaaaaaa', 1, 2, 'draft', '{}', NOW(6), NOW(6));
-          UPDATE hall_schema_versions SET schema_json = '{"draft":true}' WHERE id = 2;
+          INSERT INTO hall_schema_versions (id, public_id, organization_id, hall_id, version, status, schema_json, created_at, updated_at)
+            VALUES (2, 'hsv_draft_aaaaaaaaaaaaaaaa', 1, 1, 2, 'draft', '{}', NOW(6), NOW(6));
+          UPDATE hall_schema_versions SET schema_json = '{"draft":true}', revision = 2 WHERE id = 2;
           SQL
           echo "draft versions remain editable"
 

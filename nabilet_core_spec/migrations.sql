@@ -2490,4 +2490,288 @@ CREATE TABLE IF NOT EXISTS newsletter_subscribers (
   UNIQUE KEY uq_newsletter_unsub_token (unsubscribe_token)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- ============================================================ 024 — hall schema lifecycle guards
+-- Замена единственного триггера 009 (`trg_schema_version_immutable`) на тройку
+-- справедливых стражей жизненного цикла. Источник — миграция
+-- 2026_10_06_000100_harden_hall_schema_lifecycle.php: сначала ставится строгий
+-- страж под новым именем, затем снимается устаревший, поэтому замена не
+-- оставляет окна без защиты.
+--
+--   trg_schema_version_lifecycle_guard  BEFORE UPDATE — идентичность версии
+--     (id/public_id/hall_id/version/created_at) неизменяема всегда; поля
+--     опубликованной или archived версии заморожены; переходы статусов
+--     ограничены машиной (published→archived, draft→published, черновик
+--     обязан наращивать revision при правке контента);
+--   trg_schema_version_delete_guard     BEFORE DELETE — published/archived
+--     версии не удаляются;
+--   trg_hall_frozen_schema_delete_guard BEFORE DELETE ON halls — зал с
+--     замороженными версиями не удаляется (MySQL не вызывает триггеры
+--     дочерней таблицы при каскаде FK, поэтому родительский путь закрыт
+--     отдельно).
+DELIMITER //
+DROP TRIGGER IF EXISTS trg_schema_version_immutable //
+CREATE TRIGGER trg_schema_version_lifecycle_guard
+BEFORE UPDATE ON hall_schema_versions
+FOR EACH ROW
+BEGIN
+  IF NOT (NEW.id <=> OLD.id)
+     OR NOT (NEW.public_id <=> OLD.public_id)
+     OR NOT (NEW.hall_id <=> OLD.hall_id)
+     OR NOT (NEW.version <=> OLD.version)
+     OR NOT (NEW.created_at <=> OLD.created_at) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Hall schema identity is immutable';
+  END IF;
+  IF OLD.status IN ('published', 'archived') THEN
+    IF NOT (NEW.id <=> OLD.id)
+       OR NOT (NEW.public_id <=> OLD.public_id)
+       OR NOT (NEW.hall_id <=> OLD.hall_id)
+       OR NOT (NEW.version <=> OLD.version)
+       OR NOT (NEW.width <=> OLD.width)
+       OR NOT (NEW.height <=> OLD.height)
+       OR NOT (NEW.background_url <=> OLD.background_url)
+       OR NOT (NEW.schema_json <=> OLD.schema_json)
+       OR NOT (NEW.published_at <=> OLD.published_at)
+       OR NOT (NEW.created_at <=> OLD.created_at)
+       OR NOT (NEW.revision <=> OLD.revision)
+    THEN
+      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Published hall schema data is immutable';
+    END IF;
+    IF OLD.status = 'published' AND NEW.status NOT IN ('published', 'archived') THEN
+      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Invalid published hall schema transition';
+    END IF;
+    IF OLD.status = 'archived' AND NEW.status <> 'archived' THEN
+      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Archived hall schema cannot be restored';
+    END IF;
+  ELSEIF OLD.status = 'draft' THEN
+    IF NEW.status NOT IN ('draft', 'published') THEN
+      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Invalid draft hall schema transition';
+    END IF;
+    IF NEW.status = 'draft' AND NEW.published_at IS NOT NULL THEN
+      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Draft hall schema cannot have published_at';
+    END IF;
+    IF NEW.status = 'published' AND NEW.published_at IS NULL THEN
+      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Published hall schema requires published_at';
+    END IF;
+    IF NEW.status = 'published' AND (
+         NOT (NEW.public_id <=> OLD.public_id)
+         OR NOT (NEW.hall_id <=> OLD.hall_id)
+         OR NOT (NEW.version <=> OLD.version)
+         OR NOT (NEW.width <=> OLD.width)
+         OR NOT (NEW.height <=> OLD.height)
+         OR NOT (NEW.background_url <=> OLD.background_url)
+         OR NOT (NEW.schema_json <=> OLD.schema_json)
+         OR NOT (NEW.revision <=> OLD.revision)
+       ) THEN
+      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Save draft content before publishing';
+    END IF;
+    IF NEW.status = 'draft' AND (
+         NOT (NEW.public_id <=> OLD.public_id)
+         OR NOT (NEW.hall_id <=> OLD.hall_id)
+         OR NOT (NEW.version <=> OLD.version)
+         OR NOT (NEW.width <=> OLD.width)
+         OR NOT (NEW.height <=> OLD.height)
+         OR NOT (NEW.background_url <=> OLD.background_url)
+         OR NOT (NEW.schema_json <=> OLD.schema_json)
+       ) AND NOT (NEW.revision <=> COALESCE(OLD.revision, 1) + 1) THEN
+      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Draft content changes must increment revision';
+    END IF;
+    IF NOT (NEW.revision <=> OLD.revision)
+       AND NOT (NEW.revision <=> COALESCE(OLD.revision, 1) + 1) THEN
+      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Invalid hall schema revision';
+    END IF;
+  END IF;
+END //
+DROP TRIGGER IF EXISTS trg_schema_version_delete_guard //
+CREATE TRIGGER trg_schema_version_delete_guard
+BEFORE DELETE ON hall_schema_versions
+FOR EACH ROW
+BEGIN
+  IF OLD.status IN ('published', 'archived') THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Published hall schema versions cannot be deleted';
+  END IF;
+END //
+DROP TRIGGER IF EXISTS trg_hall_frozen_schema_delete_guard //
+CREATE TRIGGER trg_hall_frozen_schema_delete_guard
+BEFORE DELETE ON halls
+FOR EACH ROW
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM hall_schema_versions
+    WHERE hall_id = OLD.id AND status IN ('published', 'archived')
+  ) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Hall with frozen schema versions cannot be deleted';
+  END IF;
+END //
+DELIMITER ;
+
+-- ============================================================ 025 — tenant ownership
+-- Мультитенантность (док. SECURITY-GAPS-REMEDIATION §3.2, класс A): у строки
+-- каждого из этих 40 контекстов есть ровно один владелец-организация.
+-- Колонка обязательна (NOT NULL) — «строка без арендатора» считается ошибкой
+-- данных, а не легальным состоянием; ссылка каскадная.
+-- Таблицы, носившие organization_id изначально (organizations, venues, events,
+-- orders, promo_codes, webhooks, api_keys, pages, ticket_templates,
+-- media_assets, storefront_settings, ab_experiments и др.), объявляют колонку
+-- в своих CREATE-блоках и здесь не повторяются.
+ALTER TABLE sessions
+  ADD COLUMN organization_id BIGINT UNSIGNED NOT NULL AFTER id,
+  ADD KEY idx_sessions_org (organization_id),
+  ADD CONSTRAINT fk_sessions_org FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE;
+ALTER TABLE inventory_items
+  ADD COLUMN organization_id BIGINT UNSIGNED NOT NULL AFTER id,
+  ADD KEY idx_inventory_items_org (organization_id),
+  ADD CONSTRAINT fk_inventory_items_org FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE;
+ALTER TABLE carts
+  ADD COLUMN organization_id BIGINT UNSIGNED NOT NULL AFTER id,
+  ADD KEY idx_carts_org (organization_id),
+  ADD CONSTRAINT fk_carts_org FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE;
+ALTER TABLE cart_items
+  ADD COLUMN organization_id BIGINT UNSIGNED NOT NULL AFTER id,
+  ADD KEY idx_cart_items_org (organization_id),
+  ADD CONSTRAINT fk_cart_items_org FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE;
+ALTER TABLE seat_holds
+  ADD COLUMN organization_id BIGINT UNSIGNED NOT NULL AFTER id,
+  ADD KEY idx_seat_holds_org (organization_id),
+  ADD CONSTRAINT fk_seat_holds_org FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE;
+ALTER TABLE order_items
+  ADD COLUMN organization_id BIGINT UNSIGNED NOT NULL AFTER id,
+  ADD KEY idx_order_items_org (organization_id),
+  ADD CONSTRAINT fk_order_items_org FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE;
+ALTER TABLE payments
+  ADD COLUMN organization_id BIGINT UNSIGNED NOT NULL AFTER id,
+  ADD KEY idx_payments_org (organization_id),
+  ADD CONSTRAINT fk_payments_org FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE;
+ALTER TABLE payment_transactions
+  ADD COLUMN organization_id BIGINT UNSIGNED NOT NULL AFTER id,
+  ADD KEY idx_payment_transactions_org (organization_id),
+  ADD CONSTRAINT fk_payment_transactions_org FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE;
+ALTER TABLE refunds
+  ADD COLUMN organization_id BIGINT UNSIGNED NOT NULL AFTER id,
+  ADD KEY idx_refunds_org (organization_id),
+  ADD CONSTRAINT fk_refunds_org FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE;
+ALTER TABLE tickets
+  ADD COLUMN organization_id BIGINT UNSIGNED NOT NULL AFTER id,
+  ADD KEY idx_tickets_org (organization_id),
+  ADD CONSTRAINT fk_tickets_org FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE;
+ALTER TABLE ticket_scans
+  ADD COLUMN organization_id BIGINT UNSIGNED NOT NULL AFTER id,
+  ADD KEY idx_ticket_scans_org (organization_id),
+  ADD CONSTRAINT fk_ticket_scans_org FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE;
+ALTER TABLE halls
+  ADD COLUMN organization_id BIGINT UNSIGNED NOT NULL AFTER id,
+  ADD KEY idx_halls_org (organization_id),
+  ADD CONSTRAINT fk_halls_org FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE;
+ALTER TABLE hall_schema_versions
+  ADD COLUMN organization_id BIGINT UNSIGNED NOT NULL AFTER id,
+  ADD KEY idx_hall_schema_versions_org (organization_id),
+  ADD CONSTRAINT fk_hall_schema_versions_org FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE;
+ALTER TABLE sectors
+  ADD COLUMN organization_id BIGINT UNSIGNED NOT NULL AFTER id,
+  ADD KEY idx_sectors_org (organization_id),
+  ADD CONSTRAINT fk_sectors_org FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE;
+ALTER TABLE hall_rows
+  ADD COLUMN organization_id BIGINT UNSIGNED NOT NULL AFTER id,
+  ADD KEY idx_hall_rows_org (organization_id),
+  ADD CONSTRAINT fk_hall_rows_org FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE;
+ALTER TABLE seats
+  ADD COLUMN organization_id BIGINT UNSIGNED NOT NULL AFTER id,
+  ADD KEY idx_seats_org (organization_id),
+  ADD CONSTRAINT fk_seats_org FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE;
+ALTER TABLE hall_tables
+  ADD COLUMN organization_id BIGINT UNSIGNED NOT NULL AFTER id,
+  ADD KEY idx_hall_tables_org (organization_id),
+  ADD CONSTRAINT fk_hall_tables_org FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE;
+ALTER TABLE standing_zones
+  ADD COLUMN organization_id BIGINT UNSIGNED NOT NULL AFTER id,
+  ADD KEY idx_standing_zones_org (organization_id),
+  ADD CONSTRAINT fk_standing_zones_org FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE;
+ALTER TABLE event_translations
+  ADD COLUMN organization_id BIGINT UNSIGNED NOT NULL AFTER id,
+  ADD KEY idx_event_translations_org (organization_id),
+  ADD CONSTRAINT fk_event_translations_org FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE;
+ALTER TABLE venue_translations
+  ADD COLUMN organization_id BIGINT UNSIGNED NOT NULL AFTER id,
+  ADD KEY idx_venue_translations_org (organization_id),
+  ADD CONSTRAINT fk_venue_translations_org FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE;
+ALTER TABLE page_translations
+  ADD COLUMN organization_id BIGINT UNSIGNED NOT NULL AFTER id,
+  ADD KEY idx_page_translations_org (organization_id),
+  ADD CONSTRAINT fk_page_translations_org FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE;
+ALTER TABLE promo_code_redemptions
+  ADD COLUMN organization_id BIGINT UNSIGNED NOT NULL AFTER id,
+  ADD KEY idx_promo_code_redemptions_org (organization_id),
+  ADD CONSTRAINT fk_promo_code_redemptions_org FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE;
+ALTER TABLE event_dates
+  ADD COLUMN organization_id BIGINT UNSIGNED NOT NULL AFTER id,
+  ADD KEY idx_event_dates_org (organization_id),
+  ADD CONSTRAINT fk_event_dates_org FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE;
+ALTER TABLE event_speakers
+  ADD COLUMN organization_id BIGINT UNSIGNED NOT NULL AFTER id,
+  ADD KEY idx_event_speakers_org (organization_id),
+  ADD CONSTRAINT fk_event_speakers_org FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE;
+ALTER TABLE event_sponsors
+  ADD COLUMN organization_id BIGINT UNSIGNED NOT NULL AFTER id,
+  ADD KEY idx_event_sponsors_org (organization_id),
+  ADD CONSTRAINT fk_event_sponsors_org FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE;
+ALTER TABLE event_faqs
+  ADD COLUMN organization_id BIGINT UNSIGNED NOT NULL AFTER id,
+  ADD KEY idx_event_faqs_org (organization_id),
+  ADD CONSTRAINT fk_event_faqs_org FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE;
+ALTER TABLE event_artists
+  ADD COLUMN organization_id BIGINT UNSIGNED NOT NULL AFTER id,
+  ADD KEY idx_event_artists_org (organization_id),
+  ADD CONSTRAINT fk_event_artists_org FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE;
+ALTER TABLE event_schedule_items
+  ADD COLUMN organization_id BIGINT UNSIGNED NOT NULL AFTER id,
+  ADD KEY idx_event_schedule_items_org (organization_id),
+  ADD CONSTRAINT fk_event_schedule_items_org FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE;
+ALTER TABLE artist_event
+  ADD COLUMN organization_id BIGINT UNSIGNED NOT NULL AFTER id,
+  ADD KEY idx_artist_event_org (organization_id),
+  ADD CONSTRAINT fk_artist_event_org FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE;
+ALTER TABLE ab_variants
+  ADD COLUMN organization_id BIGINT UNSIGNED NOT NULL AFTER id,
+  ADD KEY idx_ab_variants_org (organization_id),
+  ADD CONSTRAINT fk_ab_variants_org FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE;
+ALTER TABLE ab_assignments
+  ADD COLUMN organization_id BIGINT UNSIGNED NOT NULL AFTER id,
+  ADD KEY idx_ab_assignments_org (organization_id),
+  ADD CONSTRAINT fk_ab_assignments_org FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE;
+ALTER TABLE ab_metrics
+  ADD COLUMN organization_id BIGINT UNSIGNED NOT NULL AFTER id,
+  ADD KEY idx_ab_metrics_org (organization_id),
+  ADD CONSTRAINT fk_ab_metrics_org FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE;
+ALTER TABLE webhook_deliveries
+  ADD COLUMN organization_id BIGINT UNSIGNED NOT NULL AFTER id,
+  ADD KEY idx_webhook_deliveries_org (organization_id),
+  ADD CONSTRAINT fk_webhook_deliveries_org FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE;
+ALTER TABLE event_favorites
+  ADD COLUMN organization_id BIGINT UNSIGNED NOT NULL AFTER id,
+  ADD KEY idx_event_favorites_org (organization_id),
+  ADD CONSTRAINT fk_event_favorites_org FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE;
+ALTER TABLE event_follows
+  ADD COLUMN organization_id BIGINT UNSIGNED NOT NULL AFTER id,
+  ADD KEY idx_event_follows_org (organization_id),
+  ADD CONSTRAINT fk_event_follows_org FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE;
+ALTER TABLE follow_notifications
+  ADD COLUMN organization_id BIGINT UNSIGNED NOT NULL AFTER id,
+  ADD KEY idx_follow_notifications_org (organization_id),
+  ADD CONSTRAINT fk_follow_notifications_org FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE;
+ALTER TABLE raffles
+  ADD COLUMN organization_id BIGINT UNSIGNED NOT NULL AFTER id,
+  ADD KEY idx_raffles_org (organization_id),
+  ADD CONSTRAINT fk_raffles_org FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE;
+ALTER TABLE raffle_prizes
+  ADD COLUMN organization_id BIGINT UNSIGNED NOT NULL AFTER id,
+  ADD KEY idx_raffle_prizes_org (organization_id),
+  ADD CONSTRAINT fk_raffle_prizes_org FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE;
+ALTER TABLE raffle_entries
+  ADD COLUMN organization_id BIGINT UNSIGNED NOT NULL AFTER id,
+  ADD KEY idx_raffle_entries_org (organization_id),
+  ADD CONSTRAINT fk_raffle_entries_org FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE;
+ALTER TABLE raffle_winners
+  ADD COLUMN organization_id BIGINT UNSIGNED NOT NULL AFTER id,
+  ADD KEY idx_raffle_winners_org (organization_id),
+  ADD CONSTRAINT fk_raffle_winners_org FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE;
+
 SET FOREIGN_KEY_CHECKS = 1;

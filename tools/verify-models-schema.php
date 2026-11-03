@@ -192,9 +192,10 @@ const INVENTED_FIELDS = [
     // снова разойтись.
     // `Redirect` снят по той же причине: модель переписана под реальную схему
     // (`source`/`destination`/`active`), расхождения больше нет.
-    'PageTranslation' => [
-        'meta_description' => 'names meta_description; page_translations stores description/seo_description',
-    ],
+    // `PageTranslation.meta_description` снят 2026-11-03 (Translations-подпути):
+    // fill починен под реальную схему (`slug`/`seo_title`/`seo_description`),
+    // выдуманной колонки модель больше не объявляет — stale-запись храповик
+    // обязан был показать, что и произошло.
     'SeoMeta' => [
         'meta_description' => 'names meta_title/meta_description/page_id/subject_type/subject_id; seo_meta stores entity_type/entity_id, title/description',
         'meta_title' => 'names meta_title/meta_description/page_id/subject_type/subject_id; seo_meta stores entity_type/entity_id, title/description',

@@ -35,13 +35,19 @@ declare(strict_types=1);
  *   85 / 881 → 88 / 911: таблицы `artists` (13 колонок), `artist_event` (7) и
  *   `newsletter_subscribers` (10) — контент-модуль с артистами и лента подписки
  *   витрины (сплит 023). Числа подняли в двух инструментах из трёх.
+ *
+ *   911 → 951: секция 025 бандла — мультитенантность: nullable-колонка
+ *   `organization_id` доведена до обязательной в 40 таблицах класса A
+ *   (миграции 2026_10_29_000100 и 2026_11_02_000100). Таблица одна не
+ *   добавилась — `social_accounts` остаётся app-only расширением с allowlist'ом
+ *   (`verify-migrations.php`), поэтому EXPECTED_TABLES не менялось.
  */
 
 /** Таблиц в бандле спеки. Сверяется с `spec_ddl_tables()` при каждом прогоне. */
 const EXPECTED_TABLES = 88;
 
 /** Колонок в бандле спеки (CREATE TABLE + ALTER TABLE ADD COLUMN). */
-const EXPECTED_COLUMNS = 911;
+const EXPECTED_COLUMNS = 951;
 
 /**
  * Сколько `CREATE TABLE` в бандле — независимая от парсеров величина.

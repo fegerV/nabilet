@@ -190,7 +190,13 @@ echo $line(sprintf('  spec parsed: %d tables, %d columns (self-check ok)', count
 // печатались как EXTRA, и раздел «columns» показывал 917 против 911 в спеке —
 // расхождение, которого нет. Добавлен, чтобы список совпадал с единственным
 // местом, которое его действительно проверяет.
-$appOnlyTables = ['failed_jobs', 'jobs', 'personal_access_tokens', 'web_sessions'];
+//
+// `social_accounts` — то же решение, записанное в докблоке одноимённой
+// миграции (2026_10_27_000100): таблица соц-входа — расширение ПРИЛОЖЕНИЯ
+// сверх Core-бандла, внесено в allowlist `verify-migrations.php`; без неё
+// здесь все её девять колонок печатались как EXTRA и таблица портила счётчик
+// fk/unique на живой стороне.
+$appOnlyTables = ['failed_jobs', 'jobs', 'personal_access_tokens', 'web_sessions', 'social_accounts'];
 $appOnlyExclusion = "'" . implode("','", $appOnlyTables) . "'";
 
 $live = [
@@ -244,11 +250,17 @@ $live = [
 //     Уникальные — 3: `uq_artist_event`, `uq_artists_slug`, `uq_artists_normalized_name`.
 //   127 → 127, 116 → 118, 53 → 53  сплит `023`/`c581afbd` (лента подписки).
 //     Уникальные — 2: `uq_newsletter_email`, `uq_newsletter_unsub_token`.
+//   127 → 167, 118 → 118, 53 → 53, triggers 1 → 3  секции `024`/`025` бандла
+//     (2026-11-03): мультитенантность добавила 40 FK `fk_<table>_org`
+//     (по одному на таблицу класса A; индексы `idx_<table>_org` в счётчик не
+//     входят) и триггер устаревший `trg_schema_version_immutable` заменён
+//     тремя стражами жизненного цикла. Уникальные без изменений: единственный
+//     живой уникальный сверх спеки (`uq_social_provider_user`) живёт в
+//     app-only `social_accounts` и вычитается вместе с таблицей.
 //
-// Триггеры в этот цикл НЕ входят: они сравниваются отдельно ниже, потому что
-// их расхождение — отставшая спека, а не дрейф схемы, и оно не должно
-// сбрасываться или подгоняться вместе с остальными счётчиками.
-$expect = ['fk' => 127, 'unique' => 118, 'check' => 53];
+// Триггеры сравниваются на общих основаниях (spec=3): расхождение «спека
+// отстала», существовавшее до правки секции 024, закрыто самой спекой.
+$expect = ['fk' => 167, 'unique' => 118, 'check' => 53, 'trigger' => 3];
 foreach ($expect as $k => $want) {
     $got = $live[$k];
     $ok = $got === $want;
@@ -256,30 +268,6 @@ foreach ($expect as $k => $want) {
         $failed = true;
     }
     echo $line(sprintf('  %-8s live %4d   spec %4d   %s', $k, $got, $want, $ok ? 'ok' : 'MISMATCH'));
-}
-
-if ($live['trigger'] !== 1) {
-    // Расхождение по триггерам — не app-only шум, а отставшая спека, и
-    // записываем это явно, а не подгонкой числа. Миграции создают три
-    // триггера жизненного цикла схемы зала и УДАЛЯЮТ тот единственный, что
-    // описан в спеке (`trg_schema_version_immutable`). То есть спека
-    // описывает устаревшую защиту и не описывает три действующие, которые и
-    // обеспечивают инвариант неизменяемости опубликованной схемы.
-    // Подробности — `tools/verify-migrations.php`, проверка «hall lifecycle
-    // triggers are emitted without a replacement gap».
-    echo $line(sprintf('  %-8s live %4d   spec %4d   %s', 'trigger', $live['trigger'], 1, 'spec behind'));
-    echo $line('  Триггеры: спека описывает один (trg_schema_version_immutable),');
-    echo $line('  миграции создают три и удаляют описанный. Живые триггеры:');
-
-    foreach (DB::select('SELECT trigger_name, event_object_table FROM information_schema.triggers
-                         WHERE trigger_schema=DATABASE()') as $t) {
-        echo $line("    {$t->TRIGGER_NAME}  on {$t->EVENT_OBJECT_TABLE}");
-    }
-
-    echo $line('  Reported, not failed: спеку нужно привести к трём триггерам');
-    echo $line('  жизненного цикла — это отдельная правка спеки, а не дрейф схемы.');
-} else {
-    echo $line(sprintf('  %-8s live %4d   spec %4d   ok', 'trigger', $live['trigger'], 1));
 }
 
 if ($live['check'] === 0 && $expect['check'] > 0) {
