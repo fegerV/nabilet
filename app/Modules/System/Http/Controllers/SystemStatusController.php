@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Log;
 use Nabilet\Core\Support\Paging;
 use Nabilet\Modules\System\Services\HealthProbe;
+use Nabilet\Modules\System\Services\HostChecks;
 use Nabilet\Modules\System\Services\LogReader;
 
 /**
@@ -57,11 +58,10 @@ use Nabilet\Modules\System\Services\LogReader;
  */
 class SystemStatusController extends Controller
 {
-    /** Сколько дней считать резервную копию свежей. */
-    private const BACKUP_STALE_HOURS = 26;
-
-    public function __construct(private readonly HealthProbe $probe)
-    {
+    public function __construct(
+        private readonly HealthProbe $probe,
+        private readonly HostChecks $host,
+    ) {
     }
 
     /**
@@ -85,8 +85,11 @@ class SystemStatusController extends Controller
                 'database' => $this->describe($checks['database'], 'Соединение с БД установлено'),
                 'redis' => $this->describe($checks['redis'], 'Redis отвечает'),
                 'queue' => $this->describe($checks['queue'], 'Очередь доступна'),
-                'disk_space' => $this->checkDiskSpace(),
-                'last_backup' => $this->getLastBackupTime(),
+                // Диск и свежесть бэкапов решает `HostChecks` — тот же владелец,
+                // который питает алерт-команду `system:selfcheck`. Вторая копия
+                // этих правил разошлась бы с ней молча.
+                'disk_space' => $this->host->diskSpace(),
+                'last_backup' => $this->host->lastBackup(),
             ],
             'runtime' => [
                 'php_version' => PHP_VERSION,
@@ -219,85 +222,5 @@ class SystemStatusController extends Controller
             ],
             default => ['status' => 'error', 'message' => 'Проверка не пройдена'],
         };
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function checkDiskSpace(): array
-    {
-        $freeSpace = disk_free_space(base_path());
-        $totalSpace = disk_total_space(base_path());
-
-        // `disk_*_space()` возвращает false при ошибке; деление на 0 давало
-        // DivisionByZeroError (не Exception) — то есть фатал мимо catch.
-        if ($freeSpace === false || $totalSpace === false || $totalSpace <= 0) {
-            return ['status' => 'error', 'message' => 'Disk space is not readable.'];
-        }
-
-        $usedPercent = (($totalSpace - $freeSpace) / $totalSpace) * 100;
-
-        $status = $usedPercent > 90 ? 'error' : ($usedPercent > 80 ? 'warning' : 'ok');
-
-        return [
-            'status' => $status,
-            'free_gb' => round($freeSpace / 1024 / 1024 / 1024, 2),
-            'total_gb' => round($totalSpace / 1024 / 1024 / 1024, 2),
-            'used_percent' => round($usedPercent, 2),
-        ];
-    }
-
-    /**
-     * Свежесть последней резервной копии.
-     *
-     * Раньше метод искал `*.zip` в `storage/app/backups` — каталоге, в который
-     * штатный конвейер НИКОГДА не пишет (он кладёт `nabilet_*.sql[.gz|.zst]` в
-     * `database/backup`, см. `database/backup/backup.sh`). То есть при живой
-     * истории бэкапов отчёт всегда показывал «No backups found» — зеркальное
-     * отражение той же болезни, что и вечно-зелёный health-check: сигнал,
-     * который врёт. Проверяем там, где файлы действительно лежат, и считаем
-     * давность: бэкап старше суток — это `warning`, а не «информация».
-     */
-    private function getLastBackupTime(): array
-    {
-        $backupDir = database_path('backup');
-
-        if (! is_dir($backupDir)) {
-            return ['status' => 'error', 'message' => 'Каталог резервных копий не найден'];
-        }
-
-        $files = array_merge(
-            glob($backupDir . '/nabilet_*.sql') ?: [],
-            glob($backupDir . '/nabilet_*.sql.gz') ?: [],
-            glob($backupDir . '/nabilet_*.sql.zst') ?: [],
-        );
-
-        if ($files === []) {
-            return ['status' => 'error', 'message' => 'Резервные копии не найдены'];
-        }
-
-        $newest = 0;
-        $latest = null;
-
-        foreach ($files as $file) {
-            $mtime = @filemtime($file);
-            if ($mtime !== false && $mtime > $newest) {
-                $newest = $mtime;
-                $latest = $file;
-            }
-        }
-
-        if ($latest === null) {
-            return ['status' => 'error', 'message' => 'Резервные копии не найдены'];
-        }
-
-        $ageHours = round((time() - $newest) / 3600, 1);
-
-        return [
-            'status' => $ageHours > self::BACKUP_STALE_HOURS ? 'warning' : 'ok',
-            'last_backup' => date('Y-m-d H:i:s', $newest),
-            'age_hours' => $ageHours,
-            'file' => basename($latest),
-        ];
     }
 }

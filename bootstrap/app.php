@@ -135,6 +135,13 @@ return Application::configure(basePath: dirname(__DIR__))
         // существовало бы: `artisan config:validate` отвечал бы «Command not
         // defined», и гейт молча ничего не проверял.
         \Nabilet\Modules\System\Console\ConfigValidateCommand::class,
+        // Самопроверка установки по расписанию (`system:selfcheck`). До неё все
+        // health-сигналы были пассивными: деградации (очередь, диск, бэкап)
+        // видел только тот, кто сам спросил, — а внешний uptime-монитор видит
+        // лишь код ответа, и `HealthProbe` сознательно отвечает 200 на
+        // `degraded`. По расписанию, поэтому регистрация обязательна по той же
+        // причине, что выше: неизвестная команда валит весь `schedule:run`.
+        \Nabilet\Modules\System\Console\SelfCheckCommand::class,
         // Идемпотентный бэкфилл `organization_id` таблиц класса A (фаза 1
         // мультитенантности). Не по расписанию — ручной шаг перед переходом к
         // `NOT NULL`/FK (фаза 3). Регистрация обязательна по той же причине,

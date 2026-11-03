@@ -89,6 +89,32 @@ return [
             ],
         ],
 
+        /*
+         * Алерты самопроверки (`system:selfcheck`, каждые 10 минут). Отдельно
+         * от прикладного лога, чтобы хвостить/выгружать один файл и не искать
+         * сигналы среди прикладного шума; файл попадает в админскую страницу
+         * «Логи» автоматически (LogReader читает *.log). Хранение 90 дней, как
+         * у `security`: история деградаций — материал post-mortem'а, который
+         * нельзя чистить раньше записей аудита.
+         *
+         * Процессоры — те же, что у `daily`: канал МОЖЕТ получить контекст с
+         * персональными данными, если сигнал поднимет исключение с ним в
+         * трассировке; маскирование здесь не выбор, а требование 152-ФЗ.
+         */
+        'alerts' => [
+            'driver' => 'monolog',
+            'handler' => RotatingFileHandler::class,
+            'handler_with' => [
+                'filename' => storage_path('logs/alerts.log'),
+                'maxFiles' => 90,
+            ],
+            'level' => 'info',
+            'processors' => [
+                PsrLogMessageProcessor::class,
+                RedactSensitiveData::class,
+            ],
+        ],
+
         'stderr' => [
             'driver' => 'monolog',
             'level' => env('LOG_LEVEL', 'warning'),
