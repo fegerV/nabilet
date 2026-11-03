@@ -62,9 +62,14 @@ C:\Project\nabilet
    воркер `queue:work` (supervisor) + минутный cron `schedule:run`; `CACHE_STORE`/`SESSION_DRIVER`
    → `redis`/`database`; права на `storage/` и `bootstrap/cache`; HTTPS.
 2. **Живой e2e YooKassa** с боевыми ключами: платёж → вебхук → билет → возврат.
-3. **Спека/пути:** решить 29 спек-путей (`/admin/*` → ресурсные пути, `/webhooks/yookassa`
-   → `/payments/webhooks/{provider}`, `/embed/*`) — двигать роуты или править `openapi.yaml`;
-   привести спеку к 3 триггерам жизненного цикла.
+3. **~~Спека/пути~~ — закрыто 2026-11-03:** `openapi.yaml` приведён к фактическим
+   маршрутам приложения (обе копии синхронно; 94 пути / 119 операций,
+   `verify-live` served 94/94, missing 0): OAuth-пути параметризованы
+   (`/auth/{provider}/*`), админ-префиксы свернуты в ресурсные пути, платёж —
+   `POST /api/v1/payments`, вебхук — `/api/v1/payments/webhooks/{provider}`;
+   несуществующие эндпоинты (export/import схем, funnel/events, inventory
+   block/unblock, cancel тикета) сняты. Триггеры: спека дополнена тремя
+   триггерами жизненного цикла схем зала.
 4. **Построено:** клиентский виджет Embed закрыт 2026-11-03. Бэкенд и провижининг:
    7 публичных эндпоинтов с проверками ТЗ §18 плюс `POST /admin/embed/keys` и
    `/admin/embed/domains`; postMessage-мост (`resources/js/lib/embed-bridge.ts`)
