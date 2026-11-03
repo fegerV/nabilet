@@ -96,6 +96,8 @@ const NAV_GROUPS: NavGroup[] = [
       { label: 'Пользователи', to: '/admin/users', icon: '☺' },
       { label: 'Интеграции', to: '/admin/integrations', icon: '⇄' },
       { label: 'Вебхуки', to: '/admin/webhooks', icon: '⌁' },
+      // Виджет для чужих сайтов: ключ + whitelist доменов + готовый iframe-код.
+      { label: 'Встраивание', to: '/admin/embed', icon: '⧉' },
       { label: 'Шаблоны писем', to: '/admin/notification-templates', icon: '✉' },
       { label: 'Почта (SMTP)', to: '/admin/mail', icon: '⚙' },
       // Matrix (Element X): административные уведомления в комнату через

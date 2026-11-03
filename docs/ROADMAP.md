@@ -65,11 +65,15 @@ C:\Project\nabilet
 3. **Спека/пути:** решить 29 спек-путей (`/admin/*` → ресурсные пути, `/webhooks/yookassa`
    → `/payments/webhooks/{provider}`, `/embed/*`) — двигать роуты или править `openapi.yaml`;
    привести спеку к 3 триггерам жизненного цикла.
-4. **Не построено:** генератор embed-кода в админке. Бэкенд и провижининг построены:
+4. **Построено:** клиентский виджет Embed закрыт 2026-11-03. Бэкенд и провижининг:
    7 публичных эндпоинтов с проверками ТЗ §18 плюс `POST /admin/embed/keys` и
-   `/admin/embed/domains`; postMessage-мост виджета построен (2026-11-03,
-   `resources/js/lib/embed-bridge.ts`). Translations-подпути построены (2026-11-03):
-   публичные списки `GET /venues|pages/{…}/translations` и upsert
+   `/admin/embed/domains`; postMessage-мост (`resources/js/lib/embed-bridge.ts`)
+   и генератор кода в админке (`/admin/embed` + `lib/embed-code.ts`) — выпуск
+   ключа, whitelist доменов, готовый `<iframe>`-сниппет со слушателем моста.
+   Осталось направленное: переключить денежный флоу рамки на `/api/v1/embed/*`
+   (сейчас рамка грузит публичную витрину; embed-ключ уже в адресе рамки).
+   Translations-подпути построены (2026-11-03): публичные списки
+   `GET /venues|pages/{…}/translations` и upsert
    `PUT …/translations/{locale}` под админкой организации. Соц-вход
    (Яндекс/VK/Telegram) построен и выключен без кредов провайдеров — включение
    только через `.env`.
