@@ -18,19 +18,24 @@ use Nabilet\Core\Errors\DomainRuleViolation;
  * угадает. До появления CHECK тот же барьер держался только этим классом;
  * теперь их два, и расходятся они не могут: значения берутся отсюда.
  *
- * EXACTLY ONE SUBJECT. The schema allows `user_id` and `anonymous_id` to be NULL
- * simultaneously, and MySQL accepts it (verified). A consent row belonging to
- * nobody cannot be produced in response to a subject access request, and cannot
- * be withdrawn by anyone — it is noise that looks like proof. Both set at once
- * is no better: it is one person under two identities, and whichever one asks
- * for their data gets half an answer.
+ * EXACTLY ONE SUBJECT. Согласие принадлежит ровно одному субъекту: правило
+ * держит КОНСТРУКТОР (ниже, INVALID_CONSENT_SUBJECT) — и только он. Предложить
+ * его базе (рецепт §3.15 — CHECK `(user_id IS NOT NULL) <> (anonymous_id IS
+ * NOT NULL)`) MySQL 8.4 не даёт: ошибка 3823, колонка `user_id` нужна
+ * referential action'у `fk_consents_user … ON DELETE SET NULL`, а такие
+ * колонки в CHECK запрещены; триггер не выход, потому что MySQL не активирует
+ * триггеры для FK-действий. Согласие, не принадлежащее никому, нельзя ни
+ * предъявить по запросу субъекта, ни отозвать — это шум, похожий на
+ * доказательство; оба идентификатора сразу — один человек под двумя
+ * личностями, и ответ по любой из них будет неполным.
  *
- * `withdrawnAt` HAS NO COLUMN TO LIVE IN. `consents` carries `created_at` and
- * nothing else; there is no `updated_at` and no `withdrawn_at`. The database
- * therefore cannot record the single most important moment in a consent's life —
- * the moment it stopped. That is the same defect class as `tickets.revoked_at`,
- * and it is handled the same way: the domain carries the fact, the schema gap is
- * documented (REVIEW §3.15), and persisting it needs a column.
+ * `withdrawnAt` живёт в колонке. Секция 026 бандла (`2026_11_03_000100_privacy_guards`)
+ * добавила `consents.withdrawn_at` и запретила строку `withdrawn` без момента
+ * отзыва (`ck_consents_withdrawn_has_moment`) — раньше дефект был тот же, что
+ * `tickets.revoked_at`: факту отзыва некуда было записаться, и домен нёс его
+ * один. Теперь барьер двойной: строка `withdrawn` без `withdrawn_at`
+ * отвергается и конструктором (ниже), и базой. Отзыв — НОВАЯ строка (журнал,
+ * история не переписывается), и она несёт момент отзыва в себе.
  */
 final class ConsentRecord
 {

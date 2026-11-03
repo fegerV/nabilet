@@ -2,10 +2,10 @@
 
 > **Источник истины — пакет `nabilet_core_spec/`.**
 > DDL: `nabilet_core_spec/migrations.sql` (консолидированный) и
-> `nabilet_core_spec/migrations/001..025` (сплит). Побайтовая копия консолидированного
+> `nabilet_core_spec/migrations/001..026` (сплит). Побайтовая копия консолидированного
 > DDL лежит в корне репозитория как `migrations.sql` — она попадает в образ
 > (`COPY . .`) и именно её накатывает оператор вручную; совпадение с каноном проверяет CI.
-> Оба представления проверены на идентичность: **951 колонка — совпадает**
+> Оба представления проверены на идентичность: **953 колонки — совпадают**
 > (сверено по `information_schema`: колонки, индексы, внешние ключи,
 > CHECK-ограничения, триггеры, движок и коллация).
 >
@@ -13,9 +13,9 @@
 > результат запросов к `information_schema` работающей базы. Разбор пробелов и их причин:
 > `docs/REVIEW-spec-bundle.md`.
 
-**Схема:** 88 таблиц · 951 колонка · 167 внешних ключей · 118 уникальных ключей ·
+**Схема:** 88 таблиц · 953 колонки · 167 внешних ключей · 118 уникальных ключей ·
 186 обычных (неуникальных) индексов, из них 36 носят имя `fk_*` — MySQL-автоиндексы
-внешних ключей · 53 CHECK-ограничения · 3 триггера жизненного цикла версий схем зала.
+внешних ключей · 55 CHECK-ограничений · 3 триггера жизненного цикла версий схем зала.
 Числа (кроме обычных индексов) гейтятся `verify-live.php` против живой БД.
 
 ---
@@ -287,6 +287,15 @@ ck_tickets_terminal_exclusive CHECK (NOT (used_at IS NOT NULL
 `ck_consents_status` (`consents`), `ck_privacy_requests_status` (`privacy_requests`),
 `ck_notifications_status` (`notifications`), `ck_organizations_status` (`organizations`),
 `ck_ab_experiments_status` (`ab_experiments`), `ck_orders_payment_status` (`orders`).
+
+Секция 026 (152-ФЗ, §3.15) добавила к словарям два инварианта (итого **55**):
+`ck_consents_withdrawn_has_moment` (`consents` — строка `withdrawn` обязана нести
+момент отзыва; по той же причине, по которой `privacy_requests` получила колонку
+`due_at`) и `ck_privacy_requests_type` (`privacy_requests` — словарь пяти видов
+обращений из домена). Рецептованный там же CHECK «ровно один субъект» для
+`consents` не выжил: MySQL 3823 запрещает CHECK на колонке, которую держит
+referential action `fk_consents_user … ON DELETE SET NULL`; правило осталось
+доменным (`ConsentRecord::INVALID_CONSENT_SUBJECT`).
 
 > Клаузул 21, а не 24, потому что три ограничения используют один и тот же текст
 > `(quantity > 0)`, и два — `(amount >= 0)`. Уникальны именно ограничения (по имени

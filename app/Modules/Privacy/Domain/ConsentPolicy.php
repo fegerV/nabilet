@@ -21,7 +21,8 @@ namespace Nabilet\Modules\Privacy\Domain;
  * second row, and the history has to be read newest-first or a withdrawal looks
  * like permission.
  *
- * @see ConsentRecord for why `withdrawnAt` has no column to persist into.
+ * @see ConsentRecord for how `withdrawnAt` persists (`consents.withdrawn_at`,
+ *                    секция 026 бандла).
  */
 final class ConsentPolicy
 {

@@ -59,6 +59,16 @@ final class NewsletterSubscribeTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.unsubscribed', true);
 
+        // §3.15: строка отзыва несёт момент — `withdrawn` без `withdrawn_at`
+        // база отвергает (`ck_consents_withdrawn_has_moment`), поэтому писать
+        // здесь нечего проверять, кроме факта, что писатель её заполняет.
+        $withdrawn = DB::table('consents')
+            ->where('anonymous_id', $first->anonymous_id)
+            ->where('status', 'withdrawn')
+            ->first();
+        $this->assertNotNull($withdrawn, 'отзыв пишется НОВОЙ строкой со статусом withdrawn');
+        $this->assertNotNull($withdrawn->withdrawn_at, 'строка withdrawn обязана нести момент отзыва');
+
         $this->assertSame(
             'unsubscribed',
             (string) DB::table('newsletter_subscribers')->where('email', 'fan@example.test')->value('status')

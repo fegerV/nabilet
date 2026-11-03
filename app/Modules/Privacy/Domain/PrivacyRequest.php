@@ -10,14 +10,13 @@ use Nabilet\Core\Errors\DomainRuleViolation;
  * A data subject asking us to do something about their data (ТЗ §72, 152-ФЗ).
  *
  * `privacy_requests.status` — словарь из схемы: `ck_privacy_requests_status`
- * допускает ровно `requested`, `in_progress`, `completed`, `rejected` (spec,
- * сплит `2026_10_12_000500_add_status_vocabularies.php`). Этот докблок
- * утверждал, что CHECK нет и на `.status`, и на `.type`; теперь это верно
- * только про `.type` — он по-прежнему `VARCHAR(32)` без ограничения, и его
- * словарь (пять видов обращений) остаётся приложенческим.
- *
- * Fail-closed про `.status` сохранён: нераспознанное значение считается
- * нерабочим, а не валидным. Барьер двойной — класс и база.
+ * допускает ровно `requested`, `in_progress`, `completed`, `rejected`
+ * (сплит 017, миграция `2026_10_12_000500`). Секция 026 бандла
+ * (`2026_11_03_000100_privacy_guards`, §3.15) довела до базы и словарь типов:
+ * `ck_privacy_requests_type` допускает ровно пять значений из `types()` ниже.
+ * Оба барьера теперь двойные — класс и база не могут разойтись: значения
+ * берутся из констант этого класса. Fail-closed сохранён: нераспознанное
+ * значение считается нерабочим, а не валидным.
  *
  * THE DEADLINE IS A PARAMETER, NOT A CONSTANT, and that is deliberate. Neither
  * the ТЗ nor the OpenAPI contract states the response period, and I am not
@@ -27,10 +26,12 @@ use Nabilet\Core\Errors\DomainRuleViolation;
  * Pricing: where the specification is silent, the value is passed in, not
  * invented.
  *
- * `dueAt` is computed, never stored, because THE SCHEMA HAS NO COLUMN FOR IT.
- * Verified against MySQL 8.4: `privacy_requests` has no column whose name
- * suggests a due date, deadline or response date. A statutory clock that cannot
- * be written down cannot be reported on — see REVIEW §3.15.
+ * Записанный дедлайн имеет склеп: секция 026 добавила `privacy_requests.due_at`
+ * (`NOT NULL`) — раньше CHECK-класс обязан был вычислять срок, но записать
+ * его было некуда, а срок, который нельзя записать, нельзя и проконтролировать.
+ * Кого обязывает число — решает создатель строки: он вычисляет `dueAt(slaDays)`
+ * и записывает результат вместе со строкой. Уникальность не нарушена: строка
+ * рождается ровно с одним дедлайном.
  */
 final class PrivacyRequest
 {

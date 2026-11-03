@@ -15,6 +15,8 @@ use Nabilet\Modules\Core\Users\Models\User;
  * @property string|null $anonymous_id
  * @property string $consent_type
  * @property string $status
+ * @property \Carbon\Carbon|null $withdrawn_at момент отзыва согласия;
+ *                                            NULL у строк `granted`/`expired`
  * @property string|null $policy_version
  * @property string|null $ip_address
  * @property string|null $user_agent
@@ -38,6 +40,7 @@ class Consent extends Model
         'anonymous_id',
         'consent_type',
         'status',
+        'withdrawn_at',
         'policy_version',
         'ip_address',
         'user_agent',
@@ -45,6 +48,7 @@ class Consent extends Model
     ];
 
     protected $casts = [
+        'withdrawn_at' => 'datetime',
         'created_at' => 'datetime',
     ];
 

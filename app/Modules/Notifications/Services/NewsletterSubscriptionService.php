@@ -104,16 +104,24 @@ final class NewsletterSubscriptionService
             DB::transaction(function () use ($subscriber): void {
                 $subscriber->update(['status' => NewsletterSubscriber::STATUS_UNSUBSCRIBED]);
 
+                // Один момент на строку: это и момент фиксации статуса
+                // `withdrawn`, и момент отзыва согласия — они юридически
+                // совпадают и не должны разниться микросекундами.
+                $moment = now();
+
                 try {
                     DB::table('consents')->insert([
                         'user_id' => null,
                         'anonymous_id' => $subscriber->anonymous_id,
                         'consent_type' => NewsletterSubscriber::CONSENT_TYPE,
                         'status' => ConsentRecord::WITHDRAWN,
+                        // `ck_consents_withdrawn_has_moment`: строка `withdrawn`
+                        // без момента отзыва будет отвергнута базой.
+                        'withdrawn_at' => $moment,
                         'policy_version' => $subscriber->policy_version,
                         'ip_address' => null,
                         'user_agent' => null,
-                        'created_at' => now(),
+                        'created_at' => $moment,
                     ]);
                 } catch (Throwable $e) {
                     // Журнал согласий важен, но потеря отписки из-за него хуже;

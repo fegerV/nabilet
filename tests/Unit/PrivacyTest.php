@@ -17,10 +17,12 @@ use Nabilet\Tests\Support\TestCase;
 /**
  * Consent and data-subject requests (ТЗ §72, 152-ФЗ).
  *
- * The schema gaps behind these rules were reproduced against MySQL 8.4 first:
- * `consents` has no column capable of recording withdrawal and accepts a status
- * of 'banana'; a consent row may be attached to nobody; `privacy_requests` has
- * no column for a deadline and accepts an undeclared type and status.
+ * The schema gaps behind these rules were reproduced against MySQL 8.4 first
+ * (REVIEW §3.15) and are now closed in the bundle: `consents.withdrawn_at` and
+ * `privacy_requests.due_at` exist, statuses/types carry CHECK dictionaries, a
+ * consent is bound to exactly one subject. These tests stay pure-domain: they
+ * pin the same rules at the class level, so the barrier is double — the schema
+ * and this code cannot drift apart silently.
  */
 final class PrivacyTest extends TestCase
 {

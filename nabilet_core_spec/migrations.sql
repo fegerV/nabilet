@@ -2774,4 +2774,25 @@ ALTER TABLE raffle_winners
   ADD KEY idx_raffle_winners_org (organization_id),
   ADD CONSTRAINT fk_raffle_winners_org FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE;
 
+-- ============================================================ 026 - privacy consent/request guards
+-- consents: `withdrawn_at` — момент, когда согласие перестало действовать
+-- (§3.15; строка `withdrawn` без момента отвергается
+-- `ck_consents_withdrawn_has_moment`). Предложенный рецептом §3.15 CHECK
+-- «ровно один субъект» НЕ применён: MySQL 8.4 отвергает его ошибкой 3823 —
+-- колонка `user_id` нужна referential action'у `fk_consents_user … ON DELETE
+-- SET NULL`, а такие колонки в CHECK использовать нельзя; триггер не выход,
+-- потому что MySQL не активирует триггеры для FK-действий. Инвариант остаётся
+-- доменным (`ConsentRecord::INVALID_CONSENT_SUBJECT`); смена семантики FK —
+-- отдельное решение.
+-- privacy_requests: `due_at` — записанный срок ответа (NOT NULL: обращение
+-- рождается с обязательством ответить в срок); `ck_privacy_requests_type` —
+-- словарь пяти типов из домена (`PrivacyRequest::types()`).
+ALTER TABLE consents
+  ADD COLUMN withdrawn_at DATETIME(6) NULL AFTER status,
+  ADD CONSTRAINT ck_consents_withdrawn_has_moment CHECK (status <> 'withdrawn' OR withdrawn_at IS NOT NULL);
+
+ALTER TABLE privacy_requests
+  ADD COLUMN due_at DATETIME(6) NOT NULL AFTER status,
+  ADD CONSTRAINT ck_privacy_requests_type CHECK (type IN ('access','erasure','rectification','restriction','portability'));
+
 SET FOREIGN_KEY_CHECKS = 1;

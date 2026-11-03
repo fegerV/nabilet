@@ -44,7 +44,7 @@
 | Проверка | Результат |
 |---|---|
 | Гейты (14 + `modules --validate`) | **14/14 OK**, `modules.exit=0` |
-| `verify-live.php` (живая БД ↔ спека) | **PASS** (2026-11-03): 88 таблиц / 951 колонка, FK 167, unique 118, check 53, триггеры 3 — совпадают; спека-пути 94, **served 94, missing 0** |
+| `verify-live.php` (живая БД ↔ спека) | **PASS** (2026-11-03): 88 таблиц / 953 колонки, FK 167, unique 118, check 55, триггеры 3 — совпадают; спека-пути 94, **served 94, missing 0** |
 | Миграции живой БД | **0 pending** (`artisan migrate:status`) |
 | Unit (dependency-free, `tests/run.php`) | **1038 методов / 2628 утверждений**, 0 failed (2026-11-03) |
 | Feature (`vendor/bin/phpunit`) | **1251 тест / 5117 утверждений**, 0 failed (2026-11-03) |
@@ -52,8 +52,8 @@
 | Фронт: Vitest | **414/414** (33 файла) |
 | Фронт: `vite build` | **OK** — 8.98 s, 72 ассета, `index-*.js` 177 kB (gzip 66 kB) |
 | PHPStan level 5 | В CI-job `static` (локально песочница блокирует `reg.exe`/`WMIC.exe`) |
-| Спека | 88 таблиц / 951 колонка (`tools/spec-counts.php`) |
-| Структура | 36 модулей, 52 контроллера, 184 route-декларации в 27 файлах, OpenAPI 94 пути / 119 операций, 50 миграций (OpenAPI и миграции — 2026-11-03) |
+| Спека | 88 таблиц / 953 колонки (`tools/spec-counts.php`) |
+| Структура | 36 модулей, 52 контроллера, 184 route-декларации в 27 файлах, OpenAPI 94 пути / 119 операций, 51 миграция (OpenAPI и миграции — 2026-11-03) |
 | Заглушки/долги | **0** `TODO`/`FIXME`/`notImplemented` в `app/`; **0** хардкод-секретов; **0** `dd/dump` |
 | CI | 6 job'ов: `verify`, `static` (PHPStan), `docker`, `schema`, `phpunit`, `frontend` |
 
@@ -91,7 +91,7 @@ CHECK и триггеры — совпадение; все 94 спек-пути 
 | 5 | Auth соц-вход | Реализован (`/auth/{provider}/start`, `/auth/{provider}/callback`, `POST /api/v1/telegram/auth`), но не включён: нет кредов приложений у Яндекс/VK/Telegram | 🟡 | Пока кредов нет — вход только e-mail/пароль; включение = переменные окружения, без правки кода |
 | 6 | ~~Translations~~ | Закрыто 2026-11-03: 4 пути контракта построены — публичные списки `GET /venues/{venue}/translations` и `GET /pages/{page}/translations`, upsert `PUT …/translations/{locale}` под `auth:api` + `admin` (контракт openapi.yaml:2384-2468). Владелец: площадка — binding скоупнутой `Venue` (чужая = 404), страница — `assertCanAccess` по `pages.organization_id` («общая строка» платформы = 404); 14 feature-тестов изоляции. Попутно починен fill `PageTranslation` (случайная `meta_description` не в схеме, реальные `slug`/`seo_*` добавлены) | ⚪ закрыто | — |
 | 7 | `app/Modules/Embed/**` | Бэкенд **готов и покрыт**: 7 публичных эндпоинтов, все 5 проверок ТЗ §18, отказ закрытый, 27 feature-тестов. Провижининг **построен**: `POST /admin/embed/keys` (токен показывается один раз, в базе только sha256) и `GET/POST/PATCH/DELETE /admin/embed/domains` (whitelist с нормализацией домена) — 18 тестов, включая сквозной «выпустили ключ → витрина открылась». **Мост виджета построен (2026-11-03):** `lib/embed-bridge.ts` — postMessage-канал `nabilet-embed` из рамки родителю (`cart` по подписке на store в `StorefrontShell`, `order`/`payment` в `usePurchaseFlow`, `height` через ResizeObserver); целью берётся origin из `document.referrer`, без него — `'*'` (события не содержат персональных данных). **Генератор кода построен (2026-11-03):** страница `/admin/embed` — выпуск ключа с однократным показом токена (сниппет собирается сразу, `lib/embed-code.ts` — чистые функции, 13 Vitest-тестов фиксируют текст буква в букву), отзыв `PATCH {revoked:true}`, whitelist доменов (вкл/выкл, DELETE, 409 на дубль) | ⚪ закрыт | Future: денежный флоу рамки на `/api/v1/embed/*` (ключ уже в адресе рамки) |
-| 8 | Инфраструктура | Бэкапы БД, мониторинг/алерты, ротация секретов, PII-free логи, 152-ФЗ (`consents`/`privacy_requests`) | 🟡 | Нужно до публичного трафика |
+| 8 | Инфраструктура | Бэкапы БД — построены (`backup:run` dailyAt 03:00, шифрование, ротация, YandexDisk), эксплуатация не проверена. PII-free логи — построены (`RedactSensitiveData` в каналах `monolog`+`daily`, `LogReader`). 152-ФЗ: домен готов (29 тестов), **инварианты схемы закрыты 2026-11-03** (секция 026: `consents.withdrawn_at`, `privacy_requests.due_at`, CHECK-словари; CHECK «ровно один субъект» невозможен в MySQL — 3823, см. REVIEW §3.15). Осталось: мониторинг/алерты, ротация секретов, API-флоу согласий/обращений | 🟡 | Нужно до публичного трафика |
 | 9 | Android Checker | Отдельное приложение (офлайн-бандлы) | ⚪ вне web-MVP | Не блокирует веб-продажи |
 
 ---

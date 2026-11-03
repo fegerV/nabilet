@@ -41,13 +41,25 @@ declare(strict_types=1);
  *   (миграции 2026_10_29_000100 и 2026_11_02_000100). Таблица одна не
  *   добавилась — `social_accounts` остаётся app-only расширением с allowlist'ом
  *   (`verify-migrations.php`), поэтому EXPECTED_TABLES не менялось.
+ *
+ *   951 → 953: секция 026 бандла — закрываются дефекты §3.15 (REVIEW):
+ *   `consents.withdrawn_at` (момент отзыва согласия) и
+ *   `privacy_requests.due_at` (записанный срок ответа на обращение субъекта);
+ *   CHECK-инварианты `ck_consents_withdrawn_has_moment` и
+ *   `ck_privacy_requests_type`. Рецептованный §3.15 CHECK «ровно один
+ *   субъект» НЕ применён: MySQL 8.4 отвечает ошибкой 3823 — колонка `user_id`
+ *   нужна referential action'у `fk_consents_user … ON DELETE SET NULL`, такие
+ *   колонки в CHECK запрещены; инвариант остаётся доменным
+ *   (`ConsentRecord::INVALID_CONSENT_SUBJECT`). Миграция
+ *   `2026_11_03_000100_privacy_guards.php`, зеркала консолидированного DDL
+ *   синхронизированы.
  */
 
 /** Таблиц в бандле спеки. Сверяется с `spec_ddl_tables()` при каждом прогоне. */
 const EXPECTED_TABLES = 88;
 
 /** Колонок в бандле спеки (CREATE TABLE + ALTER TABLE ADD COLUMN). */
-const EXPECTED_COLUMNS = 951;
+const EXPECTED_COLUMNS = 953;
 
 /**
  * Сколько `CREATE TABLE` в бандле — независимая от парсеров величина.

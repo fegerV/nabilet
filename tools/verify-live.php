@@ -257,10 +257,18 @@ $live = [
 //     тремя стражами жизненного цикла. Уникальные без изменений: единственный
 //     живой уникальный сверх спеки (`uq_social_provider_user`) живёт в
 //     app-only `social_accounts` и вычитается вместе с таблицей.
+//   fk 167 (без изменений), unique 118 (без изменений), check 53 → 55,
+//   triggers 3 (без изменений): секция `026` бандла (2026-11-03, §3.15):
+//     `consents.withdrawn_at` + `ck_consents_withdrawn_has_moment` и
+//     `privacy_requests.due_at` + `ck_privacy_requests_type`. Рецептованный
+//     §3.15 CHECK «ровно один субъект» НЕ применён: MySQL 8.4 отвечает 3823 —
+//     колонка `user_id` нужна referential action'у `fk_consents_user … ON
+//     DELETE SET NULL`, а такие колонки в CHECK запрещены; инвариант остался
+//     доменным (`ConsentRecord::INVALID_CONSENT_SUBJECT`).
 //
 // Триггеры сравниваются на общих основаниях (spec=3): расхождение «спека
 // отстала», существовавшее до правки секции 024, закрыто самой спекой.
-$expect = ['fk' => 167, 'unique' => 118, 'check' => 53, 'trigger' => 3];
+$expect = ['fk' => 167, 'unique' => 118, 'check' => 55, 'trigger' => 3];
 foreach ($expect as $k => $want) {
     $got = $live[$k];
     $ok = $got === $want;

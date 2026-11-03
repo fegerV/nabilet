@@ -562,6 +562,30 @@ DATETIME(6) NULL` и `CHECK (status <> 'withdrawn' OR withdrawn_at IS NOT NULL)`
 `status`. Плюс CHECK «ровно один субъект»:
 `(user_id IS NOT NULL) <> (anonymous_id IS NOT NULL)`.
 
+**Закрыто 2026-11-03 (частично — инварианты схемы; API-флоу consent/request
+остаётся открытой работой, см. LAUNCH-READINESS P7).** По этому рецепту
+выполнено: секция 026 бандла (`nabilet_core_spec/migrations/026_privacy_guards.sql`,
+миграция `2026_11_03_000100_privacy_guards.php`) — `consents.withdrawn_at
+DATETIME(6) NULL` + `ck_consents_withdrawn_has_moment`;
+`privacy_requests.due_at DATETIME(6) NOT NULL` + `ck_privacy_requests_type`
+(словарь пяти типов взят из `PrivacyRequest::types()`, ничего не выдумано).
+CHECK на статусы обеих таблиц стоял раньше — миграция 017 (§3.11). Код доведён
+до соответствия: писатель консентов (`NewsletterSubscriptionService`)
+заполняет `withdrawn_at` моментом отзыва в строке `withdrawn`; модели
+`Consent`/`PrivacyRequest` несут новые колонки; доменные докблоки переписаны —
+«колонки нет» больше не утверждение этого репозитория.
+
+**НЕ выполнено из рецепта: CHECK «ровно один субъект»** — MySQL 8.4 отвергает
+его ошибкой 3823 с причиной, которого в этом ревью не было: колонка `user_id`
+нужна referential action'у `fk_consents_user … ON DELETE SET NULL`, а колонки,
+участвующие в referential action, в CHECK использовать нельзя. Триггером
+ограничение тоже не закрыть: MySQL не активирует триггеры для FK-действий, то
+есть «ничейные» строки, порождённые самим `SET NULL` при удалении пользователя,
+не увидел бы ни один триггер. Инвариант остаётся доменным
+(`ConsentRecord::INVALID_CONSENT_SUBJECT` enforced на конструкторе); сделать
+его базовым — значит сменить семантику FK (RESTRICT + ручное разъединение
+согласий при erasure), это отдельное решение.
+
 ### 3.16 Корзина может держать места чужого сеанса, а срок её жизни ни с чем не связан
 
 **Проверено исполнением на MySQL 8.4** (БД `nabilet_p2`, схема пакета загружена
