@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Nabilet\Modules\System\Providers;
 
 use Illuminate\Support\ServiceProvider;
+use Illuminate\Support\Facades\Log;
 use Nabilet\Modules\System\Support\ProductionSafetyAudit;
 use RuntimeException;
 
@@ -46,10 +47,42 @@ final class ProductionSafetyProvider extends ServiceProvider
 
         $violations = $this->app->make(ProductionSafetyAudit::class)->violations();
 
-        if ($violations !== []) {
-            throw new RuntimeException(
-                "Unsafe production configuration:\n  - " . implode("\n  - ", $violations)
-            );
+        if ($violations === []) {
+            return;
         }
+
+        // ВИЗАРД ЕЩЁ НЕ ЗАВЕРШЁН. Свежий шаред-хостинг приходит сюда ДО .env:
+        // Laravel подставляет дефолты (APP_ENV=production в config/app.php,
+        // CACHE_STORE=database в config/cache.php), то есть каждая проверка
+        // «нарушает», хотя оператор ещё не вводил ни одной настройки. Упасть
+        // здесь значит сделать сам установщик (/install) недоступным —
+        // исправить конфигурацию через веб было бы невозможно. Пока открыт
+        // install.lock-гейт (`InstallerController::isInstalled`), нарушениям
+        // разрешено подождать: тот же набор правил вызывается явной командой
+        // `config:validate` и вернётся строго сразу после окончательной
+        // установки (`markAsInstalled()` пишет install.lock).
+        if (! self::installerFinished($this->app->storagePath('install.lock'))) {
+            Log::warning('Production safety: violations found before installation; '
+                . 'enforcing after the installer finishes', ['violations' => $violations]);
+
+            return;
+        }
+
+        throw new RuntimeException(
+            "Unsafe production configuration:\n  - " . implode("\n  - ", $violations)
+        );
+    }
+
+    /**
+     * Флаг «визард завершился» — существует `storage/install.lock`.
+     *
+     * Отдельный чистый метод, а не `is_file()` inline: единственное место,
+     * где решается вопрос «enforce или подождать», должно быть назвать
+     * тестом (см. tests/Feature/System/SafetyGateTest.php) без поднятия
+     * приложения.
+     */
+    public static function installerFinished(string $lockPath): bool
+    {
+        return is_file($lockPath);
     }
 }

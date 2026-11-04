@@ -615,6 +615,12 @@ $knownExtensions = [
         'personal_access_tokens', // Laravel Sanctum (create_personal_access_tokens_table)
         'failed_jobs',            // очередь Laravel (create_queue_tables)
         'jobs',                   // очередь Laravel: транзакционная почта и исходящие вебхуки
+        'cache',                  // хранилище кеша/rate-limit'ера Laravel (2026_09_19_000000).
+                                  // Дефолт проекта — `CACHE_STORE=file`, но `CACHE_STORE=database`
+                                  // — поддерживаемый режим (мастер установки, ALLOW-флаг),
+                                  // и без этих таблиц `throttle` на первом же раскладе падал
+                                  // `1146 Base table or view not found` (найдено 2026-11-04)
+        'cache_locks',            // сегмент блокировок кеша выше
         'web_sessions',           // HTTP-сессии Laravel (storefront/admin SPA); config/session.php
                                   // шёл в `sessions`, но это доменная таблица сеансов событий
         'social_accounts',        // соц-вход (модуль Auth): привязка user → (provider, provider_user_id).

@@ -71,6 +71,32 @@ class InstallerHardeningTest extends TestCase
         $this->assertStringNotContainsString('{', $env);
     }
 
+    /**
+     * Хостинг без Redis (Timeweb) — задокументированный сценарий: подтверждение
+     * `NABILET_ALLOW_DATABASE_CACHE=true` должно попадать в .env сразу, иначе
+     * `ProductionSafetyAudit` откажет приложению при первом же запросе ПОСЛЕ
+     * установки, и результатом визарда окажется лежащий сайт (2026-11-04,
+     * найдено прогоном визарда на свежей копии: /install отвечал 500).
+     */
+    public function test_generated_env_acknowledges_database_cache_for_hosts_without_redis(): void
+    {
+        $env = $this->invoke('buildEnvContent', [$this->baseData(), 'base64:AAAA']);
+
+        $this->assertStringContainsString('NABILET_ALLOW_DATABASE_CACHE=true', $env);
+    }
+
+    /** Коллация обязательна: дефолт конфига (`''`) MySQL 8 валит миграции
+     * ошибкой `Unknown collation: ''` — без этих строк установка обрывалась
+     * прямо на шаге migrate (найдено прогоном визарда 2026-11-04).
+     */
+    public function test_generated_env_carries_working_charset_and_collation(): void
+    {
+        $env = $this->invoke('buildEnvContent', [$this->baseData(), 'base64:AAAA']);
+
+        $this->assertStringContainsString('DB_CHARSET=utf8mb4', $env);
+        $this->assertStringContainsString('DB_COLLATION=utf8mb4_unicode_ci', $env);
+    }
+
     /* ── B-4: полный блок MAIL_* ───────────────────────────────────────────── */
 
     public function test_generated_env_contains_a_full_mail_block(): void

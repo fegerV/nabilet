@@ -16,6 +16,7 @@ use Illuminate\Validation\ValidationException;
 use Nabilet\Core\Support\PublicationStatus;
 use Nabilet\Modules\Core\Support\PublicId;
 use Nabilet\Modules\Core\Users\Domain\UserStatus;
+use Nabilet\Modules\Installer\Support\PreinstallAppKey;
 
 /**
  * InstallerController — пошаговый установщик системы для шаред-хостинга.
@@ -70,9 +71,18 @@ DB_PORT={DB_PORT}
 DB_DATABASE={DB_DATABASE}
 DB_USERNAME={DB_USERNAME}
 DB_PASSWORD={DB_PASSWORD}
+# Коллация обязательна: дефолт `config/database.php` (`''`) MySQL 8 отвергает
+# ошибкой `Unknown collation: ''` на первом же запросе миграций (найдено
+# прогоном визарда 2026-11-04: установка падала прямо на шаге migrate).
+DB_CHARSET={DB_CHARSET}
+DB_COLLATION={DB_COLLATION}
 
 BROADCAST_CONNECTION=log
 CACHE_STORE={CACHE_STORE}
+# Хостинг без Redis (задокументированный сценарий Timeweb): стенд в БД —
+# осознанный выбор. Без этого подтверждения ProductionSafetyAudit в
+# production не даст приложению подняться (см. ProductionSafetyAudit).
+NABILET_ALLOW_DATABASE_CACHE=true
 FILESYSTEM_DISK={FILESYSTEM_DISK}
 QUEUE_CONNECTION={QUEUE_CONNECTION}
 SESSION_DRIVER={SESSION_DRIVER}
@@ -139,9 +149,23 @@ ENV;
         }
 
         try {
+            // Лимит PHP (по умолчанию 30 с у php-fpm на шаред-хостинге) считает
+            // время работы ВНУТРИ одного запроса: миграции ~90 таблиц и bcrypt
+            // в сидерах реально выходят за 30 с (найдено прогоном визарда
+            // 2026-11-04: FatalError «Maximum execution time …» прямо в
+            // Hashing\BcryptHasher). Установка — разовое действие, а не
+            // пользовательский запрос: обнуляем лимит; если хостер запретил
+            // set_time_limit, фолбэка нет — но и прежний лимит не спасал.
+            @set_time_limit(0);
+
             $validated = $request->validate([
                 'app_name' => ['required', 'string', 'max:255'],
-                'app_url' => ['required', 'url', 'max:255'],
+                // production-шаблон (APP_ENV=production) против правила
+                // `ProductionSafetyAudit::insecureAppUrl()`: если мастер примет
+                // http://, приложение отвергнет собственный .env сразу после
+                // установки и ляжет (tickets + платежи обязаны жить на HTTPS).
+                // Отсекаем это НА форме, а не 500-й после неё.
+                'app_url' => ['required', 'url', 'max:255', 'starts_with:https://'],
                 'db_host' => ['required', 'string', 'max:255'],
                 'db_port' => ['required', 'integer', 'between:1,65535'],
                 'db_database' => ['required', 'string', 'max:255'],
@@ -161,6 +185,9 @@ ENV;
                 'mail_from_name' => ['nullable', 'string', 'max:255'],
                 'yookassa_shop_id' => ['nullable', 'string', 'max:255'],
                 'yookassa_api_key' => ['nullable', 'string', 'max:255'],
+            ], [
+                'app_url.starts_with' => 'APP_URL должен начинаться с https:// — приложение '
+                    . 'отдаёт билеты и принимает оплату; по http оно откажется подниматься.',
             ]);
 
             // Шаг 1: Проверка подключения к БД
@@ -186,6 +213,12 @@ ENV;
                 'database.connections.mysql.database' => $validated['db_database'],
                 'database.connections.mysql.username' => $validated['db_username'],
                 'database.connections.mysql.password' => $validated['db_password'],
+                // Коллация — та же ловушка, что креды: boot-конфиг (без .env)
+                // содержит `''`, и MySQL 8 валит первый же запрос миграций
+                // `Unknown collation: ''`. Значения обязаны совпадать с тем,
+                // что шаблон кладёт в .env — их источником и был этот список.
+                'database.connections.mysql.charset' => 'utf8mb4',
+                'database.connections.mysql.collation' => 'utf8mb4_unicode_ci',
                 'app.key' => $appKey,
                 'app.url' => $validated['app_url'],
                 'app.env' => 'production',
@@ -496,6 +529,8 @@ ENV;
             '{DB_DATABASE}' => $this->envValue((string) $data['db_database']),
             '{DB_USERNAME}' => $this->envValue((string) $data['db_username']),
             '{DB_PASSWORD}' => $this->envValue((string) $data['db_password']),
+            '{DB_CHARSET}' => 'utf8mb4',
+            '{DB_COLLATION}' => 'utf8mb4_unicode_ci',
             '{CACHE_STORE}' => 'database',
             '{FILESYSTEM_DISK}' => 'public',
             '{QUEUE_CONNECTION}' => 'database',
@@ -660,5 +695,11 @@ ENV;
     {
         File::put(storage_path('install.lock'), now()->toIso8601String());
         Log::info('Installer: Система помечена как установленная');
+
+        // Временный ключ на окно установки больше не нужен: реальный APP_KEY
+        // уже записан в .env, а с этого момента пустой/битый ключ обязан
+        // падать громко (fail-loud) — временная подмена условия не ослабляет.
+        // Оставленный файл был бы мёртвым грузом в списке «что это за файл».
+        File::delete(PreinstallAppKey::persistencePath());
     }
 }

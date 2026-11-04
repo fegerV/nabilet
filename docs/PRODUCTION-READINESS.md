@@ -12,7 +12,7 @@
 ## 1. Краткий вывод
 
 **Код готов к продакшену; готова ли среда — нет.** Всё, что можно проверить без внешних
-сервисов, зелёное: 14 гейтов, `verify-live` (схема живой БД = спека), 1048 unit-методов,
+сервисов, зелёное: 15 гейтов, `verify-live` (схема живой БД = спека), 1048 unit-методов,
 полный PHPUnit-набор, `vue-tsc`, Vitest, production-сборка Vite, PHPStan level 5 в CI.
 
 **Блокирует запуск только конфигурация production-транспорта и внешние интеграции:**
@@ -39,15 +39,15 @@
 
 ---
 
-## 2. Свежие метрики (проверено 2026-10-27, актуализировано 2026-11-03)
+## 2. Свежие метрики (проверено 2026-10-27, актуализировано 2026-11-04)
 
 | Проверка | Результат |
 |---|---|
-| Гейты (14 + `modules --validate`) | **14/14 OK**, `modules.exit=0` |
-| `verify-live.php` (живая БД ↔ спека) | **PASS** (2026-11-03): 88 таблиц / 953 колонки, FK 167, unique 118, check 55, триггеры 3 — совпадают; спека-пути 94, **served 94, missing 0** |
-| Миграции живой БД | **0 pending** (`artisan migrate:status`) |
-| Unit (dependency-free, `tests/run.php`) | **1048 методов / 2658 утверждений**, 0 failed (2026-11-03) |
-| Feature (`vendor/bin/phpunit`) | **1277 тестов / 5246 утверждений**, 0 failed (2026-11-04) |
+| Гейты (`verify-*` × 15 + `modules --validate`) | **15/15 OK**, `modules.exit=0`, `lint.exit=0` (2026-11-04) |
+| `verify-live.php` (живая БД ↔ спека) | **PASS** (2026-11-04): 88 таблиц / 953 колонки, FK 167, unique 118, check 55, триггеры 3 — совпадают; спека-пути 94, **served 94, missing 0** |
+| Миграции живой БД | **0 pending** (`artisan migrate:status`); `verify-migrations` — 16/16 |
+| Unit (dependency-free, `tests/run.php`) | **1048 методов / 2658 утверждений**, 0 failed (2026-11-04) |
+| Feature (`vendor/bin/phpunit`) | **1291 тест / 5272 утверждения**, 0 failed (2026-11-04) |
 | Фронт: `vue-tsc --noEmit` | **OK** (exit 0) |
 | Фронт: Vitest | **414/414** (33 файла) |
 | Фронт: `vite build` | **OK** — 8.98 s, 72 ассета, `index-*.js` 177 kB (gzip 66 kB) |
@@ -77,6 +77,36 @@ CHECK и триггеры — совпадение; все 94 спек-пути 
   формат суммы заказа в письме (B44), символ валюты (B45), цена билета в письме и PDF (B46),
   цена «от N ₽» на посадочной (B47). Ручных `number_format` для денег вне `Money` — **нет**.
 - **Возвраты:** решение о сумме — только `RefundLedger::evaluate()` (B42).
+
+### Установка на шаред-хостинг (срез 2026-11-04)
+
+- **Визард проверен e2e на чистой копии** (DocumentRoot = `public_html/`, без `.env`,
+  `php -S` как прокси для FPM): найдены и закрыты **шесть звеньев «яиц и курицы»**,
+  каждое из которых по отдельности делало `/install` недостижимым или установку
+  ломающей: (1) `MissingAppKeyException` до записи `.env` — ключ теперь
+  гарантируется на буте (`PreinstallAppKey`, персистится в `storage/`, чистится
+  после установки); (2) дефолтные драйверы `database` при неизвестном хосте БД —
+  до записи `.env` включаются файловые (`PreinstallDrivers`, каталоги создаются
+  явно); (3) `Unknown collation: ''` на MySQL 8 — в шаблон `.env` добавлены
+  `DB_CHARSET`/`DB_COLLATION`, подкладываются в конфиг перед `migrate`;
+  (4) throttle/кеш при `CACHE_STORE=database` без таблиц — миграция
+  `2026_09_19_000000_000_cache` (таблицы `cache` + `cache_locks`), применена и на
+  живую БД; (5) bcrypt-сидеры не влезали в `max_execution_time=30` —
+  `set_time_limit(0)` на время установки; (6) сторож прод-конфига ронял бут до
+  установки — окно «визард не завершён» теперь не-violations
+  (`ProductionSafetyProvider::installerFinished`).
+- **Полный e2e после фиксов:** GET `/install` → 200 (requirements passed) →
+  test-database → 200 → POST `/install` → 200 (`redirect: /admin`, 96 таблиц в БД
+  = 94 бизнес-таблицы + cache + cache_locks); `.env` полный (production, https,
+  utf8mb4, `NABILET_ALLOW_DATABASE_CACHE=true`); повторные POST/GET → 403
+  `ALREADY_INSTALLED`; `/api/v1/health` → 200; витрина `/` отдаёт `dist/index.html`.
+  Прогон повторён на **распакованном zip-архиве** — см. ниже.
+- **Архив установки собран и протестирован:** `nabilet-hosting-20261104.zip`
+  (~31 МБ) — `app/ bootstrap/ config/ database/ lang/ public/ public_html/
+  resources/ routes/ storage/ (скелет) vendor/ dist/ .env.example .user.ini artisan
+  composer.*`; без `tests/ tools/ docs/ .git .env install.lock логов`. На хостинге
+  из архива не нужны ни `composer install` (vendor включён), ни `npm run build`
+  (dist включён). Распаковка + полный проход визарда — зелёные.
 
 ---
 

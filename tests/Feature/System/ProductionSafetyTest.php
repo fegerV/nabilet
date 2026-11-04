@@ -32,11 +32,24 @@ class ProductionSafetyTest extends TestCase
 {
     private string $originalEnv = 'testing';
 
+    private string $lockPath;
+
+    private bool $lockExisted = false;
+
     protected function setUp(): void
     {
         parent::setUp();
 
         $this->originalEnv = (string) $this->app['env'];
+        $this->lockPath = storage_path('install.lock');
+        $this->lockExisted = is_file($this->lockPath);
+
+        // С этого момента класс проверяет «production РАБОТАЕТ» (установка
+        // завершена): сторож обязан кидать. Окно до установки разбирает
+        // отдельный тест ниже, который снимает файл-флаг.
+        if (! $this->lockExisted) {
+            file_put_contents($this->lockPath, 'test');
+        }
 
         // Остальные проверки сторожа должны молчать: иначе тест на хранилище
         // кэша падал бы по чужой причине и ничего не доказывал.
@@ -57,6 +70,10 @@ class ProductionSafetyTest extends TestCase
         $this->app['env'] = $this->originalEnv;
 
         unset($_ENV['NABILET_ALLOW_DATABASE_CACHE'], $_SERVER['NABILET_ALLOW_DATABASE_CACHE']);
+
+        if (! $this->lockExisted) {
+            @unlink($this->lockPath);
+        }
 
         parent::tearDown();
     }
@@ -202,6 +219,31 @@ class ProductionSafetyTest extends TestCase
         $this->app['env'] = 'production';
         config(['cache.default' => 'redis', 'app.url' => 'https://nabilet.ru']);
 
+        (new ProductionSafetyProvider($this->app))->boot();
+
+        $this->addToAssertionCount(1);
+    }
+
+    /**
+     * Окно ДО УСТАНОВКИ: нарушения ждут, а не валят приложение.
+     *
+     * ЯЙЦО И КУРИЦА (2026-11-04): на свежем шаред-хостинге без `.env` Laravel
+     * дефолтит `APP_ENV=production` и `CACHE_STORE=database` — сторож бросал
+     * на `boot()` и делал `GET /install` 500: чинить конфигурацию через мастер
+     * было невозможно, потому что сам мастер был недоступен. Пока
+     * `storage/install.lock` не существует, сторож только предупреждает;
+     * строгий режим возвращается последним тестом выше (`install.lock` есть).
+     */
+    public function test_the_guard_waits_while_the_installer_has_not_finished(): void
+    {
+        @unlink($this->lockPath);
+
+        $this->app['env'] = 'production';
+        config(['cache.default' => 'database']);
+
+        // Ни RuntimeException, ни 500: окно до установки отвечает за /install.
+        // Strict-проверка идёт отдельным вызовом `config:validate` и возвращает
+        // сразу после `markAsInstalled()`.
         (new ProductionSafetyProvider($this->app))->boot();
 
         $this->addToAssertionCount(1);

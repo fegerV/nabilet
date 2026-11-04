@@ -35,6 +35,10 @@ final class ConfigValidateTest extends TestCase
 
     private string $originalEnv = 'testing';
 
+    private string $lockPath;
+
+    private bool $lockExisted = false;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -55,6 +59,17 @@ final class ConfigValidateTest extends TestCase
 
         $_ENV['TRUSTED_PROXIES'] = '';
         $_SERVER['TRUSTED_PROXIES'] = '';
+
+        // Тест «провайдер и команда делят один набор правил» вызывает бут
+        // провайдера напрямую в production. После 2026-11-04 (яйцо и курица
+        // визарда) окно ДО установки нарушений уже не кидает, а ждёт — тест
+        // проверяет strict-режим, то есть установку уже завершившуюся:
+        // симулируем файл-флаг до tearDown.
+        $this->lockPath = storage_path('install.lock');
+        $this->lockExisted = is_file($this->lockPath);
+        if (! $this->lockExisted) {
+            file_put_contents($this->lockPath, 'test');
+        }
     }
 
     protected function tearDown(): void
@@ -63,6 +78,10 @@ final class ConfigValidateTest extends TestCase
 
         foreach (['TRUSTED_PROXIES', 'NABILET_ALLOW_DATABASE_CACHE'] as $key) {
             unset($_ENV[$key], $_SERVER[$key]);
+        }
+
+        if (! $this->lockExisted) {
+            @unlink($this->lockPath);
         }
 
         if ($this->originalTrustedProxies[0] !== null) {
