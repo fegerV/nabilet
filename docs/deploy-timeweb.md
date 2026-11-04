@@ -354,3 +354,35 @@ SELECT code, used_count FROM promo_codes WHERE used_count > 0;
 - `https://домен/build/assets/*.js` отдаётся как статикa (200).
 - `https://домен/.env` → **403/404** (dot-файлы заблокированы `.htaccess`).
 - `php artisan --version` на сервере показывает Laravel 13.x на PHP 8.3.x.
+
+---
+
+## 9. Версионирование релизов и обновление системы
+
+### Версионирование
+
+- Текущая версия приложения: **1.0.0** (`config/nabilet.php` → `'version'`,
+  отдаётся в `/api/v1/health` и `SystemStatusController`).
+- Git-теги релизов: **SemVer** — `vX.Y.Z` (пример: `v1.0.0` на коммите `ac145ab2`).
+- `CHANGELOG.md` (Keep a Changelog + SemVer): `## [X.Y.Z] - YYYY-MM-DD`.
+- Правила: `fix:` → PATCH (1.0.0 → 1.0.1), `feat:` → MINOR (→ 1.1.0), breaking → MAJOR
+  (→ 2.0.0).
+
+### Процесс релиза
+
+1. bump версии (`config/nabilet.php`, `package.json`);
+2. `CHANGELOG.md` += новый релизный блок;
+3. commit (`fix:`/`feat:`/`docs(release):`) → тег `vX.Y.Z` → push (`git push origin main vX.Y.Z`);
+4. пересборка архива: `npm run build` + деплой-сборка → `nabilet-hosting-vX.Y.Z-YYYYMMDD.zip`;
+5. e2e на архиве → удаление старого zip → обновление имени в этом документе.
+
+### Обновление установленной системы
+
+- Через архив (рекомендуется): распаковка в каталог сайта, `cp -a nabilet/. …`,
+  `chmod -R ug+w storage bootstrap/cache`. Мастер при `storage/install.lock` —
+  откажет `403 ALREADY_INSTALLED` — это норма.
+- Через git: `git pull origin main` + `composer install --no-dev --optimize-autoloader`.
+- После обновления: `php artisan migrate --force`; при изменении `.env` —
+  `php artisan config:cache && php artisan route:cache && php artisan view:cache`;
+  cron `schedule:run`; проверка `/api/v1/health` → 200, `/` → 200, повторный `/install`
+  → 403 `ALREADY_INSTALLED`.
