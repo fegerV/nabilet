@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Illuminate\Support\Facades\Route;
 use Nabilet\Modules\Privacy\Http\Controllers\AdminPrivacyRequestController;
+use Nabilet\Modules\Privacy\Http\Controllers\ConsentController;
 use Nabilet\Modules\Privacy\Http\Controllers\PrivacyRequestController;
 
 // Mounted at /api/v1 — do not repeat the version segment.
@@ -25,6 +26,23 @@ Route::post('privacy-requests', [PrivacyRequestController::class, 'store'])->mid
 Route::get('privacy-requests/{publicId}', [PrivacyRequestController::class, 'show'])
     ->where('publicId', '[A-Za-z0-9]+')
     ->middleware('throttle:60,1');
+
+/*
+ * Согласия владельца аккаунта: список и отзыв (152-ФЗ §9). Прецедент `/me/*`
+ * Loyalty: весь префикс закрыт `auth:api`, ни один метод не принимает чужой
+ * идентификатор — владелец только из Bearer-токена. Throttle не нужен:
+ * субъект обращается к СВОИМ данным из личного кабинета, и 401 гостю
+ * обеспечивает middleware.
+ *
+ * `{type}` — открытый словарь целей согласия (`consents.consent_type`);
+ * ограничение формата — латиница/цифры/подчёркивания/дефис, до 64 знаков
+ * (узкий словарь цели — в валидации контроллера).
+ */
+Route::prefix('me')->middleware('auth:api')->group(function (): void {
+    Route::get('consents', [ConsentController::class, 'index']);
+    Route::post('consents/{type}/withdraw', [ConsentController::class, 'withdraw'])
+        ->where('type', '[A-Za-z0-9_-]{1,64}');
+});
 
 /*
  * Обработка оператором. `admin` поверх `auth:api` — роль из `user_roles`

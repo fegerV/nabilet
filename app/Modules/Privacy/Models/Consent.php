@@ -6,7 +6,6 @@ namespace Nabilet\Modules\Privacy\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Nabilet\Modules\Core\Models\Concerns\HasPublicId;
 use Nabilet\Modules\Core\Users\Models\User;
 
 /**
@@ -21,11 +20,19 @@ use Nabilet\Modules\Core\Users\Models\User;
  * @property string|null $ip_address
  * @property string|null $user_agent
  * @property \Carbon\Carbon $created_at
+ *
+ * БЕЗ HasPublicId. Таблица `consents` не имеет колонки `public_id` (секция
+ * 006 схемы): журнал согласий — внутренний учёт, адресуемый субъектом и
+ * целью, наружу эти строки не выдаются вне `/me/consents` (это списки
+ * владельца, а не разделяемые ссылки). Трейт стоял здесь раньше и делал
+ * любую запись через Eloquent невозможной: хук `creating` проставлял
+ * атрибут `public_id`, которого колонка не знает — INSERT падал «Unknown
+ * column». Запись согласий всегда шла мимо модели (`NewsletterSubscriptionService`
+ * пишет `DB::table('consents')` именно поэтому); теперь запись через модель
+ * работает тоже — её ведёт `ConsentService`.
  */
 class Consent extends Model
 {
-    use HasPublicId;
-
     /**
      * Явно, а не через множественное число Eloquent: имя таблицы — часть
      * контракта со схемой (`tools/verify-models-schema.php` сверяет колонки

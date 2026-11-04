@@ -91,7 +91,9 @@ C:\Project\nabilet
    `NABILET_PRIVACY_SLA_DAYS`; 2026-11-04), ротация секретов (runbook 2026-11-04
    — `docs/SECRET-ROTATION.md`: инвентаризация с ценой утечки/ротации,
    процедуры APP_KEY/QR/бэкап-ключа на Timeweb, аварийный порядок, журнал),
-   API-флоу согласий (отзыв согласия вне рассылки).
+   API-флоу согласий субъектов-аккаунтов (2026-11-04 — `/me/consents` list +
+   withdraw под `auth:api`; generic grant отложен — решение fail-closed,
+   см. PRODUCTION-READINESS §4 строку 8).
 6. **Android Checker** — отдельный проект (офлайн-бандлы), вне web-MVP.
 
 ## Журнал исправлений — кампания «правило скопировано, а не вызвано» (2026-10)
