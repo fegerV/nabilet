@@ -1,0 +1,91 @@
+name: Android
+
+# Собирает debug APK и проверяет, что релизный вариант компилируется с R8.
+# Подпись здесь не нужна: у неё отдельный workflow по тегам.
+
+on:
+  push:
+    branches: [main, master, develop]
+    paths:
+      - 'android/**'
+      - '.github/workflows/android.yml'
+  pull_request:
+    paths:
+      - 'android/**'
+      - '.github/workflows/android.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Tests, lint, APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: android
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Make gradlew executable
+        run: chmod +x gradlew
+
+      - name: Unit tests
+        run: ./gradlew --no-daemon --stacktrace testDebugUnitTest
+
+      - name: Lint
+        run: ./gradlew --no-daemon lintDebug
+
+      - name: Assemble debug APK
+        run: ./gradlew --no-daemon assembleDebug
+
+      - name: Assemble release (unsigned, R8 check)
+        run: ./gradlew --no-daemon assembleRelease
+
+      - name: Upload debug APK
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nabilet-checker-debug
+          path: android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Upload lint report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nabilet-checker-lint
+          path: |
+            android/app/build/reports/lint-results-*.html
+            android/app/build/reports/lint-results-*.xml
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nabilet-checker-tests
+          path: |
+            android/app/build/reports/tests/**
+            android/app/build/test-results/**
+          if-no-files-found: warn
+          retention-days: 14

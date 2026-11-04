@@ -1,138 +1,88 @@
-# NABILET Checker - Android Ticket Verification App
+# NABILET Checker — Android-приложение контролёра
 
-Production-ready Android application for offline-capable ticket verification at event venues.
+Приложение для проверки билетов на входе площадки. Сканирует QR, выносит вердикт
+«пускать / не пускать» и работает без сети по заранее скачанному бандлу билетов,
+доотправляя результаты сканирования на сервер, когда связь появляется.
 
-## Features
+Пакет: `com.nabilet.checker`. Язык интерфейса — русский.
 
-- **Offline-first architecture**: Download encrypted ticket bundles and verify without network
-- **QR Code scanning**: Fast, accurate scanning with camera permission handling
-- **Cryptographic verification**: HMAC-SHA256 signature validation of QR codes
-- **Multi-device sync**: Multiple checkers can work simultaneously with automatic reconciliation
-- **Real-time statistics**: Dashboard showing scans per minute, success/failure rates
-- **Audit trail**: All scans logged locally and synced when online
+## Что умеет
 
-## Project Structure
+- Сканирование QR камерой (CameraX + ML Kit, модель распознавания встроена в APK,
+  сеть для распознавания не нужна) и ручной ввод строки QR.
+- Онлайн-проверка через авторитетный `POST /api/v1/checkin/use`.
+- Офлайн-проверка по бандлу: билет ищется в локальной SQLite, решение принимается
+  на устройстве, скан ставится в очередь.
+- Автоматическая синхронизация очереди (WorkManager: сразу после скана, при
+  появлении сети и раз в 15 минут как страховка) через
+  `POST /api/v1/checkin/sync`.
+- Статистика смены и история сканов из локальной базы — цифры переживают
+  перезапуск и убийство процесса.
+- Токен устройства хранится в Android Keystore (AES-GCM), в открытом виде не
+  пишется никогда.
 
-```
-android/
-├── app/
-│   ├── src/main/
-│   │   ├── java/com/nabilet/checker/
-│   │   │   ├── CheckerApplication.kt      # App initialization, DI setup
-│   │   │   ├── MainActivity.kt            # Main scanner UI
-│   │   │   ├── data/
-│   │   │   │   ├── local/                 # Room database, DAOs
-│   │   │   │   ├── remote/                # API client, bundle download
-│   │   │   │   └── repository/            # Repository pattern implementation
-│   │   │   ├── domain/
-│   │   │   │   ├── model/                 # Domain models (Ticket, ScanResult)
-│   │   │   │   └── util/                  # Crypto utils, QR parser
-│   │   │   └── ui/
-│   │   │       ├── scanner/               # Camera, QR detection
-│   │   │       ├── dashboard/             # Statistics, recent scans
-│   │   │       └── settings/              # Device config, sync status
-│   │   ├── res/                           # Resources, layouts
-│   │   └── AndroidManifest.xml
-│   ├── build.gradle.kts
-│   └── proguard-rules.pro
-├── gradle/
-├── build.gradle.kts
-└── settings.gradle.kts
-```
+## Стек и почему так
 
-## Technical Stack
+| Решение | Причина |
+| --- | --- |
+| Kotlin + Jetpack Compose | Один экран-инструмент, без XML-разметки и без лишних зависимостей |
+| Ручной DI (`AppContainer`) | Граф — девять объектов; Hilt добавил бы KSP и ещё одну точку отказа в CI |
+| OkHttp + `org.json` | Четыре эндпоинта и маленькие ответы; кодогенерация сериализации не нужна |
+| `SQLiteOpenHelper` вручную | Схема — четыре таблицы; Room тянет KSP в сборку |
+| WorkManager | Очередь должна доезжать после убийства приложения |
+| minSdk 26 | `java.util.Base64`, `java.time` и адаптивные иконки без десугаринга |
 
-- **Language**: Kotlin 1.9+
-- **Min SDK**: 24 (Android 7.0)
-- **Target SDK**: 34 (Android 14)
-- **Architecture**: MVVM + Clean Architecture
-- **DI**: Hilt (Dagger)
-- **Database**: Room with SQLCipher encryption
-- **Network**: Retrofit + OkHttp
-- **Async**: Kotlin Coroutines + Flow
-- **Camera**: CameraX API
-- **QR Processing**: ML Kit Barcode Scanning
-- **Crypto**: Tink library for HMAC verification
+Версии: AGP 8.5.2, Gradle 8.7, Kotlin 2.0.21, Compose BOM 2024.10.01,
+compileSdk/targetSdk 35, JDK 17.
 
-## Build Instructions
-
-### Prerequisites
-
-- Android Studio Hedgehog or later
-- JDK 17
-- Android SDK 34
-
-### Build Commands
+## Сборка
 
 ```bash
-# Debug build
+cd android
+
+# отладочная сборка (подписана debug-ключом, http разрешён)
 ./gradlew assembleDebug
 
-# Release build (signed)
-./gradlew assembleRelease
-
-# Run tests
-./gradlew test
-
-# Generate APK
-./gradlew build
+# JVM-тесты (без устройства)
+./gradlew testDebugUnitTest
 ```
 
-## Configuration
+APK: `android/app/build/outputs/apk/debug/app-debug.apk`.
 
-### API Endpoint
+Релизная сборка подписывается только при наличии секретов, см.
+[`docs/RELEASE.md`](docs/RELEASE.md). Без них `assembleRelease` тоже компилируется,
+но остаётся неподписанным — это сделано намеренно, чтобы CI без секретов мог
+проверить компиляцию релизного варианта.
 
-Configure in `local.properties` or environment:
+В GitHub Actions собираются оба варианта: `.github/workflows/android.yml`
+(тесты + lint + debug APK на каждый push) и `.github/workflows/android-release.yml`
+(подписанный APK по тегу `checker-v*`).
 
-```properties
-NABILET_API_URL=https://api.nabilet.com
-NABILET_API_KEY=your_api_key_here
-```
+## Первый запуск
 
-### Security
+1. Указать адрес сервера (только origin, без пути: `https://tickets.example.com`).
+2. Вставить токен устройства `nbck_…` из админки NABILET и нажать
+   «Сохранить и проверить».
+3. Указать ID бандла и скачать его (можно пропустить, если площадка работает
+   только онлайн).
+4. Нажать «Начать смену».
 
-The app requires:
-- Valid device registration with the server
-- Encrypted bundle download (TLS 1.3)
-- Local database encryption (SQLCipher)
-- Secure key storage (Android Keystore)
+Адрес сервера, токен и бандл принадлежат одной площадке. Смена сервера стирает
+токен, бандл и историю — иначе приложение пускало бы людей по данным чужого
+события.
 
-## Usage Flow
+## Документация
 
-1. **Device Registration**
-   - Admin creates device in web dashboard
-   - Device downloads initial bundle with public key fingerprint
-   - Device authenticated and ready for scanning
+- [`docs/DESIGN.md`](docs/DESIGN.md) — решения, поток скана, что именно
+  доказывает бандл и чего он не доказывает.
+- [`docs/API.md`](docs/API.md) — используемые эндпоинты, форматы запросов и
+  ответов, известные ограничения backend.
+- [`docs/RELEASE.md`](docs/RELEASE.md) — подпись, секреты CI, версии, чек-лист
+  перед выдачей устройства.
 
-2. **Bundle Download**
-   - App periodically checks for new bundles
-   - Downloads encrypted bundle containing ticket hashes
-   - Stores in local encrypted database
+## Проверки в коде
 
-3. **Ticket Scanning**
-   - Camera detects QR code
-   - App parses payload and extracts signature
-   - Verifies HMAC-SHA256 signature using stored public key
-   - Checks if ticket hash exists in local bundle
-   - Records scan result (valid/invalid/already_used)
-
-4. **Sync**
-   - When online, uploads scan results to server
-   - Downloads updated revocation lists
-   - Resolves any conflicts
-
-## Production Checklist
-
-- [ ] Configure ProGuard/R8 rules
-- [ ] Set up signing configuration
-- [ ] Enable strict mode for debugging
-- [ ] Configure crash reporting (Firebase Crashlytics)
-- [ ] Set up analytics (optional)
-- [ ] Test on multiple devices (different screen sizes, cameras)
-- [ ] Verify offline functionality
-- [ ] Test multi-device conflict resolution
-- [ ] Security audit (penetration testing)
-
-## License
-
-Proprietary - NABILET Core Project
+`./gradlew testDebugUnitTest` прогоняет чистые JVM-тесты доменного слоя: разбор
+QR, канонический JSON бандла (хеши сверены с реальным `json_encode` PHP 8.4),
+парсер бандла, офлайн-вердикты, валидаторы конфигурации, крипто-утилиты и
+форматирование времени. Ни один тест не требует Android SDK-эмулятора.

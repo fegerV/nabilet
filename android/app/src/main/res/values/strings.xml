@@ -1,0 +1,267 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <string name="app_name">NABILET Checker</string>
+    <string name="app_tagline">Контроль входа на мероприятия</string>
+    <string name="brand_footer">NABILET · контроль входа</string>
+
+    <!-- Navigation -->
+    <string name="nav_scanner">Сканер</string>
+    <string name="nav_stats">Сводка</string>
+    <string name="nav_history">История</string>
+    <string name="nav_settings">Настройки</string>
+
+    <!-- Common actions -->
+    <string name="action_save">Сохранить</string>
+    <string name="action_cancel">Отмена</string>
+    <string name="action_ok">Понятно</string>
+    <string name="action_close">Закрыть</string>
+    <string name="action_retry">Повторить</string>
+    <string name="action_show">Показать</string>
+    <string name="action_hide">Скрыть</string>
+    <string name="action_change">Изменить</string>
+    <string name="action_delete">Удалить</string>
+    <string name="action_remove">Удалить</string>
+    <string name="action_sync_now">Синхронизировать</string>
+    <string name="action_new_shift">Новая смена</string>
+    <string name="action_end_shift">Завершить смену</string>
+    <string name="action_clear_data">Стереть все данные</string>
+    <string name="loading">Загрузка…</string>
+    <string name="working">Выполняется…</string>
+    <string name="error_generic">Не удалось выполнить действие.</string>
+    <string name="warning">Внимание</string>
+
+    <!-- Setup -->
+    <string name="setup_title">Подключение устройства</string>
+    <string name="setup_subtitle">Введите адрес сервера и токен устройства. Токен и ID бандла выдаёт администратор в разделе контроля входа.</string>
+    <string name="setup_server_label">Адрес сервера</string>
+    <string name="setup_server_hint">https://nabilet.ru</string>
+    <string name="setup_server_helper">Только https. Путь указывать не нужно.</string>
+    <string name="setup_token_label">Токен устройства</string>
+    <string name="setup_token_hint">nbck_…</string>
+    <string name="setup_token_helper">Хранится зашифрованным в Keystore телефона и не попадает в резервные копии.</string>
+    <string name="setup_token_saved">Токен сохранён</string>
+    <string name="setup_bundle_label">ID офлайн-бандла</string>
+    <string name="setup_bundle_hint">01J…</string>
+    <string name="setup_bundle_helper">Необязательно, если работаете только онлайн. ID бандла и ID сеанса выдаёт администратор.</string>
+    <string name="setup_session_label">ID сеанса</string>
+    <string name="setup_session_hint">01J… или число</string>
+    <string name="setup_session_helper">Заполняется автоматически из бандла. Без бандла нужен для онлайн-проверки.</string>
+    <string name="setup_check">Сохранить и проверить</string>
+    <string name="settings_verify_token">Проверить токен</string>
+    <string name="token_checking">Проверка токена…</string>    <string name="setup_download_bundle">Загрузить бандл</string>
+    <string name="setup_begin">Начать смену</string>
+    <string name="setup_begin_hint">Проверьте токен и укажите бандл или сеанс.</string>
+    <string name="setup_bundle_loaded">Бандл загружен</string>
+    <string name="setup_bundle_none">Бандл не загружен</string>
+    <string name="setup_bundle_online_only">Без бандла приложение работает только при наличии сети.</string>
+    <string name="setup_bundle_event">Мероприятие</string>
+    <string name="setup_bundle_session">Сеанс</string>
+    <string name="setup_bundle_tickets">Билетов</string>
+    <string name="setup_bundle_revoked">Погашено/отозвано</string>
+    <string name="setup_bundle_expires">Действует до</string>
+    <string name="setup_bundle_key">Ключ подписи</string>
+    <string name="setup_bundle_id_value">ID бандла</string>
+    <string name="setup_online_note">Онлайн: каждый скан подтверждает сервер. Офлайн: решение принимается по загруженному бандлу, а скан уходит в очередь синхронизации.</string>
+
+    <!-- Scanner -->
+    <string name="scanner_title">Сканер</string>
+    <string name="scanner_status_online">Онлайн</string>
+    <string name="scanner_status_offline">Офлайн</string>
+    <string name="scanner_status_no_network">Нет сети</string>
+    <string name="scanner_ready">Наведите камеру на QR-код билета</string>
+    <string name="scanner_permission_title">Нужен доступ к камере</string>
+    <string name="scanner_permission_text">Без камеры сканировать QR-коды невозможно. Доступ используется только для распознавания кода на экране телефона.</string>
+    <string name="scanner_permission_button">Разрешить камеру</string>
+    <string name="scanner_permission_denied">Доступ к камере запрещён. Откройте настройки приложения и разрешите камеру.</string>
+    <string name="scanner_no_bundle">Офлайн-бандл не загружен. Без сети проверка невозможна.</string>
+    <string name="scanner_bundle_expires_soon">Бандл истекает %1$s</string>
+    <string name="scanner_bundle_expired">Срок бандла истёк. Обновите бандл.</string>
+    <string name="scanner_pending">Не отправлено: %1$d</string>
+    <string name="scanner_torch">Фонарик</string>
+    <string name="scanner_manual">Ввести вручную</string>
+    <string name="scanner_manual_title">QR-код вручную</string>
+    <string name="scanner_manual_hint">NB1.…</string>
+    <string name="scanner_manual_helper">Вставьте полный текст QR-кода, если камера не читает экран.</string>
+    <string name="scanner_manual_submit">Проверить</string>
+    <string name="scanner_clear_result">Скрыть</string>
+    <string name="scanner_last_scan">Последняя проверка</string>
+    <string name="scanner_idle_title">Готов к сканированию</string>
+    <string name="scanner_idle_text">Результат появится здесь.</string>
+    <string name="scanner_camera_unavailable">Камера недоступна на этом устройстве. Используйте ручной ввод.</string>
+
+    <!-- Results -->
+    <string name="result_valid">Действителен</string>
+    <string name="result_already_used">Уже погашен</string>
+    <string name="result_cancelled">Отменён</string>
+    <string name="result_refunded">Возвращён</string>
+    <string name="result_expired">Истёк</string>
+    <string name="result_invalid_signature">Недействительный QR</string>
+    <string name="result_wrong_session">Другой сеанс</string>
+    <string name="result_wrong_event">Другое мероприятие</string>
+    <string name="result_unknown_ticket">Билет не найден</string>
+    <string name="result_conflict">Конфликт</string>
+    <string name="result_admit">ПУСТИТЬ</string>
+    <string name="result_deny">НЕ ПУСКАТЬ</string>
+    <string name="source_online">онлайн</string>
+    <string name="source_offline">офлайн</string>
+    <string name="source_local">локально</string>
+
+    <!-- Scan notes -->
+    <string name="note_offline_valid">Проверено офлайн по бандлу. Скан будет отправлен на сервер.</string>
+    <string name="note_offline_bundle_used">По данным бандла билет уже погашен.</string>
+    <string name="note_local_duplicate">Билет уже погашен на этом устройстве.</string>
+    <string name="note_offline_fallback">Сервер недоступен — проверено офлайн, скан поставлен в очередь.</string>
+    <string name="note_online">Подтверждено сервером.</string>
+    <string name="note_not_synced">Скан не будет отправлен: нет идентификатора билета.</string>
+    <string name="note_invalid_qr">QR-код не соответствует формату NABILET.</string>
+
+    <!-- Blocked states -->
+    <string name="blocked_no_session">Не выбран сеанс. Загрузите бандл или укажите ID сеанса.</string>
+    <string name="blocked_no_bundle">Офлайн-бандл не загружен. Для проверки без сети загрузите бандл.</string>
+    <string name="blocked_bundle_expired">Срок офлайн-бандла истёк. Обновите бандл.</string>
+    <string name="blocked_token">Токен устройства отклонён. Проверьте токен в настройках.</string>
+    <string name="blocked_network">Нет связи с сервером, а офлайн-бандл недоступен.</string>
+    <string name="blocked_config">Устройство не настроено. Завершите подключение.</string>
+    <string name="blocked_internal">Внутренняя ошибка проверки. Повторите скан.</string>
+    <string name="blocked_busy">Подождите, предыдущий скан ещё обрабатывается.</string>
+
+    <!-- Stats -->
+    <string name="stats_title">Сводка смены</string>
+    <string name="stats_shift_start">Смена начата</string>
+    <string name="stats_total">Всего сканов</string>
+    <string name="stats_admitted">Допущено</string>
+    <string name="stats_denied">Отказано</string>
+    <string name="stats_pending">В очереди</string>
+    <string name="stats_rate">Темп</string>
+    <string name="stats_rate_value">%1$s / мин</string>
+    <string name="stats_rate_window">за последние 5 минут</string>
+    <string name="stats_breakdown">По результатам</string>
+    <string name="stats_empty_title">Пока нет сканов</string>
+    <string name="stats_empty_text">Начните сканировать билеты — статистика появится здесь.</string>
+    <string name="stats_last_scan">Последний скан</string>
+    <string name="stats_no_data">—</string>
+
+    <!-- History -->
+    <string name="history_title">История</string>
+    <string name="history_filter_all">Все</string>
+    <string name="history_filter_admitted">Допущены</string>
+    <string name="history_filter_denied">Отказаны</string>
+    <string name="history_filter_pending">Не отправлены</string>
+    <string name="history_empty_title">История пуста</string>
+    <string name="history_empty_text">Здесь появятся все сканы этой смены.</string>
+    <string name="history_synced">Отправлен</string>
+    <string name="history_pending">В очереди</string>
+    <string name="history_ticket">Билет</string>
+    <string name="history_count">Показано %1$d</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Настройки</string>
+    <string name="settings_server">Сервер</string>
+    <string name="settings_token">Токен устройства</string>
+    <string name="settings_bundle">Офлайн-бандл</string>
+    <string name="settings_session">Сеанс</string>
+    <string name="settings_sync">Синхронизация</string>
+    <string name="settings_diagnostics">Диагностика</string>
+    <string name="settings_danger">Опасная зона</string>
+    <string name="settings_about">О приложении</string>
+    <string name="settings_token_set">Сохранён</string>
+    <string name="settings_token_missing">Не задан</string>
+    <string name="settings_bundle_none">Не загружен</string>
+    <string name="settings_bundle_value">%1$s · %2$d билетов</string>
+    <string name="settings_session_none">Не задан</string>
+    <string name="settings_last_sync">Последняя синхронизация</string>
+    <string name="settings_last_sync_never">Ещё не выполнялась</string>
+    <string name="settings_version">Версия</string>
+    <string name="settings_device">Устройство</string>
+    <string name="settings_event">Мероприятие</string>
+    <string name="settings_bundle_hash">Хеш бандла</string>
+    <string name="settings_schema">Схема</string>
+    <string name="settings_key">Ключ подписи</string>
+    <string name="settings_about_text">NABILET Checker проверяет билеты по QR-коду. Онлайн-решение принимает сервер. Офлайн-решение принимается по бандлу, целостность которого проверяется по SHA-256; подпись QR сервер проверяет при синхронизации. Приложение не хранит персональные данные покупателей.</string>
+    <string name="settings_change_server">Изменить адрес</string>
+    <string name="settings_change_token">Заменить токен</string>
+    <string name="settings_change_session">Изменить сеанс</string>
+    <string name="settings_reload_bundle">Обновить бандл</string>
+    <string name="settings_remove_bundle">Удалить бандл</string>
+    <string name="settings_remove_bundle_confirm_title">Удалить офлайн-бандл?</string>
+    <string name="settings_remove_bundle_confirm_text">Без сети проверка станет невозможна, пока бандл не будет загружен снова. Неотправленные сканы сохранятся.</string>
+    <string name="settings_new_shift_confirm_title">Начать новую смену?</string>
+    <string name="settings_new_shift_confirm_text">Счётчики сводки обнулятся. История и очередь синхронизации сохранятся.</string>
+    <string name="settings_end_shift_confirm_title">Завершить смену?</string>
+    <string name="settings_end_shift_confirm_text">Приложение вернётся к экрану подключения. Неотправленные сканы сохранятся.</string>
+    <string name="settings_clear_confirm_title">Стереть все данные?</string>
+    <string name="settings_clear_confirm_text">Будут удалены токен, бандл, история и очередь синхронизации. Действие необратимо.</string>
+    <string name="settings_dialog_token_title">Токен устройства</string>
+    <string name="settings_dialog_server_title">Адрес сервера</string>
+    <string name="settings_dialog_session_title">ID сеанса</string>
+    <string name="settings_dialog_bundle_title">ID офлайн-бандла</string>
+    <string name="settings_shift_started">Смена начата заново</string>
+    <string name="settings_bundle_removed">Бандл удалён</string>
+    <string name="settings_cleared">Данные удалены</string>
+    <string name="settings_url_changed">Адрес изменён. Проверьте токен и загрузите бандл заново.</string>
+    <string name="settings_token_updated">Токен сохранён</string>
+    <string name="settings_session_updated">Сеанс сохранён</string>
+
+    <!-- Time -->
+    <string name="time_never">никогда</string>
+    <string name="time_just_now">только что</string>
+    <string name="time_minutes_ago">%1$d мин назад</string>
+    <string name="time_hours_ago">%1$d ч назад</string>
+    <string name="time_days_ago">%1$d дн назад</string>
+    <string name="expires_in">через %1$s</string>
+    <string name="expired">истёк</string>
+    <string name="duration_hours_minutes">%1$d ч %2$d мин</string>
+    <string name="duration_minutes">%1$d мин</string>
+
+    <!-- Sync -->
+    <string name="sync_running">Синхронизация…</string>
+    <string name="sync_success">Синхронизировано: %1$d</string>
+    <string name="sync_partial">Отправлено %1$d, ошибок %2$d</string>
+    <string name="sync_nothing">Нечего отправлять</string>
+    <string name="sync_auth_error">Сервер отклонил токен устройства.</string>
+    <string name="sync_network_error">Нет связи с сервером. Сканы останутся в очереди.</string>
+    <string name="sync_device_mismatch">В очереди есть сканы другого устройства. Синхронизируйте их до смены токена.</string>
+    <string name="sync_report">Принято %1$d, дубликатов %2$d, конфликтов %3$d, отклонено %4$d</string>
+    <string name="sync_error_bundle">Для синхронизации нужен бандл: в нём указан ID устройства.</string>
+
+    <!-- Repository messages -->
+    <string name="note_offline_bundle_unknown">Билета нет в бандле. Проверьте, тот ли сеанс загружен.</string>
+    <string name="blocked_bundle_event_wide">Бандл выдан на всё мероприятие, а для офлайн-синхронизации нужен бандл сеанса. Загрузите бандл конкретного сеанса.</string>
+    <string name="blocked_server_change_pending">Сначала синхронизируйте сканы: при смене сервера очередь будет потеряна.</string>
+    <string name="blocked_bundle_remove_pending">Сначала синхронизируйте сканы: без бандла некуда отправить очередь.</string>
+    <string name="blocked_session_locked_by_bundle">Сеанс берётся из бандла. Удалите бандл, чтобы указать другой сеанс.</string>
+    <string name="bundle_rejected">Бандл отклонён: %1$s.</string>
+    <string name="bundle_rejected_unknown">неизвестная ошибка</string>
+    <string name="bundle_reason_hash">хеш содержимого не совпал</string>
+    <string name="bundle_reason_schema">неподдерживаемая версия схемы</string>
+    <string name="bundle_reason_count">количество билетов не совпало</string>
+    <string name="bundle_reason_key">отпечаток ключа не совпал</string>
+    <string name="bundle_reason_duplicate">билет указан дважды</string>
+    <string name="bundle_reason_missing">не хватает обязательного поля</string>
+    <string name="bundle_reason_timestamp">некорректная дата</string>
+    <string name="bundle_reason_size">слишком большой бандл</string>
+    <string name="bundle_reason_json">повреждённый JSON</string>
+    <string name="bundle_not_found">Бандл не найден или принадлежит другому устройству.</string>
+    <string name="bundle_parse_failed">Сервер вернул бандл в неизвестном формате.</string>
+    <string name="bundle_loaded_toast">Бандл загружен: %1$d билетов.</string>
+    <string name="verify_ok">Токен принят сервером.</string>
+    <string name="verify_network">Не удалось связаться с сервером.</string>
+    <string name="verify_http">Сервер ответил ошибкой %1$d.</string>
+    <string name="token_missing">Сначала сохраните токен устройства.</string>
+    <string name="server_missing">Сначала укажите адрес сервера.</string>
+    <string name="session_required">Укажите ID сеанса или загрузите бандл.</string>
+    <string name="sync_already_running">Синхронизация уже идёт.</string>
+    <string name="sync_failed">Не удалось синхронизировать: %1$s</string>
+    <string name="token_vault_failed">Не удалось зашифровать токен на этом устройстве. Токен не сохранён.</string>
+    <string name="blocked_device_change_pending">В очереди есть сканы другого устройства. Синхронизируйте их перед загрузкой нового бандла.</string>
+    <string name="shift_verify_required">Проверьте токен на сервере: без офлайн-бандла это необходимо для начала смены.</string>
+
+    <!-- Content descriptions -->
+    <string name="cd_camera">Камера</string>
+    <string name="cd_torch">Фонарик</string>
+    <string name="cd_sync">Синхронизировать</string>
+    <string name="cd_settings">Настройки</string>
+    <string name="cd_scan_result">Результат проверки</string>
+
+</resources>

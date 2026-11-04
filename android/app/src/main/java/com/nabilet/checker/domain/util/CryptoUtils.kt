@@ -1,84 +1,63 @@
 package com.nabilet.checker.domain.util
 
-import android.util.Base64
+import java.security.MessageDigest
+import java.util.Base64
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 
 /**
- * CryptoUtils - Cryptographic operations for ticket verification
- * 
- * Provides HMAC-SHA256 signature verification for QR codes.
- * Uses constant-time comparison to prevent timing attacks.
+ * Cryptographic helpers that are deliberately free of `android.*` imports.
+ *
+ * Why: the same code runs in JVM unit tests and on the device, so the hash and
+ * the signature rules cannot silently diverge between the two. `minSdk` is 26,
+ * which is where `java.util.Base64` became available.
  */
 object CryptoUtils {
 
     private const val HMAC_ALGORITHM = "HmacSHA256"
-    private const val ENCODING = Charsets.UTF_8
 
-    /**
-     * Verify HMAC-SHA256 signature of a message
-     */
-    fun verifySignature(data: String, signature: String, secretKey: ByteArray): Boolean {
-        return try {
-            val expectedSignature = generateHMAC(data, secretKey)
-            secureCompare(signature.decodeBase64(), expectedSignature)
-        } catch (e: Exception) {
-            false
+    fun sha256Hex(input: String): String = sha256Hex(input.toByteArray(Charsets.UTF_8))
+
+    fun sha256Hex(bytes: ByteArray): String {
+        val digest = MessageDigest.getInstance("SHA-256").digest(bytes)
+        val out = StringBuilder(digest.size * 2)
+        for (byte in digest) {
+            val value = byte.toInt() and 0xFF
+            out.append(HEX[value ushr 4])
+            out.append(HEX[value and 0x0F])
         }
+        return out.toString()
     }
 
     /**
-     * Generate HMAC-SHA256 signature for data
+     * Compares two hex digests without leaking the position of the first
+     * mismatch through timing. Both inputs are expected to be lowercase hex.
      */
-    fun generateHMAC(data: String, secretKey: ByteArray): String {
+    fun constantTimeEquals(a: String, b: String): Boolean {
+        if (a.length != b.length) return false
+        var diff = 0
+        for (index in a.indices) {
+            diff = diff or (a[index].code xor b[index].code)
+        }
+        return diff == 0
+    }
+
+    fun base64UrlDecode(value: String): ByteArray? =
+        runCatching { Base64.getUrlDecoder().decode(value) }.getOrNull()
+
+    /**
+     * Mirror of `App\Core\Support\QrSigner` for a future bundle format that
+     * carries the QR signing secret or a public-key signature. The current
+     * backend bundle does not include either, so this is not used for
+     * admission decisions yet — see docs/DESIGN.md, "What the bundle does not
+     * prove".
+     */
+    fun hmacSha256Base64Url(data: String, key: ByteArray): String {
         val mac = Mac.getInstance(HMAC_ALGORITHM)
-        val keySpec = SecretKeySpec(secretKey, HMAC_ALGORITHM)
-        mac.init(keySpec)
-        
-        val hmacBytes = mac.doFinal(data.toByteArray(ENCODING))
-        return Base64.encodeToString(hmacBytes, Base64.NO_WRAP)
+        mac.init(SecretKeySpec(key, HMAC_ALGORITHM))
+        val raw = mac.doFinal(data.toByteArray(Charsets.UTF_8))
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(raw)
     }
 
-    /**
-     * Constant-time byte array comparison to prevent timing attacks
-     */
-    fun secureCompare(a: ByteArray, b: ByteArray): Boolean {
-        if (a.size != b.size) return false
-        
-        var result = 0
-        for (i in a.indices) {
-            result = result or (a[i].toInt() xor b[i].toInt())
-        }
-        
-        return result == 0
-    }
-
-    /**
-     * Generate SHA-256 hash of input data
-     */
-    fun sha256(input: String): String {
-        val md = java.security.MessageDigest.getInstance("SHA-256")
-        val digest = md.digest(input.toByteArray(ENCODING))
-        return digest.joinToString("") { "%02x".format(it) }
-    }
-
-    /**
-     * Validate public key fingerprint format
-     */
-    fun isValidFingerprint(fingerprint: String): Boolean {
-        return fingerprint.matches(Regex("^[0-9a-fA-F]{64}$")) ||
-               fingerprint.matches(Regex("^([0-9a-fA-F]{2}:){31}[0-9a-fA-F]{2}$"))
-    }
-
-    /**
-     * Format fingerprint for display (colon-separated)
-     */
-    fun formatFingerprint(fingerprint: String): String {
-        val cleanHex = fingerprint.replace(":", "")
-        if (cleanHex.length != 64) return fingerprint
-        return cleanHex.chunked(2).joinToString(":") { it.uppercase() }
-    }
+    private val HEX = "0123456789abcdef".toCharArray()
 }
-
-private fun String.decodeBase64(): ByteArray = Base64.decode(this, Base64.NO_WRAP)
-fun ByteArray.encodeBase64(): String = Base64.encodeToString(this, Base64.NO_WRAP)
