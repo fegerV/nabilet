@@ -28,8 +28,10 @@
     <string name="action_clear_data">Стереть все данные</string>
     <string name="loading">Загрузка…</string>
     <string name="working">Выполняется…</string>
+    <string name="error_load_timeout">Не удалось инициализировать приложение. Попробуйте ещё раз.</string>
     <string name="error_generic">Не удалось выполнить действие.</string>
     <string name="warning">Внимание</string>
+    <string name="settings_open_app_settings">Открыть настройки приложения</string>
 
     <!-- Setup -->
     <string name="setup_title">Подключение устройства</string>
@@ -48,6 +50,7 @@
     <string name="setup_session_hint">01J… или число</string>
     <string name="setup_session_helper">Заполняется автоматически из бандла. Без бандла нужен для онлайн-проверки.</string>
     <string name="setup_check">Сохранить и проверить</string>
+    <string name="setup_begin_disabled">Укажите адрес сервера и токен устройства, чтобы начать смену.</string>
     <string name="settings_verify_token">Проверить токен</string>
     <string name="token_checking">Проверка токена…</string>    <string name="setup_download_bundle">Загрузить бандл</string>
     <string name="setup_begin">Начать смену</string>

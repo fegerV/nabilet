@@ -1,6 +1,5 @@
 package com.nabilet.checker.ui
 
-import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,14 +10,18 @@ import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -37,11 +40,14 @@ import com.nabilet.checker.ui.screens.ScannerScreen
 import com.nabilet.checker.ui.screens.SettingsScreen
 import com.nabilet.checker.ui.screens.SetupScreen
 import com.nabilet.checker.ui.screens.StatsScreen
+import kotlinx.coroutines.delay
 
 private const val TAB_SCANNER = 0
 private const val TAB_STATS = 1
 private const val TAB_HISTORY = 2
 private const val TAB_SETTINGS = 3
+
+private const val LOAD_TIMEOUT_MS = 10_000L
 
 @Composable
 fun CheckerRoot(
@@ -54,15 +60,20 @@ fun CheckerRoot(
     val busy by viewModel.busy.collectAsStateWithLifecycle()
 
     val context = LocalContext.current
+    val snackbarHostState = remember { SnackbarHostState() }
 
-    LaunchedEffect(Unit) {
+    // Every message from the repository / ViewModel is shown as a Snackbar
+    // instead of a fleeting Toast. Snackbar stays on screen until dismissed,
+    // so the operator cannot miss a critical error (token rejected, bundle
+    // expired, server unreachable).
+    LaunchedEffect(snackbarHostState) {
         viewModel.messages.collect { message ->
-            Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+            snackbarHostState.showSnackbar(message)
         }
     }
 
     if (!state.initialized) {
-        LoadingScreen()
+        LoadingScreen(onRetry = { viewModel.initialize() })
         return
     }
 
@@ -88,30 +99,51 @@ fun CheckerRoot(
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
+        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         bottomBar = {
             NavigationBar {
                 NavigationBarItem(
                     selected = tab == TAB_SCANNER,
                     onClick = { tab = TAB_SCANNER },
-                    icon = { Icon(Icons.Filled.QrCodeScanner, contentDescription = null) },
+                    icon = {
+                        Icon(
+                            Icons.Filled.QrCodeScanner,
+                            contentDescription = stringResource(R.string.nav_scanner),
+                        )
+                    },
                     label = { Text(stringResource(R.string.nav_scanner)) },
                 )
                 NavigationBarItem(
                     selected = tab == TAB_STATS,
                     onClick = { tab = TAB_STATS },
-                    icon = { Icon(Icons.Filled.BarChart, contentDescription = null) },
+                    icon = {
+                        Icon(
+                            Icons.Filled.BarChart,
+                            contentDescription = stringResource(R.string.nav_stats),
+                        )
+                    },
                     label = { Text(stringResource(R.string.nav_stats)) },
                 )
                 NavigationBarItem(
                     selected = tab == TAB_HISTORY,
                     onClick = { tab = TAB_HISTORY },
-                    icon = { Icon(Icons.Filled.History, contentDescription = null) },
+                    icon = {
+                        Icon(
+                            Icons.Filled.History,
+                            contentDescription = stringResource(R.string.nav_history),
+                        )
+                    },
                     label = { Text(stringResource(R.string.nav_history)) },
                 )
                 NavigationBarItem(
                     selected = tab == TAB_SETTINGS,
                     onClick = { tab = TAB_SETTINGS },
-                    icon = { Icon(Icons.Filled.Settings, contentDescription = null) },
+                    icon = {
+                        Icon(
+                            Icons.Filled.Settings,
+                            contentDescription = stringResource(R.string.nav_settings),
+                        )
+                    },
                     label = { Text(stringResource(R.string.nav_settings)) },
                 )
             }
@@ -153,18 +185,48 @@ fun CheckerRoot(
 }
 
 @Composable
-private fun LoadingScreen() {
+private fun LoadingScreen(
+    onRetry: () -> Unit,
+) {
+    var error by remember { mutableStateOf(false) }
+
+    // If initialization does not complete within LOAD_TIMEOUT_MS, show an
+    // error state with a retry button instead of a perpetual spinner.
+    LaunchedEffect(Unit) {
+        delay(LOAD_TIMEOUT_MS)
+        if (!error) {
+            error = true
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            // no-op cleanup
+        }
+    }
+
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            CircularProgressIndicator()
-            Text(
-                text = stringResource(R.string.loading),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            if (error) {
+                Text(
+                    text = stringResource(R.string.error_load_timeout),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error,
+                )
+                Button(onClick = onRetry) {
+                    Text(stringResource(R.string.action_retry))
+                }
+            } else {
+                CircularProgressIndicator()
+                Text(
+                    text = stringResource(R.string.loading),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
 }

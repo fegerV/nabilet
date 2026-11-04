@@ -1,9 +1,12 @@
 package com.nabilet.checker.ui.screens
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -20,6 +23,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.FlashOff
 import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material.icons.filled.Keyboard
@@ -111,8 +115,28 @@ fun ScannerScreen(
         permissionDenied = !granted
     }
 
+    val settingsLauncher = rememberLauncherForActivityResult(
+        StartActivityForResult(),
+    ) { _ -> }
+
+    // If the user permanently denied camera permission, the system dialog will
+    // no longer appear. Offer a direct path to the app settings page.
     LaunchedEffect(Unit) {
-        if (!permissionGranted) permissionLauncher.launch(Manifest.permission.CAMERA)
+        if (!permissionGranted) {
+            permissionLauncher.launch(Manifest.permission.CAMERA)
+        }
+    }
+
+    private fun openAppSettings() {
+        val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+            .setData(
+                android.net.Uri.fromParts(
+                    "package",
+                    LocalContext.current.packageName,
+                    null,
+                ),
+            )
+        settingsLauncher.launch(intent)
     }
 
     // The analyzer is created once. Latest values are read through
@@ -175,6 +199,7 @@ fun ScannerScreen(
                     onRequestPermission = {
                         permissionLauncher.launch(Manifest.permission.CAMERA)
                     },
+                    onOpenSettings = { openAppSettings() },
                 )
             }
 
@@ -205,13 +230,24 @@ fun ScannerScreen(
             }
 
             if (state.bundle == null) {
-                Banner(
-                    text = stringResource(R.string.scanner_no_bundle),
-                    background = CheckerColors.Warn,
+                Column(
                     modifier = Modifier
                         .align(Alignment.TopCenter)
                         .padding(12.dp),
-                )
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Banner(
+                        text = stringResource(R.string.scanner_no_bundle),
+                        background = CheckerColors.Warn,
+                    )
+                    Button(
+                        onClick = onOpenSettings,
+                        modifier = Modifier.fillMaxWidth(0.6f),
+                    ) {
+                        Text(stringResource(R.string.setup_download_bundle))
+                    }
+                }
             }
 
             if (busy && feedback == null) {
@@ -336,6 +372,7 @@ private fun CameraPlaceholder(
     denied: Boolean,
     hasError: Boolean,
     onRequestPermission: () -> Unit,
+    onOpenSettings: () -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -355,10 +392,18 @@ private fun CameraPlaceholder(
             style = MaterialTheme.typography.bodyMedium,
         )
 
+        Spacer(modifier = Modifier.height(16.dp))
+
         if (!hasError) {
-            Spacer(modifier = Modifier.height(16.dp))
             Button(onClick = onRequestPermission) {
                 Text(stringResource(R.string.scanner_permission_button))
+            }
+        }
+
+        if (denied) {
+            Spacer(modifier = Modifier.height(8.dp))
+            OutlinedButton(onClick = onOpenSettings) {
+                Text(stringResource(R.string.settings_open_app_settings))
             }
         }
     }
@@ -403,13 +448,24 @@ private fun ScanResultCard(
             modifier = Modifier.padding(18.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            Text(
-                text = stringResource(
-                    if (admitted) R.string.result_admit else R.string.result_deny,
-                ),
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Black,
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    imageVector = if (admitted) Icons.Default.CheckCircle else Icons.Default.Error,
+                    contentDescription = if (admitted) stringResource(R.string.result_admit) else stringResource(R.string.result_deny),
+                    modifier = Modifier.size(24.dp),
+                )
+                Text(
+                    text = stringResource(
+                        if (admitted) R.string.result_admit else R.string.result_deny,
+                    ),
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Black,
+                )
+            }
             Text(
                 text = resultLabel(feedback.result),
                 style = MaterialTheme.typography.titleMedium,

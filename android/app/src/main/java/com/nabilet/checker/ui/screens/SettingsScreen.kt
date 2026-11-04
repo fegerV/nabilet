@@ -373,7 +373,7 @@ private fun TextInputDialog(
     onDismiss: () -> Unit,
     onConfirm: (String) -> Unit,
 ) {
-    var value by rememberSaveable(initial) { mutableStateOf(initial) }
+    var value by rememberSaveable { mutableStateOf(initial) }
 
     AlertDialog(
         onDismissRequest = onDismiss,

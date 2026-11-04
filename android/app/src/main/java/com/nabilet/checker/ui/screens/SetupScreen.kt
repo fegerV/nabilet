@@ -242,12 +242,22 @@ fun SetupScreen(
 
             Spacer(modifier = Modifier.height(2.dp))
 
+            val canBeginShift = !busy && url.isNotBlank() && token.isNotBlank()
+
             Button(
                 onClick = onBeginShift,
-                enabled = !busy,
+                enabled = canBeginShift,
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text(stringResource(R.string.setup_begin))
+            }
+
+            if (!canBeginShift && !busy) {
+                Text(
+                    text = stringResource(R.string.setup_begin_disabled),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
 
             if (busy) {
