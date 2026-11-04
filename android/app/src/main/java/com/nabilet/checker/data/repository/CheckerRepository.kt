@@ -144,7 +144,7 @@ class CheckerRepository(
                 val urlChanged = prefs.baseUrl.isNotBlank() && prefs.baseUrl != url
                 if (urlChanged) {
                     if (scanDao.pendingCount() > 0) {
-                        return OpResult.Err(context.getString(R.string.blocked_server_change_pending))
+                        return@withContext OpResult.Err(context.getString(R.string.blocked_server_change_pending))
                     }
                     vault.clear()
                     bundleDao.deleteAll()
@@ -156,7 +156,7 @@ class CheckerRepository(
                 }
 
                 if (!vault.save(token)) {
-                    return OpResult.Err(context.getString(R.string.token_vault_failed))
+                    return@withContext OpResult.Err(context.getString(R.string.token_vault_failed))
                 }
                 prefs.baseUrl = url
 
@@ -190,9 +190,9 @@ class CheckerRepository(
 
         configMutex.lock()
         try {
-            if (prefs.baseUrl == url) return OpResult.Ok(Unit)
+            if (prefs.baseUrl == url) return@withContext OpResult.Ok(Unit)
             if (scanDao.pendingCount() > 0) {
-                return OpResult.Err(context.getString(R.string.blocked_server_change_pending))
+                return@withContext OpResult.Err(context.getString(R.string.blocked_server_change_pending))
             }
 
             vault.clear()
@@ -223,7 +223,7 @@ class CheckerRepository(
         configMutex.lock()
         try {
             if (!vault.save(token)) {
-                return OpResult.Err(context.getString(R.string.token_vault_failed))
+                return@withContext OpResult.Err(context.getString(R.string.token_vault_failed))
             }
             _state.update {
                 it.copy(
@@ -322,7 +322,7 @@ class CheckerRepository(
             if (pending > 0 && !currentDevice.isNullOrBlank() &&
                 currentDevice != parsed.bundle.devicePublicId
             ) {
-                return OpResult.Err(context.getString(R.string.blocked_device_change_pending))
+                return@withContext OpResult.Err(context.getString(R.string.blocked_device_change_pending))
             }
 
             bundleDao.save(parsed)
@@ -375,15 +375,15 @@ class CheckerRepository(
             var config = prefs.readConfig(hasToken)
 
             if (config.baseUrl.isBlank()) {
-                return OpResult.Err(context.getString(R.string.server_missing))
+                return@withContext OpResult.Err(context.getString(R.string.server_missing))
             }
             if (!hasToken) {
-                return OpResult.Err(context.getString(R.string.token_missing))
+                return@withContext OpResult.Err(context.getString(R.string.token_missing))
             }
 
             val session = config.sessionReference ?: _state.value.bundle?.sessionReference
             if (session.isNullOrBlank()) {
-                return OpResult.Err(context.getString(R.string.session_required))
+                return@withContext OpResult.Err(context.getString(R.string.session_required))
             }
             if (config.sessionReference != session) {
                 prefs.sessionReference = session
@@ -393,7 +393,7 @@ class CheckerRepository(
             // Without a bundle the first shift has to be online at least once:
             // otherwise the device has no proven identity and no ticket data.
             if (_state.value.tokenState != TokenState.VALID && _state.value.bundle == null) {
-                return OpResult.Err(context.getString(R.string.shift_verify_required))
+                return@withContext OpResult.Err(context.getString(R.string.shift_verify_required))
             }
 
             if (!prefs.setupComplete || prefs.shiftStartedAt == 0L) {
@@ -436,9 +436,9 @@ class CheckerRepository(
         configMutex.lock()
         try {
             if (scanDao.pendingCount() > 0) {
-                return OpResult.Err(context.getString(R.string.blocked_bundle_remove_pending))
+                return@withContext OpResult.Err(context.getString(R.string.blocked_bundle_remove_pending))
             }
-            val bundle = _state.value.bundle ?: return OpResult.Ok(Unit)
+            val bundle = _state.value.bundle ?: return@withContext OpResult.Ok(Unit)
             bundleDao.delete(bundle.id)
             prefs.bundleId = null
             prefs.devicePublicId = null
