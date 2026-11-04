@@ -52,7 +52,7 @@ const origin = computed(() => (typeof window !== 'undefined' ? window.location.o
 
 /** Адреса, которые организатор вставляет в личный кабинет провайдера. */
 const ENDPOINTS = computed(() => [
-  { label: 'Вебхук ЮKassa', url: `${origin.value}/api/v1/webhooks/payment/yookassa`, hint: 'В личном кабинете ЮKassa: «Уведомления» → этот URL' },
+  { label: 'Вебхук ЮKassa', url: `${origin.value}/api/v1/payments/webhooks/yookassa`, hint: 'В личном кабинете ЮKassa: «Уведомления» → этот URL' },
   { label: 'Вебхук провайдера (универсальный)', url: `${origin.value}/api/v1/webhooks/{type}`, hint: 'Для остальных провайдеров — вместо {type} подставить код' },
   { label: 'Карта сайта', url: `${origin.value}/sitemap.xml`, hint: 'Отдаётся в Яндекс.Вебмастер и Google Search Console' },
 ])

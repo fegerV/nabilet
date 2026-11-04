@@ -11,8 +11,18 @@ use Nabilet\Modules\Webhooks\Http\Controllers\WebhookSubscriptionController;
  * These routes are public - signature verification happens in controller
  */
 
-// Payment provider webhooks
-Route::post('/webhooks/payment/{provider}', [WebhookController::class, 'payment'])->name('webhooks.payment');
+// Приём уведомлений платёжных провайдеров. Один URI — один обработчик:
+//   - канонический путь из `docs/openapi.yaml`;
+//   - исторический алиас, на который завязаны уже настроенные кабинеты
+//     провайдеров и тесты.
+// Оба ведут в `WebhookController::payment`: у него конверт §66 с `request_id`,
+// а прежний `PaymentController::webhook` отвечал без него. Дублировать URI
+// нельзя — Laravel оставляет первый зарегистрированный маршрут, а второй
+// становится недостижимым.
+Route::post('/payments/webhooks/{provider}', [WebhookController::class, 'payment'])
+    ->name('webhooks.payment.canonical');
+Route::post('/webhooks/payment/{provider}', [WebhookController::class, 'payment'])
+    ->name('webhooks.payment');
 
 // Generic webhook endpoint with signature verification
 Route::post('/webhooks/{type}', [WebhookController::class, 'handle'])->name('webhooks.handle');

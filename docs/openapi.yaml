@@ -2453,10 +2453,11 @@ paths:
       tags: [Webhooks]
       summary: Receive payment provider webhook
       description: >-
-        Фактический путь приёмного вебхука платежей (PaymentController::webhook);
-        канонический провайдер сегодня — `yookassa`. Бывший
-        `POST /api/v1/webhooks/yookassa` приведён к параметризованному пути;
-        остальные провайдеры включаются тем же контроллером.
+        Канонический путь приёмного вебхука платежей (WebhookController::payment);
+        канонический провайдер сегодня — `yookassa`. Исторический алиас
+        `POST /api/v1/webhooks/payment/{provider}` ведёт в тот же обработчик,
+        поэтому настроенные кабинеты провайдеров продолжают работать. Остальные
+        провайдеры включаются тем же контроллером.
       operationId: yookassaWebhook
       parameters:
         - in: path

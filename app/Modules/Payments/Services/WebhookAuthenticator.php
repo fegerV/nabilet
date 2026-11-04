@@ -7,14 +7,17 @@ namespace Nabilet\Modules\Payments\Services;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Nabilet\Core\Errors\DomainRuleViolation;
+use Nabilet\Core\Support\IpRange;
 
 /**
  * Проверка входящего вебхука платежного провайдера.
  *
  * Защита в два слоя (тесты из PaymentWritePathTest жёстко это проверяют):
  *  1. allowlist IP — YooKassa не подписывает уведомления HMAC, поэтому первичная
- *     проверка — это адрес источника. Пустой allowlist + пустой секрет = «нечем
- *     проверить» → 422 WEBHOOK_NOT_AUTHENTICATED (fail-closed, а не fail-open).
+ *     проверка — это адрес источника. Записи allowlist — точные адреса и CIDR
+ *     (официальный список ЮKassa задан подсетями), сравнение делает `IpRange`.
+ *     Пустой allowlist + пустой секрет = «нечем проверить» → 422
+ *     WEBHOOK_NOT_AUTHENTICATED (fail-closed, а не fail-open).
  *  2. подпись — если секрет задан, дополнительно сверяем HMAC-SHA256.
  */
 class WebhookAuthenticator
@@ -30,7 +33,7 @@ class WebhookAuthenticator
 
         $ip = (string) $request->ip();
 
-        $ipAllowed = in_array($ip, $allowlist, true);
+        $ipAllowed = $this->ipAllowed($ip, $allowlist);
         $secretConfigured = is_string($secret) && $secret !== '';
 
         // Если секрет задан — главная проверка подпись; allowlist пуст — ок.
@@ -101,6 +104,10 @@ class WebhookAuthenticator
      * проверка отказывает fail-closed. В production до этого не дойдёт —
      * `ProductionSafetyProvider` не даст приложению стартовать.
      *
+     * Записи, которые не являются ни IP, ни CIDR, остаются в списке (их отвергнет
+     * `IpRange::contains()`), но каждая попадает в лог: иначе опечатка в
+     * `185.32.0.0/24` выглядела бы как настроенная защита.
+     *
      * @return list<string>
      */
     private function allowlist(string $provider): array
@@ -115,9 +122,41 @@ class WebhookAuthenticator
             );
         }
 
-        return array_values(array_filter(
+        $ranges = array_values(array_filter(
             array_map(static fn ($value): string => trim((string) $value), $configured),
             static fn (string $value): bool => $value !== '' && $value !== '*',
         ));
+
+        foreach ($ranges as $range) {
+            if (! IpRange::isValid($range)) {
+                Log::warning(
+                    'Webhook: запись IP-allowlist не является ни IP-адресом, ни CIDR '
+                    . 'и не участвует в проверке.',
+                    ['provider' => $provider, 'entry' => $range],
+                );
+            }
+        }
+
+        return $ranges;
+    }
+
+    /**
+     * Совпал ли адрес хотя бы с одной записью allowlist.
+     *
+     * Сравнение строк «как есть» здесь не годится: официальный список ЮKassa —
+     * подсети, и точное `in_array` отвергало все уведомления. `IpRange`
+     * понимает и точный адрес, и CIDR (IPv4 и IPv6).
+     *
+     * @param list<string> $allowlist
+     */
+    private function ipAllowed(string $ip, array $allowlist): bool
+    {
+        foreach ($allowlist as $range) {
+            if (IpRange::contains($ip, $range)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

@@ -189,6 +189,7 @@ async function clearSecret(which: 'secret_key' | 'webhook_secret'): Promise<void
           v-model="form.webhook_secret"
           type="password"
           label="Секрет вебхука"
+          hint="Для ЮKassa оставьте пустым: она не подписывает уведомления, адрес источника проверяется по YOOKASSA_WEBHOOK_IP_ALLOWLIST. Заполняйте только для провайдера, который присылает заголовок X-Signature."
           :placeholder="webhookSecretSet ? '•••••••• (задан, оставьте пустым, чтобы не менять)' : 'не задан'"
         />
       </div>

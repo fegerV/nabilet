@@ -11,6 +11,7 @@ use Nabilet\Modules\Orders\Services\OrderService;
 use Nabilet\Modules\Payments\Services\PaymentService;
 use Nabilet\Modules\Payments\Services\WebhookSignatureVerifier;
 use Nabilet\Modules\System\Support\ProductionSafetyAudit;
+use Nabilet\Modules\Webhooks\Http\Controllers\WebhookController;
 use Nabilet\Tests\Support\SellableSeatFixtures;
 use Tests\TestCase;
 
@@ -240,6 +241,143 @@ class WebhookAuthenticationTest extends TestCase
         $method = new \ReflectionMethod(ProductionSafetyAudit::class, 'wildcardWebhookAllowlists');
 
         $this->assertSame([], $method->invoke(new ProductionSafetyAudit()));
+    }
+
+    /**
+     * CIDR в allowlist: официальный список ЮKassa задан подсетями, поэтому
+     * точное сравнение строк отвергало все её уведомления.
+     */
+    public function test_a_cidr_allowlist_accepts_an_address_inside_the_network(): void
+    {
+        config([
+            // Пробелы по краям: `config/nabilet.php` режет переменную по
+            // запятой без `trim`, и такая запись обязана работать.
+            'nabilet.payment.yookassa.webhook_ip_allowlist' => [' 127.0.0.0/8 '],
+            'nabilet.payment.yookassa.webhook_secret' => null,
+        ]);
+
+        $this->paymentFor('yk-cidr-1');
+
+        $this->postJson('/api/v1/payments/webhooks/yookassa', [
+            'event' => 'payment.succeeded',
+            'object' => [
+                'id' => 'yk-cidr-1',
+                'status' => 'succeeded',
+                'amount' => ['value' => '50000.00', 'currency' => 'RUB'],
+            ],
+        ])->assertOk();
+    }
+
+    public function test_a_cidr_allowlist_rejects_an_address_outside_the_network(): void
+    {
+        config([
+            'nabilet.payment.yookassa.webhook_ip_allowlist' => ['10.0.0.0/8'],
+            'nabilet.payment.yookassa.webhook_secret' => null,
+        ]);
+
+        $response = $this->postJson('/api/v1/payments/webhooks/yookassa', [
+            'event' => 'payment.succeeded',
+            'object' => ['id' => 'yk-cidr-outside', 'status' => 'succeeded'],
+        ]);
+
+        $response->assertStatus(403);
+        $response->assertJsonPath('error.code', 'WEBHOOK_IP_NOT_ALLOWED');
+        $this->assertSame(0, DB::table('payments')->count());
+    }
+
+    /**
+     * Кривая запись не должна отключать соседние рабочие: иначе одна опечатка
+     * в `.env` валит все уведомления, хотя рядом стоит правильная подсеть.
+     */
+    public function test_a_malformed_allowlist_entry_does_not_block_a_valid_one(): void
+    {
+        config([
+            'nabilet.payment.yookassa.webhook_ip_allowlist' => ['185.32.0.0/33', '127.0.0.0/8'],
+            'nabilet.payment.yookassa.webhook_secret' => null,
+        ]);
+
+        $this->paymentFor('yk-cidr-2');
+
+        $this->postJson('/api/v1/payments/webhooks/yookassa', [
+            'event' => 'payment.succeeded',
+            'object' => [
+                'id' => 'yk-cidr-2',
+                'status' => 'succeeded',
+                'amount' => ['value' => '50000.00', 'currency' => 'RUB'],
+            ],
+        ])->assertOk();
+    }
+
+    /**
+     * Один URI — один обработчик.
+     *
+     * До фикса `payments/webhooks/{provider}` вёл в `PaymentController::webhook`
+     * (плоский конверт без `request_id`), а `webhooks/payment/{provider}` — в
+     * `WebhookController::payment`. Плюс Payments регистрировал URI, который уже
+     * занимал Webhooks, — второй маршрут был недостижим.
+     */
+    public function test_both_webhook_paths_are_served_by_one_controller_action(): void
+    {
+        $routes = app('router')->getRoutes();
+
+        $canonical = $routes->getByName('webhooks.payment.canonical');
+        $legacy = $routes->getByName('webhooks.payment');
+
+        $this->assertNotNull($canonical);
+        $this->assertNotNull($legacy);
+        $this->assertSame('api/v1/payments/webhooks/{provider}', $canonical->uri());
+        $this->assertSame('api/v1/webhooks/payment/{provider}', $legacy->uri());
+        $this->assertSame(WebhookController::class . '@payment', $canonical->getActionName());
+        $this->assertSame($canonical->getActionName(), $legacy->getActionName());
+
+        $sameUri = array_filter(
+            $routes->getRoutes(),
+            static fn ($route): bool => $route->uri() === 'api/v1/payments/webhooks/{provider}',
+        );
+
+        $this->assertCount(1, $sameUri, 'URI вебхука не должен быть зарегистрирован дважды');
+    }
+
+    /**
+     * Канонический путь обязан отвечать конвертом §66: `request_id` — то, чем
+     * `WebhookController` отличается от удалённого `PaymentController::webhook`.
+     */
+    public function test_the_canonical_webhook_path_uses_the_error_envelope_with_request_id(): void
+    {
+        config([
+            'nabilet.payment.yookassa.webhook_ip_allowlist' => [],
+            'nabilet.payment.yookassa.webhook_secret' => null,
+        ]);
+
+        $response = $this->postJson('/api/v1/payments/webhooks/yookassa', [
+            'event' => 'payment.succeeded',
+            'object' => ['id' => 'yk-envelope', 'status' => 'succeeded'],
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.code', 'WEBHOOK_NOT_AUTHENTICATED');
+        $this->assertIsString($response->json('error.request_id'));
+        $this->assertNotSame('', $response->json('error.request_id'));
+    }
+
+    /** Кривой CIDR в allowlist обязан попасть в отчёт `config:validate`. */
+    public function test_the_production_guard_flags_a_malformed_webhook_allowlist(): void
+    {
+        config([
+            'nabilet.payment.providers' => ['yookassa'],
+            'nabilet.payment.yookassa.webhook_ip_allowlist' => [
+                '185.32.0.0/33',
+                '185.32.1.0/24',
+                ' 127.0.0.1 ',
+            ],
+        ]);
+
+        $method = new \ReflectionMethod(ProductionSafetyAudit::class, 'malformedWebhookAllowlists');
+
+        $this->assertSame(
+            ['YOOKASSA_WEBHOOK_IP_ALLOWLIST' => ['185.32.0.0/33']],
+            $method->invoke(new ProductionSafetyAudit()),
+        );
     }
 
     /**

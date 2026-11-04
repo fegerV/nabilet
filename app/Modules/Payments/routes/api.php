@@ -53,10 +53,9 @@ Route::prefix('admin/payments')->middleware(['auth:api', 'admin'])->group(functi
     Route::put('/settings', [PaymentSettingsController::class, 'update']);
 });
 
-// Webhook routes are public - payment providers don't authenticate.
-// Deliberately outside the auth:api group above. The path used to carry a
-// literal `v1/` as well as the global prefix, giving /api/v1/v1/payments/...
-Route::post('payments/webhooks/{provider}', [PaymentController::class, 'webhook']);
-// Тот же обработчик доступен по пути, который используют тесты и клиенты:
-// /api/v1/webhooks/payment/{provider} — исторический алиас.
-Route::post('webhooks/payment/{provider}', [PaymentController::class, 'webhook']);
+// Вебхуки платёжных провайдеров объявлены в модуле Webhooks
+// (`app/Modules/Webhooks/routes/api.php`). Раньше здесь были ещё две
+// регистрации на `PaymentController::webhook`, и одна из них делила URI с
+// маршрутом модуля Webhooks — Laravel оставлял первый, второй был мёртвым.
+// У точки приёма уведомлений должен быть один обработчик и одно место
+// регистрации.

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\System\Support;
 
+use Nabilet\Core\Support\IpRange;
+
 /**
  * Единственный владелец правил «безопасна ли эта конфигурация для продакшена».
  *
@@ -21,11 +23,13 @@ namespace Nabilet\Modules\System\Support;
  * обязаны отвечать на вопрос «есть ли нарушения» одинаково, поэтому ответ живёт
  * в одном месте.
  *
- * Зависимостей намеренно нет: только `config()` и `env()`. Проверка обязана
- * смотреть на те же значения, которыми пользуется приложение, — а не на
- * собственное представление о них. Где значение читается через `env()`
- * (TRUSTED_PROXIES), это отмечено отдельно: именно так его читает
- * `bootstrap/app.php`.
+ * Зависимостей намеренно нет: только `config()`, `env()` и `Core\Support\IpRange`.
+ * Проверка обязана смотреть на те же значения, которыми пользуется приложение, —
+ * а не на собственное представление о них. `IpRange` — не новое правило, а тот
+ * же разбор адресов, которым пользуется `WebhookAuthenticator`: копия разбора
+ * разошлась бы с рантаймом так же, как расходятся копии DDL. Где значение
+ * читается через `env()` (TRUSTED_PROXIES), это отмечено отдельно: именно так
+ * его читает `bootstrap/app.php`.
  */
 final class ProductionSafetyAudit
 {
@@ -66,6 +70,16 @@ final class ProductionSafetyAudit
             $violations[] = "{$key}=*: для ЮKassa allowlist — единственный слой проверки "
                 . 'уведомлений (HMAC она не подписывает), поэтому звёздочка означает '
                 . '«подтвердить оплату может кто угодно». Укажите официальные CIDR провайдера.';
+        }
+
+        foreach ($this->malformedWebhookAllowlists() as $key => $entries) {
+            $violations[] = sprintf(
+                '%s: записи %s не являются ни IP-адресом, ни CIDR. Они не участвуют в '
+                . 'проверке, поэтому уведомления с этих адресов получают 403 — защита '
+                . 'выглядит настроенной, но не работает. Исправьте или удалите их.',
+                $key,
+                implode(', ', array_map(static fn (string $entry): string => '«' . $entry . '»', $entries)),
+            );
         }
 
         $insecureUrl = $this->insecureAppUrl();
@@ -142,14 +156,83 @@ final class ProductionSafetyAudit
                 continue;
             }
 
-            $allowlist = (array) config("nabilet.payment.{$provider}.webhook_ip_allowlist", []);
+            $allowlist = $this->webhookAllowlist($provider);
 
             if (in_array('*', $allowlist, true)) {
-                $violations[] = 'YOOKASSA_WEBHOOK_IP_ALLOWLIST';
+                $violations[] = $this->allowlistKey($provider);
             }
         }
 
         return array_values(array_unique($violations));
+    }
+
+    /**
+     * Провайдеры, у которых IP-allowlist содержит записи, не являющиеся ни
+     * точным адресом, ни CIDR.
+     *
+     * `WebhookAuthenticator` такие записи не выбрасывает, но и не сравнивает:
+     * `IpRange::contains()` на них отвечает `false`. То есть запись вида
+     * `185.32.0.0/33` или `185.32.0.0 /24` не защищает ничего, а выглядит как
+     * настроенный allowlist. На проде это означает 403 на всех уведомлениях
+     * провайдера — и обнаруживается только по неоплаченным заказам.
+     *
+     * @return array<string, list<string>> Имя переменной `.env` => плохие записи.
+     */
+    private function malformedWebhookAllowlists(): array
+    {
+        $violations = [];
+
+        foreach ((array) config('nabilet.payment.providers', []) as $provider) {
+            $provider = trim((string) $provider);
+
+            if ($provider === '') {
+                continue;
+            }
+
+            $malformed = array_values(array_filter(
+                $this->webhookAllowlist($provider),
+                static fn (string $entry): bool => $entry !== '*' && ! IpRange::isValid($entry),
+            ));
+
+            if ($malformed !== []) {
+                $violations[$this->allowlistKey($provider)] = array_values(array_unique($malformed));
+            }
+        }
+
+        return $violations;
+    }
+
+    /**
+     * Записи allowlist как их видит `WebhookAuthenticator`: строки без пробелов
+     * по краям.
+     *
+     * `config/nabilet.php` режет переменную по запятой без `trim`, поэтому
+     * `185.32.0.0/24, 185.32.1.0/24` даёт вторую запись с ведущим пробелом.
+     * Проверка обязана судить о том же значении, что и рантайм, — иначе она
+     * ругалась бы на запись, которая на самом деле работает.
+     *
+     * @return list<string>
+     */
+    private function webhookAllowlist(string $provider): array
+    {
+        $configured = (array) config("nabilet.payment.{$provider}.webhook_ip_allowlist", []);
+
+        return array_values(array_map(
+            static fn ($value): string => trim((string) $value),
+            $configured,
+        ));
+    }
+
+    /**
+     * Имя переменной `.env` для allowlist провайдера.
+     *
+     * Ключ выводится из имени провайдера, а не зашит как `YOOKASSA_...`: при
+     * добавлении второго провайдера сообщение обязано называть его переменную, а
+     * не чужую.
+     */
+    private function allowlistKey(string $provider): string
+    {
+        return strtoupper($provider) . '_WEBHOOK_IP_ALLOWLIST';
     }
 
     /**

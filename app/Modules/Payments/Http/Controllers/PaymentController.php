@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Payments\Http\Controllers;
 
-use Nabilet\Core\Errors\DomainRuleViolation;
 use Nabilet\Core\Errors\NotFoundError;
 use Nabilet\Core\Errors\ValidationError;
 use Nabilet\Core\Idempotency\IdempotencyHeader;
@@ -17,7 +16,6 @@ use Nabilet\Modules\Cart\Support\CartToken;
 use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Payments\Models\Payment;
 use Nabilet\Modules\Payments\Services\PaymentService;
-use Nabilet\Modules\Payments\Services\WebhookAuthenticator;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -416,28 +414,5 @@ class PaymentController extends Controller
         $payment = $this->paymentService->confirmDemoPayment($paymentId);
 
         return response()->json(['data' => $payment]);
-    }
-
-    public function webhook(string $provider, Request $request): JsonResponse
-    {
-        try {
-            // НЕ-проверка здесь = приём подделанных уведомлений. Fail-closed.
-            app(WebhookAuthenticator::class)->authenticate($request, $provider);
-        } catch (DomainRuleViolation $e) {
-            // В тестах APP_DEBUG=true, но рендер через ApiExceptionRenderer всё
-            // равно может вернуть null на не-API-путях. Гарантированно отвечаем
-            // сами, чтобы status/code дошли до клиента.
-            return response()->json([
-                'error' => [
-                    'code' => $e->errorCode,
-                    'message' => $e->getMessage(),
-                    'details' => $e->context,
-                ],
-            ], $e->status);
-        }
-
-        $result = $this->paymentService->processWebhook($provider, $request->json()->all());
-
-        return response()->json(['data' => $result]);
     }
 }
