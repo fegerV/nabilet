@@ -101,7 +101,7 @@ CHECK и триггеры — совпадение; все 94 спек-пути 
   utf8mb4, `NABILET_ALLOW_DATABASE_CACHE=true`); повторные POST/GET → 403
   `ALREADY_INSTALLED`; `/api/v1/health` → 200; витрина `/` отдаёт `dist/index.html`.
   Прогон повторён на **распакованном zip-архиве** — см. ниже.
-- **Архив установки собран и протестирован:** `nabilet-hosting-20261104.zip`
+- **Архив установки собран и протестирован:** `nabilet-hosting-v1.0.0-20261104.zip`
   (~31 МБ) — `app/ bootstrap/ config/ database/ lang/ public/ public_html/
   resources/ routes/ storage/ (скелет) vendor/ dist/ .env.example .user.ini artisan
   composer.*`; без `tests/ tools/ docs/ .git .env install.lock логов`. На хостинге

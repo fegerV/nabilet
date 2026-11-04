@@ -172,7 +172,7 @@ chmod -R ug+w storage bootstrap/cache
 
   ```bash
   cd /home/c/ce99429
-  unzip -q nabilet-hosting-20261104.zip          # -> ./nabilet/
+  unzip -q nabilet-hosting-v1.0.0-20261104.zip          # -> ./nabilet/
   rm -f vertex-art.ru/public_html/index.html     # заглушка хостинга, если есть
   cp -a nabilet/. vertex-art.ru/                 # app/ vendor/ dist/ public_html/ ... -> каталог сайта
   rm -rf nabilet
