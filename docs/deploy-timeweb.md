@@ -16,24 +16,34 @@
 
 ## 1. Модель размещения
 
-На TimeWeb докумень (DocumentRoot) жёстко зафиксирован как `public_html/`
-в корне аккаунта. Приложение кладётся **на уровень выше**:
+Докумень (DocumentRoot) на TimeWeb жёстко зафиксирован как `public_html/` внутри
+**каталога сайта** — у каждого домена он свой, например
+`/home/c/ce99429/vertex-art.ru/`. Приложение кладётся **в каталог сайта**, т.е.
+на уровень выше `public_html/` (это НЕ «корень аккаунта» `/home/c/ce99429/` и НЕ
+сам `public_html/`):
 
 ```
-/home/uXXXXX/                      ← корень аккаунта = корень репозитория
+/home/c/ce99429/vertex-art.ru/     ← каталог сайта = корень приложения
 ├── app/
 ├── bootstrap/
 ├── config/
 ├── database/
 ├── vendor/                        (ставится composer install на сервере)
+├── dist/                          (SPA-витрина: dist/index.html + dist/assets)
 ├── .env                           (создаётся на сервере, НЕ в git)
 ├── storage/                       (симлинк из public_html/storage)
 ├── public/                        (канонический фронт-контроллер Laravel)
 └── public_html/                   ← DocumentRoot (то, что видно по HTTP)
     ├── index.php                  ← НОВЫЙ тонкий вход (требует ../public/index.php)
     ├── .htaccess                  ← НОВЫЙ rewrite на index.php
+    ├── .user.ini                  ← лимиты PHP (обязан лежать ВНУТРИ DocumentRoot)
     └── build/                     (скомпилированный фронтенд, отслеживается в git)
 ```
+
+Если в аккаунте несколько сайтов — у каждого свой каталог-домен, и приложение
+каждого лежит рядом со своим `public_html/`. В `public_html/` допустимы только
+статика и тонкий `index.php`; `.env`, `vendor/`, `storage/`, `app/` там оказаться
+не должны.
 
 Чувствительные каталоги (`app/`, `config/`, `.env`, `vendor/`, `storage/`) лежат
 **вне** DocumentRoot → недоступны по HTTP. Это правильная изоляция; менять её не надо.
@@ -50,9 +60,11 @@
 |------|------------|
 | `public_html/index.php` | Тонкий вход: `require ../public/index.php`. Единый источник правды — канонический `public/index.php` Laravel. |
 | `public_html/.htaccess` | Стандартный rewrite Laravel на `index.php` + блокировка dot-файлов (`Require all denied`, Apache 2.4). |
-| `.user.ini` | PHP 8.3-настройки (выкл. `display_errors`, `expose_php=Off`, лимиты загрузки, secure session cookies). |
+| `public_html/.user.ini` | PHP 8.3-настройки (выкл. `display_errors`, `expose_php=Off`, лимиты загрузки, secure session cookies). Лежит **внутри** DocumentRoot — иначе PHP его не прочитает (скан останавливается на DOCUMENT_ROOT). |
 
-`.user.ini` применяется к web-запросам из `public_html/` и ниже. На CLI (`artisan`)
+`.user.ini` применяется к web-запросам из `public_html/` и ниже — поэтому он и
+лежит в `public_html/` (копия выше DocumentRoot не читается PHP вовсе; web-доступ
+к файлу закрыт правилом `<FilesMatch "^\.">` в `.htaccess`). На CLI (`artisan`)
 он **не** действует — при необходимости продублируйте лимиты в окружении cron/ssh.
 
 ---
@@ -84,11 +96,12 @@ php -v            # ожидаем 8.3.x
 # 0. В панели TimeWeb выбрать PHP 8.3, затем по SSH:
 php -v
 
-# 1. Выложить код в корень аккаунта так, чтобы public_html/ стал DocumentRoot:
-git -C /home/uXXXXX pull origin main
+# 1. Выложить код в каталог сайта — тот, что СОДЕРЖИТ public_html
+#    (напр. /home/c/ce99429/vertex-art.ru/), не в public_html и не в /home/c/ce99429:
+git -C /home/c/ce99429/vertex-art.ru pull origin main
 
 # 2. Зависимости (vendor/ в git НЕ входит — ставим на сервере; мастер его не ставит):
-cd /home/uXXXXX
+cd /home/c/ce99429/vertex-art.ru
 composer install --no-dev --optimize-autoloader
 
 # 3. Права (мастер проверит сам, но заранее лучше открыть):
@@ -147,13 +160,25 @@ chmod -R ug+w storage bootstrap/cache
   `CREATE TRIGGER`; на шаред-хостинге это часто падает с `ERROR 1419` (binary
   logging + нет прав SUPER). Мастер **не прерывается** — триггеры опциональны
   (defense-in-depth), те же правила защищены на уровне приложения.
-- **`composer install` обязателен при/git-выкладке** — `vendor/` не коммитится.
+- **`composer install` обязателен при git-выкладке** — `vendor/` не коммитится.
   Альтернатива — готовый архив установки (собирается командой релиза,
   см. `PRODUCTION-READINESS.md` §3 от 2026-11-04): в нём `vendor/` и собранная
   витрина `dist/` уже внутри, `composer install` и `npm run build` на хостинге
   не нужны; каталоги `tests/`, `tools/`, `docs/`, `.git` в архив не входят.
-  Архив распаковывается в корень аккаунта так, чтобы `public_html/` стал
-  DocumentRoot.
+  Внутри архив — папка `nabilet/`; её содержимое раскладывается в **каталог
+  сайта** (родитель `public_html/`), при этом `nabilet/public_html/*` сливается
+  с существующим `public_html/` (дефолтную заглушку `index.html` удалить).
+  Пример для `/home/c/ce99429/vertex-art.ru/`:
+
+  ```bash
+  cd /home/c/ce99429
+  unzip -q nabilet-hosting-20261104.zip          # -> ./nabilet/
+  rm -f vertex-art.ru/public_html/index.html     # заглушка хостинга, если есть
+  cp -a nabilet/. vertex-art.ru/                 # app/ vendor/ dist/ public_html/ ... -> каталог сайта
+  rm -rf nabilet
+  # проверка: public_html/index.php и ../app на месте, публичного .env нет
+  chmod -R ug+w vertex-art.ru/storage vertex-art.ru/bootstrap/cache
+  ```
 - **ЮKassa опциональна** — поля можно оставить пустыми; платежи заработают после
   заполнения в настройках.
 - **CSRF на `/install` отключён** (`bootstrap/app.php` →
@@ -161,7 +186,7 @@ chmod -R ug+w storage bootstrap/cache
   эндпоинт, доступный только до `install.lock`.
 - **Кеши.** Мастер их не прогревает. Для прод-режима после установки:
   ```bash
-  cd /home/uXXXXX
+  cd /home/c/ce99429/vertex-art.ru
   php artisan config:cache
   php artisan route:cache
   php artisan view:cache
@@ -170,7 +195,7 @@ chmod -R ug+w storage bootstrap/cache
 ### Ручной fallback (если мастер недоступен)
 
 ```bash
-cd /home/uXXXXX
+cd /home/c/ce99429/vertex-art.ru
 cp .env.example .env
 #   отредактировать .env: APP_URL, DB_*, YOOKASSA_*, MAIL_*, redis (predis)
 php artisan key:generate
@@ -229,7 +254,7 @@ MAIL_FROM_NAME="${APP_NAME}"
 поднимает отложенные повторы вебхуков. Установите cron в панели TimeWeb:
 
 ```cron
-* * * * * cd /home/uXXXXX && php artisan schedule:run >> /dev/null 2>&1
+* * * * * cd /home/c/ce99429/vertex-art.ru && php artisan schedule:run >> /dev/null 2>&1
 ```
 
 При первом развёртывании (и после добавления новых шаблонов) создайте системные
