@@ -53,7 +53,7 @@ class SyncScheduler(private val context: Context) {
 
     fun cancelAll() {
         workManager.cancelUniqueWork(UNIQUE_ONE_TIME)
-        workManager.cancelUniquePeriodicWork(UNIQUE_PERIODIC)
+        workManager.cancelAllWork()
     }
 
     private companion object {

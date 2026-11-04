@@ -139,11 +139,12 @@ class CheckerRepository(
                 is ValidationResult.Error -> return@withContext OpResult.Err(result.message)
             }
 
-            configMutex.withLock {
+            configMutex.lock()
+            try {
                 val urlChanged = prefs.baseUrl.isNotBlank() && prefs.baseUrl != url
                 if (urlChanged) {
                     if (scanDao.pendingCount() > 0) {
-                        return@withLock OpResult.Err(context.getString(R.string.blocked_server_change_pending))
+                        return OpResult.Err(context.getString(R.string.blocked_server_change_pending))
                     }
                     vault.clear()
                     bundleDao.deleteAll()
@@ -155,7 +156,7 @@ class CheckerRepository(
                 }
 
                 if (!vault.save(token)) {
-                    return@withLock OpResult.Err(context.getString(R.string.token_vault_failed))
+                    return OpResult.Err(context.getString(R.string.token_vault_failed))
                 }
                 prefs.baseUrl = url
 
@@ -168,6 +169,8 @@ class CheckerRepository(
                     )
                 }
                 OpResult.Ok(Unit)
+            } finally {
+                configMutex.unlock()
             }
         }
 
@@ -185,10 +188,11 @@ class CheckerRepository(
             is ValidationResult.Error -> return@withContext OpResult.Err(result.message)
         }
 
-        configMutex.withLock {
-            if (prefs.baseUrl == url) return@withLock OpResult.Ok(Unit)
+        configMutex.lock()
+        try {
+            if (prefs.baseUrl == url) return OpResult.Ok(Unit)
             if (scanDao.pendingCount() > 0) {
-                return@withLock OpResult.Err(context.getString(R.string.blocked_server_change_pending))
+                return OpResult.Err(context.getString(R.string.blocked_server_change_pending))
             }
 
             vault.clear()
@@ -205,6 +209,8 @@ class CheckerRepository(
                 )
             }
             OpResult.Ok(Unit)
+        } finally {
+            configMutex.unlock()
         }
     }
 
@@ -214,9 +220,10 @@ class CheckerRepository(
             is ValidationResult.Error -> return@withContext OpResult.Err(result.message)
         }
 
-        configMutex.withLock {
+        configMutex.lock()
+        try {
             if (!vault.save(token)) {
-                return@withLock OpResult.Err(context.getString(R.string.token_vault_failed))
+                return OpResult.Err(context.getString(R.string.token_vault_failed))
             }
             _state.update {
                 it.copy(
@@ -225,6 +232,8 @@ class CheckerRepository(
                 )
             }
             OpResult.Ok(Unit)
+        } finally {
+            configMutex.unlock()
         }
     }
 
@@ -306,13 +315,14 @@ class CheckerRepository(
             )
         }
 
-        configMutex.withLock {
+        configMutex.lock()
+        try {
             val pending = scanDao.pendingCount()
             val currentDevice = prefs.devicePublicId
             if (pending > 0 && !currentDevice.isNullOrBlank() &&
                 currentDevice != parsed.bundle.devicePublicId
             ) {
-                return@withLock OpResult.Err(context.getString(R.string.blocked_device_change_pending))
+                return OpResult.Err(context.getString(R.string.blocked_device_change_pending))
             }
 
             bundleDao.save(parsed)
@@ -331,6 +341,8 @@ class CheckerRepository(
                 )
             }
             OpResult.Ok(parsed.bundle)
+        } finally {
+            configMutex.unlock()
         }
     }
 
@@ -345,29 +357,33 @@ class CheckerRepository(
             return@withContext OpResult.Err(context.getString(R.string.blocked_session_locked_by_bundle))
         }
 
-        configMutex.withLock {
+        configMutex.lock()
+        try {
             prefs.sessionReference = value
             val config = prefs.readConfig(hasToken = _state.value.config.hasToken)
             _state.update { it.copy(config = config) }
             OpResult.Ok(Unit)
+        } finally {
+            configMutex.unlock()
         }
     }
 
     suspend fun beginShift(): OpResult<Unit> = withContext(Dispatchers.IO) {
-        configMutex.withLock {
+        configMutex.lock()
+        try {
             val hasToken = _state.value.config.hasToken
             var config = prefs.readConfig(hasToken)
 
             if (config.baseUrl.isBlank()) {
-                return@withLock OpResult.Err(context.getString(R.string.server_missing))
+                return OpResult.Err(context.getString(R.string.server_missing))
             }
             if (!hasToken) {
-                return@withLock OpResult.Err(context.getString(R.string.token_missing))
+                return OpResult.Err(context.getString(R.string.token_missing))
             }
 
             val session = config.sessionReference ?: _state.value.bundle?.sessionReference
             if (session.isNullOrBlank()) {
-                return@withLock OpResult.Err(context.getString(R.string.session_required))
+                return OpResult.Err(context.getString(R.string.session_required))
             }
             if (config.sessionReference != session) {
                 prefs.sessionReference = session
@@ -377,7 +393,7 @@ class CheckerRepository(
             // Without a bundle the first shift has to be online at least once:
             // otherwise the device has no proven identity and no ticket data.
             if (_state.value.tokenState != TokenState.VALID && _state.value.bundle == null) {
-                return@withLock OpResult.Err(context.getString(R.string.shift_verify_required))
+                return OpResult.Err(context.getString(R.string.shift_verify_required))
             }
 
             if (!prefs.setupComplete || prefs.shiftStartedAt == 0L) {
@@ -394,6 +410,8 @@ class CheckerRepository(
             }
             syncScheduler.enqueue()
             OpResult.Ok(Unit)
+        } finally {
+            configMutex.unlock()
         }
     }
 
@@ -415,11 +433,12 @@ class CheckerRepository(
     }
 
     suspend fun removeBundle(): OpResult<Unit> = withContext(Dispatchers.IO) {
-        configMutex.withLock {
+        configMutex.lock()
+        try {
             if (scanDao.pendingCount() > 0) {
-                return@withLock OpResult.Err(context.getString(R.string.blocked_bundle_remove_pending))
+                return OpResult.Err(context.getString(R.string.blocked_bundle_remove_pending))
             }
-            val bundle = _state.value.bundle ?: return@withLock OpResult.Ok(Unit)
+            val bundle = _state.value.bundle ?: return OpResult.Ok(Unit)
             bundleDao.delete(bundle.id)
             prefs.bundleId = null
             prefs.devicePublicId = null
@@ -427,17 +446,22 @@ class CheckerRepository(
             val config = prefs.readConfig(_state.value.config.hasToken)
             _state.update { it.copy(config = config, bundle = null) }
             OpResult.Ok(Unit)
+        } finally {
+            configMutex.unlock()
         }
     }
 
     suspend fun clearAll() = withContext(Dispatchers.IO) {
-        configMutex.withLock {
+        configMutex.lock()
+        try {
             vault.clear()
             prefs.clearAll()
             scanDao.deleteAll()
             bundleDao.deleteAll()
             syncScheduler.cancelAll()
             _state.value = CheckerState(initialized = true, tokenState = TokenState.UNKNOWN)
+        } finally {
+            configMutex.unlock()
         }
     }
 

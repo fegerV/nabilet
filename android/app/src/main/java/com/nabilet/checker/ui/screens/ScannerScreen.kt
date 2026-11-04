@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.FlashOff
 import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material.icons.filled.Keyboard
@@ -127,12 +128,14 @@ fun ScannerScreen(
         }
     }
 
-    private fun openAppSettings() {
+    val appContext = context.applicationContext
+
+    fun openAppSettings() {
         val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
             .setData(
                 android.net.Uri.fromParts(
                     "package",
-                    LocalContext.current.packageName,
+                    appContext.packageName,
                     null,
                 ),
             )
@@ -454,7 +457,7 @@ private fun ScanResultCard(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(
-                    imageVector = if (admitted) Icons.Default.CheckCircle else Icons.Default.Error,
+                    imageVector = if (admitted) Icons.Default.CheckCircle else Icons.Filled.Error,
                     contentDescription = if (admitted) stringResource(R.string.result_admit) else stringResource(R.string.result_deny),
                     modifier = Modifier.size(24.dp),
                 )
