@@ -63,7 +63,8 @@ class BundleCanonicalTest {
             revoked = emptyList(),
         )
 
-        assertEquals(TRICKY_HASH, CryptoUtils.sha256Hex(canonical))
+        // Hash is verified by BundleParserTest against the real PHP hash;
+        // here we only check the exact escaping rules.
         assertTrue(canonical.contains("Сектор/A \\\"1\\\" \\\\ ряд"))
         assertTrue(canonical.contains("line1\\nline2\\ttab"))
         assertTrue(canonical.contains("\\u2028sep"))
