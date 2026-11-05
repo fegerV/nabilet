@@ -75,6 +75,24 @@
     <string name="setup_bundle_id_value">ID бандла</string>
     <string name="setup_online_note">Онлайн: каждый скан подтверждает сервер. Офлайн: решение принимается по загруженному бандлу, а скан уходит в очередь синхронизации.</string>
 
+    <!-- Config scan (QR настройки) -->
+    <string name="config_scan_permission_title">Нужен доступ к камере</string>
+    <string name="config_scan_permission_text">Приложение сканирует QR-код от администратора, чтобы автоматически настроить сервер и токен. Без камеры это невозможно.</string>
+    <string name="config_scan_hint">Наведите камеру на QR-код от администратора</string>
+    <string name="config_scan_success_title">Готово!</string>
+    <string name="config_scan_success_message">Настройки загружены. Теперь можно начинать смену.</string>
+    <string name="config_scan_error_title">Ошибка сканирования</string>
+    <string name="config_scan_error_message">Не удалось прочитать QR-код. Попробуйте ещё раз.</string>
+
+    <!-- Setup simplified -->
+    <string name="setup_scan_title">Отсканируйте QR-код администратора</string>
+    <string name="setup_scan_subtitle">Администратор выдаст один QR-код — сканируйте его, и всё настроится само.</string>
+    <string name="setup_manual_title">Ввести вручную</string>
+    <string name="setup_manual_subtitle">Если нет QR-кода, введите адрес сервера и токен устройства.</string>
+    <string name="setup_ready_title">Готово к работе</string>
+    <string name="setup_ready_subtitle">Сервер и токен настроены. Можно начинать проверку билетов.</string>
+    <string name="action_scan">Отсканировать</string>
+
     <!-- Scanner -->
     <string name="scanner_title">Сканер</string>
     <string name="scanner_status_online">Онлайн</string>

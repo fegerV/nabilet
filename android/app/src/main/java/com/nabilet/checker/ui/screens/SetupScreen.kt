@@ -12,20 +12,17 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.ArrowDropUp
-import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.QrCodeScanner
+import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -36,64 +33,48 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.nabilet.checker.R
 import com.nabilet.checker.data.repository.CheckerState
 import com.nabilet.checker.data.repository.TokenState
-import com.nabilet.checker.domain.model.ActiveBundle
-import com.nabilet.checker.domain.util.TimeFormat
-import com.nabilet.checker.ui.components.KeyValueRow
 import com.nabilet.checker.ui.components.StatusPill
 import com.nabilet.checker.ui.theme.CheckerColors
 
 /**
- * Экран первичной настройки устройства.
+ * Экран первичной настройки — максимально упрощённый.
  *
- * Упрощённая иерархия:
- *  1. Заголовок + текущий статус
- *  2. Основная карта: сервер + токен + первичная кнопка «Подключить»
- *  3. Опциональная карта: офлайн-бандл (скрыта по умолчанию)
- *  4. Действие: «Начать смену» (доступно только когда настроено)
+ * Проверяющий видит минимум:
+ *  1. Статус: настроено / не настроено
+ *  2. Огромная кнопка «Отсканировать QR от администратора» (основной путь)
+ *  3. Маленькая кнопка «Ввести вручную» (резерв)
+ *  4. Если готово — огромная кнопка «Начать смену»
  *
- * Progress disclosure: оператор видит минимум полей. Дополнительные
- * параметры открываются по необходимости.
+ * Никаких полей ввода, копирования-вставки, длинных адресов.
  */
 @Composable
 fun SetupScreen(
     state: CheckerState,
     busy: Boolean,
+    onScanConfig: () -> Unit,
+    onConfigureManually: () -> Unit,
     onSaveAndVerify: (String, String) -> Unit,
-    onDownloadBundle: (String, String, String) -> Unit,
     onBeginShift: () -> Unit,
 ) {
-    var url by rememberSaveable { mutableStateOf(state.config.baseUrl) }
-    var token by rememberSaveable { mutableStateOf("") }
-    var bundleId by rememberSaveable { mutableStateOf(state.config.bundleId.orEmpty()) }
-    var session by rememberSaveable { mutableStateOf(state.config.sessionReference.orEmpty()) }
-    var tokenVisible by rememberSaveable { mutableStateOf(false) }
-    var bundleSectionExpanded by rememberSaveable { mutableStateOf(state.bundle != null) }
+    var manualServer by rememberSaveable { mutableStateOf("") }
+    var manualToken by rememberSaveable { mutableStateOf("") }
+    var showManual by rememberSaveable { mutableStateOf(false) }
 
-    LaunchedEffect(state.config.baseUrl) {
-        if (url.isBlank() && state.config.baseUrl.isNotBlank()) url = state.config.baseUrl
-    }
-    LaunchedEffect(state.config.sessionReference) {
-        val fromBundle = state.config.sessionReference
-        if (!fromBundle.isNullOrBlank()) session = fromBundle
-    }
-
-    val sessionLocked = state.bundle?.sessionInternalId != null
     val isConfigured = state.config.baseUrl.isNotBlank() && state.config.hasToken
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp, vertical = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+            .padding(horizontal = 24.dp, vertical = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
         // ── Header ──────────────────────────────────────────────
         Column(
@@ -111,7 +92,7 @@ fun SetupScreen(
             )
         }
 
-        // ── Status row ──────────────────────────────────────────
+        // ── Статус ──────────────────────────────────────────────
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -131,126 +112,64 @@ fun SetupScreen(
             }
         }
 
-        // ── Primary card: server + token ────────────────────────
-        SetupCard(title = stringResource(R.string.setup_connection_title)) {
-            OutlinedTextField(
-                value = url,
-                onValueChange = { url = it },
-                label = { Text(stringResource(R.string.setup_server_label)) },
-                placeholder = { Text(stringResource(R.string.setup_server_hint)) },
-                supportingText = {
-                    InfoHelperText(stringResource(R.string.setup_server_helper))
-                },
-                singleLine = true,
-                enabled = !busy,
-                modifier = Modifier.fillMaxWidth(),
+        // ── Если уже настроено — сразу кнопка смены ─────────────
+        if (isConfigured) {
+            SetupActionCard(
+                title = stringResource(R.string.setup_ready_title),
+                subtitle = stringResource(R.string.setup_ready_subtitle),
+                onAction = onBeginShift,
+                busy = busy,
+                actionLabel = stringResource(R.string.setup_begin),
             )
+        }
 
-            Spacer(modifier = Modifier.height(12.dp))
+        // ── Основная кнопка: сканировать QR ─────────────────────
+        BigActionCard(
+            icon = Icons.Default.QrCodeScanner,
+            title = stringResource(R.string.setup_scan_title),
+            subtitle = stringResource(R.string.setup_scan_subtitle),
+            onClick = { onScanConfig() },
+            busy = busy,
+            primary = true,
+        )
 
-            OutlinedTextField(
-                value = token,
-                onValueChange = { token = it },
-                label = { Text(stringResource(R.string.setup_token_label)) },
-                placeholder = { Text(stringResource(R.string.setup_token_hint)) },
-                supportingText = {
-                    InfoHelperText(stringResource(R.string.setup_token_helper))
-                },
-                singleLine = true,
-                enabled = !busy,
-                visualTransformation = if (tokenVisible) {
-                    VisualTransformation.None
-                } else {
-                    PasswordVisualTransformation()
-                },
-                trailingIcon = {
-                    TextButton(onClick = { tokenVisible = !tokenVisible }) {
-                        Text(
-                            stringResource(
-                                if (tokenVisible) R.string.action_hide else R.string.action_show,
-                            ),
-                        )
-                    }
-                },
-                modifier = Modifier.fillMaxWidth(),
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            TokenStateRow(state.tokenState)
-
-            Spacer(modifier = Modifier.height(16.dp))
-
+        // ── Резерв: ввести вручную ──────────────────────────────
+        if (!showManual) {
             Button(
-                onClick = { onSaveAndVerify(url, token) },
-                enabled = !busy && url.isNotBlank() && token.isNotBlank(),
+                onClick = { showManual = true },
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = if (!busy && url.isNotBlank() && token.isNotBlank()) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
-                    },
+                    containerColor = Color.Transparent,
+                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
                 ),
             ) {
-                if (busy) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(20.dp),
-                        strokeWidth = 2.dp,
-                    )
-                } else {
-                    Text(stringResource(R.string.setup_check))
-                }
-            }
-        }
-
-        // ── Optional card: offline bundle ───────────────────────
-        if (bundleSectionExpanded || state.bundle != null || bundleId.isNotBlank()) {
-            BundleCard(
-                expanded = bundleSectionExpanded,
-                onToggle = { bundleSectionExpanded = !bundleSectionExpanded },
-                state = state,
-                busy = busy,
-                bundleId = bundleId,
-                onBundleIdChange = { bundleId = it },
-                session = session,
-                onSessionChange = { session = it },
-                sessionLocked = sessionLocked,
-                onDownloadBundle = { onDownloadBundle(url, token, bundleId) },
-            )
-        } else {
-            // Compact expand trigger when no bundle yet
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Center,
-            ) {
-                TextButton(
-                    onClick = { bundleSectionExpanded = true },
-                    enabled = !busy,
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(
-                        text = stringResource(R.string.setup_bundle_add),
-                        style = MaterialTheme.typography.labelMedium.copy(
-                            fontWeight = FontWeight.Medium,
-                        ),
-                        color = MaterialTheme.colorScheme.primary,
+                    Icon(
+                        imageVector = Icons.Default.Keyboard,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp),
                     )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(stringResource(R.string.setup_manual_title))
                 }
             }
         }
 
-        // ── Loaded bundle info ──────────────────────────────────
-        state.bundle?.let { bundle ->
-            BundleInfoCard(bundle = bundle)
+        // ── Ручное поле (скрыто по умолчанию) ───────────────────
+        if (showManual) {
+            ManualCard(
+                server = manualServer,
+                onServerChange = { manualServer = it },
+                token = manualToken,
+                onTokenChange = { manualToken = it },
+                onSave = { onSaveAndVerify(manualServer, manualToken) },
+                busy = busy,
+            )
         }
-
-        // ── Begin shift ─────────────────────────────────────────
-        SetupActionCard(
-            title = stringResource(R.string.setup_begin),
-            onBeginShift = onBeginShift,
-            busy = busy,
-            canBeginShift = !busy && isConfigured,
-        )
 
         // ── Footer ──────────────────────────────────────────────
         Text(
@@ -262,290 +181,208 @@ fun SetupScreen(
     }
 }
 
-/** Small info text with an info icon — keeps the screen clean. */
+/** Карта действия: огромная кнопка с иконкой. */
 @Composable
-private fun InfoHelperText(text: String) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        Icon(
-            imageVector = Info,
-            contentDescription = null,
-            modifier = Modifier.size(16.dp),
-            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-        )
-        Text(
-            text = text,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-            maxLines = 2,
-        )
-    }
-}
-
-/** Styled card wrapper with title. */
-@Composable
-private fun SetupCard(
+private fun BigActionCard(
+    icon: androidx.compose.material.icons.filled.ImageVector,
     title: String,
-    content: @Composable () -> Unit,
+    subtitle: String,
+    onClick: () -> Unit,
+    busy: Boolean,
+    primary: Boolean,
 ) {
-    Column(
+    Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
+            .clip(RoundedCornerShape(20.dp))
             .background(
-                color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.3f),
-                shape = RoundedCornerShape(16.dp),
+                color = if (primary) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.3f),
+                shape = RoundedCornerShape(20.dp),
             ),
+        color = if (primary) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.3f),
+        contentColor = if (primary) Color.White else MaterialTheme.colorScheme.onSurface,
     ) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.padding(16.dp, 16.dp, 16.dp, 8.dp),
-        )
         Column(
-            modifier = Modifier.padding(16.dp, 0.dp, 16.dp, 16.dp),
+            modifier = Modifier.padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            content()
-        }
-    }
-}
-
-/** Token state pill. */
-@Composable
-private fun TokenStatePill(state: TokenState) {
-    val (text, color) = when (state) {
-        TokenState.UNKNOWN -> stringResource(R.string.status_unknown) to CheckerColors.Info
-        TokenState.CHECKING -> stringResource(R.string.token_checking) to CheckerColors.Info
-        TokenState.VALID -> stringResource(R.string.status_token_valid) to CheckerColors.Admit
-        TokenState.INVALID -> stringResource(R.string.blocked_token) to CheckerColors.Deny
-    }
-    StatusPill(text = text, background = color)
-}
-
-/** Optional bundle card with expand/collapse. */
-@Composable
-private fun BundleCard(
-    expanded: Boolean,
-    onToggle: () -> Unit,
-    state: CheckerState,
-    busy: Boolean,
-    bundleId: String,
-    onBundleIdChange: (String) -> Unit,
-    session: String,
-    onSessionChange: (String) -> Unit,
-    sessionLocked: Boolean,
-    onDownloadBundle: () -> Unit,
-) {
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = stringResource(R.string.setup_bundle_label),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                modifier = Modifier.size(48.dp),
+                tint = if (primary) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Spacer(modifier = Modifier.weight(1f))
-            IconButton(onClick = onToggle) {
-                Icon(
-                    imageVector = if (expanded) ArrowDropUp else ArrowDropDown,
-                    contentDescription = null,
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = if (primary) Color.White else MaterialTheme.colorScheme.onSurface,
+                textAlign = TextAlign.Center,
+            )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (primary) Color.White.copy(alpha = 0.9f) else MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            if (busy) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(24.dp),
+                    strokeWidth = 3.dp,
                 )
-            }
-        }
-
-        if (expanded) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(
-                        color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.2f),
-                        shape = RoundedCornerShape(12.dp),
+            } else {
+                Button(
+                    onClick = onClick,
+                    modifier = Modifier.fillMaxWidth(0.7f),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (primary) Color.White else MaterialTheme.colorScheme.primary,
+                        contentColor = if (primary) MaterialTheme.colorScheme.primary else Color.White,
                     ),
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    OutlinedTextField(
-                        value = bundleId,
-                        onValueChange = onBundleIdChange,
-                        label = { Text(stringResource(R.string.setup_bundle_label)) },
-                        placeholder = { Text(stringResource(R.string.setup_bundle_hint)) },
-                        singleLine = true,
-                        enabled = !busy,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    OutlinedTextField(
-                        value = session,
-                        onValueChange = onSessionChange,
-                        label = { Text(stringResource(R.string.setup_session_label)) },
-                        placeholder = { Text(stringResource(R.string.setup_session_hint)) },
-                        supportingText = {
-                            if (sessionLocked) {
-                                InfoHelperText(stringResource(R.string.blocked_session_locked_by_bundle))
-                            } else {
-                                InfoHelperText(stringResource(R.string.setup_session_helper))
-                            }
-                        },
-                        singleLine = true,
-                        enabled = !busy && !sessionLocked,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    OutlinedButton(
-                        onClick = onDownloadBundle,
-                        enabled = !busy && bundleId.isNotBlank(),
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Text(stringResource(R.string.setup_download_bundle))
-                    }
-
-                    if (state.bundle == null && !busy) {
-                        Text(
-                            text = stringResource(R.string.setup_bundle_online_only),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(top = 8.dp),
-                        )
-                    }
+                ) {
+                    Text(stringResource(R.string.action_scan))
                 }
             }
         }
     }
 }
 
-/** Compact info card for loaded bundle. */
-@Composable
-private fun BundleInfoCard(bundle: ActiveBundle) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(
-                color = CheckerColors.Admit.copy(alpha = 0.1f),
-                shape = RoundedCornerShape(12.dp),
-            ),
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(
-                    imageVector = Download,
-                    contentDescription = null,
-                    modifier = Modifier.size(20.dp).tint(CheckerColors.Admit),
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = stringResource(R.string.setup_bundle_loaded),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = CheckerColors.Admit,
-                )
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            KeyValueRow(
-                label = stringResource(R.string.setup_bundle_event),
-                value = bundle.eventPublicId,
-            )
-            KeyValueRow(
-                label = stringResource(R.string.setup_bundle_session),
-                value = bundle.sessionPublicId ?: "—",
-            )
-            KeyValueRow(
-                label = stringResource(R.string.setup_bundle_tickets),
-                value = bundle.ticketCount.toString(),
-            )
-            KeyValueRow(
-                label = stringResource(R.string.setup_bundle_expires),
-                value = TimeFormat.dateTime(bundle.expiresAt),
-            )
-        }
-    }
-}
-
-/** Action card: begin shift. */
+/** Карта действия «Начать смену». */
 @Composable
 private fun SetupActionCard(
     title: String,
-    onBeginShift: () -> Unit,
+    subtitle: String,
+    onAction: () -> Unit,
     busy: Boolean,
-    canBeginShift: Boolean,
+    actionLabel: String,
 ) {
-    Column(
+    Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
+            .clip(RoundedCornerShape(20.dp))
             .background(
-                color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.3f),
-                shape = RoundedCornerShape(16.dp),
+                color = CheckerColors.Admit.copy(alpha = 0.1f),
+                shape = RoundedCornerShape(20.dp),
             ),
     ) {
-        Column(modifier = Modifier.padding(16.dp, 16.dp, 16.dp, 8.dp)) {
+        Column(
+            modifier = Modifier.padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Icon(
+                imageVector = Icons.Default.Close,
+                contentDescription = null,
+                modifier = Modifier.size(48.dp).tint(CheckerColors.Admit),
+            )
             Text(
                 text = title,
-                style = MaterialTheme.typography.titleMedium,
+                style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface,
+                textAlign = TextAlign.Center,
             )
-        }
-
-        Column(modifier = Modifier.padding(16.dp, 0.dp, 16.dp, 16.dp)) {
-            if (!canBeginShift && !busy) {
-                Text(
-                    text = stringResource(R.string.setup_begin_disabled),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
+            Spacer(modifier = Modifier.height(16.dp))
             Button(
-                onClick = onBeginShift,
-                enabled = canBeginShift,
-                modifier = Modifier.fillMaxWidth(),
+                onClick = onAction,
+                enabled = !busy,
+                modifier = Modifier.fillMaxWidth(0.7f),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = if (canBeginShift) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
-                    },
+                    containerColor = CheckerColors.Admit,
+                    contentColor = Color.White,
                 ),
             ) {
                 if (busy) {
                     CircularProgressIndicator(
                         modifier = Modifier.size(20.dp),
-                        strokeWidth = 2.dp,
+                        strokeWidth = 3.dp,
                     )
                 } else {
-                    Text(stringResource(R.string.setup_begin))
+                    Text(actionLabel)
                 }
             }
         }
     }
 }
 
+/** Ручной ввод (скрыт по умолчанию, только для резерва). */
 @Composable
-private fun TokenStateRow(state: TokenState) {
+private fun ManualCard(
+    server: String,
+    onServerChange: (String) -> Unit,
+    token: String,
+    onTokenChange: (String) -> Unit,
+    onSave: (String, String) -> Unit,
+    busy: Boolean,
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(
+                color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.3f),
+                shape = RoundedCornerShape(16.dp),
+            ),
+    ) {
+        Column(
+            modifier = Modifier.padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.setup_manual_title),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = stringResource(R.string.setup_manual_subtitle),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            androidx.compose.material3.OutlinedTextField(
+                value = server,
+                onValueChange = onServerChange,
+                label = { Text(stringResource(R.string.setup_server_label)) },
+                placeholder = { Text(stringResource(R.string.setup_server_hint)) },
+                singleLine = true,
+                enabled = !busy,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            androidx.compose.material3.OutlinedTextField(
+                value = token,
+                onValueChange = onTokenChange,
+                label = { Text(stringResource(R.string.setup_token_label)) },
+                placeholder = { Text(stringResource(R.string.setup_token_hint)) },
+                singleLine = true,
+                enabled = !busy,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            Button(
+                onClick = { onSave(server, token) },
+                enabled = !busy && server.isNotBlank() && token.isNotBlank(),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(stringResource(R.string.setup_check))
+            }
+        }
+    }
+}
+
+/** Pill с состоянием токена. */
+@Composable
+private fun TokenStatePill(state: TokenState) {
     val (text, color) = when (state) {
-        TokenState.UNKNOWN -> return
+        TokenState.UNKNOWN -> stringResource(R.string.status_unknown) to CheckerColors.Info
         TokenState.CHECKING -> stringResource(R.string.token_checking) to CheckerColors.Info
         TokenState.VALID -> stringResource(R.string.status_token_valid) to CheckerColors.Admit
         TokenState.INVALID -> stringResource(R.string.blocked_token) to CheckerColors.Deny

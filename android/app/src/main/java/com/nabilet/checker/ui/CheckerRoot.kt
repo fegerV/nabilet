@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nabilet.checker.R
 import com.nabilet.checker.ui.feedback.FeedbackPlayer
+import com.nabilet.checker.ui.screens.ConfigScanScreen
 import com.nabilet.checker.ui.screens.HistoryScreen
 import com.nabilet.checker.ui.screens.ScannerScreen
 import com.nabilet.checker.ui.screens.SettingsScreen
@@ -62,10 +63,9 @@ fun CheckerRoot(
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
 
-    // Every message from the repository / ViewModel is shown as a Snackbar
-    // instead of a fleeting Toast. Snackbar stays on screen until dismissed,
-    // so the operator cannot miss a critical error (token rejected, bundle
-    // expired, server unreachable).
+    // Каждый message из репозитория / ViewModel показывается как Snackbar
+    // вместо мигающего Toasta. Snackbar остаётся на экране, пока оператор не
+    // скроет его, чтобы не пропустить критическую ошибку.
     LaunchedEffect(snackbarHostState) {
         viewModel.messages.collect { message ->
             snackbarHostState.showSnackbar(message)
@@ -77,12 +77,26 @@ fun CheckerRoot(
         return
     }
 
+    // Состояние сканирования QR-кода настройки
+    var configScanning by remember { mutableStateOf(false) }
+
     if (!state.config.setupComplete) {
+        if (configScanning) {
+            ConfigScanScreen(
+                onConfigScanned = { server, token ->
+                    viewModel.saveAndVerify(server, token)
+                    configScanning = false
+                },
+                onCancel = { configScanning = false },
+            )
+            return
+        }
         SetupScreen(
             state = state,
             busy = busy,
+            onScanConfig = { configScanning = true },
+            onConfigureManually = { /*	showManual уже внутри SetupScreen */ },
             onSaveAndVerify = viewModel::saveAndVerify,
-            onDownloadBundle = viewModel::downloadBundle,
             onBeginShift = viewModel::beginShift,
         )
         return
