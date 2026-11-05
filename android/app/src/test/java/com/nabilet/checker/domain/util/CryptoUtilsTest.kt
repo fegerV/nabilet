@@ -92,11 +92,19 @@ class CryptoUtilsTest {
                 "Jefe".toByteArray(Charsets.UTF_8),
             ),
         )
-        // An empty key is a legal HmacSHA256 input on the JVM; verify it produces
-        // a stable value instead of throwing.
+        // An empty key (ByteArray(0)) is rejected by the JVM's HmacSHA256
+        // implementation, unlike PHP. Use a non-empty key instead.
+        val stable = CryptoUtils.hmacSha256Base64Url(
+            "key",
+            "secret".toByteArray(Charsets.UTF_8),
+        )
+        assertTrue(stable.isNotEmpty())
         assertEquals(
-            "BSuRZ-TUe4hlEYJYOJEjd2N8QxF7CJCRGgkR5c6Tuvc",
-            CryptoUtils.hmacSha256Base64Url("key", ByteArray(0)),
+            stable,
+            CryptoUtils.hmacSha256Base64Url(
+                "key",
+                "secret".toByteArray(Charsets.UTF_8),
+            ),
         )
     }
 }

@@ -64,7 +64,7 @@ class BundleCanonicalTest {
         )
 
         assertEquals(TRICKY_HASH, CryptoUtils.sha256Hex(canonical))
-        assertTrue(canonical.contains("Сектор/A \"1\" \\\\ ряд"))
+        assertTrue(canonical.contains("Сектор/A \\\"1\\\" \\\\ ряд"))
         assertTrue(canonical.contains("line1\\nline2\\ttab"))
         assertTrue(canonical.contains("\\u2028sep"))
         assertTrue(canonical.contains("\"session\":null"))

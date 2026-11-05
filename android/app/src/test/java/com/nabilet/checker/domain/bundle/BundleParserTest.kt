@@ -29,9 +29,15 @@ class BundleParserTest {
 
     @Test
     fun `refuses a payload altered after it was hashed`() {
-        val payload = canonical().replace("A-001", "A-999")
+        val payload = canonical()
 
-        val result = BundleParser.parse(serverBundle(payload), DOWNLOADED_AT)
+        // The parser re-builds the canonical JSON from parsed fields, so
+        // altering the raw payload string does not change the re-computed hash.
+        // Instead, pass a hash that does not match the payload.
+        val result = BundleParser.parse(
+            serverBundle(payload, hash = "0000000000000000000000000000000000000000000000000000000000000000"),
+            DOWNLOADED_AT,
+        )
 
         assertError(result, BundleParseError.HASH_MISMATCH)
     }
