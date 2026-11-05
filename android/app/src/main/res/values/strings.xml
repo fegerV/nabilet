@@ -33,8 +33,15 @@
     <string name="warning">Внимание</string>
     <string name="settings_open_app_settings">Открыть настройки приложения</string>
 
+    <!-- Status -->
+    <string name="status_configured">Настроено</string>
+    <string name="status_not_configured">Не настроено</string>
+    <string name="status_unknown">Неизвестно</string>
+    <string name="status_token_valid">Токен верен</string>
+
     <!-- Setup -->
     <string name="setup_title">Подключение устройства</string>
+    <string name="setup_connection_title">Сервер и токен</string>
     <string name="setup_subtitle">Введите адрес сервера и токен устройства. Токен и ID бандла выдаёт администратор в разделе контроля входа.</string>
     <string name="setup_server_label">Адрес сервера</string>
     <string name="setup_server_hint">https://nabilet.ru</string>
@@ -44,6 +51,7 @@
     <string name="setup_token_helper">Хранится зашифрованным в Keystore телефона и не попадает в резервные копии.</string>
     <string name="setup_token_saved">Токен сохранён</string>
     <string name="setup_bundle_label">ID офлайн-бандла</string>
+    <string name="setup_bundle_add">Добавить бандл</string>
     <string name="setup_bundle_hint">01J…</string>
     <string name="setup_bundle_helper">Необязательно, если работаете только онлайн. ID бандла и ID сеанса выдаёт администратор.</string>
     <string name="setup_session_label">ID сеанса</string>
