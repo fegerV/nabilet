@@ -76,6 +76,7 @@ Route::prefix('admin/checkin')->middleware(['auth:api', 'admin'])->group(functio
     Route::get('devices', [CheckinDeviceController::class, 'index']);
     Route::post('devices', [CheckinDeviceController::class, 'store']);
     Route::patch('devices/{device}', [CheckinDeviceController::class, 'update']);
+    Route::post('devices/{device}/config-qr', [CheckinDeviceController::class, 'configQr']);
 
     Route::get('scans', [CheckinScanReportController::class, 'index']);
 });

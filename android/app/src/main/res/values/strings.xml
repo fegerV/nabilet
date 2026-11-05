@@ -84,6 +84,11 @@
     <string name="config_scan_error_title">Ошибка сканирования</string>
     <string name="config_scan_error_message">Не удалось прочитать QR-код. Попробуйте ещё раз.</string>
 
+    <!-- Config scan gallery -->
+    <string name="config_scan_from_gallery">Выбрать из галереи</string>
+    <string name="config_scan_image_unreadable">Не удалось прочитать изображение.</string>
+    <string name="config_scan_no_qr_found">QR-код не найден на изображении.</string>
+
     <!-- Setup simplified -->
     <string name="setup_scan_title">Отсканируйте QR-код администратора</string>
     <string name="setup_scan_subtitle">Администратор выдаст один QR-код — сканируйте его, и всё настроится само.</string>

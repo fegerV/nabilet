@@ -13,8 +13,11 @@ use Nabilet\Core\Support\Paging;
 use Nabilet\Core\Support\UserOrganization;
 use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Checkin\Domain\CheckinDevice as DevicePolicy;
+use Nabilet\Modules\Checkin\Services\ConfigQrGenerator;
 use Nabilet\Modules\Checkin\Services\DeviceTokenIssuer;
 use Nabilet\Modules\Tickets\Models\CheckinDevice;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
+use Symfony\Component\HttpFoundation\Response;
 
 /**
  * Управление устройствами контроля входа (`openapi.yaml`:
@@ -154,6 +157,58 @@ final class CheckinDeviceController extends Controller
         }
 
         return response()->json(['data' => $model->fresh()]);
+    }
+
+    /**
+     * Генерирует QR-код настройки устройства для проверяющего.
+     *
+     * В payload QR-кода кодируются адрес сервера, токен устройства и
+     * название мероприятия. Приложение сканирует этот код и настраивается
+     * автоматически — проверяющему не нужно вводить адрес и токен вручную.
+     *
+     * Отдаёт PNG-картинку QR-кода, которую можно сохранить и переслать
+     * в мессенджер другому проверяющему.
+     *
+     * @param  array{server?: string, event_name?: string} $validated
+     */
+    public function configQr(Request $request, string $device): Response
+    {
+        $model = IdentifierLookup::firstOrFail(CheckinDevice::class, $device, 'Device');
+
+        $this->context->assertCanAccess($model->organization_id, 'Device', $device);
+
+        $validated = $request->validate([
+            'server' => ['sometimes', 'string', 'url', 'max:512'],
+            'event_name' => ['sometimes', 'string', 'max:255'],
+        ]);
+
+        $server = $validated['server'] ?? config('app.checkin_server', 'https://nabilet.ru');
+        $eventName = $validated['event_name'] ?? $model->name;
+        $token = $this->issuer->issue(
+            organizationId: $model->organization_id,
+            name: $model->name,
+            platform: $model->platform ?? 'android',
+            appVersion: $model->app_version,
+        )['token'];
+
+        // NOTE: issue() above creates a NEW token each call. In production we
+        // should read the existing hash and reverse-lookup the token, but the
+        // token is stored only as hash. For now we re-issue (token changes,
+        // old one becomes invalid — acceptable for initial setup).
+        //
+        // TODO: store token reversibly or add a dedicated "show QR" that
+        // reuses the existing device_token_hash.
+
+        $generator = new ConfigQrGenerator();
+        $png = $generator->generate($server, $token, $eventName);
+
+        $path = tempnam(sys_get_temp_dir(), 'qr_') . '.png';
+        file_put_contents($path, $png);
+
+        return new BinaryFileResponse($path, 200, [
+            'Content-Type' => 'image/png',
+            'Content-Disposition' => 'inline; filename="checkin-device-' . $model->id . '-qr.png"',
+        ], true);
     }
 
     /**

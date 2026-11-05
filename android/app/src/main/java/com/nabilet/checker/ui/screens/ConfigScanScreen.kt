@@ -1,7 +1,12 @@
 package com.nabilet.checker.ui.screens
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.net.Uri
+import android.os.Environment
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -14,6 +19,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -32,6 +38,11 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import com.google.mlkit.vision.barcode.BarcodeScanner
+import com.google.mlkit.vision.barcode.BarcodeScannerOptions
+import com.google.mlkit.vision.barcode.BarcodeScanning
+import com.google.mlkit.vision.barcode.common.Barcode
+import com.google.mlkit.vision.common.InputImage
 import com.nabilet.checker.R
 import com.nabilet.checker.domain.util.ConfigQrParser
 import com.nabilet.checker.ui.scanner.CameraPreview
@@ -44,7 +55,7 @@ import com.nabilet.checker.ui.scanner.QrAnalyzer
  *  - Весь экран — камера
  *  - Приложение само ищет QR-код и разбирает его
  *  - Огромная зелёная/красная обратная связь
- *  - Одна кнопка действия
+ *  - Кнопка «Выбрать из галереи» — если QR-код прислали в мессенджере
  *
  * Проверяющий не вводит ничего вручную — только сканирует QR,
  * который выдал администратор.
@@ -70,6 +81,33 @@ fun ConfigScanScreen(
         ActivityResultContracts.RequestPermission(),
     ) { granted ->
         permissionGranted = granted
+    }
+
+    val galleryLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        val data = result.data ?: return@rememberLauncherForActivityResult
+        val uri = data.data ?: return@rememberLauncherForActivityResult
+        val appContext = context.applicationContext
+        try {
+            val inputStream = appContext.contentResolver.openInputStream(uri)
+            if (inputStream != null) {
+                val bitmap = BitmapFactory.decodeStream(inputStream)
+                inputStream.close()
+                if (bitmap != null) {
+                    processBitmap(bitmap)
+                } else {
+                    scanState = ScanState.Error
+                    scanMessage = context.getString(R.string.config_scan_image_unreadable)
+                }
+            } else {
+                scanState = ScanState.Error
+                scanMessage = context.getString(R.string.config_scan_image_unreadable)
+            }
+        } catch (_: Exception) {
+            scanState = ScanState.Error
+            scanMessage = context.getString(R.string.config_scan_image_unreadable)
+        }
     }
 
     LaunchedEffect(Unit) {
@@ -148,7 +186,9 @@ fun ConfigScanScreen(
                             modifier = Modifier.size(48.dp),
                             tint = Color.White,
                         )
-                        Spacer(modifier = androidx.compose.foundation.layout.Spacer(Modifier.size(16.dp)))
+                        androidx.compose.foundation.layout.Spacer(
+                            modifier = androidx.compose.foundation.layout.Spacer(Modifier.size(16.dp)),
+                        )
                         Text(
                             text = stringResource(R.string.scanner_camera_unavailable),
                             style = MaterialTheme.typography.bodyMedium,
@@ -227,8 +267,83 @@ fun ConfigScanScreen(
                         )
                     }
                 }
+
+                // Кнопка «Выбрать из галереи» — снизу
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(horizontal = 24.dp, vertical = 24.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    OutlinedButton(
+                        onClick = {
+                            val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
+                                type = "image/*"
+                                addCategory(Intent.CATEGORY_OPENABLE)
+                            }
+                            galleryLauncher.launch(intent)
+                        },
+                        modifier = Modifier.fillMaxWidth(0.8f),
+                    ) {
+                        androidx.compose.foundation.layout.Row(
+                            modifier = androidx.compose.foundation.layout.Row(
+                                Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Image,
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp),
+                            )
+                            androidx.compose.foundation.layout.Spacer(
+                                modifier = androidx.compose.foundation.layout.Spacer(Modifier.width(8.dp)),
+                            )
+                            Text(stringResource(R.string.config_scan_from_gallery))
+                        }
+                    }
+                }
             }
         }
+    }
+
+    private fun processBitmap(bitmap: Bitmap) {
+        val appContext = context.applicationContext
+        val scanner = BarcodeScanning.getClient(
+            BarcodeScannerOptions.Builder()
+                .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
+                .build(),
+        )
+        val image = InputImage.fromBitmap(bitmap, 0)
+        scanner.process(image)
+            .addOnSuccessListener { barcodes ->
+                val value = barcodes.firstNotNullOfOrNull { barcode ->
+                    barcode.rawValue?.takeIf { it.isNotBlank() }
+                }
+                if (value != null) {
+                    when (val result = ConfigQrParser.parse(value)) {
+                        is ConfigQrParser.ConfigQrResult.Valid -> {
+                            scanState = ScanState.Success
+                            scanMessage = null
+                            onConfigScanned(result.config.server, result.config.token)
+                        }
+                        is ConfigQrParser.ConfigQrResult.Invalid -> {
+                            scanState = ScanState.Error
+                            scanMessage = result.error
+                        }
+                    }
+                } else {
+                    scanState = ScanState.Error
+                    scanMessage = context.getString(R.string.config_scan_no_qr_found)
+                }
+                scanner.close()
+            }
+            .addOnFailureListener {
+                scanState = ScanState.Error
+                scanMessage = context.getString(R.string.config_scan_image_unreadable)
+                scanner.close()
+            }
     }
 }
 
@@ -271,7 +386,9 @@ private fun ResultOverlay(
                     modifier = Modifier.size(56.dp),
                     tint = Color.White,
                 )
-                Spacer(modifier = androidx.compose.foundation.layout.Spacer(Modifier.size(20.dp)))
+                androidx.compose.foundation.layout.Spacer(
+                    modifier = androidx.compose.foundation.layout.Spacer(Modifier.size(20.dp)),
+                )
                 Text(
                     text = title,
                     style = MaterialTheme.typography.headlineMedium,
@@ -279,14 +396,18 @@ private fun ResultOverlay(
                     color = Color.White,
                     textAlign = TextAlign.Center,
                 )
-                Spacer(modifier = androidx.compose.foundation.layout.Spacer(Modifier.size(12.dp)))
+                androidx.compose.foundation.layout.Spacer(
+                    modifier = androidx.compose.foundation.layout.Spacer(Modifier.size(12.dp)),
+                )
                 Text(
                     text = message,
                     style = MaterialTheme.typography.bodyMedium,
                     color = Color.White.copy(alpha = 0.95f),
                     textAlign = TextAlign.Center,
                 )
-                Spacer(modifier = androidx.compose.foundation.layout.Spacer(Modifier.size(24.dp)))
+                androidx.compose.foundation.layout.Spacer(
+                    modifier = androidx.compose.foundation.layout.Spacer(Modifier.size(24.dp)),
+                )
                 Button(
                     onClick = onAction,
                     colors = androidx.compose.material3.ButtonDefaults.buttonColors(
