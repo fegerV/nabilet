@@ -20,6 +20,7 @@ import com.nabilet.checker.domain.model.ScanFeedback
 import com.nabilet.checker.domain.model.ScanRecord
 import com.nabilet.checker.domain.model.ScanSubmission
 import kotlinx.coroutines.channels.BufferOverflow
+import kotlin.collections.distinctBy
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
