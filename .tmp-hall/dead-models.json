@@ -1,0 +1,228 @@
+{
+ "dead": [
+  {
+   "short": "AuditLog",
+   "fqcn": "App\\Models\\AuditLog",
+   "path": "C:\\Project\\nabilet\\app\\Models\\AuditLog.php"
+  },
+  {
+   "short": "Cart",
+   "fqcn": "App\\Models\\Cart",
+   "path": "C:\\Project\\nabilet\\app\\Models\\Cart.php"
+  },
+  {
+   "short": "CartItem",
+   "fqcn": "App\\Models\\CartItem",
+   "path": "C:\\Project\\nabilet\\app\\Models\\CartItem.php"
+  },
+  {
+   "short": "Event",
+   "fqcn": "App\\Models\\Event",
+   "path": "C:\\Project\\nabilet\\app\\Models\\Event.php"
+  },
+  {
+   "short": "EventArtist",
+   "fqcn": "App\\Models\\EventArtist",
+   "path": "C:\\Project\\nabilet\\app\\Models\\EventArtist.php"
+  },
+  {
+   "short": "EventCategory",
+   "fqcn": "App\\Models\\EventCategory",
+   "path": "C:\\Project\\nabilet\\app\\Models\\EventCategory.php"
+  },
+  {
+   "short": "EventDate",
+   "fqcn": "App\\Models\\EventDate",
+   "path": "C:\\Project\\nabilet\\app\\Models\\EventDate.php"
+  },
+  {
+   "short": "EventFaq",
+   "fqcn": "App\\Models\\EventFaq",
+   "path": "C:\\Project\\nabilet\\app\\Models\\EventFaq.php"
+  },
+  {
+   "short": "EventScheduleItem",
+   "fqcn": "App\\Models\\EventScheduleItem",
+   "path": "C:\\Project\\nabilet\\app\\Models\\EventScheduleItem.php"
+  },
+  {
+   "short": "EventSpeaker",
+   "fqcn": "App\\Models\\EventSpeaker",
+   "path": "C:\\Project\\nabilet\\app\\Models\\EventSpeaker.php"
+  },
+  {
+   "short": "EventSponsor",
+   "fqcn": "App\\Models\\EventSponsor",
+   "path": "C:\\Project\\nabilet\\app\\Models\\EventSponsor.php"
+  },
+  {
+   "short": "EventTranslation",
+   "fqcn": "App\\Models\\EventTranslation",
+   "path": "C:\\Project\\nabilet\\app\\Models\\EventTranslation.php"
+  },
+  {
+   "short": "Hall",
+   "fqcn": "App\\Models\\Hall",
+   "path": "C:\\Project\\nabilet\\app\\Models\\Hall.php"
+  },
+  {
+   "short": "HallRow",
+   "fqcn": "App\\Models\\HallRow",
+   "path": "C:\\Project\\nabilet\\app\\Models\\HallRow.php"
+  },
+  {
+   "short": "HallSchemaVersion",
+   "fqcn": "App\\Models\\HallSchemaVersion",
+   "path": "C:\\Project\\nabilet\\app\\Models\\HallSchemaVersion.php"
+  },
+  {
+   "short": "HallTable",
+   "fqcn": "App\\Models\\HallTable",
+   "path": "C:\\Project\\nabilet\\app\\Models\\HallTable.php"
+  },
+  {
+   "short": "InventoryItem",
+   "fqcn": "App\\Models\\InventoryItem",
+   "path": "C:\\Project\\nabilet\\app\\Models\\InventoryItem.php"
+  },
+  {
+   "short": "LoginLog",
+   "fqcn": "App\\Models\\LoginLog",
+   "path": "C:\\Project\\nabilet\\app\\Models\\LoginLog.php"
+  },
+  {
+   "short": "OrderItem",
+   "fqcn": "App\\Models\\OrderItem",
+   "path": "C:\\Project\\nabilet\\app\\Models\\OrderItem.php"
+  },
+  {
+   "short": "Organization",
+   "fqcn": "App\\Models\\Organization",
+   "path": "C:\\Project\\nabilet\\app\\Models\\Organization.php"
+  },
+  {
+   "short": "Page",
+   "fqcn": "App\\Models\\Page",
+   "path": "C:\\Project\\nabilet\\app\\Models\\Page.php"
+  },
+  {
+   "short": "PageTranslation",
+   "fqcn": "App\\Models\\PageTranslation",
+   "path": "C:\\Project\\nabilet\\app\\Models\\PageTranslation.php"
+  },
+  {
+   "short": "Payment",
+   "fqcn": "App\\Models\\Payment",
+   "path": "C:\\Project\\nabilet\\app\\Models\\Payment.php"
+  },
+  {
+   "short": "PaymentTransaction",
+   "fqcn": "App\\Models\\PaymentTransaction",
+   "path": "C:\\Project\\nabilet\\app\\Models\\PaymentTransaction.php"
+  },
+  {
+   "short": "Permission",
+   "fqcn": "App\\Models\\Permission",
+   "path": "C:\\Project\\nabilet\\app\\Models\\Permission.php"
+  },
+  {
+   "short": "Redirect",
+   "fqcn": "App\\Models\\Redirect",
+   "path": "C:\\Project\\nabilet\\app\\Models\\Redirect.php"
+  },
+  {
+   "short": "Refund",
+   "fqcn": "App\\Models\\Refund",
+   "path": "C:\\Project\\nabilet\\app\\Models\\Refund.php"
+  },
+  {
+   "short": "Role",
+   "fqcn": "App\\Models\\Role",
+   "path": "C:\\Project\\nabilet\\app\\Models\\Role.php"
+  },
+  {
+   "short": "RolePermission",
+   "fqcn": "App\\Models\\RolePermission",
+   "path": "C:\\Project\\nabilet\\app\\Models\\RolePermission.php"
+  },
+  {
+   "short": "Seat",
+   "fqcn": "App\\Models\\Seat",
+   "path": "C:\\Project\\nabilet\\app\\Models\\Seat.php"
+  },
+  {
+   "short": "SeatHold",
+   "fqcn": "App\\Models\\SeatHold",
+   "path": "C:\\Project\\nabilet\\app\\Models\\SeatHold.php"
+  },
+  {
+   "short": "Sector",
+   "fqcn": "App\\Models\\Sector",
+   "path": "C:\\Project\\nabilet\\app\\Models\\Sector.php"
+  },
+  {
+   "short": "SeoMeta",
+   "fqcn": "App\\Models\\SeoMeta",
+   "path": "C:\\Project\\nabilet\\app\\Models\\SeoMeta.php"
+  },
+  {
+   "short": "Session",
+   "fqcn": "App\\Models\\Session",
+   "path": "C:\\Project\\nabilet\\app\\Models\\Session.php"
+  },
+  {
+   "short": "StandingZone",
+   "fqcn": "App\\Models\\StandingZone",
+   "path": "C:\\Project\\nabilet\\app\\Models\\StandingZone.php"
+  },
+  {
+   "short": "Ticket",
+   "fqcn": "App\\Models\\Ticket",
+   "path": "C:\\Project\\nabilet\\app\\Models\\Ticket.php"
+  },
+  {
+   "short": "TicketScan",
+   "fqcn": "App\\Models\\TicketScan",
+   "path": "C:\\Project\\nabilet\\app\\Models\\TicketScan.php"
+  },
+  {
+   "short": "UserOrganization",
+   "fqcn": "App\\Models\\UserOrganization",
+   "path": "C:\\Project\\nabilet\\app\\Models\\UserOrganization.php"
+  },
+  {
+   "short": "UserRole",
+   "fqcn": "App\\Models\\UserRole",
+   "path": "C:\\Project\\nabilet\\app\\Models\\UserRole.php"
+  },
+  {
+   "short": "UserSession",
+   "fqcn": "App\\Models\\UserSession",
+   "path": "C:\\Project\\nabilet\\app\\Models\\UserSession.php"
+  },
+  {
+   "short": "Venue",
+   "fqcn": "App\\Models\\Venue",
+   "path": "C:\\Project\\nabilet\\app\\Models\\Venue.php"
+  },
+  {
+   "short": "VenueTranslation",
+   "fqcn": "App\\Models\\VenueTranslation",
+   "path": "C:\\Project\\nabilet\\app\\Models\\VenueTranslation.php"
+  }
+ ],
+ "live": [
+  "CheckinDevice",
+  "Consent",
+  "Notification",
+  "NotificationTemplate",
+  "OfflineBundle",
+  "Order",
+  "PrivacyRequest",
+  "Setting",
+  "TicketTemplate",
+  "User",
+  "Webhook",
+  "WebhookDelivery"
+ ]
+}

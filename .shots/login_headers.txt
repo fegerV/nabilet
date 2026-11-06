@@ -1,0 +1,21 @@
+HTTP/1.1 200 OK
+Host: 127.0.0.1:8000
+Connection: close
+X-Powered-By: PHP/8.4.21
+Cache-Control: max-age=0, must-revalidate, no-cache, no-store, private
+Date: Wed, 23 Sep 2026 20:15:24 GMT
+Content-Type: text/html; charset=utf-8
+Pragma: no-cache
+Expires: Fri, 01 Jan 1990 00:00:00 GMT
+X-Content-Type-Options: nosniff
+X-XSS-Protection: 0
+Referrer-Policy: strict-origin-when-cross-origin
+Permissions-Policy: geolocation=(), microphone=(), camera=()
+Cross-Origin-Opener-Policy: same-origin
+X-Permitted-Cross-Domain-Policies: none
+X-Frame-Options: SAMEORIGIN
+Content-Security-Policy: default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'self'; form-action 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.bunny.net; img-src 'self' data: blob: https:; font-src 'self' data: https://fonts.bunny.net; connect-src 'self'; upgrade-insecure-requests
+X-Request-Id: 2074589b43b78310c9da8374b2d9fb33
+Set-Cookie: XSRF-TOKEN=eyJpdiI6IlpsYmpENFZ4dTRIMzVBWDkvMmxYM1E9PSIsInZhbHVlIjoiazkxNHFhZE9pZUpsQ3hLNm5lZEFEMkRlWE1HMXREbFFRY3FDT2FGTitzWTBIWkJldW1GcnRhWDVwVE5Ob1BzWGlUVTJuTTNlMWpxS1owU2pmUS9QMGEvcUgvRHpaMXU2NVNKWGgwSGFKWkJzM096K0EvaG5aSytncjV5TmNVTVgiLCJtYWMiOiI3OTE4YmQzYzU5MWQwMDY2ZTVkNmU5OWE1YWYwYjNjMWU0ZTA5ZGVmOTY5YTZhNDAwMGRiOWU0Nzg0ODE5NDBhIiwidGFnIjoiIn0%3D; expires=Wed, 23 Sep 2026 22:15:24 GMT; Max-Age=7200; path=/; samesite=lax
+Set-Cookie: nabilet_session=eyJpdiI6Im1kKzlIOWNLTEQ4cmZ0US9TVGlWc3c9PSIsInZhbHVlIjoiOHM1VUJHYjZEaEd3SUVOb2tDYzdyUGdodWNQR0RpWS9PRVVCSFBRT3RJcFk3Y3k5QWNzdHozRWRtVktDT0hQMlhRaC9rM2lxb28vdDRSN1ROc3Y5d2xGc0JjNmZydDJwVlhJRnpUam1tQkhkR0ovRkl0YkxDMzVTSUJWSWFMclIiLCJtYWMiOiIzM2RkYjNhMDU5NzYzNjM4ZjBjOGM3NWUwMDc5MDI4NGIxMjdkYjVlOTQ2MjE4NzNjZTAzYzgxMTg3MTMzYTk3IiwidGFnIjoiIn0%3D; expires=Wed, 23 Sep 2026 22:15:24 GMT; Max-Age=7200; path=/; httponly; samesite=lax
+

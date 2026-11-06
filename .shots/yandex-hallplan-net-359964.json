@@ -1,0 +1,492 @@
+[
+  {
+    "requestId": "00C47E51DC1A0CEBE4EC75EC2930EEBC",
+    "type": "Document",
+    "url": "https://widget.afisha.yandex.ru/w/sessions/ticketsteam-669%40359964?clientKey=12071c6f-75d0-42e7-9900-54a347efb482&lang=ru&mode=inline",
+    "status": 200,
+    "mime": "text/html"
+  },
+  {
+    "requestId": "39628.2",
+    "type": "Stylesheet",
+    "url": "https://yastatic-net.ru/s3/afisha-tickets-frontend/static/front/605/605.0/files/common.css",
+    "status": 200,
+    "mime": "text/css"
+  },
+  {
+    "requestId": "39628.16",
+    "type": "Font",
+    "url": "https://yastatic-net.ru/s3/afisha-tickets-frontend/static/front/605/605.0/files/fonts/ys-text-web-fonts/YSText-Regular-Web.woff2",
+    "status": 200,
+    "mime": "font/woff2"
+  },
+  {
+    "requestId": "39628.5",
+    "type": "Script",
+    "url": "https://yastatic-net.ru/s3/afisha-tickets-frontend/static/front/605/605.0/dist/assets/react.js",
+    "status": 200,
+    "mime": "text/javascript"
+  },
+  {
+    "requestId": "39628.7",
+    "type": "Script",
+    "url": "https://yastatic-net.ru/s3/afisha-tickets-frontend/static/front/605/605.0/dist/assets/styled-components.js",
+    "status": 200,
+    "mime": "text/javascript"
+  },
+  {
+    "requestId": "39628.4",
+    "type": "Script",
+    "url": "https://yastatic-net.ru/s3/afisha-tickets-frontend/static/front/605/605.0/dist/assets/base.js",
+    "status": 200,
+    "mime": "text/javascript"
+  },
+  {
+    "requestId": "39628.6",
+    "type": "Script",
+    "url": "https://yastatic-net.ru/s3/afisha-tickets-frontend/static/front/605/605.0/dist/assets/react-dom.js",
+    "status": 200,
+    "mime": "text/javascript"
+  },
+  {
+    "requestId": "39628.8",
+    "type": "Script",
+    "url": "https://yastatic-net.ru/s3/afisha-tickets-frontend/static/front/605/605.0/dist/assets/widget.ru.js",
+    "status": 200,
+    "mime": "text/javascript"
+  },
+  {
+    "requestId": "39628.9",
+    "type": "Script",
+    "url": "https://yastatic-net.ru/s3/afisha-tickets-frontend/static/front/605/605.0/dist/assets/widget.js",
+    "status": 200,
+    "mime": "text/javascript"
+  },
+  {
+    "requestId": "39628.44",
+    "type": "Ping",
+    "url": "https://yandex.ru/clck/click",
+    "status": 200,
+    "mime": "image/gif"
+  },
+  {
+    "requestId": "39628.45",
+    "type": "Fetch",
+    "url": "https://widget.afisha.yandex.ru/api/tickets/v1/sessions/ticketsteam-669%40359964?clientKey=12071c6f-75d0-42e7-9900-54a347efb482&req_number=0",
+    "status": 200,
+    "mime": "application/json"
+  },
+  {
+    "requestId": "39628.43",
+    "type": "Script",
+    "url": "https://mc.yandex.ru/metrika/watch.js",
+    "status": 200,
+    "mime": "application/javascript"
+  },
+  {
+    "requestId": "39628.46",
+    "type": "Script",
+    "url": "https://yastatic-net.ru/s3/afisha-tickets-frontend/static/front/605/605.0/dist/assets/_/2980-a9b08eb0fb077608f414.js",
+    "status": 200,
+    "mime": "text/javascript"
+  },
+  {
+    "requestId": "39628.47",
+    "type": "Script",
+    "url": "https://yastatic-net.ru/s3/afisha-tickets-frontend/static/front/605/605.0/dist/assets/_/9239-68aabe5f4c2dc707e0a4.js",
+    "status": 200,
+    "mime": "text/javascript"
+  },
+  {
+    "requestId": "39628.69",
+    "type": "Fetch",
+    "url": "https://widget.afisha.yandex.ru/api/user/?currency=rub&req_number=1",
+    "status": 401,
+    "mime": "application/json"
+  },
+  {
+    "requestId": "39628.71",
+    "type": "Fetch",
+    "url": "https://widget.afisha.yandex.ru/api/mds?key=9428351%2FPUBLIC-27c95d24-d951-48db-91e4-6201601cb548&req_number=2",
+    "status": 200,
+    "mime": "application/json"
+  },
+  {
+    "requestId": "39628.49",
+    "type": "Other",
+    "url": "https://csp.yandex.net/csp?project=widget_afisha&from=widget_afisha_desktop&yandexuid=5456194991791325902&platform=desktop&environment=production",
+    "status": 200,
+    "mime": "text/plain"
+  },
+  {
+    "requestId": "39628.48",
+    "type": "Image",
+    "url": "https://mc.yandex.com/metrika/advert.gif",
+    "status": 200,
+    "mime": "image/gif"
+  },
+  {
+    "requestId": "39628.54",
+    "type": "Fetch",
+    "url": "https://mc.yandex.com/watch/3/1?wmode=7&page-url=https%3A%2F%2Fwidget.afisha.yandex.ru%2Fw%2Fsessions%2Fticketsteam-669%2540359964%3FclientKey%3D12071c6f-75d0-42e7-9900-54a347efb482%26lang%3Dru&page-ref&charset=utf-8&ut=noindex&browser-info=pv%3A1%3Avf%3A2laauyzxc0rfp93ha5e0r1dxlic32z%3Afu%3A0%3Aen%3Autf-8%3Ala%3Aru-RU%3Av%3A2660%3Acn%3A1%3Adp%3A0%3Als%3A1517989714228%3Ahid%3A622175270%3Az%3A300%3Ai%3A20261007033149%3Aet%3A1791325910%3Ac%3A1%3Arn%3A48284774%3Arqn%3A5%3Au%3A1791325910507713768%3Aw%3A1422x1104%3As%3A800x600x24%3Ask%3A1%3Awv%3A2%3Aco%3A0%3Ahdl%3A1%3Acpf%3A1%3Ans%3A1791325898825%3Ast%3A1791325910&t=mc%28p-1-h-2-g-2%29clc%280-0-0%29rqnt%285%29aw%281%29rcm%281%29yu%285456194991791325902%29cdl%28na%29eco%2865536%29ti%281%29&redirnss=1",
+    "status": 200,
+    "mime": "application/json"
+  },
+  {
+    "requestId": "39628.50",
+    "type": "Fetch",
+    "url": "https://mc.yandex.com/watch/3/1?wmode=7&page-url=https%3A%2F%2Fwidget.afisha.yandex.ru%2Fw%2Fsessions%2Fticketsteam-669%2540359964%3FclientKey%3D12071c6f-75d0-42e7-9900-54a347efb482%26lang%3Dru&page-ref&charset=utf-8&ut=noindex&browser-info=pv%3A1%3Avf%3A2laauyzxc0rfp93ha5e0r1dxlic32z%3Afu%3A0%3Aen%3Autf-8%3Ala%3Aru-RU%3Av%3A2660%3Acn%3A1%3Adp%3A0%3Als%3A1517989714228%3Ahid%3A622175270%3Az%3A300%3Ai%3A20261007033149%3Aet%3A1791325910%3Ac%3A1%3Arn%3A84058892%3Arqn%3A1%3Au%3A1791325910507713768%3Aw%3A1422x1104%3As%3A800x600x24%3Ask%3A1%3Afp%3A4968%3Awv%3A2%3Ads%3A553%2C1545%2C842%2C1613%2C1%2C0%2C%2C3532%2C0%2C%2C%2C%2C8088%3Aco%3A0%3Ahdl%3A1%3Acpf%3A1%3Ans%3A1791325898825%3Ast%3A1791325910&t=mc%28p-1-h-2-g-2%29clc%280-0-0%29rqnt%281%29aw%281%29rcm%281%29yu%285456194991791325902%29cdl%28na%29eco%2865536%29ti%281%29&redirnss=1",
+    "status": 200,
+    "mime": "application/json"
+  },
+  {
+    "requestId": "39628.72",
+    "type": "Fetch",
+    "url": "https://widget.afisha.yandex.ru/api/mds?key=11300511%2FPUBLIC-20d77215-f14d-46cf-834c-8e8136dafb07&req_number=3",
+    "status": 200,
+    "mime": "application/json"
+  },
+  {
+    "requestId": "39628.51",
+    "type": "Fetch",
+    "url": "https://mc.yandex.com/watch/3/1?wmode=7&page-url=https%3A%2F%2Fwidget.afisha.yandex.ru%2Fw%2Fsessions%2Fticketsteam-669%2540359964%3FclientKey%3D12071c6f-75d0-42e7-9900-54a347efb482%26lang%3Dru&page-ref&charset=utf-8&ut=noindex&browser-info=pv%3A1%3Avf%3A2laauyzxc0rfp93ha5e0r1dxlic32z%3Afu%3A0%3Aen%3Autf-8%3Ala%3Aru-RU%3Av%3A2660%3Acn%3A1%3Adp%3A0%3Als%3A1517989714228%3Ahid%3A622175270%3Az%3A300%3Ai%3A20261007033149%3Aet%3A1791325910%3Ac%3A1%3Arn%3A917897370%3Arqn%3A2%3Au%3A1791325910507713768%3Aw%3A1422x1104%3As%3A800x600x24%3Ask%3A1%3Awv%3A2%3Aco%3A0%3Ahdl%3A1%3Acpf%3A1%3Ans%3A1791325898825%3Ast%3A1791325910&t=mc%28p-1-h-2-g-2%29clc%280-0-0%29rqnt%282%29aw%281%29rcm%281%29yu%285456194991791325902%29cdl%28na%29eco%2865536%29ti%281%29&redirnss=1",
+    "status": 200,
+    "mime": "application/json"
+  },
+  {
+    "requestId": "39628.55",
+    "type": "Fetch",
+    "url": "https://mc.yandex.com/watch/3/1?wmode=7&page-url=https%3A%2F%2Fwidget.afisha.yandex.ru%2Fw%2Fsessions%2Fticketsteam-669%2540359964%3FclientKey%3D12071c6f-75d0-42e7-9900-54a347efb482%26lang%3Dru&page-ref&charset=utf-8&ut=noindex&browser-info=pv%3A1%3Avf%3A2laauyzxc0rfp93ha5e0r1dxlic32z%3Afu%3A0%3Aen%3Autf-8%3Ala%3Aru-RU%3Av%3A2660%3Acn%3A1%3Adp%3A0%3Als%3A1517989714228%3Ahid%3A622175270%3Az%3A300%3Ai%3A20261007033149%3Aet%3A1791325910%3Ac%3A1%3Arn%3A336051389%3Arqn%3A6%3Au%3A1791325910507713768%3Aw%3A1422x1104%3As%3A800x600x24%3Ask%3A1%3Awv%3A2%3Aco%3A0%3Ahdl%3A1%3Acpf%3A1%3Ans%3A1791325898825%3Ast%3A1791325910&t=mc%28p-1-h-2-g-2%29clc%280-0-0%29rqnt%286%29aw%281%29rcm%281%29yu%285456194991791325902%29cdl%28na%29eco%2865536%29ti%281%29&redirnss=1",
+    "status": 200,
+    "mime": "application/json"
+  },
+  {
+    "requestId": "39628.52",
+    "type": "Fetch",
+    "url": "https://mc.yandex.com/watch/3/1?wmode=7&page-url=https%3A%2F%2Fwidget.afisha.yandex.ru%2Fw%2Fsessions%2Fticketsteam-669%2540359964%3FclientKey%3D12071c6f-75d0-42e7-9900-54a347efb482%26lang%3Dru&page-ref&charset=utf-8&ut=noindex&browser-info=pv%3A1%3Avf%3A2laauyzxc0rfp93ha5e0r1dxlic32z%3Afu%3A0%3Aen%3Autf-8%3Ala%3Aru-RU%3Av%3A2660%3Acn%3A1%3Adp%3A0%3Als%3A1517989714228%3Ahid%3A622175270%3Az%3A300%3Ai%3A20261007033149%3Aet%3A1791325910%3Ac%3A1%3Arn%3A449142329%3Arqn%3A3%3Au%3A1791325910507713768%3Aw%3A1422x1104%3As%3A800x600x24%3Ask%3A1%3Awv%3A2%3Aco%3A0%3Ahdl%3A1%3Acpf%3A1%3Ans%3A1791325898825%3Ast%3A1791325910&t=mc%28p-1-h-2-g-2%29clc%280-0-0%29rqnt%283%29aw%281%29rcm%281%29yu%285456194991791325902%29cdl%28na%29eco%2865536%29ti%281%29&redirnss=1",
+    "status": 200,
+    "mime": "application/json"
+  },
+  {
+    "requestId": "39628.53",
+    "type": "Fetch",
+    "url": "https://mc.yandex.com/watch/3/1?wmode=7&page-url=https%3A%2F%2Fwidget.afisha.yandex.ru%2Fw%2Fsessions%2Fticketsteam-669%2540359964%3FclientKey%3D12071c6f-75d0-42e7-9900-54a347efb482%26lang%3Dru&page-ref&charset=utf-8&ut=noindex&browser-info=pv%3A1%3Avf%3A2laauyzxc0rfp93ha5e0r1dxlic32z%3Afu%3A0%3Aen%3Autf-8%3Ala%3Aru-RU%3Av%3A2660%3Acn%3A1%3Adp%3A0%3Als%3A1517989714228%3Ahid%3A622175270%3Az%3A300%3Ai%3A20261007033149%3Aet%3A1791325910%3Ac%3A1%3Arn%3A545218789%3Arqn%3A4%3Au%3A1791325910507713768%3Aw%3A1422x1104%3As%3A800x600x24%3Ask%3A1%3Awv%3A2%3Aco%3A0%3Ahdl%3A1%3Acpf%3A1%3Ans%3A1791325898825%3Ast%3A1791325910&t=mc%28p-1-h-2-g-2%29clc%280-0-0%29rqnt%284%29aw%281%29rcm%281%29yu%285456194991791325902%29cdl%28na%29eco%2865536%29ti%281%29&redirnss=1",
+    "status": 200,
+    "mime": "application/json"
+  },
+  {
+    "requestId": "39628.56",
+    "type": "Fetch",
+    "url": "https://mc.yandex.com/watch/3/1?wmode=7&page-url=https%3A%2F%2Fwidget.afisha.yandex.ru%2Fw%2Fsessions%2Fticketsteam-669%2540359964%3FclientKey%3D12071c6f-75d0-42e7-9900-54a347efb482%26lang%3Dru&page-ref&charset=utf-8&ut=noindex&browser-info=pv%3A1%3Avf%3A2laauyzxc0rfp93ha5e0r1dxlic32z%3Afu%3A0%3Aen%3Autf-8%3Ala%3Aru-RU%3Av%3A2660%3Acn%3A1%3Adp%3A0%3Als%3A1517989714228%3Ahid%3A622175270%3Az%3A300%3Ai%3A20261007033149%3Aet%3A1791325910%3Ac%3A1%3Arn%3A958182611%3Arqn%3A7%3Au%3A1791325910507713768%3Aw%3A1422x1104%3As%3A800x600x24%3Ask%3A1%3Awv%3A2%3Aco%3A0%3Ahdl%3A1%3Acpf%3A1%3Ans%3A1791325898825%3Ast%3A1791325910&t=mc%28p-1-h-2-g-2%29clc%280-0-0%29rqnt%287%29aw%281%29rcm%281%29yu%285456194991791325902%29cdl%28na%29eco%2865536%29ti%281%29&redirnss=1",
+    "status": 200,
+    "mime": "application/json"
+  },
+  {
+    "requestId": "39628.74",
+    "type": "Fetch",
+    "url": "https://widget.afisha.yandex.ru/api/session/MzI3NzZ8Nzk2Mzg0fDEwNjE2MzE4fDE3OTU4NzQ0MDAwMDA=?req_number=4",
+    "status": 200,
+    "mime": "application/json"
+  },
+  {
+    "requestId": "39628.75",
+    "type": "Fetch",
+    "url": "https://widget.afisha.yandex.ru/api/antibot/check?req_number=5",
+    "status": 200,
+    "mime": "application/json"
+  },
+  {
+    "requestId": "39628.62",
+    "type": "Script",
+    "url": "https://yastatic-net.ru/s3/afisha-tickets-frontend/static/front/605/605.0/dist/assets/_/3795-5980412d8f30fcaebfa0.js",
+    "status": 200,
+    "mime": "text/javascript"
+  },
+  {
+    "requestId": "39628.61",
+    "type": "Script",
+    "url": "https://yastatic-net.ru/s3/afisha-tickets-frontend/static/front/605/605.0/dist/assets/_/7840-788638ad67333f197180.js",
+    "status": 200,
+    "mime": "text/javascript"
+  },
+  {
+    "requestId": "39628.60",
+    "type": "Script",
+    "url": "https://yastatic-net.ru/s3/afisha-tickets-frontend/static/front/605/605.0/dist/assets/_/4708-b73f00c44aeea9ef01e3.js",
+    "status": 200,
+    "mime": "text/javascript"
+  },
+  {
+    "requestId": "39628.59",
+    "type": "Script",
+    "url": "https://yastatic-net.ru/s3/afisha-tickets-frontend/static/front/605/605.0/dist/assets/_/6815-1f78d9cac8a1b0d1c57c.js",
+    "status": 200,
+    "mime": "text/javascript"
+  },
+  {
+    "requestId": "39628.58",
+    "type": "Script",
+    "url": "https://yastatic-net.ru/s3/afisha-tickets-frontend/static/front/605/605.0/dist/assets/_/5813-0ffdad810b412155e487.js",
+    "status": 200,
+    "mime": "text/javascript"
+  },
+  {
+    "requestId": "39628.63",
+    "type": "Script",
+    "url": "https://yastatic-net.ru/s3/afisha-tickets-frontend/static/front/605/605.0/dist/assets/_/4155-330d1c7cfa207b5e494b.js",
+    "status": 200,
+    "mime": "text/javascript"
+  },
+  {
+    "requestId": "39628.64",
+    "type": "Script",
+    "url": "https://yastatic-net.ru/s3/afisha-tickets-frontend/static/front/605/605.0/dist/assets/_/8386-fc2569f74761b571f3f2.js",
+    "status": 200,
+    "mime": "text/javascript"
+  },
+  {
+    "requestId": "39628.65",
+    "type": "Script",
+    "url": "https://yastatic-net.ru/s3/afisha-tickets-frontend/static/front/605/605.0/dist/assets/_/1364-f4ddbdb097f389cf3282.js",
+    "status": 200,
+    "mime": "text/javascript"
+  },
+  {
+    "requestId": "39628.76",
+    "type": "Fetch",
+    "url": "https://widget.afisha.yandex.ru/api/tickets/v4/sessions/MzI3NzZ8Nzk2Mzg0fDEwNjE2MzE4fDE3OTU4NzQ0MDAwMDA=/hallplan?clientKey=12071c6f-75d0-42e7-9900-54a347efb482&req_number=6",
+    "status": 200,
+    "mime": "application/json"
+  },
+  {
+    "requestId": "39628.66",
+    "type": "Script",
+    "url": "https://yastatic-net.ru/s3/afisha-tickets-frontend/static/front/605/605.0/dist/assets/_/1927-4705310bf689cab1911e.js",
+    "status": 200,
+    "mime": "text/javascript"
+  },
+  {
+    "requestId": "39628.57",
+    "type": "Ping",
+    "url": "https://yandex.ru/clck/click",
+    "status": 200,
+    "mime": "image/gif"
+  },
+  {
+    "requestId": "39628.67",
+    "type": "Script",
+    "url": "https://yastatic-net.ru/s3/afisha-tickets-frontend/static/front/605/605.0/dist/assets/_/440-3f3b765b35956c97973a.js",
+    "status": 200,
+    "mime": "text/javascript"
+  },
+  {
+    "requestId": "39628.68",
+    "type": "Script",
+    "url": "https://yastatic-net.ru/s3/afisha-tickets-frontend/static/front/605/605.0/dist/assets/_/2997-54c3b3ed85ee450e84de.js",
+    "status": 200,
+    "mime": "text/javascript"
+  },
+  {
+    "requestId": "39628.79",
+    "type": "Other",
+    "url": "https://csp.yandex.net/csp?project=widget_afisha&from=widget_afisha_desktop&yandexuid=5456194991791325902&platform=desktop&environment=production",
+    "status": 200,
+    "mime": "text/plain"
+  },
+  {
+    "requestId": "39628.28",
+    "type": "Font",
+    "url": "https://yastatic-net.ru/s3/afisha-tickets-frontend/static/front/605/605.0/files/fonts/ys-text-web-fonts/YSText-Bold-Web.woff2",
+    "status": 200,
+    "mime": "font/woff2"
+  },
+  {
+    "requestId": "39628.77",
+    "type": "Fetch",
+    "url": "https://cdnr4lqyuk6qqjhirf4n.svc.cdn.yandex.net/hallplans/77ee3be4c51823042124d279cb5e43824e493674bf06324ee3d587026107de17",
+    "status": 200,
+    "mime": "application/json"
+  },
+  {
+    "requestId": "39628.73",
+    "type": "Script",
+    "url": "https://yastatic.net/s3/gdpr/v3/gdpr.js",
+    "status": 200,
+    "mime": "application/javascript"
+  },
+  {
+    "requestId": "39628.80",
+    "type": "Fetch",
+    "url": "https://widget.afisha.yandex.ru/api/user?req_number=7",
+    "status": 401,
+    "mime": "application/json"
+  },
+  {
+    "requestId": "39628.81",
+    "type": "Fetch",
+    "url": "https://widget.afisha.yandex.ru/api/tickets/v1/banners?clientKey=12071c6f-75d0-42e7-9900-54a347efb482&session_key=MzI3NzZ8Nzk2Mzg0fDEwNjE2MzE4fDE3OTU4NzQ0MDAwMDA%3D&target=promocode&req_number=8",
+    "status": 200,
+    "mime": "application/json"
+  },
+  {
+    "requestId": "39628.22",
+    "type": "Font",
+    "url": "https://yastatic-net.ru/s3/afisha-tickets-frontend/static/front/605/605.0/files/fonts/ys-text-web-fonts/YSText-Medium-Web.woff2",
+    "status": 200,
+    "mime": "font/woff2"
+  },
+  {
+    "requestId": "39628.70",
+    "type": "Image",
+    "url": "https://www.google.com/pagead/1p-user-list/940353941/?value=0&guid=ON&script=0&data=ticket_page%3Dhallplan%3Bticket_id%3D796384%3Bticket_tag%3D%3Blocal_id%3D796384%3Blocal_pagetype%3Dhallplan&is_vtc=1&cid=CAQS1AEAQM4h3E9tfDeoITLmwaAhcU2YkvUSxdy6pEzK5k9ozc2sd5R6cv733Gf5RXmpkWehbvKRIUe7FoEcdLd8P7Vwym8d9469EQhZSBD0dAO1saJLdCse_DlfUyLVQTRgiD4dtyPIzQacWLKDkDWH_uvfxB8HBvbudtO3UE4KW9XDUE-Rhv_aP1xv2EEcaiExNWsjAHBGvKkrEvHQQUie2p9fdzgxAOUl8SbrQafSjO6yVTBb9nQUfeR7fsfmVYFa2Lau1qQX3sM6sTN9Gfg_MvLsctBFYw&random=1995557126",
+    "status": 200,
+    "mime": "image/gif"
+  },
+  {
+    "requestId": "39628.82",
+    "type": "Image",
+    "url": "https://yastatic-net.ru/s3/afisha-tickets-frontend/static/front/605/605.0/dist/_/3c4400be78e26efcc9db344bf8d886fc.svg",
+    "status": 200,
+    "mime": "image/svg+xml"
+  },
+  {
+    "requestId": "39628.78",
+    "type": "Image",
+    "url": "https://yastatic-net.ru/s3/afisha-tickets-frontend/static/front/605/605.0/dist/_/ad8adfc38d929569920f2d5f0e380aa3.svg",
+    "status": 200,
+    "mime": "image/svg+xml"
+  },
+  {
+    "requestId": "39628.87",
+    "type": "Fetch",
+    "url": "https://widget.afisha.yandex.ru/api/tickets/v1/banners?clientKey=12071c6f-75d0-42e7-9900-54a347efb482&session_key=MzI3NzZ8Nzk2Mzg0fDEwNjE2MzE4fDE3OTU4NzQ0MDAwMDA%3D&target=tickets&req_number=9",
+    "status": 200,
+    "mime": "application/json"
+  },
+  {
+    "requestId": "39628.83",
+    "type": "Other",
+    "url": "https://csp.yandex.net/csp?project=widget_afisha&from=widget_afisha_desktop&yandexuid=5456194991791325902&platform=desktop&environment=production",
+    "status": 200,
+    "mime": "text/plain"
+  },
+  {
+    "requestId": "39628.84",
+    "type": "Script",
+    "url": "https://yastatic-net.ru/s3/afisha-tickets-frontend/static/front/605/605.0/dist/assets/_/3271-b4c1daaf147622e20904.js",
+    "status": 200,
+    "mime": "text/javascript"
+  },
+  {
+    "requestId": "39628.85",
+    "type": "Script",
+    "url": "https://yastatic-net.ru/s3/afisha-tickets-frontend/static/front/605/605.0/dist/assets/_/4733-163efdc17360d3ea0b58.js",
+    "status": 200,
+    "mime": "text/javascript"
+  },
+  {
+    "requestId": "39628.89",
+    "type": "Image",
+    "url": "https://yastatic-net.ru/s3/afisha-tickets-frontend/static/front/605/605.0/dist/_/a8537e8ee631cff8079be533d66e4a99.svg",
+    "status": 200,
+    "mime": "image/svg+xml"
+  },
+  {
+    "requestId": "39628.86",
+    "type": "Script",
+    "url": "https://yastatic-net.ru/s3/afisha-tickets-frontend/static/front/605/605.0/dist/assets/_/7097-e6c26c238d4cf95cb65a.js",
+    "status": 200,
+    "mime": "text/javascript"
+  },
+  {
+    "requestId": "39628.88",
+    "type": "Fetch",
+    "url": "https://widget.afisha.yandex.ru/api/loyalty/configurations-typed?regionId=973&eventId=796384&req_number=10",
+    "status": 200,
+    "mime": "application/json"
+  },
+  {
+    "requestId": "39628.90",
+    "type": "Other",
+    "url": "https://csp.yandex.net/csp?project=widget_afisha&from=widget_afisha_desktop&yandexuid=5456194991791325902&platform=desktop&environment=production",
+    "status": 200,
+    "mime": "text/plain"
+  },
+  {
+    "requestId": "39628.93",
+    "type": "Other",
+    "url": "https://csp.yandex.net/csp?project=widget_afisha&from=widget_afisha_desktop&yandexuid=5456194991791325902&platform=desktop&environment=production",
+    "status": 200,
+    "mime": "text/plain"
+  },
+  {
+    "requestId": "39628.92",
+    "type": "Image",
+    "url": "https://yastatic-net.ru/s3/afisha-tickets-frontend/static/front/605/605.0/dist/_/0b04eefd7b516d66c4e5e16408d53940.svg",
+    "status": 200,
+    "mime": "image/svg+xml"
+  },
+  {
+    "requestId": "39628.94",
+    "type": "Image",
+    "url": "https://yastatic-net.ru/s3/afisha-tickets-frontend/static/front/605/605.0/dist/_/84b0399667a2338e94c9f760ed89e023.svg",
+    "status": 200,
+    "mime": "image/svg+xml"
+  },
+  {
+    "requestId": "39628.95",
+    "type": "Other",
+    "url": "https://csp.yandex.net/csp?project=widget_afisha&from=widget_afisha_desktop&yandexuid=5456194991791325902&platform=desktop&environment=production",
+    "status": 200,
+    "mime": "text/plain"
+  },
+  {
+    "requestId": "39628.97",
+    "type": "Other",
+    "url": "https://csp.yandex.net/csp?project=widget_afisha&from=widget_afisha_desktop&yandexuid=5456194991791325902&platform=desktop&environment=production",
+    "status": 200,
+    "mime": "text/plain"
+  },
+  {
+    "requestId": "39628.96",
+    "type": "Image",
+    "url": "https://yastatic-net.ru/s3/afisha-tickets-frontend/static/front/605/605.0/dist/_/0f9e3cb8eb9a3caa37e2808fdf2175a1.png",
+    "status": 200,
+    "mime": "image/png"
+  },
+  {
+    "requestId": "39628.91",
+    "type": "Image",
+    "url": "https://avatars.mds.yandex.net/get-tickets/24260/b2b3ccf5-4bda-433e-b69a-db225c56c794/orig",
+    "status": 200,
+    "mime": "image/png"
+  },
+  {
+    "requestId": "39628.99",
+    "type": "Ping",
+    "url": "https://yandex.ru/clck/click",
+    "status": 200,
+    "mime": "image/gif"
+  },
+  {
+    "requestId": "39628.98",
+    "type": "Other",
+    "url": "https://widget.afisha.yandex.ru/favicon.ico?v=1",
+    "status": 200,
+    "mime": "image/x-icon"
+  },
+  {
+    "requestId": "39628.100",
+    "type": "Other",
+    "url": "https://widget.afisha.yandex.ru/favicon.ico?v=1",
+    "status": 200,
+    "mime": "image/x-icon"
+  },
+  {
+    "requestId": "39628.101",
+    "type": "Ping",
+    "url": "https://yandex.ru/clck/click",
+    "status": 200,
+    "mime": "image/gif"
+  }
+]

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <sitemap>
+    <loc>http://127.0.0.1:8111/api/v1/sitemap-events.xml?page=1</loc>
+    <lastmod>2026-10-08T18:44:15+03:00</lastmod>
+  </sitemap>
+  <sitemap>
+    <loc>http://127.0.0.1:8111/api/v1/sitemap-static.xml</loc>
+    <lastmod>2026-10-08T18:44:15+03:00</lastmod>
+  </sitemap>
+  <sitemap>
+    <loc>http://127.0.0.1:8111/api/v1/sitemap-venues.xml</loc>
+    <lastmod>2026-10-08T18:44:15+03:00</lastmod>
+  </sitemap>
+  <sitemap>
+    <loc>http://127.0.0.1:8111/api/v1/sitemap-cities.xml</loc>
+    <lastmod>2026-10-08T18:44:15+03:00</lastmod>
+  </sitemap>
+</sitemapindex>

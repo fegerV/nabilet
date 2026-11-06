@@ -1,0 +1,143 @@
+<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8"><title>Письмо билета с локальным QR</title></head><body style="margin:0;padding:32px;background:#f4f4f4;"><div style="max-width:660px;margin:0 auto;"><h1 style="font:700 22px/1.3 Helvetica,Arial,sans-serif;margin:0 0 6px;color:#111827;">Письмо билета с QR</h1><p style="font:400 13px/1.6 Helvetica,Arial,sans-serif;margin:0 0 8px;color:#4b5563;">QR строится в PHP локально и вкладывается как <code>data:image/png;base64</code>. Подписанный токен не уходит ни на чей сервер.</p><p style="font:400 13px/1.6 Helvetica,Arial,sans-serif;margin:0 0 28px;color:#b45309;">В превью — ДЕМО-payload (v5, 37×37 модулей), а не настоящий пропуск. Наведите сканер на QR ниже — он должен прочитаться.</p><div style="text-align:center;margin:0 0 28px;padding:20px;background:#fff;border:1px solid #e5e7eb;border-radius:10px;"><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAALQAAAC0AQAAAAAVtjufAAABd0lEQVR42u2XS47DMAxDeQPd/5a6AUek3MkE6JLpbOomSPRcwLH+Bt+Oxpd/igOoYlX1PFaM8hGqMLCpN4lZjhWqe6YtxjkXzUw9wkdnvXt7gM/VHKi7eNNngtvu17j7Q4B7AA1Q6O7PAV5DhNl+lx6jfExid4UUN7MAo1xS6ac/zFMWSvIRJcutvC9e3xPhXlZ+qyk6OKKcjo1W2I3m5guaUS6PaihpnHlUlI8/tSR/gS3ENIciu603KTDL4dhzTRibaFSWl+JZac+xp9wR5WMMrmdpP6vAJG9ZvWT/sY59OMy1DevLr/W7bojTqmvXBXrlynIpTJuRcfjHb0O8XZR7A3u3FeWSlJQo/xonrlc9DXGlVNW1Ud0s6Bwe5afTKmtM14nrGMcrU5y2EVnurIET1ZDls1yNCqwxleWr70px96SqnU6x5fIT5Ta8F6S7rmaeu+llb9hVnHPt03vqCHNd2CPB6ZKifM9Nvaapa90U/55z/5H/AA0JUQ9vpVz0AAAAAElFTkSuQmCC" alt="QR демо" width="200" height="200" style="width:200px;height:200px;"><p style="font:400 12px/1.5 monospace;margin:12px 0 0;color:#6b7280;word-break:break-all;">NB1.01M46GWH0K1J8N2P4Q6R8S0T2V.demo-token-not-a-real-ticket.demo-signature</p></div><section style="margin:0 0 32px;"><h2 style="font:600 18px/1.4 Helvetica,Arial,sans-serif;margin:0 0 4px;color:#111827;">Письмо: реальный заказ, QR вложен</h2><p style="font:400 13px/1.5 Helvetica,Arial,sans-serif;margin:0 0 14px;color:#6b7280;">Афиши у мероприятия нет — картинка не выводится. QR на месте, текстовый код рядом.</p><div style="border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;"><!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Электронный билет</title>
+</head>
+<body style="margin: 0; padding: 20px; background-color: #f4f4f4;">
+    <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+
+    
+    
+    <!-- Header with Event Info -->
+    <div style="background: #0f766e; padding: 30px; text-align: center; color: #ffffff;">
+        <h1 style="margin: 0; font-size: 24px; font-weight: bold;">Тестовый концерт</h1>
+        <p style="margin: 10px 0 0; font-size: 16px; opacity: 0.9;">01.12.2026 19:00</p>
+                    <p style="margin: 5px 0 0; font-size: 14px; opacity: 0.8;">📍 Тест-холл Проверка</p>
+            </div>
+
+    <!-- Ticket Body -->
+    <div style="padding: 30px;">
+        <!-- Customer Info -->
+        <div style="margin-bottom: 25px; padding: 15px; background: #f8f9fa; border-radius: 6px;">
+            <p style="margin: 0 0 5px; font-size: 12px; color: #6c757d; text-transform: uppercase;">Билет для</p>
+            <p style="margin: 0; font-size: 18px; font-weight: bold; color: #212529;">Покупатель</p>
+            <p style="margin: 5px 0 0; font-size: 14px; color: #6c757d;">buyer@example.com</p>
+        </div>
+
+        <!-- Seats Info -->
+        <div style="margin-bottom: 25px; padding: 15px; background: #e3f2fd; border-radius: 6px; border-left: 4px solid #2196f3;">
+            <p style="margin: 0 0 5px; font-size: 12px; color: #1976d2; text-transform: uppercase;">Места</p>
+            <p style="margin: 0; font-size: 16px; font-weight: bold; color: #1565c0;">Ряд 1 / Ряд 1 Место 3</p>
+        </div>
+
+        <!-- Price -->
+        <div style="margin-bottom: 25px; text-align: right;">
+            <span style="font-size: 14px; color: #6c757d;">Общая стоимость: </span>
+            <span style="font-size: 24px; font-weight: bold; color: #28a745;">1 500,00 RUB</span>
+        </div>
+
+        <!-- QR Code Section -->
+        <div style="text-align: center; margin: 30px 0; padding: 20px; background: #ffffff; border: 2px dashed #dee2e6; border-radius: 6px;">
+            <p style="margin: 10px 0 0; font-size: 12px; color: #6c757d;">Код билета для проверки на входе</p>
+            
+                            <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAALQAAAC0AQAAAAAVtjufAAABd0lEQVR42u2XS47DMAxDeQPd/5a6AUek3MkE6JLpbOomSPRcwLH+Bt+Oxpd/igOoYlX1PFaM8hGqMLCpN4lZjhWqe6YtxjkXzUw9wkdnvXt7gM/VHKi7eNNngtvu17j7Q4B7AA1Q6O7PAV5DhNl+lx6jfExid4UUN7MAo1xS6ac/zFMWSvIRJcutvC9e3xPhXlZ+qyk6OKKcjo1W2I3m5guaUS6PaihpnHlUlI8/tSR/gS3ENIciu603KTDL4dhzTRibaFSWl+JZac+xp9wR5WMMrmdpP6vAJG9ZvWT/sY59OMy1DevLr/W7bojTqmvXBXrlynIpTJuRcfjHb0O8XZR7A3u3FeWSlJQo/xonrlc9DXGlVNW1Ud0s6Bwe5afTKmtM14nrGMcrU5y2EVnurIET1ZDls1yNCqwxleWr70px96SqnU6x5fIT5Ta8F6S7rmaeu+llb9hVnHPt03vqCHNd2CPB6ZKifM9Nvaapa90U/55z/5H/AA0JUQ9vpVz0AAAAAElFTkSuQmCC" alt="QR билета" width="164" height="164"
+                     style="display: block; margin: 12px auto; width: 164px; height: 164px; border: 0; outline: none;">
+                        
+            <code style="display: block; margin: 12px auto 0; max-width: 100%; overflow-wrap: anywhere; font-size: 12px; color: #212529;">NB1.01M46GWH0K1J8N2P4Q6R8S0T2V.demo-token-not-a-real-ticket.demo-signature</code>
+            <p style="margin: 8px 0 0; font-size: 10px; color: #adb5bd;">Билет TCK-01M46GWE-001 | Заказ №4</p>
+        </div>
+
+        
+                    <div style="text-align: center; margin: 0 0 25px;">
+                <a href="https://tickets.example.com/#/tickets" role="button"
+                   style="display: inline-block; padding: 14px 28px; background: #0f766e; color: #ffffff; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: 600;">Открыть билет</a>
+            </div>
+        
+        <!-- Footer Note -->
+        <div style="text-align: center; padding-top: 20px; border-top: 1px solid #dee2e6;">
+            <p style="margin: 0; font-size: 12px; color: #6c757d;">
+                Пожалуйста, сохраните этот билет на вашем устройстве или распечатайте его.
+            </p>
+            <p style="margin: 10px 0 0; font-size: 11px; color: #adb5bd;">
+                При возникновении вопросов обратитесь в службу поддержки.
+            </p>
+        </div>
+    </div>
+</div>
+</body>
+</html>
+</div></section><section style="margin:0 0 32px;"><h2 style="font:600 18px/1.4 Helvetica,Arial,sans-serif;margin:0 0 4px;color:#111827;">Письмо: афиша + светлый акцент</h2><p style="font:400 13px/1.5 Helvetica,Arial,sans-serif;margin:0 0 14px;color:#6b7280;">Тот же шаблон с афишей и жёлтым акцентом. Надпись на кнопке вычислена тёмной.</p><div style="border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;"><!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Электронный билет</title>
+</head>
+<body style="margin: 0; padding: 20px; background-color: #f4f4f4;">
+    <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+
+    
+            <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMjAwIiBoZWlnaHQ9IjY3NSIgdmlld0JveD0iMCAwIDEyMDAgNjc1Ij4KICA8ZGVmcz4KICAgIDxsaW5lYXJHcmFkaWVudCBpZD0iZyIgeDE9IjAiIHkxPSIwIiB4Mj0iMSIgeTI9IjEiPgogICAgICA8c3RvcCBvZmZzZXQ9IjAiIHN0b3AtY29sb3I9IiMxZTFiNGIiLz4KICAgICAgPHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjNGMxZDk1Ii8+CiAgICA8L2xpbmVhckdyYWRpZW50PgogIDwvZGVmcz4KICA8cmVjdCB3aWR0aD0iMTIwMCIgaGVpZ2h0PSI2NzUiIGZpbGw9InVybCgjZykiLz4KICA8Y2lyY2xlIGN4PSI5ODAiIGN5PSIxNDAiIHI9IjIyMCIgZmlsbD0iI2ZiYmYyNCIgb3BhY2l0eT0iMC4xOCIvPgogIDx0ZXh0IHg9IjgwIiB5PSIzMDAiIGZvbnQtZmFtaWx5PSJHZW9yZ2lhLCBzZXJpZiIgZm9udC1zaXplPSI4NiIgZmlsbD0iI2ZmZmZmZiI+0KHQuNC80YTQvtC90LjRh9C10YHQutC40Lkg0LLQtdGH0LXRgDwvdGV4dD4KICA8dGV4dCB4PSI4MCIgeT0iMzgwIiBmb250LWZhbWlseT0iSGVsdmV0aWNhLCBBcmlhbCwgc2Fucy1zZXJpZiIgZm9udC1zaXplPSIzOCIgZmlsbD0iI2M3ZDJmZSI+0KfQsNC50LrQvtCy0YHQutC40Lkgwrcg0KDQsNGF0LzQsNC90LjQvdC+0LI8L3RleHQ+CiAgPHRleHQgeD0iODAiIHk9IjYwMCIgZm9udC1mYW1pbHk9IkhlbHZldGljYSwgQXJpYWwsIHNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMzAiIGZpbGw9IiNmYmJmMjQiPjIwINC90L7Rj9Cx0YDRjyAyMDI2IMK3IDE5OjMwPC90ZXh0Pgo8L3N2Zz4=" alt="Симфонический вечер" width="600"
+             style="display: block; width: 100%; max-width: 600px; height: auto; border: 0; outline: none;">
+    
+    <!-- Header with Event Info -->
+    <div style="background: #fbbf24; padding: 30px; text-align: center; color: #111827;">
+        <h1 style="margin: 0; font-size: 24px; font-weight: bold;">Симфонический вечер</h1>
+        <p style="margin: 10px 0 0; font-size: 16px; opacity: 0.9;">20.11.2026 19:30</p>
+                    <p style="margin: 5px 0 0; font-size: 14px; opacity: 0.8;">📍 КЗ «Сургут»</p>
+            </div>
+
+    <!-- Ticket Body -->
+    <div style="padding: 30px;">
+        <!-- Customer Info -->
+        <div style="margin-bottom: 25px; padding: 15px; background: #f8f9fa; border-radius: 6px;">
+            <p style="margin: 0 0 5px; font-size: 12px; color: #6c757d; text-transform: uppercase;">Билет для</p>
+            <p style="margin: 0; font-size: 18px; font-weight: bold; color: #212529;">Анна Петрова</p>
+            <p style="margin: 5px 0 0; font-size: 14px; color: #6c757d;">anna@example.ru</p>
+        </div>
+
+        <!-- Seats Info -->
+        <div style="margin-bottom: 25px; padding: 15px; background: #e3f2fd; border-radius: 6px; border-left: 4px solid #2196f3;">
+            <p style="margin: 0 0 5px; font-size: 12px; color: #1976d2; text-transform: uppercase;">Места</p>
+            <p style="margin: 0; font-size: 16px; font-weight: bold; color: #1565c0;">Партер / Место 12</p>
+        </div>
+
+        <!-- Price -->
+        <div style="margin-bottom: 25px; text-align: right;">
+            <span style="font-size: 14px; color: #6c757d;">Общая стоимость: </span>
+            <span style="font-size: 24px; font-weight: bold; color: #28a745;">2 500,00 RUB</span>
+        </div>
+
+        <!-- QR Code Section -->
+        <div style="text-align: center; margin: 30px 0; padding: 20px; background: #ffffff; border: 2px dashed #dee2e6; border-radius: 6px;">
+            <p style="margin: 10px 0 0; font-size: 12px; color: #6c757d;">Код билета для проверки на входе</p>
+            
+                            <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAALQAAAC0AQAAAAAVtjufAAABd0lEQVR42u2XS47DMAxDeQPd/5a6AUek3MkE6JLpbOomSPRcwLH+Bt+Oxpd/igOoYlX1PFaM8hGqMLCpN4lZjhWqe6YtxjkXzUw9wkdnvXt7gM/VHKi7eNNngtvu17j7Q4B7AA1Q6O7PAV5DhNl+lx6jfExid4UUN7MAo1xS6ac/zFMWSvIRJcutvC9e3xPhXlZ+qyk6OKKcjo1W2I3m5guaUS6PaihpnHlUlI8/tSR/gS3ENIciu603KTDL4dhzTRibaFSWl+JZac+xp9wR5WMMrmdpP6vAJG9ZvWT/sY59OMy1DevLr/W7bojTqmvXBXrlynIpTJuRcfjHb0O8XZR7A3u3FeWSlJQo/xonrlc9DXGlVNW1Ud0s6Bwe5afTKmtM14nrGMcrU5y2EVnurIET1ZDls1yNCqwxleWr70px96SqnU6x5fIT5Ta8F6S7rmaeu+llb9hVnHPt03vqCHNd2CPB6ZKifM9Nvaapa90U/55z/5H/AA0JUQ9vpVz0AAAAAElFTkSuQmCC" alt="QR билета" width="164" height="164"
+                     style="display: block; margin: 12px auto; width: 164px; height: 164px; border: 0; outline: none;">
+                        
+            <code style="display: block; margin: 12px auto 0; max-width: 100%; overflow-wrap: anywhere; font-size: 12px; color: #212529;">NB1.01M46GWH0K1J8N2P4Q6R8S0T2V.demo-token-not-a-real-ticket.demo-signature</code>
+            <p style="margin: 8px 0 0; font-size: 10px; color: #adb5bd;">Билет TCK-DEMO-0001 | Заказ №1042</p>
+        </div>
+
+        
+                    <div style="text-align: center; margin: 0 0 25px;">
+                <a href="https://tickets.example.com/#/tickets" role="button"
+                   style="display: inline-block; padding: 14px 28px; background: #fbbf24; color: #111827; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: 600;">Открыть билет</a>
+            </div>
+        
+        <!-- Footer Note -->
+        <div style="text-align: center; padding-top: 20px; border-top: 1px solid #dee2e6;">
+            <p style="margin: 0; font-size: 12px; color: #6c757d;">
+                Пожалуйста, сохраните этот билет на вашем устройстве или распечатайте его.
+            </p>
+            <p style="margin: 10px 0 0; font-size: 11px; color: #adb5bd;">
+                При возникновении вопросов обратитесь в службу поддержки.
+            </p>
+        </div>
+    </div>
+</div>
+</body>
+</html>
+</div></section></div></body></html>

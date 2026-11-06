@@ -1,0 +1,137 @@
+<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8"><title>Письмо одиночного билета — TicketPurchasedMail</title></head><body style="margin:0;padding:32px;background:#f4f4f4;"><div style="max-width:660px;margin:0 auto;"><h1 style="font:700 22px/1.3 Helvetica,Arial,sans-serif;margin:0 0 6px;color:#111827;">Письмо одиночного билета</h1><p style="font:400 13px/1.6 Helvetica,Arial,sans-serif;margin:0 0 28px;color:#4b5563;">Рендер <code>tickets::email.ticket</code> через <code>TicketPurchasedMail</code>. До правки шаблон не показывал афишу и не давал ссылки на билет.</p><section style="margin:0 0 32px;"><h2 style="font:600 18px/1.4 Helvetica,Arial,sans-serif;margin:0 0 4px;color:#111827;">Было недоступно: реальный заказ №4</h2><p style="font:400 13px/1.5 Helvetica,Arial,sans-serif;margin:0 0 14px;color:#6b7280;">Афиши у мероприятия нет, поэтому картинка не выводится (битая картинка хуже её отсутствия). Кнопка «Открыть билет» ведёт на /#/tickets. Подписанный токен скрыт.</p><div style="border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;"><!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Электронный билет</title>
+</head>
+<body style="margin: 0; padding: 20px; background-color: #f4f4f4;">
+    <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+
+    
+    
+    <!-- Header with Event Info -->
+    <div style="background: #0f766e; padding: 30px; text-align: center; color: #ffffff;">
+        <h1 style="margin: 0; font-size: 24px; font-weight: bold;">Тестовый концерт</h1>
+        <p style="margin: 10px 0 0; font-size: 16px; opacity: 0.9;">01.12.2026 19:00</p>
+                    <p style="margin: 5px 0 0; font-size: 14px; opacity: 0.8;">📍 Тест-холл Проверка</p>
+            </div>
+
+    <!-- Ticket Body -->
+    <div style="padding: 30px;">
+        <!-- Customer Info -->
+        <div style="margin-bottom: 25px; padding: 15px; background: #f8f9fa; border-radius: 6px;">
+            <p style="margin: 0 0 5px; font-size: 12px; color: #6c757d; text-transform: uppercase;">Билет для</p>
+            <p style="margin: 0; font-size: 18px; font-weight: bold; color: #212529;">Покупатель</p>
+            <p style="margin: 5px 0 0; font-size: 14px; color: #6c757d;">buyer@example.com</p>
+        </div>
+
+        <!-- Seats Info -->
+        <div style="margin-bottom: 25px; padding: 15px; background: #e3f2fd; border-radius: 6px; border-left: 4px solid #2196f3;">
+            <p style="margin: 0 0 5px; font-size: 12px; color: #1976d2; text-transform: uppercase;">Места</p>
+            <p style="margin: 0; font-size: 16px; font-weight: bold; color: #1565c0;">Ряд 1 / Ряд 1 Место 3</p>
+        </div>
+
+        <!-- Price -->
+        <div style="margin-bottom: 25px; text-align: right;">
+            <span style="font-size: 14px; color: #6c757d;">Общая стоимость: </span>
+            <span style="font-size: 24px; font-weight: bold; color: #28a745;">1 500,00 RUB</span>
+        </div>
+
+        <!-- QR Code Section -->
+        <div style="text-align: center; margin: 30px 0; padding: 20px; background: #ffffff; border: 2px dashed #dee2e6; border-radius: 6px;">
+            <p style="margin: 10px 0 0; font-size: 12px; color: #6c757d;">Код билета для проверки на входе</p>
+            
+            <code style="display: block; margin: 12px auto 0; max-width: 100%; overflow-wrap: anywhere; font-size: 12px; color: #212529;">NB1.&lt;подписанный токен скрыт в превью&gt;</code>
+            <p style="margin: 8px 0 0; font-size: 10px; color: #adb5bd;">Билет TCK-01M46GWE-001 | Заказ №4</p>
+        </div>
+
+        
+                    <div style="text-align: center; margin: 0 0 25px;">
+                <a href="https://tickets.example.com/#/tickets" role="button"
+                   style="display: inline-block; padding: 14px 28px; background: #0f766e; color: #ffffff; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: 600;">Открыть билет</a>
+            </div>
+        
+        <!-- Footer Note -->
+        <div style="text-align: center; padding-top: 20px; border-top: 1px solid #dee2e6;">
+            <p style="margin: 0; font-size: 12px; color: #6c757d;">
+                Пожалуйста, сохраните этот билет на вашем устройстве или распечатайте его.
+            </p>
+            <p style="margin: 10px 0 0; font-size: 11px; color: #adb5bd;">
+                При возникновении вопросов обратитесь в службу поддержки.
+            </p>
+        </div>
+    </div>
+</div>
+</body>
+</html>
+</div></section><section style="margin:0 0 32px;"><h2 style="font:600 18px/1.4 Helvetica,Arial,sans-serif;margin:0 0 4px;color:#111827;">Афиша + светлый акцент</h2><p style="font:400 13px/1.5 Helvetica,Arial,sans-serif;margin:0 0 14px;color:#6b7280;">Тот же шаблон с афишей и жёлтым акцентом #fbbf24. Надпись на кнопке вычислена как тёмная — на светлом акценте белый текст был бы невидим.</p><div style="border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;"><!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Электронный билет</title>
+</head>
+<body style="margin: 0; padding: 20px; background-color: #f4f4f4;">
+    <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+
+    
+            <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMjAwIiBoZWlnaHQ9IjY3NSIgdmlld0JveD0iMCAwIDEyMDAgNjc1Ij4KICA8ZGVmcz4KICAgIDxsaW5lYXJHcmFkaWVudCBpZD0iZyIgeDE9IjAiIHkxPSIwIiB4Mj0iMSIgeTI9IjEiPgogICAgICA8c3RvcCBvZmZzZXQ9IjAiIHN0b3AtY29sb3I9IiMxZTFiNGIiLz4KICAgICAgPHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjNGMxZDk1Ii8+CiAgICA8L2xpbmVhckdyYWRpZW50PgogIDwvZGVmcz4KICA8cmVjdCB3aWR0aD0iMTIwMCIgaGVpZ2h0PSI2NzUiIGZpbGw9InVybCgjZykiLz4KICA8Y2lyY2xlIGN4PSI5ODAiIGN5PSIxNDAiIHI9IjIyMCIgZmlsbD0iI2ZiYmYyNCIgb3BhY2l0eT0iMC4xOCIvPgogIDxjaXJjbGUgY3g9IjIwMCIgY3k9IjU2MCIgcj0iMTYwIiBmaWxsPSIjZjQ3MmI2IiBvcGFjaXR5PSIwLjE4Ii8+CiAgPHRleHQgeD0iODAiIHk9IjMwMCIgZm9udC1mYW1pbHk9Ikdlb3JnaWEsIHNlcmlmIiBmb250LXNpemU9Ijg2IiBmaWxsPSIjZmZmZmZmIj7QodC40LzRhNC+0L3QuNGH0LXRgdC60LjQuSDQstC10YfQtdGAPC90ZXh0PgogIDx0ZXh0IHg9IjgwIiB5PSIzODAiIGZvbnQtZmFtaWx5PSJIZWx2ZXRpY2EsIEFyaWFsLCBzYW5zLXNlcmlmIiBmb250LXNpemU9IjM4IiBmaWxsPSIjYzdkMmZlIj7Qp9Cw0LnQutC+0LLRgdC60LjQuSDCtyDQoNCw0YXQvNCw0L3QuNC90L7QsjwvdGV4dD4KICA8dGV4dCB4PSI4MCIgeT0iNjAwIiBmb250LWZhbWlseT0iSGVsdmV0aWNhLCBBcmlhbCwgc2Fucy1zZXJpZiIgZm9udC1zaXplPSIzMCIgZmlsbD0iI2ZiYmYyNCI+MjAg0L3QvtGP0LHRgNGPIDIwMjYgwrcgMTk6MzA8L3RleHQ+Cjwvc3ZnPg==" alt="Симфонический вечер" width="600"
+             style="display: block; width: 100%; max-width: 600px; height: auto; border: 0; outline: none;">
+    
+    <!-- Header with Event Info -->
+    <div style="background: #fbbf24; padding: 30px; text-align: center; color: #111827;">
+        <h1 style="margin: 0; font-size: 24px; font-weight: bold;">Симфонический вечер</h1>
+        <p style="margin: 10px 0 0; font-size: 16px; opacity: 0.9;">20.11.2026 19:30</p>
+                    <p style="margin: 5px 0 0; font-size: 14px; opacity: 0.8;">📍 КЗ «Сургут»</p>
+            </div>
+
+    <!-- Ticket Body -->
+    <div style="padding: 30px;">
+        <!-- Customer Info -->
+        <div style="margin-bottom: 25px; padding: 15px; background: #f8f9fa; border-radius: 6px;">
+            <p style="margin: 0 0 5px; font-size: 12px; color: #6c757d; text-transform: uppercase;">Билет для</p>
+            <p style="margin: 0; font-size: 18px; font-weight: bold; color: #212529;">Анна Петрова</p>
+            <p style="margin: 5px 0 0; font-size: 14px; color: #6c757d;">anna@example.ru</p>
+        </div>
+
+        <!-- Seats Info -->
+        <div style="margin-bottom: 25px; padding: 15px; background: #e3f2fd; border-radius: 6px; border-left: 4px solid #2196f3;">
+            <p style="margin: 0 0 5px; font-size: 12px; color: #1976d2; text-transform: uppercase;">Места</p>
+            <p style="margin: 0; font-size: 16px; font-weight: bold; color: #1565c0;">Партер / Место 12</p>
+        </div>
+
+        <!-- Price -->
+        <div style="margin-bottom: 25px; text-align: right;">
+            <span style="font-size: 14px; color: #6c757d;">Общая стоимость: </span>
+            <span style="font-size: 24px; font-weight: bold; color: #28a745;">2 500,00 RUB</span>
+        </div>
+
+        <!-- QR Code Section -->
+        <div style="text-align: center; margin: 30px 0; padding: 20px; background: #ffffff; border: 2px dashed #dee2e6; border-radius: 6px;">
+            <p style="margin: 10px 0 0; font-size: 12px; color: #6c757d;">Код билета для проверки на входе</p>
+            
+            <code style="display: block; margin: 12px auto 0; max-width: 100%; overflow-wrap: anywhere; font-size: 12px; color: #212529;">NB1.&lt;подписанный токен скрыт в превью&gt;</code>
+            <p style="margin: 8px 0 0; font-size: 10px; color: #adb5bd;">Билет TCK-DEMO-0001 | Заказ №1042</p>
+        </div>
+
+        
+                    <div style="text-align: center; margin: 0 0 25px;">
+                <a href="https://tickets.example.com/#/tickets" role="button"
+                   style="display: inline-block; padding: 14px 28px; background: #fbbf24; color: #111827; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: 600;">Открыть билет</a>
+            </div>
+        
+        <!-- Footer Note -->
+        <div style="text-align: center; padding-top: 20px; border-top: 1px solid #dee2e6;">
+            <p style="margin: 0; font-size: 12px; color: #6c757d;">
+                Пожалуйста, сохраните этот билет на вашем устройстве или распечатайте его.
+            </p>
+            <p style="margin: 10px 0 0; font-size: 11px; color: #adb5bd;">
+                При возникновении вопросов обратитесь в службу поддержки.
+            </p>
+        </div>
+    </div>
+</div>
+</body>
+</html>
+</div></section></div></body></html>

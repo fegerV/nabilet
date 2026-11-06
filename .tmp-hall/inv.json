@@ -1,0 +1,233 @@
+[
+ {
+  "name": "__construct",
+  "decl": 52,
+  "start": 48,
+  "end": 56,
+  "lines": 9
+ },
+ {
+  "name": "show",
+  "decl": 62,
+  "start": 58,
+  "end": 307,
+  "lines": 250
+ },
+ {
+  "name": "storageUrl",
+  "decl": 327,
+  "start": 309,
+  "end": 330,
+  "lines": 22
+ },
+ {
+  "name": "seoVerificationAndGeoTags",
+  "decl": 352,
+  "start": 332,
+  "end": 395,
+  "lines": 64
+ },
+ {
+  "name": "publicUrl",
+  "decl": 403,
+  "start": 397,
+  "end": 406,
+  "lines": 10
+ },
+ {
+  "name": "notFound",
+  "decl": 427,
+  "start": 408,
+  "end": 433,
+  "lines": 26
+ },
+ {
+  "name": "gone",
+  "decl": 445,
+  "start": 435,
+  "end": 451,
+  "lines": 17
+ },
+ {
+  "name": "resolveCanonical",
+  "decl": 470,
+  "start": 453,
+  "end": 500,
+  "lines": 48
+ },
+ {
+  "name": "offerPayload",
+  "decl": 527,
+  "start": 502,
+  "end": 584,
+  "lines": 83
+ },
+ {
+  "name": "spaShellPath",
+  "decl": 597,
+  "start": 586,
+  "end": 600,
+  "lines": 15
+ },
+ {
+  "name": "storefrontNotBuilt",
+  "decl": 610,
+  "start": 602,
+  "end": 620,
+  "lines": 19
+ },
+ {
+  "name": "defaultRobots",
+  "decl": 630,
+  "start": 622,
+  "end": 635,
+  "lines": 14
+ },
+ {
+  "name": "effectiveRobots",
+  "decl": 654,
+  "start": 637,
+  "end": 667,
+  "lines": 31
+ },
+ {
+  "name": "nearestSession",
+  "decl": 678,
+  "start": 669,
+  "end": 696,
+  "lines": 28
+ },
+ {
+  "name": "venuePayload",
+  "decl": 708,
+  "start": 698,
+  "end": 724,
+  "lines": 27
+ },
+ {
+  "name": "buildTitle",
+  "decl": 744,
+  "start": 726,
+  "end": 756,
+  "lines": 31
+ },
+ {
+  "name": "statusNote",
+  "decl": 764,
+  "start": 758,
+  "end": 778,
+  "lines": 21
+ },
+ {
+  "name": "statusBanner",
+  "decl": 798,
+  "start": 780,
+  "end": 819,
+  "lines": 40
+ },
+ {
+  "name": "bodyFallback",
+  "decl": 838,
+  "start": 821,
+  "end": 843,
+  "lines": 23
+ },
+ {
+  "name": "contentFallback",
+  "decl": 869,
+  "start": 845,
+  "end": 941,
+  "lines": 97
+ },
+ {
+  "name": "artistLinks",
+  "decl": 963,
+  "start": 943,
+  "end": 986,
+  "lines": 44
+ },
+ {
+  "name": "sessionLine",
+  "decl": 996,
+  "start": 988,
+  "end": 1013,
+  "lines": 26
+ },
+ {
+  "name": "venueLine",
+  "decl": 1022,
+  "start": 1015,
+  "end": 1040,
+  "lines": 26
+ },
+ {
+  "name": "leadText",
+  "decl": 1051,
+  "start": 1042,
+  "end": 1066,
+  "lines": 25
+ },
+ {
+  "name": "priceLine",
+  "decl": 1079,
+  "start": 1068,
+  "end": 1095,
+  "lines": 28
+ },
+ {
+  "name": "buildDescription",
+  "decl": 1110,
+  "start": 1097,
+  "end": 1143,
+  "lines": 47
+ },
+ {
+  "name": "renderSpaShell",
+  "decl": 1145,
+  "start": 1097,
+  "end": 1281,
+  "lines": 185
+ },
+ {
+  "name": "dataLayerEventPageSnippet",
+  "decl": 1299,
+  "start": 1283,
+  "end": 1319,
+  "lines": 37
+ },
+ {
+  "name": "ogImageTags",
+  "decl": 1335,
+  "start": 1321,
+  "end": 1360,
+  "lines": 40
+ },
+ {
+  "name": "breadcrumbTrail",
+  "decl": 1393,
+  "start": 1362,
+  "end": 1408,
+  "lines": 47
+ },
+ {
+  "name": "categoryCrumb",
+  "decl": 1421,
+  "start": 1410,
+  "end": 1447,
+  "lines": 38
+ },
+ {
+  "name": "breadcrumbScript",
+  "decl": 1456,
+  "start": 1449,
+  "end": 1463,
+  "lines": 15
+ },
+ {
+  "name": "safeJsonLd",
+  "decl": 1473,
+  "start": 1465,
+  "end": 1480,
+  "lines": 16
+ }
+]

@@ -1,0 +1,18 @@
+HTTP/1.1 419 unknown status
+Host: 127.0.0.1:8000
+Connection: close
+X-Powered-By: PHP/8.4.21
+Cache-Control: no-cache, private
+date: Wed, 23 Sep 2026 20:16:29 GMT
+Content-Type: text/html; charset=utf-8
+X-Content-Type-Options: nosniff
+X-XSS-Protection: 0
+Referrer-Policy: strict-origin-when-cross-origin
+Permissions-Policy: geolocation=(), microphone=(), camera=()
+Cross-Origin-Opener-Policy: same-origin
+X-Permitted-Cross-Domain-Policies: none
+X-Frame-Options: SAMEORIGIN
+Content-Security-Policy: default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'self'; form-action 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.bunny.net; img-src 'self' data: blob: https:; font-src 'self' data: https://fonts.bunny.net; connect-src 'self'; upgrade-insecure-requests
+X-Request-Id: 95ca0fe72a7be9935c8a71f1c7a89516
+Set-Cookie: nabilet_session=eyJpdiI6InNkdVl0ejk2UnBiaGRmT2JGQTBiUVE9PSIsInZhbHVlIjoiL09KVEp2RENDaHh6UXh4OTl2WlBWcFhvUWdUWnJJWXFvd3lURlN5a1dDN245WUFTbW9VTXhjUjlVK1Rrak5YZVo5Yzk4WkpGMDY5bDR2OXhIckUxWTRhcGpqSVdPZnBDV2d0WlFFbFZGbmtPZ1hpQlNkV0FZdlhsbmZsL2FodjUiLCJtYWMiOiJmZjE1Zjk5MDA2NzRmY2M0YTA4OTZiYmU0YWYyODU4MzRmN2ZiZDI0ZjFlNzJmYmZkZTYwM2JkNDIwYjA4NmJjIiwidGFnIjoiIn0%3D; expires=Wed, 23 Sep 2026 22:16:29 GMT; Max-Age=7200; path=/; httponly; samesite=lax
+

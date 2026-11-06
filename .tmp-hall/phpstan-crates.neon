@@ -1,0 +1,23 @@
+parameters:
+    level: 5
+
+    paths:
+        - app
+        - config
+        - routes
+        - database
+        - tests
+
+    excludePaths:
+        - app/Core/Support/helpers.php
+        - database/archive-superseded-migrations
+
+    # Тест: понимает ли PHPStan маски в universalObjectCratesClasses.
+    universalObjectCratesClasses:
+        - Nabilet\Modules\*\Models\*
+        - App\Models\*
+
+    ignoreErrors:
+        -
+            message: '#Class Nabilet\\Modules\\Users\\Models\\User not found#'
+            path: config/auth.php

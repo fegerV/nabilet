@@ -281,7 +281,7 @@ private fun SetupActionCard(
             Icon(
                 imageVector = Icons.Default.Close,
                 contentDescription = null,
-                modifier = Modifier.size(48.dp).tint(CheckerColors.Admit),
+                modifier = Modifier.size(48.dp).graphicsLayer { tint = CheckerColors.Admit },
             )
             Text(
                 text = title,

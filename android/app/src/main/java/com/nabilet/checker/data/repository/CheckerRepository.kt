@@ -715,8 +715,9 @@ class CheckerRepository(
     /**
      * Ищет сканы по номеру билета или ID билета.
      */
-    suspend fun searchByTicket(query: String): List<ScanRecord> =
-        withContext(Dispatchers.IO) { scanDao.searchByTicket(query) }
+    suspend fun searchByTicket(query: String): List<ScanRecord> {
+        return withContext(Dispatchers.IO) { scanDao.searchByTicket(query) }
+    }
 
     private fun escapeCsv(value: String?): String {
         val v = value ?: ""

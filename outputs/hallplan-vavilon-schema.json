@@ -1,0 +1,2420 @@
+{
+    "version": 1,
+    "canvas": {
+        "width": 1761,
+        "height": 1168
+    },
+    "background": null,
+    "backgrounds": [],
+    "sectors": [
+        {
+            "id": "level-2-row-44",
+            "name": "Стол 44",
+            "x": 0,
+            "y": 0,
+            "priceMinor": 400000,
+            "type": "seated",
+            "shape": "table",
+            "seats": [
+                {
+                    "id": "seat-1",
+                    "row": 1,
+                    "number": 1,
+                    "x": 1491,
+                    "y": 623
+                },
+                {
+                    "id": "seat-2",
+                    "row": 1,
+                    "number": 2,
+                    "x": 1477,
+                    "y": 639
+                },
+                {
+                    "id": "seat-3",
+                    "row": 1,
+                    "number": 3,
+                    "x": 1443,
+                    "y": 632
+                },
+                {
+                    "id": "seat-4",
+                    "row": 1,
+                    "number": 4,
+                    "x": 1438,
+                    "y": 599
+                },
+                {
+                    "id": "seat-5",
+                    "row": 1,
+                    "number": 5,
+                    "x": 1452,
+                    "y": 615
+                }
+            ]
+        },
+        {
+            "id": "level-2-row-45",
+            "name": "Стол 45",
+            "x": 0,
+            "y": 0,
+            "priceMinor": 500000,
+            "type": "seated",
+            "shape": "table",
+            "seats": [
+                {
+                    "id": "seat-6",
+                    "row": 1,
+                    "number": 1,
+                    "x": 1491,
+                    "y": 779
+                },
+                {
+                    "id": "seat-7",
+                    "row": 1,
+                    "number": 2,
+                    "x": 1477,
+                    "y": 795
+                },
+                {
+                    "id": "seat-8",
+                    "row": 1,
+                    "number": 3,
+                    "x": 1443,
+                    "y": 788
+                },
+                {
+                    "id": "seat-9",
+                    "row": 1,
+                    "number": 4,
+                    "x": 1438,
+                    "y": 755
+                },
+                {
+                    "id": "seat-10",
+                    "row": 1,
+                    "number": 5,
+                    "x": 1452,
+                    "y": 771
+                }
+            ]
+        },
+        {
+            "id": "level-2-row-46",
+            "name": "Стол 46",
+            "x": 0,
+            "y": 0,
+            "priceMinor": 500000,
+            "type": "seated",
+            "shape": "table",
+            "seats": [
+                {
+                    "id": "seat-11",
+                    "row": 1,
+                    "number": 1,
+                    "x": 1491,
+                    "y": 878
+                },
+                {
+                    "id": "seat-12",
+                    "row": 1,
+                    "number": 2,
+                    "x": 1477,
+                    "y": 894
+                },
+                {
+                    "id": "seat-13",
+                    "row": 1,
+                    "number": 3,
+                    "x": 1443,
+                    "y": 887
+                },
+                {
+                    "id": "seat-14",
+                    "row": 1,
+                    "number": 4,
+                    "x": 1438,
+                    "y": 854
+                },
+                {
+                    "id": "seat-15",
+                    "row": 1,
+                    "number": 5,
+                    "x": 1452,
+                    "y": 870
+                }
+            ]
+        },
+        {
+            "id": "level-2-row-47",
+            "name": "Стол 47",
+            "x": 0,
+            "y": 0,
+            "priceMinor": 500000,
+            "type": "seated",
+            "shape": "table",
+            "seats": [
+                {
+                    "id": "seat-16",
+                    "row": 1,
+                    "number": 1,
+                    "x": 1491,
+                    "y": 977
+                },
+                {
+                    "id": "seat-17",
+                    "row": 1,
+                    "number": 2,
+                    "x": 1477,
+                    "y": 993
+                },
+                {
+                    "id": "seat-18",
+                    "row": 1,
+                    "number": 3,
+                    "x": 1443,
+                    "y": 986
+                },
+                {
+                    "id": "seat-19",
+                    "row": 1,
+                    "number": 4,
+                    "x": 1438,
+                    "y": 953
+                },
+                {
+                    "id": "seat-20",
+                    "row": 1,
+                    "number": 5,
+                    "x": 1452,
+                    "y": 969
+                }
+            ]
+        },
+        {
+            "id": "level-2-row-48",
+            "name": "Стол 48",
+            "x": 0,
+            "y": 0,
+            "priceMinor": 500000,
+            "type": "seated",
+            "shape": "table",
+            "seats": [
+                {
+                    "id": "seat-21",
+                    "row": 1,
+                    "number": 1,
+                    "x": 1491,
+                    "y": 1076
+                },
+                {
+                    "id": "seat-22",
+                    "row": 1,
+                    "number": 2,
+                    "x": 1477,
+                    "y": 1092
+                },
+                {
+                    "id": "seat-23",
+                    "row": 1,
+                    "number": 3,
+                    "x": 1443,
+                    "y": 1085
+                },
+                {
+                    "id": "seat-24",
+                    "row": 1,
+                    "number": 4,
+                    "x": 1438,
+                    "y": 1052
+                },
+                {
+                    "id": "seat-25",
+                    "row": 1,
+                    "number": 5,
+                    "x": 1452,
+                    "y": 1068
+                }
+            ]
+        },
+        {
+            "id": "level-2-row-49",
+            "name": "Стол 49",
+            "x": 0,
+            "y": 0,
+            "priceMinor": 500000,
+            "type": "seated",
+            "shape": "table",
+            "seats": [
+                {
+                    "id": "seat-26",
+                    "row": 1,
+                    "number": 1,
+                    "x": 1637,
+                    "y": 222
+                },
+                {
+                    "id": "seat-27",
+                    "row": 1,
+                    "number": 2,
+                    "x": 1623,
+                    "y": 238
+                },
+                {
+                    "id": "seat-28",
+                    "row": 1,
+                    "number": 3,
+                    "x": 1589,
+                    "y": 231
+                },
+                {
+                    "id": "seat-29",
+                    "row": 1,
+                    "number": 4,
+                    "x": 1584,
+                    "y": 198
+                },
+                {
+                    "id": "seat-30",
+                    "row": 1,
+                    "number": 5,
+                    "x": 1598,
+                    "y": 214
+                }
+            ]
+        },
+        {
+            "id": "level-2-row-50",
+            "name": "Стол 50",
+            "x": 0,
+            "y": 0,
+            "priceMinor": 500000,
+            "type": "seated",
+            "shape": "table",
+            "seats": [
+                {
+                    "id": "seat-31",
+                    "row": 1,
+                    "number": 1,
+                    "x": 1637,
+                    "y": 311
+                },
+                {
+                    "id": "seat-32",
+                    "row": 1,
+                    "number": 2,
+                    "x": 1623,
+                    "y": 327
+                },
+                {
+                    "id": "seat-33",
+                    "row": 1,
+                    "number": 3,
+                    "x": 1589,
+                    "y": 320
+                },
+                {
+                    "id": "seat-34",
+                    "row": 1,
+                    "number": 4,
+                    "x": 1584,
+                    "y": 287
+                },
+                {
+                    "id": "seat-35",
+                    "row": 1,
+                    "number": 5,
+                    "x": 1598,
+                    "y": 303
+                }
+            ]
+        },
+        {
+            "id": "level-2-row-51",
+            "name": "Стол 51",
+            "x": 0,
+            "y": 0,
+            "priceMinor": 500000,
+            "type": "seated",
+            "shape": "table",
+            "seats": [
+                {
+                    "id": "seat-36",
+                    "row": 1,
+                    "number": 1,
+                    "x": 1637,
+                    "y": 400
+                },
+                {
+                    "id": "seat-37",
+                    "row": 1,
+                    "number": 2,
+                    "x": 1623,
+                    "y": 416
+                },
+                {
+                    "id": "seat-38",
+                    "row": 1,
+                    "number": 3,
+                    "x": 1589,
+                    "y": 409
+                },
+                {
+                    "id": "seat-39",
+                    "row": 1,
+                    "number": 4,
+                    "x": 1584,
+                    "y": 376
+                },
+                {
+                    "id": "seat-40",
+                    "row": 1,
+                    "number": 5,
+                    "x": 1598,
+                    "y": 392
+                }
+            ]
+        },
+        {
+            "id": "level-2-row-52",
+            "name": "Стол 52",
+            "x": 0,
+            "y": 0,
+            "priceMinor": 500000,
+            "type": "seated",
+            "shape": "table",
+            "seats": [
+                {
+                    "id": "seat-41",
+                    "row": 1,
+                    "number": 1,
+                    "x": 1685,
+                    "y": 642
+                },
+                {
+                    "id": "seat-42",
+                    "row": 1,
+                    "number": 2,
+                    "x": 1657,
+                    "y": 670
+                },
+                {
+                    "id": "seat-43",
+                    "row": 1,
+                    "number": 3,
+                    "x": 1629,
+                    "y": 642
+                },
+                {
+                    "id": "seat-44",
+                    "row": 1,
+                    "number": 4,
+                    "x": 1657,
+                    "y": 614
+                }
+            ]
+        },
+        {
+            "id": "level-2-row-53",
+            "name": "Стол 53",
+            "x": 0,
+            "y": 0,
+            "priceMinor": 500000,
+            "type": "seated",
+            "shape": "table",
+            "seats": [
+                {
+                    "id": "seat-45",
+                    "row": 1,
+                    "number": 1,
+                    "x": 1685,
+                    "y": 746
+                },
+                {
+                    "id": "seat-46",
+                    "row": 1,
+                    "number": 2,
+                    "x": 1657,
+                    "y": 774
+                },
+                {
+                    "id": "seat-47",
+                    "row": 1,
+                    "number": 3,
+                    "x": 1629,
+                    "y": 746
+                },
+                {
+                    "id": "seat-48",
+                    "row": 1,
+                    "number": 4,
+                    "x": 1657,
+                    "y": 718
+                }
+            ]
+        },
+        {
+            "id": "level-2-row-10",
+            "name": "Стол 10",
+            "x": 0,
+            "y": 0,
+            "priceMinor": 500000,
+            "type": "seated",
+            "shape": "table",
+            "seats": [
+                {
+                    "id": "seat-49",
+                    "row": 1,
+                    "number": 1,
+                    "x": 116,
+                    "y": 920
+                },
+                {
+                    "id": "seat-50",
+                    "row": 1,
+                    "number": 2,
+                    "x": 88,
+                    "y": 948
+                },
+                {
+                    "id": "seat-51",
+                    "row": 1,
+                    "number": 3,
+                    "x": 60,
+                    "y": 920
+                },
+                {
+                    "id": "seat-52",
+                    "row": 1,
+                    "number": 4,
+                    "x": 88,
+                    "y": 892
+                }
+            ]
+        },
+        {
+            "id": "level-2-row-54",
+            "name": "Стол 54",
+            "x": 0,
+            "y": 0,
+            "priceMinor": 500000,
+            "type": "seated",
+            "shape": "table",
+            "seats": [
+                {
+                    "id": "seat-53",
+                    "row": 1,
+                    "number": 1,
+                    "x": 1685,
+                    "y": 850
+                },
+                {
+                    "id": "seat-54",
+                    "row": 1,
+                    "number": 2,
+                    "x": 1657,
+                    "y": 878
+                },
+                {
+                    "id": "seat-55",
+                    "row": 1,
+                    "number": 3,
+                    "x": 1629,
+                    "y": 850
+                },
+                {
+                    "id": "seat-56",
+                    "row": 1,
+                    "number": 4,
+                    "x": 1657,
+                    "y": 822
+                }
+            ]
+        },
+        {
+            "id": "level-2-row-11",
+            "name": "Стол 11",
+            "x": 0,
+            "y": 0,
+            "priceMinor": 500000,
+            "type": "seated",
+            "shape": "table",
+            "seats": [
+                {
+                    "id": "seat-57",
+                    "row": 1,
+                    "number": 1,
+                    "x": 116,
+                    "y": 814
+                },
+                {
+                    "id": "seat-58",
+                    "row": 1,
+                    "number": 2,
+                    "x": 88,
+                    "y": 842
+                },
+                {
+                    "id": "seat-59",
+                    "row": 1,
+                    "number": 3,
+                    "x": 60,
+                    "y": 814
+                },
+                {
+                    "id": "seat-60",
+                    "row": 1,
+                    "number": 4,
+                    "x": 88,
+                    "y": 786
+                }
+            ]
+        },
+        {
+            "id": "level-2-row-55",
+            "name": "Стол 55",
+            "x": 0,
+            "y": 0,
+            "priceMinor": 500000,
+            "type": "seated",
+            "shape": "table",
+            "seats": [
+                {
+                    "id": "seat-61",
+                    "row": 1,
+                    "number": 1,
+                    "x": 1685,
+                    "y": 954
+                },
+                {
+                    "id": "seat-62",
+                    "row": 1,
+                    "number": 2,
+                    "x": 1657,
+                    "y": 982
+                },
+                {
+                    "id": "seat-63",
+                    "row": 1,
+                    "number": 3,
+                    "x": 1629,
+                    "y": 954
+                },
+                {
+                    "id": "seat-64",
+                    "row": 1,
+                    "number": 4,
+                    "x": 1657,
+                    "y": 926
+                }
+            ]
+        },
+        {
+            "id": "level-2-row-12",
+            "name": "Стол 12",
+            "x": 0,
+            "y": 0,
+            "priceMinor": 500000,
+            "type": "seated",
+            "shape": "table",
+            "seats": [
+                {
+                    "id": "seat-65",
+                    "row": 1,
+                    "number": 1,
+                    "x": 116,
+                    "y": 708
+                },
+                {
+                    "id": "seat-66",
+                    "row": 1,
+                    "number": 2,
+                    "x": 88,
+                    "y": 736
+                },
+                {
+                    "id": "seat-67",
+                    "row": 1,
+                    "number": 3,
+                    "x": 60,
+                    "y": 708
+                },
+                {
+                    "id": "seat-68",
+                    "row": 1,
+                    "number": 4,
+                    "x": 88,
+                    "y": 680
+                }
+            ]
+        },
+        {
+            "id": "level-2-row-56",
+            "name": "Стол 56",
+            "x": 0,
+            "y": 0,
+            "priceMinor": 500000,
+            "type": "seated",
+            "shape": "table",
+            "seats": [
+                {
+                    "id": "seat-69",
+                    "row": 1,
+                    "number": 1,
+                    "x": 1685,
+                    "y": 1058
+                },
+                {
+                    "id": "seat-70",
+                    "row": 1,
+                    "number": 2,
+                    "x": 1657,
+                    "y": 1086
+                },
+                {
+                    "id": "seat-71",
+                    "row": 1,
+                    "number": 3,
+                    "x": 1629,
+                    "y": 1058
+                },
+                {
+                    "id": "seat-72",
+                    "row": 1,
+                    "number": 4,
+                    "x": 1657,
+                    "y": 1030
+                }
+            ]
+        },
+        {
+            "id": "level-2-row-13",
+            "name": "Стол 13",
+            "x": 0,
+            "y": 0,
+            "priceMinor": 500000,
+            "type": "seated",
+            "shape": "table",
+            "seats": [
+                {
+                    "id": "seat-73",
+                    "row": 1,
+                    "number": 1,
+                    "x": 116,
+                    "y": 602
+                },
+                {
+                    "id": "seat-74",
+                    "row": 1,
+                    "number": 2,
+                    "x": 88,
+                    "y": 630
+                },
+                {
+                    "id": "seat-75",
+                    "row": 1,
+                    "number": 3,
+                    "x": 60,
+                    "y": 602
+                },
+                {
+                    "id": "seat-76",
+                    "row": 1,
+                    "number": 4,
+                    "x": 88,
+                    "y": 574
+                }
+            ]
+        },
+        {
+            "id": "level-2-row-14",
+            "name": "Стол 14",
+            "x": 0,
+            "y": 0,
+            "priceMinor": 500000,
+            "type": "seated",
+            "shape": "table",
+            "seats": [
+                {
+                    "id": "seat-77",
+                    "row": 1,
+                    "number": 1,
+                    "x": 116,
+                    "y": 172
+                },
+                {
+                    "id": "seat-78",
+                    "row": 1,
+                    "number": 2,
+                    "x": 88,
+                    "y": 200
+                },
+                {
+                    "id": "seat-79",
+                    "row": 1,
+                    "number": 3,
+                    "x": 60,
+                    "y": 172
+                },
+                {
+                    "id": "seat-80",
+                    "row": 1,
+                    "number": 4,
+                    "x": 88,
+                    "y": 144
+                }
+            ]
+        },
+        {
+            "id": "level-2-row-15",
+            "name": "Стол 15",
+            "x": 0,
+            "y": 0,
+            "priceMinor": 350000,
+            "type": "seated",
+            "shape": "table",
+            "seats": [
+                {
+                    "id": "seat-81",
+                    "row": 1,
+                    "number": 1,
+                    "x": 172,
+                    "y": 88
+                },
+                {
+                    "id": "seat-82",
+                    "row": 1,
+                    "number": 2,
+                    "x": 144,
+                    "y": 116
+                },
+                {
+                    "id": "seat-83",
+                    "row": 1,
+                    "number": 3,
+                    "x": 116,
+                    "y": 88
+                },
+                {
+                    "id": "seat-84",
+                    "row": 1,
+                    "number": 4,
+                    "x": 144,
+                    "y": 60
+                }
+            ]
+        },
+        {
+            "id": "level-2-row-16",
+            "name": "Стол 16",
+            "x": 0,
+            "y": 0,
+            "priceMinor": 500000,
+            "type": "seated",
+            "shape": "table",
+            "seats": [
+                {
+                    "id": "seat-85",
+                    "row": 1,
+                    "number": 1,
+                    "x": 200,
+                    "y": 88
+                },
+                {
+                    "id": "seat-86",
+                    "row": 1,
+                    "number": 2,
+                    "x": 172,
+                    "y": 116
+                },
+                {
+                    "id": "seat-87",
+                    "row": 1,
+                    "number": 3,
+                    "x": 144,
+                    "y": 88
+                },
+                {
+                    "id": "seat-88",
+                    "row": 1,
+                    "number": 4,
+                    "x": 172,
+                    "y": 60
+                }
+            ]
+        },
+        {
+            "id": "level-2-row-17",
+            "name": "Стол 17",
+            "x": 0,
+            "y": 0,
+            "priceMinor": 350000,
+            "type": "seated",
+            "shape": "table",
+            "seats": [
+                {
+                    "id": "seat-89",
+                    "row": 1,
+                    "number": 1,
+                    "x": 256,
+                    "y": 172
+                },
+                {
+                    "id": "seat-90",
+                    "row": 1,
+                    "number": 2,
+                    "x": 228,
+                    "y": 200
+                },
+                {
+                    "id": "seat-91",
+                    "row": 1,
+                    "number": 3,
+                    "x": 200,
+                    "y": 172
+                },
+                {
+                    "id": "seat-92",
+                    "row": 1,
+                    "number": 4,
+                    "x": 228,
+                    "y": 144
+                }
+            ]
+        },
+        {
+            "id": "level-2-row-18",
+            "name": "Стол 18",
+            "x": 0,
+            "y": 0,
+            "priceMinor": 500000,
+            "type": "seated",
+            "shape": "table",
+            "seats": [
+                {
+                    "id": "seat-93",
+                    "row": 1,
+                    "number": 1,
+                    "x": 436,
+                    "y": 272
+                },
+                {
+                    "id": "seat-94",
+                    "row": 1,
+                    "number": 2,
+                    "x": 422,
+                    "y": 288
+                },
+                {
+                    "id": "seat-95",
+                    "row": 1,
+                    "number": 3,
+                    "x": 388,
+                    "y": 281
+                },
+                {
+                    "id": "seat-96",
+                    "row": 1,
+                    "number": 4,
+                    "x": 383,
+                    "y": 248
+                },
+                {
+                    "id": "seat-97",
+                    "row": 1,
+                    "number": 5,
+                    "x": 397,
+                    "y": 264
+                }
+            ]
+        },
+        {
+            "id": "level-2-row-19",
+            "name": "Стол 19",
+            "x": 0,
+            "y": 0,
+            "priceMinor": 450000,
+            "type": "seated",
+            "shape": "table",
+            "seats": [
+                {
+                    "id": "seat-98",
+                    "row": 1,
+                    "number": 1,
+                    "x": 565,
+                    "y": 265
+                },
+                {
+                    "id": "seat-99",
+                    "row": 1,
+                    "number": 2,
+                    "x": 551,
+                    "y": 281
+                },
+                {
+                    "id": "seat-100",
+                    "row": 1,
+                    "number": 3,
+                    "x": 517,
+                    "y": 274
+                },
+                {
+                    "id": "seat-101",
+                    "row": 1,
+                    "number": 4,
+                    "x": 512,
+                    "y": 241
+                },
+                {
+                    "id": "seat-102",
+                    "row": 1,
+                    "number": 5,
+                    "x": 526,
+                    "y": 257
+                }
+            ]
+        },
+        {
+            "id": "level-2-row-1",
+            "name": "Стол 1",
+            "x": 0,
+            "y": 0,
+            "priceMinor": 400000,
+            "type": "seated",
+            "shape": "table",
+            "seats": [
+                {
+                    "id": "seat-103",
+                    "row": 1,
+                    "number": 1,
+                    "x": 352,
+                    "y": 1017
+                },
+                {
+                    "id": "seat-104",
+                    "row": 1,
+                    "number": 2,
+                    "x": 338,
+                    "y": 1033
+                },
+                {
+                    "id": "seat-105",
+                    "row": 1,
+                    "number": 3,
+                    "x": 304,
+                    "y": 1026
+                },
+                {
+                    "id": "seat-106",
+                    "row": 1,
+                    "number": 4,
+                    "x": 299,
+                    "y": 993
+                },
+                {
+                    "id": "seat-107",
+                    "row": 1,
+                    "number": 5,
+                    "x": 313,
+                    "y": 1009
+                }
+            ]
+        },
+        {
+            "id": "level-2-row-2",
+            "name": "Стол 2",
+            "x": 0,
+            "y": 0,
+            "priceMinor": 500000,
+            "type": "seated",
+            "shape": "table",
+            "seats": [
+                {
+                    "id": "seat-108",
+                    "row": 1,
+                    "number": 1,
+                    "x": 304,
+                    "y": 927
+                },
+                {
+                    "id": "seat-109",
+                    "row": 1,
+                    "number": 2,
+                    "x": 290,
+                    "y": 943
+                },
+                {
+                    "id": "seat-110",
+                    "row": 1,
+                    "number": 3,
+                    "x": 256,
+                    "y": 936
+                },
+                {
+                    "id": "seat-111",
+                    "row": 1,
+                    "number": 4,
+                    "x": 251,
+                    "y": 903
+                },
+                {
+                    "id": "seat-112",
+                    "row": 1,
+                    "number": 5,
+                    "x": 265,
+                    "y": 919
+                }
+            ]
+        },
+        {
+            "id": "level-2-row-3",
+            "name": "Стол 3",
+            "x": 0,
+            "y": 0,
+            "priceMinor": 400000,
+            "type": "seated",
+            "shape": "table",
+            "seats": [
+                {
+                    "id": "seat-113",
+                    "row": 1,
+                    "number": 1,
+                    "x": 344,
+                    "y": 856
+                },
+                {
+                    "id": "seat-114",
+                    "row": 1,
+                    "number": 2,
+                    "x": 324,
+                    "y": 856
+                },
+                {
+                    "id": "seat-115",
+                    "row": 1,
+                    "number": 3,
+                    "x": 304,
+                    "y": 856
+                },
+                {
+                    "id": "seat-116",
+                    "row": 1,
+                    "number": 4,
+                    "x": 284,
+                    "y": 856
+                },
+                {
+                    "id": "seat-117",
+                    "row": 1,
+                    "number": 5,
+                    "x": 264,
+                    "y": 828
+                },
+                {
+                    "id": "seat-118",
+                    "row": 1,
+                    "number": 6,
+                    "x": 284,
+                    "y": 801
+                },
+                {
+                    "id": "seat-119",
+                    "row": 1,
+                    "number": 7,
+                    "x": 304,
+                    "y": 801
+                },
+                {
+                    "id": "seat-120",
+                    "row": 1,
+                    "number": 8,
+                    "x": 324,
+                    "y": 801
+                },
+                {
+                    "id": "seat-121",
+                    "row": 1,
+                    "number": 9,
+                    "x": 344,
+                    "y": 801
+                }
+            ]
+        },
+        {
+            "id": "level-2-row-4",
+            "name": "Стол 4",
+            "x": 0,
+            "y": 0,
+            "priceMinor": 500000,
+            "type": "seated",
+            "shape": "table",
+            "seats": [
+                {
+                    "id": "seat-122",
+                    "row": 1,
+                    "number": 1,
+                    "x": 264,
+                    "y": 729
+                },
+                {
+                    "id": "seat-123",
+                    "row": 1,
+                    "number": 2,
+                    "x": 244,
+                    "y": 729
+                },
+                {
+                    "id": "seat-124",
+                    "row": 1,
+                    "number": 3,
+                    "x": 224,
+                    "y": 729
+                },
+                {
+                    "id": "seat-125",
+                    "row": 1,
+                    "number": 4,
+                    "x": 204,
+                    "y": 729
+                },
+                {
+                    "id": "seat-126",
+                    "row": 1,
+                    "number": 5,
+                    "x": 184,
+                    "y": 701
+                },
+                {
+                    "id": "seat-127",
+                    "row": 1,
+                    "number": 6,
+                    "x": 204,
+                    "y": 674
+                },
+                {
+                    "id": "seat-128",
+                    "row": 1,
+                    "number": 7,
+                    "x": 224,
+                    "y": 674
+                },
+                {
+                    "id": "seat-129",
+                    "row": 1,
+                    "number": 8,
+                    "x": 244,
+                    "y": 674
+                },
+                {
+                    "id": "seat-130",
+                    "row": 1,
+                    "number": 9,
+                    "x": 264,
+                    "y": 674
+                }
+            ]
+        },
+        {
+            "id": "level-2-row-5",
+            "name": "Стол 5",
+            "x": 0,
+            "y": 0,
+            "priceMinor": 350000,
+            "type": "seated",
+            "shape": "table",
+            "seats": [
+                {
+                    "id": "seat-131",
+                    "row": 1,
+                    "number": 1,
+                    "x": 344,
+                    "y": 658
+                },
+                {
+                    "id": "seat-132",
+                    "row": 1,
+                    "number": 2,
+                    "x": 324,
+                    "y": 658
+                },
+                {
+                    "id": "seat-133",
+                    "row": 1,
+                    "number": 3,
+                    "x": 304,
+                    "y": 658
+                },
+                {
+                    "id": "seat-134",
+                    "row": 1,
+                    "number": 4,
+                    "x": 284,
+                    "y": 658
+                },
+                {
+                    "id": "seat-135",
+                    "row": 1,
+                    "number": 5,
+                    "x": 264,
+                    "y": 630
+                },
+                {
+                    "id": "seat-136",
+                    "row": 1,
+                    "number": 6,
+                    "x": 284,
+                    "y": 603
+                },
+                {
+                    "id": "seat-137",
+                    "row": 1,
+                    "number": 7,
+                    "x": 304,
+                    "y": 603
+                },
+                {
+                    "id": "seat-138",
+                    "row": 1,
+                    "number": 8,
+                    "x": 324,
+                    "y": 603
+                },
+                {
+                    "id": "seat-139",
+                    "row": 1,
+                    "number": 9,
+                    "x": 344,
+                    "y": 603
+                }
+            ]
+        },
+        {
+            "id": "level-2-row-6",
+            "name": "Стол 6",
+            "x": 0,
+            "y": 0,
+            "priceMinor": 500000,
+            "type": "seated",
+            "shape": "table",
+            "seats": [
+                {
+                    "id": "seat-140",
+                    "row": 1,
+                    "number": 1,
+                    "x": 290,
+                    "y": 541
+                },
+                {
+                    "id": "seat-141",
+                    "row": 1,
+                    "number": 2,
+                    "x": 276,
+                    "y": 557
+                },
+                {
+                    "id": "seat-142",
+                    "row": 1,
+                    "number": 3,
+                    "x": 242,
+                    "y": 550
+                },
+                {
+                    "id": "seat-143",
+                    "row": 1,
+                    "number": 4,
+                    "x": 237,
+                    "y": 517
+                },
+                {
+                    "id": "seat-144",
+                    "row": 1,
+                    "number": 5,
+                    "x": 251,
+                    "y": 533
+                }
+            ]
+        },
+        {
+            "id": "level-2-row-7",
+            "name": "Стол 7",
+            "x": 0,
+            "y": 0,
+            "priceMinor": 300000,
+            "type": "seated",
+            "shape": "table",
+            "seats": [
+                {
+                    "id": "seat-145",
+                    "row": 1,
+                    "number": 1,
+                    "x": 253,
+                    "y": 475
+                },
+                {
+                    "id": "seat-146",
+                    "row": 1,
+                    "number": 2,
+                    "x": 239,
+                    "y": 491
+                },
+                {
+                    "id": "seat-147",
+                    "row": 1,
+                    "number": 3,
+                    "x": 205,
+                    "y": 484
+                },
+                {
+                    "id": "seat-148",
+                    "row": 1,
+                    "number": 4,
+                    "x": 200,
+                    "y": 451
+                },
+                {
+                    "id": "seat-149",
+                    "row": 1,
+                    "number": 5,
+                    "x": 214,
+                    "y": 467
+                }
+            ]
+        },
+        {
+            "id": "level-2-row-8",
+            "name": "Стол 8",
+            "x": 0,
+            "y": 0,
+            "priceMinor": 500000,
+            "type": "seated",
+            "shape": "table",
+            "seats": [
+                {
+                    "id": "seat-150",
+                    "row": 1,
+                    "number": 1,
+                    "x": 132,
+                    "y": 383
+                },
+                {
+                    "id": "seat-151",
+                    "row": 1,
+                    "number": 2,
+                    "x": 118,
+                    "y": 399
+                },
+                {
+                    "id": "seat-152",
+                    "row": 1,
+                    "number": 3,
+                    "x": 84,
+                    "y": 392
+                },
+                {
+                    "id": "seat-153",
+                    "row": 1,
+                    "number": 4,
+                    "x": 79,
+                    "y": 359
+                },
+                {
+                    "id": "seat-154",
+                    "row": 1,
+                    "number": 5,
+                    "x": 93,
+                    "y": 375
+                }
+            ]
+        },
+        {
+            "id": "level-2-row-9",
+            "name": "Стол 9",
+            "x": 0,
+            "y": 0,
+            "priceMinor": 500000,
+            "type": "seated",
+            "shape": "table",
+            "seats": [
+                {
+                    "id": "seat-155",
+                    "row": 1,
+                    "number": 1,
+                    "x": 116,
+                    "y": 1026
+                },
+                {
+                    "id": "seat-156",
+                    "row": 1,
+                    "number": 2,
+                    "x": 88,
+                    "y": 1054
+                },
+                {
+                    "id": "seat-157",
+                    "row": 1,
+                    "number": 3,
+                    "x": 60,
+                    "y": 1026
+                },
+                {
+                    "id": "seat-158",
+                    "row": 1,
+                    "number": 4,
+                    "x": 88,
+                    "y": 998
+                }
+            ]
+        },
+        {
+            "id": "level-2-row-20",
+            "name": "Стол 20",
+            "x": 0,
+            "y": 0,
+            "priceMinor": 500000,
+            "type": "seated",
+            "shape": "table",
+            "seats": [
+                {
+                    "id": "seat-159",
+                    "row": 1,
+                    "number": 1,
+                    "x": 646,
+                    "y": 225
+                },
+                {
+                    "id": "seat-160",
+                    "row": 1,
+                    "number": 2,
+                    "x": 632,
+                    "y": 241
+                },
+                {
+                    "id": "seat-161",
+                    "row": 1,
+                    "number": 3,
+                    "x": 598,
+                    "y": 234
+                },
+                {
+                    "id": "seat-162",
+                    "row": 1,
+                    "number": 4,
+                    "x": 593,
+                    "y": 201
+                },
+                {
+                    "id": "seat-163",
+                    "row": 1,
+                    "number": 5,
+                    "x": 607,
+                    "y": 217
+                }
+            ]
+        },
+        {
+            "id": "level-2-row-21",
+            "name": "Стол 21",
+            "x": 0,
+            "y": 0,
+            "priceMinor": 500000,
+            "type": "seated",
+            "shape": "table",
+            "seats": [
+                {
+                    "id": "seat-164",
+                    "row": 1,
+                    "number": 1,
+                    "x": 783,
+                    "y": 227
+                },
+                {
+                    "id": "seat-165",
+                    "row": 1,
+                    "number": 2,
+                    "x": 769,
+                    "y": 243
+                },
+                {
+                    "id": "seat-166",
+                    "row": 1,
+                    "number": 3,
+                    "x": 735,
+                    "y": 236
+                },
+                {
+                    "id": "seat-167",
+                    "row": 1,
+                    "number": 4,
+                    "x": 730,
+                    "y": 203
+                },
+                {
+                    "id": "seat-168",
+                    "row": 1,
+                    "number": 5,
+                    "x": 744,
+                    "y": 219
+                }
+            ]
+        },
+        {
+            "id": "level-2-row-22",
+            "name": "Стол 22",
+            "x": 0,
+            "y": 0,
+            "priceMinor": 500000,
+            "type": "seated",
+            "shape": "table",
+            "seats": [
+                {
+                    "id": "seat-169",
+                    "row": 1,
+                    "number": 1,
+                    "x": 346,
+                    "y": 172
+                },
+                {
+                    "id": "seat-170",
+                    "row": 1,
+                    "number": 2,
+                    "x": 318,
+                    "y": 200
+                },
+                {
+                    "id": "seat-171",
+                    "row": 1,
+                    "number": 3,
+                    "x": 290,
+                    "y": 172
+                },
+                {
+                    "id": "seat-172",
+                    "row": 1,
+                    "number": 4,
+                    "x": 318,
+                    "y": 144
+                }
+            ]
+        },
+        {
+            "id": "level-2-row-23",
+            "name": "Стол 23",
+            "x": 0,
+            "y": 0,
+            "priceMinor": 400000,
+            "type": "seated",
+            "shape": "table",
+            "seats": [
+                {
+                    "id": "seat-173",
+                    "row": 1,
+                    "number": 1,
+                    "x": 532,
+                    "y": 88
+                },
+                {
+                    "id": "seat-174",
+                    "row": 1,
+                    "number": 2,
+                    "x": 504,
+                    "y": 116
+                },
+                {
+                    "id": "seat-175",
+                    "row": 1,
+                    "number": 3,
+                    "x": 476,
+                    "y": 88
+                },
+                {
+                    "id": "seat-176",
+                    "row": 1,
+                    "number": 4,
+                    "x": 504,
+                    "y": 60
+                }
+            ]
+        },
+        {
+            "id": "level-2-row-24",
+            "name": "Стол 24",
+            "x": 0,
+            "y": 0,
+            "priceMinor": 500000,
+            "type": "seated",
+            "shape": "table",
+            "seats": [
+                {
+                    "id": "seat-177",
+                    "row": 1,
+                    "number": 1,
+                    "x": 666,
+                    "y": 88
+                },
+                {
+                    "id": "seat-178",
+                    "row": 1,
+                    "number": 2,
+                    "x": 638,
+                    "y": 116
+                },
+                {
+                    "id": "seat-179",
+                    "row": 1,
+                    "number": 3,
+                    "x": 610,
+                    "y": 88
+                },
+                {
+                    "id": "seat-180",
+                    "row": 1,
+                    "number": 4,
+                    "x": 638,
+                    "y": 60
+                }
+            ]
+        },
+        {
+            "id": "level-2-row-25",
+            "name": "Стол 25",
+            "x": 0,
+            "y": 0,
+            "priceMinor": 450000,
+            "type": "seated",
+            "shape": "table",
+            "seats": [
+                {
+                    "id": "seat-181",
+                    "row": 1,
+                    "number": 1,
+                    "x": 444,
+                    "y": 463
+                },
+                {
+                    "id": "seat-182",
+                    "row": 1,
+                    "number": 2,
+                    "x": 430,
+                    "y": 479
+                },
+                {
+                    "id": "seat-183",
+                    "row": 1,
+                    "number": 3,
+                    "x": 396,
+                    "y": 472
+                },
+                {
+                    "id": "seat-184",
+                    "row": 1,
+                    "number": 4,
+                    "x": 391,
+                    "y": 439
+                },
+                {
+                    "id": "seat-185",
+                    "row": 1,
+                    "number": 5,
+                    "x": 405,
+                    "y": 455
+                }
+            ]
+        },
+        {
+            "id": "level-2-row-26",
+            "name": "Стол 26",
+            "x": 0,
+            "y": 0,
+            "priceMinor": 450000,
+            "type": "seated",
+            "shape": "table",
+            "seats": [
+                {
+                    "id": "seat-186",
+                    "row": 1,
+                    "number": 1,
+                    "x": 543,
+                    "y": 433
+                },
+                {
+                    "id": "seat-187",
+                    "row": 1,
+                    "number": 2,
+                    "x": 529,
+                    "y": 449
+                },
+                {
+                    "id": "seat-188",
+                    "row": 1,
+                    "number": 3,
+                    "x": 495,
+                    "y": 442
+                },
+                {
+                    "id": "seat-189",
+                    "row": 1,
+                    "number": 4,
+                    "x": 490,
+                    "y": 409
+                },
+                {
+                    "id": "seat-190",
+                    "row": 1,
+                    "number": 5,
+                    "x": 504,
+                    "y": 425
+                }
+            ]
+        },
+        {
+            "id": "level-2-row-27",
+            "name": "Стол 27",
+            "x": 0,
+            "y": 0,
+            "priceMinor": 500000,
+            "type": "seated",
+            "shape": "table",
+            "seats": [
+                {
+                    "id": "seat-191",
+                    "row": 1,
+                    "number": 1,
+                    "x": 642,
+                    "y": 393
+                },
+                {
+                    "id": "seat-192",
+                    "row": 1,
+                    "number": 2,
+                    "x": 628,
+                    "y": 409
+                },
+                {
+                    "id": "seat-193",
+                    "row": 1,
+                    "number": 3,
+                    "x": 594,
+                    "y": 402
+                },
+                {
+                    "id": "seat-194",
+                    "row": 1,
+                    "number": 4,
+                    "x": 589,
+                    "y": 369
+                },
+                {
+                    "id": "seat-195",
+                    "row": 1,
+                    "number": 5,
+                    "x": 603,
+                    "y": 385
+                }
+            ]
+        },
+        {
+            "id": "level-2-row-28",
+            "name": "Стол 28",
+            "x": 0,
+            "y": 0,
+            "priceMinor": 500000,
+            "type": "seated",
+            "shape": "table",
+            "seats": [
+                {
+                    "id": "seat-196",
+                    "row": 1,
+                    "number": 1,
+                    "x": 741,
+                    "y": 383
+                },
+                {
+                    "id": "seat-197",
+                    "row": 1,
+                    "number": 2,
+                    "x": 727,
+                    "y": 399
+                },
+                {
+                    "id": "seat-198",
+                    "row": 1,
+                    "number": 3,
+                    "x": 693,
+                    "y": 392
+                },
+                {
+                    "id": "seat-199",
+                    "row": 1,
+                    "number": 4,
+                    "x": 688,
+                    "y": 359
+                },
+                {
+                    "id": "seat-200",
+                    "row": 1,
+                    "number": 5,
+                    "x": 702,
+                    "y": 375
+                }
+            ]
+        },
+        {
+            "id": "level-2-row-29",
+            "name": "Стол 29",
+            "x": 0,
+            "y": 0,
+            "priceMinor": 500000,
+            "type": "seated",
+            "shape": "table",
+            "seats": [
+                {
+                    "id": "seat-201",
+                    "row": 1,
+                    "number": 1,
+                    "x": 840,
+                    "y": 373
+                },
+                {
+                    "id": "seat-202",
+                    "row": 1,
+                    "number": 2,
+                    "x": 826,
+                    "y": 389
+                },
+                {
+                    "id": "seat-203",
+                    "row": 1,
+                    "number": 3,
+                    "x": 792,
+                    "y": 382
+                },
+                {
+                    "id": "seat-204",
+                    "row": 1,
+                    "number": 4,
+                    "x": 787,
+                    "y": 349
+                },
+                {
+                    "id": "seat-205",
+                    "row": 1,
+                    "number": 5,
+                    "x": 801,
+                    "y": 365
+                }
+            ]
+        },
+        {
+            "id": "level-2-row-30",
+            "name": "Стол 30",
+            "x": 0,
+            "y": 0,
+            "priceMinor": 500000,
+            "type": "seated",
+            "shape": "table",
+            "seats": [
+                {
+                    "id": "seat-206",
+                    "row": 1,
+                    "number": 1,
+                    "x": 939,
+                    "y": 353
+                },
+                {
+                    "id": "seat-207",
+                    "row": 1,
+                    "number": 2,
+                    "x": 925,
+                    "y": 369
+                },
+                {
+                    "id": "seat-208",
+                    "row": 1,
+                    "number": 3,
+                    "x": 891,
+                    "y": 362
+                },
+                {
+                    "id": "seat-209",
+                    "row": 1,
+                    "number": 4,
+                    "x": 886,
+                    "y": 329
+                },
+                {
+                    "id": "seat-210",
+                    "row": 1,
+                    "number": 5,
+                    "x": 900,
+                    "y": 345
+                }
+            ]
+        },
+        {
+            "id": "level-2-row-31",
+            "name": "Стол 31",
+            "x": 0,
+            "y": 0,
+            "priceMinor": 500000,
+            "type": "seated",
+            "shape": "table",
+            "seats": [
+                {
+                    "id": "seat-211",
+                    "row": 1,
+                    "number": 1,
+                    "x": 1038,
+                    "y": 383
+                },
+                {
+                    "id": "seat-212",
+                    "row": 1,
+                    "number": 2,
+                    "x": 1024,
+                    "y": 399
+                },
+                {
+                    "id": "seat-213",
+                    "row": 1,
+                    "number": 3,
+                    "x": 990,
+                    "y": 392
+                },
+                {
+                    "id": "seat-214",
+                    "row": 1,
+                    "number": 4,
+                    "x": 985,
+                    "y": 359
+                },
+                {
+                    "id": "seat-215",
+                    "row": 1,
+                    "number": 5,
+                    "x": 999,
+                    "y": 375
+                }
+            ]
+        },
+        {
+            "id": "level-2-row-32",
+            "name": "Стол 32",
+            "x": 0,
+            "y": 0,
+            "priceMinor": 500000,
+            "type": "seated",
+            "shape": "table",
+            "seats": [
+                {
+                    "id": "seat-216",
+                    "row": 1,
+                    "number": 1,
+                    "x": 1137,
+                    "y": 393
+                },
+                {
+                    "id": "seat-217",
+                    "row": 1,
+                    "number": 2,
+                    "x": 1123,
+                    "y": 409
+                },
+                {
+                    "id": "seat-218",
+                    "row": 1,
+                    "number": 3,
+                    "x": 1089,
+                    "y": 402
+                },
+                {
+                    "id": "seat-219",
+                    "row": 1,
+                    "number": 4,
+                    "x": 1084,
+                    "y": 369
+                },
+                {
+                    "id": "seat-220",
+                    "row": 1,
+                    "number": 5,
+                    "x": 1098,
+                    "y": 385
+                }
+            ]
+        },
+        {
+            "id": "level-2-row-33",
+            "name": "Стол 33",
+            "x": 0,
+            "y": 0,
+            "priceMinor": 450000,
+            "type": "seated",
+            "shape": "table",
+            "seats": [
+                {
+                    "id": "seat-221",
+                    "row": 1,
+                    "number": 1,
+                    "x": 1236,
+                    "y": 433
+                },
+                {
+                    "id": "seat-222",
+                    "row": 1,
+                    "number": 2,
+                    "x": 1222,
+                    "y": 449
+                },
+                {
+                    "id": "seat-223",
+                    "row": 1,
+                    "number": 3,
+                    "x": 1188,
+                    "y": 442
+                },
+                {
+                    "id": "seat-224",
+                    "row": 1,
+                    "number": 4,
+                    "x": 1183,
+                    "y": 409
+                },
+                {
+                    "id": "seat-225",
+                    "row": 1,
+                    "number": 5,
+                    "x": 1197,
+                    "y": 425
+                }
+            ]
+        },
+        {
+            "id": "level-2-row-34",
+            "name": "Стол 34",
+            "x": 0,
+            "y": 0,
+            "priceMinor": 500000,
+            "type": "seated",
+            "shape": "table",
+            "seats": [
+                {
+                    "id": "seat-226",
+                    "row": 1,
+                    "number": 1,
+                    "x": 1335,
+                    "y": 443
+                },
+                {
+                    "id": "seat-227",
+                    "row": 1,
+                    "number": 2,
+                    "x": 1321,
+                    "y": 459
+                },
+                {
+                    "id": "seat-228",
+                    "row": 1,
+                    "number": 3,
+                    "x": 1287,
+                    "y": 452
+                },
+                {
+                    "id": "seat-229",
+                    "row": 1,
+                    "number": 4,
+                    "x": 1282,
+                    "y": 419
+                },
+                {
+                    "id": "seat-230",
+                    "row": 1,
+                    "number": 5,
+                    "x": 1296,
+                    "y": 435
+                }
+            ]
+        },
+        {
+            "id": "level-2-row-39",
+            "name": "Стол 39",
+            "x": 0,
+            "y": 0,
+            "priceMinor": 300000,
+            "type": "seated",
+            "shape": "table",
+            "seats": [
+                {
+                    "id": "seat-231",
+                    "row": 1,
+                    "number": 1,
+                    "x": 1493,
+                    "y": 143
+                },
+                {
+                    "id": "seat-232",
+                    "row": 1,
+                    "number": 2,
+                    "x": 1479,
+                    "y": 159
+                },
+                {
+                    "id": "seat-233",
+                    "row": 1,
+                    "number": 3,
+                    "x": 1445,
+                    "y": 152
+                },
+                {
+                    "id": "seat-234",
+                    "row": 1,
+                    "number": 4,
+                    "x": 1440,
+                    "y": 119
+                },
+                {
+                    "id": "seat-235",
+                    "row": 1,
+                    "number": 5,
+                    "x": 1454,
+                    "y": 135
+                }
+            ]
+        },
+        {
+            "id": "level-2-row-40",
+            "name": "Стол 40",
+            "x": 0,
+            "y": 0,
+            "priceMinor": 500000,
+            "type": "seated",
+            "shape": "table",
+            "seats": [
+                {
+                    "id": "seat-236",
+                    "row": 1,
+                    "number": 1,
+                    "x": 1493,
+                    "y": 242
+                },
+                {
+                    "id": "seat-237",
+                    "row": 1,
+                    "number": 2,
+                    "x": 1479,
+                    "y": 258
+                },
+                {
+                    "id": "seat-238",
+                    "row": 1,
+                    "number": 3,
+                    "x": 1445,
+                    "y": 251
+                },
+                {
+                    "id": "seat-239",
+                    "row": 1,
+                    "number": 4,
+                    "x": 1440,
+                    "y": 218
+                },
+                {
+                    "id": "seat-240",
+                    "row": 1,
+                    "number": 5,
+                    "x": 1454,
+                    "y": 234
+                }
+            ]
+        },
+        {
+            "id": "level-2-row-41",
+            "name": "Стол 41",
+            "x": 0,
+            "y": 0,
+            "priceMinor": 350000,
+            "type": "seated",
+            "shape": "table",
+            "seats": [
+                {
+                    "id": "seat-241",
+                    "row": 1,
+                    "number": 1,
+                    "x": 1493,
+                    "y": 341
+                },
+                {
+                    "id": "seat-242",
+                    "row": 1,
+                    "number": 2,
+                    "x": 1479,
+                    "y": 357
+                },
+                {
+                    "id": "seat-243",
+                    "row": 1,
+                    "number": 3,
+                    "x": 1445,
+                    "y": 350
+                },
+                {
+                    "id": "seat-244",
+                    "row": 1,
+                    "number": 4,
+                    "x": 1440,
+                    "y": 317
+                },
+                {
+                    "id": "seat-245",
+                    "row": 1,
+                    "number": 5,
+                    "x": 1454,
+                    "y": 333
+                }
+            ]
+        },
+        {
+            "id": "level-2-row-42",
+            "name": "Стол 42",
+            "x": 0,
+            "y": 0,
+            "priceMinor": 350000,
+            "type": "seated",
+            "shape": "table",
+            "seats": [
+                {
+                    "id": "seat-246",
+                    "row": 1,
+                    "number": 1,
+                    "x": 1525,
+                    "y": 413
+                },
+                {
+                    "id": "seat-247",
+                    "row": 1,
+                    "number": 2,
+                    "x": 1511,
+                    "y": 429
+                },
+                {
+                    "id": "seat-248",
+                    "row": 1,
+                    "number": 3,
+                    "x": 1477,
+                    "y": 422
+                },
+                {
+                    "id": "seat-249",
+                    "row": 1,
+                    "number": 4,
+                    "x": 1472,
+                    "y": 389
+                },
+                {
+                    "id": "seat-250",
+                    "row": 1,
+                    "number": 5,
+                    "x": 1486,
+                    "y": 405
+                }
+            ]
+        },
+        {
+            "id": "level-2-row-43",
+            "name": "Стол 43",
+            "x": 0,
+            "y": 0,
+            "priceMinor": 500000,
+            "type": "seated",
+            "shape": "table",
+            "seats": [
+                {
+                    "id": "seat-251",
+                    "row": 1,
+                    "number": 1,
+                    "x": 1491,
+                    "y": 581
+                },
+                {
+                    "id": "seat-252",
+                    "row": 1,
+                    "number": 2,
+                    "x": 1471,
+                    "y": 581
+                },
+                {
+                    "id": "seat-253",
+                    "row": 1,
+                    "number": 3,
+                    "x": 1451,
+                    "y": 581
+                },
+                {
+                    "id": "seat-254",
+                    "row": 1,
+                    "number": 4,
+                    "x": 1431,
+                    "y": 581
+                },
+                {
+                    "id": "seat-255",
+                    "row": 1,
+                    "number": 5,
+                    "x": 1411,
+                    "y": 553
+                },
+                {
+                    "id": "seat-256",
+                    "row": 1,
+                    "number": 6,
+                    "x": 1431,
+                    "y": 526
+                },
+                {
+                    "id": "seat-257",
+                    "row": 1,
+                    "number": 7,
+                    "x": 1451,
+                    "y": 526
+                },
+                {
+                    "id": "seat-258",
+                    "row": 1,
+                    "number": 8,
+                    "x": 1471,
+                    "y": 526
+                },
+                {
+                    "id": "seat-259",
+                    "row": 1,
+                    "number": 9,
+                    "x": 1491,
+                    "y": 526
+                }
+            ]
+        }
+    ],
+    "staticObjects": [
+        {
+            "kind": "standing",
+            "id": "standing-1",
+            "text": "Танцпол+ ранний вход · 47",
+            "x": 620,
+            "y": 640,
+            "width": 287,
+            "height": 150,
+            "capacity": 47,
+            "priceMinor": 350000
+        },
+        {
+            "kind": "standing",
+            "id": "standing-2",
+            "text": "Танцпол · 500",
+            "x": 947,
+            "y": 640,
+            "width": 500,
+            "height": 150,
+            "capacity": 500,
+            "priceMinor": 220000
+        }
+    ]
+}

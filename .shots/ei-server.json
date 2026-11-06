@@ -1,0 +1,608 @@
+{
+  "canvas": {
+    "width": 900,
+    "height": 700
+  },
+  "sectors": [
+    {
+      "x": 120,
+      "y": 160,
+      "id": "sec-table-0",
+      "name": "Стол 1",
+      "type": "seated",
+      "seats": [
+        {
+          "x": 66,
+          "y": 18,
+          "id": "tbl-120-160-0",
+          "row": 1,
+          "kind": "standard",
+          "number": 1
+        },
+        {
+          "x": 100,
+          "y": 32,
+          "id": "tbl-120-160-1",
+          "row": 1,
+          "kind": "standard",
+          "number": 2
+        },
+        {
+          "x": 114,
+          "y": 66,
+          "id": "tbl-120-160-2",
+          "row": 1,
+          "kind": "standard",
+          "number": 3
+        },
+        {
+          "x": 100,
+          "y": 100,
+          "id": "tbl-120-160-3",
+          "row": 1,
+          "kind": "standard",
+          "number": 4
+        },
+        {
+          "x": 66,
+          "y": 114,
+          "id": "tbl-120-160-4",
+          "row": 1,
+          "kind": "standard",
+          "number": 5
+        },
+        {
+          "x": 32,
+          "y": 100,
+          "id": "tbl-120-160-5",
+          "row": 1,
+          "kind": "standard",
+          "number": 6
+        },
+        {
+          "x": 18,
+          "y": 66,
+          "id": "tbl-120-160-6",
+          "row": 1,
+          "kind": "standard",
+          "number": 7
+        },
+        {
+          "x": 32,
+          "y": 32,
+          "id": "tbl-120-160-7",
+          "row": 1,
+          "kind": "standard",
+          "number": 8
+        }
+      ],
+      "shape": "table",
+      "arcBaseR": 0,
+      "arcRowGap": 0,
+      "arcSpread": 0,
+      "rowPrices": [],
+      "arcOffsetX": 0,
+      "arcOffsetY": 0,
+      "priceMinor": 900000
+    },
+    {
+      "x": 360,
+      "y": 160,
+      "id": "sec-table-1",
+      "name": "Стол 2",
+      "type": "seated",
+      "seats": [
+        {
+          "x": 66,
+          "y": 18,
+          "id": "tbl-360-160-0",
+          "row": 1,
+          "kind": "standard",
+          "number": 1
+        },
+        {
+          "x": 100,
+          "y": 32,
+          "id": "tbl-360-160-1",
+          "row": 1,
+          "kind": "standard",
+          "number": 2
+        },
+        {
+          "x": 114,
+          "y": 66,
+          "id": "tbl-360-160-2",
+          "row": 1,
+          "kind": "standard",
+          "number": 3
+        },
+        {
+          "x": 100,
+          "y": 100,
+          "id": "tbl-360-160-3",
+          "row": 1,
+          "kind": "standard",
+          "number": 4
+        },
+        {
+          "x": 66,
+          "y": 114,
+          "id": "tbl-360-160-4",
+          "row": 1,
+          "kind": "standard",
+          "number": 5
+        },
+        {
+          "x": 32,
+          "y": 100,
+          "id": "tbl-360-160-5",
+          "row": 1,
+          "kind": "standard",
+          "number": 6
+        },
+        {
+          "x": 18,
+          "y": 66,
+          "id": "tbl-360-160-6",
+          "row": 1,
+          "kind": "standard",
+          "number": 7
+        },
+        {
+          "x": 32,
+          "y": 32,
+          "id": "tbl-360-160-7",
+          "row": 1,
+          "kind": "standard",
+          "number": 8
+        }
+      ],
+      "shape": "table",
+      "arcBaseR": 0,
+      "arcRowGap": 0,
+      "arcSpread": 0,
+      "rowPrices": [],
+      "arcOffsetX": 0,
+      "arcOffsetY": 0,
+      "priceMinor": 900000
+    },
+    {
+      "x": 600,
+      "y": 160,
+      "id": "sec-table-2",
+      "name": "Стол 3",
+      "type": "seated",
+      "seats": [
+        {
+          "x": 66,
+          "y": 18,
+          "id": "tbl-600-160-0",
+          "row": 1,
+          "kind": "standard",
+          "number": 1
+        },
+        {
+          "x": 94,
+          "y": 27,
+          "id": "tbl-600-160-1",
+          "row": 1,
+          "kind": "standard",
+          "number": 2
+        },
+        {
+          "x": 112,
+          "y": 51,
+          "id": "tbl-600-160-2",
+          "row": 1,
+          "kind": "standard",
+          "number": 3
+        },
+        {
+          "x": 112,
+          "y": 81,
+          "id": "tbl-600-160-3",
+          "row": 1,
+          "kind": "standard",
+          "number": 4
+        },
+        {
+          "x": 94,
+          "y": 105,
+          "id": "tbl-600-160-4",
+          "row": 1,
+          "kind": "standard",
+          "number": 5
+        },
+        {
+          "x": 66,
+          "y": 114,
+          "id": "tbl-600-160-5",
+          "row": 1,
+          "kind": "standard",
+          "number": 6
+        },
+        {
+          "x": 38,
+          "y": 105,
+          "id": "tbl-600-160-6",
+          "row": 1,
+          "kind": "standard",
+          "number": 7
+        },
+        {
+          "x": 20,
+          "y": 81,
+          "id": "tbl-600-160-7",
+          "row": 1,
+          "kind": "standard",
+          "number": 8
+        },
+        {
+          "x": 20,
+          "y": 51,
+          "id": "tbl-600-160-8",
+          "row": 1,
+          "kind": "standard",
+          "number": 9
+        },
+        {
+          "x": 38,
+          "y": 27,
+          "id": "tbl-600-160-9",
+          "row": 1,
+          "kind": "standard",
+          "number": 10
+        }
+      ],
+      "shape": "table",
+      "arcBaseR": 0,
+      "arcRowGap": 0,
+      "arcSpread": 0,
+      "rowPrices": [],
+      "arcOffsetX": 0,
+      "arcOffsetY": 0,
+      "priceMinor": 900000
+    },
+    {
+      "x": 120,
+      "y": 420,
+      "id": "sec-table-3",
+      "name": "Стол 4",
+      "type": "seated",
+      "seats": [
+        {
+          "x": 66,
+          "y": 18,
+          "id": "tbl-120-420-0",
+          "row": 1,
+          "kind": "standard",
+          "number": 1
+        },
+        {
+          "x": 108,
+          "y": 42,
+          "id": "tbl-120-420-1",
+          "row": 1,
+          "kind": "standard",
+          "number": 2
+        },
+        {
+          "x": 108,
+          "y": 90,
+          "id": "tbl-120-420-2",
+          "row": 1,
+          "kind": "standard",
+          "number": 3
+        },
+        {
+          "x": 66,
+          "y": 114,
+          "id": "tbl-120-420-3",
+          "row": 1,
+          "kind": "standard",
+          "number": 4
+        },
+        {
+          "x": 24,
+          "y": 90,
+          "id": "tbl-120-420-4",
+          "row": 1,
+          "kind": "standard",
+          "number": 5
+        },
+        {
+          "x": 24,
+          "y": 42,
+          "id": "tbl-120-420-5",
+          "row": 1,
+          "kind": "standard",
+          "number": 6
+        }
+      ],
+      "shape": "table",
+      "arcBaseR": 0,
+      "arcRowGap": 0,
+      "arcSpread": 0,
+      "rowPrices": [],
+      "arcOffsetX": 0,
+      "arcOffsetY": 0,
+      "priceMinor": 900000
+    },
+    {
+      "x": 360,
+      "y": 420,
+      "id": "sec-table-4",
+      "name": "Стол 5",
+      "type": "seated",
+      "seats": [
+        {
+          "x": 66,
+          "y": 18,
+          "id": "tbl-360-420-0",
+          "row": 1,
+          "kind": "standard",
+          "number": 1
+        },
+        {
+          "x": 90,
+          "y": 24,
+          "id": "tbl-360-420-1",
+          "row": 1,
+          "kind": "standard",
+          "number": 2
+        },
+        {
+          "x": 108,
+          "y": 42,
+          "id": "tbl-360-420-2",
+          "row": 1,
+          "kind": "standard",
+          "number": 3
+        },
+        {
+          "x": 114,
+          "y": 66,
+          "id": "tbl-360-420-3",
+          "row": 1,
+          "kind": "standard",
+          "number": 4
+        },
+        {
+          "x": 108,
+          "y": 90,
+          "id": "tbl-360-420-4",
+          "row": 1,
+          "kind": "standard",
+          "number": 5
+        },
+        {
+          "x": 90,
+          "y": 108,
+          "id": "tbl-360-420-5",
+          "row": 1,
+          "kind": "standard",
+          "number": 6
+        },
+        {
+          "x": 66,
+          "y": 114,
+          "id": "tbl-360-420-6",
+          "row": 1,
+          "kind": "standard",
+          "number": 7
+        },
+        {
+          "x": 42,
+          "y": 108,
+          "id": "tbl-360-420-7",
+          "row": 1,
+          "kind": "standard",
+          "number": 8
+        },
+        {
+          "x": 24,
+          "y": 90,
+          "id": "tbl-360-420-8",
+          "row": 1,
+          "kind": "standard",
+          "number": 9
+        },
+        {
+          "x": 18,
+          "y": 66,
+          "id": "tbl-360-420-9",
+          "row": 1,
+          "kind": "standard",
+          "number": 10
+        },
+        {
+          "x": 24,
+          "y": 42,
+          "id": "tbl-360-420-10",
+          "row": 1,
+          "kind": "standard",
+          "number": 11
+        },
+        {
+          "x": 42,
+          "y": 24,
+          "id": "tbl-360-420-11",
+          "row": 1,
+          "kind": "standard",
+          "number": 12
+        }
+      ],
+      "shape": "table",
+      "arcBaseR": 0,
+      "arcRowGap": 0,
+      "arcSpread": 0,
+      "rowPrices": [],
+      "arcOffsetX": 0,
+      "arcOffsetY": 0,
+      "priceMinor": 900000
+    },
+    {
+      "x": 600,
+      "y": 420,
+      "id": "sec-table-5",
+      "name": "Стол 6",
+      "type": "seated",
+      "seats": [
+        {
+          "x": 66,
+          "y": 18,
+          "id": "tbl-600-420-0",
+          "row": 1,
+          "kind": "standard",
+          "number": 1
+        },
+        {
+          "x": 100,
+          "y": 32,
+          "id": "tbl-600-420-1",
+          "row": 1,
+          "kind": "standard",
+          "number": 2
+        },
+        {
+          "x": 114,
+          "y": 66,
+          "id": "tbl-600-420-2",
+          "row": 1,
+          "kind": "standard",
+          "number": 3
+        },
+        {
+          "x": 100,
+          "y": 100,
+          "id": "tbl-600-420-3",
+          "row": 1,
+          "kind": "standard",
+          "number": 4
+        },
+        {
+          "x": 66,
+          "y": 114,
+          "id": "tbl-600-420-4",
+          "row": 1,
+          "kind": "standard",
+          "number": 5
+        },
+        {
+          "x": 32,
+          "y": 100,
+          "id": "tbl-600-420-5",
+          "row": 1,
+          "kind": "standard",
+          "number": 6
+        },
+        {
+          "x": 18,
+          "y": 66,
+          "id": "tbl-600-420-6",
+          "row": 1,
+          "kind": "standard",
+          "number": 7
+        },
+        {
+          "x": 32,
+          "y": 32,
+          "id": "tbl-600-420-7",
+          "row": 1,
+          "kind": "standard",
+          "number": 8
+        }
+      ],
+      "shape": "table",
+      "arcBaseR": 0,
+      "arcRowGap": 0,
+      "arcSpread": 0,
+      "rowPrices": [],
+      "arcOffsetX": 0,
+      "arcOffsetY": 0,
+      "priceMinor": 900000
+    }
+  ],
+  "version": "1.0",
+  "background": {
+    "x": 0,
+    "y": 0,
+    "id": "bg-muwxcy1x-1",
+    "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==",
+    "width": 900,
+    "height": 700,
+    "locked": false,
+    "opacity": 1,
+    "rotation": 0
+  },
+  "backgrounds": [
+    {
+      "x": 0,
+      "y": 0,
+      "id": "bg-muwxcy1x-1",
+      "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==",
+      "width": 900,
+      "height": 700,
+      "locked": false,
+      "opacity": 1,
+      "rotation": 0
+    },
+    {
+      "x": 0,
+      "y": 0,
+      "id": "bg-muwxcyqz-2",
+      "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAE/wH/2k2sLwAAAABJRU5ErkJggg==",
+      "width": 900,
+      "height": 700,
+      "locked": false,
+      "opacity": 1,
+      "rotation": 0
+    },
+    {
+      "x": 0,
+      "y": 0,
+      "id": "bg-muwxeika-1",
+      "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==",
+      "width": 900,
+      "height": 700,
+      "locked": false,
+      "opacity": 1,
+      "rotation": 0
+    },
+    {
+      "x": 0,
+      "y": 0,
+      "id": "bg-muwxej9d-2",
+      "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAE/wH/2k2sLwAAAABJRU5ErkJggg==",
+      "width": 900,
+      "height": 700,
+      "locked": false,
+      "opacity": 1,
+      "rotation": 0
+    }
+  ],
+  "staticObjects": [
+    {
+      "x": 120,
+      "y": 30,
+      "id": "st-stage",
+      "kind": "stage",
+      "width": 400,
+      "height": 70,
+      "locked": false,
+      "opacity": 1,
+      "rotation": 0
+    },
+    {
+      "x": 420,
+      "y": 640,
+      "id": "st-b1",
+      "kind": "entrance",
+      "width": 60,
+      "height": 40,
+      "locked": false,
+      "opacity": 1,
+      "rotation": 0
+    }
+  ]
+}

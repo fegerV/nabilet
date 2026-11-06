@@ -1,0 +1,142 @@
+{
+  "config": {
+    "theme": {
+      "preset": "lagoon",
+      "brand": "#1098AD",
+      "brandStrong": "#0C8599",
+      "accent": "#D6336C",
+      "accentStrong": "#A61E4D",
+      "radius": 18,
+      "mode": "light",
+      "surface": "tinted"
+    },
+    "branding": {
+      "name": "Филармония",
+      "tagline": "Билеты на концерты",
+      "logoUrl": "",
+      "logoMark": "Ф",
+      "faviconUrl": ""
+    },
+    "header": {
+      "showSearch": true,
+      "showCart": true,
+      "showThemeToggle": true,
+      "nav": [
+        { "label": "Афиша", "to": "/" },
+        { "label": "Мои билеты", "to": "/tickets" },
+        { "label": "Организаторам", "to": "/admin" }
+      ]
+    },
+    "footer": {
+      "text": "Филармония — билеты на концерты без наценки.",
+      "links": [{ "label": "Помощь", "url": "/" }, { "label": "Возврат", "url": "/" }],
+      "social": []
+    },
+    "sections": [
+      {
+        "id": "sec_hero_smoke",
+        "type": "hero",
+        "visible": true,
+        "title": "",
+        "subtitle": "",
+        "settings": {
+          "badge": "Осенний сезон открыт",
+          "title": "Концерты, которые слышно с любого места",
+          "subtitle": "Проверьте витрину: секции, цвета и брендинг настраиваются в админке.",
+          "ctaLabel": "Смотреть афишу",
+          "ctaLink": "/",
+          "image": "",
+          "align": "left",
+          "height": "medium",
+          "showSearch": true
+        }
+      },
+      {
+        "id": "sec_stats_smoke",
+        "type": "stats",
+        "visible": true,
+        "title": "",
+        "subtitle": "",
+        "settings": { "source": "auto", "items": [] }
+      },
+      {
+        "id": "sec_posters_smoke",
+        "type": "posters",
+        "visible": true,
+        "title": "Афиша",
+        "subtitle": "Ближайшие концерты",
+        "settings": { "layout": "grid", "columns": 3, "limit": 9, "sort": "date", "category": "", "showFilters": true }
+      },
+      {
+        "id": "sec_countdown_smoke",
+        "type": "countdown",
+        "visible": true,
+        "title": "",
+        "subtitle": "",
+        "settings": { "eventId": "", "target": "", "label": "До ближайшего концерта" }
+      },
+      {
+        "id": "sec_featured_smoke",
+        "type": "featured",
+        "visible": true,
+        "title": "Рекомендуем",
+        "subtitle": "Выбор музыкальных редакторов",
+        "settings": { "source": "upcoming", "limit": 4, "layout": "carousel", "ids": [] }
+      },
+      {
+        "id": "sec_promo_smoke",
+        "type": "promo",
+        "visible": true,
+        "title": "",
+        "subtitle": "",
+        "settings": {
+          "tone": "accent",
+          "title": "Скидка 15% на абонемент",
+          "text": "Промокод действует до конца недели на все концерты сезона.",
+          "buttonLabel": "Выбрать абонемент",
+          "buttonLink": "/",
+          "code": "SEASON15"
+        }
+      },
+      {
+        "id": "sec_richtext_smoke",
+        "type": "richtext",
+        "visible": true,
+        "title": "О зале",
+        "subtitle": "",
+        "settings": {
+          "text": "Большой зал рассчитан на 1200 мест. Первый ряд начинается в трёх метрах от сцены, а балкон — с шестого.\nСхема зала настоящая: вы выбираете конкретное кресло, а не «сектор Б».",
+          "align": "left",
+          "width": "narrow"
+        }
+      },
+      {
+        "id": "sec_faq_smoke",
+        "type": "faq",
+        "visible": true,
+        "title": "Частые вопросы",
+        "subtitle": "",
+        "settings": {
+          "items": [
+            { "q": "Как получить билет?", "a": "Билет приходит на e-mail сразу после оплаты, QR открывается в разделе «Мои билеты»." },
+            { "q": "Можно ли вернуть билет?", "a": "Да, за 24 часа до начала — в личном кабинете или через поддержку." }
+          ]
+        }
+      },
+      {
+        "id": "sec_subscribe_smoke",
+        "type": "subscribe",
+        "visible": true,
+        "title": "",
+        "subtitle": "",
+        "settings": {
+          "title": "Анонсы концертов",
+          "text": "Раз в неделю — о премьерах и открытии продаж.",
+          "placeholder": "E-mail",
+          "buttonLabel": "Подписаться",
+          "privacy": "Нажимая кнопку, вы соглашаетесь с политикой обработки данных."
+        }
+      }
+    ]
+  }
+}
