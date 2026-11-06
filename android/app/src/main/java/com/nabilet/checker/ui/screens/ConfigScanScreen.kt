@@ -6,13 +6,13 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
-import android.os.Environment
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -21,7 +21,11 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -67,12 +71,7 @@ fun ConfigScanScreen(
 ) {
     val context = LocalContext.current
 
-    var permissionGranted by remember {
-        mutableStateOf(
-            ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
-                PackageManager.PERMISSION_GRANTED,
-        )
-    }
+    var permissionGranted by remember { mutableStateOf(false) }
     var cameraError by remember { mutableStateOf<String?>(null) }
     var scanState by remember { mutableStateOf<ScanState>(ScanState.Scanning) }
     var scanMessage by remember { mutableStateOf<String?>(null) }
@@ -141,7 +140,6 @@ fun ConfigScanScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         if (!permissionGranted && cameraError == null) {
-            // Запрос разрешения на камеру
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -165,7 +163,6 @@ fun ConfigScanScreen(
                 }
             }
         } else if (cameraError != null) {
-            // Ошибка камеры
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -205,7 +202,6 @@ fun ConfigScanScreen(
                 }
             }
         } else {
-            // Камера на весь экран + оверлей результата
             Box(modifier = Modifier.fillMaxSize()) {
                 CameraPreview(
                     modifier = Modifier.fillMaxSize(),
@@ -214,17 +210,14 @@ fun ConfigScanScreen(
                     onError = { cameraError = it },
                 )
 
-                // Рамка сканирования по центру
                 Box(
                     modifier = Modifier
                         .size(280.dp)
                         .align(Alignment.Center)
                         .border(4.dp, Color.White, RoundedCornerShape(16.dp)),
                 ) {
-                    // Пустая рамка для визуализации зоны сканирования
                 }
 
-                // Подсказка над рамкой
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopCenter)
@@ -240,13 +233,12 @@ fun ConfigScanScreen(
                     )
                 }
 
-                // Результат сканирования (показывается поверх камеры)
                 when (scanState) {
                     ScanState.Scanning -> Unit
                     ScanState.Success -> {
                         ResultOverlay(
                             icon = Icons.Default.CheckCircle,
-                            color = Color(0xFF15803D), // зелёный
+                            color = Color(0xFF15803D),
                             title = stringResource(R.string.config_scan_success_title),
                             message = stringResource(R.string.config_scan_success_message),
                             onAction = { onCancel() },
@@ -268,7 +260,6 @@ fun ConfigScanScreen(
                     }
                 }
 
-                // Кнопка «Выбрать из галереи» — снизу
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
@@ -307,44 +298,44 @@ fun ConfigScanScreen(
             }
         }
     }
+}
 
-    private fun processBitmap(bitmap: Bitmap) {
-        val appContext = context.applicationContext
-        val scanner = BarcodeScanning.getClient(
-            BarcodeScannerOptions.Builder()
-                .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
-                .build(),
-        )
-        val image = InputImage.fromBitmap(bitmap, 0)
-        scanner.process(image)
-            .addOnSuccessListener { barcodes ->
-                val value = barcodes.firstNotNullOfOrNull { barcode ->
-                    barcode.rawValue?.takeIf { it.isNotBlank() }
-                }
-                if (value != null) {
-                    when (val result = ConfigQrParser.parse(value)) {
-                        is ConfigQrParser.ConfigQrResult.Valid -> {
-                            scanState = ScanState.Success
-                            scanMessage = null
-                            onConfigScanned(result.config.server, result.config.token)
-                        }
-                        is ConfigQrParser.ConfigQrResult.Invalid -> {
-                            scanState = ScanState.Error
-                            scanMessage = result.error
-                        }
+private fun processBitmap(bitmap: Bitmap) {
+    val appContext = LocalContext.current.applicationContext
+    val scanner = BarcodeScanning.getClient(
+        BarcodeScannerOptions.Builder()
+            .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
+            .build(),
+    )
+    val image = InputImage.fromBitmap(bitmap, 0)
+    scanner.process(image)
+        .addOnSuccessListener { barcodes ->
+            val value = barcodes.firstNotNullOfOrNull { barcode ->
+                barcode.rawValue?.takeIf { it.isNotBlank() }
+            }
+            if (value != null) {
+                when (val result = ConfigQrParser.parse(value)) {
+                    is ConfigQrParser.ConfigQrResult.Valid -> {
+                        scanState = ScanState.Success
+                        scanMessage = null
+                        onConfigScanned(result.config.server, result.config.token)
                     }
-                } else {
-                    scanState = ScanState.Error
-                    scanMessage = context.getString(R.string.config_scan_no_qr_found)
+                    is ConfigQrParser.ConfigQrResult.Invalid -> {
+                        scanState = ScanState.Error
+                        scanMessage = result.error
+                    }
                 }
-                scanner.close()
-            }
-            .addOnFailureListener {
+            } else {
                 scanState = ScanState.Error
-                scanMessage = context.getString(R.string.config_scan_image_unreadable)
-                scanner.close()
+                scanMessage = LocalContext.current.getString(R.string.config_scan_no_qr_found)
             }
-    }
+            scanner.close()
+        }
+        .addOnFailureListener {
+            scanState = ScanState.Error
+            scanMessage = LocalContext.current.getString(R.string.config_scan_image_unreadable)
+            scanner.close()
+        }
 }
 
 sealed class ScanState {
@@ -353,7 +344,6 @@ sealed class ScanState {
     data class Error(val detail: String?) : ScanState()
 }
 
-/** Огромная цветная карточка результата поверх камеры. */
 @Composable
 private fun ResultOverlay(
     icon: androidx.compose.material.icons.filled.ImageVector,

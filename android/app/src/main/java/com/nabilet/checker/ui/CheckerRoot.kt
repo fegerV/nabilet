@@ -261,9 +261,9 @@ fun CheckerRoot(
                                     "nabilet-checker-export-${System.currentTimeMillis()}.csv",
                                 )
                                 OutputStreamWriter(file.outputStream(), Charsets.UTF_8).use { it.write(csv) }
-                                viewModel.messages.emit(stringResource(R.string.settings_export_done))
+                                viewModel.emitMessage(stringResource(R.string.settings_export_done))
                             } catch (e: Exception) {
-                                viewModel.messages.emit(stringResource(R.string.settings_export_failed))
+                                viewModel.emitMessage(stringResource(R.string.settings_export_failed))
                             }
                         }
                     },

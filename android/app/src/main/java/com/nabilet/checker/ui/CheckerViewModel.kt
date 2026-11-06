@@ -1,6 +1,8 @@
 package com.nabilet.checker.ui
 
 import android.app.Application
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -24,6 +26,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.update
 
 /**
  * The only place the UI talks to the repository.
@@ -193,6 +196,12 @@ class CheckerViewModel(
 
     /** Exposed for tests and for the settings screen's diagnostics block. */
     fun latestResult(): CheckinResult? = _feedback.value?.result
+
+    fun emitMessage(message: String) {
+        viewModelScope.launch {
+            _messages.emit(message)
+        }
+    }
 
     suspend fun totalScanCount(): Int = repository.totalScanCount()
 

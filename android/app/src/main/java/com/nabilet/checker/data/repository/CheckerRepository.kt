@@ -9,6 +9,7 @@ import com.nabilet.checker.data.prefs.AppPreferences
 import com.nabilet.checker.data.remote.ApiResult
 import com.nabilet.checker.data.remote.BundleMapper
 import com.nabilet.checker.data.remote.NabiletApi
+import com.nabilet.checker.data.remote.SyncResponse
 import com.nabilet.checker.data.security.TokenVault
 import com.nabilet.checker.domain.bundle.BundleParser
 import com.nabilet.checker.domain.bundle.OfflineDecision
@@ -44,6 +45,9 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.job.Job
+import kotlinx.coroutines.coroutineScope
 
 /**
  * Single place where the scanner, the network, the offline bundle and the local
