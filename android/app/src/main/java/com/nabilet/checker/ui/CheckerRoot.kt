@@ -203,6 +203,7 @@ fun CheckerRoot(
                     onSync = viewModel::syncNow,
                     onOpenSettings = { tab = TAB_SETTINGS },
                 )
+
                 TAB_STATS -> StatsScreen(state)
                 TAB_HISTORY -> HistoryScreen(
                     state = state,

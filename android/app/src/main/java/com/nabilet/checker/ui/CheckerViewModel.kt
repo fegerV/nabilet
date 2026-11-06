@@ -1,6 +1,9 @@
 package com.nabilet.checker.ui
 
 import android.app.Application
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -179,6 +182,7 @@ class CheckerViewModel(
         _messages.emit(message)
     }
 
+    /** Exposed for tests and for the settings screen's diagnostics block. */
     fun latestResult(): CheckinResult? = _feedback.value?.result
 
     fun emitMessage(message: String) {
@@ -195,10 +199,16 @@ class CheckerViewModel(
     suspend fun cleanupOldSyncedScans(olderThanMillis: Long): Int =
         repository.cleanupOldSyncedScans(olderThanMillis)
 
+    /** Scans loaded for paginated history view. Starts empty, grows on scroll. */
     var pagedScans by mutableStateOf(emptyList<ScanRecord>())
 
+    /** Search results for ticket search in history. */
     var searchResults by mutableStateOf(emptyList<ScanRecord>())
 
+    /**
+     * Loads the next page of scans and merges them into [pagedScans].
+     * Duplicates are removed by client_scan_id.
+     */
     suspend fun loadMoreScans(offset: Int) {
         val newScans = repository.recentScans(PAGE_SIZE, offset)
         pagedScans = (pagedScans + newScans)
@@ -206,12 +216,19 @@ class CheckerViewModel(
             .sortedByDescending { it.scannedAt }
     }
 
+    /**
+     * Экспортирует все сканы в CSV-строку для отправки администратору.
+     */
     suspend fun exportScansCsv(): String = repository.exportScansCsv()
 
+    /**
+     * Ищет сканы по номеру билета или ID билета.
+     */
     suspend fun searchByTicket(query: String): List<ScanRecord> =
         repository.searchByTicket(query)
 
     companion object {
+        /** Number of scans loaded per page in history pagination. */
         const val PAGE_SIZE = 50
 
         fun factory(app: CheckerApp): ViewModelProvider.Factory = viewModelFactory {
