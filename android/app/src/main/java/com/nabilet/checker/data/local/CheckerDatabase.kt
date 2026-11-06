@@ -10,9 +10,19 @@ import android.database.sqlite.SQLiteOpenHelper
  *
  * `client_scan_id` is UNIQUE: the same scan cannot be recorded twice even if
  * the camera reports one QR several times while the first request is in flight.
+ *
+ * WAL mode is enabled so that UI reads (history, stats) and background writes
+ * (sync worker applying server verdicts) do not block each other.
  */
 class CheckerDatabase(context: Context) :
     SQLiteOpenHelper(context.applicationContext, NAME, null, VERSION) {
+
+    init {
+        // Enable WAL so readers and writers don't block each other on the same
+        // database file. Safe to call here: onCreate/onUpgrade run before any
+        // user queries.
+        setWriteAheadLoggingEnabled(true)
+    }
 
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL(
@@ -36,6 +46,7 @@ class CheckerDatabase(context: Context) :
         db.execSQL("CREATE INDEX idx_scans_scanned_at ON scans(scanned_at)")
         db.execSQL("CREATE INDEX idx_scans_pending ON scans(synced, scanned_at)")
         db.execSQL("CREATE INDEX idx_scans_ticket ON scans(ticket_id, scanned_at)")
+        db.execSQL("CREATE INDEX idx_scans_synced_ticket ON scans(synced, ticket_id)")
 
         db.execSQL(
             """
@@ -76,13 +87,14 @@ class CheckerDatabase(context: Context) :
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        // Version 1 is the first shipped schema. When it changes, add explicit
-        // migrations here; silently dropping a shift's unsynced scans would be
-        // data loss at the door.
+        // Version 1 -> 2: add index for fast pending-scan lookups and enable WAL.
+        if (oldVersion < 2) {
+            db.execSQL("CREATE INDEX IF NOT EXISTS idx_scans_synced_ticket ON scans(synced, ticket_id)")
+        }
     }
 
     companion object {
         private const val NAME = "nabilet_checker.db"
-        private const val VERSION = 1
+        private const val VERSION = 2
     }
 }

@@ -11,8 +11,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.collectLazyListState
+import androidx.compose.foundation.lazy.LazyColumnItemScope
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Card
@@ -20,6 +23,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -39,21 +43,49 @@ import com.nabilet.checker.ui.components.EmptyState
 import com.nabilet.checker.ui.components.resultLabel
 import com.nabilet.checker.ui.components.sourceLabel
 import com.nabilet.checker.ui.theme.CheckerColors
+import kotlinx.coroutines.launch
 
 private const val FILTER_ALL = 0
 private const val FILTER_ADMITTED = 1
 private const val FILTER_DENIED = 2
 private const val FILTER_PENDING = 3
 
-@Composable
-fun HistoryScreen(state: CheckerState) {
-    var filter by rememberSaveable { mutableStateOf(FILTER_ALL) }
+/** Number of scans loaded per page. */
+private const val PAGE_SIZE = 50
 
+@Composable
+fun HistoryScreen(
+    state: CheckerState,
+    totalScanCount: Int = 0,
+    onLoadMore: ((Int) -> Unit)? = null,
+) {
+    var filter by rememberSaveable { mutableStateOf(FILTER_ALL) }
+    var offset by remember { mutableStateOf(0) }
+    val lazyListState = collectLazyListState()
+
+    // Apply filter to the currently loaded scans
     val scans = when (filter) {
         FILTER_ADMITTED -> state.recentScans.filter { it.result.admits }
         FILTER_DENIED -> state.recentScans.filter { !it.result.admits }
         FILTER_PENDING -> state.recentScans.filter { !it.synced }
         else -> state.recentScans
+    }
+
+    // Reset offset when filter changes
+    LaunchedEffect(filter) {
+        offset = 0
+    }
+
+    // Load more when user scrolls near the bottom of the list
+    LaunchedEffect(lazyListState) {
+        val snapshot = lazyListState.layoutInfo.visibleItemsInfo
+        if (snapshot.isNotEmpty()) {
+            val lastVisibleIndex = snapshot.last().index
+            if (lastVisibleIndex >= scans.size - 5 && offset < totalScanCount) {
+                onLoadMore?.invoke(offset)
+                offset += PAGE_SIZE
+            }
+        }
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -93,19 +125,44 @@ fun HistoryScreen(state: CheckerState) {
             )
         } else {
             LazyColumn(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .state(lazyListState),
                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 item {
                     Text(
-                        text = stringResource(R.string.history_count, scans.size),
+                        text = stringResource(
+                            R.string.history_count,
+                            scans.size,
+                        ),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                items(items = scans, key = { it.clientScanId }) { scan ->
+                items(
+                    items = scans,
+                    key = { it.clientScanId },
+                ) { scan ->
                     HistoryRow(scan)
+                }
+
+                // Loading indicator at the bottom when more data is being fetched
+                if (offset < totalScanCount) {
+                    item {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 16.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            androidx.compose.material3.CircularProgressIndicator(
+                                modifier = androidx.compose.ui.Modifier.size(20.dp),
+                                strokeWidth = 2.dp,
+                            )
+                        }
+                    }
                 }
             }
         }

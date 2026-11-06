@@ -32,7 +32,13 @@ class ScanDao(private val helper: CheckerDatabase) {
         ) != -1L
     }
 
-    fun recent(limit: Int): List<ScanRecord> {
+    /**
+     * Returns the most recent scans, ordered by time descending.
+     *
+     * @param limit maximum number of rows
+     * @param offset number of rows to skip (for pagination)
+     */
+    fun recent(limit: Int, offset: Int = 0): List<ScanRecord> {
         helper.readableDatabase.query(
             "scans",
             null,
@@ -41,13 +47,20 @@ class ScanDao(private val helper: CheckerDatabase) {
             null,
             null,
             "scanned_at DESC, id DESC",
-            limit.toString(),
+            "${limit.toString()} OFFSET ${offset.toString()}",
         ).use { cursor ->
             val out = ArrayList<ScanRecord>(cursor.count)
             while (cursor.moveToNext()) out.add(cursor.toRecord())
             return out
         }
     }
+
+    /** Total number of scans in the database (used for pagination UI). */
+    fun totalCount(): Int =
+        helper.readableDatabase.rawQuery(
+            "SELECT COUNT(*) FROM scans",
+            null,
+        ).use { cursor -> if (cursor.moveToFirst()) cursor.getInt(0) else 0 }
 
     fun pending(limit: Int): List<ScanRecord> {
         helper.readableDatabase.query(
@@ -122,6 +135,23 @@ class ScanDao(private val helper: CheckerDatabase) {
             lastScanAt = lastScanAt,
             lastFiveMinutes = recent,
             byResult = byResult,
+        )
+    }
+
+    /**
+     * Deletes already-synced scans older than the given timestamp.
+     *
+     * Used to keep the local database from growing forever on long-term
+     * deployments. Unsynced scans are never deleted — they must survive until
+     * the server confirms them.
+     *
+     * @return number of rows deleted
+     */
+    fun deleteOldSyncedScans(olderThanMillis: Long): Int {
+        return helper.writableDatabase.delete(
+            "scans",
+            "synced = 1 AND scanned_at < ?",
+            arrayOf(olderThanMillis.toString()),
         )
     }
 

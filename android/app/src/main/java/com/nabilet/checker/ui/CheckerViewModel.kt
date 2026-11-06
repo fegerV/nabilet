@@ -14,6 +14,7 @@ import com.nabilet.checker.data.repository.CheckerState
 import com.nabilet.checker.domain.model.CheckinResult
 import com.nabilet.checker.domain.model.OpResult
 import com.nabilet.checker.domain.model.ScanFeedback
+import com.nabilet.checker.domain.model.ScanRecord
 import com.nabilet.checker.domain.model.ScanSubmission
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -192,6 +193,14 @@ class CheckerViewModel(
 
     /** Exposed for tests and for the settings screen's diagnostics block. */
     fun latestResult(): CheckinResult? = _feedback.value?.result
+
+    suspend fun totalScanCount(): Int = repository.totalScanCount()
+
+    suspend fun recentScans(limit: Int, offset: Int): List<ScanRecord> =
+        repository.recentScans(limit, offset)
+
+    suspend fun cleanupOldSyncedScans(olderThanMillis: Long): Int =
+        repository.cleanupOldSyncedScans(olderThanMillis)
 
     companion object {
         fun factory(app: CheckerApp): ViewModelProvider.Factory = viewModelFactory {

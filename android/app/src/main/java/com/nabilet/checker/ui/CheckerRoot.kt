@@ -26,6 +26,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -42,6 +43,7 @@ import com.nabilet.checker.ui.screens.SettingsScreen
 import com.nabilet.checker.ui.screens.SetupScreen
 import com.nabilet.checker.ui.screens.StatsScreen
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 private const val TAB_SCANNER = 0
 private const val TAB_STATS = 1
@@ -49,6 +51,8 @@ private const val TAB_HISTORY = 2
 private const val TAB_SETTINGS = 3
 
 private const val LOAD_TIMEOUT_MS = 10_000L
+private const val HISTORY_PAGE_SIZE = 50
+private const val CLEANUP_OLDER_THAN_MILLIS = 30L * 24 * 60 * 60 * 1000 // 30 days
 
 @Composable
 fun CheckerRoot(
@@ -62,6 +66,7 @@ fun CheckerRoot(
 
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
 
     // Каждый message из репозитория / ViewModel показывается как Snackbar
     // вместо мигающего Toasta. Snackbar остаётся на экране, пока оператор не
@@ -109,6 +114,31 @@ fun CheckerRoot(
 
     LaunchedEffect(tab) {
         if (tab != TAB_SCANNER) viewModel.clearFeedback()
+    }
+
+    // --- History pagination state ---
+    var historyOffset by remember { mutableStateOf(0) }
+    var historyTotal by remember { mutableStateOf(0) }
+    var historyLoading by remember { mutableStateOf(false) }
+
+    // Load total count when history tab is opened
+    LaunchedEffect(tab == TAB_HISTORY) {
+        if (tab == TAB_HISTORY) {
+            scope.launch {
+                historyTotal = viewModel.totalScanCount()
+                historyOffset = 0
+            }
+        }
+    }
+
+    // Periodic cleanup: remove synced scans older than 30 days, once per day
+    LaunchedEffect(Unit) {
+        scope.launch {
+            while (true) {
+                delay(24 * 60 * 60 * 1000L)
+                viewModel.cleanupOldSyncedScans(CLEANUP_OLDER_THAN_MILLIS)
+            }
+        }
     }
 
     Scaffold(
@@ -178,7 +208,22 @@ fun CheckerRoot(
                 )
 
                 TAB_STATS -> StatsScreen(state)
-                TAB_HISTORY -> HistoryScreen(state)
+                TAB_HISTORY -> HistoryScreen(
+                    state = state,
+                    totalScanCount = historyTotal,
+                    onLoadMore = { offset ->
+                        if (historyLoading) return@onLoadMore
+                        historyLoading = true
+                        scope.launch {
+                            try {
+                                viewModel.recentScans(HISTORY_PAGE_SIZE, offset)
+                                historyOffset = offset + HISTORY_PAGE_SIZE
+                            } finally {
+                                historyLoading = false
+                            }
+                        }
+                    },
+                )
                 else -> SettingsScreen(
                     state = state,
                     busy = busy,

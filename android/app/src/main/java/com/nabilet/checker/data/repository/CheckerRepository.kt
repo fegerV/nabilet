@@ -626,6 +626,26 @@ class CheckerRepository(
 
     suspend fun pendingCount(): Int = withContext(Dispatchers.IO) { scanDao.pendingCount() }
 
+    suspend fun totalScanCount(): Int = withContext(Dispatchers.IO) { scanDao.totalCount() }
+
+    /**
+     * Returns recent scans with pagination support.
+     *
+     * @param limit maximum number of rows per page
+     * @param offset number of rows to skip
+     */
+    suspend fun recentScans(limit: Int, offset: Int): List<ScanRecord> =
+        withContext(Dispatchers.IO) { scanDao.recent(limit, offset) }
+
+    /**
+     * Deletes already-synced scans older than the given age.
+     *
+     * @param olderThanMillis scans older than this (and already synced) are deleted
+     * @return number of rows deleted
+     */
+    suspend fun cleanupOldSyncedScans(olderThanMillis: Long): Int =
+        withContext(Dispatchers.IO) { scanDao.deleteOldSyncedScans(olderThanMillis) }
+
     private suspend fun handleScan(rawQr: String, online: Boolean): ScanSubmission {
         val state = _state.value
         val config = state.config
