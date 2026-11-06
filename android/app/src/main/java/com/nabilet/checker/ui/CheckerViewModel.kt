@@ -202,6 +202,20 @@ class CheckerViewModel(
     suspend fun cleanupOldSyncedScans(olderThanMillis: Long): Int =
         repository.cleanupOldSyncedScans(olderThanMillis)
 
+    /** Scans loaded for paginated history view. Starts empty, grows on scroll. */
+    var pagedScans by mutableStateOf<List<ScanRecord>>(emptyList())
+
+    /**
+     * Loads the next page of scans and merges them into [pagedScans].
+     * Duplicates are removed by client_scan_id.
+     */
+    suspend fun loadMoreScans(offset: Int) {
+        val newScans = repository.recentScans(PAGE_SIZE, offset)
+        pagedScans = (pagedScans + newScans)
+            .distinctBy { it.clientScanId }
+            .sortedByDescending { it.scannedAt }
+    }
+
     companion object {
         fun factory(app: CheckerApp): ViewModelProvider.Factory = viewModelFactory {
             initializer {

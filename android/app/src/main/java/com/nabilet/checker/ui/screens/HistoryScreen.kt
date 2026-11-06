@@ -15,7 +15,6 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.collectLazyListState
-import androidx.compose.foundation.lazy.LazyColumnItemScope
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Card
@@ -53,37 +52,43 @@ private const val FILTER_PENDING = 3
 /** Number of scans loaded per page. */
 private const val PAGE_SIZE = 50
 
+/** Start loading the next page when 70% of the current page is visible. */
+private const val PRELOAD_THRESHOLD = 0.7f
+
 @Composable
 fun HistoryScreen(
     state: CheckerState,
+    pagedScans: List<ScanRecord> = emptyList(),
     totalScanCount: Int = 0,
     onLoadMore: ((Int) -> Unit)? = null,
 ) {
     var filter by rememberSaveable { mutableStateOf(FILTER_ALL) }
-    var offset by remember { mutableStateOf(0) }
     val lazyListState = collectLazyListState()
 
+    // Use paginated scans if available, otherwise fall back to state
+    val scans = if (pagedScans.isNotEmpty()) pagedScans else state.recentScans
+
     // Apply filter to the currently loaded scans
-    val scans = when (filter) {
-        FILTER_ADMITTED -> state.recentScans.filter { it.result.admits }
-        FILTER_DENIED -> state.recentScans.filter { !it.result.admits }
-        FILTER_PENDING -> state.recentScans.filter { !it.synced }
-        else -> state.recentScans
+    val filtered = when (filter) {
+        FILTER_ADMITTED -> scans.filter { it.result.admits }
+        FILTER_DENIED -> scans.filter { !it.result.admits }
+        FILTER_PENDING -> scans.filter { !it.synced }
+        else -> scans
     }
 
-    // Reset offset when filter changes
+    // Reset lazy list state when filter changes
     LaunchedEffect(filter) {
-        offset = 0
+        lazyListState.scrollToItem(0)
     }
 
-    // Load more when user scrolls near the bottom of the list
+    // Preload next page when user scrolls near the bottom
     LaunchedEffect(lazyListState) {
         val snapshot = lazyListState.layoutInfo.visibleItemsInfo
         if (snapshot.isNotEmpty()) {
             val lastVisibleIndex = snapshot.last().index
-            if (lastVisibleIndex >= scans.size - 5 && offset < totalScanCount) {
-                onLoadMore?.invoke(offset)
-                offset += PAGE_SIZE
+            val totalItems = lazyListState.layoutInfo.totalItemsCount
+            if (totalItems > 0 && lastVisibleIndex >= (totalItems * PRELOAD_THRESHOLD).toInt()) {
+                onLoadMore?.invoke(lazyListState.layoutInfo.totalItemsCount)
             }
         }
     }
@@ -118,7 +123,7 @@ fun HistoryScreen(
             )
         }
 
-        if (scans.isEmpty()) {
+        if (filtered.isEmpty()) {
             EmptyState(
                 title = stringResource(R.string.history_empty_title),
                 text = stringResource(R.string.history_empty_text),
@@ -135,21 +140,21 @@ fun HistoryScreen(
                     Text(
                         text = stringResource(
                             R.string.history_count,
-                            scans.size,
+                            filtered.size,
                         ),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
                 items(
-                    items = scans,
+                    items = filtered,
                     key = { it.clientScanId },
                 ) { scan ->
                     HistoryRow(scan)
                 }
 
                 // Loading indicator at the bottom when more data is being fetched
-                if (offset < totalScanCount) {
+                if (totalScanCount > filtered.size) {
                     item {
                         Box(
                             modifier = Modifier

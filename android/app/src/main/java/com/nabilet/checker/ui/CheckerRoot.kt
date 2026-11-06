@@ -51,7 +51,6 @@ private const val TAB_HISTORY = 2
 private const val TAB_SETTINGS = 3
 
 private const val LOAD_TIMEOUT_MS = 10_000L
-private const val HISTORY_PAGE_SIZE = 50
 private const val CLEANUP_OLDER_THAN_MILLIS = 30L * 24 * 60 * 60 * 1000 // 30 days
 
 @Composable
@@ -117,7 +116,6 @@ fun CheckerRoot(
     }
 
     // --- History pagination state ---
-    var historyOffset by remember { mutableStateOf(0) }
     var historyTotal by remember { mutableStateOf(0) }
     var historyLoading by remember { mutableStateOf(false) }
 
@@ -126,7 +124,10 @@ fun CheckerRoot(
         if (tab == TAB_HISTORY) {
             scope.launch {
                 historyTotal = viewModel.totalScanCount()
-                historyOffset = 0
+                viewModel.pagedScans = emptyList()
+                if (historyTotal > 0) {
+                    viewModel.loadMoreScans(0)
+                }
             }
         }
     }
@@ -210,14 +211,14 @@ fun CheckerRoot(
                 TAB_STATS -> StatsScreen(state)
                 TAB_HISTORY -> HistoryScreen(
                     state = state,
+                    pagedScans = viewModel.pagedScans,
                     totalScanCount = historyTotal,
                     onLoadMore = { offset ->
                         if (historyLoading) return@onLoadMore
                         historyLoading = true
                         scope.launch {
                             try {
-                                viewModel.recentScans(HISTORY_PAGE_SIZE, offset)
-                                historyOffset = offset + HISTORY_PAGE_SIZE
+                                viewModel.loadMoreScans(offset)
                             } finally {
                                 historyLoading = false
                             }

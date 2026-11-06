@@ -42,6 +42,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.withContext
 
 /**
@@ -507,8 +508,6 @@ class CheckerRepository(
                     SyncOutcomeKind.FAILED,
                     context.getString(R.string.token_missing),
                 )
-            // Read from prefs rather than state: WorkManager can start this
-            // worker before the UI has called initialize().
             val config = prefs.readConfig(hasToken = true)
             if (config.baseUrl.isBlank()) {
                 return@withContext SyncOutcome(
@@ -545,62 +544,95 @@ class CheckerRepository(
                 .filter { it.sessionId != null }
                 .groupBy { it.sessionId!! }
 
-            for ((session, scans) in groups) {
-                var index = 0
-                while (index < scans.size) {
-                    val batch = scans.subList(index, minOf(index + SYNC_BATCH, scans.size))
-                    when (val result = api.sync(config.baseUrl, token, device, session, batch)) {
-                        is ApiResult.Success -> {
-                            val response = result.value
-                            scanDao.applySyncOutcome(response.items)
-                            report = report.copy(
-                                sent = report.sent + batch.size,
-                                accepted = report.accepted + response.accepted,
-                                duplicates = report.duplicates + response.duplicates,
-                                conflicts = report.conflicts + response.conflicts,
-                                rejected = report.rejected + response.rejected,
-                            )
-                            index += batch.size
-                        }
+            // Собираем все батчи для параллельной отправки (до 3 одновременно).
+            // HTTP-запросы идут параллельно, применение результатов к БД —
+            // sequenceльно, чтобы не было гонок данных.
+            val batchResults = mutableListOf<Pair<List<ScanRecord>, ApiResult<SyncResponse>>>()
+            val semaphore = kotlinx.coroutines.sync.Semaphore(3)
 
-                        is ApiResult.HttpError -> {
-                            val outcome = when {
-                                result.status == 401 || result.status == 403 -> {
-                                    _state.update { it.copy(tokenState = TokenState.INVALID) }
-                                    SyncOutcome(
-                                        SyncOutcomeKind.AUTH,
-                                        context.getString(R.string.sync_auth_error),
-                                        report.sent,
-                                    )
-                                }
-
-                                result.status >= 500 -> SyncOutcome(
-                                    SyncOutcomeKind.RETRY,
-                                    context.getString(R.string.sync_network_error),
-                                    report.sent,
+            coroutineScope {
+                val jobs = mutableListOf<Job>()
+                for ((session, scans) in groups) {
+                    for (batch in scans.chunked(SYNC_BATCH)) {
+                        semaphore.acquire()
+                        jobs.add(launch {
+                            try {
+                                val result = api.sync(
+                                    config.baseUrl,
+                                    token,
+                                    device,
+                                    session,
+                                    batch,
                                 )
+                                batchResults.add(Pair(batch, result))
+                            } catch (e: Exception) {
+                                batchResults.add(
+                                    Pair(
+                                        batch,
+                                        ApiResult.ParseError(e.message ?: "Unknown network error"),
+                                    ),
+                                )
+                            } finally {
+                                semaphore.release()
+                            }
+                        })
+                    }
+                }
+                jobs.forEach { it.join() }
+            }
 
-                                else -> SyncOutcome(
-                                    SyncOutcomeKind.FAILED,
-                                    context.getString(R.string.sync_failed, result.message),
+            // Применяем результаты sequenceльно к БД и подсчитываем статистику.
+            for ((batch, result) in batchResults) {
+                when (result) {
+                    is ApiResult.Success -> {
+                        val response = result.value
+                        scanDao.applySyncOutcome(response.items)
+                        report = report.copy(
+                            sent = report.sent + batch.size,
+                            accepted = report.accepted + response.accepted,
+                            duplicates = report.duplicates + response.duplicates,
+                            conflicts = report.conflicts + response.conflicts,
+                            rejected = report.rejected + response.rejected,
+                        )
+                    }
+
+                    is ApiResult.HttpError -> {
+                        val outcome = when {
+                            result.status == 401 || result.status == 403 -> {
+                                _state.update { it.copy(tokenState = TokenState.INVALID) }
+                                SyncOutcome(
+                                    SyncOutcomeKind.AUTH,
+                                    context.getString(R.string.sync_auth_error),
                                     report.sent,
                                 )
                             }
-                            return@withContext outcome
+
+                            result.status >= 500 -> SyncOutcome(
+                                SyncOutcomeKind.RETRY,
+                                context.getString(R.string.sync_network_error),
+                                report.sent,
+                            )
+
+                            else -> SyncOutcome(
+                                SyncOutcomeKind.FAILED,
+                                context.getString(R.string.sync_failed, result.message),
+                                report.sent,
+                            )
                         }
-
-                        is ApiResult.NetworkError -> return@withContext SyncOutcome(
-                            SyncOutcomeKind.RETRY,
-                            context.getString(R.string.sync_network_error),
-                            report.sent,
-                        )
-
-                        is ApiResult.ParseError -> return@withContext SyncOutcome(
-                            SyncOutcomeKind.FAILED,
-                            context.getString(R.string.sync_failed, result.message),
-                            report.sent,
-                        )
+                        return@withContext outcome
                     }
+
+                    is ApiResult.NetworkError -> return@withContext SyncOutcome(
+                        SyncOutcomeKind.RETRY,
+                        context.getString(R.string.sync_network_error),
+                        report.sent,
+                    )
+
+                    is ApiResult.ParseError -> return@withContext SyncOutcome(
+                        SyncOutcomeKind.FAILED,
+                        context.getString(R.string.sync_failed, result.message),
+                        report.sent,
+                    )
                 }
             }
 
