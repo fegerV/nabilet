@@ -47,17 +47,13 @@ import com.nabilet.checker.ui.theme.CheckerColors
 import kotlinx.coroutines.launch
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Close
 
 private const val FILTER_ALL = 0
 private const val FILTER_ADMITTED = 1
 private const val FILTER_DENIED = 2
 private const val FILTER_PENDING = 3
 
-/** Number of scans loaded per page. */
 private const val PAGE_SIZE = 50
-
-/** Start loading the next page when 70% of the current page is visible. */
 private const val PRELOAD_THRESHOLD = 0.7f
 
 @Composable
@@ -73,10 +69,8 @@ fun HistoryScreen(
     val lazyListState = collectLazyListState()
     var searchText by rememberSaveable { mutableStateOf(searchQuery) }
 
-    // Use search results if searching, otherwise paginated scans
     val scans = if (searchText.isNotEmpty()) state.recentScans else pagedScans
 
-    // Apply filter and search to the currently loaded scans
     val filtered = when (filter) {
         FILTER_ADMITTED -> scans.filter { it.result.admits }
         FILTER_DENIED -> scans.filter { !it.result.admits }
@@ -92,12 +86,10 @@ fun HistoryScreen(
         }
     }
 
-    // Reset lazy list state when filter or search changes
     LaunchedEffect(filter, searchText) {
         lazyListState.scrollToItem(0)
     }
 
-    // Preload next page when user scrolls near the bottom (only when not searching)
     LaunchedEffect(lazyListState) {
         if (searchText.isBlank()) {
             val snapshot = lazyListState.layoutInfo.visibleItemsInfo
@@ -141,7 +133,6 @@ fun HistoryScreen(
             )
         }
 
-        // Search field
         OutlinedTextField(
             value = searchText,
             onValueChange = { searchText = it; onSearch?.invoke(it) },
@@ -187,7 +178,6 @@ fun HistoryScreen(
                     HistoryRow(scan)
                 }
 
-                // Loading indicator at the bottom when more data is being fetched
                 if (!searchText.isNotEmpty() && totalScanCount > filtered.size) {
                     item {
                         Box(
@@ -226,7 +216,6 @@ private fun HistoryRow(scan: ScanRecord) {
                     .size(10.dp)
                     .background(dot, CircleShape),
             )
-
             Column(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
@@ -242,7 +231,6 @@ private fun HistoryRow(scan: ScanRecord) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-
             Column(
                 horizontalAlignment = Alignment.End,
                 verticalArrangement = Arrangement.spacedBy(2.dp),
@@ -267,6 +255,5 @@ private fun HistoryRow(scan: ScanRecord) {
     }
 }
 
-/** Kept for the diagnostic screen's colour legend. */
 internal fun resultDotColor(result: CheckinResult): Color =
     if (result.admits) CheckerColors.Admit else CheckerColors.Deny

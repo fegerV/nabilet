@@ -1,9 +1,6 @@
 package com.nabilet.checker.ui
 
 import android.app.Application
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -19,7 +16,6 @@ import com.nabilet.checker.domain.model.OpResult
 import com.nabilet.checker.domain.model.ScanFeedback
 import com.nabilet.checker.domain.model.ScanRecord
 import com.nabilet.checker.domain.model.ScanSubmission
-import kotlin.collections.distinctBy
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -28,19 +24,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.flow.update
 
-/**
- * The only place the UI talks to the repository.
- *
- * Two rules hold the screen together:
- *
- *  - one long operation at a time ([busy]); a scan and a bundle download must
- *    not run concurrently, because both mutate the same session reference and
- *    the same queue;
- *  - every failure surfaces as a message, never as a silent no-op, because a
- *    doorman who sees nothing happen will scan the ticket again.
- */
 class CheckerViewModel(
     private val app: Application,
     private val repository: CheckerRepository,
@@ -118,7 +102,6 @@ class CheckerViewModel(
         report(repository.setSessionReference(reference), app.getString(R.string.settings_session_updated))
     }
 
-    /** Re-downloads a bundle with the token already stored on the device. */
     fun reloadBundle(bundleId: String) = runOperation {
         when (val loaded = repository.downloadBundle(bundleId)) {
             is OpResult.Ok -> emit(
@@ -196,7 +179,6 @@ class CheckerViewModel(
         _messages.emit(message)
     }
 
-    /** Exposed for tests and for the settings screen's diagnostics block. */
     fun latestResult(): CheckinResult? = _feedback.value?.result
 
     fun emitMessage(message: String) {
@@ -213,16 +195,10 @@ class CheckerViewModel(
     suspend fun cleanupOldSyncedScans(olderThanMillis: Long): Int =
         repository.cleanupOldSyncedScans(olderThanMillis)
 
-    /** Scans loaded for paginated history view. Starts empty, grows on scroll. */
-    var pagedScans by mutableStateOf<List<ScanRecord>>(emptyList())
+    var pagedScans by mutableStateOf(emptyList<ScanRecord>())
 
-    /** Search results for ticket search in history. */
-    var searchResults by mutableStateOf<List<ScanRecord>>(emptyList())
+    var searchResults by mutableStateOf(emptyList<ScanRecord>())
 
-    /**
-     * Loads the next page of scans and merges them into [pagedScans].
-     * Duplicates are removed by client_scan_id.
-     */
     suspend fun loadMoreScans(offset: Int) {
         val newScans = repository.recentScans(PAGE_SIZE, offset)
         pagedScans = (pagedScans + newScans)
@@ -230,19 +206,12 @@ class CheckerViewModel(
             .sortedByDescending { it.scannedAt }
     }
 
-    /**
-     * Экспортирует все сканы в CSV-строку для отправки администратору.
-     */
     suspend fun exportScansCsv(): String = repository.exportScansCsv()
 
-    /**
-     * Ищет сканы по номеру билета или ID билета.
-     */
     suspend fun searchByTicket(query: String): List<ScanRecord> =
         repository.searchByTicket(query)
 
     companion object {
-        /** Number of scans loaded per page in history pagination. */
         const val PAGE_SIZE = 50
 
         fun factory(app: CheckerApp): ViewModelProvider.Factory = viewModelFactory {

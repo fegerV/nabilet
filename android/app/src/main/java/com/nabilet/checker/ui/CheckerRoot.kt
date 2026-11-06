@@ -72,9 +72,6 @@ fun CheckerRoot(
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
-    // Каждый message из репозитория / ViewModel показывается как Snackbar
-    // вместо мигающего Toasta. Snackbar остаётся на экране, пока оператор не
-    // скроет его, чтобы не пропустить критическую ошибку.
     LaunchedEffect(snackbarHostState) {
         viewModel.messages.collect { message ->
             snackbarHostState.showSnackbar(message)
@@ -86,7 +83,6 @@ fun CheckerRoot(
         return
     }
 
-    // Состояние сканирования QR-кода настройки
     var configScanning by remember { mutableStateOf(false) }
 
     if (!state.config.setupComplete) {
@@ -104,28 +100,23 @@ fun CheckerRoot(
             state = state,
             busy = busy,
             onScanConfig = { configScanning = true },
-            onConfigureManually = { /*	showManual уже внутри SetupScreen */ },
+            onConfigureManually = { },
             onSaveAndVerify = viewModel::saveAndVerify,
             onBeginShift = viewModel::beginShift,
         )
         return
     }
 
-    // Plain `remember`, not `rememberSaveable`: leaving this shell (end shift,
-    // clear data) must return the operator to the scanner, not to whichever
-    // tab they happened to end the shift from.
     var tab by remember { mutableStateOf(TAB_SCANNER) }
 
     LaunchedEffect(tab) {
         if (tab != TAB_SCANNER) viewModel.clearFeedback()
     }
 
-    // --- History pagination state ---
     var historyTotal by remember { mutableStateOf(0) }
     var historyLoading by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
 
-    // Load total count when history tab is opened
     LaunchedEffect(tab == TAB_HISTORY) {
         if (tab == TAB_HISTORY) {
             scope.launch {
@@ -138,7 +129,6 @@ fun CheckerRoot(
         }
     }
 
-    // Periodic cleanup: remove synced scans older than 30 days, once per day
     LaunchedEffect(Unit) {
         scope.launch {
             while (true) {
@@ -213,7 +203,6 @@ fun CheckerRoot(
                     onSync = viewModel::syncNow,
                     onOpenSettings = { tab = TAB_SETTINGS },
                 )
-
                 TAB_STATS -> StatsScreen(state)
                 TAB_HISTORY -> HistoryScreen(
                     state = state,
@@ -282,8 +271,6 @@ private fun LoadingScreen(
 ) {
     var error by remember { mutableStateOf(false) }
 
-    // If initialization does not complete within LOAD_TIMEOUT_MS, show an
-    // error state with a retry button instead of a perpetual spinner.
     LaunchedEffect(Unit) {
         delay(LOAD_TIMEOUT_MS)
         if (!error) {

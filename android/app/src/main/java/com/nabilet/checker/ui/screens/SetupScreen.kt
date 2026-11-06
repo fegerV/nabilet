@@ -50,17 +50,6 @@ import com.nabilet.checker.data.repository.TokenState
 import com.nabilet.checker.ui.components.StatusPill
 import com.nabilet.checker.ui.theme.CheckerColors
 
-/**
- * Экран первичной настройки — максимально упрощённый.
- *
- * Проверяющий видит минимум:
- *  1. Статус: настроено / не настроено
- *  2. Огромная кнопка «Отсканировать QR от администратора» (основной путь)
- *  3. Маленькая кнопка «Ввести вручную» (резерв)
- *  4. Если готово — огромная кнопка «Начать смену»
- *
- * Никаких полей ввода, копирования-вставки, длинных адресов.
- */
 @Composable
 fun SetupScreen(
     state: CheckerState,
@@ -83,7 +72,6 @@ fun SetupScreen(
             .padding(horizontal = 24.dp, vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
-        // ── Header ──────────────────────────────────────────────
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
@@ -99,7 +87,6 @@ fun SetupScreen(
             )
         }
 
-        // ── Статус ──────────────────────────────────────────────
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -119,7 +106,6 @@ fun SetupScreen(
             }
         }
 
-        // ── Если уже настроено — сразу кнопка смены ─────────────
         if (isConfigured) {
             SetupActionCard(
                 title = stringResource(R.string.setup_ready_title),
@@ -130,7 +116,6 @@ fun SetupScreen(
             )
         }
 
-        // ── Основная кнопка: сканировать QR ─────────────────────
         BigActionCard(
             icon = Icons.Default.QrCodeScanner,
             title = stringResource(R.string.setup_scan_title),
@@ -140,7 +125,6 @@ fun SetupScreen(
             primary = true,
         )
 
-        // ── Резерв: ввести вручную ──────────────────────────────
         if (!showManual) {
             Button(
                 onClick = { showManual = true },
@@ -166,7 +150,6 @@ fun SetupScreen(
             }
         }
 
-        // ── Ручное поле (скрыто по умолчанию) ───────────────────
         if (showManual) {
             ManualCard(
                 server = manualServer,
@@ -178,7 +161,6 @@ fun SetupScreen(
             )
         }
 
-        // ── Footer ──────────────────────────────────────────────
         Text(
             text = stringResource(R.string.brand_footer),
             style = MaterialTheme.typography.labelSmall,
@@ -188,7 +170,6 @@ fun SetupScreen(
     }
 }
 
-/** Карта действия: огромная кнопка с иконкой. */
 @Composable
 private fun BigActionCard(
     icon: androidx.compose.material.icons.filled.ImageVector,
@@ -255,7 +236,6 @@ private fun BigActionCard(
     }
 }
 
-/** Карта действия «Начать смену». */
 @Composable
 private fun SetupActionCard(
     title: String,
@@ -281,7 +261,8 @@ private fun SetupActionCard(
             Icon(
                 imageVector = Icons.Default.Close,
                 contentDescription = null,
-                modifier = Modifier.size(48.dp).graphicsLayer { tint = CheckerColors.Admit },
+                modifier = Modifier.size(48.dp),
+                tint = CheckerColors.Admit,
             )
             Text(
                 text = title,
@@ -319,7 +300,6 @@ private fun SetupActionCard(
     }
 }
 
-/** Ручной ввод (скрыт по умолчанию, только для резерва). */
 @Composable
 private fun ManualCard(
     server: String,
@@ -385,7 +365,6 @@ private fun ManualCard(
     }
 }
 
-/** Pill с состоянием токена. */
 @Composable
 private fun TokenStatePill(state: TokenState) {
     val (text, color) = when (state) {
