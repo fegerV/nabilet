@@ -98,6 +98,17 @@
     <string name="setup_ready_subtitle">Сервер и токен настроены. Можно начинать проверку билетов.</string>
     <string name="action_scan">Отсканировать</string>
 
+    <!-- Export -->
+    <string name="settings_export_csv">Экспорт отчёта в CSV</string>
+    <string name="settings_export_subtitle">Выгрузить все сканы смены в файл для отправки администратору</string>
+    <string name="settings_exporting">Экспорт…</string>
+    <string name="settings_export_done">Отчёт сохранён в папке Загрузки</string>
+    <string name="settings_export_failed">Ошибка экспорта</string>
+
+    <!-- History search -->
+    <string name="history_search_hint">Поиск по номеру билета</string>
+    <string name="history_search_empty">Ничего не найдено</string>
+
     <!-- Scanner -->
     <string name="scanner_title">Сканер</string>
     <string name="scanner_status_online">Онлайн</string>

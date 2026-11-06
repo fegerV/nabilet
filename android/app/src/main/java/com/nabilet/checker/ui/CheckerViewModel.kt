@@ -205,6 +205,9 @@ class CheckerViewModel(
     /** Scans loaded for paginated history view. Starts empty, grows on scroll. */
     var pagedScans by mutableStateOf<List<ScanRecord>>(emptyList())
 
+    /** Search results for ticket search in history. */
+    var searchResults by mutableStateOf<List<ScanRecord>>(emptyList())
+
     /**
      * Loads the next page of scans and merges them into [pagedScans].
      * Duplicates are removed by client_scan_id.
@@ -216,7 +219,21 @@ class CheckerViewModel(
             .sortedByDescending { it.scannedAt }
     }
 
+    /**
+     * Экспортирует все сканы в CSV-строку для отправки администратору.
+     */
+    suspend fun exportScansCsv(): String = repository.exportScansCsv()
+
+    /**
+     * Ищет сканы по номеру билета или ID билета.
+     */
+    suspend fun searchByTicket(query: String): List<ScanRecord> =
+        repository.searchByTicket(query)
+
     companion object {
+        /** Number of scans loaded per page in history pagination. */
+        const val PAGE_SIZE = 50
+
         fun factory(app: CheckerApp): ViewModelProvider.Factory = viewModelFactory {
             initializer {
                 CheckerViewModel(

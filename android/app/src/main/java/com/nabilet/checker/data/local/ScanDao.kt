@@ -183,6 +183,51 @@ class ScanDao(private val helper: CheckerDatabase) {
         helper.writableDatabase.delete("scans", null, null)
     }
 
+    /**
+     * Возвращает все сканы за период (или все, если sinceMillis = 0).
+     * Используется для экспорта в CSV.
+     */
+    fun scansSince(sinceMillis: Long): List<ScanRecord> {
+        val whereClause = if (sinceMillis > 0L) "scanned_at >= ?" else null
+        val whereArgs = if (sinceMillis > 0L) arrayOf(sinceMillis.toString()) else null
+        helper.readableDatabase.query(
+            "scans",
+            null,
+            whereClause,
+            whereArgs,
+            null,
+            null,
+            "scanned_at DESC, id DESC",
+            null,
+        ).use { cursor ->
+            val out = ArrayList<ScanRecord>(cursor.count)
+            while (cursor.moveToNext()) out.add(cursor.toRecord())
+            return out
+        }
+    }
+
+    /**
+     * Ищет сканы по номеру билета или ID билета.
+     * Регистронезависимый部分匹配.
+     */
+    fun searchByTicket(query: String): List<ScanRecord> {
+        val like = "%$query%"
+        helper.readableDatabase.query(
+            "scans",
+            null,
+            "ticket_number LIKE ? OR ticket_id LIKE ?",
+            arrayOf(like, like),
+            null,
+            null,
+            "scanned_at DESC, id DESC",
+            null,
+        ).use { cursor ->
+            val out = ArrayList<ScanRecord>(cursor.count)
+            while (cursor.moveToNext()) out.add(cursor.toRecord())
+            return out
+        }
+    }
+
     private fun Cursor.toRecord(): ScanRecord {
         val result = CheckinResult.fromWire(getString(getColumnIndexOrThrow("result")))
             ?: CheckinResult.UNKNOWN_TICKET

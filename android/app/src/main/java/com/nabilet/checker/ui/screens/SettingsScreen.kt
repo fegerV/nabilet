@@ -20,9 +20,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.FontWeight
+import androidx.compose.ui.text.TextAlign
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
@@ -33,7 +35,7 @@ import com.nabilet.checker.domain.util.TimeFormat
 import com.nabilet.checker.ui.components.KeyValueRow
 import com.nabilet.checker.ui.components.SectionCard
 
-private enum class SettingsDialog { NONE, SERVER, TOKEN, SESSION, BUNDLE }
+private enum class SettingsDialog { NONE, SERVER, TOKEN, SESSION, BUNDLE, EXPORT }
 
 private enum class ConfirmAction { NONE, REMOVE_BUNDLE, NEW_SHIFT, END_SHIFT, CLEAR_ALL }
 
@@ -51,12 +53,14 @@ fun SettingsScreen(
     onNewShift: () -> Unit,
     onEndShift: () -> Unit,
     onClearAll: () -> Unit,
+    onExportCsv: () -> Unit,
 ) {
     // Enums are not guaranteed to survive process death through the default
     // saver, and a lost dialog is harmless. Rotation keeps the values because
     // `remember` survives composition changes.
     var dialog by remember { mutableStateOf(SettingsDialog.NONE) }
     var confirm by remember { mutableStateOf(ConfirmAction.NONE) }
+    var exporting by remember { mutableStateOf(false) }
 
     val bundle = state.bundle
     val config = state.config
@@ -214,6 +218,13 @@ fun SettingsScreen(
                 value = bundle?.keyFingerprint ?: stringResource(R.string.stats_no_data),
                 monospace = true,
             )
+            OutlinedButton(
+                onClick = onExportCsv,
+                enabled = !busy,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(stringResource(R.string.settings_export_csv))
+            }
         }
 
         SectionCard(title = stringResource(R.string.settings_danger)) {
@@ -309,6 +320,49 @@ fun SettingsScreen(
                 onLoadBundle(value)
             },
         )
+
+        SettingsDialog.EXPORT -> Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                text = stringResource(R.string.settings_export_csv),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                text = stringResource(R.string.settings_export_subtitle),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            if (exporting) {
+                CircularProgressIndicator()
+            } else {
+                Button(
+                    onClick = {
+                        exporting = true
+                        onExportCsv()
+                        exporting = false
+                        dialog = SettingsDialog.NONE
+                    },
+                    enabled = !exporting,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(stringResource(R.string.settings_export_done))
+                }
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+            TextButton(
+                onClick = { dialog = SettingsDialog.NONE },
+            ) {
+                Text(stringResource(R.string.action_close))
+            }
+        }
 
         SettingsDialog.NONE -> Unit
     }

@@ -32,6 +32,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nabilet.checker.R
@@ -44,6 +45,10 @@ import com.nabilet.checker.ui.screens.SetupScreen
 import com.nabilet.checker.ui.screens.StatsScreen
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import android.os.Environment
+import java.io.File
+import java.io.OutputStreamWriter
+import java.nio.charset.Charsets
 
 private const val TAB_SCANNER = 0
 private const val TAB_STATS = 1
@@ -118,6 +123,7 @@ fun CheckerRoot(
     // --- History pagination state ---
     var historyTotal by remember { mutableStateOf(0) }
     var historyLoading by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
 
     // Load total count when history tab is opened
     LaunchedEffect(tab == TAB_HISTORY) {
@@ -211,7 +217,7 @@ fun CheckerRoot(
                 TAB_STATS -> StatsScreen(state)
                 TAB_HISTORY -> HistoryScreen(
                     state = state,
-                    pagedScans = viewModel.pagedScans,
+                    pagedScans = if (searchQuery.isNotEmpty()) viewModel.searchResults else viewModel.pagedScans,
                     totalScanCount = historyTotal,
                     onLoadMore = { offset ->
                         if (historyLoading) return@onLoadMore
@@ -222,6 +228,13 @@ fun CheckerRoot(
                             } finally {
                                 historyLoading = false
                             }
+                        }
+                    },
+                    searchQuery = searchQuery,
+                    onSearch = { query ->
+                        searchQuery = query
+                        scope.launch {
+                            viewModel.searchResults = viewModel.searchByTicket(query)
                         }
                     },
                 )
@@ -238,6 +251,22 @@ fun CheckerRoot(
                     onNewShift = viewModel::startNewShift,
                     onEndShift = viewModel::endShift,
                     onClearAll = viewModel::clearAll,
+                    onExportCsv = {
+                        scope.launch {
+                            try {
+                                val csv = viewModel.exportScansCsv()
+                                val downloadsDir = context.applicationContext.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+                                val file = File(
+                                    downloadsDir,
+                                    "nabilet-checker-export-${System.currentTimeMillis()}.csv",
+                                )
+                                OutputStreamWriter(file.outputStream(), Charsets.UTF_8).use { it.write(csv) }
+                                viewModel.messages.emit(stringResource(R.string.settings_export_done))
+                            } catch (e: Exception) {
+                                viewModel.messages.emit(stringResource(R.string.settings_export_failed))
+                            }
+                        }
+                    },
                 )
             }
         }

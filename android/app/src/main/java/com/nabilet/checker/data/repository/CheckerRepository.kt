@@ -678,6 +678,41 @@ class CheckerRepository(
     suspend fun cleanupOldSyncedScans(olderThanMillis: Long): Int =
         withContext(Dispatchers.IO) { scanDao.deleteOldSyncedScans(olderThanMillis) }
 
+    /**
+     * Экспортирует сканы за период в CSV-формат.
+     *
+     * @param sinceMillis начало периода в миллисекундах (включительно), 0 = все сканы
+     * @return CSV-строка с заголовком и строками сканов, готовая к записи в файл
+     */
+    suspend fun exportScansCsv(sinceMillis: Long = 0L): String =
+        withContext(Dispatchers.IO) {
+            val scans = scanDao.scansSince(sinceMillis)
+            val sb = StringBuilder()
+            sb.append(
+                "client_scan_id,ticket_id,ticket_number,result,source,session_id," +
+                    "device_id,scanned_at,synced,server_message,note\n"
+            )
+            for (scan in scans) {
+                sb.append("${scan.clientScanId},")
+                sb.append("${scan.ticketId},")
+                sb.append("\"${scan.ticketNumber ?: ""}\",")
+                sb.append("${scan.result.wire},")
+                sb.append("${scan.source.wire},")
+                sb.append("\"${scan.sessionId ?: ""}\",")
+                sb.append("\"${scan.deviceId ?: ""}\",")
+                sb.append("${scan.scannedAt},")
+                sb.append("${if (scan.synced) 1 else 0},")
+                sb.append("\"${escapeCsv(scan.serverMessage)}\",")
+                sb.append("\"${escapeCsv(scan.note)}\"\n")
+            }
+            sb.toString()
+        }
+
+    private fun escapeCsv(value: String?): String {
+        val v = value ?: ""
+        return v.replace("\"", "\"\"")
+    }
+
     private suspend fun handleScan(rawQr: String, online: Boolean): ScanSubmission {
         val state = _state.value
         val config = state.config

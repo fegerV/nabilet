@@ -19,7 +19,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -43,6 +45,7 @@ import com.nabilet.checker.ui.components.resultLabel
 import com.nabilet.checker.ui.components.sourceLabel
 import com.nabilet.checker.ui.theme.CheckerColors
 import kotlinx.coroutines.launch
+import androidx.compose.material.icons.Icons
 
 private const val FILTER_ALL = 0
 private const val FILTER_ADMITTED = 1
@@ -61,34 +64,47 @@ fun HistoryScreen(
     pagedScans: List<ScanRecord> = emptyList(),
     totalScanCount: Int = 0,
     onLoadMore: ((Int) -> Unit)? = null,
+    searchQuery: String = "",
+    onSearch: ((String) -> Unit)? = null,
 ) {
     var filter by rememberSaveable { mutableStateOf(FILTER_ALL) }
     val lazyListState = collectLazyListState()
+    var searchText by rememberSaveable { mutableStateOf(searchQuery) }
 
-    // Use paginated scans if available, otherwise fall back to state
-    val scans = if (pagedScans.isNotEmpty()) pagedScans else state.recentScans
+    // Use search results if searching, otherwise paginated scans
+    val scans = if (searchText.isNotEmpty()) state.recentScans else pagedScans
 
-    // Apply filter to the currently loaded scans
+    // Apply filter and search to the currently loaded scans
     val filtered = when (filter) {
         FILTER_ADMITTED -> scans.filter { it.result.admits }
         FILTER_DENIED -> scans.filter { !it.result.admits }
         FILTER_PENDING -> scans.filter { !it.synced }
         else -> scans
+    }.filter {
+        if (searchText.isNotBlank()) {
+            val q = searchText.lowercase()
+            it.ticketNumber?.lowercase()?.contains(q) == true ||
+                it.ticketId.lowercase().contains(q)
+        } else {
+            true
+        }
     }
 
-    // Reset lazy list state when filter changes
-    LaunchedEffect(filter) {
+    // Reset lazy list state when filter or search changes
+    LaunchedEffect(filter, searchText) {
         lazyListState.scrollToItem(0)
     }
 
-    // Preload next page when user scrolls near the bottom
+    // Preload next page when user scrolls near the bottom (only when not searching)
     LaunchedEffect(lazyListState) {
-        val snapshot = lazyListState.layoutInfo.visibleItemsInfo
-        if (snapshot.isNotEmpty()) {
-            val lastVisibleIndex = snapshot.last().index
-            val totalItems = lazyListState.layoutInfo.totalItemsCount
-            if (totalItems > 0 && lastVisibleIndex >= (totalItems * PRELOAD_THRESHOLD).toInt()) {
-                onLoadMore?.invoke(lazyListState.layoutInfo.totalItemsCount)
+        if (searchText.isBlank()) {
+            val snapshot = lazyListState.layoutInfo.visibleItemsInfo
+            if (snapshot.isNotEmpty()) {
+                val lastVisibleIndex = snapshot.last().index
+                val totalItems = lazyListState.layoutInfo.totalItemsCount
+                if (totalItems > 0 && lastVisibleIndex >= (totalItems * PRELOAD_THRESHOLD).toInt()) {
+                    onLoadMore?.invoke(lazyListState.layoutInfo.totalItemsCount)
+                }
             }
         }
     }
@@ -123,9 +139,25 @@ fun HistoryScreen(
             )
         }
 
+        // Search field
+        OutlinedTextField(
+            value = searchText,
+            onValueChange = { searchText = it; onSearch?.invoke(it) },
+            label = { Text(stringResource(R.string.history_search_hint)) },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+            trailingIcon = {
+                if (searchText.isNotEmpty()) {
+                    IconButton(onClick = { searchText = ""; onSearch?.invoke("") }) {
+                        Icons.Default.Close
+                    }
+                }
+            },
+        )
+
         if (filtered.isEmpty()) {
             EmptyState(
-                title = stringResource(R.string.history_empty_title),
+                title = if (searchText.isNotEmpty()) stringResource(R.string.history_search_empty) else stringResource(R.string.history_empty_title),
                 text = stringResource(R.string.history_empty_text),
             )
         } else {
@@ -154,7 +186,7 @@ fun HistoryScreen(
                 }
 
                 // Loading indicator at the bottom when more data is being fetched
-                if (totalScanCount > filtered.size) {
+                if (!searchText.isNotEmpty() && totalScanCount > filtered.size) {
                     item {
                         Box(
                             modifier = Modifier
