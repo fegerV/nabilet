@@ -6,7 +6,6 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
-import android.os.Environment
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -35,6 +34,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -83,7 +83,7 @@ fun ConfigScanScreen(
                 val bitmap = BitmapFactory.decodeStream(inputStream)
                 inputStream.close()
                 if (bitmap != null) {
-                    processBitmap(bitmap, appContext, ::onConfigScanned) { success, msg ->
+                    processBitmap(bitmap, appContext) { success, msg ->
                         scanState = if (success) ScanState.Success else ScanState.Error
                         scanMessage = msg
                     }
@@ -292,7 +292,6 @@ fun ConfigScanScreen(
     }
 }
 
-@Composable
 private fun processBitmap(
     bitmap: Bitmap,
     appContext: android.content.Context,
