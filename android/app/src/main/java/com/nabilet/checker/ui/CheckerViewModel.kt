@@ -2,6 +2,7 @@ package com.nabilet.checker.ui
 
 import android.app.Application
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -18,6 +19,7 @@ import com.nabilet.checker.domain.model.OpResult
 import com.nabilet.checker.domain.model.ScanFeedback
 import com.nabilet.checker.domain.model.ScanRecord
 import com.nabilet.checker.domain.model.ScanSubmission
+import kotlin.collections.distinctBy
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow

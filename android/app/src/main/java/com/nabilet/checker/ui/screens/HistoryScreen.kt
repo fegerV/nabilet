@@ -47,6 +47,7 @@ import com.nabilet.checker.ui.theme.CheckerColors
 import kotlinx.coroutines.launch
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Close
 
 private const val FILTER_ALL = 0
 private const val FILTER_ADMITTED = 1

@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
+import android.os.Environment
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -52,18 +53,6 @@ import com.nabilet.checker.domain.util.ConfigQrParser
 import com.nabilet.checker.ui.scanner.CameraPreview
 import com.nabilet.checker.ui.scanner.QrAnalyzer
 
-/**
- * Экран сканирования QR-кода настройки устройства.
- *
- * Максимальная простота:
- *  - Весь экран — камера
- *  - Приложение само ищет QR-код и разбирает его
- *  - Огромная зелёная/красная обратная связь
- *  - Кнопка «Выбрать из галереи» — если QR-код прислали в мессенджере
- *
- * Проверяющий не вводит ничего вручную — только сканирует QR,
- * который выдал администратор.
- */
 @Composable
 fun ConfigScanScreen(
     onConfigScanned: (String, String) -> Unit,
@@ -94,7 +83,10 @@ fun ConfigScanScreen(
                 val bitmap = BitmapFactory.decodeStream(inputStream)
                 inputStream.close()
                 if (bitmap != null) {
-                    processBitmap(bitmap)
+                    processBitmap(bitmap, appContext, ::onConfigScanned) { success, msg ->
+                        scanState = if (success) ScanState.Success else ScanState.Error
+                        scanMessage = msg
+                    }
                 } else {
                     scanState = ScanState.Error
                     scanMessage = context.getString(R.string.config_scan_image_unreadable)
@@ -300,8 +292,12 @@ fun ConfigScanScreen(
     }
 }
 
-private fun processBitmap(bitmap: Bitmap) {
-    val appContext = LocalContext.current.applicationContext
+@Composable
+private fun processBitmap(
+    bitmap: Bitmap,
+    appContext: android.content.Context,
+    onResult: (success: Boolean, message: String?) -> Unit,
+) {
     val scanner = BarcodeScanning.getClient(
         BarcodeScannerOptions.Builder()
             .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
@@ -316,24 +312,19 @@ private fun processBitmap(bitmap: Bitmap) {
             if (value != null) {
                 when (val result = ConfigQrParser.parse(value)) {
                     is ConfigQrParser.ConfigQrResult.Valid -> {
-                        scanState = ScanState.Success
-                        scanMessage = null
-                        onConfigScanned(result.config.server, result.config.token)
+                        onResult(true, null)
                     }
                     is ConfigQrParser.ConfigQrResult.Invalid -> {
-                        scanState = ScanState.Error
-                        scanMessage = result.error
+                        onResult(false, result.error)
                     }
                 }
             } else {
-                scanState = ScanState.Error
-                scanMessage = LocalContext.current.getString(R.string.config_scan_no_qr_found)
+                onResult(false, appContext.getString(R.string.config_scan_no_qr_found))
             }
             scanner.close()
         }
         .addOnFailureListener {
-            scanState = ScanState.Error
-            scanMessage = LocalContext.current.getString(R.string.config_scan_image_unreadable)
+            onResult(false, appContext.getString(R.string.config_scan_image_unreadable))
             scanner.close()
         }
 }

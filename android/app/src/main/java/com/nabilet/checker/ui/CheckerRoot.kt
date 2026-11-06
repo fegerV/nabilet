@@ -220,13 +220,14 @@ fun CheckerRoot(
                     pagedScans = if (searchQuery.isNotEmpty()) viewModel.searchResults else viewModel.pagedScans,
                     totalScanCount = historyTotal,
                     onLoadMore = { offset ->
-                        if (historyLoading) return@onLoadMore
-                        historyLoading = true
-                        scope.launch {
-                            try {
-                                viewModel.loadMoreScans(offset)
-                            } finally {
-                                historyLoading = false
+                        if (!historyLoading) {
+                            historyLoading = true
+                            scope.launch {
+                                try {
+                                    viewModel.loadMoreScans(offset)
+                                } finally {
+                                    historyLoading = false
+                                }
                             }
                         }
                     },
@@ -252,6 +253,8 @@ fun CheckerRoot(
                     onEndShift = viewModel::endShift,
                     onClearAll = viewModel::clearAll,
                     onExportCsv = {
+                        val doneMsg = stringResource(R.string.settings_export_done)
+                        val failedMsg = stringResource(R.string.settings_export_failed)
                         scope.launch {
                             try {
                                 val csv = viewModel.exportScansCsv()
@@ -261,9 +264,9 @@ fun CheckerRoot(
                                     "nabilet-checker-export-${System.currentTimeMillis()}.csv",
                                 )
                                 OutputStreamWriter(file.outputStream(), Charsets.UTF_8).use { it.write(csv) }
-                                viewModel.emitMessage(stringResource(R.string.settings_export_done))
+                                viewModel.emitMessage(doneMsg)
                             } catch (e: Exception) {
-                                viewModel.emitMessage(stringResource(R.string.settings_export_failed))
+                                viewModel.emitMessage(failedMsg)
                             }
                         }
                     },

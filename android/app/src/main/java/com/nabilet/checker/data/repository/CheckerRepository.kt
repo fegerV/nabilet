@@ -46,7 +46,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.job.Job
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
 
 /**
