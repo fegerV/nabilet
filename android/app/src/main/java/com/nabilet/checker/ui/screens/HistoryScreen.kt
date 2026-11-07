@@ -30,6 +30,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -46,7 +47,6 @@ import com.nabilet.checker.ui.components.resultLabel
 import com.nabilet.checker.ui.components.sourceLabel
 import com.nabilet.checker.ui.theme.CheckerColors
 import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.flow.snapshotFlow
 import kotlinx.coroutines.launch
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
