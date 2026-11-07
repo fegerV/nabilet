@@ -11,15 +11,16 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.collectLazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -44,6 +45,8 @@ import com.nabilet.checker.ui.components.EmptyState
 import com.nabilet.checker.ui.components.resultLabel
 import com.nabilet.checker.ui.components.sourceLabel
 import com.nabilet.checker.ui.theme.CheckerColors
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.snapshotFlow
 import kotlinx.coroutines.launch
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
@@ -66,7 +69,7 @@ fun HistoryScreen(
     onSearch: ((String) -> Unit)? = null,
 ) {
     var filter by rememberSaveable { mutableStateOf(FILTER_ALL) }
-    val lazyListState = collectLazyListState()
+    val lazyListState = rememberLazyListState()
     var searchText by rememberSaveable { mutableStateOf(searchQuery) }
 
     val scans = if (searchText.isNotEmpty()) state.recentScans else pagedScans
@@ -90,16 +93,20 @@ fun HistoryScreen(
         lazyListState.scrollToItem(0)
     }
 
-    LaunchedEffect(lazyListState) {
+    LaunchedEffect(lazyListState, searchText) {
         if (searchText.isBlank()) {
-            val snapshot = lazyListState.layoutInfo.visibleItemsInfo
-            if (snapshot.isNotEmpty()) {
-                val lastVisibleIndex = snapshot.last().index
-                val totalItems = lazyListState.layoutInfo.totalItemsCount
-                if (totalItems > 0 && lastVisibleIndex >= (totalItems * PRELOAD_THRESHOLD).toInt()) {
-                    onLoadMore?.invoke(lazyListState.layoutInfo.totalItemsCount)
+            snapshotFlow { lazyListState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }
+                .collect { lastVisibleIndex ->
+                    if (lastVisibleIndex != null) {
+                        val totalItems = lazyListState.layoutInfo.totalItemsCount
+                        if (
+                            totalItems > 0 &&
+                            lastVisibleIndex >= (totalItems * PRELOAD_THRESHOLD).toInt()
+                        ) {
+                            onLoadMore?.invoke(totalItems)
+                        }
+                    }
                 }
-            }
         }
     }
 
@@ -142,7 +149,10 @@ fun HistoryScreen(
             trailingIcon = {
                 if (searchText.isNotEmpty()) {
                     IconButton(onClick = { searchText = ""; onSearch?.invoke("") }) {
-                        Icons.Default.Close
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = stringResource(R.string.action_close),
+                        )
                     }
                 }
             },
@@ -156,8 +166,8 @@ fun HistoryScreen(
         } else {
             LazyColumn(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .state(lazyListState),
+                    .fillMaxSize(),
+                state = lazyListState,
                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
@@ -186,10 +196,10 @@ fun HistoryScreen(
                                 .padding(vertical = 16.dp),
                             contentAlignment = Alignment.Center,
                         ) {
-                            androidx.compose.material3.CircularProgressIndicator(
-                                modifier = androidx.compose.ui.Modifier.size(20.dp),
-                                strokeWidth = 2.dp,
-                            )
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            strokeWidth = 2.dp,
+                        )
                         }
                     }
                 }

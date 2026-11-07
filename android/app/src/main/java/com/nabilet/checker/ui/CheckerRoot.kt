@@ -32,7 +32,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nabilet.checker.R
@@ -48,7 +47,6 @@ import kotlinx.coroutines.launch
 import android.os.Environment
 import java.io.File
 import java.io.OutputStreamWriter
-import java.nio.charset.Charsets
 
 private const val TAB_SCANNER = 0
 private const val TAB_STATS = 1
@@ -71,6 +69,9 @@ fun CheckerRoot(
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+
+    val exportDoneMsg = stringResource(R.string.settings_export_done)
+    val exportFailedMsg = stringResource(R.string.settings_export_failed)
 
     LaunchedEffect(snackbarHostState) {
         viewModel.messages.collect { message ->
@@ -243,8 +244,6 @@ fun CheckerRoot(
                     onEndShift = viewModel::endShift,
                     onClearAll = viewModel::clearAll,
                     onExportCsv = {
-                        val doneMsg = stringResource(R.string.settings_export_done)
-                        val failedMsg = stringResource(R.string.settings_export_failed)
                         scope.launch {
                             try {
                                 val csv = viewModel.exportScansCsv()
@@ -254,9 +253,9 @@ fun CheckerRoot(
                                     "nabilet-checker-export-${System.currentTimeMillis()}.csv",
                                 )
                                 OutputStreamWriter(file.outputStream(), Charsets.UTF_8).use { it.write(csv) }
-                                viewModel.emitMessage(doneMsg)
+                                viewModel.emitMessage(exportDoneMsg)
                             } catch (e: Exception) {
-                                viewModel.emitMessage(failedMsg)
+                                viewModel.emitMessage(exportFailedMsg)
                             }
                         }
                     },

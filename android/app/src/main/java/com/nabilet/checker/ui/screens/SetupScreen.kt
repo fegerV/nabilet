@@ -39,8 +39,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.FontWeight
-import androidx.compose.ui.text.TextAlign
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
@@ -156,7 +156,7 @@ fun SetupScreen(
                 onServerChange = { manualServer = it },
                 token = manualToken,
                 onTokenChange = { manualToken = it },
-                onSave = { onSaveAndVerify(manualServer, manualToken) },
+                onSave = onSaveAndVerify,
                 busy = busy,
             )
         }
@@ -172,7 +172,7 @@ fun SetupScreen(
 
 @Composable
 private fun BigActionCard(
-    icon: androidx.compose.material.icons.filled.ImageVector,
+    icon: ImageVector,
     title: String,
     subtitle: String,
     onClick: () -> Unit,
