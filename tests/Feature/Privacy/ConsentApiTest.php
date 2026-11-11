@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Privacy;
 
+use Carbon\CarbonInterface;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -255,7 +256,7 @@ class ConsentApiTest extends TestCase
      * Строка согласия в журнал. Субъект здесь всегда аккаунт (`user_id`);
      * анонимные воспроизводятся вручную там, где проверяется их невидимость.
      */
-    private function seedConsent(int $userId, string $type, string $status, Carbon $moment, string $policyVersion): void
+    private function seedConsent(int $userId, string $type, string $status, CarbonInterface $moment, string $policyVersion): void
     {
         DB::table('consents')->insert([
             'user_id' => $userId,

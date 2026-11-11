@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Nabilet\Core\Database\IdentifierLookup;
 use Nabilet\Core\Errors\ValidationError;
+use Nabilet\Core\Http\ContentType;
 use Nabilet\Core\Support\Paging;
 use Nabilet\Core\Support\UserOrganization;
 use Nabilet\Core\Tenancy\OrganizationContext;
@@ -168,8 +169,6 @@ final class CheckinDeviceController extends Controller
      *
      * Отдаёт PNG-картинку QR-кода, которую можно сохранить и переслать
      * в мессенджер другому проверяющему.
-     *
-     * @param  array{server?: string, event_name?: string} $validated
      */
     public function configQr(Request $request, string $device): Response
     {
@@ -206,7 +205,7 @@ final class CheckinDeviceController extends Controller
         file_put_contents($path, $png);
 
         return new BinaryFileResponse($path, 200, [
-            'Content-Type' => 'image/png',
+            'Content-Type' => ContentType::PNG,
             'Content-Disposition' => 'inline; filename="checkin-device-' . $model->id . '-qr.png"',
         ], true);
     }

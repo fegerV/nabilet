@@ -323,7 +323,7 @@ jobs:
           set -e
           Q() { mysql -h 127.0.0.1 -P 3306 -uroot -prootpass -N -B -e "$1" 2>/dev/null; }
           EXPECT_TABLES=88
-          EXPECT_COLUMNS=951
+          EXPECT_COLUMNS=953
           EXPECT_TRIGGERS=3
 
           for db in nabilet split; do

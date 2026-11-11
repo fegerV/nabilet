@@ -50,4 +50,7 @@ final class ContentType
 
     /** PDF-билет — двоичные данные. */
     public const PDF = 'application/pdf';
+
+    /** QR-код и другие PNG-картинки — двоичные данные. */
+    public const PNG = 'image/png';
 }

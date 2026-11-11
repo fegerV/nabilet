@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Privacy\Services;
 
+use Illuminate\Support\Carbon;
 use Nabilet\Core\Errors\ConflictError;
 use Nabilet\Modules\Core\Users\Models\User;
 use Nabilet\Modules\Privacy\Domain\PrivacyRequest;
@@ -104,7 +105,9 @@ final class PrivacyRequestService
         $model->status = $to;
 
         if (in_array($to, [PrivacyRequest::COMPLETED, PrivacyRequest::REJECTED], true)) {
-            $model->completed_at = now();
+            // `now()` объявлен `: CarbonInterface`, а модель описывает
+            // `@property \Carbon\Carbon` — явный подкласс закрывает тип.
+            $model->completed_at = Carbon::now();
         }
 
         $model->save();

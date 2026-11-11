@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Privacy;
 
+use Carbon\CarbonInterface;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -276,7 +277,7 @@ class PrivacyRequestApiTest extends TestCase
      *
      * @return string public_id засеянной строки
      */
-    private function seedRequest(string $type, string $status, Carbon $createdAt): string
+    private function seedRequest(string $type, string $status, CarbonInterface $createdAt): string
     {
         $publicId = (string) Str::ulid()->toBase32();
 

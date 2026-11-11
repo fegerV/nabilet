@@ -130,7 +130,9 @@ final class SelfCheckCommand extends Command
         }
 
         $disk = $host->diskSpace();
-        $diskState = is_string($disk['status'] ?? null) ? $disk['status'] : 'error';
+        // `status` — строка в обоих вариантах возврата HostChecks::diskSpace(),
+        // поэтому защитный `is_string(... ?? null)` здесь мёртвый код (PHPStan).
+        $diskState = $disk['status'];
         $signals[] = [
             'key' => 'disk',
             'state' => $diskState,
@@ -141,7 +143,7 @@ final class SelfCheckCommand extends Command
         ];
 
         $backup = $host->lastBackup();
-        $backupState = is_string($backup['status'] ?? null) ? $backup['status'] : 'error';
+        $backupState = $backup['status'];
         $signals[] = [
             'key' => 'backup',
             'state' => $backupState,
