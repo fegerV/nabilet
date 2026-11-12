@@ -35,6 +35,35 @@
   allow/deny по CIDR, паритет путей, конверт ошибки, флаг малформированного
   allowlist.
 
+## [1.0.1] - 2026-11-13
+
+Вторая сборка архива установки `nabilet-hosting-v1.0.1-20261113.zip` (~30 МБ).
+Внутри: свежий `app/` (генератор QR-конфига чекера на `bacon/bacon-qr-code`,
+обновлённые symfony-пакеты 7.4.23/8.1.11 в `vendor/`) и две правки установщика,
+найденные полным e2e-прогоном визарда на чистой копии.
+
+### Fixed
+
+- **POST /install и «Проверить подключение» падали с form-encoded формой**
+  (найдено e2e-прогоном архива 2026-11-13): `db_port` из HTML-формы приходит
+  строкой, `validate('integer')` типы не приводит, а `strict_types=1` в
+  `InstallerController` превращал вызов `testDatabaseConnection(int …)` в
+  TypeError → `INSTALL_FAILED` / `DB_CONNECTION_FAILED`. Порт приводится к
+  `int` явно в обоих местах вызова; регрессионный тест в
+  `tests/Feature/Installer/InstallerHardeningTest` гоняет порт строкой.
+- **Кнопка «Перейти в админку →» вела на фирменную 404**: витрина и админка —
+  один SPA на hash-роутинге, прямой `/admin` не существует (Laravel fallback
+  отвечает 404). И ссылка в блейде, и `redirect` в JSON-ответе теперь
+  `/#/admin`.
+
+### Changed
+
+- В архив не попадают логи `storage/logs`, кэш `storage/framework` и прочий
+  runtime-мусор, которые тащила сборка v1.0.0 (544 файла минус); ZIP-записи
+  используют стандартные forward-slash разделители (в v1.0.0 были `\`).
+- Проверки CI: 953 колонки, 0 advisories (`composer audit`), suite
+  1297 тестов / 5289 assertions зелёный (коммиты `ccebb18e`, `bfe26373`).
+
 ## [Unreleased]
 
 - Планы: версионирование имени архива установки (`nabilet-hosting-vX.Y.Z-<дата>.zip`),

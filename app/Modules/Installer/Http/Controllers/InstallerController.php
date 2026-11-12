@@ -191,9 +191,14 @@ ENV;
             ]);
 
             // Шаг 1: Проверка подключения к БД
+            //
+            // Порт приводится к int явно: `validate('integer')` не приводит типы,
+            // а HTML-форма (без JS-визарда) присылает порт строкой — под
+            // strict_types=1 это TypeError вместо установки (найдено
+            // e2e-прогоном архива v1.0.1, 2026-11-13).
             $this->testDatabaseConnection(
                 $validated['db_host'],
-                $validated['db_port'],
+                (int) $validated['db_port'],
                 $validated['db_database'],
                 $validated['db_username'],
                 $validated['db_password']
@@ -271,7 +276,10 @@ ENV;
             return response()->json([
                 'success' => true,
                 'message' => 'Система успешно установлена',
-                'redirect' => '/admin',
+                // Hash-адрес, а не /admin: витрина и админка — один SPA на
+            // hash-роутинге (createWebHashHistory), прямой /admin отдаёт
+            // фирменную 404 (найдено e2e-прогоном архива v1.0.1, 2026-11-13).
+            'redirect' => '/#/admin',
             ]);
 
         } catch (ValidationException $e) {
@@ -326,7 +334,7 @@ ENV;
 
             $this->testDatabaseConnection(
                 $validated['db_host'],
-                $validated['db_port'],
+                (int) $validated['db_port'],
                 $validated['db_database'],
                 $validated['db_username'],
                 $validated['db_password']

@@ -243,4 +243,24 @@ class InstallerHardeningTest extends TestCase
             'db_password' => 'definitely-not-the-password',
         ])->assertStatus(422)->assertJsonPath('error.code', 'DB_CONNECTION_FAILED');
     }
+
+    /**
+     * HTML-форма (без JS-визарда) присылает порт строкой: `validate('integer')`
+     * типы не приводит, а strict_types=1 в контроллере превращает такой запрос
+     * в TypeError вместо ответа. Найдено e2e-прогоном архива v1.0.1
+     * (2026-11-13): тест-database и POST /install падали, если POST был
+     * form-encoded, а не JSON.
+     */
+    public function test_test_database_endpoint_accepts_port_as_string_from_html_form(): void
+    {
+        $connection = config('database.connections.mysql');
+
+        $this->post('/install/test-database', [
+            'db_host' => (string) $connection['host'],
+            'db_port' => (string) $connection['port'],
+            'db_database' => (string) $connection['database'],
+            'db_username' => (string) $connection['username'],
+            'db_password' => (string) $connection['password'],
+        ])->assertOk()->assertJson(['success' => true]);
+    }
 }
