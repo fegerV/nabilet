@@ -161,23 +161,23 @@ chmod -R ug+w storage bootstrap/cache
   logging + нет прав SUPER). Мастер **не прерывается** — триггеры опциональны
   (defense-in-depth), те же правила защищены на уровне приложения.
 - **`composer install` обязателен при git-выкладке** — `vendor/` не коммитится.
-  Альтернатива — готовый архив установки (собирается командой релиза,
-  см. `PRODUCTION-READINESS.md` §3 от 2026-11-04): в нём `vendor/` и собранная
-  витрина `dist/` уже внутри, `composer install` и `npm run build` на хостинге
+  Альтернатива — готовый архив установки (собирается скриптом
+  `scripts/build-hosting-zip.ps1`): в нём `vendor/` и собранная витрина
+  `dist/` уже внутри, `composer install` и `npm run build` на хостинге
   не нужны; каталоги `tests/`, `tools/`, `docs/`, `.git` в архив не входят.
-  Внутри архив — папка `nabilet/`; её содержимое раскладывается в **каталог
-  сайта** (родитель `public_html/`), при этом `nabilet/public_html/*` сливается
-  с существующим `public_html/` (дефолтную заглушку `index.html` удалить).
-  Пример для `/home/c/ce99429/vertex-art.ru/`:
+  **Структура архива — WordPress-style:** папки-обёртки внутри нет, корень
+  архива равен docroot. Архив распаковывается **прямо в `public_html/`**, и
+  там же оказываются `index.php`, `.htaccess`, `.user.ini`, `robots.txt`,
+  `favicon.svg` и системные каталоги (`app/`, `config/`, `vendor/`,
+  `storage/`, …) — «как на вордпрессе», ничего переносить на уровень выше
+  руками не нужно. Пример для `/home/c/ce99429/vertex-art.ru/`:
 
   ```bash
-  cd /home/c/ce99429
-  unzip -q nabilet-hosting-v1.0.1-20261113.zip          # -> ./nabilet/
-  rm -f vertex-art.ru/public_html/index.html     # заглушка хостинга, если есть
-  cp -a nabilet/. vertex-art.ru/                 # app/ vendor/ dist/ public_html/ ... -> каталог сайта
-  rm -rf nabilet
-  # проверка: public_html/index.php и ../app на месте, публичного .env нет
-  chmod -R ug+w vertex-art.ru/storage vertex-art.ru/bootstrap/cache
+  cd /home/c/ce99429/vertex-art.ru/public_html
+  unzip -q ~/nabilet-hosting-v1.0.2-20261113.zip   # содержимое архива -> текущий каталог
+  rm -f index.html                                # заглушка хостинга, если есть
+  # проверка: ./index.php, .htaccess, app/, vendor/ лежат ЗДЕСЬ же, .env нет
+  chmod -R ug+w storage bootstrap/cache
   ```
 - **ЮKassa опциональна** — поля можно оставить пустыми; платежи заработают после
   заполнения в настройках.
@@ -352,7 +352,11 @@ SELECT code, used_count FROM promo_codes WHERE used_count > 0;
 
 - `https://домен/` открывается (не 500, не листинг каталога).
 - `https://домен/build/assets/*.js` отдаётся как статикa (200).
-- `https://домен/.env` → **403/404** (dot-файлы заблокированы `.htaccess`).
+- `https://домен/robots.txt`, `/favicon.svg` отдаются физически из docroot (200).
+- `https://домен/storage/<файл>` отдаёт медиа (маппинг `.htaccess` в
+  `storage/app/public/`), приватное `storage/app/private` недоступно (404).
+- `https://домен/app`, `/vendor`, `/config` → **403** (системные каталоги
+  закрыты `.htaccess`); `https://домен/.env` → **403** (dot-файлы).
 - `php artisan --version` на сервере показывает Laravel 13.x на PHP 8.3.x.
 
 ---
@@ -361,9 +365,10 @@ SELECT code, used_count FROM promo_codes WHERE used_count > 0;
 
 ### Версионирование
 
-- Текущая версия приложения: **1.0.0** (`config/nabilet.php` → `'version'`,
+- Текущая версия приложения: **1.0.2** (`config/nabilet.php` → `'version'`,
   отдаётся в `/api/v1/health` и `SystemStatusController`).
-- Git-теги релизов: **SemVer** — `vX.Y.Z` (пример: `v1.0.0` на коммите `ac145ab2`).
+- Git-теги релизов: **SemVer** — `vX.Y.Z` (примеры: `v1.0.0` на коммите `ac145ab2`,
+  `v1.0.2` — WordPress-style структура архива).
 - `CHANGELOG.md` (Keep a Changelog + SemVer): `## [X.Y.Z] - YYYY-MM-DD`.
 - Правила: `fix:` → PATCH (1.0.0 → 1.0.1), `feat:` → MINOR (→ 1.1.0), breaking → MAJOR
   (→ 2.0.0).
@@ -373,15 +378,20 @@ SELECT code, used_count FROM promo_codes WHERE used_count > 0;
 1. bump версии (`config/nabilet.php`, `package.json`);
 2. `CHANGELOG.md` += новый релизный блок;
 3. commit (`fix:`/`feat:`/`docs(release):`) → тег `vX.Y.Z` → push (`git push origin main vX.Y.Z`);
-4. пересборка архива: `npm run build` + деплой-сборка → `nabilet-hosting-vX.Y.Z-YYYYMMDD.zip`;
+4. пересборка архива: `npm run build` (если менялся Vue-код) + скрипт
+   `scripts/build-hosting-zip.ps1 -Version X.Y.Z` → `releases/nabilet-hosting-vX.Y.Z-YYYYMMDD.zip`
+   (скрипт сам собирает staging, чистит runtime-мусор и верифицирует записи);
 5. e2e на архиве → удаление старого zip → обновление имени в этом документе.
 
 ### Обновление установленной системы
 
-- Через архив (рекомендуется): распаковка в каталог сайта, `cp -a nabilet/. …`,
+- Через архив (рекомендуется): распаковка **прямо в `public_html/`** (структура
+  WordPress-style, файлы ложатся поверх с перезаписью), затем
   `chmod -R ug+w storage bootstrap/cache`. Мастер при `storage/install.lock` —
   откажет `403 ALREADY_INSTALLED` — это норма.
-- Через git: `git pull origin main` + `composer install --no-dev --optimize-autoloader`.
+- Через git: `git pull origin main` + `composer install --no-dev --optimize-autoloader`
+  (здесь `public_html/` остаётся docroot, а код — на уровень выше: git-раскладка
+  не менялась).
 - После обновления: `php artisan migrate --force`; при изменении `.env` —
   `php artisan config:cache && php artisan route:cache && php artisan view:cache`;
   cron `schedule:run`; проверка `/api/v1/health` → 200, `/` → 200, повторный `/install`
