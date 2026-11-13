@@ -6,10 +6,11 @@
     <meta name="theme-color" content="#4f46e5">
     <title>Установка Nabilet — мастер настройки</title>
 
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Установщик самодостаточен: скрипт Tailwind лежит в корне docroot
+         (public/installer-tailwind.js -> /installer-tailwind.js в архиве),
+         чтобы мастер не зависел от внешних CDN, недоступных из некоторых сетей.
+         Шрифт: Inter, если установлен локально, иначе системный стек (fallback). -->
+    <script src="/installer-tailwind.js"></script>
     <script>
         tailwind.config = {
             darkMode: 'class',

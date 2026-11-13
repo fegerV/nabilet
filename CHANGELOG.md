@@ -4,6 +4,19 @@
 
 Формат — [Keep a Changelog](https://keepachangelog.com/ru-RU/1.1.0/), версионирование — [SemVer](https://semver.org/).
 
+## [1.0.4] - 2026-11-14
+
+### Fixed
+
+- **Стили мастера установки не грузились на хостинге:** `install.blade.php`
+  подключал Tailwind со внешнего CDN (`cdn.tailwindcss.com`) и Inter с
+  `fonts.googleapis.com`. Если CDN недоступен из сети пользователя (блокировка,
+  фильтрация провайдера), мастер рендерится «голым» текстом без сетки и цветов.
+  Скрипт Tailwind Play CDN 3.4.17 вшит в сборку: `public/installer-tailwind.js`
+  → `/installer-tailwind.js` в корне docroot; зависимость от Google Fonts
+  убрана (fallback на системный шрифт уже был в CSS). Установщик больше не
+  делает ни одного внешнего запроса.
+
 ## [1.0.0] - 2026-11-04
 
 Первая выпущенная версия для шаред-хостинга TimeWeb (архив установки

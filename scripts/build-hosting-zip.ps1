@@ -87,6 +87,9 @@ Copy-Item (Join-Path $repo "public_html\.user.ini") $stage
 # они лежат в корне docroot (WordPress-style) и отдаются Apache напрямую.
 Copy-Item (Join-Path $repo "public\robots.txt") $stage
 Copy-Item (Join-Path $repo "public\favicon.svg") $stage
+# installer-tailwind.js: локальная копия Tailwind Play CDN 3.4 (v1.0.4) —
+# мастер установки не должен зависеть от cdn.tailwindcss.com.
+Copy-Item (Join-Path $repo "public\installer-tailwind.js") $stage
 Copy-Tree (Join-Path $repo "public\images") (Join-Path $stage "images")
 
 # --- 6. Корневые файлы приложения --------------------------------------------
@@ -186,7 +189,7 @@ Push-Location $stage
 try {
     tar -a -cf $zipPath app bootstrap config database dist images lang public resources routes storage vendor build `
         ".env.example" ".gitignore" ".htaccess" ".user.ini" "CHANGELOG.md" "artisan" "composer.json" "composer.lock" `
-        "favicon.svg" "index.php" "robots.txt"
+        "favicon.svg" "index.php" "installer-tailwind.js" "robots.txt"
     if ($LASTEXITCODE -ne 0) { throw "tar failed (code $LASTEXITCODE)" }
 }
 finally {
