@@ -117,40 +117,15 @@ class EventPageController
             return $this->notFound($slug);
         }
 
-        // Кеш собранной SEO-страницы (аудит производительности 1.1).
-        //
-        // КЕШИРУЕМ ТОЛЬКО published: archived/completed/cancelled редко
-        // запрашиваются, а отмена события должна снять «билеты в продаже»
-        // мгновенно, без окна устаревания.
-        //
-        // КЛЮЧ включает отпечаток сеансов (количество + максимальный
-        // updated_at): добавление сеанса или правка цен меняет JSON-LD
-        // (offers/startDate) — собранная страница перестаёт быть валидной,
-        // хотя сама строка events не менялась и её updated_at не сдвинулся.
-        // Правка события меняет `events.updated_at` — ключ уезжает
-        // сам, без ручной инвалидации (TTL-нижний предел — 5 минут).
-        if ($event->status === EventStatus::PUBLISHED) {
-            $fingerprint = \Illuminate\Support\Facades\DB::table('sessions')
-                ->where('event_id', $event->id)
-                ->selectRaw('COUNT(*) as session_count, MAX(updated_at) as last_update')
-                ->first();
-
-            $cacheKey = sprintf(
-                'event-page:%d:%s:%d:%s',
-                $event->id,
-                (string) $event->updated_at?->format('YmdHis'),
-                (int) ($fingerprint->session_count ?? 0),
-                (string) $fingerprint->last_update,
-            );
-
-            $cachedHtml = Cache::get($cacheKey);
-
-            if (is_string($cachedHtml) && $cachedHtml !== '') {
-                return HtmlResponse::of($cachedHtml);
-            }
-        }
-
         // Канонический URL: /event/{slug}/{publicId}.
+        //
+        // ВАЖНО: канонизация стоит ДО кеша страницы (ниже). Порядок вскрыла
+        // живая проверка маршрутов: кеш стоял первым, и попадание в него
+        // отдавало 200 на ЛЮБОМ адресе события — короткий `/event/{slug}`
+        // и чужой publicId переставали 301-ить на канонический, стоило кому-то
+        // один раз открыть каноническую страницу (кеш общий, ключ зависит
+        // только от события и сеансов). Поисковик собирал soft-дубли
+        // неограниченно; в тестах это не ловилось — кеш пуст на каждый прогон.
         //
         // `events.canonical_url` побеждает вычисленный адрес, но только если он
         // ведёт на НАШ домен. Правило живёт в `EventCanonicalUrl` — раньше оно
@@ -181,6 +156,42 @@ class EventPageController
             $queryString = request()->getQueryString();
 
             return redirect()->to($queryString ? $canonical . '?' . $queryString : $canonical, 301);
+        }
+
+        // Кеш собранной SEO-страницы (аудит производительности 1.1).
+        //
+        // КЕШИРУЕМ ТОЛЬКО published: archived/completed/cancelled редко
+        // запрашиваются, а отмена события должна снять «билеты в продаже»
+        // мгновенно, без окна устаревания.
+        //
+        // КЛЮЧ включает отпечаток сеансов (количество + максимальный
+        // updated_at): добавление сеанса или правка цен меняет JSON-LD
+        // (offers/startDate) — собранная страница перестаёт быть валидной,
+        // хотя сама строка events не менялась и её updated_at не сдвинулся.
+        // Правка события меняет `events.updated_at` — ключ уезжает
+        // сам, без ручной инвалидации (TTL-нижний предел — 5 минут).
+        //
+        // После канонизации выше: попадание в кеш отдаёт уже ПРОВЕРЕННЫЙ
+        // канонический адрес, а не заменяет 301.
+        if ($event->status === EventStatus::PUBLISHED) {
+            $fingerprint = \Illuminate\Support\Facades\DB::table('sessions')
+                ->where('event_id', $event->id)
+                ->selectRaw('COUNT(*) as session_count, MAX(updated_at) as last_update')
+                ->first();
+
+            $cacheKey = sprintf(
+                'event-page:%d:%s:%d:%s',
+                $event->id,
+                (string) $event->updated_at?->format('YmdHis'),
+                (int) ($fingerprint->session_count ?? 0),
+                (string) $fingerprint->last_update,
+            );
+
+            $cachedHtml = Cache::get($cacheKey);
+
+            if (is_string($cachedHtml) && $cachedHtml !== '') {
+                return HtmlResponse::of($cachedHtml);
+            }
         }
 
         // Страница события собирается ИЗ собранной витрины. Если `dist/` нет,

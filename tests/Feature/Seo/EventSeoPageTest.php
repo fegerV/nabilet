@@ -156,6 +156,30 @@ final class EventSeoPageTest extends TestCase
         $response->assertRedirect($this->canonicalFor($event['slug'], $event['publicId']));
     }
 
+    /** Короткий адрес 301-ит ДАЖЕ когда каноническая страница уже в кеше.
+     *
+     * Кеш собранной SEO-страницы стоит ниже канонизации намеренно: когда он
+     * стоял выше, попадание в кеш отдавало 200 на ЛЮБОМ адресе события —
+     * короткий `/event/{slug}` и чужой publicId переставали редиректить,
+     * стоило кому-то один раз открыть каноническую страницу (вскрыла живая
+     * проверка маршрутов; в тестах не ловилось, потому что кеш пуст на каждый
+     * прогон). Здесь воспроизводится ровно та последовательность: сначала
+     * прогрев кеша каноническим адресом, потом короткий адрес.
+     */
+    public function test_the_short_url_redirects_even_when_the_canonical_page_is_cached(): void
+    {
+        $event = $this->seedEvent();
+
+        // Прогрев: каноническая страница собирается и попадает в кеш.
+        $this->get('/event/'.$event['slug'].'/'.$event['publicId'])->assertOk();
+
+        // Короткий адрес обязан 301-ить, а не отдавать кеш канонической страницы.
+        $response = $this->get('/event/'.$event['slug']);
+
+        $response->assertStatus(301);
+        $response->assertRedirect($this->canonicalFor($event['slug'], $event['publicId']));
+    }
+
     /** Канонический 301 переносит query-строку — канонизация не срезает её.
      *
      * С переходом витрины на history-роутинг query стал настоящим: `embed_token`
