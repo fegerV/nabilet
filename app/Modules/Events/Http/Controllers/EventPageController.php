@@ -167,8 +167,20 @@ class EventPageController
         // canonical — то есть число дублей было неограниченным, и краулинговый
         // бюджет уходил на адреса, которых не существует. Правильная реакция на
         // несовпадение — не 404 (адрес всё-таки наш), а 301 на канонический.
+        //
+        // Query-string ПЕРЕНОСИТСЯ ВРУЧНУЮ: после перехода витрины на
+        // history-роутинг канонический 301 срезал бы реальные query-параметры —
+        // `embed_token` (iframe-виджет: токен в адресе рамки) и `?session=`
+        // (возврат к выбору сеанса). Без переноса виджет молча терял доступ,
+        // а покупатель — выбранный сеанс. Метода
+        // `RedirectResponse::withQueryString()` в этой версии фреймворка нет
+        // (неизвестный `with*` уходит в `__call` как flash-данные — то есть в
+        // PHP-ошибку «Undefined array key 0»), поэтому строку запроса
+        // приклеиваем сами: `request()->getQueryString()` отдаёт её как есть.
         if ($publicId === null || $publicId !== $event->public_id) {
-            return response()->redirectTo($canonical, 301);
+            $queryString = request()->getQueryString();
+
+            return redirect()->to($queryString ? $canonical . '?' . $queryString : $canonical, 301);
         }
 
         // Страница события собирается ИЗ собранной витрины. Если `dist/` нет,

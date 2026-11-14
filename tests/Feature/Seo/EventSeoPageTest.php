@@ -156,6 +156,29 @@ final class EventSeoPageTest extends TestCase
         $response->assertRedirect($this->canonicalFor($event['slug'], $event['publicId']));
     }
 
+    /** Канонический 301 переносит query-строку — канонизация не срезает её.
+     *
+     * С переходом витрины на history-роутинг query стал настоящим: `embed_token`
+     * (iframe-виджет, токен в адресе рамки) и `?session=` (возврат к выбору
+     * сеанса из старых ссылок `/event/{slug}/seats`) обязаны пережить 301,
+     * иначе виджет терял доступ, а покупатель — выбранный сеанс.
+     */
+    public function test_the_canonical_redirect_keeps_the_query_string(): void
+    {
+        $event = $this->seedEvent();
+
+        $response = $this->get('/event/'.$event['slug'].'/WRONGIDENTIFIER0000000000?session=42&embed_token=tkn');
+
+        $response->assertStatus(301);
+
+        // Порядок параметров не гарантируем (нормализуется при сравнении
+        // адресов), важно — оба доехали.
+        $location = (string) $response->headers->get('Location');
+        $this->assertStringStartsWith($this->canonicalFor($event['slug'], $event['publicId']).'?', $location);
+        $this->assertStringContainsString('session=42', $location);
+        $this->assertStringContainsString('embed_token=tkn', $location);
+    }
+
     public function test_the_canonical_url_is_served_with_200(): void
     {
         $event = $this->seedEvent();

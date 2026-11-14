@@ -276,10 +276,10 @@ ENV;
             return response()->json([
                 'success' => true,
                 'message' => 'Система успешно установлена',
-                // Hash-адрес, а не /admin: витрина и админка — один SPA на
-            // hash-роутинге (createWebHashHistory), прямой /admin отдаёт
-            // фирменную 404 (найдено e2e-прогоном архива v1.0.1, 2026-11-13).
-            'redirect' => '/#/admin',
+                // Настоящий путь: витрина и админка — один SPA на history-
+                // роутинге, `/admin` отдаёт SPA-оболочку на белом списке путей
+                // (routes/web.php). До 1.2.0 здесь был hash-адрес `/#/admin`.
+                'redirect' => '/admin',
             ]);
 
         } catch (ValidationException $e) {

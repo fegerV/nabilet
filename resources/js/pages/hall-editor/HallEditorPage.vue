@@ -1327,7 +1327,7 @@ async function loadFromServer(): Promise<void> {
   const pid = route.params.publicId
   if (typeof pid !== 'string' || !pid) {
     hallLoadState.value = 'error'
-    ui.notify('rose', 'Нет зала', 'URL редактора должен содержать publicId (/#/admin/halls/:publicId/editor)')
+    ui.notify('rose', 'Нет зала', 'URL редактора должен содержать publicId (/admin/halls/:publicId/editor)')
     return
   }
   hallPublicId.value = pid

@@ -8,10 +8,11 @@
  * показывает результат и кнопку «Копировать»; Vitest фиксирует вывод буква
  * в букву (tests/Unit/Admin/embedCode.test.ts).
  *
- * КАК ЖИВЁТ РАМКА. `src` — hash-адрес витрины (`/#/event/{slug}`): SPA
- * работает на hash-истории, и красивые URL в чужом iframe невозможны без
+ * КАК ЖИВЁТ РАМКА. `src` — настоящий адрес витрины (`/event/{slug}`): SPA
+ * работает на history-роутинге, и сервер отдаёт оболочку на белом списке
+ * путей (`routes/web.php`) — красивые URL в чужом iframe работают без
  * переписывания на сервере (см. `router/index.ts`). `embed_token` кладётся
- * в hash-часть: его читает `route.query` vue-router'а. Денежный флоу рамки
+ * в query: его читает `route.query` vue-router'а. Денежный флоу рамки
  * пока НЕ переключён на `/api/v1/embed/*` (это следующий шаг) — переключение
  * не потребует правки этого генератора: токен уже в адресе.
  */
@@ -25,7 +26,7 @@ export const WIDGET_MESSAGE_SOURCE = 'nabilet-embed'
 export interface EmbedCodeOptions {
   /** Адрес витрины NABILET (обычно `window.location.origin` админки). */
   storefrontOrigin: string
-  /** Путь внутри SPA без `#`: `/`, `/event/my-event`. */
+  /** Путь внутри SPA: `/`, `/event/my-event`. */
   path?: string
   /** Embed-токен из `POST /admin/embed/keys` (показывается один раз). */
   token: string
@@ -45,7 +46,7 @@ export function normalizeWidgetPath(path: string | undefined): string {
 }
 
 /**
- * Адрес рамки: `https://nabilet.example/#/event/x?embed_token=…`.
+ * Адрес рамки: `https://nabilet.example/event/x?embed_token=…`.
  * Токен кодируется `encodeURIComponent`: штатные токены спецсимволов не
  * содержат, но значение может быть введено вручную — `&` или `#` в нём
  * разорвали бы URL так, что рамка молча потеряла бы токен.
@@ -54,7 +55,7 @@ export function buildEmbedUrl(options: EmbedCodeOptions): string {
   const origin = options.storefrontOrigin.replace(/\/+$/, '')
   const path = normalizeWidgetPath(options.path)
   const token = encodeURIComponent(options.token.trim())
-  return `${origin}/#${path}?embed_token=${token}`
+  return `${origin}${path}?embed_token=${token}`
 }
 
 /**

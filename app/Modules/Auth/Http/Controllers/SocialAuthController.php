@@ -170,13 +170,19 @@ final class SocialAuthController extends Controller
     }
 
     /**
-     * Куда вернуть браузер: hash-маршрут витрины, принимающий токен/ошибку.
+     * Куда вернуть браузер: маршрут витрины, принимающий токен/ошибку.
      *
      * База — `APP_URL`, а не относительный путь: callback открывается со стороны
      * провайдера, и относительный редирект увёл бы на домен провайдера.
+     *
+     * Настоящий путь, а не hash (`/#/auth/callback` до 1.2.0): SPA-оболочка
+     * отдаётся на белом списке путей (history-роутинг), поэтому
+     * `/auth/callback?token=…` открывается напрямую. Токен при этом уходит
+     * в историю браузера и логи веб-сервера — как и в любом redirect-URI,
+     * срок его жизни ограничен, и в логе адресата нет.
      */
     private function frontendUrl(): string
     {
-        return rtrim((string) config('app.url'), '/') . '/#/auth/callback';
+        return rtrim((string) config('app.url'), '/') . '/auth/callback';
     }
 }

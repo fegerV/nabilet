@@ -8,32 +8,71 @@ use Illuminate\Support\Facades\Route;
 /*
  * Web routes: магазин (storefront) — собранная Vue-витрина из dist/.
  *
- * Главная страница отдаёт собранный SPA (dist/index.html), а хеш-роутинг
- * витрины работает без серверной части (createWebHashHistory).
+ * Корень отдаёт собранный SPA (dist/index.html); остальные экраны витрины —
+ * на белом списке путей ниже (history-роутинг, createWebHistory).
  *
  * Ассеты витрины (dist/assets) отдаются из dist как статические файлы.
  */
 
 Route::get('/', function () {
-    // Путь к оболочке читается из того же ключа, что и в
-    // `EventPageController::spaShellPath()`. Вопрос «собрана ли витрина» обязан
-    // иметь один ответ: раньше здесь стоял жёсткий `__DIR__ . '/../dist/index.html'`,
-    // и вторая копия решения расходилась с первой при любом изменении. Заодно
-    // тесты получили возможность подменить путь вместо удаления реальной сборки.
-    $indexFile = (string) config('nabilet.storefront.shell_path', base_path('dist/index.html'));
-
-    if (!file_exists($indexFile)) {
-        return response()->json([
-            'error' => [
-                'code' => 'STORE_FRONT_NOT_BUILT',
-                'message' => 'Витрина не собрана. Запустите `npm run build` (vite.config.ts → dist/).',
-            ],
-        ], 503);
-    }
-
-    return response(file_get_contents($indexFile))
-        ->header('Content-Type', 'text/html; charset=utf-8');
+    return serve_storefront_shell();
 });
+
+/*
+ * SPA-оболочка для history-роутинга.
+ *
+ * Витрина переехала с hash-истории на `createWebHistory()`: теперь каждый
+ * экран SPA — настоящий URL, который браузер шлёт на сервер. Оболочка
+ * (собранный `dist/index.html`) отдаётся на ЯВНОМ списке путей, зеркалящем
+ * таблицу маршрутов SPA (`resources/js/router/index.ts`). Это сознательный
+ * белый список, а не catch-all: `Route::fallback()` ниже продолжает
+ * отвечать брендированной 404 на действительно неизвестные адреса, а
+ * серверные SEO-страницы (`/event/…`, `/venue/…`, `/city/…`, `/page/…`,
+ * `/category/…`, `/organizer/…`, `/artist/…`) и `/api/v1/*` не затрагиваются.
+ *
+ * НОВЫЙ ЭКРАН SPA = НОВАЯ СТРОКА ЗДЕСЬ. Забытая строка не ломает сборку,
+ * но даёт 404 на обновлении страницы (F5) — тесты SPA-оболочки сверяют
+ * этот список с таблицей маршрутов.
+ *
+ * Через `serve_storefront_shell()` (определение ниже): один источник
+ * проверки «собрано ли» и одного Content-Type для `/` и всех остальных
+ * адресов. Раньше решение жило только в маршруте `/`, и вторая копия
+ * расходилась бы с первой при любом изменении.
+ */
+
+// Старый адрес экрана выбора мест: SPA перенаправляет его на страницу
+// события, перенося `?session=` (см. `router/index.ts`). Регистрируется
+// ДО модуля Events: иначе его съел бы SEO-канонизатор
+// `/event/{slug}/{publicId}` (301 на канонический — уже без `?session=`),
+// и покупатель, пришедший из письма, терял бы выбранный сеанс.
+Route::get('/event/{slug}/seats', fn () => serve_storefront_shell());
+
+if (!function_exists('serve_storefront_shell')) {
+    /**
+     * Отдать собранную оболочку витрины (SPA) для текущего адреса.
+     *
+     * Единая точка «собрано ли»: путь оболочки читается из того же ключа,
+     * что и в `EventPageController` (`nabilet.storefront.shell_path`), и
+     * вопрос «собрана ли витрина» обязан иметь один ответ. Не собрана —
+     * честный 503 с подсказкой, а не пустой документ.
+     */
+    function serve_storefront_shell(): \Symfony\Component\HttpFoundation\Response
+    {
+        $indexFile = (string) config('nabilet.storefront.shell_path', base_path('dist/index.html'));
+
+        if (!file_exists($indexFile)) {
+            return response()->json([
+                'error' => [
+                    'code' => 'STORE_FRONT_NOT_BUILT',
+                    'message' => 'Витрина не собрана. Запустите `npm run build` (vite.config.ts → dist/).',
+                ],
+            ], 503);
+        }
+
+        return response(file_get_contents($indexFile))
+            ->header('Content-Type', 'text/html; charset=utf-8');
+    }
+}
 
 // Ассеты витрины: /assets/<file> → dist/assets/<file>
 Route::get('/assets/{path}', function (Request $request, string $path) {
@@ -153,6 +192,55 @@ if (file_exists(__DIR__ . '/../app/Modules/Auth/routes/web.php')) {
 /*
  * Sitemap routes are handled by the SEO module via api.php.
  */
+
+/*
+ * SPA-оболочка на белом списке путей витрины (history-роутинг).
+ *
+ * Регистрируется ПОСЛЕ модулей (Events/Seo/Content/Installer/Auth — их
+ * серверные маршруты приоритетнее) и ДО `Route::fallback()` — после него
+ * маршрут не получил бы запрос никогда.
+ *
+ * Префиксы не пересекаются с серверными SEO-страницами, кроме `/event`:
+ *   — `/event/{slug}` остаётся серверной SEO-страницей (`EventPageController`),
+ *     поверх которой SPA «оживает» на том же адресе;
+ *   — `/event/{slug}/seats` отдан оболочкой ВЫШЕ (до модуля Events), чтобы
+ *     сохранить `?session=` при клиентском перенаправлении.
+ *
+ * Список зеркалит `resources/js/router/index.ts`. Обновили роутер —
+ * дополните и его, и этот список.
+ */
+foreach ([
+    // Покупка и результат оплаты
+    'checkout',
+    'checkout/demo-pay',
+    'payment/{result}',
+    // Билеты и кабинет
+    'tickets',
+    'login',
+    'register',
+    'auth/callback',
+    'forgot-password',
+    'reset-password',
+    'account',
+    // Клуб зрителей
+    'favorites',
+    'subscriptions',
+    'bonus',
+    'club',
+    'my-raffles',
+    'r/{code}',
+    'raffles/{publicId}',
+    // Админка: вход и сам раздел. `/admin/{any}` — оставлен wild-card
+    // НАРОЧНО: неизвестный раздел админки отдаётся оболочке и SPA
+    // показывает свой «Раздел не найден» (`admin-not-found`), а не 404
+    // витрины. Всё, что ниже `/admin/`, — зона SPA.
+    'admin',
+    'admin/login',
+] as $spaPath) {
+    Route::get('/' . $spaPath, fn () => serve_storefront_shell());
+}
+
+Route::get('/admin/{any}', fn () => serve_storefront_shell())->where('any', '.*');
 
 /*
  * Брендированная 404 для любого несуществующего пути (SEO-аудит P-16).

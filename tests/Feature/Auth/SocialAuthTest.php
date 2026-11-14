@@ -210,7 +210,7 @@ class SocialAuthTest extends TestCase
             ->headers->get('Location');
     }
 
-    /** Токен из `Location` редиректа на витрину (`…/#/auth/callback?token=…`). */
+    /** Токен из `Location` редиректа на витрину (`…/auth/callback?token=…`). */
     private function tokenFromRedirect(string $location): string
     {
         $token = (string) ($this->queryOf($location)['token'] ?? '');
@@ -456,11 +456,13 @@ class SocialAuthTest extends TestCase
     // ── 3. OAuth-callback Яндекс ────────────────────────────────────────────
 
     /**
-     * Callback возвращает БРАУЗЕР на витрину с токеном во фрагменте.
+     * Callback возвращает БРАУЗЕР на витрину с токеном в query.
      *
-     * Фрагмент (`#/auth/callback?token=…`), а не query: hash-роутинг SPA иначе
-     * не увидел бы параметр, а query-строка с токеном осталась бы в истории
-     * браузера и в логах прокси.
+     * Токен в query (`/auth/callback?token=…`): SPA живёт на history-роутинге,
+     * и оболочка отдаётся на `/auth/callback` белым списком путей
+     * (`routes/web.php`). Токен при этом остаётся в истории браузера и логах
+     * прокси — риск ограничен сроком жизни токена; после приёма страница
+     * делает `router.replace`.
      */
     public function test_yandex_callback_redirects_to_the_storefront_with_a_token(): void
     {
@@ -469,7 +471,7 @@ class SocialAuthTest extends TestCase
 
         $location = $this->completeOAuth('yandex', 'ya-code');
 
-        $this->assertStringContainsString('/#/auth/callback?token=', $location);
+        $this->assertStringContainsString('/auth/callback?token=', $location);
 
         $token = $this->tokenFromRedirect($location);
 

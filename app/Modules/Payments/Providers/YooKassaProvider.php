@@ -99,13 +99,13 @@ class YooKassaProvider implements PaymentProviderInterface
             // локальный confirmation_url на симулятор оплаты.
             if ($this->isDemoMode()) {
                 $paymentId = 'demo_' . (string) Str::ulid()->toBase32();
-                // Хеш-адрес, а не путь: витрина — SPA с `createWebHashHistory()`,
-                // её отдаёт только `GET /` (routes/web.php). Путь
-                // `/checkout/demo-pay` не обслуживается ничем: Laravel такого
-                // маршрута не имеет, клиентского — тоже, поэтому покупатель
-                // после «оплаты» получал 404 вместо страницы подтверждения.
+                // Настоящий путь (history-роутинг): SPA-оболочка отдаётся на
+                // белом списке путей (routes/web.php), и покупатель попадает на
+                // страницу подтверждения напрямую. До 1.2.0 адрес собирался
+                // hash-формой `/#/checkout/demo-pay?...` — витрина отдавалась
+                // только на `/`, и путь без хеша дал бы 404.
                 $confirmUrl = $this->demoOrigin()
-                    . '/#' . self::DEMO_CONFIRM_PATH . '?payment_id=' . $paymentId;
+                    . self::DEMO_CONFIRM_PATH . '?payment_id=' . $paymentId;
 
                 Log::info('YooKassa demo payment created', [
                     'payment_id' => $paymentId,

@@ -288,7 +288,7 @@ class PaymentIdempotencyTest extends TestCase
         $this->assertSame('pay_persisted_key', $payment->idempotency_key);
         $this->assertSame($order->id, (int) $payment->order_id);
         $this->assertSame(PaymentStateMachine::PENDING, $payment->status);
-        $this->assertStringContainsString('/#/checkout/demo-pay', (string) $payment->payment_url);
+        $this->assertStringContainsString('/checkout/demo-pay', (string) $payment->payment_url);
     }
 
     private function pendingOrder(int $quantity = 1): Order

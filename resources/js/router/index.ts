@@ -1,11 +1,14 @@
 /**
  * Маршруты.
  *
- * Hash-история выбрана сознательно: SPA живёт внутри Laravel, а embed-виджет —
- * внутри чужого <iframe>, где красивые URL невозможны без переписывания на
- * сервере. Хэш работает везде одинаково и не требует настройки nginx.
+ * History-роутинг (`createWebHistory`): каждый экран — настоящий URL, который
+ * браузер шлёт на сервер. Оболочка SPA отдаётся на ЯВНОМ белом списке путей
+ * в `routes/web.php`, зеркалящем таблицу ниже — новый экран добавляется в
+ * оба места. Старые hash-ссылки (`/#/...` из писем и закладок до 1.2.0)
+ * принимает мост перед созданием роутера: он переписывает фрагмент в путь
+ * до первого разрешения маршрута.
  */
-import { createRouter, createWebHashHistory, type RouteLocationNormalized, type RouteRecordRaw } from 'vue-router'
+import { createRouter, createWebHistory, type RouteLocationNormalized, type RouteRecordRaw } from 'vue-router'
 import StorefrontShell from '@/layouts/StorefrontShell.vue'
 import AdminShell from '@/layouts/AdminShell.vue'
 import { getToken } from '@/lib/api'
@@ -20,7 +23,20 @@ const routes: RouteRecordRaw[] = [
     component: StorefrontShell,
     children: [
       { path: '', name: 'catalog', component: () => import('@/pages/storefront/CatalogPage.vue'), meta: { title: 'Афиша мероприятий' } },
-      { path: 'event/:slug', name: 'event', component: () => import('@/pages/storefront/EventPage.vue'), meta: { title: 'Мероприятие' } },
+      {
+        /*
+         * `:publicId?` — канонический адрес серверной SEO-страницы
+         * (`/event/{slug}/{publicId}`, `EventPageController`). SPA «оживает»
+         * поверх неё на том же адресе: без опционального сегмента
+         * vue-router не совпал бы с URL из sitemap и писем и уводил бы
+         * рендер в клиентскую 404, затирая серверный HTML (это видят
+         * JS-краулеры). Параметр здесь не читается — данные грузятся по slug.
+         */
+        path: 'event/:slug/:publicId?',
+        name: 'event',
+        component: () => import('@/pages/storefront/EventPage.vue'),
+        meta: { title: 'Мероприятие' },
+      },
       {
         /*
          * Отдельного экрана выбора мест больше нет: покупка происходит на
@@ -85,13 +101,12 @@ const routes: RouteRecordRaw[] = [
       },
       {
         /*
-         * Фаза 4: посадочная страница приглашения `#/r/{code}`.
+         * Фаза 4: посадочная страница приглашения `/r/{code}`.
          *
          * Объявлена обычным маршрутом, а не `beforeEnter`-редиректом: страница
          * объясняет, зачем друг прислал ссылку и что даёт первая покупка.
-         * Тот же хост и тот же hash-роутинг, поэтому ссылка работает из
-         * письма и мессенджера без правок на сервере (SPA отдаётся только на
-         * `/`, см. `routes/web.php`).
+         * Адрес настоящий, оболочка отдаётся на белом списке путей
+         * (`routes/web.php`), поэтому ссылка работает из письма и мессенджера.
          *
          * `requiresCustomer` намеренно НЕТ: друга приглашают ДО регистрации, и
          * требовать аккаунт на этом экране — значит потерять приглашение.
@@ -132,9 +147,9 @@ const routes: RouteRecordRaw[] = [
          *
          * `requiresCustomer` намеренно НЕТ: страницу открывают из писем и
          * ссылок, а победители на ней показаны маской (`RaffleResultsResource`)
-         * — открывать состав участников аккаунтом незачем. Путь несёт хэш —
-         * тот же механизм, что у приглашения `/r/{code}`: ссылка работает из
-         * письма без правок на сервере.
+         * — открывать состав участников аккаунтом незачем. Адрес настоящий
+         * (`/raffles/{public_id}`, оболочка — на белом списке путей), поэтому
+         * ссылка работает из письма без правок на сервере.
          */
         path: 'raffles/:publicId',
         name: 'raffle-results',
@@ -147,7 +162,7 @@ const routes: RouteRecordRaw[] = [
        * оболочка с шапкой и корзиной, потому что покупатель приходит сюда за
        * билетами, а не «работать». Пути намеренно без префикса (`/login`, а не
        * `/account/login`) — их диктует ссылка из письма о сбросе пароля:
-       * `AccountMailService::actionUrl()` собирает `/#/reset-password?...`, и
+       * `AccountMailService::actionUrl()` собирает `/reset-password?...`, и
        * переименование маршрута разошлось бы с уже отправленными письмами.
        */
       { path: 'login', name: 'login', component: () => import('@/pages/storefront/LoginPage.vue'), meta: { title: 'Вход' } },
@@ -156,7 +171,7 @@ const routes: RouteRecordRaw[] = [
         /*
          * Приём результата соц-входа (ТЗ §17). Путь задан СЕРВЕРОМ:
          * `SocialAuthController::frontendUrl()` собирает
-         * `APP_URL . '/#/auth/callback'` и добавляет `?token=` или `?error=`.
+         * `APP_URL . '/auth/callback'` и добавляет `?token=` или `?error=`.
          * Переименование маршрута здесь сломало бы живой вход молча — человек
          * после «Войти через Яндекс» увидел бы 404 витрины. Поэтому путь
          * фиксируется тестом `SocialAuthTest`, а не только этой строкой.
@@ -270,8 +285,21 @@ const routes: RouteRecordRaw[] = [
   },
 ]
 
+/*
+ * Мост старых hash-ссылок (письма и закладки, отправленные до 1.2.0).
+ *
+ * Сервер фрагмент URL не видит, поэтому ссылку вида `/#/reset-password?token=…`
+ * он открывает как `/`, и без моста человек попадал в каталог вместо целевого
+ * экрана. Переписываем фрагмент в путь ДО создания роутера: `replaceState`
+ * меняет адрес без запроса к серверу, и первый же маршрут разрешается по
+ * настоящему пути (фрагмент из URL исчезает).
+ */
+if (window.location.hash.startsWith('#/')) {
+  history.replaceState(null, '', window.location.hash.slice(1))
+}
+
 export const router = createRouter({
-  history: createWebHashHistory(),
+  history: createWebHistory(),
   routes,
   scrollBehavior(_to, _from, savedPosition) {
     // Возврат по «назад» восстанавливает позицию: в списке заказов это важно.

@@ -15,7 +15,7 @@
  *   NULL` и без подтверждённого адреса. Поэтому «войти» для такого покупателя
  *   означает не «ввести пароль» (его нет), а «задать пароль по ссылке из
  *   письма»: `POST /auth/password/forgot` → письмо со ссылкой
- *   `/#/reset-password?token=…&email=…` → `POST /auth/password/reset`. Оба
+ *   `/reset-password?token=…&email=…` → `POST /auth/password/reset`. Оба
  *   вызова здесь, чтобы у витрины был один вход в этот сценарий.
  */
 import { request, get, send, setCustomerToken, getCustomerToken, type ApiError } from './api'

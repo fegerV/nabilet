@@ -174,7 +174,7 @@ chmod -R ug+w storage bootstrap/cache
 
   ```bash
   cd /home/c/ce99429/vertex-art.ru/public_html
-  unzip -q ~/nabilet-hosting-v1.1.2-20261114.zip   # содержимое архива -> текущий каталог
+  unzip -q ~/nabilet-hosting-v1.2.0-20261114.zip   # содержимое архива -> текущий каталог
   rm -f index.html                                # заглушка хостинга, если есть
   # проверка: ./index.php, .htaccess, app/, vendor/ лежат ЗДЕСЬ же, .env нет
   chmod -R ug+w storage bootstrap/cache
@@ -359,13 +359,40 @@ SELECT code, used_count FROM promo_codes WHERE used_count > 0;
   закрыты `.htaccess`); `https://домен/.env` → **403** (dot-файлы).
 - `php artisan --version` на сервере показывает Laravel 13.x на PHP 8.3.x.
 
+### Smoke-прогон релиза на локальном стенде
+
+Перед выкладкой zip на хостинг установка и витрина проверяются на чистом
+стенде. Мастер-копии скриптов живут в `scripts/smoke/` (коммитятся): сборщик
+zip стирает `.tmp-release-stage` целиком, поэтому после каждой сборки стенд
+пересобирается копированием:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\build-hosting-zip.ps1 -Version X.Y.Z
+php .tmp-release-stage\db-setup-smoke.php              # чистая БД install_smoke + юзер installer
+Copy-Item scripts\smoke\smoke-install.php .tmp-release-stage\
+Copy-Item scripts\smoke\router-smoke.php .tmp-release-stage\site\
+# в .tmp-release-stage\site не должно быть .env и storage/install.lock
+# в отдельном окне, из каталога .tmp-release-stage\site:
+php -S 127.0.0.1:8088 router-smoke.php
+php .tmp-release-stage\smoke-install.php
+```
+
+`router-smoke.php` имитирует правила поставляемого `.htaccess` (dot-файлы и
+системные каталоги → 403, `/storage/…` → медиатека, остальное →
+фронт-контроллер). `smoke-install.php` проходит визард установки как браузер
+(с паузой 61 с перед POST-фазами — на `/install` стоит `throttle:5,1`) и после
+установки проверяет версию в `/api/v1/health`, оболочку витрины на белом
+списке путей (`/admin`, `/tickets`, `/checkout`, `/reset-password?token=…` —
+history-роутинг, v1.2.0), брендированную 404 на неизвестном пути, статику и
+403 на системные каталоги.
+
 ---
 
 ## 9. Версионирование релизов и обновление системы
 
 ### Версионирование
 
-- Текущая версия приложения: **1.1.2** (`config/nabilet.php` → `'version'`,
+- Текущая версия приложения: **1.2.0** (`config/nabilet.php` → `'version'`,
   отдаётся в `/api/v1/health` и `SystemStatusController`).
 - Git-теги релизов: **SemVer** — `vX.Y.Z` (примеры: `v1.0.0` на коммите `ac145ab2`,
   `v1.0.2` — WordPress-style структура архива, `v1.0.3` — платформа PHP 8.3,
@@ -373,7 +400,10 @@ SELECT code, used_count FROM promo_codes WHERE used_count > 0;
   `v1.0.5` — version-aware снятие CHECK-констрейнтов для TimeWeb-MySQL,
   `v1.1.0` — журнал установщика в визарде (`GET /install/log`),
   `v1.1.1` — предупреждения миграций без `STDERR` (работа под mod_cgi/FPM),
-  `v1.1.2` — баннеры сидеров без голого `echo` (не портят JSON-ответ под mod_cgi).
+  `v1.1.2` — баннеры сидеров без голого `echo` (не портят JSON-ответ под mod_cgi),
+  `v1.2.0` — витрина на history-роутинге: `/admin`, `/tickets` и остальные
+  экраны SPA без `#` (белый список путей в `routes/web.php`; старые hash-ссылки
+  работает мост в `router/index.ts`).
 - `CHANGELOG.md` (Keep a Changelog + SemVer): `## [X.Y.Z] - YYYY-MM-DD`.
 - Правила: `fix:` → PATCH (1.0.0 → 1.0.1), `feat:` → MINOR (→ 1.1.0), breaking → MAJOR
   (→ 2.0.0).

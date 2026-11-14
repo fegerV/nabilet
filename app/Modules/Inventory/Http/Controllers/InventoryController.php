@@ -120,17 +120,28 @@ class InventoryController extends Controller
             return 'top';
         }
 
-        // `session_id` валидирован как integer (см. выше), поэтому ищем по id;
-        // `orWhere` по public_id оставлен на случай, если фильтр когда-нибудь
-        // расширят — стоимость нулевая.
-        $session = Session::query()
-            ->where('id', $sessionId)
-            ->orWhere('public_id', $sessionId)
-            ->first();
+        // WITHOUT SCOPE — как и вся ветка гостя выше: витринный маршрут без
+        // auth, тенант-контекста нет, а `Session` и её `schemaVersion` —
+        // скоупнутые модели: прямой запрос падал `TenantContextMissingError`
+        // (500 на карте мест витрины; путь никогда не выполнялся до перехода
+        // витрины на history-роутинг, когда страница события стала
+        // гидрироваться у живого гостя).
+        $schema = app(OrganizationContext::class)->withoutScope(function () use ($sessionId): ?array {
+            // `session_id` валидирован как integer (см. выше), поэтому ищем по
+            // id; `orWhere` по public_id оставлен на случай, если фильтр
+            // когда-нибудь расширят — стоимость нулевая.
+            $session = Session::query()
+                ->with('schemaVersion')
+                ->where('id', $sessionId)
+                ->orWhere('public_id', $sessionId)
+                ->first();
 
-        $schema = $session?->schemaVersion?->schema_json;
+            $schemaJson = $session?->schemaVersion?->schema_json;
 
-        if (! is_array($schema)) {
+            return is_array($schemaJson) ? $schemaJson : null;
+        });
+
+        if ($schema === null) {
             return 'top';
         }
 

@@ -511,7 +511,7 @@
                             </div>
                             <h3 class="mt-5 text-2xl font-extrabold text-slate-900 dark:text-white">Установка завершена!</h3>
                             <p class="mt-1.5 text-sm text-slate-500 dark:text-slate-400">Система готова к работе. Можно переходить в панель администратора.</p>
-                            <a href="/#/admin" class="btn btn-primary mt-6 inline-flex">Перейти в админку →</a>
+                            <a href="/admin" class="btn btn-primary mt-6 inline-flex">Перейти в админку →</a>
                         </div>
 
                         <div id="installation-error" class="hidden rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300">

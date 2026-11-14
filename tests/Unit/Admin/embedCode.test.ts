@@ -35,24 +35,24 @@ describe('lib/embed-code: normalizeWidgetPath', () => {
 })
 
 describe('lib/embed-code: buildEmbedUrl', () => {
-  it('собирает hash-адрес с токеном в query витрины', () => {
+  it('собирает настоящий адрес витрины с токеном в query', () => {
     expect(
       buildEmbedUrl({ storefrontOrigin: 'https://tickets.example', token: 'TKN1' }),
-    ).toBe('https://tickets.example/#/?embed_token=TKN1')
+    ).toBe('https://tickets.example/?embed_token=TKN1')
     expect(
       buildEmbedUrl({ storefrontOrigin: 'https://tickets.example/', path: '/event/x/', token: 'TKN1' }),
-    ).toBe('https://tickets.example/#/event/x?embed_token=TKN1')
+    ).toBe('https://tickets.example/event/x?embed_token=TKN1')
   })
 
   it('ручной ввод токена с & и # не разрывает URL', () => {
     const url = buildEmbedUrl({ storefrontOrigin: 'https://tickets.example', token: 'a&b#c' })
-    expect(url).toBe('https://tickets.example/#/?embed_token=a%26b%23c')
+    expect(url).toBe('https://tickets.example/?embed_token=a%26b%23c')
   })
 
   it('обрезает пробелы токена', () => {
     expect(
       buildEmbedUrl({ storefrontOrigin: 'https://tickets.example', token: '  TK ' }),
-    ).toBe('https://tickets.example/#/?embed_token=TK')
+    ).toBe('https://tickets.example/?embed_token=TK')
   })
 })
 
@@ -61,7 +61,7 @@ describe('lib/embed-code: buildIframeSnippet', () => {
     expect(
       buildIframeSnippet({ storefrontOrigin: 'https://tickets.example', path: '/event/x', token: 'TK' }),
     ).toBe(
-      `<iframe id="nabilet-embed" src="https://tickets.example/#/event/x?embed_token=TK" title="NABILET"\n` +
+      `<iframe id="nabilet-embed" src="https://tickets.example/event/x?embed_token=TK" title="NABILET"\n` +
         `  style="width:100%;height:640px;border:0" loading="lazy"></iframe>`,
     )
   })

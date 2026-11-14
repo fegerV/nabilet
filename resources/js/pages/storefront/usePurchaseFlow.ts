@@ -181,7 +181,7 @@ export function usePurchaseFlow(options: UsePurchaseFlowOptions) {
       `${plural(bonusLeftUnits.value, 'бонус', 'бонуса', 'бонусов')}`,
   )
 
-  /** Код приглашения: друг открыл `/#/r/{code}` — код ждёт ровно до этого момента. */
+  /** Код приглашения: друг открыл `/r/{code}` — код ждёт ровно до этого момента. */
   const referralCode = ref(rememberedReferralCode())
 
   /** Имена полей §66 → имена полей формы. */

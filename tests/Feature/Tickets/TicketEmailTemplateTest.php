@@ -119,7 +119,7 @@ final class TicketEmailTemplateTest extends TestCase
         self::assertSame('Партер / Место 12', $data['seats']);
         self::assertSame('NB1.test-public-id.token.signature', $data['qr_payload']);
         self::assertSame($this->baseUrl() . '/storage/events/posters/afisha.jpg', $data['poster_url']);
-        self::assertSame($this->baseUrl() . '/#/tickets', $data['ticket_url']);
+        self::assertSame($this->baseUrl() . '/tickets', $data['ticket_url']);
 
         // И теперь — то, ради чего всё: билет в переменных письма.
         $variables = app(OrderNotificationData::class)->build(Order::query()->findOrFail($this->orderId));
@@ -138,7 +138,7 @@ final class TicketEmailTemplateTest extends TestCase
 
         // Текстовая версия — не пустая и содержит и билет, и ссылку.
         self::assertStringContainsString('TCK-TEST-001', $text);
-        self::assertStringContainsString($this->baseUrl() . '/#/tickets', $text);
+        self::assertStringContainsString($this->baseUrl() . '/tickets', $text);
     }
 
     /**
@@ -448,7 +448,7 @@ final class TicketEmailTemplateTest extends TestCase
         $data = (new TicketGeneratorService())->generateTicketData($ticket);
 
         self::assertNull($data['template']);
-        self::assertSame($this->baseUrl() . '/#/tickets', $data['ticket_url']);
+        self::assertSame($this->baseUrl() . '/tickets', $data['ticket_url']);
     }
 
     // ── 6. Старый путь одиночного билета (TicketPurchasedMail) ─────────────
@@ -473,7 +473,7 @@ final class TicketEmailTemplateTest extends TestCase
 
         self::assertStringContainsString('events/posters/afisha.jpg', $html);
         self::assertStringContainsString('Открыть билет', $html);
-        self::assertStringContainsString($this->baseUrl() . '/#/tickets', $html);
+        self::assertStringContainsString($this->baseUrl() . '/tickets', $html);
 
         // Подписанный payload остаётся текстом-fallback и не уезжает третьей
         // стороне параметром запроса.

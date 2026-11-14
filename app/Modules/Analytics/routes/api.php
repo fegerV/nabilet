@@ -13,7 +13,7 @@ Route::prefix('analytics')->group(function () {
     Route::get('/metrika/config', [MetrikaController::class, 'config']);
 });
 
-// Настройки Метрики для Vue-админки (#/admin/settings/metrika): только
+// Настройки Метрики для Vue-админки (/admin/settings/metrika): только
 // admin/manager (middleware `admin`, см. EnsureAdminRole), под Sanctum.
 Route::prefix('admin/analytics/metrika')->middleware(['auth:api', 'admin'])->group(function () {
     Route::get('/', [MetrikaSettingsController::class, 'show']);

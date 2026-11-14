@@ -317,9 +317,10 @@ class ReferralTest extends TestCase
             ->json('data');
 
         self::assertSame($code, $res['code']);
-        // Хэш-путь, а не чистый `/r/{code}`: SPA отдаётся только на `/`
-        // (`routes/web.php`), и чистый путь ушёл бы в `Route::fallback()` → 404.
-        self::assertSame(url('/#/r/' . $code), $res['link']);
+        // Настоящий путь `/r/{code}`: SPA-оболочка отдаётся на белом списке
+        // путей (history-роутинг, `routes/web.php`), поэтому ссылка открывает
+        // страницу приглашения напрямую.
+        self::assertSame(url('/r/' . $code), $res['link']);
         self::assertTrue($res['enabled']);
         self::assertSame(30_000, $res['inviter_bonus']);
         self::assertSame(30_000, $res['invited_bonus']);

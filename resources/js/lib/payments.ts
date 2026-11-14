@@ -137,7 +137,7 @@ export function demoPaymentId(
 
 /* ── Авторитетный статус (C2) ───────────────────────────────────────────────
  * Страница результата раньше доверяла параметру роута: неизвестное значение
- * (`#/payment/unknown-result`) показывало «Билеты готовы», потому что дефолтом
+ * (`/payment/unknown-result`) показывало «Билеты готовы», потому что дефолтом
  * стоял success. Теперь экран спрашивает сервер, а параметр роута — только
  * подсказка. Доступ: сотрудник, владелец заказа либо гость с `X-Cart-Token`
  * (подставляет api.ts) — тот же capability, что у `POST /payments`.
@@ -178,7 +178,7 @@ export function recallPaymentId(): string | null {
 }
 
 /**
- * Хэш нашей собственной страницы-симулятора оплаты.
+ * Путь нашей собственной страницы-симулятора оплаты.
  *
  * Маршрут `checkout/demo-pay` (`DemoPayPage`) — это не платежная страница
  * провайдера, а ЗАГЛУШКА на время отсутствия ключей ЮKassa: она существует
@@ -191,20 +191,21 @@ export function recallPaymentId(): string | null {
  * `isDemoConfirmation()` отвечает на вопрос «это наш симулятор?». Разъешись
  * они — заглушка увозила бы покупателя на полную навигацию без причины.
  */
-export const DEMO_CONFIRM_HASH = '#/checkout/demo-pay'
+export const DEMO_CONFIRM_PATH = '/checkout/demo-pay'
 
 /**
  * Ссылка подтверждения ведёт на НАШ демо-симулятор, а не к провайдеру.
  *
- * Без этого вопрос приходилось решать сравнением строк на каждом новом месте,
- * и первая же правка маршрута (`/checkout/demo-pay` → `/demo-pay`) молча
+ * Сравнение по `pathname` (history-роутинг: симулятор — настоящий URL на
+ * белом списке путей `routes/web.php`), а не по строке на каждом новом месте:
+ * первая же правка маршрута (`/checkout/demo-pay` → `/demo-pay`) молча
  * ломала покупку в один экран.
  */
 export function isDemoConfirmation(confirmationUrl: string | null | undefined): boolean {
   if (!confirmationUrl) return false
 
   try {
-    return new URL(confirmationUrl, window.location.origin).hash.startsWith(DEMO_CONFIRM_HASH)
+    return new URL(confirmationUrl, window.location.origin).pathname === DEMO_CONFIRM_PATH
   } catch {
     return false
   }

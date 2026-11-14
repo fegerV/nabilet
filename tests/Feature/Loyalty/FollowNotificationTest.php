@@ -67,7 +67,7 @@ class FollowNotificationTest extends TestCase
                 && str_contains($mail->htmlBody, self::STARTS_AT_HUMAN)
                 && str_contains($mail->htmlBody, 'Театр')
                 && str_contains($mail->htmlBody, 'Билеты уже в продаже.')
-                && str_contains($mail->htmlBody, '/#/event/');
+                && str_contains($mail->htmlBody, '/event/');
         });
         Mail::assertSent(TemplateMail::class, fn (TemplateMail $mail): bool => $mail->hasTo('second@example.test'));
 

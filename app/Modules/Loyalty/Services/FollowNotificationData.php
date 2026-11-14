@@ -20,8 +20,9 @@ use Nabilet\Modules\Sessions\Models\Session;
  *
  * ССЫЛКА СОБИРАЕТСЯ ЗДЕСЬ, а не в шаблоне — по той же причине, что в
  * `AccountMailService`: шаблон редактирует администратор, и адресат ссылки не
- * должен зависеть от его правки. Витрина — SPA с hash-роутером, поэтому путь
- * идёт фрагментом: `<база>/#/event/<slug>` (маршрут `event` в
+ * должен зависеть от его правки. Витрина живёт на history-роутинге, поэтому
+ * путь настоящий: `<база>/event/<slug>` — серверная SEO-страница события,
+ * поверх которой «оживает» SPA (маршрут `event` в
  * `resources/js/router/index.ts`).
  */
 final class FollowNotificationData
@@ -73,7 +74,11 @@ final class FollowNotificationData
 
         $base = rtrim((string) config('app.url', ''), '/');
 
-        return $base . '/#/event/' . $slug;
+        // Настоящий путь (history-роутинг): `/event/{slug}` — серверная
+        // SEO-страница, поверх которой «оживает» SPA. До 1.2.0 ссылка
+        // собиралась hash-формой `/#/event/{slug}`, потому что сервер отдавал
+        // витрину только на `/`.
+        return $base . '/event/' . $slug;
     }
 
     /**

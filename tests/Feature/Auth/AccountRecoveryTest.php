@@ -79,13 +79,13 @@ class AccountRecoveryTest extends TestCase
      * Витрина — SPA с hash-историей (`createWebHashHistory`), и серверного
      * маршрута `/reset-password` НЕТ: `routes/web.php` отдаёт собранную оболочку
      * только на `/`, а всё остальное перехватывает `Route::fallback()` и отвечает
-     * брендированной 404. Пока `actionUrl()` собирал `<base>/reset-password?...`,
-     * письмо приходило, а ссылка вела в никуда — то есть покупатель, заведённый
-     * автоматически при покупке (`password IS NULL`), не мог задать себе пароль
-     * ни одним способом. Тот же hash-вид уже используется для ссылки на билеты
-     * (`TicketGeneratorService`: `/#/tickets`).
+     * брендированной 404. С переходом витрины на history-роутинг ссылка стала
+     * настоящим путём: оболочка SPA отдаётся на белом списке путей
+     * (`routes/web.php`), поэтому `/reset-password?...` открывается напрямую.
+     * Тот же путь используется для ссылки на билеты
+     * (`TicketGeneratorService`: `/tickets`).
      */
-    public function test_the_reset_link_points_at_the_hash_route_the_spa_serves(): void
+    public function test_the_reset_link_points_at_the_spa_route_the_server_serves(): void
     {
         $this->makeUser('buyer@example.test');
 
@@ -94,10 +94,11 @@ class AccountRecoveryTest extends TestCase
 
         Mail::assertSent(TemplateMail::class, function (TemplateMail $mail): bool {
             // Сравниваем с адресом, собранным из `app.url`, а не с подстрокой
-            // `/#/reset-password?token=`: без хеша тот же путь содержит ровно ту
-            // же подстроку начиная со второго символа, поэтому проверка «нет
-            // ссылки без хеша» через `str_contains` была бы всегда ложной.
-            $expected = rtrim((string) config('app.url'), '/') . '/#/reset-password?token=';
+            // `/reset-password?token=`: без якоря домена тот же путь содержит
+            // ровно ту же подстроку начиная со второго символа, поэтому
+            // проверка «нет ссылки без хоста» через `str_contains` была бы
+            // всегда ложной.
+            $expected = rtrim((string) config('app.url'), '/') . '/reset-password?token=';
 
             return str_contains($mail->htmlBody, $expected);
         });
