@@ -689,6 +689,118 @@ ENV;
     }
 
     /**
+     * Отдать последние записи журнала инсталлера визарду.
+     *
+     * ЗАЧЕМ: на шаред-хостинге без SSH владелец не может прочитать
+     * storage/logs, а единственное сообщение об ошибке в визарде —
+     * «Не удалось завершить установку. Подробности — в журнале».
+     * Диагностика вслепую длила релизы ради одной строки причины.
+     *
+     * БЕЗОПАСНОСТЬ: эндпоинт живёт только до install.lock — после
+     * установки его закрывает 403, посторонние не читают логи живого
+     * сайта. В отдачу идут только записи инсталлера (фильтр по
+     * префиксу «Installer:»), без полных трейсов: первые кадры стека с
+     * обрезанным base_path — достаточно для причины, мало для атаки.
+     */
+    public function recentLog(Request $request): JsonResponse
+    {
+        if ($this->isInstalled()) {
+            return response()->json(['error' => [
+                'code' => 'ALREADY_INSTALLED',
+                'message' => 'Система уже установлена',
+                'details' => [],
+            ]], 403);
+        }
+
+        // Вчерашний день тоже: установка, начатая в 23:50, падает в 00:05.
+        $files = [
+            storage_path('logs/laravel-' . now()->subDay()->format('Y-m-d') . '.log'),
+            storage_path('logs/laravel-' . now()->format('Y-m-d') . '.log'),
+        ];
+
+        $entries = [];
+        foreach ($files as $file) {
+            if (! File::exists($file)) {
+                continue;
+            }
+
+            foreach (file($file) as $line) {
+                $entry = $this->parseInstallerLogLine($line);
+                if ($entry !== null) {
+                    $entries[] = $entry;
+                }
+            }
+        }
+
+        // Хвост важнее начала: последний провал — актуальный.
+        return response()->json([
+            'entries' => array_slice($entries, -6),
+        ]);
+    }
+
+    /**
+     * Разобрать одну строку журнала в запись для визарда; не-инсталлерные
+     * строки дают null.
+     */
+    private function parseInstallerLogLine(string $line): ?array
+    {
+        $line = trim($line);
+
+        if (! str_contains($line, 'Installer:')) {
+            return null;
+        }
+
+        if (! preg_match('/^\[([^\]]+)\]\s+\S+\.([A-Z]+):\s+(.*)$/s', $line, $m)) {
+            return null;
+        }
+
+        [, $timestamp, $level, $rest] = $m;
+
+        $message = $rest;
+        $context = [];
+
+        // Laravel доклеивает в конец строки второй JSON {"request_id":...} —
+        // снимаем его, иначе разбор контекста отхватит его вместо записи
+        // инсталлера.
+        $rest = preg_replace('/\{"request_id":"[^"]*"\}\s*$/', '', $rest);
+
+        // Контекст — JSON в конце строки (Laravel пишет его после сообщения).
+        if (($brace = strrpos($rest, '{"')) !== false) {
+            $decoded = json_decode((string) substr($rest, $brace), true);
+            if (is_array($decoded)) {
+                $context = $decoded;
+                $message = rtrim((string) substr($rest, 0, $brace));
+            }
+        }
+
+        $trace = '';
+        if (is_string($context['trace'] ?? null)) {
+            $trace = $context['trace'];
+        }
+
+        // base_path из кадров стека наружу не отдаём.
+        $frames = [];
+        foreach (explode("\n", $trace) as $frame) {
+            $frame = trim($frame);
+            if ($frame === '') {
+                continue;
+            }
+            if (count($frames) >= 4) {
+                break;
+            }
+            $frames[] = str_replace(base_path() . DIRECTORY_SEPARATOR, '', $frame);
+        }
+
+        return [
+            'time' => $timestamp,
+            'level' => strtolower($level),
+            'message' => $message,
+            'exception' => is_string($context['exception'] ?? null) ? $context['exception'] : '',
+            'trace' => $frames,
+        ];
+    }
+
+    /**
      * Проверить, установлена ли система
      */
     private function isInstalled(): bool

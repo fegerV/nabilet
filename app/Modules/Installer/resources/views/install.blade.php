@@ -516,7 +516,14 @@
 
                         <div id="installation-error" class="hidden rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300">
                             <p id="installation-error-text" class="font-semibold"></p>
-                            <button onclick="location.reload()" class="mt-2 font-semibold text-rose-700 underline dark:text-rose-300">Попробовать снова</button>
+                            <div class="mt-2 flex gap-4">
+                                <button onclick="location.reload()" class="font-semibold text-rose-700 underline dark:text-rose-300">Попробовать снова</button>
+                                <button onclick="loadInstallerLog()" class="font-semibold text-rose-700 underline dark:text-rose-300">Обновить журнал</button>
+                            </div>
+                            <div id="installation-log" class="mt-3 hidden rounded-lg border border-rose-200 bg-white p-3 dark:border-rose-500/30 dark:bg-slate-900/60">
+                                <p class="text-xs font-semibold uppercase tracking-wide text-rose-500">Записи журнала установщика</p>
+                                <div id="installation-log-body" class="mt-2 max-h-72 overflow-y-auto space-y-2 font-mono text-xs"></div>
+                            </div>
                         </div>
                     </div>
                 </section>
@@ -812,6 +819,41 @@
                 $('#installation-error').classList.remove('hidden');
                 $('#installation-error-text').textContent = err.message;
                 btn.disabled = false;
+                loadInstallerLog();
+            }
+        }
+
+        /* ---------- Журнал установщика в визарде ---------- */
+        async function loadInstallerLog() {
+            const box = $('#installation-log');
+            const body = $('#installation-log-body');
+            box.classList.remove('hidden');
+            body.textContent = 'Загружаю журнал…';
+
+            try {
+                const res = await fetch('/install/log', { headers: { 'Accept': 'application/json' } });
+                const data = await res.json();
+
+                if (!res.ok) {
+                    body.textContent = 'Журнал недоступен (HTTP ' + res.status + '): ' + (data.error?.message || 'нет ответа');
+                    return;
+                }
+
+                const entries = data.entries || [];
+                if (!entries.length) {
+                    body.textContent = 'Записей инсталлера в журнале пока нет.';
+                    return;
+                }
+
+                body.innerHTML = entries.map(e =>
+                    '<div class="rounded-lg border border-slate-100 p-2 dark:border-slate-700/60">'
+                    + '<div class="font-semibold">' + escapeHtml(e.time) + ' [' + escapeHtml(e.level) + '] ' + escapeHtml(e.message) + '</div>'
+                    + (e.exception ? '<div class="mt-1 break-words text-rose-600 dark:text-rose-300">' + escapeHtml(e.exception) + '</div>' : '')
+                    + (e.trace && e.trace.length ? '<pre class="mt-1 whitespace-pre-wrap text-[11px] opacity-70">' + escapeHtml(e.trace.join('\n')) + '</pre>' : '')
+                    + '</div>'
+                ).join('');
+            } catch (e) {
+                body.textContent = 'Не удалось загрузить журнал: ' + e.message;
             }
         }
 

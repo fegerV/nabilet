@@ -42,4 +42,10 @@ Route::middleware(['web'])->group(function () {
     Route::post('/install/test-database', [InstallerController::class, 'testDatabase'])
         ->middleware('throttle:20,1')
         ->name('installer.test-database');
+
+    // Хвост журнала инсталлера для визарда: диагностика без SSH. Живёт
+    // только до install.lock (см. InstallerController::recentLog).
+    Route::get('/install/log', [InstallerController::class, 'recentLog'])
+        ->middleware('throttle:30,1')
+        ->name('installer.recent-log');
 });
