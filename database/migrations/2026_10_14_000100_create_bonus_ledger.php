@@ -128,13 +128,14 @@ return new class extends Migration
         $this->addBonusAmountToOrders();
 
         if (! $this->enforcesCheckConstraints()) {
-            fwrite(STDERR, sprintf(
-                "\n  ! SKIPPED bonus ledger CHECKs: driver \"%s\" cannot add a CHECK\n"
-                . "    to an existing table. The tables and orders.bonus_amount are still\n"
-                . "    added, but ck_bonus_accounts_balance, ck_bonus_transactions_reason\n"
-                . "    and the widened ck_orders_amounts are NOT enforced. migrate:status\n"
-                . "    will still show this migration as Ran.\n\n",
-                DB::connection()->getDriverName()
+            $this->warn(sprintf(
+                "\n  ! SKIPPED bonus ledger CHECKs: server \"%s\" (version \"%s\") cannot\n"
+                . "    enforce/add a CHECK on an existing table. The tables and orders.bonus_amount\n"
+                . "    are still added, but ck_bonus_accounts_balance,\n"
+                . "    ck_bonus_transactions_reason and the widened ck_orders_amounts are NOT\n"
+                . "    enforced. migrate:status will still show this migration as Ran.\n\n",
+                DB::connection()->getDriverName(),
+                $this->serverVersion() ?: 'unknown'
             ));
 
             return;
@@ -289,6 +290,29 @@ return new class extends Migration
         return '';
     }
 
+    /**
+     * Предупреждение о пропущенных CHECK-инвариантах.
+     *
+     * STDERR существует только в CLI: под mod_cgi/FPM на шаред-хостинге
+     * константы STDERR нет, и fwrite(STDERR, ...) ронял установку
+     * фатальной ошибкой «Undefined constant STDERR» (TimeWeb, 2026-11-14,
+     * найдено визардом v1.1.0). В веб-контексте предупреждение уходит в
+     * журнал с префиксом «Installer:» — его показывает /install/log.
+     */
+    private function warn(string $message): void
+    {
+        if (defined('STDERR')) {
+            fwrite(STDERR, $message);
+
+            return;
+        }
+
+        try {
+            \Illuminate\Support\Facades\Log::warning('Installer: ' . rtrim($message));
+        } catch (\Throwable) {
+            // нет журнала — не блокируем миграцию
+        }
+    }
     public function down(): void
     {
         // Необратимо по замыслу: снятие журнала стирает историю начислений и

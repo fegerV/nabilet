@@ -169,7 +169,7 @@ return new class extends Migration
         try {
             DB::unprepared($sql);
         } catch (\Throwable $e) {
-            fwrite(STDERR, sprintf(
+            $this->warn(sprintf(
                 "\n  ! %s NOT applied: %s\n"
                 . "    (Hall schema immutability/freeze guard not enforced at DB level on this host.)\n\n",
                 $label,
@@ -178,6 +178,29 @@ return new class extends Migration
         }
     }
 
+    /**
+     * Предупреждение о пропущенных CHECK-инвариантах.
+     *
+     * STDERR существует только в CLI: под mod_cgi/FPM на шаред-хостинге
+     * константы STDERR нет, и fwrite(STDERR, ...) ронял установку
+     * фатальной ошибкой «Undefined constant STDERR» (TimeWeb, 2026-11-14,
+     * найдено визардом v1.1.0). В веб-контексте предупреждение уходит в
+     * журнал с префиксом «Installer:» — его показывает /install/log.
+     */
+    private function warn(string $message): void
+    {
+        if (defined('STDERR')) {
+            fwrite(STDERR, $message);
+
+            return;
+        }
+
+        try {
+            \Illuminate\Support\Facades\Log::warning('Installer: ' . rtrim($message));
+        } catch (\Throwable) {
+            // нет журнала — не блокируем миграцию
+        }
+    }
     public function down(): void
     {
         // Deliberately irreversible: dropping these guards would reopen mutation

@@ -82,7 +82,7 @@ return new class extends Migration
     public function up(): void
     {
         if (! $this->enforcesCheckConstraints()) {
-            fwrite(STDERR, sprintf(
+            $this->warn(sprintf(
                 "\n  ! SKIPPED add_status_vocabularies: driver \"%s\" cannot add a CHECK\n"
                 . "    to an existing table. %d status columns therefore accept any string,\n"
                 . "    and their CHECKs are NOT enforced. migrate:status will still show this\n"
@@ -121,7 +121,7 @@ return new class extends Migration
         }
 
         if ($legacyPaymentStatuses > 0) {
-            fwrite(STDERR, sprintf(
+            $this->warn(sprintf(
                 "\n  ~ add_status_vocabularies: normalized %d legacy orders.payment_status value(s) to 'succeeded'.\n\n",
                 $legacyPaymentStatuses
             ));
@@ -148,7 +148,7 @@ return new class extends Migration
             }
 
             if ($constraintExists) {
-                fwrite(STDERR, sprintf(
+                $this->warn(sprintf(
                     "\n  ~ add_status_vocabularies: constraint %s already exists — skipped.\n",
                     $constraint
                 ));
@@ -181,6 +181,29 @@ return new class extends Migration
         return in_array(DB::connection()->getDriverName(), ['mysql', 'mariadb'], true);
     }
 
+    /**
+     * Предупреждение о пропущенных CHECK-инвариантах.
+     *
+     * STDERR существует только в CLI: под mod_cgi/FPM на шаред-хостинге
+     * константы STDERR нет, и fwrite(STDERR, ...) ронял установку
+     * фатальной ошибкой «Undefined constant STDERR» (TimeWeb, 2026-11-14,
+     * найдено визардом v1.1.0). В веб-контексте предупреждение уходит в
+     * журнал с префиксом «Installer:» — его показывает /install/log.
+     */
+    private function warn(string $message): void
+    {
+        if (defined('STDERR')) {
+            fwrite(STDERR, $message);
+
+            return;
+        }
+
+        try {
+            \Illuminate\Support\Facades\Log::warning('Installer: ' . rtrim($message));
+        } catch (\Throwable) {
+            // нет журнала — не блокируем миграцию
+        }
+    }
     public function down(): void
     {
         // Необратимо по замыслу: снятие инварианта ослабляет базу.

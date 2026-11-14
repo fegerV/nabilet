@@ -66,7 +66,7 @@ return new class extends Migration
     public function up(): void
     {
         if (! $this->supportsTriggers()) {
-            fwrite(STDERR, sprintf(
+            $this->warn(sprintf(
                 "\n  ! SKIPPED %s: driver \"%s\" has no supported trigger dialect.\n"
                 . "    Hall schema immutability (TZ 20/98) is NOT enforced. Do not\n"
                 . "    run production on this driver without an equivalent guard.\n\n",
@@ -112,7 +112,7 @@ return new class extends Migration
             // This trigger is defense-in-depth only — the application layer also
             // guards immutability — so we degrade gracefully instead of aborting
             // `php artisan migrate` (which would abort the whole install).
-            fwrite(STDERR, sprintf(
+            $this->warn(sprintf(
                 "\n  ! Trigger %s NOT created: %s\n"
                 . "    Hall schema immutability (TZ 20/98) is not enforced at the DB level.\n\n",
                 self::TRIGGER,
@@ -126,6 +126,29 @@ return new class extends Migration
         return in_array(DB::connection()->getDriverName(), ['mysql', 'mariadb'], true);
     }
 
+    /**
+     * Предупреждение о пропущенных CHECK-инвариантах.
+     *
+     * STDERR существует только в CLI: под mod_cgi/FPM на шаред-хостинге
+     * константы STDERR нет, и fwrite(STDERR, ...) ронял установку
+     * фатальной ошибкой «Undefined constant STDERR» (TimeWeb, 2026-11-14,
+     * найдено визардом v1.1.0). В веб-контексте предупреждение уходит в
+     * журнал с префиксом «Installer:» — его показывает /install/log.
+     */
+    private function warn(string $message): void
+    {
+        if (defined('STDERR')) {
+            fwrite(STDERR, $message);
+
+            return;
+        }
+
+        try {
+            \Illuminate\Support\Facades\Log::warning('Installer: ' . rtrim($message));
+        } catch (\Throwable) {
+            // нет журнала — не блокируем миграцию
+        }
+    }
     public function down(): void
     {
         // Irreversible by design: dropping the trigger weakens a guarantee that

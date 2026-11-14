@@ -31,7 +31,7 @@ return new class extends Migration
             // returns early still counts as Ran, and a green migration table over
             // an unenforced contract is the failure mode this whole file exists to
             // prevent.
-            fwrite(STDERR, sprintf(
+            $this->warn(sprintf(
                 "\n  ! SKIPPED add_check_constraints: driver \"%s\" cannot add a CHECK\n"
                 . "    to an existing table. Every constraint below (status enums,\n"
                 . "    non-negative money, inventory target exclusivity, ticket\n"
@@ -99,6 +99,29 @@ return new class extends Migration
         return in_array(DB::connection()->getDriverName(), ['mysql', 'mariadb'], true);
     }
 
+    /**
+     * Предупреждение о пропущенных CHECK-инвариантах.
+     *
+     * STDERR существует только в CLI: под mod_cgi/FPM на шаред-хостинге
+     * константы STDERR нет, и fwrite(STDERR, ...) ронял установку
+     * фатальной ошибкой «Undefined constant STDERR» (TimeWeb, 2026-11-14,
+     * найдено визардом v1.1.0). В веб-контексте предупреждение уходит в
+     * журнал с префиксом «Installer:» — его показывает /install/log.
+     */
+    private function warn(string $message): void
+    {
+        if (defined('STDERR')) {
+            fwrite(STDERR, $message);
+
+            return;
+        }
+
+        try {
+            \Illuminate\Support\Facades\Log::warning('Installer: ' . rtrim($message));
+        } catch (\Throwable) {
+            // нет журнала — не блокируем миграцию
+        }
+    }
     public function down(): void
     {
         // Irreversible by design: dropping an invariant weakens the database.

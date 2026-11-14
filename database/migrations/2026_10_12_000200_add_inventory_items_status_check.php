@@ -68,7 +68,7 @@ return new class extends Migration
     public function up(): void
     {
         if (! $this->enforcesCheckConstraints()) {
-            fwrite(STDERR, sprintf(
+            $this->warn(sprintf(
                 "\n  ! SKIPPED add_inventory_items_status_check: driver \"%s\" cannot add a CHECK\n"
                 . "    to an existing table. `inventory_items.status` therefore accepts any string,\n"
                 . "    and ck_inventory_status is NOT enforced. migrate:status will still show\n"
@@ -96,6 +96,29 @@ return new class extends Migration
         return in_array(DB::connection()->getDriverName(), ['mysql', 'mariadb'], true);
     }
 
+    /**
+     * Предупреждение о пропущенных CHECK-инвариантах.
+     *
+     * STDERR существует только в CLI: под mod_cgi/FPM на шаред-хостинге
+     * константы STDERR нет, и fwrite(STDERR, ...) ронял установку
+     * фатальной ошибкой «Undefined constant STDERR» (TimeWeb, 2026-11-14,
+     * найдено визардом v1.1.0). В веб-контексте предупреждение уходит в
+     * журнал с префиксом «Installer:» — его показывает /install/log.
+     */
+    private function warn(string $message): void
+    {
+        if (defined('STDERR')) {
+            fwrite(STDERR, $message);
+
+            return;
+        }
+
+        try {
+            \Illuminate\Support\Facades\Log::warning('Installer: ' . rtrim($message));
+        } catch (\Throwable) {
+            // нет журнала — не блокируем миграцию
+        }
+    }
     public function down(): void
     {
         // Необратимо по замыслу: снятие инварианта ослабляет базу.

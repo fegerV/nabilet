@@ -112,13 +112,14 @@ return new class extends Migration
         }
 
         if (! $this->enforcesCheckConstraints()) {
-            fwrite(STDERR, sprintf(
-                "\n  ! SKIPPED referral CHECKs: driver \"%s\" cannot add a CHECK\n"
-                . "    to an existing table. The tables are still created, but\n"
+            $this->warn(sprintf(
+                "\n  ! SKIPPED referral CHECKs: server \"%s\" (version \"%s\") cannot\n"
+                . "    enforce/add a CHECK on an existing table. The tables are still created, but\n"
                 . "    ck_referrals_status and the widened ck_bonus_transactions_reason\n"
                 . "    are NOT enforced. migrate:status will still show this migration\n"
                 . "    as Ran.\n\n",
-                DB::connection()->getDriverName()
+                DB::connection()->getDriverName(),
+                $this->serverVersion() ?: 'unknown'
             ));
 
             return;
@@ -233,6 +234,29 @@ return new class extends Migration
         return '';
     }
 
+    /**
+     * Предупреждение о пропущенных CHECK-инвариантах.
+     *
+     * STDERR существует только в CLI: под mod_cgi/FPM на шаред-хостинге
+     * константы STDERR нет, и fwrite(STDERR, ...) ронял установку
+     * фатальной ошибкой «Undefined constant STDERR» (TimeWeb, 2026-11-14,
+     * найдено визардом v1.1.0). В веб-контексте предупреждение уходит в
+     * журнал с префиксом «Installer:» — его показывает /install/log.
+     */
+    private function warn(string $message): void
+    {
+        if (defined('STDERR')) {
+            fwrite(STDERR, $message);
+
+            return;
+        }
+
+        try {
+            \Illuminate\Support\Facades\Log::warning('Installer: ' . rtrim($message));
+        } catch (\Throwable) {
+            // нет журнала — не блокируем миграцию
+        }
+    }
     public function down(): void
     {
         // Необратимо по замыслу: приглашения — факт, по которому начислены

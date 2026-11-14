@@ -83,7 +83,7 @@ return new class extends Migration
 
         // CHECK-инварианты — только там, где движок их действительно исполняет.
         if (! $this->enforcesCheckConstraints()) {
-            fwrite(STDERR, sprintf(
+            $this->warn(sprintf(
                 "\n  ! SKIPPED privacy CHECK constraints: driver \"%s\" cannot add a CHECK\n"
                 . "    to an existing table. The consent/request invariants are NOT enforced\n"
                 . "    on this driver; `migrate:status` will still show this migration as Ran.\n\n",
@@ -125,7 +125,7 @@ return new class extends Migration
             }
 
             if ($constraintExists) {
-                fwrite(STDERR, sprintf(
+                $this->warn(sprintf(
                     "\n  ~ privacy_guards: constraint %s already exists — skipped.\n",
                     $constraint
                 ));
@@ -146,6 +146,29 @@ return new class extends Migration
         return in_array(DB::connection()->getDriverName(), ['mysql', 'mariadb'], true);
     }
 
+    /**
+     * Предупреждение о пропущенных CHECK-инвариантах.
+     *
+     * STDERR существует только в CLI: под mod_cgi/FPM на шаред-хостинге
+     * константы STDERR нет, и fwrite(STDERR, ...) ронял установку
+     * фатальной ошибкой «Undefined constant STDERR» (TimeWeb, 2026-11-14,
+     * найдено визардом v1.1.0). В веб-контексте предупреждение уходит в
+     * журнал с префиксом «Installer:» — его показывает /install/log.
+     */
+    private function warn(string $message): void
+    {
+        if (defined('STDERR')) {
+            fwrite(STDERR, $message);
+
+            return;
+        }
+
+        try {
+            \Illuminate\Support\Facades\Log::warning('Installer: ' . rtrim($message));
+        } catch (\Throwable) {
+            // нет журнала — не блокируем миграцию
+        }
+    }
     public function down(): void
     {
         // Необратимо по замыслу (см. миграцию 017): снятие инварианта 152-ФЗ
