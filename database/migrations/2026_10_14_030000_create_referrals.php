@@ -133,7 +133,7 @@ return new class extends Migration
         // Переиздание словаря причин журнала: `referral_inviter` и
         // `referral_invited`. Снять и создать заново — MySQL 8 не умеет
         // ALTER CHECK. Снятие безопасно: новое условие надмножество старого.
-        DB::statement('ALTER TABLE bonus_transactions DROP CONSTRAINT ck_bonus_transactions_reason');
+        $this->dropCheckConstraint('bonus_transactions', 'ck_bonus_transactions_reason');
 
         DB::statement(
             'ALTER TABLE bonus_transactions ADD CONSTRAINT ck_bonus_transactions_reason CHECK ('
@@ -148,7 +148,89 @@ return new class extends Migration
      */
     private function enforcesCheckConstraints(): bool
     {
-        return in_array(DB::connection()->getDriverName(), ['mysql', 'mariadb'], true);
+        if (! in_array(DB::connection()->getDriverName(), ['mysql', 'mariadb'], true)) {
+            return false;
+        }
+
+        $version = $this->serverVersion();
+
+        // Стаб верификатора (tools/laravel-stub.php) отдаёт пустой stdClass:
+        // версии нет — ведём себя как раньше, для mysql/mariadb.
+        if ($version === '') {
+            return true;
+        }
+
+        $numeric = $this->numericVersion($version);
+
+        if (stripos($version, 'mariadb') !== false) {
+            return version_compare($numeric, '10.2.1', '>=');
+        }
+
+        return version_compare($numeric, '8.0.16', '>=');
+    }
+
+    /**
+     * Снять именованный CHECK: `DROP CONSTRAINT` — только MySQL 8.0.19+ /
+     * MariaDB 10.2.1+; MySQL 8.0.16–8.0.18 знает лишь `DROP CHECK`
+     * (на таком сервере инсталлятор падал с 1064 — TimeWeb, 2026-11-14).
+     * Младшие серверы отсечены enforcesCheckConstraints().
+     */
+    private function dropCheckConstraint(string $table, string $name): void
+    {
+        if ($this->supportsDropConstraintSyntax()) {
+            DB::statement(sprintf('ALTER TABLE %s DROP CONSTRAINT %s', $table, $name));
+
+            return;
+        }
+
+        DB::statement(sprintf('ALTER TABLE %s DROP CHECK %s', $table, $name));
+    }
+
+    private function supportsDropConstraintSyntax(): bool
+    {
+        $version = $this->serverVersion();
+
+        if ($version === '') {
+            return true;
+        }
+
+        $numeric = $this->numericVersion($version);
+
+        if (stripos($version, 'mariadb') !== false) {
+            return version_compare($numeric, '10.2.1', '>=');
+        }
+
+        return version_compare($numeric, '8.0.19', '>=');
+    }
+
+    /**
+     * Строка версии сервера; алиас обязателен — на MySQL колонка `select
+     * version()` называется `version()` (см. 2026_09_20_001200).
+     */
+    private function serverVersion(): string
+    {
+        $row = DB::selectOne('select version() as srv_version');
+
+        if (is_object($row) && property_exists($row, 'srv_version')) {
+            return trim((string) $row->srv_version);
+        }
+
+        return '';
+    }
+
+    /**
+     * Числовой префикс версии (суффиксы и префикс совместимости
+     * «5.5.5-…» у MariaDB отбрасываются).
+     */
+    private function numericVersion(string $version): string
+    {
+        $version = preg_replace('/^5\.5\.\d+-/', '', $version);
+
+        if (preg_match('/^(\d+(?:\.\d+)*)/', $version, $m) === 1) {
+            return $m[1];
+        }
+
+        return '';
     }
 
     public function down(): void

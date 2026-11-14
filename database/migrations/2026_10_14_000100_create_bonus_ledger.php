@@ -142,7 +142,7 @@ return new class extends Migration
 
         // Снять и создать заново: MySQL 8 не умеет ALTER CHECK. Безопасно для
         // существующих строк — bonus_amount у них 0 (DEFAULT), а 0 >= 0.
-        DB::statement('ALTER TABLE orders DROP CONSTRAINT ck_orders_amounts');
+        $this->dropCheckConstraint('orders', 'ck_orders_amounts');
 
         DB::statement(
             'ALTER TABLE orders ADD CONSTRAINT ck_orders_amounts CHECK ('
@@ -185,11 +185,108 @@ return new class extends Migration
      * Драйверы, которые действительно исполняют CHECK на существующей таблице.
      *
      * MySQL 8.0.16+ и MariaDB 10.2.1+. Более старый MySQL разбирает и молча
-     * игнорирует CHECK — именно этот случай гард и делает слышимым.
+     * игнорирует CHECK — именно этот случай гард и делает слышимым. Версия
+     * сервера нужна фактически: на TimeWeb инсталлятор упёрся именно сюда
+     * (2026-11-14) — сервер принимал ADD CONSTRAINT, но не знал DROP CONSTRAINT.
      */
     private function enforcesCheckConstraints(): bool
     {
-        return in_array(DB::connection()->getDriverName(), ['mysql', 'mariadb'], true);
+        if (! in_array(DB::connection()->getDriverName(), ['mysql', 'mariadb'], true)) {
+            return false;
+        }
+
+        $version = $this->serverVersion();
+
+        // Стаб верификатора (tools/laravel-stub.php) отдаёт пустой stdClass:
+        // версии нет — ведём себя как раньше, для mysql/mariadb.
+        if ($version === '') {
+            return true;
+        }
+
+        $numeric = $this->numericVersion($version);
+
+        if (stripos($version, 'mariadb') !== false) {
+            return version_compare($numeric, '10.2.1', '>=');
+        }
+
+        return version_compare($numeric, '8.0.16', '>=');
+    }
+
+    /**
+     * Снять именованный CHECK с существующей таблицы.
+     *
+     * `ALTER TABLE ... DROP CONSTRAINT <имя>` появился только в MySQL 8.0.19.
+     * Серверы 8.0.16–8.0.18 уже исполняют CHECK (и приняли все ADD выше),
+     * но снимают его только через `DROP CHECK <имя>` — на таком сервере
+     * старый код падал с 1064 «syntax error ... near 'CONSTRAINT'».
+     * MariaDB умеет DROP CONSTRAINT с 10.2.1. Серверы младше сюда не доходят:
+     * их отсекает enforcesCheckConstraints().
+     */
+    private function dropCheckConstraint(string $table, string $name): void
+    {
+        if ($this->supportsDropConstraintSyntax()) {
+            DB::statement(sprintf('ALTER TABLE %s DROP CONSTRAINT %s', $table, $name));
+
+            return;
+        }
+
+        DB::statement(sprintf('ALTER TABLE %s DROP CHECK %s', $table, $name));
+    }
+
+    /**
+     * Умеет ли сервер `DROP CONSTRAINT <имя>`: MariaDB 10.2.1+, MySQL 8.0.19+.
+     * Пустая версия (стаб верификатора) трактуется как поддержка.
+     */
+    private function supportsDropConstraintSyntax(): bool
+    {
+        $version = $this->serverVersion();
+
+        if ($version === '') {
+            return true;
+        }
+
+        $numeric = $this->numericVersion($version);
+
+        if (stripos($version, 'mariadb') !== false) {
+            return version_compare($numeric, '10.2.1', '>=');
+        }
+
+        return version_compare($numeric, '8.0.19', '>=');
+    }
+
+    /**
+     * Строка версии сервера, например «8.0.18» или «10.4.32-MariaDB».
+     *
+     * `select version()` на MySQL возвращает колонку с именем `version()`,
+     * поэтому алиас обязателен (см. 2026_09_20_001200_fix_offline_bundles).
+     */
+    private function serverVersion(): string
+    {
+        $row = DB::selectOne('select version() as srv_version');
+
+        if (is_object($row) && property_exists($row, 'srv_version')) {
+            return trim((string) $row->srv_version);
+        }
+
+        return '';
+    }
+
+    /**
+     * Числовой префикс версии: «8.0.18» из «8.0.18-log», «10.4.32» из
+     * «10.4.32-MariaDB». Суффиксы отбрасываются — version_compare считает
+     * строку с суффиксом МЕНЬШЕЙ, чем без него, а нужен точный >=.
+     * MariaDB с префиксом совместимости «5.5.5-10.4.32-MariaDB» честный
+     * номер отдаёт после дефиса.
+     */
+    private function numericVersion(string $version): string
+    {
+        $version = preg_replace('/^5\.5\.\d+-/', '', $version);
+
+        if (preg_match('/^(\d+(?:\.\d+)*)/', $version, $m) === 1) {
+            return $m[1];
+        }
+
+        return '';
     }
 
     public function down(): void

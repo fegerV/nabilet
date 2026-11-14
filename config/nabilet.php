@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 return [
-    'version' => '1.0.4',
+    'version' => '1.0.5',
 
     /*
      * Шифрование бэкапов (AES-256-CBC). Ключ — из `.env`:

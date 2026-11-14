@@ -4,6 +4,27 @@
 
 Формат — [Keep a Changelog](https://keepachangelog.com/ru-RU/1.1.0/), версионирование — [SemVer](https://semver.org/).
 
+## [1.0.5] - 2026-11-14
+
+### Fixed
+
+- **Установка падала на TimeWeb при переиздании CHECK-констрейнта:** миграция
+  бонусного журнала снимала старый `ck_orders_amounts` через
+  `ALTER TABLE orders DROP CONSTRAINT ...`, а миграция реферальной программы —
+  `ck_bonus_transactions_reason`. Синтаксис `DROP CONSTRAINT` появился только в
+  MySQL 8.0.19 (и MariaDB 10.2.1), а на части серверов TimeWeb стоит более
+  ранний 8.0.x: инсталлятор падал с
+  `SQLSTATE[42000] ... Syntax error ... near 'CONSTRAINT ck_orders_amounts'`
+  сразу после записи `.env`, без `install.lock`. Снятие CHECK теперь
+  version-aware: `DROP CONSTRAINT` на MySQL ≥ 8.0.19 / MariaDB ≥ 10.2.1,
+  `DROP CHECK` на MySQL 8.0.16–8.0.18, а движки, которые CHECK вообще не
+  исполняют (MySQL < 8.0.16, MariaDB < 10.2.1), отсекаются гардом целиком —
+  ставить неисполняемые «инварианты» по деньгам так же бессмысленно, как
+  молча их игнорировать. Логика определения версии сервера работает и на
+  MariaDB с префиксом совместимости (`5.5.5-10.x.y-MariaDB`).
+- **Подсказка поля «Хост БД» в мастере установки** нейтральна: placeholder
+  `localhost`, без упоминания хостинга.
+
 ## [1.0.4] - 2026-11-14
 
 ### Fixed

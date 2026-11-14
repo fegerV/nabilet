@@ -174,7 +174,7 @@ chmod -R ug+w storage bootstrap/cache
 
   ```bash
   cd /home/c/ce99429/vertex-art.ru/public_html
-  unzip -q ~/nabilet-hosting-v1.0.4-20261114.zip   # содержимое архива -> текущий каталог
+  unzip -q ~/nabilet-hosting-v1.0.5-20261114.zip   # содержимое архива -> текущий каталог
   rm -f index.html                                # заглушка хостинга, если есть
   # проверка: ./index.php, .htaccess, app/, vendor/ лежат ЗДЕСЬ же, .env нет
   chmod -R ug+w storage bootstrap/cache
@@ -365,11 +365,12 @@ SELECT code, used_count FROM promo_codes WHERE used_count > 0;
 
 ### Версионирование
 
-- Текущая версия приложения: **1.0.4** (`config/nabilet.php` → `'version'`,
+- Текущая версия приложения: **1.0.5** (`config/nabilet.php` → `'version'`,
   отдаётся в `/api/v1/health` и `SystemStatusController`).
 - Git-теги релизов: **SemVer** — `vX.Y.Z` (примеры: `v1.0.0` на коммите `ac145ab2`,
   `v1.0.2` — WordPress-style структура архива, `v1.0.3` — платформа PHP 8.3,
-  `v1.0.4` — самодостаточные стили установщика без внешних CDN).
+  `v1.0.4` — самодостаточные стили установщика без внешних CDN,
+  `v1.0.5` — version-aware снятие CHECK-констрейнтов для TimeWeb-MySQL).
 - `CHANGELOG.md` (Keep a Changelog + SemVer): `## [X.Y.Z] - YYYY-MM-DD`.
 - Правила: `fix:` → PATCH (1.0.0 → 1.0.1), `feat:` → MINOR (→ 1.1.0), breaking → MAJOR
   (→ 2.0.0).

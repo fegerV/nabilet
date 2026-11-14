@@ -287,8 +287,8 @@
                             <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
                                 <div class="sm:col-span-2">
                                     <label class="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-200">Хост БД <span class="text-rose-500">*</span></label>
-                                    <input name="db_host" required class="field" placeholder="mysql.timeweb.ru">
-                                    <p class="mt-1 text-xs text-slate-400 dark:text-slate-500">На Timeweb — не localhost, а значение из панели.</p>
+                                    <input name="db_host" required class="field" placeholder="localhost">
+                                    <p class="mt-1 text-xs text-slate-400 dark:text-slate-500">Обычно localhost; если не подключается — возьмите значение из панели хостинга.</p>
                                 </div>
                                 <div>
                                     <label class="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-200">Порт <span class="text-rose-500">*</span></label>
