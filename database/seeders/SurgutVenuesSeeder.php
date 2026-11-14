@@ -82,7 +82,6 @@ final class SurgutVenuesSeeder extends Seeder
                 . 'Сначала выполните установку (или создайте организацию), затем повторите `db:seed`.';
 
             $this->command?->warn($message);
-            echo $message . "\n";
 
             return;
         }
@@ -123,8 +122,6 @@ final class SurgutVenuesSeeder extends Seeder
             $created,
             count(self::venues()) - $created,
         ));
-
-        echo sprintf("Surgut venues seeded: %d created, %d already present.\n", $created, count(self::venues()) - $created);
     }
 
     /**

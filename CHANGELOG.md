@@ -4,6 +4,19 @@
 
 Формат — [Keep a Changelog](https://keepachangelog.com/ru-RU/1.1.0/), версионирование — [SemVer](https://semver.org/).
 
+## [1.1.2] - 2026-11-14
+
+### Fixed
+
+- **Визард показывал «Unexpected token … is not valid JSON» после успешной
+  установки.** Сидеры писали баннеры (`NABILET roles/permissions seeded…`,
+  `Surgut venues seeded…`) голым `echo`, который в CLI уходит в stdout, а под
+  mod_cgi — прямо в тело HTTP-ответа, портя JSON-ответ инсталлера. Установка
+  при этом завершалась, но визард сообщал об ошибке. Все баннеры переведены
+  на консольные вызовы (`$this->command?->line/warn/info`), дублирующие `echo`
+  удалены. Найдено на TimeWeb 2026-11-14: установка завершилась, судя по
+  `install.lock`, но визард сообщил о провале.
+
 ## [1.1.1] - 2026-11-14
 
 ### Fixed

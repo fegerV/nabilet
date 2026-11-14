@@ -117,7 +117,7 @@ class NabiletAdminSeeder extends Seeder
         // флагу NABILET_SEED_DEMO=true (аудит установщика B-2).
         if (! $this->shouldSeedDemoData()) {
             $this->command?->warn('Демо-учётки не создаются: production без NABILET_SEED_DEMO=true.');
-            echo "NABILET roles/permissions seeded; demo accounts skipped (production).\n";
+            $this->command?->line('NABILET roles/permissions seeded; demo accounts skipped (production).');
 
             return;
         }
@@ -192,10 +192,10 @@ class NabiletAdminSeeder extends Seeder
             ]);
         }
 
-        echo "NABILET admin panel seeded:\n";
-        echo "  Admin:   admin@nabilet.local / admin123\n";
-        echo "  Manager: manager@nabilet.local / manager123\n";
-        echo "  Support: support@nabilet.local / support123\n";
+        $this->command?->line('NABILET admin panel seeded:');
+        $this->command?->line('  Admin:   admin@nabilet.local / admin123');
+        $this->command?->line('  Manager: manager@nabilet.local / manager123');
+        $this->command?->line('  Support: support@nabilet.local / support123');
     }
 
     /**
