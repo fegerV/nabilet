@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /**
- * Smoke-прогон установки v1.2.0 на чистом стенде (.tmp-release-stage/site).
+ * Smoke-прогон установки релиза на чистом стенде (.tmp-release-stage/site).
  * Предусловия:
  *   1. php .tmp-release-stage/db-setup-smoke.php          (чистая БД + юзер)
  *   2. в .tmp-release-stage/site нет .env и storage/install.lock
@@ -190,8 +190,17 @@ $admin = $pdo->query("SELECT COUNT(*) FROM users WHERE email = 'admin@smoke.loca
 check('админ-аккаунт создан', (int) $admin === 1);
 
 // HTTP после установки
+//
+// Ожидаемая версия читается из config/nabilet.php, а не хардкодится:
+// правка версии релиза не должна требовать правки smoke-скрипта (иначе
+// проверка ломается ровно в релизном коммите, когда она нужнее всего).
+// Файл include'ить нельзя (там env() вне Laravel) — парсим строку `'version' =>`.
+$configText = (string) file_get_contents(__DIR__ . '/site/config/nabilet.php');
+preg_match("/'version'\s*=>\s*'([^']+)'/", $configText, $m);
+$expectedVersion = $m[1] ?? '';
+check('config/nabilet.php: версия прочитана', $expectedVersion !== '', $expectedVersion);
 [$status, $body, $head] = http('GET', $base . '/api/v1/health', [], ['Accept: application/json']);
-check('/api/v1/health -> 200 и версия 1.2.0', $status === 200 && str_contains($body, '1.2.0'), 'status=' . $status);
+check("/api/v1/health -> 200 и версия $expectedVersion", $status === 200 && $expectedVersion !== '' && str_contains($body, $expectedVersion), 'status=' . $status . ' body=' . substr($body, 0, 200));
 
 [$status, $body, $head] = http('GET', $base . '/install');
 check('GET /install (HTML) после установки -> 302 на /', $status === 302 && preg_match('/^Location: .*\//m', $head) === 1, 'status=' . $status);
