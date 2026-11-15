@@ -133,7 +133,7 @@ async function createHall(): Promise<void> {
   }
   creating.value = true
   try {
-    await send('/halls', 'POST', {
+    const res = await send<{ data?: { public_id?: string } } & Record<string, unknown>>('/halls', 'POST', {
       name: createForm.value.name.trim(),
       venue_id: Number(createForm.value.venue_id),
       capacity: createForm.value.capacity ? Number(createForm.value.capacity) : null,
@@ -148,7 +148,15 @@ async function createHall(): Promise<void> {
       name: '', venue_id: '', capacity: '', city: '', address: '',
       description: '', exterior_photo_url: '', interior_photo_url: '',
     }
-    await load()
+    // Создание зала без схемы — тупик: зал надо ещё найти в списке, открыть
+    // конструктор и понять, что рисовать. Сразу ведём в конструктор: у
+    // площадки, как правило, один зал, и следующий шаг всегда один и тот же.
+    const createdPid = res.data?.data?.public_id ?? res.data?.public_id
+    if (typeof createdPid === 'string' && createdPid) {
+      router.push(`/admin/halls/${createdPid}/editor`)
+    } else {
+      await load()
+    }
   } catch (e) {
     createError.value = e instanceof Error ? e.message : String(e)
   } finally {

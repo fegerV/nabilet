@@ -1630,6 +1630,9 @@ function draw(): void {
       })
       group.on('dragend', () => {
         endMoveSnapshot()
+        // Координаты писались в модель в dragmove, пока watcher был на паузе
+        // (Konva.isDragging) — финальную перерисовку делаем здесь.
+        draw()
       })
       // Якоря живут внутри группы: их drag не должен двигать саму группу.
       group.on('dragstart', (e) => {
@@ -1650,13 +1653,20 @@ function draw(): void {
           const h = Math.max(10, Math.min(20000, Math.round((local.y + bg.height / 2) * 2)))
           bg.width = w
           bg.height = h
-          draw()
+          // Точечная правка вместо draw(): полная перерисовка уничтожила бы
+          // тянущийся якорь (жест замирал после первого движения). Картинка
+          // центрирована в группе — при смене размера сдвигается центр.
+          const pic = group.findOne<Konva.Image>('.bg-picture')
+          pic?.setAttrs({ x: -bg.width / 2, y: -bg.height / 2, width: bg.width, height: bg.height })
+          group.position({ x: bg.x + bg.width / 2, y: bg.y + bg.height / 2 })
+          bgLayer?.batchDraw()
         } else if (n === 'bg-rotate') {
           const pos = node.getAbsolutePosition(stage ?? undefined)
           const center = group.getAbsolutePosition(stage ?? undefined)
           const deg = (Math.atan2(pos.y - center.y, pos.x - center.x) * 180) / Math.PI + 90
           bg.rotation = Math.round(((deg % 360) + 360) % 360)
-          draw()
+          group.rotation(bg.rotation)
+          bgLayer?.batchDraw()
         }
       })
       group.on('dragend', (e) => {
@@ -1740,6 +1750,12 @@ function draw(): void {
         if (!off) continue
         o.x = o.id === s.id ? nx : nx + off.dx
         o.y = o.id === s.id ? ny : ny + off.dy
+        // Соседей по выделению двигаем вручную: watcher не перерисовывает
+        // холст во время drag, а Konva мышью двигает только тянущийся узел.
+        if (o.id !== s.id) {
+          const node = staticLayer?.getChildren((n) => n.id() === o.id)[0]
+          node?.position({ x: o.x, y: o.y })
+        }
       }
     })
     group.on('dragend', () => {
@@ -1747,6 +1763,9 @@ function draw(): void {
       // флаг остался бы true навсегда и история перестала бы фиксировать
       // любые последующие drag'и (дефект A8).
       endMoveSnapshot()
+      // Координаты писались в модель в dragmove, пока watcher был на паузе
+      // (Konva.isDragging) — финальную перерисовку делаем здесь.
+      draw()
     })
     staticLayer?.add(group)
     if (isSelected) {
@@ -1893,9 +1912,11 @@ function draw(): void {
         fill: isSelected ? COLORS.selected : seatFill(seat, sector),
         stroke: isSelected ? '#FFFFFF' : 'rgba(22,35,56,0.18)',
         strokeWidth: isSelected ? 1.5 : 1,
-        // Групповое перемещение мест (§48): тянуть можно только выделенные;
-        // drag отключается на уровне места, пока группа сектора неактивна.
-        draggable: published.value === null && tool.value === 'select' && isSelected,
+        // Перетаскивание мест (§48): тянуть можно любое место инструментом
+        // «Выделение» — dragstart сам выделит его (ниже). Раньше draggable
+        // ставился только уже выделенным, и первая тяга по несинему месту
+        // уходила в группу сектора: вместо места «уезжал» весь сектор.
+        draggable: published.value === null && tool.value === 'select',
       })
 
       rect.on('click', (e) => {
@@ -1904,8 +1925,14 @@ function draw(): void {
         pickSeat(seat.id, sector.id, e.evt.shiftKey || e.evt.ctrlKey || e.evt.metaKey)
       })
       rect.on('dragstart', () => {
+        // Тяга без предварительного выделения: место само становится
+        // выделением. Без этого dragstart фиксировал бы пустую модель
+        // (seatDragBefore без места) — и место не двигалось бы вовсе.
+        if (!selectedSeatIds.value.has(seat.id)) {
+          selectedSeatIds.value = new Set([seat.id])
+        }
         beginMoveSnapshot()
-        // Место уже в выделении (draggable только для выделенных) — фиксируем
+        // Место в выделении — фиксируем
         // стартовые позиции всех выделенных мест этого сектора.
         seatDragIds = new Set(selectedSeatIds.value)
         seatDragBefore.clear()
@@ -1928,6 +1955,13 @@ function draw(): void {
           if (!b || !target) continue
           target.x = b.x + dx
           target.y = b.y + dy
+          // Соседей по выделению двигаем вручную: watcher не перерисовывает
+          // холст во время drag (см. watch ниже), а Konva двигает мышью
+          // только тот узел, за который тянут.
+          if (id !== seat.id) {
+            const node = group.getChildren((n) => n.id() === id)[0]
+            node?.position({ x: target.x + SEAT / 2, y: target.y + SEAT / 2 })
+          }
         }
       })
       rect.on('dragend', () => {
@@ -2157,6 +2191,14 @@ onUnmounted(() => {
 
 watch([sectors, statics, backgrounds, selectedSeatIds, selectedSectorId, tool], () => {
   if (stage) stage.draggable(tool.value === 'pan')
+  // Во время Konva-drag полная перерисовка СМЕРТЕЛЬНА: draw() пересоздаёт
+  // узлы слоёв (destroyChildren), и тянущийся узел отсоединяется от сцены —
+  // Konva теряет stage у _dragNode, и жест замирает после первого движения
+  // («места не перемещаются»). Модель к этому моменту уже обновлена в
+  // dragmove; после mouseup финализация меняет модель, watcher придёт сюда
+  // снова и перерисует уже законченный жест. Проверка на typeof — для
+  // тестовых двойников Konva без isDragging.
+  if (typeof Konva.isDragging === 'function' && Konva.isDragging()) return
   draw()
 }, { deep: true })
 
@@ -2864,15 +2906,37 @@ function reassignSelectedSeats(targetSectorId: string): void {
         <input ref="imageInput" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" class="hidden" @change="onImageChosen" />
         <input ref="jsonInput" type="file" accept=".json,application/json" class="hidden" @change="onJsonChosen" />
 
-        <!-- Холст: занимает всю оставшуюся высоту -->
-        <div
-          ref="canvasHost"
-          :class="cn(
-            'min-h-0 flex-1 w-full bg-surface-2',
-            tool === 'pan' ? 'cursor-grab active:cursor-grabbing' : 'cursor-crosshair',
-            isLocked && 'cursor-default',
-          )"
-        />
+        <!-- Холст: занимает всю оставшуюся высоту. Обёртка relative — подложка
+             для баннера опубликованной версии (поверх холста, не в потоке). -->
+        <div class="relative min-h-0 flex-1">
+          <div
+            ref="canvasHost"
+            :class="cn(
+              'absolute inset-0 bg-surface-2',
+              tool === 'pan' ? 'cursor-grab active:cursor-grabbing' : 'cursor-crosshair',
+              isLocked && 'cursor-default',
+            )"
+          />
+
+          <!-- Опубликованная версия: схема неизменяема (ТЗ §6). Раньше
+               единственным напоминанием был маленький «Новая версия» в шапке
+               и строка в подвале — человек открывал зал, видел серые
+               инструменты и делал вывод «конструктор не работает». Баннер
+               называет причину и даёт одно очевидное действие. -->
+          <div
+            v-if="isLocked"
+            class="pointer-events-none absolute inset-x-0 top-3 z-10 flex justify-center px-4"
+          >
+            <div class="pointer-events-auto flex items-center gap-3 rounded-lg border border-sun-500/40 bg-surface px-4 py-2.5 shadow-xl">
+              <span class="text-lg leading-none" aria-hidden="true">🔒</span>
+              <div class="min-w-0">
+                <p class="text-xs font-semibold text-content">Версия {{ published }} опубликована и неизменяема</p>
+                <p class="text-2xs text-muted">Правки создадут черновик новой версии — схема останется в продаже</p>
+              </div>
+              <NButton variant="primary" size="sm" @click="newVersion">Новая версия</NButton>
+            </div>
+          </div>
+        </div>
 
         <div v-if="seatPriceLegend.length" class="flex flex-none flex-wrap items-center gap-x-3 gap-y-1 border-t border-line px-3 py-1.5" aria-label="Цены мест на схеме">
           <span class="text-2xs font-medium text-subtle">Цены:</span>
@@ -2883,7 +2947,7 @@ function reassignSelectedSeats(targetSectorId: string): void {
 
         <div class="flex flex-none flex-wrap items-center justify-between gap-2 border-t border-line px-3 py-1 text-2xs text-subtle">
           <span class="truncate">
-            Колесо — масштаб · <kbd class="rounded border border-line px-1 font-mono">Space</kbd>+тяга или средняя кнопка — панорама · <kbd class="rounded border border-line px-1 font-mono">V</kbd>/<kbd class="rounded border border-line px-1 font-mono">H</kbd> — инструменты
+            Колесо — масштаб · <kbd class="rounded border border-line px-1 font-mono">Space</kbd>+тяга или средняя кнопка — панорама · <kbd class="rounded border border-line px-1 font-mono">V</kbd>/<kbd class="rounded border border-line px-1 font-mono">H</kbd> — инструменты · тяга за место двигает место, за подпись сектора — весь сектор
           </span>
           <span v-if="isLocked" class="flex-none">Опубликованная версия неизменяема</span>
         </div>

@@ -14,6 +14,7 @@
  * в пути приводился к int, поэтому `/venues/1abc` попадал в площадку 1.
  */
 import { computed, ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import NButton from '@/components/ui/NButton.vue'
 import NInput from '@/components/ui/NInput.vue'
 import NSelect from '@/components/ui/NSelect.vue'
@@ -26,6 +27,7 @@ import { money } from '@/lib/format'
 import type { Column } from '@/components/ui/NDataTable.vue'
 
 const ui = useUiStore()
+const router = useRouter()
 
 interface ApiVenue {
   id: number
@@ -250,6 +252,58 @@ async function createImported(): Promise<void> {
   }
 }
 
+/* ── Быстрый зал для площадки ───────────────────────────────────────────
+ * Площадок много, а залов при них почти нет: создание зала жило только на
+ * странице «Залы», куда надо отдельно уйти, выбрать площадку из списка и
+ * вспомнить, что схема рисуется дальше в конструкторе. У площадки, как
+ * правило, один зал — поэтому «создать зал» живёт прямо в строке площадки,
+ * а после создания сразу открываем конструктор схемы. */
+const hallModalOpen = ref(false)
+const hallVenue = ref<ApiVenue | null>(null)
+const hallCreating = ref(false)
+const hallError = ref<string | null>(null)
+const hallForm = ref({ name: 'Основной зал', capacity: '' })
+
+function openHallCreate(v: ApiVenue): void {
+  hallVenue.value = v
+  hallForm.value = { name: 'Основной зал', capacity: '' }
+  hallError.value = null
+  hallModalOpen.value = true
+}
+
+async function createVenueHall(): Promise<void> {
+  const venue = hallVenue.value
+  if (!venue || hallCreating.value) return
+  if (!hallForm.value.name.trim()) {
+    hallError.value = 'Укажите название зала'
+    return
+  }
+  hallCreating.value = true
+  hallError.value = null
+  try {
+    const res = await send<{ data?: { public_id?: string } } & Record<string, unknown>>('/halls', 'POST', {
+      name: hallForm.value.name.trim(),
+      venue_id: venue.id,
+      capacity: hallForm.value.capacity ? Number(hallForm.value.capacity) : null,
+      city: venue.city ?? null,
+      address: venue.address ?? null,
+    })
+    hallModalOpen.value = false
+    ui.notify('mint', 'Зал создан', `${venue.name} · ${hallForm.value.name.trim()}`)
+    // Следующий шаг всегда один: нарисовать схему мест в конструкторе.
+    const createdPid = res.data?.public_id
+    if (typeof createdPid === 'string' && createdPid) {
+      router.push(`/admin/halls/${createdPid}/editor`)
+    } else {
+      await load()
+    }
+  } catch (e) {
+    hallError.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    hallCreating.value = false
+  }
+}
+
 const rows = computed(() =>
   venues.value.map((v) => ({
     id: String(v.public_id),
@@ -268,7 +322,7 @@ const COLUMNS: Column[] = [
   { key: 'address', label: 'Адрес', hideOnMobile: true },
   { key: 'hallsCount', label: 'Залы', align: 'center', width: '70px' },
   { key: 'status', label: 'Статус', align: 'right', width: '110px' },
-  { key: 'actions', label: '', align: 'right', width: '90px' },
+  { key: 'actions', label: '', align: 'right', width: '150px' },
 ]
 
 async function load(): Promise<void> {
@@ -317,13 +371,18 @@ onMounted(load)
         <template #cell-city="{ row }">
           <span class="truncate text-muted">{{ row.city }}</span>
         </template>
-        <template #cell-hallsCount="{ row }">{{ row.hallsCount }}</template>
+        <template #cell-hallsCount="{ row }">
+          <span :class="row.hallsCount === 0 ? 'text-sun-400' : 'text-muted'">{{ row.hallsCount }}</span>
+        </template>
         <template #cell-status="{ row }">
           <NStatusBadge kind="venue" :status="row.status" />
         </template>
-        <!-- Слот действий: клик по строке открывает редактирование, удаление — отдельной кнопкой -->
+        <!-- Слот действий: клик по строке открывает редактирование, зал и удаление — отдельными кнопками -->
         <template #cell-actions="{ row }">
-          <NButton variant="ghost" size="sm" @click.stop="remove(row.raw)">Удалить</NButton>
+          <div class="flex justify-end gap-1">
+            <NButton variant="ghost" size="sm" @click.stop="openHallCreate(row.raw)">Зал</NButton>
+            <NButton variant="ghost" size="sm" @click.stop="remove(row.raw)">Удалить</NButton>
+          </div>
         </template>
 
         <template #mobile-title="{ row }">
@@ -334,9 +393,28 @@ onMounted(load)
           <span>{{ row.city }}</span>
           <span>{{ row.hallsCount }} залов</span>
           <NStatusBadge kind="venue" :status="row.status" />
+          <NButton variant="ghost" size="sm" @click.stop="openHallCreate(row.raw)">Создать зал</NButton>
         </template>
       </NDataTable>
     </div>
+
+    <!-- Модалка быстрого создания зала для площадки -->
+    <NModal :open="hallModalOpen" :title="`Зал для «${hallVenue?.name ?? ''}»`" size="sm" @update:open="hallModalOpen = false">
+      <p class="mb-3 text-xs text-subtle">
+        После создания откроется конструктор схемы — нарисуйте ряды мест и опубликуйте версию, чтобы зал стал доступен сеансам.
+      </p>
+      <p v-if="hallError" class="mb-3 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-400">
+        {{ hallError }}
+      </p>
+      <form class="space-y-3" @submit.prevent="createVenueHall">
+        <NInput v-model="hallForm.name" label="Название зала" placeholder="Основной зал" required />
+        <NInput v-model="hallForm.capacity" label="Вместимость" type="number" :min="0" placeholder="400" />
+        <div class="flex justify-end gap-2 border-t border-line pt-3">
+          <NButton variant="secondary" @click="hallModalOpen = false">Отмена</NButton>
+          <NButton type="submit" variant="accent" :loading="hallCreating">Создать зал</NButton>
+        </div>
+      </form>
+    </NModal>
 
     <!-- Модалка импорта с Яндекс.Афиши -->
     <NModal :open="importOpen" title="Импорт площадки с Яндекс.Афиши" size="md" @update:open="importOpen = false">
