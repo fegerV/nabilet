@@ -148,6 +148,11 @@ return Application::configure(basePath: dirname(__DIR__))
         // что и у `config:validate`: модульные провайдеры не бутятся, и команды
         // вне `app/Console/Commands/` Laravel не находит сам.
         \Nabilet\Modules\System\Console\TenancyBackfillOrganizationCommand::class,
+        // Выпуск/отзыв Bearer-токена внешнего ИИ-агента (`nabilet:agent-token`).
+        // Не по расписанию — ручной шаг администратора; регистрация обязательна
+        // по той же причине, что у команд выше: модульные провайдеры не
+        // бутятся, и Laravel не находит команды вне `app/Console/Commands/` сам.
+        \Nabilet\Modules\Agent\Console\IssueAgentTokenCommand::class,
     ])
     ->withMiddleware(function (Middleware $middleware): void {
         // ── Global stack, in order ───────────────────────────────────────────

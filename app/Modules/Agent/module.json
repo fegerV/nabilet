@@ -1,0 +1,11 @@
+{
+  "name": "agent",
+  "title": "AI Agent",
+  "version": "1.0.0",
+  "enabled": true,
+  "priority": 190,
+  "requires": ["events"],
+  "permissions": [],
+  "provides": [],
+  "description": "MCP-сервер для внешнего ИИ-агента: read-only инструменты (продажи, события, заказы) по Bearer-токену Sanctum с ability agent:read. Только чтение — действия остаются за человеком."
+}

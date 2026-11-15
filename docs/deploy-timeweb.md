@@ -174,7 +174,7 @@ chmod -R ug+w storage bootstrap/cache
 
   ```bash
   cd /home/c/ce99429/vertex-art.ru/public_html
-  unzip -q ~/nabilet-hosting-v1.2.0-20261114.zip   # содержимое архива -> текущий каталог
+  unzip -q ~/nabilet-hosting-v1.3.0-20261115.zip   # содержимое архива -> текущий каталог
   rm -f index.html                                # заглушка хостинга, если есть
   # проверка: ./index.php, .htaccess, app/, vendor/ лежат ЗДЕСЬ же, .env нет
   chmod -R ug+w storage bootstrap/cache
@@ -358,6 +358,23 @@ SELECT code, used_count FROM promo_codes WHERE used_count > 0;
 - `https://домен/app`, `/vendor`, `/config` → **403** (системные каталоги
   закрыты `.htaccess`); `https://домен/.env` → **403** (dot-файлы).
 - `php artisan --version` на сервере показывает Laravel 13.x на PHP 8.3.x.
+- `POST https://домен/mcp` без токена → **401** (MCP-эндпоинт ИИ-агента,
+  v1.3.0; эндпоинт доступен, но закрыт Bearer-токеном).
+
+### Выпуск токена ИИ-агента (v1.3.0)
+
+После обновления токен агенту выпускается по SSH на сервере (см.
+`docs/ai-agent.md` — границы полномочий, подключение клиентов):
+
+```bash
+cd /home/c/ce99429/DarAgent/public_html
+php artisan nabilet:agent-token <email-admin-или-manager>
+# Открытый текст токена печатается один раз — скопировать в менеджер
+# секретов. Отзыв: php artisan nabilet:agent-token <email> --revoke-all
+```
+
+Затем в конфиге клиента (например, OpenCode) указывается
+`https://домен/mcp` с заголовком `Authorization: Bearer <токен>`.
 
 ### Smoke-прогон релиза на локальном стенде
 
@@ -392,7 +409,7 @@ history-роутинг, v1.2.0), брендированную 404 на неиз�
 
 ### Версионирование
 
-- Текущая версия приложения: **1.2.0** (`config/nabilet.php` → `'version'`,
+- Текущая версия приложения: **1.3.0** (`config/nabilet.php` → `'version'`,
   отдаётся в `/api/v1/health` и `SystemStatusController`).
 - Git-теги релизов: **SemVer** — `vX.Y.Z` (примеры: `v1.0.0` на коммите `ac145ab2`,
   `v1.0.2` — WordPress-style структура архива, `v1.0.3` — платформа PHP 8.3,
@@ -403,7 +420,9 @@ history-роутинг, v1.2.0), брендированную 404 на неиз�
   `v1.1.2` — баннеры сидеров без голого `echo` (не портят JSON-ответ под mod_cgi),
   `v1.2.0` — витрина на history-роутинге: `/admin`, `/tickets` и остальные
   экраны SPA без `#` (белый список путей в `routes/web.php`; старые hash-ссылки
-  работает мост в `router/index.ts`).
+  работает мост в `router/index.ts`),
+  `v1.3.0` — MCP-сервер внешнего ИИ-агента (read-only, `POST /mcp`); SEO-фикс:
+  канонический 301 до кеша SEO-страницы события.
 - `CHANGELOG.md` (Keep a Changelog + SemVer): `## [X.Y.Z] - YYYY-MM-DD`.
 - Правила: `fix:` → PATCH (1.0.0 → 1.0.1), `feat:` → MINOR (→ 1.1.0), breaking → MAJOR
   (→ 2.0.0).
