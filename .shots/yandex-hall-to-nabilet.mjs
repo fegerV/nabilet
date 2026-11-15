@@ -341,11 +341,37 @@ function rowPrice(rowKey, seats) {
 /* ── 3. Собираем сектора из уровней основного сеанса ─────────────────── */
 const base = JSON.parse(readFileSync(plans[0], 'utf8')).result.hallplan
 
+/**
+ * Номер ряда из ключа Яндекса: «7» → 7; «1А» → 1; буквенные ряды «А, Б, …»
+ * (Филармония) → алфавитный индекс (А=1, Б=2, …, «АА» как следующая позиция).
+ * Число обязано быть целым ≥ 1 — нечисловой ряд в схеме NABILET невозможен.
+ */
+const CYRILLIC = ['А','Б','В','Г','Д','Е','Ж','З','И','Й','К','Л','М','Н','О','П','Р','С','Т','У','Ф','Х','Ц','Ч','Ш','Щ','Ъ','Ы','Ь','Э','Ю','Я']
+function rowNumberOf(r) {
+  const s = String(r).trim().toUpperCase()
+  const digits = s.replace(/\D/g, '')
+  if (digits && /^[0-9]/.test(s)) {
+    const n = Number(digits)
+    return Number.isInteger(n) && n > 0 ? n : 1
+  }
+  if (/^[А-ЯЁ]+$/.test(s)) {
+    let n = 0
+    for (const ch of s) {
+      const i = CYRILLIC.indexOf(ch === 'Ё' ? 'Е' : ch)
+      if (i < 0) return 1
+      n = n * CYRILLIC.length + (i + 1)
+    }
+    return Number.isInteger(n) && n > 0 ? n : 1
+  }
+  const n = Number(digits)
+  return Number.isInteger(n) && n > 0 ? n : 1
+}
+
 const SECTOR_META = {
-  'Партер': { id: 'parter', rowToNumber: (r) => Number(r) },
-  'Приставные места': { id: 'pristavnye', rowToNumber: (r) => Number(String(r).replace(/\D/g, '')) },
-  'Бельэтаж': { id: 'bel etazh', rowToNumber: (r) => Number(r) },
-  'Балкон': { id: 'balkon', rowToNumber: (r) => Number(r) },
+  'Партер': { id: 'parter', rowToNumber: rowNumberOf },
+  'Приставные места': { id: 'pristavnye', rowToNumber: rowNumberOf },
+  'Бельэтаж': { id: 'bel etazh', rowToNumber: rowNumberOf },
+  'Балкон': { id: 'balkon', rowToNumber: rowNumberOf },
 }
 
 function metaForLevel(name) {
@@ -353,10 +379,7 @@ function metaForLevel(name) {
   const id = String(name).trim().toLowerCase()
     .replace(/[^a-zа-яё0-9]+/gi, '-')
     .replace(/^-|-$/g, '') || 'sector'
-  return { id, rowToNumber: (r) => {
-    const n = Number(String(r).replace(/\D/g, ''))
-    return Number.isInteger(n) && n > 0 ? n : 1
-  } }
+  return { id, rowToNumber: rowNumberOf }
 }
 
 const sourceSeatCount = base.levels.reduce((sum, level) => sum + level.rows.reduce((n, row) => n + Number(row.seatCount || 0), 0), 0)
@@ -369,6 +392,34 @@ if (sparseImport) {
   console.log(`(!) мало свободных мест (${stats.knownSeats}/${sourceSeatCount}) — используем стабильную сетку от metadata rows[]`)
 }
 
+/**
+ * Смешанная нумерация рядов уровня («А», «1», «Б», «2», … у партера
+ * Филармонии): буквы и числа — разные физические ряды с разными yCoord,
+ * наивный rowToNumber («А»→NaN раньше, «А»→1 теперь) сталкивает «А» и «1»
+ * в один номер → дубли id мест. Правило: буквенные ряды идут БЛИЖЕ к сцене
+ * (нумерация Афиши начинается от сцены), поэтому буквы по алфавиту получают
+ * 1..k, числа — k+1..k+n с сохранением своих номеров. Однородный уровень
+ * («1..6» или «А..И») не ремапится вовсе.
+ */
+function levelRowRemap(level) {
+  const rows = level.rows.map((r) => String(r.row).trim().toUpperCase())
+  const isLetter = (k) => /^[А-ЯЁ]+$/.test(k)
+  const hasLetters = rows.some(isLetter)
+  const hasNumbers = rows.some((k) => /^[0-9]/.test(k))
+  if (!hasLetters || !hasNumbers) return null
+  const remap = new Map()
+  const letters = rows.filter(isLetter).sort((a, b) => {
+    const ia = CYRILLIC.indexOf(a.charAt(0) === 'Ё' ? 'Е' : a.charAt(0))
+    const ib = CYRILLIC.indexOf(b.charAt(0) === 'Ё' ? 'Е' : b.charAt(0))
+    return ia - ib || a.localeCompare(b, 'ru')
+  })
+  letters.forEach((k, i) => remap.set(k, i + 1))
+  for (const k of rows) {
+    if (!remap.has(k)) remap.set(k, rowNumberOf(k) + letters.length)
+  }
+  return remap
+}
+
 const sectorsRaw = []
 for (const level of base.levels) {
   const meta = metaForLevel(level.name)
@@ -376,6 +427,7 @@ for (const level of base.levels) {
   const rowPrices = {}
   let sectorPrice = null
   const restored = { byRows: 0, bySeats: 0, skipped: 0 }
+  const remap = levelRowRemap(level)
   for (const row of level.rows) {
     const rowKey = rowKeyOf(level.name, row.row)
     const built = sparseImport
@@ -385,7 +437,7 @@ for (const level of base.levels) {
     restored.byRows += built.byRows
     restored.bySeats += built.bySeats
     restored.skipped += built.skipped
-    const rn = meta.rowToNumber(row.row)
+    const rn = remap ? remap.get(String(row.row).trim().toUpperCase()) ?? meta.rowToNumber(row.row) : meta.rowToNumber(row.row)
     const levelPrices = (level.prices ?? []).map((p) => Number(p.value)).filter((p) => Number.isFinite(p) && p > 0)
     const price = rowPrice(rowKey, rowSeats) ?? (levelPrices.length > 0 ? Math.min(...levelPrices) : null)
     if (Number.isInteger(rn) && rn > 0) {
