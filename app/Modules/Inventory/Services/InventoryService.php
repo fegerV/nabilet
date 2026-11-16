@@ -620,7 +620,10 @@ class InventoryService
 
     public function getTotalCapacity(Session $session): int
     {
-        return InventoryItem::where('session_id', $session->id)->sum('quantity');
+        // Колонка — `capacity`, а не `quantity`: `inventory_items.quantity`
+        // не существует, любой вызов этого метода падал бы SQLSTATE[42S22].
+        // Счисление — то же, что в `InventoryController::availability()`.
+        return (int) InventoryItem::query()->where('session_id', $session->id)->sum('capacity');
     }
 
     public function getSoldCount(Session $session): int

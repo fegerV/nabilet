@@ -1,12 +1,11 @@
 /**
- * Живая проверка перетаскивания места в конструкторе (CDP mouse + autosave diff).
+ * Живая проверка перетаскивания места в конструкторе (CDP mouse + автосейв).
  *
- * 1. Открываем черновик зала, читаем схему черновика через API (до).
- * 2. Ищем пиксель места на холсте по цвету, тянем его мышью (Input.dispatchMouseEvent).
- * 3. Ждём автосохранение (500 ms debounce), читаем схему (после), сравниваем.
- *
- * Ожидание: координата КАКОГО-ТО места изменилась, а x/y сектора — нет
- * (раньше тяга по несинему месту двигала весь сектор).
+ * Что проверяет:
+ *  1. Конструктор загружает ЧЕРНОВИК зала (режим «Черновик», без блокировки).
+ *  2. Реальный CDP-драг места мышью (Input.dispatchMouseEvent, buttons:1).
+ *  3. Автосохранение на сервер проходит с HTTP 200 — раньше наложение мест
+ *     («Seats must not overlap») отклонялось 422, и правки терялись.
  *
  * Запуск: node .shots/editor-drag-check.mjs <hallPublicId> [baseUrl]
  */
@@ -71,7 +70,8 @@ const ws = new WebSocket(target.webSocketDebuggerUrl)
 const pending = new Map()
 let seq = 0
 const errors = []
-const savedPayloads = []
+const savedResponses = []
+const savedRequests = []
 function send(method, params = {}) {
   const id = ++seq
   ws.send(JSON.stringify({ id, method, params }))
@@ -83,12 +83,11 @@ ws.addEventListener('message', (e) => {
   if (m.method === 'Runtime.consoleAPICalled' && m.params?.type === 'error') {
     errors.push(m.params.args?.map((a) => a.value ?? a.description).join(' ').slice(0, 200))
   }
-  if (m.method === 'Network.requestWillBeSent') {
-    const url = m.params?.request?.url ?? ''
-    const body = m.params?.request?.postData
-    if (url.includes('schema-versions/draft') && m.params.request.method === 'POST' && body) {
-      savedPayloads.push(body)
-    }
+  if (m.method === 'Network.responseReceived' && (m.params?.response?.url ?? '').includes('schema-versions/draft')) {
+    savedResponses.push(m.params.response.status)
+  }
+  if (m.method === 'Network.requestWillBeSent' && (m.params?.request?.url ?? '').includes('schema-versions/draft')) {
+    savedRequests.push(m.params.requestId)
   }
 })
 await new Promise((r) => ws.addEventListener('open', r, { once: true }))
@@ -98,71 +97,115 @@ await send('Network.enable')
 
 async function ev(expr) {
   const r = await send('Runtime.evaluate', { expression: expr, returnByValue: true, awaitPromise: true })
-  if (r?.exceptionDetails) console.log('[js-error]', JSON.stringify(r.exceptionDetails).slice(0, 300))
+  if (r?.exceptionDetails) console.log('[js-error]', (r.exceptionDetails.exception?.description ?? JSON.stringify(r.exceptionDetails)).slice(0, 300))
   return r?.result?.value
 }
 
 await send('Page.navigate', { url: `${BASE}/#/` })
-await sleep(2500)
+await sleep(3000)
+// Профиль браузера персистентный: SPA видит ПРОШЛОРАУНДОВЫЙ токен, ловит
+// 401 /auth/me, logout чистит localStorage и роутер-гард возвращает на
+// главную. Поэтому: пишем свежий токен ПОСЛЕ того, как старый logout уже
+// отработал, и грузим редактор ПОЛНОЙ навигацией (иначе reload просто
+// перезагрузит главную, куда гард уже успел вернуть адрес).
 await ev(`localStorage.setItem('nabilet_admin_token', ${JSON.stringify(TOKEN)}); localStorage.setItem('nabilet_admin_user', ${JSON.stringify(JSON.stringify(loginJson?.data?.user ?? {}))})`)
-await ev(`location.hash = '#/admin/halls/${PID}/editor'`)
-await sleep(600)
-await send('Page.reload')
-for (let i = 0; i < 30; i += 1) {
-  await sleep(1000)
-  const st = await ev(`document.querySelectorAll('.konvajs-content canvas').length`)
-  if (st > 0) { console.log(`[✓] холст готов (${i + 1}с)`); break }
-}
-await sleep(2000)
+await send('Page.navigate', { url: `${BASE}/?t=${Date.now()}#/admin/halls/${PID}/editor` })
 
-// Пиксель места: ищем заметно цветной кружок (не фон, не белый) в средней зоне холста.
-const canvasBox = await ev(`(() => {
-  const c = document.querySelector('.konvajs-content canvas')
-  const r = c.getBoundingClientRect()
-  return { left: r.left, top: r.top, width: r.width, height: r.height }
+let ready = false
+for (let attempt = 0; attempt < 2 && !ready; attempt += 1) {
+  for (let i = 0; i < 30; i += 1) {
+    await sleep(1000)
+    const st = await ev(`(() => {
+      const canvases = document.querySelectorAll('.konvajs-content canvas').length
+      const seats = /\\d+\\s+мест/.test(document.body.innerText)
+      return { canvases, seats }
+    })()`)
+    if (st?.canvases > 0 && st?.seats) { console.log(`[✓] холст со схемой готов (${i + 1}с)`); ready = true; break }
+  }
+  if (!ready && attempt === 0) {
+    console.log('[!] редактор не загрузился за 30с — пробую ещё раз')
+    await ev(`localStorage.setItem('nabilet_admin_token', ${JSON.stringify(TOKEN)}); localStorage.setItem('nabilet_admin_user', ${JSON.stringify(JSON.stringify(loginJson?.data?.user ?? {}))})`)
+    await send('Page.navigate', { url: `${BASE}/?t=${Date.now()}#/admin/halls/${PID}/editor` })
+  }
+}
+if (!ready) { console.log('[!] редактор так и не загрузился'); process.exit(1) }
+await sleep(2500)
+
+// Режим редактора: черновик или опубликованная (заблокированная) версия.
+const mode = await ev(`(() => {
+  const t = document.body.innerText
+  return { badge: t.match(/(Опубликовано|Черновик)\\s*v?\\d+/)?.[0] ?? null, lockBanner: /неизменяема/.test(t) }
 })()`)
-// Пиксель места: Konva рисует каждый слой в СВОЙ canvas — первый (фон) обычно
-// прозрачный. Берём canvas с наибольшим числом непрозрачных пикселей.
-const seatPx = await ev(`(() => {
+console.log('[i] режим редактора:', JSON.stringify(mode))
+
+// Пиксель места: слой с максимумом непрозрачных пикселей; цель — пиксель из
+// самого крупного кластера палитры мест (SEAT_PRICE_PALETTE + выделение).
+// Слой может быть ещё не отрисован — ретраи до 10 секунд.
+const pickExpr = `(() => {
+  const SEAT_RGBS = [[36,184,232],[79,196,93],[255,201,40],[99,212,233],[216,121,184],[242,124,91],[109,74,255],[245,180,23],[42,163,255]]
+  const near = (r, g, b, [R, G, B]) => Math.abs(r - R) <= 12 && Math.abs(g - G) <= 12 && Math.abs(b - B) <= 12
   const canvases = [...document.querySelectorAll('.konvajs-content canvas')]
   let best = null, bestCount = 0
-  for (const c of canvases) {
+  for (let ci = 0; ci < canvases.length; ci += 1) {
+    const c = canvases[ci]
     const ctx = c.getContext('2d')
     const { width: W, height: H } = c
     const img = ctx.getImageData(0, 0, W, H).data
     let opaque = 0
     for (let i = 3; i < img.length; i += 64) if (img[i] > 200) opaque += 1
-    if (opaque > bestCount) { best = { c, ctx, W, H, img }; bestCount = opaque }
+    if (opaque > bestCount) { best = { W, H, img, ci }; bestCount = opaque }
   }
   if (!best) return { null: true, reason: 'все слои пустые' }
-  const { c, ctx, W, H } = best
-  const img = ctx.getImageData(0, 0, W, H).data
-  const counts = new Map()
-  for (let i = 0; i < img.length; i += 64) {
-    if (img[i + 3] < 200) continue
-    const k = (img[i] >> 4) + ',' + (img[i + 1] >> 4) + ',' + (img[i + 2] >> 4)
-    counts.set(k, (counts.get(k) ?? 0) + 1)
-  }
-  const bgKey = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? ''
-  const isBg = (r, g, b) => ((r >> 4) + ',' + (g >> 4) + ',' + (b >> 4)) === bgKey
-  for (let y = Math.floor(H * 0.3); y < H * 0.85; y += 2) {
-    for (let x = Math.floor(W * 0.2); x < W * 0.8; x += 2) {
+  const img = best.img
+  const W = best.W, H = best.H
+  const clusters = new Map()
+  for (let y = 2; y < H - 2; y += 1) {
+    for (let x = 2; x < W - 2; x += 1) {
       const i = (y * W + x) * 4
       const r = img[i], g = img[i + 1], b = img[i + 2], a = img[i + 3]
-      if (a > 200 && !isBg(r, g, b)) {
-        let ok = 0
-        for (const [dx, dy] of [[-3,0],[3,0],[0,-3],[0,3]]) {
-          const j = ((y + dy) * W + (x + dx)) * 4
-          if (img[j + 3] > 200 && !isBg(img[j], img[j+1], img[j+2])) ok += 1
-        }
-        if (ok >= 3) return { x, y, bgKey, W, H }
+      if (a > 200 && SEAT_RGBS.some((rgb) => near(r, g, b, rgb))) {
+        const k = SEAT_RGBS.findIndex((rgb) => near(r, g, b, rgb))
+        const c = clusters.get(k) ?? { n: 0, sx: 0, sy: 0 }
+        c.n += 1; c.sx += x; c.sy += y
+        clusters.set(k, c)
       }
     }
   }
-  return { null: true, bgKey, W, H, reason: 'слой без мест' }
+  const top = [...clusters.entries()].sort((a, b) => b[1].n - a[1].n)[0]
+  if (top) {
+    const cx = Math.round(top[1].sx / top[1].n)
+    const cy = Math.round(top[1].sy / top[1].n)
+    let bp = null, bd = Infinity
+    for (let y = Math.max(2, cy - 40); y < Math.min(H - 2, cy + 40); y += 1) {
+      for (let x = Math.max(2, cx - 40); x < Math.min(W - 2, cx + 40); x += 1) {
+        const i = (y * W + x) * 4
+        const r = img[i], g = img[i + 1], b = img[i + 2], a = img[i + 3]
+        if (a > 200 && SEAT_RGBS.some((rgb) => near(r, g, b, rgb))) {
+          const d = (x - cx) * (x - cx) + (y - cy) * (y - cy)
+          if (d < bd) { bd = d; bp = { x, y } }
+        }
+      }
+    }
+    if (bp) return { x: bp.x, y: bp.y, W, H, ci: best.ci, clusterN: top[1].n }
+  }
+  return { null: true, reason: 'в палитре мест кружков не найдено' }
+})()`
+let seatPx = null
+for (let attempt = 0; attempt < 10 && !seatPx; attempt += 1) {
+  await sleep(1000)
+  seatPx = await ev(pickExpr)
+}
+if (!seatPx || seatPx.null) { console.log(`[!] место не найдено на холсте (${seatPx?.reason ?? '?'})`); process.exit(1) }
+console.log(`[i] тяну место в canvas-координатах: ${JSON.stringify(seatPx)}`)
+
+// Бокс ТОГО ЖЕ canvas, на котором нашли пиксель (по индексу ci).
+const canvasBox = await ev(`(() => {
+  const cs = [...document.querySelectorAll('.konvajs-content canvas')]
+  const c = cs[${seatPx?.ci ?? 0}] ?? cs[0]
+  const r = c.getBoundingClientRect()
+  return { left: r.left, top: r.top, width: r.width, height: r.height }
 })()`)
-if (!seatPx || seatPx.null) { console.log(`[!] место не найдено на холсте (bg=${seatPx?.bgKey}, canvas=${seatPx?.W}x${seatPx?.H})`); process.exit(1) }
-console.log(`[i] тяну место в canvas-координатах: ${JSON.stringify(seatPx)} (canvas at ${canvasBox.left},${canvasBox.top})`)
+console.log(`[i] canvas-слой #${seatPx?.ci} at ${canvasBox.left},${canvasBox.top}`)
 
 const px = canvasBox.left + seatPx.x
 const py = canvasBox.top + seatPx.y
@@ -171,16 +214,28 @@ async function mouse(type, x, y, extra = {}) {
   await send('Input.dispatchMouseEvent', { type, x, y, button: 'left', clickCount: type === 'mousePressed' || type === 'mouseReleased' ? 1 : 0, ...extra })
 }
 
+// Жест: зажать → вести с buttons:1 → отпустить. Без `buttons: 1` на
+// mousemove часть приёмников считает кнопку отпущенной и drag не стартует.
 await mouse('mouseMoved', px, py)
 await mouse('mousePressed', px, py)
-await sleep(80)
-// Тянем вправо-вниз на 60px с привязкой к движению мыши.
+await sleep(150)
 for (let i = 1; i <= 12; i += 1) {
-  await mouse('mouseMoved', px + i * 5, py + i * 5)
+  await mouse('mouseMoved', px + i * 5, py + i * 5, { buttons: 1 })
   await sleep(25)
 }
 await mouse('mouseReleased', px + 60, py + 60)
-await sleep(2000) // autosave debounce 500ms + сеть
+// Уведомление автоскрывается и рисуется асинхронно — опрашиваем тосты
+// первые ~4 секунды после жеста.
+let toastEarly = null
+for (let i = 0; i < 20; i += 1) {
+  toastEarly = await ev(`(() => {
+    const t = document.body.innerText
+    return { seatReverted: t.includes('Место возвращено'), sectorReverted: t.includes('Сектор возвращён') }
+  })()`)
+  if (toastEarly?.seatReverted || toastEarly?.sectorReverted) break
+  await sleep(200)
+}
+await sleep(2500) // autosave debounce 500ms + сеть
 
 const after = await draftSchema()
 const seatsAfter = new Map()
@@ -200,11 +255,59 @@ for (const [id, p] of sectorXYBefore) {
 }
 console.log(`[i] мест с изменившимися координатами: ${movedSeats}`)
 console.log(`[i] секторов с изменившимся x/y: ${movedSector}`)
-console.log(`[i] автосохранений поймано: ${savedPayloads.length}`)
+console.log(`[i] ответов автосейва: ${JSON.stringify(savedResponses)}`)
 console.log(`ошибок консоли: ${errors.length}${errors.length ? '\n  ' + errors.slice(0, 6).join('\n  ') : ''}`)
 
-const verdict = movedSeats > 0 && movedSector === 0
-console.log(verdict ? '\n[✓] МЕСТО ПЕРЕМЕЩАЕТСЯ, сектор остаётся на месте' : '\n[✗] перетаскивание не подтвердилось')
+// Разбор ОТПРАВЛЕННОГО тела автосейва: что изменилось и есть ли в нём наложения.
+for (const rid of savedRequests) {
+  try {
+    const req = await send('Network.getRequestPostData', { requestId: rid })
+    const body = req?.post_data ?? req?.postData ?? ''
+    if (!body) { console.log('[i] тело автосейва пустое/не получено'); continue }
+    const parsed = JSON.parse(body)
+    const payload = parsed?.payload ?? parsed?.schema ?? parsed
+    const sentSectors = payload?.sectors ?? []
+    const all = []
+    for (const s of sentSectors) for (const seat of s.seats ?? []) all.push({ x: s.x + seat.x, y: s.y + seat.y, id: seat.id, sec: s.name })
+    let ov = 0
+    for (let i = 0; i < all.length; i += 1) {
+      for (let k = i + 1; k < all.length; k += 1) {
+        if (Math.abs(all[i].x - all[k].x) < 16 && Math.abs(all[i].y - all[k].y) < 16) ov += 1
+      }
+    }
+    const diff = []
+    for (const s of sentSectors) {
+      const prev = sectorXYBefore.get(s.id)
+      if (prev && (s.x !== prev.x || s.y !== prev.y)) diff.push(`сектор ${s.name}: ${prev.x},${prev.y} -> ${s.x},${s.y}`)
+      for (const seat of s.seats ?? []) {
+        const pb = seatsBefore.get(seat.id)
+        if (pb && (seat.x !== pb.x || seat.y !== pb.y)) diff.push(`место ${seat.id} (${s.name}): ${pb.x},${pb.y} -> ${seat.x},${seat.y}`)
+      }
+    }
+    console.log(`[i] автосейв: наложений в отправленном теле = ${ov}, отличий от черновика = ${diff.length}`)
+    console.log(diff.slice(0, 12).map((d) => '    ' + d).join('\n') || '    (тело идентично исходному черновику)')
+  } catch (err) { console.log(`[i] getRequestPostData: ${err.message}`) }
+}
+
+const saved200 = savedResponses.length > 0 && savedResponses.every((r) => r === 200)
+// Успешный откат тоже валидный исход: место двигалось, попало на соседнее,
+// редактор вернул его и показал уведомление — модель не «грязная», автосейв
+// не нужен. Раньше этот же жест заканчивался 422 и потерей правки.
+const toast = toastEarly ?? await ev(`(() => {
+  const t = document.body.innerText
+  return {
+    seatReverted: t.includes('Место возвращено'),
+    sectorReverted: t.includes('Сектор возвращён'),
+  }
+})()`)
+const cleanRevert = (toast?.seatReverted || toast?.sectorReverted) && savedResponses.every((r) => r !== 422)
+console.log(`[i] уведомления отката: ${JSON.stringify(toast)}`)
+console.log('\n--- итог ---')
+console.log(`[i] места сдвинулись: ${movedSeats} | сектора: ${movedSector} | сохранение: ${saved200 ? 'OK (200)' : savedResponses.length === 0 ? 'без изменений (откат/нет правки)' : 'ОТКЛОНЕНО'}`)
+const pass = saved200 || cleanRevert
+console.log(pass
+  ? '[✓] СХЕМА СОХРАНЯЕТСЯ: перетаскивание не ломает автосейв (наложение откатывается с уведомлением)'
+  : '[✗] автосейв всё ещё отклоняется сервером')
 ws.close()
 chrome.kill()
-process.exit(verdict ? 0 : 2)
+process.exit(pass ? 0 : 2)

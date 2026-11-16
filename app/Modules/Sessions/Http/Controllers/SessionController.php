@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Sessions\Http\Controllers;
 
+use Nabilet\Core\Errors\ConflictError;
 use Nabilet\Core\Errors\NotFoundError;
 use Nabilet\Core\Errors\ValidationError;
 use Nabilet\Core\Support\Paging;
@@ -147,17 +148,20 @@ class SessionController extends Controller
         // только после этого пару можно сверить.
         $this->assertHallBelongsToVenue($data);
         $this->assertHallHasPublishedSchema($data);
+        // Явный schema_version_id проверяется отдельно: без этого PATCH/POST
+        // позволяли привязать ЧЕРНОВИК схемы или версию ЧУЖОГО зала —
+        // инвентарь строился из неожиданной геометрии.
+        $this->assertExplicitSchemaVersion($data);
 
         $session = Session::create($data);
 
-                                                // Создаём места (геометрия + инвентарь) из схемы зала.
-                                                // Канвасный формат редактора конвертируется в rows автоматически
-                                                // (HallSchemaVersion::toInventoryFormat).
-                                                if ($session->schema_version_id !== null) {
-                                                    $schemaVersion = \Nabilet\Modules\Venues\Models\HallSchemaVersion::findOrFail($session->schema_version_id);
-                                                    $this->inventoryService->generateFromSchema($schemaVersion, $session);
-                                                }
-
+        // Создаём места (геометрия + инвентарь) из схемы зала.
+        // Канвасный формат редактора конвертируется в rows автоматически
+        // (HallSchemaVersion::toInventoryFormat).
+        if ($session->schema_version_id !== null) {
+            $schemaVersion = HallSchemaVersion::findOrFail($session->schema_version_id);
+            $this->inventoryService->generateFromSchema($schemaVersion, $session);
+        }
                                 $session->load(['event', 'hall', 'schemaVersion']);
 
         return response()->json(['success' => true, 'data' => $session], 201);
@@ -187,6 +191,13 @@ class SessionController extends Controller
                 ->value('venue_id');
         }
 
+        // Явно присланный null не обязан означать «обнулить» (колонка NOT NULL,
+        // иначе SQL-ошибка 500): PATCH без смены зала трактует null как «не
+        // менять». При смене зала null заполнится последней published-схемой ниже.
+        if (array_key_exists('schema_version_id', $data) && $data['schema_version_id'] === null && empty($data['hall_id'])) {
+            unset($data['schema_version_id']);
+        }
+
         // БД требует schema_version_id NOT NULL — берём последнюю published схему зала.
         // Тот же `SchemaVersionState`, что и при создании.
         if (empty($data['schema_version_id']) && !empty($data['hall_id'])) {
@@ -205,8 +216,22 @@ class SessionController extends Controller
             'hall_id' => $data['hall_id'] ?? $session->hall_id,
         ]);
         $this->assertHallHasPublishedSchema($data);
+        $this->assertExplicitSchemaVersion($data, $session);
+
+        // Итоговая версия схемы после PATCH: присланная или прежняя. Смена
+        // версии — единственный триггер пересборки инвентаря: правка даты или
+        // статуса не должна трогать места.
+        $effectiveSchemaId = (int) ($data['schema_version_id'] ?? $session->schema_version_id);
 
         $session->update($data);
+
+        if ($effectiveSchemaId !== (int) $session->getOriginal('schema_version_id')) {
+            $this->assertInventoryRegenerable($session);
+
+            $schemaVersion = HallSchemaVersion::findOrFail($effectiveSchemaId);
+            $this->inventoryService->generateFromSchema($schemaVersion, $session);
+        }
+
         $session->load(['event', 'hall', 'schemaVersion']);
 
         return response()->json(['success' => true, 'data' => $session]);
@@ -268,6 +293,99 @@ class SessionController extends Controller
             ['hall_id' => ['У зала нет опубликованной схемы — места создавать не из чего. Опубликуйте схему зала и повторите.']],
             'Зал без опубликованной схемы.'
         );
+    }
+
+    /**
+     * Явно присланный `schema_version_id` обязан быть published-версией ЭТОГО зала.
+     *
+     * `exists:hall_schema_versions,id` проверял только существование строки:
+     * без этой проверки POST/PATCH привязывали к сеансу ЧЕРНОВИК схемы (все
+     * `status`, включая draft, проходят exists) или версию ЧУЖОГО зала —
+     * инвентарь строился из неожиданной геометрии, а покупатель видел чужую
+     * рассадку. Правило то же, что выводит схему автоматически ниже: только
+     * published и только своего зала.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function assertExplicitSchemaVersion(array $data, ?Session $session = null): void
+    {
+        $schemaId = $data['schema_version_id'] ?? null;
+
+        if (empty($schemaId)) {
+            return;
+        }
+
+        $hallId = $data['hall_id'] ?? $session?->hall_id;
+        $schema = HallSchemaVersion::query()->find($schemaId);
+
+        if ($schema === null) {
+            throw new ValidationError(
+                ['schema_version_id' => ['Версия схемы не найдена.']],
+                'Схема не найдена.'
+            );
+        }
+
+        if ($hallId !== null && (int) $schema->hall_id !== (int) $hallId) {
+            throw new ValidationError(
+                ['schema_version_id' => ['Выбранная версия схемы принадлежит другому залу. Выберите схему этого зала.']],
+                'Схема не относится к выбранному залу.'
+            );
+        }
+
+        if ($schema->status !== SchemaVersionState::PUBLISHED) {
+            throw new ValidationError(
+                ['schema_version_id' => ['Выбранная версия схемы не опубликована — сначала опубликуйте её в конструкторе.']],
+                'Схема не опубликована.'
+            );
+        }
+    }
+
+    /**
+     * Инвентарь сеанса, у которого уже есть продажи или активные корзины, нельзя пересобрать.
+     *
+     * `generateFromSchema()` снимает инвентарь СВОЕГО сеанса целиком
+     * (`inventory_items.session_id`), а `tickets.inventory_item_id`,
+     * `order_items.inventory_item_id` и `seat_holds.inventory_item_id` ссылаются
+     * на эти строки. Без этой проверки смена схемы сеанса с продажами падала
+     * FK-ошибкой → 500 «Internal server error», а в лучшем случае оставляла бы
+     * билеты, указывающие на несуществующие места. 409: запрос корректен, отказ
+     * вызван состоянием ресурса (конвенция `VenueController::destroy`).
+     */
+    private function assertInventoryRegenerable(Session $session): void
+    {
+        $itemIds = $session->inventoryItems()->pluck('id');
+
+        if ($itemIds->isEmpty()) {
+            return;
+        }
+
+        $hasSales = \Nabilet\Modules\Tickets\Models\Ticket::query()
+            ->whereIn('inventory_item_id', $itemIds)
+            ->exists();
+
+        if (! $hasSales) {
+            $hasSales = \Nabilet\Modules\Orders\Models\OrderItem::query()
+                ->whereIn('inventory_item_id', $itemIds)
+                ->exists();
+        }
+
+        if ($hasSales) {
+            throw new ConflictError(
+                'Нельзя изменить схему зала: по сеансу уже есть проданные места. Создайте новый сеанс для новой рассадки.',
+                'SESSION_SCHEMA_HAS_SALES',
+            );
+        }
+
+        $hasHolds = \Nabilet\Modules\Orders\Models\SeatHold::query()
+            ->whereIn('inventory_item_id', $itemIds)
+            ->exists();
+
+        if ($hasHolds) {
+            throw new ConflictError(
+                'Нельзя изменить схему зала: места сеанса находятся в корзинах покупателей. Попробуйте позже или дождитесь очистки корзин.',
+                'SESSION_SCHEMA_HELD',
+            );
+        }
     }
 
     /** Удаление сеанса. Отменяем, если есть продажи — но в MVP удаляем каскадно. */

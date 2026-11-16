@@ -8,9 +8,11 @@ use Nabilet\Modules\Core\Tenancy\TenantScoped;
 
 use Nabilet\Modules\Core\Models\Concerns\HasPublicId;
 
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Carbon;
 use Nabilet\Modules\Sessions\Domain\SalesWindow;
 
 /**
@@ -69,6 +71,57 @@ class Session extends Model
             'created_at' => 'datetime:Y-m-d H:i:s.u',
             'updated_at' => 'datetime:Y-m-d H:i:s.u',
         ];
+    }
+
+    /**
+     * Нормализация дат при записи — см. `normalizeDatetime()`.
+     *
+     * ПОЧЕМУ МУТАТОРЫ, А НЕ КАСТ. Каст `datetime:<формат>` Laravel
+     * классифицирует как `custom_datetime`, а `setAttribute` намеренно
+     * исключает `custom_datetime` из `isDateCastable()`: значение при записи
+     * остаётся СЫРЫМ. Валидация `date` при этом принимает ISO-8601 с таймзоной
+     * (`2026-12-20T19:00:00+05:00`, `…Z`) — такая строка уходила в INSERT
+     * дословно, и MySQL strict отвечал 1292 → HTTP 500 на `POST /sessions`.
+     * Форма админки не спотыкалась только потому, что шлёт дату без времени
+     * (`<input type="date">`), которую MySQL принимает как полуночь.
+     */
+    protected function startsAt(): Attribute
+    {
+        return Attribute::set(fn (mixed $value) => $this->normalizeDatetime($value));
+    }
+
+    protected function endsAt(): Attribute
+    {
+        return Attribute::set(fn (mixed $value) => $this->normalizeDatetime($value));
+    }
+
+    protected function salesStartAt(): Attribute
+    {
+        return Attribute::set(fn (mixed $value) => $this->normalizeDatetime($value));
+    }
+
+    protected function salesEndAt(): Attribute
+    {
+        return Attribute::set(fn (mixed $value) => $this->normalizeDatetime($value));
+    }
+
+    /**
+     * Любую валидную дату/время — в сторовый формат колонки `DATETIME(6)`.
+     *
+     * Семантика — «настенное время», как у родного `fromDateTime()`: Carbon
+     * парсит строку в её собственном смещении (`19:00+05:00` остаётся 19:00,
+     * `15:00Z` остаётся 15:00), смещение отбрасывается. Перевод в другой
+     * пояс здесь не делается: у сеанса есть колонка `timezone` для отображения,
+     * а конвертация на записи подменила бы время, которое пользователь ввёл
+     * как местное.
+     */
+    private function normalizeDatetime(mixed $value): mixed
+    {
+        if ($value === null || $value === '' || $value instanceof \DateTimeInterface) {
+            return $value;
+        }
+
+        return Carbon::parse((string) $value)->format('Y-m-d H:i:s.u');
     }
 
     public function event(): BelongsTo

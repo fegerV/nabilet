@@ -738,8 +738,43 @@ function findSelectedSeatUnder(e: Konva.KonvaEventObject<MouseEvent>): ESeat | n
  *  - затронутые ряды (до и после drag'а) перенумеровываются слева направо;
  *  - если в ряду остались дыры по нумерации — они закрываются;
  *  - коллизии позиций (два места в одной клетке) раздвигаются по X.
+ * Только для сетки: у стола «ряд» — это всё кольцо сразу, у дуги X-шаг
+ * в крутых частях меньше SEAT — обе формы обрабатываются откатом наложения.
  */
 function finalizeSeatMove(): void {
+  // Порог наложения — из серверной проверки (`HallService`): в координатах
+  // холста наложение это |dx| < 16 И |dy| < 16. Раньше редактор позволял
+  // бросить место на соседнее: автосохранение падало 422 «Seats must not
+  // overlap», схема на сервере оставалась прежней — пользователь видел, что
+  // «места не перемещаются»: двигаешь, а после перезагрузки всё на месте.
+  const OVERLAP = 16
+  const reverted: string[] = []
+  for (const [id, before] of seatDragBefore) {
+    const sector = sectors.value.find((s) => s.id === before.sectorId)
+    const seat = sector?.seats.find((s) => s.id === id)
+    if (!sector || !seat) continue
+    const cx = sector.x + seat.x
+    const cy = sector.y + seat.y
+    const overlaps = sectors.value.some((s) =>
+      s.seats.some((o) => {
+        if (s.id === sector.id && o.id === id) return false
+        return Math.abs(s.x + o.x - cx) < OVERLAP && Math.abs(s.y + o.y - cy) < OVERLAP
+      }),
+    )
+    if (overlaps) {
+      seat.x = before.x
+      seat.y = before.y
+      reverted.push(`${sector.name} · ряд ${seat.row}`)
+    }
+  }
+  if (reverted.length > 0) {
+    ui.notify(
+      'sun',
+      'Место возвращено',
+      'Позиция ближе 16px к соседнему месту — сервер отклонил бы схему целиком. Отпустите место на свободное место.',
+    )
+  }
+
   const touched = new Map<string, Set<number>>()
   for (const [, before] of seatDragBefore) {
     if (!touched.has(before.sectorId)) touched.set(before.sectorId, new Set())
@@ -748,8 +783,9 @@ function finalizeSeatMove(): void {
   for (const sector of sectors.value) {
     const movedHere = [...seatDragBefore.values()].some((b) => b.sectorId === sector.id)
     if (!movedHere) continue
-    // Ряды, куда попали перетащенные места — тоже затронуты.
-    for (const [id] of seatDragIds) {
+    // Ряды, куда попали перетащенные места — тоже затронуты. seatDragIds —
+    // Set<строк>: итерирование даёт id целиком (не деструктурировать!).
+    for (const id of seatDragIds) {
       const seat = sector.seats.find((s) => s.id === id)
       if (seat) {
         if (!touched.has(sector.id)) touched.set(sector.id, new Set())
@@ -760,11 +796,22 @@ function finalizeSeatMove(): void {
   for (const [sectorId, rows] of touched) {
     const sector = sectors.value.find((s) => s.id === sectorId)
     if (!sector) continue
-    // Раздвигаем точные коллизии позиций внутри ряда.
-    for (const row of rows) {
-      const inRow = sector.seats.filter((s) => s.row === row).sort((a, b) => a.x - b.x)
-      for (let i = 1; i < inRow.length; i += 1) {
-        if (inRow[i].x - inRow[i - 1].x < SEAT) inRow[i].x = inRow[i - 1].x + SEAT + GAP
+    // Кольцо банкетного стола — НЕ ряд: все места сидят в row 1 по окружности,
+    // X-шаг между соседями законно меньше SEAT (они разнесены по Y). Раньше
+    // «раздвигание коллизий» разворачивало кольцо в линию шагом SEAT+GAP,
+    // вынося места на соседние столы: сервер отклонял черновик 422 «Seats
+    // must not overlap», и правки терялись после перезагрузки. Круговую
+    // нумерацию стола слева-направо тоже перезаписывать нельзя.
+    if (sector.shape === 'table') continue
+    // Раздвигаем точные коллизии позиций внутри ряда. Только для сетки:
+    // у дуги места стоят вдоль дуги, и X-шаг в крутых частях меньше SEAT —
+    // это геометрия, а не коллизия; наложение откатано выше по порогу 16px.
+    if (sector.shape === 'grid') {
+      for (const row of rows) {
+        const inRow = sector.seats.filter((s) => s.row === row).sort((a, b) => a.x - b.x)
+        for (let i = 1; i < inRow.length; i += 1) {
+          if (inRow[i].x - inRow[i - 1].x < SEAT) inRow[i].x = inRow[i - 1].x + SEAT + GAP
+        }
       }
     }
     renumberRows(sector, rows)
@@ -1949,7 +1996,11 @@ function draw(): void {
         if (!before) return
         const dx = nx - before.x
         const dy = ny - before.y
-        for (const [id] of seatDragIds) {
+        // seatDragIds — это Set<строк>: деструктуризация `[id]` забирала
+        // ПЕРВЫЙ СИМВОЛ id («t» из «table-…»), поиск места и запись
+        // координат молча не выполнялись — Konva двигал узел визуально,
+        // модель не менялась, и после перерисовки место «возвращалось».
+        for (const id of seatDragIds) {
           const b = seatDragBefore.get(id)
           const target = sector.seats.find((s) => s.id === id)
           if (!b || !target) continue
@@ -1999,8 +2050,31 @@ function draw(): void {
     })
     group.on('dragstart', () => { beginMoveSnapshot() })
     group.on('dragend', () => {
-      sector.x = Math.round(group.x())
-      sector.y = Math.round(group.y())
+      // Перетаскивание сектора целиком сдвигает все его места в
+      // canvas-пространстве: если сектор «въехал» местами в соседний,
+      // сервер отклонил бы черновик 422 и правка потерялась бы после F5 —
+      // тот же дефект, что и с местами, поэтому порог и откат те же.
+      // Срабатывает и при драге места (dragend всплывает от круга к группе),
+      // но тогда group.x() не изменился и проверка просто не выполняется.
+      const nx = Math.round(group.x())
+      const ny = Math.round(group.y())
+      if (nx !== sector.x || ny !== sector.y) {
+        const clashes = sectors.value.some((other) =>
+          other.id !== sector.id
+          && other.seats.some((o) =>
+            sector.seats.some((s) =>
+              Math.abs(nx + s.x - (other.x + o.x)) < 16 && Math.abs(ny + s.y - (other.y + o.y)) < 16,
+            ),
+          ),
+        )
+        if (clashes) {
+          group.position({ x: sector.x, y: sector.y })
+          ui.notify('sun', 'Сектор возвращён', 'На новом месте его места наложились бы на соседний сектор — сервер отклонил бы схему целиком. Отпустите сектор на свободное место.')
+        } else {
+          sector.x = nx
+          sector.y = ny
+        }
+      }
       endMoveSnapshot()
     })
     sectorLayer?.add(group)

@@ -12,6 +12,7 @@ use Nabilet\Core\Support\Paging;
 use Nabilet\Core\Support\PublicationStatus;
 use Nabilet\Core\Support\UserOrganization;
 use Nabilet\Core\Tenancy\OrganizationContext;
+use Nabilet\Modules\Venues\Models\Hall;
 use Nabilet\Modules\Venues\Models\Venue;
 use Nabilet\Modules\Venues\Models\VenueTranslation;
 use Illuminate\Http\JsonResponse;
@@ -47,8 +48,14 @@ class VenueController extends Controller
         // `Hall`): у гостя публичного каталога контекста нет — исполнение
         // запроса в bypass. Сама выборка площадок фильтруется параметрами
         // каталога; Venue скоупа не имеет.
+        //
+        // `halls.currentSchemaVersion` (только служебные колонки, без
+        // schema_json) даёт карточке площадки статус схемы зала:
+        // «есть схема / нет» — тот признак, по которому админ понимает,
+        // какую площадку ещё не расcадил. Без него список площадок не
+        // отличался бы от списка «несделанной работы».
         $venues = app(OrganizationContext::class)->withoutScope(
-            fn () => $query->paginate($perPage)
+            fn () => $query->with(['halls.currentSchemaVersion:id,hall_id,status,version'])->paginate($perPage)
         );
         
         return response()->json([
@@ -116,6 +123,12 @@ class VenueController extends Controller
             'latitude' => ['nullable', 'numeric', 'between:-90,90'],
             'longitude' => ['nullable', 'numeric', 'between:-180,180'],
             'status' => ['nullable', 'string', PublicationStatus::validationRule()],
+            // Название зала, создаваемого вместе с площадкой. Как правило у
+            // площадки один зал (модель Яндекс Афиши): раньше после создания
+            // площадки админ обязан был отдельно пройти в «Залы», выбрать
+            // площадку из списка и создать зал — на этом шаге путь обрывался,
+            // и у десятков площадок схем не было вовсе.
+            'hall_name' => ['nullable', 'string', 'max:255'],
         ]);
 
         $data['status'] ??= PublicationStatus::ACTIVE;
@@ -149,9 +162,20 @@ class VenueController extends Controller
         }
 
         $venue = Venue::create($data);
-        $venue->load('organization');
 
-        return response()->json(['success' => true, 'data' => $venue], 201);
+        // Авто-зал по модели «у площадки один зал»: создаётся в той же
+        // организации, что и площадка, вместе с ней. Мульти-зальные площадки
+        // не теряют возможности: дополнительные залы добавляются как раньше,
+        // через POST /halls с venue_id.
+        $hall = Hall::create([
+            'venue_id' => $venue->id,
+            'name' => $data['hall_name'] ?? 'Основной зал',
+            'status' => PublicationStatus::ACTIVE,
+        ]);
+
+        $venue->load(['organization', 'halls.currentSchemaVersion:id,hall_id,status,version']);
+
+        return response()->json(['success' => true, 'data' => $venue, 'hall' => $hall], 201);
     }
 
     public function update(Request $request, Venue $venue): JsonResponse
