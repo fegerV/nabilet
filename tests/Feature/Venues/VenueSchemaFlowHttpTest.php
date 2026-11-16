@@ -1,0 +1,286 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Tests\Feature\Venues;
+
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+use Nabilet\Tests\Support\SellableSeatFixtures;
+use Nabilet\Tests\Support\StaffAuth;
+use Tests\TestCase;
+
+/**
+ * HTTP-контур «площадка → зал → схема → сеанс».
+ *
+ * Это регрессия на жалобы «площадок много, а схем нет» и «конструктор не
+ * работает»: до правок админ создавал площадку без зала, шёл на отдельную
+ * страницу «Залы», искал площадку в списке и на этом останавливался. Здесь
+ * проверяется весь путь через настоящие админские маршруты:
+ *
+ *   1. `POST /venues` создаёт зал вместе с площадкой (модель Яндекс Афиши);
+ *   2. список площадок отдаёт состояние схемы зала (`current_schema_version`),
+ *      чтобы карточка показывала «опубликована / черновик / нет»;
+ *   3. черновик и публикация схемы проходят по HTTP и видны в списке;
+ *   4. смена `schema_version_id` у сеанса пересобирает инвентарь;
+ *   5. при продажах и активных корзинах смена схемы — 409, а сеанс остаётся
+ *      на прежней версии (иначе места и билеты разъезжаются).
+ */
+final class VenueSchemaFlowHttpTest extends TestCase
+{
+    use RefreshDatabase;
+    use SellableSeatFixtures;
+    use StaffAuth;
+
+    /** @return array<string, mixed> */
+    private function schemaPayload(int $priceMinor, int $seats = 2): array
+    {
+        $list = [];
+        for ($i = 1; $i <= $seats; $i++) {
+            $list[] = [
+                'id' => 'seat-' . $i,
+                'row' => 1,
+                'number' => $i,
+                'x' => 20 + ($i - 1) * 22,
+                'y' => 20,
+            ];
+        }
+
+        return [
+            'canvas' => ['width' => 900, 'height' => 520],
+            'sectors' => [[
+                'name' => 'Партер',
+                'priceMinor' => $priceMinor,
+                'seats' => $list,
+            ]],
+        ];
+    }
+
+    /** Черновик + публикация через HTTP. Возвращает id опубликованной версии. */
+    private function publishSchemaViaHttp(string $hallPublicId, array $payload): int
+    {
+        $draft = $this->postJson("/api/v1/halls/{$hallPublicId}/schema-versions/draft", [
+            'payload' => $payload,
+        ])->assertSuccessful();
+
+        $versionId = (int) $draft->json('data.id');
+        self::assertGreaterThan(0, $versionId, 'Черновик схемы должен вернуть id версии');
+
+        $this->postJson("/api/v1/halls/{$hallPublicId}/schema-versions/{$versionId}/publish")
+            ->assertSuccessful();
+
+        return $versionId;
+    }
+
+    private function seedOrganization(): int
+    {
+        $now = now()->toDateTimeString();
+
+        return (int) DB::table('organizations')->insertGetId([
+            'public_id' => (string) Str::ulid()->toBase32(),
+            'name' => 'Сургут-Концерт',
+            'slug' => 'surgut-' . Str::random(6),
+            'status' => 'active',
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+    }
+
+    public function test_creating_venue_creates_default_hall(): void
+    {
+        $organizationId = $this->seedOrganization();
+        $this->actingAsStaff($organizationId);
+
+        $response = $this->postJson('/api/v1/venues', [
+            'name' => 'ДК «Маяк»',
+            'city' => 'Сургут',
+        ])->assertCreated();
+
+        self::assertSame('Основной зал', $response->json('hall.name'));
+
+        $hallPublicId = $response->json('hall.public_id');
+        self::assertIsString($hallPublicId);
+
+        $venueId = (int) DB::table('venues')->where('public_id', $response->json('data.public_id'))->value('id');
+
+        $this->assertDatabaseHas('halls', [
+            'venue_id' => $venueId,
+            'name' => 'Основной зал',
+            'organization_id' => $organizationId,
+        ]);
+
+        // Ответ уже содержит состояние схемы зала: карточке есть что показать.
+        self::assertArrayHasKey('halls', $response->json('data'));
+    }
+
+    public function test_creating_venue_accepts_custom_hall_name(): void
+    {
+        $organizationId = $this->seedOrganization();
+        $this->actingAsStaff($organizationId);
+
+        $this->postJson('/api/v1/venues', [
+            'name' => 'Филармония',
+            'hall_name' => 'Камерный зал',
+        ])
+            ->assertCreated()
+            ->assertJsonPath('hall.name', 'Камерный зал');
+    }
+
+    public function test_venue_list_reports_published_schema_of_hall(): void
+    {
+        $organizationId = $this->seedOrganization();
+        $this->actingAsStaff($organizationId);
+
+        $created = $this->postJson('/api/v1/venues', ['name' => 'Клуб «Геолог»'])->assertCreated();
+        $hallPublicId = (string) $created->json('hall.public_id');
+
+        // До схемы — карточка показывает «нет схемы».
+        $before = $this->getJson('/api/v1/venues?per_page=100')->assertOk();
+        self::assertNull($before->json('data.data.0.halls.0.current_schema_version'));
+
+        $this->publishSchemaViaHttp($hallPublicId, $this->schemaPayload(850000));
+
+        $after = $this->getJson('/api/v1/venues?per_page=100')->assertOk();
+        self::assertSame(1, $after->json('data.data.0.halls.0.current_schema_version.version'));
+        self::assertSame('published', $after->json('data.data.0.halls.0.current_schema_version.status'));
+    }
+
+    public function test_schema_draft_and_publish_over_http(): void
+    {
+        $organizationId = $this->seedOrganization();
+        $this->actingAsStaff($organizationId);
+
+        $created = $this->postJson('/api/v1/venues', ['name' => 'Театр кукол'])->assertCreated();
+        $hallPublicId = (string) $created->json('hall.public_id');
+
+        $versionId = $this->publishSchemaViaHttp($hallPublicId, $this->schemaPayload(500000));
+
+        $versions = $this->getJson("/api/v1/halls/{$hallPublicId}/schema-versions")->assertOk();
+        $published = collect($versions->json('data'))
+            ->firstWhere(fn ($v) => (int) ($v['id'] ?? 0) === $versionId);
+
+        self::assertNotNull($published, 'Опубликованная версия должна быть в списке версий');
+        self::assertSame('published', $published['status']);
+        self::assertSame(1, (int) $published['version']);
+    }
+
+    public function test_switching_session_schema_regenerates_inventory(): void
+    {
+        [$organizationId, , $sessionId, $oldItemId] = $this->seedSellableSeat(5);
+        $hallPublicId = (string) DB::table('halls')->where('id', DB::table('sessions')->where('id', $sessionId)->value('hall_id'))->value('public_id');
+
+        $this->actingAsStaff($organizationId);
+
+        // Новая опубликованная версия: два места в партере.
+        $newVersionId = $this->publishSchemaViaHttp($hallPublicId, $this->schemaPayload(700000, 2));
+
+        $this->patchJson("/api/v1/sessions/{$sessionId}", [
+            'schema_version_id' => $newVersionId,
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.schema_version_id', $newVersionId);
+
+        // Старый стоячий инвентарь снят, на его месте — места новой схемы.
+        $this->assertDatabaseMissing('inventory_items', ['id' => $oldItemId], 'mysql');
+
+        $items = DB::table('inventory_items')->where('session_id', $sessionId)->get();
+        self::assertCount(2, $items);
+        foreach ($items as $item) {
+            self::assertSame('seat', $item->type);
+            self::assertNotNull($item->seat_id);
+        }
+    }
+
+    public function test_switching_session_schema_with_sales_is_rejected(): void
+    {
+        [$organizationId, $eventId, $sessionId, $inventoryItemId] = $this->seedSellableSeat(5);
+        $session = DB::table('sessions')->where('id', $sessionId)->first();
+        $hallPublicId = (string) DB::table('halls')->where('id', $session->hall_id)->value('public_id');
+
+        $this->actingAsStaff($organizationId);
+
+        $newVersionId = $this->publishSchemaViaHttp($hallPublicId, $this->schemaPayload(700000, 2));
+
+        // Проданное место: позиция заказа (источник правды проверки продаж —
+        // тикет мог быть ещё не выписан).
+        $now = now()->toDateTimeString();
+        $orderId = (int) DB::table('orders')->insertGetId([
+            'public_id' => (string) Str::ulid()->toBase32(),
+            'order_number' => 'ORD-' . strtoupper(Str::random(8)),
+            'organization_id' => $organizationId,
+            'subtotal_amount' => 50000,
+            'total_amount' => 50000,
+            'customer_email' => 'buyer@example.test',
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+
+        DB::table('order_items')->insert([
+            'order_id' => $orderId,
+            'organization_id' => $organizationId,
+            'inventory_item_id' => $inventoryItemId,
+            'quantity' => 1,
+            'unit_price' => 50000,
+            'total_amount' => 50000,
+            'event_title_snapshot' => 'Тестовое событие',
+            'created_at' => $now,
+        ]);
+
+        $this->patchJson("/api/v1/sessions/{$sessionId}", [
+            'schema_version_id' => $newVersionId,
+        ])
+            ->assertStatus(409)
+            ->assertJsonPath('error.code', 'SESSION_SCHEMA_HAS_SALES');
+
+        // Сеанс остался на прежней версии, инвентарь не тронут: иначе билеты
+        // ссылались бы на удалённые места.
+        self::assertSame(
+            (int) $session->schema_version_id,
+            (int) DB::table('sessions')->where('id', $sessionId)->value('schema_version_id'),
+        );
+        $this->assertDatabaseHas('inventory_items', ['id' => $inventoryItemId], 'mysql');
+    }
+
+    public function test_switching_session_schema_with_active_hold_is_rejected(): void
+    {
+        [$organizationId, , $sessionId, $inventoryItemId] = $this->seedSellableSeat(5);
+        $session = DB::table('sessions')->where('id', $sessionId)->first();
+        $hallPublicId = (string) DB::table('halls')->where('id', $session->hall_id)->value('public_id');
+
+        $this->actingAsStaff($organizationId);
+
+        $newVersionId = $this->publishSchemaViaHttp($hallPublicId, $this->schemaPayload(700000, 2));
+
+        $now = now()->toDateTimeString();
+        $cartId = (int) DB::table('carts')->insertGetId([
+            'public_id' => (string) Str::ulid()->toBase32(),
+            'organization_id' => $organizationId,
+            'session_id' => $sessionId,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+
+        DB::table('seat_holds')->insert([
+            'public_id' => (string) Str::ulid()->toBase32(),
+            'organization_id' => $organizationId,
+            'inventory_item_id' => $inventoryItemId,
+            'session_id' => $sessionId,
+            'cart_id' => $cartId,
+            'quantity' => 1,
+            'expires_at' => now()->addMinutes(15)->toDateTimeString(),
+            'created_at' => $now,
+        ]);
+
+        $this->patchJson("/api/v1/sessions/{$sessionId}", [
+            'schema_version_id' => $newVersionId,
+        ])
+            ->assertStatus(409)
+            ->assertJsonPath('error.code', 'SESSION_SCHEMA_HELD');
+
+        self::assertSame(
+            (int) $session->schema_version_id,
+            (int) DB::table('sessions')->where('id', $sessionId)->value('schema_version_id'),
+        );
+    }
+}

@@ -222,12 +222,17 @@ class SessionController extends Controller
         // версии — единственный триггер пересборки инвентаря: правка даты или
         // статуса не должна трогать места.
         $effectiveSchemaId = (int) ($data['schema_version_id'] ?? $session->schema_version_id);
+        $schemaChanged = $effectiveSchemaId !== (int) $session->schema_version_id;
+
+        // Проверка ДО update(): иначе при 409 сеанс остался бы с новой версией
+        // схемы, а места — от прежней: рассинхрон, который видит покупатель.
+        if ($schemaChanged) {
+            $this->assertInventoryRegenerable($session);
+        }
 
         $session->update($data);
 
-        if ($effectiveSchemaId !== (int) $session->getOriginal('schema_version_id')) {
-            $this->assertInventoryRegenerable($session);
-
+        if ($schemaChanged) {
             $schemaVersion = HallSchemaVersion::findOrFail($effectiveSchemaId);
             $this->inventoryService->generateFromSchema($schemaVersion, $session);
         }

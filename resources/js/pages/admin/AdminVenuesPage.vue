@@ -21,13 +21,27 @@ import NSelect from '@/components/ui/NSelect.vue'
 import NModal from '@/components/ui/NModal.vue'
 import NStatusBadge from '@/components/ui/NStatusBadge.vue'
 import NDataTable from '@/components/ui/NDataTable.vue'
+import NBadge from '@/components/ui/NBadge.vue'
 import { useUiStore } from '@/stores/ui'
 import { get, send } from '@/lib/api'
 import { money } from '@/lib/format'
 import type { Column } from '@/components/ui/NDataTable.vue'
+import type { Tone } from '@/lib/types'
 
 const ui = useUiStore()
 const router = useRouter()
+
+interface ApiSchemaVersion {
+  version: number
+  status: string
+}
+
+interface ApiHall {
+  public_id: string
+  name: string
+  /** Опубликованная версия схемы; null — схемы нет. */
+  current_schema_version?: ApiSchemaVersion | null
+}
 
 interface ApiVenue {
   id: number
@@ -39,7 +53,7 @@ interface ApiVenue {
   address?: string | null
   description?: string | null
   status: string
-  halls?: unknown[]
+  halls?: ApiHall[]
 }
 
 const venues = ref<ApiVenue[]>([])
@@ -51,11 +65,11 @@ const modalOpen = ref(false)
 const saving = ref(false)
 const formError = ref<string | null>(null)
 const editId = ref<string | null>(null)
-const form = ref({ name: '', city: '', region: '', address: '', description: '', status: 'active' })
+const form = ref({ name: '', city: '', region: '', address: '', description: '', status: 'active', hallName: '' })
 
 function openCreate(): void {
   editId.value = null
-  form.value = { name: '', city: '', region: '', address: '', description: '', status: 'active' }
+  form.value = { name: '', city: '', region: '', address: '', description: '', status: 'active', hallName: '' }
   formError.value = null
   modalOpen.value = true
 }
@@ -70,6 +84,7 @@ function openEdit(row: { raw: ApiVenue }): void {
     address: v.address ?? '',
     description: v.description ?? '',
     status: v.status ?? 'active',
+    hallName: '',
   }
   formError.value = null
   modalOpen.value = true
@@ -95,12 +110,26 @@ async function save(): Promise<void> {
     if (editId.value) {
       await send<unknown>(`/venues/${editId.value}`, 'PATCH', payload)
       ui.notify('mint', 'Площадка обновлена', payload.name)
+      modalOpen.value = false
+      await load()
     } else {
-      await send<unknown>('/venues', 'POST', payload)
+      // Зал создаётся вместе с площадкой (модель «у площадки один зал»):
+      // админу не нужно отдельно идти в «Залы» и выбирать площадку из списка.
+      const res = (await send<unknown>('/venues', 'POST', {
+        ...payload,
+        hall_name: form.value.hallName.trim() || null,
+      })) as unknown as { data?: ApiVenue; hall?: ApiHall }
+      modalOpen.value = false
+      const hallPid = res.hall?.public_id
+      // Следующий шаг всегда один и тот же — нарисовать схему зала.
+      if (typeof hallPid === 'string' && hallPid) {
+        ui.notify('mint', 'Площадка создана', 'Осталось нарисовать схему зала')
+        router.push(`/admin/halls/${hallPid}/editor`)
+        return
+      }
       ui.notify('mint', 'Площадка создана', payload.name)
+      await load()
     }
-    modalOpen.value = false
-    await load()
   } catch (e) {
     formError.value = e instanceof Error ? e.message : String(e)
   } finally {
@@ -304,25 +333,64 @@ async function createVenueHall(): Promise<void> {
   }
 }
 
+/* ── Схема зала: состояние и вход в конструктор ────────────────────────
+ * Модель Яндекс Афиши: у площадки, как правило, один зал. Поэтому состояние
+ * схемы показывается прямо в строке площадки, а кнопка ведёт сразу в
+ * конструктор — без промежуточной страницы «Залы» с выбором площадки. */
+
+function hallOf(v: ApiVenue): ApiHall | null {
+  const list = v.halls
+  return Array.isArray(list) && list.length > 0 ? list[0] ?? null : null
+}
+
+function schemaState(v: ApiVenue): { label: string; tone: Tone } {
+  const hall = hallOf(v)
+  if (!hall) return { label: 'Нет зала', tone: 'neutral' }
+
+  const sv = hall.current_schema_version ?? null
+  if (!sv) return { label: 'Схема не нарисована', tone: 'sun' }
+
+  return sv.status === 'published'
+    ? { label: `v${sv.version} · опубликована`, tone: 'mint' }
+    : { label: `черновик v${sv.version}`, tone: 'sun' }
+}
+
+/** Вход в конструктор: есть зал — открываем редактор, нет — создаём зал. */
+function openSchema(v: ApiVenue): void {
+  const hall = hallOf(v)
+  if (!hall) {
+    openHallCreate(v)
+    return
+  }
+  router.push(`/admin/halls/${hall.public_id}/editor`)
+}
+
 const rows = computed(() =>
-  venues.value.map((v) => ({
-    id: String(v.public_id),
-    name: v.name,
-    city: v.city ? `${v.city}${v.region ? ', ' + v.region : ''}` : '—',
-    address: v.address ?? '—',
-    hallsCount: Array.isArray(v.halls) ? v.halls.length : 0,
-    status: v.status,
-    raw: v,
-  })),
+  venues.value.map((v) => {
+    const state = schemaState(v)
+    return {
+      id: String(v.public_id),
+      name: v.name,
+      city: v.city ? `${v.city}${v.region ? ', ' + v.region : ''}` : '—',
+      address: v.address ?? '—',
+      hallsCount: Array.isArray(v.halls) ? v.halls.length : 0,
+      schemaLabel: state.label,
+      schemaTone: state.tone,
+      hasHall: hallOf(v) !== null,
+      status: v.status,
+      raw: v,
+    }
+  }),
 )
 
 const COLUMNS: Column[] = [
   { key: 'name', label: 'Площадка', sortable: true },
   { key: 'city', label: 'Город', hideOnMobile: true },
   { key: 'address', label: 'Адрес', hideOnMobile: true },
+  { key: 'schema', label: 'Схема зала', width: '200px' },
   { key: 'hallsCount', label: 'Залы', align: 'center', width: '70px' },
   { key: 'status', label: 'Статус', align: 'right', width: '110px' },
-  { key: 'actions', label: '', align: 'right', width: '150px' },
+  { key: 'actions', label: '', align: 'right', width: '100px' },
 ]
 
 async function load(): Promise<void> {
@@ -374,13 +442,20 @@ onMounted(load)
         <template #cell-hallsCount="{ row }">
           <span :class="row.hallsCount === 0 ? 'text-sun-400' : 'text-muted'">{{ row.hallsCount }}</span>
         </template>
+        <template #cell-schema="{ row }">
+          <div class="flex items-center gap-2">
+            <NBadge :tone="row.schemaTone">{{ row.schemaLabel }}</NBadge>
+            <NButton variant="ghost" size="sm" @click.stop="openSchema(row.raw)">
+              {{ row.hasHall ? 'Открыть' : 'Создать' }}
+            </NButton>
+          </div>
+        </template>
         <template #cell-status="{ row }">
           <NStatusBadge kind="venue" :status="row.status" />
         </template>
-        <!-- Слот действий: клик по строке открывает редактирование, зал и удаление — отдельными кнопками -->
+        <!-- Слот действий: клик по строке открывает редактирование сведений -->
         <template #cell-actions="{ row }">
           <div class="flex justify-end gap-1">
-            <NButton variant="ghost" size="sm" @click.stop="openHallCreate(row.raw)">Зал</NButton>
             <NButton variant="ghost" size="sm" @click.stop="remove(row.raw)">Удалить</NButton>
           </div>
         </template>
@@ -393,7 +468,10 @@ onMounted(load)
           <span>{{ row.city }}</span>
           <span>{{ row.hallsCount }} залов</span>
           <NStatusBadge kind="venue" :status="row.status" />
-          <NButton variant="ghost" size="sm" @click.stop="openHallCreate(row.raw)">Создать зал</NButton>
+          <NBadge :tone="row.schemaTone">{{ row.schemaLabel }}</NBadge>
+          <NButton variant="ghost" size="sm" @click.stop="openSchema(row.raw)">
+            {{ row.hasHall ? 'Схема зала' : 'Создать зал' }}
+          </NButton>
         </template>
       </NDataTable>
     </div>
@@ -479,6 +557,13 @@ onMounted(load)
         <NInput v-model="form.region" label="Регион" placeholder="Татарстан" />
         <NInput v-model="form.address" label="Адрес" placeholder="ул. Ленина, 12" />
         <NInput v-model="form.description" label="Описание" placeholder="Крупнейшая концертная площадка города" />
+        <!-- Зал создаётся вместе с площадкой: путь «создал площадку → рисуй схему» без лишнего шага. -->
+        <NInput
+          v-if="!editId"
+          v-model="form.hallName"
+          label="Название зала"
+          placeholder="Основной зал (по умолчанию)"
+        />
         <NSelect v-model="form.status" label="Статус" :options="[{ value: 'active', label: 'Активна' }, { value: 'inactive', label: 'Не активна' }]" />
 
         <div class="flex justify-end gap-2 border-t border-line pt-3">

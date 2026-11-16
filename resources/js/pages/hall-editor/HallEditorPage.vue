@@ -212,6 +212,51 @@ const showTools = usePersistedRef('hallEditor.tools.visible', true)
 const showInspector = usePersistedRef('hallEditor.inspector.visible', true)
 /** Развёрнутый вид панели инструментов: подписи к иконкам против узкой колонки. */
 const toolsWide = usePersistedRef('hallEditor.tools.wide', true)
+
+/*
+ * Ширина считается по КОНТЕЙНЕРУ редактора, а не по окну. Медиазапросы Tailwind
+ * (`md:static`) смотрят на вьюпорт, а в SPA у редактора уже отнято меню админки:
+ * при окне 912 px рабочая область — около 650 px, и две статические панели
+ * (232 + 320) оставляли холсту 100 px. Конструктор при этом выглядел сломанным:
+ * рисовать в полосе шириной в ладонь невозможно.
+ *
+ * Поэтому панели статические только когда места действительно хватает
+ * (≥1280 px контейнера); ниже — они выезжают ПОВЕРХ холста. Холст в этом
+ * режиме занимает всю ширину, а инструменты и свойства открываются кнопками
+ * в тулбаре и закрываются крестиком/кликом мимо.
+ */
+const editorRoot = ref<HTMLElement | null>(null)
+const contentWidth = ref(0)
+const overlayPanels = computed(() => contentWidth.value > 0 && contentWidth.value < 1280)
+
+/** Прошлый режим раскладки: переключаем панели только на смене, не на каждом ресайзе. */
+let overlayWas: boolean | null = null
+
+function applyContentWidth(width: number): void {
+  contentWidth.value = width
+  if (width <= 0) return
+
+  const overlay = width < 1280
+  if (overlayWas === null) {
+    overlayWas = overlay
+    // Первый замер: если ширина уже узкая — сразу освобождаем холст.
+    if (overlay) {
+      showInspector.value = false
+      toolsWide.value = false
+    }
+    return
+  }
+  if (overlay === overlayWas) return
+
+  overlayWas = overlay
+  if (overlay) {
+    showInspector.value = false
+    toolsWide.value = false
+  } else {
+    showInspector.value = true
+    toolsWide.value = true
+  }
+}
 /** Привязка к сетке при перетаскивании: ряды перестают «плыть» на пару пикселей. */
 const snapEnabled = usePersistedRef('hallEditor.snap', false)
 /** Шаг сетки привязки (px). Совпадает с шагом мест по умолчанию (SEAT+GAP=22). */
@@ -1588,6 +1633,8 @@ let sectorLayer: Konva.Layer | null = null
 let guidesLayer: Konva.Layer | null = null
 let selectionLayer: Konva.Layer | null = null
 let observer: ResizeObserver | null = null
+/** Наблюдатель за шириной контейнера редактора (режим панелей: статика/поверх). */
+let layoutObserver: ResizeObserver | null = null
 
 const COLORS = {
   standard: '#24B8E8',
@@ -2179,6 +2226,15 @@ function fitToContent(): void {
 }
 
 onMounted(() => {
+  // Ширина контейнера: панели статические только при запасе места (см. overlayPanels).
+  if (editorRoot.value) {
+    applyContentWidth(editorRoot.value.clientWidth)
+    layoutObserver = new ResizeObserver((entries) => {
+      applyContentWidth(entries[0]?.contentRect.width ?? 0)
+    })
+    layoutObserver.observe(editorRoot.value)
+  }
+
   // ВАЖНО: порядок инициализации критичен. `void loadFromServer()` асинхронно
   // перезапишет sectors/statics/backgrounds из черновика на сервере; демо-данные
   // должны быть созданы ДО загрузки, иначе они перетирают серверную схему
@@ -2260,6 +2316,7 @@ function initCanvasAndLoad(): void {
 onUnmounted(() => {
   if (saveTimer) clearTimeout(saveTimer)
   observer?.disconnect()
+  layoutObserver?.disconnect()
   stage?.destroy()
 })
 
@@ -2771,7 +2828,7 @@ function reassignSelectedSeats(targetSectorId: string): void {
     область целиком, без полосы вокруг холста. Шапка редактора сжата в одну
     строку — версия, автосохранение и действия переехали в неё.
   -->
-  <div class="-mx-4 -my-5 flex h-[calc(100dvh-4rem)] flex-col sm:-mx-6 sm:-my-6">
+  <div ref="editorRoot" class="-mx-4 -my-5 flex h-[calc(100dvh-4rem)] flex-col sm:-mx-6 sm:-my-6">
     <!-- Шапка редактора: одна строка, чтобы не отъедать высоту у холста -->
     <header class="flex flex-none flex-wrap items-center gap-x-3 gap-y-2 border-b border-line px-3 py-2">
       <div class="flex min-w-0 items-center gap-2">
@@ -2843,7 +2900,7 @@ function reassignSelectedSeats(targetSectorId: string): void {
         v-if="showTools"
         :class="cn(
           'flex min-h-0 flex-none flex-col border-r border-line bg-surface',
-          'absolute inset-y-0 left-0 z-20 shadow-xl md:static md:z-auto md:shadow-none',
+          overlayPanels ? 'absolute inset-y-0 left-0 z-20 shadow-xl' : 'relative z-auto shadow-none',
           toolsWide ? 'w-[232px]' : 'w-[60px]',
         )"
       >
@@ -3027,10 +3084,23 @@ function reassignSelectedSeats(targetSectorId: string): void {
         </div>
       </section>
 
+      <!-- Подложка под выезжающие свойства: клик мимо закрывает панель и
+           возвращает холст целиком (только в режиме «поверх холста»). -->
+      <div
+        v-if="overlayPanels && showInspector"
+        class="absolute inset-0 z-10 bg-black/25"
+        @click="showInspector = false"
+      />
+
       <!-- Инспектор -->
       <aside
         v-if="showInspector"
-        class="absolute inset-y-0 right-0 z-20 flex min-h-0 w-[320px] flex-none flex-col border-l border-line bg-surface shadow-xl md:static md:z-auto md:shadow-none"
+        :class="cn(
+          'flex min-h-0 w-[320px] flex-none flex-col border-l border-line bg-surface',
+          overlayPanels
+            ? 'absolute inset-y-0 right-0 z-20 shadow-xl'
+            : 'relative z-auto shadow-none',
+        )"
       >
         <div class="flex flex-none items-center justify-between gap-1 border-b border-line px-2 py-1.5">
           <h2 class="px-1 text-2xs font-semibold uppercase tracking-wide text-subtle">Свойства</h2>

@@ -87,6 +87,11 @@ trait SellableSeatFixtures
             'hall_id' => $hallId,
             'version' => 1,
             'status' => 'published',
+            // `published_at` — часть корректного published-состояния: политика
+            // архивации отказывается вытеснять «опубликовано, но без даты».
+            // Фикстура, которая его не ставит, описывает строку, которой в
+            // продакшене не бывает (публикация всегда проставляет момент).
+            'published_at' => $now,
             'schema_json' => json_encode(['rows' => []]),
             'created_at' => $now,
             'updated_at' => $now,
