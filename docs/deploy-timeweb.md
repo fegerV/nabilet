@@ -174,7 +174,7 @@ chmod -R ug+w storage bootstrap/cache
 
   ```bash
   cd /home/c/ce99429/vertex-art.ru/public_html
-  unzip -q ~/nabilet-hosting-v1.3.0-20261115.zip   # содержимое архива -> текущий каталог
+  unzip -q ~/nabilet-hosting-v1.4.0-20261116.zip   # содержимое архива -> текущий каталог
   rm -f index.html                                # заглушка хостинга, если есть
   # проверка: ./index.php, .htaccess, app/, vendor/ лежат ЗДЕСЬ же, .env нет
   chmod -R ug+w storage bootstrap/cache
