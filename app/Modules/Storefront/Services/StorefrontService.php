@@ -202,11 +202,28 @@ final class StorefrontService
     /** Сброс: удаляем строку организации — витрина снова берёт дефолт. */
     public function reset(?string $organizationId): array
     {
-        if ($organizationId !== null) {
-            StorefrontSetting::query()->where('organization_id', $organizationId)->delete();
-        }
+        // Раньше при $organizationId === null строка НЕ удалялась: админ без
+        // организации видел «сброшено», а гость продолжал получать прежний
+        // глобальный конфиг из кеша/БД. Глобальная строка — тоже чья-то витрина,
+        // и «Сбросить» обязан удалять её.
+        StorefrontSetting::query()->where('organization_id', $organizationId)->delete();
 
         return $this->defaultConfig();
+    }
+
+    /**
+     * Отличается ли РЕАЛЬНО используемый конфиг от конфига по умолчанию.
+     *
+     * `isDefault()` проверяет только наличие строки организации, поэтому
+     * организация без своей строки, но с глобальным кастомным конфигом
+     * получала в админке метку «конфигурация по умолчанию» — обман. Здесь
+     * сравнивается то, что реально отдаётся витрине.
+     */
+    public function sourceIsDefault(?string $organizationId): bool
+    {
+        // `==` (не `===`): normalize() собирает ключи в том же порядке, что и
+        // defaultConfig(), но сравнение по значению устойчивее к перестановке.
+        return $this->resolve($organizationId) == $this->defaultConfig();
     }
 
     private function findRow(?string $organizationId): ?StorefrontSetting
@@ -590,6 +607,130 @@ final class StorefrontService
         }
 
         return $out;
+    }
+
+    /**
+     * Что из присланного конфига НЕ доехало до сохранённого.
+     *
+     * Нормализация обязана отбрасывать лишнее (это граница безопасности), но
+     * молча — дефект редактирования: администратор видит «Сохранено», а при
+     * перезагрузке его правок нет. Метод сравнивает отправленное с сохранённым
+     * по полям и возвращает короткие понятные предупреждения для ответа API.
+     *
+     * @return list<string>
+     */
+    public function normalizationWarnings(array $input, array $config): array
+    {
+        $warnings = [];
+        $this->collectWarnings($input, $config, '', $warnings);
+
+        $total = count($warnings);
+        if ($total > 12) {
+            $warnings = array_slice($warnings, 0, 12);
+            $warnings[] = 'И ещё ' . ($total - 12) . ' изменений: часть значений приведена к допустимым.';
+        }
+
+        return $warnings;
+    }
+
+    /** @param list<string> $warnings */
+    private function collectWarnings(mixed $input, mixed $saved, string $path, array &$warnings): void
+    {
+        if ($input === null || $input === $saved) {
+            return;
+        }
+
+        if (is_array($input) && is_array($saved)) {
+            if (array_is_list($input) && array_is_list($saved)) {
+                if (count($input) > count($saved)) {
+                    $warnings[] = $this->warningLabel($path) . ': сохранено ' . count($saved)
+                        . ' из ' . count($input) . ' — остальное превысило лимит';
+                }
+                $common = min(count($input), count($saved));
+                for ($i = 0; $i < $common; $i++) {
+                    $this->collectWarnings($input[$i], $saved[$i], $path . '.' . $i, $warnings);
+                }
+
+                return;
+            }
+
+            foreach ($input as $key => $value) {
+                if (! array_key_exists($key, $saved)) {
+                    if (! is_array($value) && $value !== '') {
+                        $warnings[] = $this->warningLabel($path . '.' . $key) . ': поле не сохранено';
+                    }
+                    continue;
+                }
+                $this->collectWarnings($value, $saved[$key], $path . '.' . $key, $warnings);
+            }
+
+            return;
+        }
+
+        $label = $this->warningLabel($path);
+        if (is_string($input) && is_string($saved) && $saved !== ''
+            && mb_strlen($input) > mb_strlen($saved) && str_starts_with($input, $saved)) {
+            $warnings[] = $label . ': текст обрезан до ' . mb_strlen($saved) . ' символов';
+
+            return;
+        }
+        if (is_string($input) && trim($input) === '') {
+            $warnings[] = $label . ': пустое поле восстановлено по умолчанию';
+
+            return;
+        }
+        $warnings[] = $label . ': значение приведено к допустимому';
+    }
+
+    private function warningLabel(string $path): string
+    {
+        $path = ltrim($path, '.');
+
+        static $labels = [
+            'theme' => 'Тема',
+            'theme.preset' => 'Цветовая схема',
+            'theme.brand' => 'Основной цвет',
+            'theme.brandStrong' => 'Основной цвет (насыщеннее)',
+            'theme.accent' => 'Акцент',
+            'theme.accentStrong' => 'Акцент (насыщеннее)',
+            'theme.radius' => 'Скругление',
+            'theme.mode' => 'Тема по умолчанию',
+            'theme.surface' => 'Фон витрины',
+            'branding' => 'Брендинг',
+            'branding.name' => 'Название площадки',
+            'branding.tagline' => 'Подпись',
+            'branding.logoUrl' => 'Логотип',
+            'branding.logoMark' => 'Литера в шапке',
+            'branding.faviconUrl' => 'Иконка сайта',
+            'header' => 'Шапка',
+            'header.nav' => 'Пункты меню',
+            'footer' => 'Подвал',
+            'footer.text' => 'Копирайт',
+            'footer.links' => 'Ссылки в подвале',
+            'footer.social' => 'Соцсети',
+            'sections' => 'Секции',
+        ];
+
+        if (isset($labels[$path])) {
+            return $labels[$path];
+        }
+
+        $fieldLabels = [
+            'title' => 'Заголовок', 'subtitle' => 'Подзаголовок', 'text' => 'Текст',
+            'label' => 'Подпись', 'limit' => 'Количество', 'columns' => 'Колонки',
+            'ids' => 'Выбранные события', 'items' => 'Элементы', 'code' => 'Промокод',
+            'image' => 'Фон', 'ctaLink' => 'Ссылка кнопки', 'buttonLink' => 'Ссылка кнопки',
+            'target' => 'Своя дата', 'eventId' => 'Событие', 'category' => 'Категория',
+        ];
+
+        if (preg_match('/^sections\.(\d+)\.(.*)$/', $path, $m) === 1) {
+            $parts = explode('.', $m[2]);
+            $last = (string) end($parts);
+
+            return 'Секция ' . ((int) $m[1] + 1) . ' · ' . ($fieldLabels[$last] ?? $last);
+        }
+
+        return $path;
     }
 
     /** Справочник виджетов для админки: тип, подпись, поля и дефолты. */

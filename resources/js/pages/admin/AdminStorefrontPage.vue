@@ -51,9 +51,13 @@ const tab = ref('sections')
 const draft = ref<StorefrontConfig>(cloneConfig(storefront.config))
 const selectedId = ref<string | null>(null)
 const saving = ref(false)
+const resetting = ref(false)
 const savedSnapshot = ref('')
+/** Что сервер не сохранил при последней записи (лимиты, приведённые значения). */
+const saveWarnings = ref<string[]>([])
 
 onMounted(async () => {
+  void storefront.loadPublicMeta()
   await storefront.loadAdmin()
   draft.value = cloneConfig(storefront.config)
   savedSnapshot.value = JSON.stringify(draft.value)
@@ -62,6 +66,17 @@ onMounted(async () => {
 })
 
 const dirty = computed(() => JSON.stringify(draft.value) !== savedSnapshot.value)
+
+/**
+ * При нескольких организациях гость видит витрину первой из них, а админ
+ * правит свою. Без явной подсказки «Открыть витрину ↗» выглядит как отсутствие
+ * сохранения — поэтому показываем предупреждение над формой.
+ */
+const editingAnotherOrganization = computed(() =>
+  storefront.publicOrganizationId !== null
+  && storefront.editingOrganizationId !== null
+  && storefront.publicOrganizationId !== storefront.editingOrganizationId,
+)
 
 const selected = computed(() => draft.value.sections.find((s) => s.id === selectedId.value) ?? null)
 
@@ -83,6 +98,13 @@ function select(section: StorefrontSection): void {
 }
 
 function addWidget(type: SectionType): void {
+  // `once` в реестре виджетов перестал быть мёртвым флагом: hero — первый экран,
+  // второй такой же баннер ломает структуру страницы.
+  const meta = WIDGETS.find((w) => w.type === type)
+  if (meta?.once && draft.value.sections.some((s) => s.type === type)) {
+    ui.notify('sun', 'Виджет уже есть', `«${meta.label}» можно добавить только один раз`)
+    return
+  }
   const section = createSection(type, WIDGET_LABELS[type] ?? '')
   draft.value.sections.push(section)
   selectedId.value = section.id
@@ -112,15 +134,27 @@ function move(index: number, delta: number): void {
   draft.value.sections = list
 }
 
-function dropAt(target: number): void {
+function dropAt(target: number, event?: DragEvent): void {
   const from = dragIndex.value
   dragIndex.value = null
   if (from === null || from === target) return
+  // «Перед целевой секцией» независимо от направления: без поправки при
+  // перетаскивании сверху вниз элемент оказывался ПОСЛЕ цели, а снизу вверх —
+  // перед ней. Позиция теперь предсказуема.
+  const insertAt = from < target ? target - 1 : target
   const list = [...draft.value.sections]
   const moved = list.splice(from, 1)[0]
   if (!moved) return
-  list.splice(target, 0, moved)
+  list.splice(insertAt, 0, moved)
   draft.value.sections = list
+  event?.dataTransfer?.clearData()
+}
+
+/** Firefox не инициирует drag без dataTransfer.setData(). */
+function onSectionDragStart(index: number, event: DragEvent): void {
+  dragIndex.value = index
+  event.dataTransfer?.setData('text/plain', String(index))
+  if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move'
 }
 
 /* ── Тема ───────────────────────────────────────────────────────────────── */
@@ -140,6 +174,17 @@ const presetList = computed(() =>
   })),
 )
 
+/** Пресет подсвечивается, только если его кисти реально не переопределены. */
+function presetActive(key: string): boolean {
+  if (draft.value.theme.preset !== key) return false
+  const palette = PALETTES[key]
+  if (!palette) return false
+  const c = palette.colors
+  const t = draft.value.theme
+  return c.brand === t.brand && c.brandStrong === t.brandStrong
+    && c.accent === t.accent && c.accentStrong === t.accentStrong
+}
+
 /* ── Меню и подвал ──────────────────────────────────────────────────────── */
 
 function addNav(): void {
@@ -158,36 +203,69 @@ function removeFooterLink(index: number): void {
   draft.value.footer.links.splice(index, 1)
 }
 
+function addSocial(): void {
+  draft.value.footer.social.push({ label: 'Соцсеть', url: 'https://' })
+}
+
+function removeSocial(index: number): void {
+  draft.value.footer.social.splice(index, 1)
+}
+
 /* ── Сохранение ─────────────────────────────────────────────────────────── */
 
 async function save(): Promise<void> {
+  if (saving.value || resetting.value) return
   saving.value = true
-  const ok = await storefront.save(draft.value)
+  saveWarnings.value = []
+  const result = await storefront.save(draft.value)
   saving.value = false
-  if (!ok) {
+  if (!result.ok) {
     ui.notify('rose', 'Не удалось сохранить', 'Проверьте подключение и попробуйте ещё раз.')
     return
   }
+  // Черновик обязан стать ТЕМ, что реально легло в БД: сервер нормализует
+  // конфиг, и иначе «Сохранено» скрывало бы брошенные поля до перезагрузки.
+  draft.value = cloneConfig(storefront.config)
   savedSnapshot.value = JSON.stringify(draft.value)
-  ui.notify('mint', 'Витрина сохранена', 'Изменения уже видны покупателям.')
+  saveWarnings.value = result.warnings
+  ui.notify(
+    result.warnings.length ? 'sun' : 'mint',
+    'Витрина сохранена',
+    result.warnings.length
+      ? 'Часть значений сервер привёл к допустимым — подробности ниже.'
+      : 'Изменения уже видны покупателям.',
+  )
 }
 
 async function resetToDefault(): Promise<void> {
+  if (saving.value || resetting.value) return
   if (!window.confirm('Вернуть витрину к настройкам по умолчанию? Текущая верстка будет потеряна.')) return
+  resetting.value = true
   const ok = await storefront.reset()
+  resetting.value = false
   if (!ok) {
     ui.notify('rose', 'Не удалось сбросить настройки')
     return
   }
   draft.value = cloneConfig(storefront.config)
   savedSnapshot.value = JSON.stringify(draft.value)
+  saveWarnings.value = []
   ui.notify('sun', 'Витрина сброшена', 'Вернулись к конфигурации по умолчанию.')
 }
 
 function discard(): void {
   draft.value = cloneConfig(storefront.config)
+  savedSnapshot.value = JSON.stringify(draft.value)
+  saveWarnings.value = []
   ui.notify('neutral', 'Изменения отменены')
 }
+
+/** Режим темы для предпросмотра: не трогаем глобальную тему админки. */
+const previewModeClass = computed(() => {
+  if (draft.value.theme.mode === 'dark') return 'dark'
+  if (draft.value.theme.mode === 'light') return ''
+  return '' // auto — используем тему самой админки
+})
 </script>
 
 <template>
@@ -206,7 +284,7 @@ function discard(): void {
 
       <div class="flex flex-wrap items-center gap-2">
         <NButton variant="ghost" :disabled="!dirty" @click="discard">Отменить</NButton>
-        <NButton variant="outline" @click="resetToDefault">Сбросить</NButton>
+        <NButton variant="outline" :loading="resetting" :disabled="resetting" @click="resetToDefault">Сбросить</NButton>
         <a
           href="/"
           target="_blank"
@@ -217,6 +295,18 @@ function discard(): void {
         </a>
         <NButton variant="primary" :loading="saving" :disabled="!dirty" @click="save">Сохранить</NButton>
       </div>
+    </div>
+
+    <div v-if="editingAnotherOrganization" class="surface-card mt-4 border-sun-500/40 px-4 py-3 text-sm text-sun-400">
+      Вы редактируете витрину своей организации, а публичная витрина на этом домене показывает другую.
+      Сохранение подействует на вашу витрину; «Открыть витрину ↗» может показать не её.
+    </div>
+
+    <div v-if="saveWarnings.length" class="surface-card mt-4 border-sun-500/40 px-4 py-3 text-sm text-sun-400">
+      <p class="font-medium">Сохранено не полностью — сервер привёл значения к допустимым:</p>
+      <ul class="mt-1.5 list-inside list-disc space-y-0.5 text-xs">
+        <li v-for="(warning, index) in saveWarnings" :key="index">{{ warning }}</li>
+      </ul>
     </div>
 
     <div class="mt-5">
@@ -238,10 +328,10 @@ function discard(): void {
               'group flex items-center gap-2 rounded-lg border px-2.5 py-2 transition-colors',
               selectedId === section.id ? 'border-brand-500/50 bg-brand-500/8' : 'border-transparent hover:bg-surface-2',
             ]"
-            @dragstart="dragIndex = index"
+            @dragstart="onSectionDragStart(index, $event)"
             @dragend="dragIndex = null"
             @dragover.prevent
-            @drop="dropAt(index)"
+            @drop="dropAt(index, $event)"
             @click="select(section)"
           >
             <span aria-hidden="true" class="cursor-grab text-sm text-subtle">⋮⋮</span>
@@ -395,7 +485,7 @@ function discard(): void {
               type="button"
               :class="[
                 'flex items-center gap-2.5 rounded-lg border p-2.5 text-left transition-colors',
-                draft.theme.preset === preset.key ? 'border-brand-500 bg-brand-500/8' : 'border-line hover:border-brand-500/40',
+                presetActive(preset.key) ? 'border-brand-500 bg-brand-500/8' : 'border-line hover:border-brand-500/40',
               ]"
               @click="applyPreset(preset.key)"
             >
@@ -550,6 +640,16 @@ function discard(): void {
           </div>
           <NButton variant="secondary" size="sm" icon="+" @click="addFooterLink">Добавить ссылку</NButton>
         </div>
+
+        <div class="border-t border-line pt-4">
+          <p class="mb-2 text-sm text-content">Соцсети</p>
+          <div v-for="(link, index) in draft.footer.social" :key="index" class="mb-2 flex items-start gap-2">
+            <NInput v-model="link.label" placeholder="Телеграм" class="flex-1" />
+            <NInput v-model="link.url" placeholder="https://" class="w-32" />
+            <NButton variant="ghost" size="sm" aria-label="Удалить соцсеть" @click="removeSocial(index)">✕</NButton>
+          </div>
+          <NButton variant="secondary" size="sm" icon="+" @click="addSocial">Добавить соцсеть</NButton>
+        </div>
       </div>
     </div>
 
@@ -564,8 +664,41 @@ function discard(): void {
           </div>
         </div>
 
-        <!-- Внутри — настоящие виджеты витрины с кистями черновика -->
-        <div :style="previewVars" class="max-h-[75vh] overflow-y-auto bg-canvas">
+        <!-- Внутри — настоящие виджеты витрины с кистями черновика, плюс
+             шапка/подвал: иначе вкладка «Предпросмотр» показывала только
+             секции и обещала «как увидит покупатель», хотя покупатель ещё
+             видит брендинг, меню и копирайт. -->
+        <div
+          :style="previewVars"
+          :data-preview-surface="draft.theme.surface"
+          :class="[previewModeClass, 'max-h-[75vh] overflow-y-auto bg-canvas']"
+        >
+          <header class="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-3">
+            <span class="flex min-w-0 items-center gap-2.5">
+              <img
+                v-if="draft.branding.logoUrl"
+                :src="draft.branding.logoUrl"
+                :alt="draft.branding.name"
+                class="h-8 w-auto max-w-24 object-contain"
+              />
+              <span v-else class="grid h-8 w-8 place-items-center rounded-lg bg-brand-gradient text-sm font-bold text-brand-on">
+                {{ draft.branding.logoMark || draft.branding.name.slice(0, 1) }}
+              </span>
+              <span class="min-w-0">
+                <span class="block truncate text-sm font-bold text-content">{{ draft.branding.name }}</span>
+                <span class="block truncate text-2xs text-subtle">{{ draft.branding.tagline }}</span>
+              </span>
+            </span>
+            <span class="hidden flex-wrap gap-3 text-xs text-muted sm:flex">
+              <span v-for="(item, index) in draft.header.nav" :key="index">{{ item.label }}</span>
+            </span>
+            <span class="flex gap-2 text-xs text-subtle">
+              <span v-if="draft.header.showSearch">⌕</span>
+              <span v-if="draft.header.showCart">◯ Корзина</span>
+              <span v-if="draft.header.showThemeToggle">☾</span>
+            </span>
+          </header>
+
           <template v-for="section in draft.sections.filter((s) => s.visible)" :key="section.id">
             <SectionShell
               v-if="widgetComponent(section.type)"
@@ -579,6 +712,14 @@ function discard(): void {
           <p v-if="!draft.sections.filter((s) => s.visible).length" class="py-16 text-center text-sm text-subtle">
             Все секции скрыты — витрина пустая.
           </p>
+
+          <footer class="border-t border-line px-4 py-5 text-xs text-subtle">
+            <p>{{ draft.footer.text }}</p>
+            <p class="mt-2 flex flex-wrap gap-3">
+              <span v-for="(link, index) in draft.footer.links" :key="index">{{ link.label }}</span>
+              <span v-for="(link, index) in draft.footer.social" :key="`s${index}`" class="text-brand-500">{{ link.label }}</span>
+            </p>
+          </footer>
         </div>
       </div>
     </div>

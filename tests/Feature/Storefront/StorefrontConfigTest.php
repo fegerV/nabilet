@@ -322,6 +322,72 @@ final class StorefrontConfigTest extends TestCase
         self::assertSame('#222222', $this->service()->resolve((string) $second)['theme']['brand']);
     }
 
+    public function test_admin_is_told_what_the_normalizer_dropped(): void
+    {
+        $organizationId = $this->organization('Площадка');
+        [, $token] = $this->staff($organizationId, 'admin@example.test');
+
+        $sections = [];
+        for ($i = 0; $i < 45; $i++) {
+            $sections[] = ['type' => 'posters', 'settings' => ['limit' => 12]];
+        }
+
+        $response = $this->putJson('/api/v1/admin/storefront', [
+            'config' => [
+                'sections' => $sections,
+                'theme' => ['brand' => 'red; } html{display:none}'],
+                'footer' => ['text' => str_repeat('Очень длинный копирайт. ', 30)],
+            ],
+        ], $this->headers($token))->assertOk();
+
+        $warnings = implode(' ', $response->json('meta.warnings'));
+        self::assertStringContainsString('Секции', $warnings);
+        self::assertStringContainsString('40 из 45', $warnings);
+        self::assertStringContainsString('Основной цвет', $warnings);
+        self::assertStringContainsString('Копирайт', $warnings);
+        self::assertCount(40, $response->json('data.sections'));
+    }
+
+    public function test_reset_without_an_organization_removes_the_global_config(): void
+    {
+        $this->service()->save(null, ['branding' => ['name' => 'Глобальная витрина']]);
+        self::assertSame('Глобальная витрина', $this->service()->resolve(null)['branding']['name']);
+
+        $reset = $this->service()->reset(null);
+
+        self::assertSame('NABILET', $reset['branding']['name']);
+        self::assertSame('NABILET', $this->service()->resolve(null)['branding']['name']);
+        self::assertSame(0, DB::table('storefront_settings')->whereNull('organization_id')->count());
+    }
+
+    public function test_is_default_reflects_the_config_the_guest_really_sees(): void
+    {
+        $this->organization('Главная');
+        // Глобальная строка = organization_id NULL: именно её наследуют
+        // организации без своей записи.
+        $this->service()->save(null, ['branding' => ['name' => 'Кастом']]);
+
+        // У второй организации своей строки нет, но resolve() отдаст глобальный
+        // кастомный конфиг — метка «по умолчанию» была бы обманом.
+        $other = $this->organization('Другая');
+        [, $token] = $this->staff($other, 'other@example.test');
+
+        $response = $this->getJson('/api/v1/admin/storefront', $this->headers($token))->assertOk();
+
+        self::assertFalse($response->json('meta.is_default'));
+        self::assertSame('Кастом', $response->json('data.branding.name'));
+    }
+
+    public function test_public_config_reports_its_organization(): void
+    {
+        $organizationId = $this->organization('Площадка');
+        $this->service()->save((string) $organizationId, ['branding' => ['name' => 'Моя афиша']]);
+
+        $response = $this->getJson('/api/v1/storefront')->assertOk();
+
+        self::assertSame((string) $organizationId, $response->json('meta.organization_id'));
+    }
+
     // ── Фикстуры ──────────────────────────────────────────────────────────
 
     private function organization(string $name): int

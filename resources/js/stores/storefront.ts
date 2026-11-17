@@ -12,8 +12,11 @@ import { computed, ref } from 'vue'
 import { get, send } from '@/lib/api'
 import { applyTheme, resetTheme } from '@/lib/theme'
 import {
+  WIDGET_LABELS,
   defaultConfig,
+  defaultSettings,
   type StorefrontConfig,
+  type StorefrontSection,
   type ThemeConfig,
 } from '@/lib/storefront'
 
@@ -23,6 +26,9 @@ export const useStorefrontStore = defineStore('storefront', () => {
   const error = ref<string | null>(null)
   /** Конфиг ещё ни разу не сохранялся организацией — админка это покажет. */
   const isDefault = ref(true)
+  /** Организация, чью витрину видит гость, и организация, которую правит админ. */
+  const publicOrganizationId = ref<string | null>(null)
+  const editingOrganizationId = ref<string | null>(null)
 
   const sections = computed(() => config.value.sections.filter((s) => s.visible))
 
@@ -36,6 +42,7 @@ export const useStorefrontStore = defineStore('storefront', () => {
     error.value = null
     try {
       const res = await get<StorefrontConfig>('/storefront')
+      publicOrganizationId.value = (res as unknown as { meta?: { organization_id?: string | null } }).meta?.organization_id ?? null
       const data = res.data as unknown as { data?: StorefrontConfig } | StorefrontConfig
       const payload = (data as { data?: StorefrontConfig }).data ?? (data as StorefrontConfig)
       if (payload && Array.isArray(payload.sections)) {
@@ -50,15 +57,26 @@ export const useStorefrontStore = defineStore('storefront', () => {
     }
   }
 
+  /** Только мета публичной витрины — без применения темы к интерфейсу админки. */
+  async function loadPublicMeta(): Promise<void> {
+    try {
+      const res = await get<StorefrontConfig>('/storefront')
+      publicOrganizationId.value = (res as unknown as { meta?: { organization_id?: string | null } }).meta?.organization_id ?? null
+    } catch {
+      // Мета — подсказка, а не рабочие данные конструктора.
+    }
+  }
+
   /** Конфиг для конструктора (админ): отдельный эндпоинт, нужен флаг is_default. */
   async function loadAdmin(): Promise<void> {
     loading.value = true
     error.value = null
     try {
-      const res = await get<{ data: StorefrontConfig; meta?: { is_default?: boolean } }>('/admin/storefront')
-      const payload = res.data as unknown as { data?: StorefrontConfig; meta?: { is_default?: boolean } }
+      const res = await get<{ data: StorefrontConfig; meta?: { is_default?: boolean; organization_id?: string | null } }>('/admin/storefront')
+      const payload = res.data as unknown as { data?: StorefrontConfig; meta?: { is_default?: boolean; organization_id?: string | null } }
       config.value = mergeWithDefaults((payload.data ?? payload) as StorefrontConfig)
       isDefault.value = payload.meta?.is_default ?? false
+      editingOrganizationId.value = payload.meta?.organization_id ?? null
     } catch (e) {
       error.value = e instanceof Error ? e.message : String(e)
       config.value = defaultConfig()
@@ -67,17 +85,23 @@ export const useStorefrontStore = defineStore('storefront', () => {
     }
   }
 
-  async function save(next: StorefrontConfig): Promise<boolean> {
+  /**
+   * Сохранение возвращает не только успех, но и предупреждения нормализации:
+   * сервер отбрасывает лишнее (лимиты, небезопасные значения), и администратор
+   * обязан увидеть это сразу, а не после перезагрузки страницы.
+   */
+  async function save(next: StorefrontConfig): Promise<{ ok: boolean; warnings: string[] }> {
     try {
       const res = await send<StorefrontConfig>('/admin/storefront', 'PUT', { config: next })
       const payload = res.data as unknown as { data?: StorefrontConfig } | StorefrontConfig
       const saved = (payload as { data?: StorefrontConfig }).data ?? (payload as StorefrontConfig)
+      const warnings = (res as unknown as { meta?: { warnings?: string[] } }).meta?.warnings ?? []
       config.value = mergeWithDefaults(saved)
       isDefault.value = false
       apply()
-      return true
+      return { ok: true, warnings }
     } catch {
-      return false
+      return { ok: false, warnings: [] }
     }
   }
 
@@ -111,7 +135,10 @@ export const useStorefrontStore = defineStore('storefront', () => {
     loading,
     error,
     isDefault,
+    publicOrganizationId,
+    editingOrganizationId,
     load,
+    loadPublicMeta,
     loadAdmin,
     save,
     reset,
@@ -134,8 +161,45 @@ function mergeWithDefaults(payload: StorefrontConfig): StorefrontConfig {
     version: 1,
     theme: { ...base.theme, ...(payload.theme ?? {}) },
     branding: { ...base.branding, ...(payload.branding ?? {}) },
-    header: { ...base.header, ...(payload.header ?? {}) },
-    footer: { ...base.footer, ...(payload.footer ?? {}) },
-    sections: Array.isArray(payload.sections) ? payload.sections : base.sections,
+    header: {
+      ...base.header,
+      ...(payload.header ?? {}),
+      nav: Array.isArray(payload.header?.nav) ? payload.header.nav : base.header.nav,
+    },
+    footer: {
+      ...base.footer,
+      ...(payload.footer ?? {}),
+      links: Array.isArray(payload.footer?.links) ? payload.footer.links : base.footer.links,
+      social: Array.isArray(payload.footer?.social) ? payload.footer.social : base.footer.social,
+    },
+    // ДОПОЛНЯЕМ КАЖДУЮ СЕКЦИЮ дефолтами её виджета, а не только верхние ветки:
+    // старый/урезанный конфиг без `settings.columns` не должен ронять виджет.
+    sections: mergeSections(Array.isArray(payload.sections) ? payload.sections : null, base.sections),
   }
+}
+
+function mergeSections(payload: unknown[] | null, fallback: StorefrontSection[]): StorefrontSection[] {
+  if (!payload) return fallback.map((section) => ({ ...section, settings: { ...section.settings } }))
+
+  const merged: StorefrontSection[] = []
+  for (const [index, raw] of payload.entries()) {
+    if (!raw || typeof raw !== 'object') continue
+    const item = raw as Partial<StorefrontSection>
+    const type = item.type
+    if (!type || !(type in WIDGET_LABELS)) continue
+
+    merged.push({
+      id: typeof item.id === 'string' && item.id ? item.id : `sec_${type}_${index}`,
+      type,
+      visible: item.visible !== false,
+      title: typeof item.title === 'string' ? item.title : '',
+      subtitle: typeof item.subtitle === 'string' ? item.subtitle : '',
+      settings: {
+        ...defaultSettings(type),
+        ...(item.settings && typeof item.settings === 'object' ? item.settings : {}),
+      },
+    })
+  }
+
+  return merged
 }

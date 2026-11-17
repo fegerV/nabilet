@@ -97,7 +97,7 @@
    * «чистая» (белая, под печать и лайт-бренды) и принудительно тёмная.
    * Атрибут на <html> перекрывает тему, потому что это выбор витрины,
    * а не системная настройка пользователя. */
-  html[data-surface='clean'] {
+  :is(html[data-surface='clean'], [data-preview-surface='clean']) {
     --canvas: 255 255 255;
     --surface: 255 255 255;
     --surface-2: 250 250 252;
@@ -109,7 +109,7 @@
     --content-subtle: 111 116 133;
   }
 
-  html[data-surface='dark'] {
+  :is(html[data-surface='dark'], [data-preview-surface='dark']) {
     --canvas: 11 9 24;
     --surface: 23 19 49;
     --surface-2: 18 15 36;

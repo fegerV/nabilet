@@ -1860,6 +1860,105 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '422': { $ref: '#/components/responses/ValidationError' }
 
+  /api/v1/storefront:
+    get:
+      tags: [Storefront]
+      summary: Public storefront configuration (sections, theme, branding, header, footer)
+      operationId: showStorefrontConfig
+      responses:
+        '200':
+          description: Storefront config and the organization it belongs to
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data: { type: object }
+                  meta:
+                    type: object
+                    properties:
+                      organization_id: { type: string, nullable: true }
+
+  /api/v1/admin/storefront/schema:
+    get:
+      tags: [Storefront]
+      summary: Widget registry, palettes and default config for the page builder
+      operationId: storefrontSchema
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Builder reference data }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/v1/admin/storefront:
+    get:
+      tags: [Storefront]
+      summary: Storefront config for editing
+      operationId: editStorefront
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Config with is_default flag
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data: { type: object }
+                  meta:
+                    type: object
+                    properties:
+                      organization_id: { type: string, nullable: true }
+                      is_default: { type: boolean }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    put:
+      tags: [Storefront]
+      summary: Save storefront config
+      description: >-
+        The config is normalized server-side; values that cannot be accepted are
+        replaced or dropped. See meta.warnings for a human-readable list.
+      operationId: updateStorefront
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [config]
+              properties:
+                config: { type: object }
+      responses:
+        '200':
+          description: Saved config and normalization warnings
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: object }
+                  meta:
+                    type: object
+                    properties:
+                      warnings:
+                        type: array
+                        items: { type: string }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '500': { description: Storefront save failed }
+
+  /api/v1/admin/storefront/reset:
+    post:
+      tags: [Storefront]
+      summary: Reset the storefront to defaults
+      operationId: resetStorefront
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Default config }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
   /api/v1/pages/{page}/translations:
     get:
       tags: [Translations]

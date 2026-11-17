@@ -103,12 +103,12 @@ export interface WidgetMeta {
 
 export const WIDGETS: WidgetMeta[] = [
   { type: 'hero', label: 'Герой-баннер', icon: '◈', hint: 'Первый экран: заголовок, подзаголовок, кнопка', once: true },
-  { type: 'posters', label: 'Афиша', icon: '▦', hint: 'Сетка мероприятий с фильтрами по категориям', once: false },
+  { type: 'posters', label: 'Афиша мероприятий', icon: '▦', hint: 'Сетка мероприятий с фильтрами по категориям', once: false },
   { type: 'featured', label: 'Подборка', icon: '★', hint: 'Карусель или сетка выбранных событий', once: false },
   { type: 'categories', label: 'Категории', icon: '◍', hint: 'Чипсы или плитки жанров', once: false },
   { type: 'countdown', label: 'Обратный отсчёт', icon: '◷', hint: 'Таймер до ближайшего события', once: false },
   { type: 'promo', label: 'Промо-полоса', icon: '◊', hint: 'Акция, промокод или призыв к действию', once: false },
-  { type: 'richtext', label: 'Текст', icon: '¶', hint: 'Свободный абзац: о площадке, правила, оферта', once: false },
+  { type: 'richtext', label: 'Текстовый блок', icon: '¶', hint: 'Свободный абзац: о площадке, правила, оферта', once: false },
   { type: 'faq', label: 'Вопросы', icon: '?', hint: 'Раскрывающийся список вопросов и ответов', once: false },
   { type: 'stats', label: 'Цифры', icon: '▲', hint: 'Показатели: мероприятия, города, билеты', once: false },
   { type: 'subscribe', label: 'Подписка', icon: '✉', hint: 'Форма сбора e-mail на рассылку афиши', once: false },
@@ -221,17 +221,35 @@ export function defaultConfig(): StorefrontConfig {
       ],
       social: [],
     },
+    // Зеркало StorefrontService::defaultConfig() (бэкенд — источник правды).
+    // hero и featured остаются в палитре виджетов, но НЕ входят в дефолт:
+    // на телефоне крупный баннер отодвигал афишу за первый экран. Расхождение
+    // этого списка с бэкендом означало разные дефолты в витрине и конструкторе.
     sections: [
-      {
-        ...createSection('hero'),
-        settings: defaultSettings('hero'),
-      },
-      { ...createSection('categories'), title: 'Куда пойти' },
       { ...createSection('posters'), title: 'Афиша', subtitle: 'Ближайшие мероприятия' },
-      { ...createSection('featured'), title: 'Рекомендуем', subtitle: 'То, что стоит увидеть' },
-      { ...createSection('promo') },
+      { ...createSection('categories'), title: 'Куда пойти' },
+      {
+        ...createSection('promo'),
+        settings: {
+          tone: 'brand',
+          title: 'Организаторам',
+          text: 'Подключите продажи на своей площадке: схема зала, свой брендинг и контроль на входе.',
+          buttonLabel: 'Подключить площадку',
+          buttonLink: '/admin',
+          code: '',
+        },
+      },
       { ...createSection('stats') },
-      { ...createSection('subscribe') },
+      {
+        ...createSection('subscribe'),
+        settings: {
+          title: 'Узнавайте о событиях первыми',
+          text: 'Рассказываем о премьерах и открытых продажах. Без спама.',
+          placeholder: 'E-mail',
+          buttonLabel: 'Подписаться',
+          privacy: 'Нажимая кнопку, вы соглашаетесь с политикой обработки данных.',
+        },
+      },
     ],
   }
 }

@@ -31,6 +31,14 @@ function set(key: string, value: unknown): void {
   settings.value[key] = value
 }
 
+/** Числовое поле: пустой ввод = дефолт, остальное клампится как на сервере. */
+function setNumber(key: string, raw: unknown, min: number, max: number, fallback: number): void {
+  const text = String(raw ?? '').trim()
+  const n = text === '' ? fallback : Number(text)
+  if (!Number.isFinite(n)) return
+  set(key, Math.min(max, Math.max(min, Math.round(n))))
+}
+
 /* ── Списковые поля ─────────────────────────────────────────────────────── */
 
 interface LabeledItem {
@@ -188,10 +196,10 @@ const OPTIONS = {
         <div class="space-y-4">
           <div class="grid gap-3 sm:grid-cols-2">
             <NSelect :model-value="get('layout', 'grid')" label="Раскладка" :options="OPTIONS.layout" @update:model-value="set('layout', $event)" />
-            <NSelect :model-value="String(get('columns', 3))" label="Колонок" :options="OPTIONS.columns" @update:model-value="set('columns', Number($event))" />
+            <NSelect :model-value="String(get('columns', 3))" label="Колонок" :options="OPTIONS.columns" @update:model-value="setNumber('columns', $event, 2, 4, 3)" />
           </div>
           <div class="grid gap-3 sm:grid-cols-2">
-            <NInput :model-value="String(get('limit', 12))" label="Сколько событий" type="number" min="1" max="60" @update:model-value="set('limit', Number($event))" />
+            <NInput :model-value="String(get('limit', 12))" label="Сколько событий" type="number" min="1" max="60" @update:model-value="setNumber('limit', $event, 1, 60, 12)" />
             <NSelect :model-value="get('sort', 'date')" label="Сортировка" :options="OPTIONS.sort" @update:model-value="set('sort', $event)" />
           </div>
           <NInput :model-value="get('category', '')" label="Только категория" hint="Пусто — все категории" @update:model-value="set('category', $event)" />
@@ -206,7 +214,7 @@ const OPTIONS = {
             <NSelect :model-value="get('source', 'upcoming')" label="Источник" :options="OPTIONS.featuredSource" @update:model-value="set('source', $event)" />
             <NSelect :model-value="get('layout', 'carousel')" label="Раскладка" :options="OPTIONS.carousel" @update:model-value="set('layout', $event)" />
           </div>
-          <NInput :model-value="String(get('limit', 6))" label="Сколько событий" type="number" min="1" max="24" @update:model-value="set('limit', Number($event))" />
+          <NInput :model-value="String(get('limit', 6))" label="Сколько событий" type="number" min="1" max="24" @update:model-value="setNumber('limit', $event, 1, 24, 6)" />
 
           <div v-if="get<string>('source', 'upcoming') === 'manual'">
             <p class="mb-2 text-sm text-content">Выберите события</p>

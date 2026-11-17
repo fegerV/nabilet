@@ -41,7 +41,10 @@ class StorefrontController
         $cached = Cache::get($cacheKey);
 
         if (is_array($cached)) {
-            return response()->json(['data' => $cached]);
+            return response()->json([
+                'data' => $cached,
+                'meta' => ['organization_id' => $organizationId],
+            ]);
         }
 
         $config = $this->storefront->resolve($organizationId);
@@ -50,6 +53,10 @@ class StorefrontController
 
         return response()->json([
             'data' => $config,
+            // Админка сверяет свою организацию с той, чью витрину видит гость:
+            // при нескольких площадках «Открыть витрину» иначе показывает
+            // чужой конфиг, и правки выглядят несохранёнными.
+            'meta' => ['organization_id' => $organizationId],
         ]);
     }
 
@@ -90,7 +97,9 @@ class StorefrontController
             'data' => $this->storefront->resolve($organizationId),
             'meta' => [
                 'organization_id' => $organizationId,
-                'is_default' => $this->storefront->isDefault($organizationId),
+                // Не «есть ли строка», а «что реально видит витрина»: у организации
+                // без своей строки может быть глобальный кастомный конфиг.
+                'is_default' => $this->storefront->sourceIsDefault($organizationId),
             ],
         ]);
     }
@@ -133,6 +142,10 @@ class StorefrontController
             'meta' => [
                 'organization_id' => $organizationId,
                 'is_default' => false,
+                // Нормализация отбрасывает лишнее по соображениям безопасности.
+                // Без предупреждений администратор думает, что сохранил всё,
+                // и видит пропавшие правки только после перезагрузки.
+                'warnings' => $this->storefront->normalizationWarnings($payload, $config),
             ],
         ]);
     }
