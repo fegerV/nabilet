@@ -50,8 +50,10 @@ interface RowEntry {
   /** Минимум/максимум по ряду: в ряду бывают VIP-места с индивидуальной ценой. */
   minMinor: number
   maxMinor: number
-  /** Цены внутри ряда различаются — единая цена ряда их выровняет. */
+  /** Цены внутри ряда различаются — в ряду есть места со своей ценой из схемы. */
   mixed: boolean
+  /** Сколько свободных мест ряда имеют свою цену в схеме (VIP и т.п.). */
+  individualCount: number
   /** Введленная цена в рублях ('' — не менять). */
   priceRub: string
 }
@@ -116,8 +118,10 @@ async function load(): Promise<void> {
         existing.minMinor = Math.min(existing.minMinor, price)
         existing.maxMinor = Math.max(existing.maxMinor, price)
         // Разные цены внутри ряда — это VIP-место из схемы, а не ошибка.
-        // Показываем диапазон, чтобы применение цены ряда не выровняло его молча.
+        // Показываем диапазон и счётчик: цена ряда НЕ перезаписывает такие
+        // места (приоритет «место → ряд → сектор»), это надо видеть заранее.
         if (price !== existing.currentMinor) existing.mixed = true
+        if (Number(item.seat?.price_amount ?? 0) > 0) existing.individualCount += 1
         continue
       }
       byKey.set(key, {
@@ -135,6 +139,7 @@ async function load(): Promise<void> {
         minMinor: price,
         maxMinor: price,
         mixed: false,
+        individualCount: isStanding ? 0 : Number(item.seat?.price_amount ?? 0) > 0 ? 1 : 0,
         priceRub: '',
       })
     }
@@ -194,11 +199,19 @@ async function apply(): Promise<void> {
       }))
     // Контракт: PATCH /inventory/sessions/{id}/prices отдаёт { data: {...} };
     // send<D>() уже типизирован как Promise<{ data: D }>, поэтому D — сама статистика.
-    const res = await send<{ rows_updated: number; items_updated: number; cart_items_updated: number }>(
+    const res = await send<{
+      rows_updated: number
+      items_updated: number
+      items_kept_individual: number
+      cart_items_updated: number
+    }>(
       `/inventory/sessions/${sessionId.value}/prices`, 'PATCH', { rows: payloadRows, session_only: sessionOnly.value },
     )
     const d = res.data
     savedSummary.value = `Обновлено: ${rowsLabel(d.rows_updated)}, ${seatsLabel(d.items_updated)}, ${plural(d.cart_items_updated, 'позиция', 'позиции', 'позиций')} в корзинах.`
+      + (d.items_kept_individual > 0
+        ? ` ${d.items_kept_individual} ${plural(d.items_kept_individual, 'место', 'места', 'мест')} со своей ценой из схемы (VIP и др.) не изменены.`
+        : '')
       + (sessionOnly.value
         ? ' Цены применены только к этому сеансу — сетка зала не тронута.'
         : ' Цены также записаны в сетку зала и унаследуются будущими сеансами.')
@@ -243,7 +256,7 @@ onMounted(load)
       <div class="flex items-start justify-between gap-4">
         <span class="text-sm text-muted">
           Цены в рублях. Пустое поле — не менять. Холды и проданные билеты сохраняют свою цену.
-          Если в ряду цены разные (VIP-место из схемы), цена ряда выровняет их — это видно по диапазону «сейчас».
+          Места со своей ценой в схеме (VIP и др.) цена ряда НЕ меняет — они отмечены в строке ряда.
         </span>
         <button type="button" class="shrink-0 text-sm text-brand-500 hover:underline" @click="fillCurrent">Подставить текущие</button>
       </div>
@@ -269,6 +282,9 @@ onMounted(load)
             <!-- `amber` — дефолтная палитра Tailwind: рисуется, но обходит
                  семантику проекта, где «внимание» — это `sun`. -->
             <span v-if="r.mixed" class="ml-1 text-sun-500">разные цены</span>
+            <span v-if="r.individualCount" class="ml-1 text-subtle">
+              · {{ plural(r.individualCount, 'место со своей ценой', 'места со своей ценой', 'мест со своей ценой') }} — не изменится
+            </span>
           </div>
         </div>
         <NInput v-model="r.priceRub" label="Новая цена, ₽" type="number" min="0" step="0.01" placeholder="не менять" class="w-40" />

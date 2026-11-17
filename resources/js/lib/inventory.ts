@@ -63,6 +63,13 @@ export interface InventoryItem {
     type?: string
     x?: number | string
     y?: number | string
+    /**
+     * Индивидуальная цена места из схемы зала (копейки), `null` — место
+     * наследует цену ряда. `InventoryController::index()` отдаёт её вместе с
+     * моделью `Seat`; админка цен по рядам использует её, чтобы не затирать
+     * VIP-места ценой ряда.
+     */
+    price_amount?: number | null
   } | null
 }
 

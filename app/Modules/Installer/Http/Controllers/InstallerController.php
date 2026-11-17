@@ -17,6 +17,7 @@ use Nabilet\Core\Support\PublicationStatus;
 use Nabilet\Modules\Core\Support\PublicId;
 use Nabilet\Modules\Core\Users\Domain\UserStatus;
 use Nabilet\Modules\Installer\Support\PreinstallAppKey;
+use Nabilet\Modules\Installer\Support\SetupArtifactCleaner;
 
 /**
  * InstallerController — пошаговый установщик системы для шаред-хостинга.
@@ -263,14 +264,15 @@ ENV;
                 Artisan::call('key:generate', ['--force' => true]);
             }
 
-            // Шаг 9: Блокировка повторной установки
-            $this->markAsInstalled();
+            // Шаг 9: Блокировка повторной установки и зачистка следов развёртывания.
+            $removed = $this->markAsInstalled();
 
             Log::info('Installer: Система успешно установлена', [
                 'app_name' => $validated['app_name'],
                 'app_url' => $validated['app_url'],
                 'db_host' => $validated['db_host'],
                 'admin_email' => $validated['admin_email'],
+                'removed_setup_files' => $removed,
             ]);
 
             return response()->json([
@@ -280,6 +282,10 @@ ENV;
                 // роутинге, `/admin` отдаёт SPA-оболочку на белом списке путей
                 // (routes/web.php). До 1.2.0 здесь был hash-адрес `/#/admin`.
                 'redirect' => '/admin',
+                // Что именно убрали с диска после установки. Пустой список —
+                // норма: в архиве этих файлов нет, они появляются только руками
+                // хостера/администратора (см. SetupArtifactCleaner).
+                'removed_setup_files' => $removed,
             ]);
 
         } catch (ValidationException $e) {
@@ -809,9 +815,16 @@ ENV;
     }
 
     /**
-     * Пометить систему как установленную
+     * Пометить систему как установленную и закрыть за собой все входы.
+     *
+     * Порядок важен: сначала lock (новые запросы уже увидят «установлено»),
+     * потом зачистка файлов, потом сброс кеша маршрутов — иначе запрос,
+     * попавший в окно между записью lock и `route:clear`, доехал бы до
+     * закешированного маршрута `/install` и увидел бы страницу мастера.
+     *
+     * @return list<string> удалённые диагностические файлы/каталоги
      */
-    private function markAsInstalled(): void
+    private function markAsInstalled(): array
     {
         File::put(storage_path('install.lock'), now()->toIso8601String());
         Log::info('Installer: Система помечена как установленная');
@@ -821,5 +834,21 @@ ENV;
         // падать громко (fail-loud) — временная подмена условия не ослабляет.
         // Оставленный файл был бы мёртвым грузом в списке «что это за файл».
         File::delete(PreinstallAppKey::persistencePath());
+
+        // info.php / phpinfo.php / legacy-каталог install — не часть архива,
+        // но после выкладки живут в docroot и открываются напрямую, минуя
+        // Laravel. Удаляем по белому списку имён (SetupArtifactCleaner).
+        $removed = SetupArtifactCleaner::make()->purge();
+        if ($removed !== []) {
+            Log::info('Installer: удалены файлы развёртывания', ['paths' => $removed]);
+        }
+
+        // Маршруты установщика регистрируются только без install.lock
+        // (routes/web.php). Если маршруты были закешированы до установки,
+        // кеш надо сбросить — иначе /install останется доступен до следующей
+        // очистки кеша вручную.
+        Artisan::call('route:clear');
+
+        return $removed;
     }
 }

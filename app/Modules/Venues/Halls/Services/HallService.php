@@ -612,10 +612,13 @@ class HallService
                 }
 
                 if ($this->isPositiveInt($rowNo)) {
-                    // Действующая цена места: приоритет «место → ряд → сектор»
-                    // принадлежит SchemaPrice, здесь проверяется только
-                    // продажность результата.
-                    $effectivePrice = SchemaPrice::forRow($rowNo, $sector);
+                    // Действующая цена места: приоритет «место → ряд → сектор».
+                    // Раньше вызывался только forRow(), то есть цена самого
+                    // места игнорировалась: схема, где все места продаются по
+                    // индивидуальной цене (VIP/столы) без цены сектора,
+                    // отвергалась как непродаваемая. Теперь цепочка полная.
+                    $effectivePrice = SchemaPrice::seatOverride($seat['priceMinor'] ?? null)
+                        ?? SchemaPrice::forRow($rowNo, $sector);
                     if ($effectivePrice === null || !$effectivePrice->isSellable()) {
                         $errors["sectors.$i.seats.$j.priceMinor"] = [
                             'Every sellable seat must resolve to a positive integer price in minor units',
@@ -696,9 +699,25 @@ class HallService
                     continue;
                 }
                 $rowSeats = is_array($row['seats'] ?? null) ? $row['seats'] : [];
-                if ($rowSeats !== [] && !$this->isPositiveInt($row['price_amount'] ?? null)) {
+                // Цена ряда обязательна, только если хоть одно место НЕ имеет
+                // своей цены: иначе «место → ряд → сектор» обрывался бы на
+                // нуле. Ряд, целиком состоящий из индивидуально оценённых
+                // мест (VIP-ряд, банкетный стол), валиден без цены ряда.
+                $hasInheritingSeat = false;
+                foreach ($rowSeats as $rowSeat) {
+                    if (! is_array($rowSeat)) {
+                        continue;
+                    }
+                    $ownPrice = $rowSeat['price_amount'] ?? $rowSeat['price'] ?? null;
+                    if ($ownPrice === null || ! $this->isPositiveInt($ownPrice)) {
+                        $hasInheritingSeat = true;
+                        break;
+                    }
+                }
+                if ($hasInheritingSeat && ! $this->isPositiveInt($row['price_amount'] ?? null)) {
                     $errors["sectors.$i.rows.$rowNo.price_amount"] = [
-                        'Every sellable row must have a positive integer price_amount in minor units',
+                        'Every sellable row must have a positive integer price_amount in minor units '
+                        . '(unless every seat in it has its own positive price)',
                     ];
                 }
 

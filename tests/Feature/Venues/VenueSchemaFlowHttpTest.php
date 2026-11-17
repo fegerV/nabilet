@@ -283,4 +283,81 @@ final class VenueSchemaFlowHttpTest extends TestCase
             (int) DB::table('sessions')->where('id', $sessionId)->value('schema_version_id'),
         );
     }
+
+    /**
+     * Сквозной сценарий «мероприятие → два концерта → разные цены»
+     * (аудит ценовых групп 2026-11-18).
+     *
+     * Схема задаёт три ценовые группы: сектор 5000 ₽, ряд 7000 ₽ и одно
+     * VIP-место 9000 ₽. Первый сеанс переоценивает РЯД до 12000 ₽ только для
+     * себя; второй сеанс того же зала должен получить базовые 7000/9000 ₽,
+     * а витрина (`GET /inventory`) — показать цены именно первого концерта.
+     */
+    public function test_each_concert_gets_its_own_prices_from_the_same_schema(): void
+    {
+        $organizationId = $this->seedOrganization();
+        $this->actingAsStaff($organizationId);
+
+        $venue = $this->postJson('/api/v1/venues', ['name' => 'Концертный зал'])->assertCreated();
+        $venueId = (int) $venue->json('data.id');
+        $hallPublicId = (string) $venue->json('hall.public_id');
+        $hallId = (int) DB::table('halls')->where('public_id', $hallPublicId)->value('id');
+
+        $payload = $this->schemaPayload(500000, 2);
+        $payload['sectors'][0]['rowPrices'] = [1 => 700000];
+        $payload['sectors'][0]['seats'][0]['priceMinor'] = 900000;
+        $this->publishSchemaViaHttp($hallPublicId, $payload);
+
+        $event = $this->postJson('/api/v1/events', [
+            'slug' => 'concert-price-flow-' . Str::lower(Str::random(8)),
+            'title' => 'Концерт с разными ценами',
+        ])->assertCreated();
+        $eventId = (int) $event->json('data.id');
+
+        $sessionId = (int) $this->postJson('/api/v1/sessions', [
+            'event_id' => $eventId,
+            'venue_id' => $venueId,
+            'hall_id' => $hallId,
+            'starts_at' => '2026-12-01 19:00:00',
+        ])->assertCreated()->json('data.id');
+
+        $pricesOf = static fn (int $id): array => DB::table('inventory_items')
+            ->where('session_id', $id)
+            ->join('seats', 'seats.id', '=', 'inventory_items.seat_id')
+            ->orderBy('seats.number')
+            ->pluck('inventory_items.price_amount')
+            ->map(static fn ($p) => (int) $p)
+            ->all();
+
+        self::assertSame([900000, 700000], $pricesOf($sessionId), 'ценовые группы из схемы не доехали в инвентарь');
+
+        $rowId = (int) DB::table('hall_rows')
+            ->join('sectors', 'sectors.id', '=', 'hall_rows.sector_id')
+            ->where('sectors.schema_version_id', DB::table('sessions')->where('id', $sessionId)->value('schema_version_id'))
+            ->value('hall_rows.id');
+
+        $this->patchJson("/api/v1/inventory/sessions/{$sessionId}/prices", [
+            'rows' => [['row_id' => $rowId, 'price_amount' => 1200000]],
+            'session_only' => true,
+        ])->assertOk()
+            ->assertJsonPath('data.session_only', true)
+            ->assertJsonPath('data.items_kept_individual', 1);
+
+        self::assertSame([900000, 1200000], $pricesOf($sessionId));
+
+        // Витрина читает тот же инвентарь: покупатель видит цены концерта.
+        $storefront = $this->getJson("/api/v1/inventory?session_id={$sessionId}")->assertOk();
+        self::assertSame([900000, 1200000], collect($storefront->json('data.data'))
+            ->pluck('price_amount')->map(static fn ($p) => (int) $p)->all());
+
+        // Второй концерт в том же зале: базовая сетка схемы, без разовой лесенницы.
+        $secondId = (int) $this->postJson('/api/v1/sessions', [
+            'event_id' => $eventId,
+            'venue_id' => $venueId,
+            'hall_id' => $hallId,
+            'starts_at' => '2026-12-02 19:00:00',
+        ])->assertCreated()->json('data.id');
+
+        self::assertSame([900000, 700000], $pricesOf($secondId), 'цены первого концерта протекли во второй');
+    }
 }

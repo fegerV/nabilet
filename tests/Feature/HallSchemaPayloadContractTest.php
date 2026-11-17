@@ -151,6 +151,27 @@ final class HallSchemaPayloadContractTest extends TestCase
         self::assertMatchesRegularExpression('/"rowPrices":\s*\{\s*"1":\s*150000,\s*"2":\s*90000\s*\}/', $json);
     }
 
+    /**
+     * Ценовая группа может быть описана ценами самих мест: если у КАЖДОГО
+     * места ряда есть своя положительная цена, цена сектора/ряда не нужна.
+     * Раньше валидатор смотрел только `forRow()` и отвергал такую схему.
+     */
+    public function test_schema_with_individual_seat_prices_and_no_sector_price_is_valid(): void
+    {
+        $payload = $this->payload();
+        unset($payload['sectors'][0]['priceMinor']);
+        foreach ($payload['sectors'][0]['seats'] as &$seat) {
+            $seat['priceMinor'] = 900_000;
+        }
+        unset($seat);
+
+        $draft = $this->scoped(fn () => $this->service->createSchemaDraft($this->hall, $payload, 1));
+
+        self::assertNotNull($draft);
+        self::assertSame($payload['sectors'][0]['seats'][0]['priceMinor'],
+            $this->scoped(fn () => $draft->fresh()->schema_json)['sectors'][0]['seats'][0]['priceMinor']);
+    }
+
     public function test_normalization_does_not_touch_other_payload_fields(): void
     {
         $payload = $this->payload();

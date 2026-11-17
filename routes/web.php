@@ -168,8 +168,16 @@ if (file_exists(__DIR__ . '/../app/Modules/Content/routes/web.php')) {
  * Installer (мастер установки, WordPress-стиль): /install
  * Грузится из web-роутов (а не api), чтобы URL был чистым — /install без
  * api/v1-префикса, и маршрут попадал в web-группу (сессии,共享错误), а не в api.
+ *
+ * ПОСЛЕ УСТАНОВКИ МАРШРУТОВ НЕТ ВООБЩЕ. Раньше они оставались зарегистрированными
+ * и отвечали 302/403 — то есть существование мастера всё ещё было видно, а при
+ * ошибке в контроллере страница установки могла открыться снова. Теперь presence
+ * `storage/install.lock` решает вопрос на этапе загрузки маршрутов: /install
+ * попадает в брендированную 404. `markAsInstalled()` дополнительно сбрасывает
+ * кеш маршрутов, чтобы это правило подействовало и на закешированном сайте.
  */
-if (file_exists(__DIR__ . '/../app/Modules/Installer/routes/web.php')) {
+if (! file_exists(storage_path('install.lock'))
+    && file_exists(__DIR__ . '/../app/Modules/Installer/routes/web.php')) {
     require __DIR__ . '/../app/Modules/Installer/routes/web.php';
 }
 

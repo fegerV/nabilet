@@ -62,6 +62,13 @@ function http(string $method, string $url, array $post = [], array $headers = []
 
 // ── ДО установки ─────────────────────────────────────────────────────────────
 
+// Симулируем следы ручной выкладки: хостер/админ кладёт info.php в docroot,
+// а из старой версии может остаться каталог install/ с точкой входа. Оба
+// должны исчезнуть САМИ после успешной установки (SetupArtifactCleaner).
+@mkdir($siteDir . '/install', 0777, true);
+file_put_contents($siteDir . '/info.php', "<?php phpinfo();\n");
+file_put_contents($siteDir . '/install/index.php', "<?php echo 'legacy installer';\n");
+
 [$status, $body, $head] = http('GET', $base . '/install');
 check('GET /install -> 200 HTML', $status === 200 && (str_contains($body, '<!DOCTYPE') || str_contains($body, '<html')), 'status=' . $status);
 
@@ -155,8 +162,15 @@ check('POST /install -> 200 success:true', $status === 200 && str_contains($body
 // v1.1.2: ответ POST /install — чистый JSON, без посторонних баннеров.
 $trimmed = trim((string) $body);
 check('POST /install ответ начинается с { (JSON без посторонних баннеров)', $trimmed !== '' && $trimmed[0] === '{', 'first=' . substr($trimmed, 0, 20));
-json_decode($trimmed, true);
+$installResponse = json_decode($trimmed, true);
 check('POST /install ответ валидный JSON', json_last_error() === JSON_ERROR_NONE, 'err=' . json_last_error_msg());
+check(
+    'POST /install сообщает, что удалил info.php и install/',
+    is_array($installResponse)
+        && in_array('info.php', $installResponse['removed_setup_files'] ?? [], true)
+        && in_array('install/', $installResponse['removed_setup_files'] ?? [], true),
+    'removed=' . json_encode($installResponse['removed_setup_files'] ?? [], JSON_UNESCAPED_UNICODE)
+);
 
 // ── ПОСЛЕ установки ──────────────────────────────────────────────────────────
 
@@ -168,6 +182,10 @@ check('.env: DB_CHARSET/DB_COLLATION заполнены', str_contains($env, 'DB
 check('.env: APP_KEY сгенерирован', (bool) preg_match('/^APP_KEY=base64:.+/m', $env));
 
 check('storage/install.lock существует', is_file($siteDir . '/storage/install.lock'));
+
+// Автоматическая зачистка после установки (исправление 2026-11-18).
+check('info.php удалён после установки', ! file_exists($siteDir . '/info.php'));
+check('legacy-каталог install/ удалён после установки', ! file_exists($siteDir . '/install'));
 
 // БД: таблицы и переизданный CHECK
 $pdo = new PDO('mysql:host=127.0.0.1;port=3307', 'installer', 'installerpass', [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
@@ -202,17 +220,23 @@ check('config/nabilet.php: версия прочитана', $expectedVersion !=
 [$status, $body, $head] = http('GET', $base . '/api/v1/health', [], ['Accept: application/json']);
 check("/api/v1/health -> 200 и версия $expectedVersion", $status === 200 && $expectedVersion !== '' && str_contains($body, $expectedVersion), 'status=' . $status . ' body=' . substr($body, 0, 200));
 
+// Маршруты мастера после установки НЕ регистрируются вовсе (routes/web.php
+// проверяет install.lock) — ожидаем 404, а не 302/403. 404 здесь важнее:
+// он не подтверждает постороннему, что когда-то здесь был установщик.
 [$status, $body, $head] = http('GET', $base . '/install');
-check('GET /install (HTML) после установки -> 302 на /', $status === 302 && preg_match('/^Location: .*\//m', $head) === 1, 'status=' . $status);
+check('GET /install (HTML) после установки -> 404', $status === 404, 'status=' . $status);
 
 [$status, $body, $head] = http('GET', $base . '/install', [], ['Accept: application/json']);
-check('GET /install (JSON) после установки -> 403 ALREADY_INSTALLED', $status === 403 && str_contains($body, 'ALREADY_INSTALLED'), 'status=' . $status);
+check('GET /install (JSON) после установки -> 404', $status === 404, 'status=' . $status);
 
 [$status, $body, $head] = http('GET', $base . '/install/log', [], ['Accept: application/json']);
-check('GET /install/log после установки -> 403 (журнал закрыт)', $status === 403 && str_contains($body, 'ALREADY_INSTALLED'), 'status=' . $status);
+check('GET /install/log после установки -> 404 (журнал закрыт)', $status === 404, 'status=' . $status);
 
 [$status, $body, $head] = http('POST', $base . '/install', $payload, ['Accept: application/json']);
-check('повторный POST /install -> 403 ALREADY_INSTALLED', $status === 403 && str_contains($body, 'ALREADY_INSTALLED'), 'status=' . $status);
+// Route::fallback() в Laravel регистрируется только на GET, поэтому POST без
+// маршрута даёт 405. Главное — ни 200, ни 403 «ALREADY_INSTALLED»: мастера
+// больше нет даже как ресурса.
+check('повторный POST /install -> 405 (маршрута нет)', $status === 405, 'status=' . $status);
 
 [$status, $body, $head] = http('GET', $base . '/');
 check('витрина GET / -> 200', $status === 200, 'status=' . $status);

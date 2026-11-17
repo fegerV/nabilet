@@ -320,6 +320,71 @@ export function seatsInRow(sector: ESector, row: number): ESeat[] {
 }
 
 /**
+ * Пересадка мест между рядами после перетаскивания.
+ *
+ * Раньше при dragged-перемещении менялись только x/y, а `seat.row` оставался
+ * прежним: место визуально сидело в другом ряду, но в схеме (а значит — в
+ * `hall_rows`, цене `rowPrices` и номере на билете) оставалось в старом.
+ * Возвращает множество ЗАТРОНУТЫХ рядов (старых и новых) для пересчёта
+ * номеров мест; саму нумерацию делает вызывающий.
+ *
+ * Метрика рядоположения:
+ *   - прямоугольная сетка — Y (ряды горизонтальные);
+ *   - амфитеатр — радиус от центра кривизны (ряды — концентрические дуги);
+ *   - банкетный стол — ряд всегда один, пересадки нет.
+ *
+ * Опорой служат НЕ перетаскиваемые места: если двигать сразу весь зал,
+ * определять ряд не по чему, и функция оставляет структуру как есть.
+ */
+export function reflowRowsAfterMove(sector: ESector, movedIds: Set<string>): Set<number> {
+  const touched = new Set<number>()
+  if (sector.shape === 'table') return touched
+
+  const metricOf = (seat: ESeat): number => sector.shape === 'arc'
+    ? Math.hypot(
+      seat.x + SEAT / 2 - (sector.arcOffsetX ?? 0),
+      seat.y + SEAT / 2 - (sector.arcOffsetY ?? 0),
+    )
+    : seat.y + SEAT / 2
+
+  const anchorsByRow = new Map<number, number[]>()
+  for (const seat of sector.seats) {
+    if (movedIds.has(seat.id)) continue
+    const list = anchorsByRow.get(seat.row) ?? []
+    list.push(metricOf(seat))
+    anchorsByRow.set(seat.row, list)
+  }
+  if (anchorsByRow.size === 0) return touched
+
+  for (const seat of sector.seats) {
+    if (!movedIds.has(seat.id)) continue
+    touched.add(seat.row)
+    const metric = metricOf(seat)
+
+    // Не медиана по ряду, а БЛИЖАЙШЕЕ опорное место: у дуги радиус,
+    // измеренный от центра, зависит от угла (сдвиг на пол-места по осям),
+    // и «средний» радиус ряда уводил бы крайние места в соседний ряд.
+    let best = seat.row
+    let bestDelta = Infinity
+    for (const [row, values] of anchorsByRow) {
+      for (const value of values) {
+        const delta = Math.abs(metric - value)
+        if (delta < bestDelta) {
+          best = row
+          bestDelta = delta
+        }
+      }
+    }
+    if (best !== seat.row) {
+      seat.row = best
+      touched.add(best)
+    }
+  }
+
+  return touched
+}
+
+/**
  * Удалить ряд целиком. Оставшиеся ряды ПЕРЕНУМЕРОВЫВАЮТСЯ, чтобы не осталось
  * дыры (ряд 3 после удаления ряда 2 обязан стать рядом 2 — иначе подписи на
  * схеме и в билетах расходятся, а билеты печатаются по человеческим номерам).

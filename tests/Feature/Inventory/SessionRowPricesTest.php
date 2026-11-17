@@ -176,6 +176,54 @@ final class SessionRowPricesTest extends TestCase
         );
     }
 
+    /**
+     * Цена места сильнее цены ряда — и при переоценке сеанса тоже.
+     *
+     * Дефект: `updateRowPrices()` выравнивал ВСЕ свободные места ряда, поэтому
+     * VIP внутри ряда превращался в обычный билет в текущем концерте, но
+     * оставался VIP в следующем (схема не менялась). Расхождение между датами
+     * одного зала и есть несоответствие, которое здесь закрывается.
+     */
+    public function test_row_price_does_not_overwrite_individual_seat_prices(): void
+    {
+        $hallId = $this->seedHall($this->venueId, 'Зал с VIP-местами');
+        $this->seedSchema($hallId, $this->schemaWithVipSeat());
+        $sessionId = $this->createSession($hallId, '2026-11-20 19:00');
+        $rowId = $this->rowIdOf($sessionId, '1');
+
+        $vipSeatId = (int) DB::table('seats')->where('row_id', $rowId)->where('price_amount', 250_000)->value('id');
+        $plainSeatId = (int) DB::table('seats')->where('row_id', $rowId)->whereNull('price_amount')->value('id');
+        $this->assertGreaterThan(0, $vipSeatId, 'индивидуальная цена места не попала в seats');
+        $this->assertGreaterThan(0, $plainSeatId);
+
+        $priceOf = static fn (int $seatId): int => (int) DB::table('inventory_items')
+            ->where('session_id', $sessionId)
+            ->where('seat_id', $seatId)
+            ->value('price_amount');
+
+        $this->assertSame(250_000, $priceOf($vipSeatId), 'фикстура: VIP не получил свою цену');
+
+        $result = app(InventoryService::class)->updateRowPrices($sessionId, [
+            ['row_id' => $rowId, 'price_amount' => 600_000],
+        ], sessionOnly: true);
+
+        $this->assertSame(1, $result['items_kept_individual']);
+        $this->assertSame(1, $result['items_updated'], 'переоценён только обычный билет ряда');
+        $this->assertSame(250_000, $priceOf($vipSeatId), 'цена места из схемы затёрта ценой ряда');
+        $this->assertSame(600_000, $priceOf($plainSeatId));
+
+        // Схема не тронута: следующий концерт получит ровно те же цены.
+        $second = $this->createSession($hallId, '2026-11-21 19:00');
+        $this->assertSame(
+            250_000,
+            (int) DB::table('inventory_items')->where('session_id', $second)->where('seat_id', $vipSeatId)->value('price_amount'),
+        );
+        $this->assertSame(
+            100_000,
+            (int) DB::table('inventory_items')->where('session_id', $second)->where('seat_id', $plainSeatId)->value('price_amount'),
+        );
+    }
+
     // ── Стоячая зона: тот же режим ──────────────────────────────────────────
 
     public function test_session_only_scopes_the_standing_zone_price_too(): void
@@ -298,6 +346,29 @@ final class SessionRowPricesTest extends TestCase
                     ]],
                     ['number' => '2', 'label' => 'Ряд 2', 'price_amount' => 100_000, 'seats' => [
                         ['number' => '1', 'label' => 'Ряд 2 Место 1', 'type' => 'standard'],
+                    ]],
+                ],
+            ]],
+        ];
+    }
+
+    /**
+     * Ряд с одной ценовой группой внутри: у первого места своя цена
+     * (VIP) в БД-формате схемы `seats[].price_amount`.
+     *
+     * @return array<string, mixed>
+     */
+    private function schemaWithVipSeat(): array
+    {
+        return [
+            'sectors' => [[
+                'name' => 'Партер',
+                'code' => 'P',
+                'type' => 'seated',
+                'rows' => [
+                    ['number' => '1', 'label' => 'Ряд 1', 'price_amount' => 100_000, 'seats' => [
+                        ['number' => '1', 'label' => 'Ряд 1 Место 1', 'type' => 'vip', 'price_amount' => 250_000],
+                        ['number' => '2', 'label' => 'Ряд 1 Место 2', 'type' => 'standard'],
                     ]],
                 ],
             ]],

@@ -18,6 +18,7 @@ import {
   arcSeatXY,
   buildArcSeats,
   buildGridSeats,
+  reflowRowsAfterMove,
   tableLayout,
   seatKindFor,
 } from '../../../resources/js/pages/hall-editor/seatGeometry'
@@ -105,6 +106,58 @@ describe('seatGeometry: дуга (амфитеатр)', () => {
     expect(MAX_ARC_SPREAD_DEG).toBe(180)
     expect(Math.hypot(seats[0].x - seats[9].x, seats[0].y - seats[9].y)).toBeGreaterThan(SEAT)
     expect(arcLayoutParams(1, 10, 360).arcBaseR).toBe(arcLayoutParams(1, 10, 180).arcBaseR)
+  })
+})
+
+describe('seatGeometry: пересадка мест после перетаскивания', () => {
+  it('меняет row у места, перетащенного в другой ряд сетки', () => {
+    const sector = makeArcSector()
+    sector.shape = 'grid'
+    sector.seats = buildGridSeats(3, 2, 0, nextId)
+    const moved = sector.seats[0]
+    expect(moved.row).toBe(1)
+
+    moved.y = 2 * (SEAT + ROW_GAP) // ряд 3
+    const touched = reflowRowsAfterMove(sector, new Set([moved.id]))
+
+    expect(moved.row).toBe(3)
+    expect([...touched].sort((a, b) => a - b)).toEqual([1, 3])
+  })
+
+  it('в амфитеатре определяет ряд по радиусу от центра дуги', () => {
+    const sector = makeArcSector()
+    const perRow = 5
+    sector.seats = buildArcSeats(sector, 3, perRow, 0, nextId)
+    const moved = sector.seats[0]
+    const target = arcSeatXY(sector, 2, 0, perRow)
+    moved.x = target.x
+    moved.y = target.y
+
+    const touched = reflowRowsAfterMove(sector, new Set([moved.id]))
+
+    expect(moved.row).toBe(3)
+    expect(touched.has(1)).toBe(true)
+    expect(touched.has(3)).toBe(true)
+  })
+
+  it('не трогает ряд банкетного стола', () => {
+    const sector = makeArcSector()
+    sector.shape = 'table'
+    sector.seats = buildGridSeats(2, 2, 0, nextId)
+    const moved = sector.seats[0]
+    moved.y = 100
+
+    expect(reflowRowsAfterMove(sector, new Set([moved.id])).size).toBe(0)
+    expect(moved.row).toBe(1)
+  })
+
+  it('не угадывает ряды, если перетащены все места сектора', () => {
+    const sector = makeArcSector()
+    sector.shape = 'grid'
+    sector.seats = buildGridSeats(2, 2, 0, nextId)
+    const ids = new Set(sector.seats.map((s) => s.id))
+
+    expect(reflowRowsAfterMove(sector, ids).size).toBe(0)
   })
 })
 

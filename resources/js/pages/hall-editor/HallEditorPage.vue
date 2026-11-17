@@ -58,6 +58,7 @@ import {
   findFreeSeatPosition,
   insertRowAfter,
   rebuildTableSeats,
+  reflowRowsAfterMove,
   renumberAllSeats,
   rowNumbers,
   seatsInRow,
@@ -821,22 +822,19 @@ function finalizeSeatMove(): void {
   }
 
   const touched = new Map<string, Set<number>>()
-  for (const [, before] of seatDragBefore) {
-    if (!touched.has(before.sectorId)) touched.set(before.sectorId, new Set())
-    touched.get(before.sectorId)!.add(before.row)
-  }
-  for (const sector of sectors.value) {
-    const movedHere = [...seatDragBefore.values()].some((b) => b.sectorId === sector.id)
-    if (!movedHere) continue
-    // Ряды, куда попали перетащенные места — тоже затронуты. seatDragIds —
-    // Set<строк>: итерирование даёт id целиком (не деструктурировать!).
-    for (const id of seatDragIds) {
-      const seat = sector.seats.find((s) => s.id === id)
-      if (seat) {
-        if (!touched.has(sector.id)) touched.set(sector.id, new Set())
-        touched.get(sector.id)!.add(seat.row)
-      }
+  const affectedSectorIds = new Set([...seatDragBefore.values()].map((b) => b.sectorId))
+  for (const sectorId of affectedSectorIds) {
+    const sector = sectors.value.find((s) => s.id === sectorId)
+    if (!sector) continue
+    // Перетаскивание по вертикали — это ПЕРЕСАДКА: seat.row обязан обновиться.
+    // Иначе место останется в старом ряду в схеме и на билете, хотя на холсте
+    // окажется в другом (и цена ряда будет старой). Старые ряды тоже трогаем —
+    // в них нужно пересчитать номера оставшихся мест.
+    const rows = reflowRowsAfterMove(sector, seatDragIds)
+    for (const before of seatDragBefore.values()) {
+      if (before.sectorId === sectorId) rows.add(before.row)
     }
+    touched.set(sectorId, rows)
   }
   for (const [sectorId, rows] of touched) {
     const sector = sectors.value.find((s) => s.id === sectorId)
@@ -2613,10 +2611,17 @@ function setRowPrice(row: number, rub: number | '' | null): void {
   sector.rowPrices[row] = next
 }
 
-/** Цена сектора генератора (форма «Новый сектор», коп.): только валидные значения. */
-function setFormPriceMinor(v: unknown): void {
-  const n = roundOrNull(v)
-  if (n === null || n < 0) return
+/**
+ * Цена сектора генератора (форма «Новый сектор»): ввод в РУБЛЯХ, модель — в копейках.
+ *
+ * Раньше поле было подписано «коп.» и писало сырое число в `form.priceMinor`,
+ * хотя все остальные ценовые поля редактора (инспектор сектора, ряд, место,
+ * стоячая зона) работают в рублях. Оператор вводил «1500», ожидая 1500 ₽,
+ * а получал 1500 копеек = 15 ₽ — и это молча уезжало в опубликованную схему.
+ */
+function setFormPriceRub(v: unknown): void {
+  const n = rubToMinor(v)
+  if (n === null) return
   form.value.priceMinor = n
 }
 
@@ -3137,7 +3142,13 @@ function reassignSelectedSeats(targetSectorId: string): void {
               <NInput :model-value="form.rows" label="Рядов" type="number" @update:model-value="clampIntField('rows', $event, 1, 100)" />
               <NInput :model-value="form.seatsPerRow" label="Мест в ряду" type="number" @update:model-value="clampIntField('seatsPerRow', $event, 1, 100)" />
             </div>
-            <NInput :model-value="String(form.priceMinor)" label="Цена по умолчанию, коп." type="number" hint="Можно переопределить для каждого ряда ниже" @update:model-value="setFormPriceMinor($event)" />
+            <NInput
+              :model-value="priceRubField(form.priceMinor)"
+              label="Цена по умолчанию, ₽"
+              type="number"
+              hint="Целое число рублей; в схеме сохраняется в копейках. Можно переопределить для каждого ряда ниже"
+              @update:model-value="setFormPriceRub($event)"
+            />
             <NInput :model-value="form.vipRows" label="VIP-рядов сверху" type="number" @update:model-value="clampIntField('vipRows', $event, 0, 50)" />
             <NButton block :disabled="isLocked" @click="generateSector">Создать сектор</NButton>
           </div>

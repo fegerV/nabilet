@@ -134,7 +134,13 @@ class InventoryService
                                                                                                 'rotation' => 0,
                                                                                                 'status' => 'active',
                                                                     // Индивидуальная цена места (§54): побеждает цену ряда.
-                                                                    'price_amount' => SchemaPrice::seatOverride($seatData['priceMinor'] ?? null)?->minorUnits(),
+                                                                    // `priceMinor` — редактор, `price_amount`/`price` — rows-формат
+                                                                    // импорта и старые схемы. Один владелец цепочки — SchemaPrice:
+                                                                    // раньше читался только priceMinor, и индивидуальные цены
+                                                                    // импортированных мест молча терялись.
+                                                                    'price_amount' => SchemaPrice::seatOverride(
+                                                                        $seatData['priceMinor'] ?? $seatData['price_amount'] ?? $seatData['price'] ?? null
+                                                                    )?->minorUnits(),
                                         ]);
                                         $capacity += 1;
                                     }
@@ -399,6 +405,10 @@ class InventoryService
      * Правила:
      *   - обновляем price_amount только у СВОБОДНЫХ мест: available_quantity = capacity
      *     (для seat capacity=1, для standing capacity=N — «не трогать занятые места»);
+     *   - места со своей ценой в схеме (seats.price_amount, например VIP внутри
+     *     ряда) НЕ переоцениваются: цена места сильнее цены ряда. Иначе текущий
+     *     сеанс потерял бы VIP, а следующий сеанс того же зала — снова получил,
+     *     потому что схема при этом не менялась;
      *   - холды и sold-позиции остаются со старой ценой — контракт покупки не меняется
      *     задним числом;
      *   - hall_rows / standing_zones обновляем всегда: следующий generateFromSchema()
@@ -426,6 +436,7 @@ class InventoryService
             $now = now();
             $rowsUpdated = 0;
             $itemsUpdated = 0;
+            $itemsKeptIndividual = 0;
             $cartItemsUpdated = 0;
             $affectedItemIds = [];
 
@@ -499,22 +510,47 @@ class InventoryService
                 }
                 $rowsUpdated++;
 
+                // ИНДИВИДУАЛЬНЫЕ ЦЕНЫ МЕСТ НЕ ЗАТИРАЕМ. Место со своей ценой в
+                // схеме (`seats.price_amount`) наследует её и в инвентаре:
+                // правило «место → ряд → сектор» действует и при переоценке. Раньше
+                // UPDATE задевал ВСЕ свободные места ряда, поэтому VIP внутри
+                // ряда становился обычным в текущем сеансе, а в следующем —
+                // снова VIP (схема-то не менялась). Расхождение между датами
+                // одного зала и было дефектом.
+                $inheritedSeats = static function ($q) use ($rowId): void {
+                    $q->select('id')
+                        ->from('seats')
+                        ->where('row_id', $rowId)
+                        ->where(static function ($q): void {
+                            $q->whereNull('price_amount')->orWhere('price_amount', 0);
+                        });
+                };
+
                 $touched = InventoryItem::query()
                     ->where('session_id', $session->id)
-                    ->whereIn('seat_id', function ($q) use ($rowId): void {
-                        $q->select('id')->from('seats')->where('row_id', $rowId);
-                    })
+                    ->whereIn('seat_id', $inheritedSeats)
                     ->whereColumn('available_quantity', 'capacity')
                     ->pluck('id');
                 $affectedItemIds = array_merge($affectedItemIds, $touched->all());
 
                 $itemsUpdated += InventoryItem::query()
                     ->where('session_id', $session->id)
-                    ->whereIn('seat_id', function ($q) use ($rowId): void {
-                        $q->select('id')->from('seats')->where('row_id', $rowId);
-                    })
+                    ->whereIn('seat_id', $inheritedSeats)
                     ->whereColumn('available_quantity', 'capacity')
                     ->update(['price_amount' => $price, 'updated_at' => $now]);
+
+                // Места со своей ценой остаются при своей цене — считаем их,
+                // чтобы админка честно показала «переоценено N из M».
+                $itemsKeptIndividual += InventoryItem::query()
+                    ->where('session_id', $session->id)
+                    ->whereIn('seat_id', static function ($q) use ($rowId): void {
+                        $q->select('id')->from('seats')
+                            ->where('row_id', $rowId)
+                            ->whereNotNull('price_amount')
+                            ->where('price_amount', '>', 0);
+                    })
+                    ->whereColumn('available_quantity', 'capacity')
+                    ->count();
             }
 
             // Синхронизация ОТКРЫТЫХ корзин (status='active'): unit_price и
@@ -527,6 +563,9 @@ class InventoryService
                 'session_id' => (int) $session->id,
                 'rows_updated' => $rowsUpdated,
                 'items_updated' => $itemsUpdated,
+                // Свободные места со своей ценой из схемы — их цена намеренно
+                // сохранена (см. комментарий в ветке сидячих рядов).
+                'items_kept_individual' => $itemsKeptIndividual,
                 'cart_items_updated' => $cartItemsUpdated,
                 'carts_recalculated' => $cartsRecalculated,
                 // Выводим режим явно: разница «только сеанс» vs «и сетка зала»

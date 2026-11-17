@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Installer\Providers;
 
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\ServiceProvider;
 use Nabilet\Modules\Installer\Support\PreinstallAppKey;
 use Nabilet\Modules\Installer\Support\PreinstallDrivers;
+use Nabilet\Modules\Installer\Support\SetupArtifactCleaner;
 
 class InstallerServiceProvider extends ServiceProvider
 {
@@ -38,5 +40,27 @@ class InstallerServiceProvider extends ServiceProvider
         // POST /install) — до ввода хоста БД физически недостижимы. Границы
         // подмены и каталоги хранилищ — в классе `PreinstallDrivers`.
         PreinstallDrivers::apply();
+
+        // УЖЕ УСТАНОВЛЕННЫЙ САЙТ: свежий zip заливается поверх существующей
+        // инсталляции, поэтому `markAsInstalled()` не вызывается, а info.php
+        // и legacy-установщик остаются в docroot. Чистим один раз на версию
+        // приложения — обновление версии в config/nabilet.php повторяет проверку.
+        if (is_file($this->app->storagePath('install.lock'))) {
+            try {
+                $removed = SetupArtifactCleaner::make()
+                    ->purgeOnce((string) config('nabilet.version'));
+                if ($removed !== []) {
+                    Log::info('Installer: удалены файлы развёртывания после выкладки', [
+                        'paths' => $removed,
+                    ]);
+                }
+            } catch (\Throwable $e) {
+                // Защита от сбоя прав доступа: сайт должен подняться, даже если
+                // удалить диагностический файл не удалось.
+                Log::warning('Installer: не удалась пост-выкладочная зачистка', [
+                    'exception' => $e->getMessage(),
+                ]);
+            }
+        }
     }
 }
