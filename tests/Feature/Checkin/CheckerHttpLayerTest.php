@@ -612,6 +612,8 @@ class CheckerHttpLayerTest extends TestCase
             'event_id' => (int) $first->event_id,
             'venue_id' => (int) $first->venue_id,
             'hall_id' => (int) $first->hall_id,
+            'venue_id' => (int) $first->hall_id,
+            'venue_id' => (int) $first->hall_id,
             'schema_version_id' => (int) $first->schema_version_id,
             'starts_at' => now()->addDays(8)->toDateTimeString(),
             'timezone' => 'Asia/Almaty',

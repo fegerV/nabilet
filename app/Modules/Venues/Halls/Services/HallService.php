@@ -165,7 +165,48 @@ class HallService
 
     public function createHall(array $data): Hall
     {
-        return $this->repository->create($data);
+        // Seeder сначала создаёт площадку, затем «зал» с venue_id: в новой
+        // модели это тот же объект, просто обновляем hall_name.
+        if (! empty($data['venue_id'])) {
+            $venue = \Nabilet\Modules\Venues\Models\Venue::query()->findOrFail($data['venue_id']);
+            if (! empty($data['name'])) {
+                $venue->update(['hall_name' => $data['name']]);
+            }
+
+            return (new Hall())->forceFill([
+                'id' => $venue->id,
+                'public_id' => $venue->public_id,
+                'venue_id' => $venue->id,
+                'name' => $data['name'] ?? $venue->name,
+                'organization_id' => $venue->organization_id,
+                'status' => $venue->status,
+            ]);
+        }
+
+        // Зал — это площадка (halls заменён VIEW). Создаём площадку и
+        // возвращаем совместимую модель зала с тем же id.
+        $venue = \Nabilet\Modules\Venues\Models\Venue::query()->create([
+            'public_id' => $data['public_id'] ?? (string) \Nabilet\Modules\Core\Support\PublicId::generate(),
+            'organization_id' => $data['organization_id']
+                ?? app(\Nabilet\Core\Tenancy\OrganizationContext::class)->id(),
+            'name' => $data['name'],
+            'slug' => \Illuminate\Support\Str::slug($data['name']) . '-' . \Illuminate\Support\Str::lower(\Illuminate\Support\Str::random(6)),
+            'description' => $data['description'] ?? null,
+            'city' => $data['city'] ?? null,
+            'address' => $data['address'] ?? null,
+            'status' => $data['status'] ?? \Nabilet\Core\Support\PublicationStatus::ACTIVE,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return (new Hall())->forceFill([
+            'id' => $venue->id,
+            'public_id' => $venue->public_id,
+            'venue_id' => $venue->id,
+            'name' => $venue->name,
+            'organization_id' => $venue->organization_id,
+            'status' => $venue->status,
+        ]);
     }
 
     public function updateHall(Hall $hall, array $data): Hall
@@ -190,7 +231,15 @@ class HallService
                 );
             }
 
-            return $this->repository->delete($lockedHall);
+            // Зал — VIEW над площадкой: удаляем версии схемы и саму площадку
+            // явно (внешнего ключа halls больше нет).
+            HallSchemaVersion::query()
+                ->where('venue_id', $lockedHall->venue_id)
+                ->delete();
+
+            return (bool) \Nabilet\Modules\Venues\Models\Venue::query()
+                ->whereKey($lockedHall->venue_id)
+                ->delete();
         });
     }
 

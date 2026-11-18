@@ -254,14 +254,16 @@ class HallController extends Controller
     /** Техническая строка схемы: одна на площадку, пользователю не показывается. */
     private function shadowHall(Venue $venue): Hall
     {
-        return Hall::query()->firstOrCreate(
-            ['venue_id' => $venue->id],
-            [
-                'public_id' => PublicId::generate(),
-                'name' => $venue->name,
-                'status' => PublicationStatus::ACTIVE,
-            ],
-        );
+        // Зал — это сама площадка (halls теперь VIEW над venues): отдельной
+        // строки нет, возвращаем модель с id площадки для legacy-сервисов.
+        return (new Hall())->forceFill([
+            'id' => $venue->id,
+            'public_id' => $venue->public_id,
+            'venue_id' => $venue->id,
+            'name' => $venue->hall_name ?? $venue->name,
+            'organization_id' => $venue->organization_id,
+            'status' => $venue->status,
+        ]);
     }
 
     /** GET /venues/{publicId}/schema-versions — версии схемы площадки. */

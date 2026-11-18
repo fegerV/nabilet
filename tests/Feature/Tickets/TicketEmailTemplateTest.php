@@ -753,15 +753,8 @@ final class TicketEmailTemplateTest extends TestCase
     {
         $now = now()->toDateTimeString();
 
-        return (int) DB::table('halls')->insertGetId([
-            'public_id' => (string) Str::ulid()->toBase32(),
-            'organization_id' => (int) DB::table('venues')->where('id', $venueId)->value('organization_id'),
-            'venue_id' => $venueId,
-            'name' => 'Большой зал',
-            'status' => 'active',
-            'created_at' => $now,
-            'updated_at' => $now,
-        ]);
+        DB::table('venues')->where('id', $venueId)->update(['hall_name' => 'Большой зал']);
+        return (int) $venueId;
     }
 
     /**
@@ -772,7 +765,9 @@ final class TicketEmailTemplateTest extends TestCase
     {
         return (int) HallSchemaVersion::create([
             'hall_id' => $hallId,
-            'version' => 1,
+            'venue_id' => $hallId,
+            'venue_id' => $hallId,
+            'version' => ((int) \Illuminate\Support\Facades\DB::table('hall_schema_versions')->where('hall_id', $hallId)->max('version')) + 1,
             'revision' => 1,
             'status' => 'published',
             'published_at' => now(),
@@ -845,6 +840,8 @@ final class TicketEmailTemplateTest extends TestCase
             'event_id' => $eventId,
             'venue_id' => $venueId,
             'hall_id' => $hallId,
+            'venue_id' => $hallId,
+            'venue_id' => $hallId,
             'schema_version_id' => $schemaVersionId,
             'starts_at' => '2026-11-20 19:00:00',
             'timezone' => 'Asia/Yekaterinburg',

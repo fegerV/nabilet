@@ -57,15 +57,8 @@ final class HallTableGeometryTest extends TestCase
             'created_at' => $now,
             'updated_at' => $now,
         ]);
-        $hallId = DB::table('halls')->insertGetId([
-            'public_id' => (string) Str::ulid()->toBase32(),
-            'organization_id' => $organizationId,
-            'venue_id' => $venueId,
-            'name' => 'Banquet hall',
-            'status' => 'active',
-            'created_at' => $now,
-            'updated_at' => $now,
-        ]);
+        DB::table('venues')->where('id', $venueId)->update(['hall_name' => 'Banquet hall']);
+        $hallId = (int) $venueId;
         $this->organizationId = $organizationId;
         $this->hall = app(OrganizationContext::class)->withoutScope(
             fn () => Hall::query()->findOrFail($hallId)
@@ -75,7 +68,9 @@ final class HallTableGeometryTest extends TestCase
         // (hall_schema_versions -> halls), INSERT возможен и без контекста.
         $this->version = HallSchemaVersion::create([
             'hall_id' => $this->hall->id,
-            'version' => 1,
+            'venue_id' => $this->hall->id,
+            'venue_id' => $this->hall->id,
+            'version' => ((int) \Illuminate\Support\Facades\DB::table('hall_schema_versions')->where('hall_id', $hallId)->max('version')) + 1,
             'revision' => 1,
             'status' => 'published',
             'published_at' => $now,
@@ -155,6 +150,8 @@ final class HallTableGeometryTest extends TestCase
             'event_id' => $eventId,
             'venue_id' => $this->hall->venue_id,
             'hall_id' => $this->hall->id,
+            'venue_id' => $this->hall->id,
+            'venue_id' => $this->hall->id,
             'schema_version_id' => $this->version->id,
             'starts_at' => $now->copy()->addDays(7),
             'status' => 'on_sale',

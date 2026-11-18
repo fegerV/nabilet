@@ -52,15 +52,8 @@ final class HallSchemaSingleLiveVersionTest extends TestCase
             'created_at' => $now,
             'updated_at' => $now,
         ]);
-        $hallId = (int) DB::table('halls')->insertGetId([
-            'public_id' => (string) Str::ulid()->toBase32(),
-            'organization_id' => $organizationId,
-            'venue_id' => $venueId,
-            'name' => 'Single live hall',
-            'status' => 'active',
-            'created_at' => $now,
-            'updated_at' => $now,
-        ]);
+        DB::table('venues')->where('id', $venueId)->update(['hall_name' => 'Single live hall']);
+        $hallId = (int) $venueId;
         $this->hall = app(OrganizationContext::class)->withoutScope(
             fn () => Hall::query()->findOrFail($hallId)
         );
@@ -70,6 +63,8 @@ final class HallSchemaSingleLiveVersionTest extends TestCase
     {
         return HallSchemaVersion::create([
             'hall_id' => $this->hall->id,
+            'venue_id' => $this->hall->id,
+            'venue_id' => $this->hall->id,
             'version' => $version,
             'revision' => 1,
             'status' => $status,
@@ -142,11 +137,13 @@ final class HallSchemaSingleLiveVersionTest extends TestCase
     public function test_different_halls_each_get_their_own_published_version(): void
     {
         $now = now();
-        $otherHallId = (int) DB::table('halls')->insertGetId([
+        // Зал = площадка: второй зал — это вторая площадка.
+        $now = now()->toDateTimeString();
+        $otherHallId = (int) DB::table('venues')->insertGetId([
             'public_id' => (string) Str::ulid()->toBase32(),
             'organization_id' => $this->hall->organization_id,
-            'venue_id' => $this->hall->venue_id,
             'name' => 'Another hall ' . Str::random(6),
+            'slug' => 'venue-' . Str::random(8),
             'status' => 'active',
             'created_at' => $now,
             'updated_at' => $now,
@@ -155,6 +152,7 @@ final class HallSchemaSingleLiveVersionTest extends TestCase
         $this->makeVersion(1, 'published');
         HallSchemaVersion::create([
             'hall_id' => $otherHallId,
+            'venue_id' => $otherHallId,
             'version' => 1,
             'revision' => 1,
             'status' => 'published',

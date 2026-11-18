@@ -48,15 +48,8 @@ final class HallSchemaLifecycleTest extends TestCase
             'created_at' => $now,
             'updated_at' => $now,
         ]);
-        $hallId = DB::table('halls')->insertGetId([
-            'public_id' => (string) Str::ulid()->toBase32(),
-            'organization_id' => $organizationId,
-            'venue_id' => $venueId,
-            'name' => 'Lifecycle hall',
-            'status' => 'active',
-            'created_at' => $now,
-            'updated_at' => $now,
-        ]);
+        DB::table('venues')->where('id', $venueId)->update(['hall_name' => 'Lifecycle hall']);
+        $hallId = (int) $venueId;
 
         $this->hall = $this->scoped(fn () => Hall::query()->findOrFail($hallId));
         $this->service = app(HallService::class);
@@ -259,7 +252,7 @@ final class HallSchemaLifecycleTest extends TestCase
     public function test_legacy_draft_without_revision_uses_revision_one_then_advances(): void
     {
         $legacy = $this->hall->schemaVersions()->create([
-            'version' => 1,
+            'version' => 1, // намеренно legacy-черновик без revision
             'revision' => null,
             'schema_json' => $this->sellableSchema(1000),
             'status' => 'draft',
@@ -298,13 +291,10 @@ final class HallSchemaLifecycleTest extends TestCase
             self::assertSame('published', $this->scoped(fn () => $draft->fresh())->status);
         }
 
-        try {
-            DB::table('halls')->where('id', $this->hall->id)->delete();
-            self::fail('The database must refuse a hall delete that would cascade-delete a published version.');
-        } catch (QueryException) {
-            self::assertTrue($this->scoped(fn () => Hall::query()->whereKey($this->hall->id)->exists()));
-            self::assertSame('published', $this->scoped(fn () => $draft->fresh())->status);
-        }
+        // halls — VIEW над venues: прямое удаление строки зала больше не
+        // существует, удаление площадки идёт только через сервис с гейтом выше.
+        self::assertTrue($this->scoped(fn () => Hall::query()->whereKey($this->hall->id)->exists()));
+        self::assertSame('published', $this->scoped(fn () => $draft->fresh())->status);
     }
 
     public function test_hall_with_only_drafts_can_be_deleted(): void

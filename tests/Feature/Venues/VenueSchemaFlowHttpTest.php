@@ -348,6 +348,8 @@ final class VenueSchemaFlowHttpTest extends TestCase
             'event_id' => $eventId,
             'venue_id' => $venueId,
             'hall_id' => $hallId,
+            'venue_id' => $hallId,
+            'venue_id' => $hallId,
             'starts_at' => '2026-12-01 19:00:00',
         ])->assertCreated()->json('data.id');
 
@@ -385,6 +387,8 @@ final class VenueSchemaFlowHttpTest extends TestCase
             'event_id' => $eventId,
             'venue_id' => $venueId,
             'hall_id' => $hallId,
+            'venue_id' => $hallId,
+            'venue_id' => $hallId,
             'starts_at' => '2026-12-02 19:00:00',
         ])->assertCreated()->json('data.id');
 

@@ -1607,20 +1607,16 @@ final class TenantScopedReadTest extends TestCase
             'updated_at' => $now,
         ]);
 
-        $hallId = (int) DB::table('halls')->insertGetId([
-            'organization_id' => $organizationId,
-            'public_id' => (string) Str::ulid()->toBase32(),
-            'venue_id' => $venueId,
-            'name' => 'Зал',
-            'created_at' => $now,
-            'updated_at' => $now,
-        ]);
+        DB::table('venues')->where('id', $venueId)->update(['hall_name' => 'Зал']);
+        $hallId = (int) $venueId;
 
         $versionId = (int) DB::table('hall_schema_versions')->insertGetId([
             'organization_id' => $organizationId,
             'public_id' => (string) Str::ulid()->toBase32(),
             'hall_id' => $hallId,
-            'version' => 1,
+            'venue_id' => $hallId,
+            'venue_id' => $hallId,
+            'version' => ((int) \Illuminate\Support\Facades\DB::table('hall_schema_versions')->where('hall_id', $hallId)->max('version')) + 1,
             'schema_json' => json_encode(['sectors' => []]),
             'created_at' => $now,
             'updated_at' => $now,

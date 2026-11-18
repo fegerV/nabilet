@@ -464,6 +464,9 @@ ENV;
             $options = [
                 \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION,
                 \PDO::ATTR_DEFAULT_FETCH_MODE => \PDO::FETCH_ASSOC,
+                // Без явного таймаута неверные креды на 일부 хостах висят до
+                // дефолтного сетевого таймаута: визард выглядит зависшим.
+                \PDO::ATTR_TIMEOUT => 3,
             ];
 
             new \PDO($dsn, $username, $password, $options);

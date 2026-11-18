@@ -59,15 +59,8 @@ final class InventoryAvailabilityCountingTest extends TestCase
             'created_at' => $now,
             'updated_at' => $now,
         ]);
-        $hallId = (int) DB::table('halls')->insertGetId([
-            'public_id' => (string) Str::ulid()->toBase32(),
-            'organization_id' => $this->organizationId,
-            'venue_id' => $venueId,
-            'name' => 'Mixed hall',
-            'status' => 'active',
-            'created_at' => $now,
-            'updated_at' => $now,
-        ]);
+        DB::table('venues')->where('id', $venueId)->update(['hall_name' => 'Mixed hall']);
+        $hallId = (int) $venueId;
         // Тест-аналог системного пути: сборка инвентарной доступности живёт в
         // витрине/виджете без контекста — чтение зала в bypass.
         $this->hall = app(OrganizationContext::class)->withoutScope(
@@ -77,7 +70,9 @@ final class InventoryAvailabilityCountingTest extends TestCase
         // Запись версии резолвит организацию через родительский chain трейта.
         $this->version = HallSchemaVersion::create([
             'hall_id' => $this->hall->id,
-            'version' => 1,
+            'venue_id' => $this->hall->id,
+            'venue_id' => $this->hall->id,
+            'version' => ((int) \Illuminate\Support\Facades\DB::table('hall_schema_versions')->where('hall_id', $hallId)->max('version')) + 1,
             'revision' => 1,
             'status' => 'published',
             'published_at' => $now,
@@ -114,6 +109,8 @@ final class InventoryAvailabilityCountingTest extends TestCase
             'event_id' => $eventId,
             'venue_id' => $venueId,
             'hall_id' => $this->hall->id,
+            'venue_id' => $this->hall->id,
+            'venue_id' => $this->hall->id,
             'schema_version_id' => $this->version->id,
             'starts_at' => $now->copy()->addDays(7),
             'status' => 'on_sale',

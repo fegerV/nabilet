@@ -71,21 +71,16 @@ trait SellableSeatFixtures
             'updated_at' => $now,
         ]);
 
-        $hallId = (int) DB::table('halls')->insertGetId([
-            'public_id' => (string) Str::ulid()->toBase32(),
-            'organization_id' => $organizationId,
-            'venue_id' => $venueId,
-            'name' => 'Большой зал',
-            'status' => 'active',
-            'created_at' => $now,
-            'updated_at' => $now,
-        ]);
+        DB::table('venues')->where('id', $venueId)->update(['hall_name' => 'Большой зал']);
+        $hallId = (int) $venueId;
 
         $schemaVersionId = (int) DB::table('hall_schema_versions')->insertGetId([
             'public_id' => (string) Str::ulid()->toBase32(),
             'organization_id' => $organizationId,
             'hall_id' => $hallId,
-            'version' => 1,
+            'venue_id' => $hallId,
+            'venue_id' => $hallId,
+            'version' => ((int) \Illuminate\Support\Facades\DB::table('hall_schema_versions')->where('hall_id', $hallId)->max('version')) + 1,
             'status' => 'published',
             // `published_at` — часть корректного published-состояния: политика
             // архивации отказывается вытеснять «опубликовано, но без даты».
@@ -103,6 +98,8 @@ trait SellableSeatFixtures
             'event_id' => $eventId,
             'venue_id' => $venueId,
             'hall_id' => $hallId,
+            'venue_id' => $hallId,
+            'venue_id' => $hallId,
             'schema_version_id' => $schemaVersionId,
             'starts_at' => now()->addWeek()->toDateTimeString(),
             'timezone' => 'Asia/Almaty',

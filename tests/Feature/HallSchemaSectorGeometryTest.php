@@ -57,15 +57,8 @@ final class HallSchemaSectorGeometryTest extends TestCase
             'created_at' => $now,
             'updated_at' => $now,
         ]);
-        $hallId = DB::table('halls')->insertGetId([
-            'public_id' => (string) Str::ulid()->toBase32(),
-            'organization_id' => $organizationId,
-            'venue_id' => $venueId,
-            'name' => 'Geometry hall',
-            'status' => 'active',
-            'created_at' => $now,
-            'updated_at' => $now,
-        ]);
+        DB::table('venues')->where('id', $venueId)->update(['hall_name' => 'Geometry hall']);
+        $hallId = (int) $venueId;
 
         $this->hall = $this->scoped(fn () => Hall::query()->findOrFail($hallId));
         $this->service = app(HallService::class);

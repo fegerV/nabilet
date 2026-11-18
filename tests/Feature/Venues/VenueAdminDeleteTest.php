@@ -98,15 +98,8 @@ final class VenueAdminDeleteTest extends TestCase
             'updated_at' => $now,
         ]);
 
-        $hallId = (int) DB::table('halls')->insertGetId([
-            'public_id' => (string) Str::ulid()->toBase32(),
-            'organization_id' => $organizationId,
-            'venue_id' => $venueId,
-            'name' => 'Основной зал',
-            'status' => 'active',
-            'created_at' => $now,
-            'updated_at' => $now,
-        ]);
+        DB::table('venues')->where('id', $venueId)->update(['hall_name' => 'Основной зал']);
+        $hallId = (int) $venueId;
 
         return [$venueId, $hallId];
     }

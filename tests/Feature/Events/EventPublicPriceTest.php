@@ -105,6 +105,8 @@ class EventPublicPriceTest extends TestCase
             'event_id' => $eventId,
             'venue_id' => $template->venue_id,
             'hall_id' => $template->hall_id,
+            'venue_id' => $template->hall_id,
+            'venue_id' => $template->hall_id,
             'schema_version_id' => $template->schema_version_id,
             'starts_at' => now()->addDays($inDays ?? 7)->toDateTimeString(),
             'timezone' => 'Asia/Almaty',

@@ -163,15 +163,16 @@ class VenueController extends Controller
 
         $venue = Venue::create($data);
 
-        // У площадки одна невидимая пользователю схема. Раньше здесь создавался
-        // зал с именем «Основной зал», из-за чего админ видел бессмысленный
-        // третий уровень «Площадка → Основной зал → Схема». Теперь техническая
-        // строка называется так же, как площадка, и в UI не показывается.
-        $hall = Hall::create([
-            'venue_id' => $venue->id,
-            'name' => $data['hall_name'] ?? $venue->name,
-            'status' => PublicationStatus::ACTIVE,
-        ]);
+        // Зал больше не отдельная сущность: площадка И есть зал. Поле hall
+        // в ответе оставлено для совместимости со старыми клиентами.
+        if (! empty($data['hall_name'])) {
+            $venue->update(['hall_name' => $data['hall_name']]);
+        }
+        $hall = (object) [
+            'id' => $venue->id,
+            'public_id' => $venue->public_id,
+            'name' => $venue->hall_name ?? $venue->name,
+        ];
 
         $venue->load(['organization', 'halls.currentSchemaVersion:id,hall_id,status,version']);
 

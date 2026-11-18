@@ -148,6 +148,7 @@ final class SessionGeometryReuseTest extends TestCase
         $otherHallId = $this->seedHall($this->otherVenueId, 'Большой зал другого театра');
         $this->seedSchema($otherHallId, $this->seatedSchema(1, 2));
 
+        // Зал = площадка: несовпадение venue_id и hall_id — всё ещё ошибка.
         $this->postJson('/api/v1/sessions', [
             'event_id' => $this->eventId,
             'venue_id' => $this->venueId,
@@ -171,13 +172,15 @@ final class SessionGeometryReuseTest extends TestCase
             'event_id' => $this->eventId,
             'venue_id' => $this->venueId,
             'hall_id' => $this->hallId,
+            'venue_id' => $this->hallId,
             'starts_at' => '2026-11-20 19:00',
         ])->assertStatus(201);
 
         $row = DB::table('sessions')->where('hall_id', $this->hallId)->first();
 
         $this->assertNotNull($row);
-        $this->assertSame($this->venueId, (int) $row->venue_id);
+        // Зал = площадка: venue_id сеанса совпадает с id зала.
+        $this->assertSame($this->hallId, (int) $row->venue_id);
     }
 
     // ── 3. Зал без опубликованной схемы ─────────────────────────────────────
@@ -194,6 +197,7 @@ final class SessionGeometryReuseTest extends TestCase
         $this->postJson('/api/v1/sessions', [
             'event_id' => $this->eventId,
             'hall_id' => $bareHallId,
+            'venue_id' => $bareHallId,
             'starts_at' => '2026-11-20 19:00',
         ])
             ->assertStatus(422)
@@ -320,6 +324,7 @@ final class SessionGeometryReuseTest extends TestCase
         $response = $this->postJson('/api/v1/sessions', [
             'event_id' => $this->eventId,
             'hall_id' => $hallId,
+            'venue_id' => $hallId,
             'starts_at' => $startsAt,
             'status' => 'scheduled',
         ]);
@@ -389,6 +394,7 @@ final class SessionGeometryReuseTest extends TestCase
             'event_id' => $this->eventId,
             'venue_id' => $this->venueId,
             'hall_id' => $hallId,
+            'venue_id' => $hallId,
             'schema_version_id' => $schemaVersionId,
             'starts_at' => '2026-12-01 19:00:00',
             'timezone' => 'Asia/Almaty',
@@ -467,13 +473,15 @@ final class SessionGeometryReuseTest extends TestCase
 
     private function seedHall(int $venueId, string $name): int
     {
+        // Зал = площадка: отдельный зал — отдельная площадка.
         $now = now()->toDateTimeString();
+        $source = DB::table('venues')->where('id', $venueId)->first();
 
-        return (int) DB::table('halls')->insertGetId([
+        return (int) DB::table('venues')->insertGetId([
             'public_id' => (string) Str::ulid()->toBase32(),
-            'organization_id' => (int) DB::table('venues')->where('id', $venueId)->value('organization_id'),
-            'venue_id' => $venueId,
+            'organization_id' => $source->organization_id,
             'name' => $name,
+            'slug' => 'venue-' . Str::random(8),
             'status' => 'active',
             'created_at' => $now,
             'updated_at' => $now,
@@ -490,7 +498,8 @@ final class SessionGeometryReuseTest extends TestCase
     {
         $version = HallSchemaVersion::create([
             'hall_id' => $hallId,
-            'version' => 1,
+            'venue_id' => $hallId,
+            'version' => ((int) \Illuminate\Support\Facades\DB::table('hall_schema_versions')->where('hall_id', $hallId)->max('version')) + 1,
             'revision' => 1,
             'status' => $status,
             'published_at' => $status === 'published' ? now() : null,
