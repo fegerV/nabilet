@@ -64,6 +64,24 @@ class OrderItem extends Model
         'session_title_snapshot',
         'venue_title_snapshot',
         'seat_snapshot_json',
+        // Заказ = билет: состояние билета хранится прямо в позиции.
+        'public_id',
+        'event_id',
+        'session_id',
+        'seat_id',
+        'standing_zone_id',
+        'ticket_number',
+        'ticket_index',
+        'qr_version',
+        'qr_token_hash',
+        'qr_payload',
+        'holder_name',
+        'ticket_status',
+        'issued_at',
+        'used_at',
+        'refunded_at',
+        'revoked_at',
+        'revoked_reason',
     ];
 
     protected $casts = [
@@ -73,6 +91,14 @@ class OrderItem extends Model
         'fee_amount' => 'integer',
         'total_amount' => 'integer',
         'seat_snapshot_json' => 'array',
+        'event_id' => 'integer',
+        'session_id' => 'integer',
+        'ticket_index' => 'integer',
+        'qr_version' => 'integer',
+        'issued_at' => 'datetime:Y-m-d H:i:s.u',
+        'used_at' => 'datetime:Y-m-d H:i:s.u',
+        'refunded_at' => 'datetime:Y-m-d H:i:s.u',
+        'revoked_at' => 'datetime:Y-m-d H:i:s.u',
     ];
 
     public function order(): BelongsTo

@@ -115,16 +115,13 @@ async function save(): Promise<void> {
     } else {
       // Зал создаётся вместе с площадкой (модель «у площадки один зал»):
       // админу не нужно отдельно идти в «Залы» и выбирать площадку из списка.
-      const res = (await send<unknown>('/venues', 'POST', {
-        ...payload,
-        hall_name: form.value.hallName.trim() || null,
-      })) as unknown as { data?: ApiVenue; hall?: ApiHall }
+      const res = (await send<unknown>('/venues', 'POST', payload)) as unknown as { data?: ApiVenue; hall?: ApiHall }
       modalOpen.value = false
-      const hallPid = res.hall?.public_id
-      // Следующий шаг всегда один и тот же — нарисовать схему зала.
-      if (typeof hallPid === 'string' && hallPid) {
-        ui.notify('mint', 'Площадка создана', 'Осталось нарисовать схему зала')
-        router.push(`/admin/halls/${hallPid}/editor`)
+      const venuePid = res.data?.public_id
+      // Следующий шаг — нарисовать схему прямо в карточке площадки.
+      if (typeof venuePid === 'string' && venuePid) {
+        ui.notify('mint', 'Площадка создана', 'Осталось нарисовать схему')
+        router.push(`/admin/halls/${venuePid}/editor`)
         return
       }
       ui.notify('mint', 'Площадка создана', payload.name)
@@ -281,58 +278,6 @@ async function createImported(): Promise<void> {
   }
 }
 
-/* ── Быстрый зал для площадки ───────────────────────────────────────────
- * Площадок много, а залов при них почти нет: создание зала жило только на
- * странице «Залы», куда надо отдельно уйти, выбрать площадку из списка и
- * вспомнить, что схема рисуется дальше в конструкторе. У площадки, как
- * правило, один зал — поэтому «создать зал» живёт прямо в строке площадки,
- * а после создания сразу открываем конструктор схемы. */
-const hallModalOpen = ref(false)
-const hallVenue = ref<ApiVenue | null>(null)
-const hallCreating = ref(false)
-const hallError = ref<string | null>(null)
-const hallForm = ref({ name: 'Основной зал', capacity: '' })
-
-function openHallCreate(v: ApiVenue): void {
-  hallVenue.value = v
-  hallForm.value = { name: 'Основной зал', capacity: '' }
-  hallError.value = null
-  hallModalOpen.value = true
-}
-
-async function createVenueHall(): Promise<void> {
-  const venue = hallVenue.value
-  if (!venue || hallCreating.value) return
-  if (!hallForm.value.name.trim()) {
-    hallError.value = 'Укажите название зала'
-    return
-  }
-  hallCreating.value = true
-  hallError.value = null
-  try {
-    const res = await send<{ data?: { public_id?: string } } & Record<string, unknown>>('/halls', 'POST', {
-      name: hallForm.value.name.trim(),
-      venue_id: venue.id,
-      capacity: hallForm.value.capacity ? Number(hallForm.value.capacity) : null,
-      city: venue.city ?? null,
-      address: venue.address ?? null,
-    })
-    hallModalOpen.value = false
-    ui.notify('mint', 'Зал создан', `${venue.name} · ${hallForm.value.name.trim()}`)
-    // Следующий шаг всегда один: нарисовать схему мест в конструкторе.
-    const createdPid = res.data?.public_id
-    if (typeof createdPid === 'string' && createdPid) {
-      router.push(`/admin/halls/${createdPid}/editor`)
-    } else {
-      await load()
-    }
-  } catch (e) {
-    hallError.value = e instanceof Error ? e.message : String(e)
-  } finally {
-    hallCreating.value = false
-  }
-}
-
 /* ── Схема зала: состояние и вход в конструктор ────────────────────────
  * Модель Яндекс Афиши: у площадки, как правило, один зал. Поэтому состояние
  * схемы показывается прямо в строке площадки, а кнопка ведёт сразу в
@@ -357,12 +302,8 @@ function schemaState(v: ApiVenue): { label: string; tone: Tone } {
 
 /** Вход в конструктор: есть зал — открываем редактор, нет — создаём зал. */
 function openSchema(v: ApiVenue): void {
-  const hall = hallOf(v)
-  if (!hall) {
-    openHallCreate(v)
-    return
-  }
-  router.push(`/admin/halls/${hall.public_id}/editor`)
+  // Схема — свойство площадки: отдельный «зал» пользователю не нужен.
+  router.push(`/admin/halls/${v.public_id}/editor`)
 }
 
 const rows = computed(() =>
@@ -475,24 +416,6 @@ onMounted(load)
         </template>
       </NDataTable>
     </div>
-
-    <!-- Модалка быстрого создания зала для площадки -->
-    <NModal :open="hallModalOpen" :title="`Зал для «${hallVenue?.name ?? ''}»`" size="sm" @update:open="hallModalOpen = false">
-      <p class="mb-3 text-xs text-subtle">
-        После создания откроется конструктор схемы — нарисуйте ряды мест и опубликуйте версию, чтобы зал стал доступен сеансам.
-      </p>
-      <p v-if="hallError" class="mb-3 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-400">
-        {{ hallError }}
-      </p>
-      <form class="space-y-3" @submit.prevent="createVenueHall">
-        <NInput v-model="hallForm.name" label="Название зала" placeholder="Основной зал" required />
-        <NInput v-model="hallForm.capacity" label="Вместимость" type="number" :min="0" placeholder="400" />
-        <div class="flex justify-end gap-2 border-t border-line pt-3">
-          <NButton variant="secondary" @click="hallModalOpen = false">Отмена</NButton>
-          <NButton type="submit" variant="accent" :loading="hallCreating">Создать зал</NButton>
-        </div>
-      </form>
-    </NModal>
 
     <!-- Модалка импорта с Яндекс.Афиши -->
     <NModal :open="importOpen" title="Импорт площадки с Яндекс.Афиши" size="md" @update:open="importOpen = false">

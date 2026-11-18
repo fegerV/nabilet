@@ -29,6 +29,9 @@ class HallSchemaVersion extends Model
     protected $fillable = [
         'public_id',
         'hall_id',
+        // Площадка — владелец схемы (упрощение модели 2026-11-18). hall_id
+        // остаётся только для legacy-вызовов и будет удалён после их перевода.
+        'venue_id',
         'version',
         'revision',
         'status',
@@ -53,6 +56,7 @@ class HallSchemaVersion extends Model
     protected function casts(): array
     {
         return [
+            'venue_id' => 'integer',
             'version' => 'integer',
             'revision' => 'integer',
             'width' => 'integer',

@@ -93,6 +93,14 @@ class StoreEventRequest extends FormRequest
             'start_date' => ['nullable', 'date'],
             'end_date' => ['nullable', 'date'],
             'timezone' => ['nullable', 'string', 'max:64'],
+            // Мероприятие владеет датой и площадкой (этап 2 упрощения модели):
+            // отдельный экран «Сеансы» пользователю больше не нужен.
+            'starts_at' => ['nullable', 'date'],
+            'ends_at' => ['nullable', 'date', 'after_or_equal:starts_at'],
+            'sales_start_at' => ['nullable', 'date'],
+            'sales_end_at' => ['nullable', 'date', 'after_or_equal:sales_start_at'],
+            'venue_id' => ['bail', 'nullable', 'integer', 'exists:venues,id'],
+            'schema_version_id' => ['bail', 'nullable', 'integer', 'exists:hall_schema_versions,id'],
             // `status` здесь СОЗНАТЕЛЬНО отсутствует — как и в UpdateEventRequest.
             //
             // ПОЧЕМУ ИМЕННО ОТСУТСТВИЕ ПРАВИЛА, А НЕ ВЫРЕЗАНИЕ. Правило

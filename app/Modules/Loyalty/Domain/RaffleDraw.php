@@ -60,7 +60,7 @@ final class RaffleDraw
 
         foreach ($orderedPlaces as $index => $place) {
             // $shuffled не короче $orderedPlaces — предусловие проверяет
-            // вызывающий (`RaffleService::draw()`), см. `RafflePolicy`.
+            // вызывающий (`RaffleService::draw()`, проверка на insufficient entries).
             $winners[$place] = $shuffled[$index];
         }
 

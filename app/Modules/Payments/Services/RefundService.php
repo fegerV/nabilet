@@ -18,6 +18,7 @@ use Nabilet\Modules\Payments\StateMachines\RefundStateMachine;
 use Nabilet\Modules\Orders\StateMachines\OrderStateMachine;
 use Nabilet\Modules\Tickets\Models\Ticket;
 use Nabilet\Modules\Tickets\StateMachines\TicketStateMachine;
+use Nabilet\Modules\Orders\Models\OrderItem;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -202,6 +203,16 @@ final class RefundService
                             ->where('status', TicketStateMachine::ISSUED)
                             ->update([
                                 'status' => TicketStateMachine::REFUNDED,
+                                'refunded_at' => now(),
+                            ]);
+
+                        // Заказ = билет: тот же статус пишем в позиции заказа.
+                        // Чек-ин будет читать его отсюда после удаления tickets.
+                        OrderItem::query()
+                            ->where('order_id', $order->id)
+                            ->where('ticket_status', TicketStateMachine::ISSUED)
+                            ->update([
+                                'ticket_status' => TicketStateMachine::REFUNDED,
                                 'refunded_at' => now(),
                             ]);
                     }

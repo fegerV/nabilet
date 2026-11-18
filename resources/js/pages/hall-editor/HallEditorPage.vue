@@ -1340,7 +1340,7 @@ async function persistSchema(): Promise<boolean> {
   const operation = (async (): Promise<boolean> => {
     try {
       const res = await send<{ id: number; version: number; revision: number }>(
-        `/halls/${hallPublicId.value}/schema-versions/draft`,
+        `/venues/${hallPublicId.value}/schema-versions/draft`,
         'POST',
         payload,
       )
@@ -1454,7 +1454,7 @@ function publish(): void {
         return
       }
       const res = await send<{ id: number; version: number; status: string }>(
-        `/halls/${hallPublicId.value}/schema-versions/${currentVersionId}/publish`,
+        `/venues/${hallPublicId.value}/schema-versions/${currentVersionId}/publish`,
         'POST',
         {},
       )
@@ -1538,7 +1538,7 @@ async function loadFromServer(): Promise<void> {
   draftVersionId.value = null
   isHydratingSchema = true
   try {
-    const res = await get<{ data: Array<Record<string, unknown>> }>(`/halls/${pid}/schema-versions`)
+    const res = await get<{ data: Array<Record<string, unknown>> }>(`/venues/${pid}/schema-versions`)
     const inner = res.data
     const versions = Array.isArray(inner) ? inner : (Array.isArray(inner.data) ? inner.data : [])
     // Стартовый номер черновика НЕ фиксирован: он вычисляется из всех версий

@@ -8,7 +8,8 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Validation\ValidationException;
-use Nabilet\Modules\Core\Errors\NotFoundError;
+use Nabilet\Core\Errors\DomainRuleViolation;
+use Nabilet\Core\Errors\NotFoundError;
 use Nabilet\Modules\Loyalty\Jobs\NotifyRaffleWinnersJob;
 use Nabilet\Modules\Loyalty\Models\Raffle;
 use Nabilet\Modules\Loyalty\Services\RaffleService;
@@ -107,6 +108,14 @@ class AdminRaffleController extends Controller
         return response()->json(['data' => $this->present($model)]);
     }
 
+    /** POST /api/v1/admin/raffles/{raffle}/pause — поставить активный розыгрыш на паузу. */
+    public function pause(string $raffle): JsonResponse
+    {
+        $model = $this->raffles->pause($this->resolve($raffle));
+
+        return response()->json(['data' => $this->present($model)]);
+    }
+
     /** POST /api/v1/admin/raffles/{raffle}/cancel — закрыть розыгрыш без тиража. */
     public function cancel(string $raffle): JsonResponse
     {
@@ -149,6 +158,14 @@ class AdminRaffleController extends Controller
     public function notify(string $raffle): JsonResponse
     {
         $model = $this->resolve($raffle);
+        // UI кнопку прячет, но API previously принимал рассылку по черновику
+        // и отменённому розыгрышу и отвечал «успешно» — джоба тихо выходила.
+        if ($model->status !== Raffle::STATUS_DRAWN) {
+            throw new DomainRuleViolation(
+                'Письма рассылаются только после тиража.',
+                'RAFFLE_NOT_DRAWN',
+            );
+        }
         $pending = $this->raffles->winnersPendingNotification($model);
 
         NotifyRaffleWinnersJob::forRaffle($model)
@@ -252,6 +269,16 @@ class AdminRaffleController extends Controller
         }
 
         $this->assertUniquePlaces($prizes);
+
+        // SPA шлёт ISO-8601 (`...Z` или `+03:00`), а колонка DATETIME(6) такой
+        // формат не принимает. Приводим к формату БД до записи — validate('date')
+        // проверяет лишь корректность строки, но не формат хранения.
+        foreach (['starts_at', 'ends_at'] as $key) {
+            if (isset($data[$key]) && is_string($data[$key])) {
+                $data[$key] = \Illuminate\Support\Carbon::parse($data[$key])
+                    ->format('Y-m-d H:i:s.u');
+            }
+        }
 
         // Только те ключи, которые пришли: `fill()` с null затёр бы название
         // при правке, где поля просто нет в теле (`sometimes`).

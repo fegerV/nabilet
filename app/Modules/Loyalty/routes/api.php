@@ -88,6 +88,7 @@ Route::prefix('admin/raffles')->middleware(['auth:api', 'admin'])->group(functio
     Route::put('/{raffle}', [AdminRaffleController::class, 'update']);
     // Действия, а не правка полей: у каждой свои побочные эффекты.
     Route::post('/{raffle}/activate', [AdminRaffleController::class, 'activate']);
+    Route::post('/{raffle}/pause', [AdminRaffleController::class, 'pause']);
     Route::post('/{raffle}/cancel', [AdminRaffleController::class, 'cancel']);
     Route::post('/{raffle}/draw', [AdminRaffleController::class, 'draw']);
     Route::post('/{raffle}/notify', [AdminRaffleController::class, 'notify']);

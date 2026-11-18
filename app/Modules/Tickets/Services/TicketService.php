@@ -9,6 +9,7 @@ use Nabilet\Modules\Tickets\Repositories\TicketRepository;
 use Nabilet\Modules\Tickets\Domain\TicketIssuance;
 use Nabilet\Modules\Tickets\StateMachines\TicketStateMachine;
 use Nabilet\Modules\Orders\Models\Order;
+use Nabilet\Modules\Orders\Models\OrderItem;
 use Nabilet\Modules\Orders\StateMachines\OrderStateMachine;
 use Nabilet\Modules\Inventory\Models\InventoryItem;
 use Nabilet\Modules\Sessions\Models\Session;
@@ -166,6 +167,33 @@ class TicketService
                         'issued_at' => now(),
                         'created_at' => now(),
                         'updated_at' => now(),
+                    ]);
+
+                    // Заказ = билет: то же состояние пишем прямо в позицию заказа.
+                    // Таблица tickets пока остаётся legacy-зеркалом для чек-ина,
+                    // но новые билеты уже читаются из order_items.
+                    $orderItem = $item;
+                    if ($i > 0) {
+                        $copy = $item->toArray();
+                        unset($copy['id']);
+                        $newItemId = DB::table('order_items')->insertGetId($copy);
+                        $orderItem = OrderItem::query()->findOrFail($newItemId);
+                    }
+                    $orderItem->update([
+                        'public_id' => $publicId,
+                        'event_id' => $eventId,
+                        'session_id' => $sessionId,
+                        'seat_id' => $seatId,
+                        'standing_zone_id' => $inventory?->standing_zone_id,
+                        'ticket_number' => $ticket->ticket_number,
+                        'ticket_index' => $i + 1,
+                        'qr_version' => 1,
+                        'qr_token_hash' => $ticket->qr_token_hash,
+                        'qr_payload' => $signed['payload'],
+                        'holder_name' => $ticket->holder_name,
+                        'ticket_status' => TicketStateMachine::ISSUED,
+                        'issued_at' => $ticket->issued_at,
+                        'quantity' => 1,
                     ]);
 
                     $tickets[] = $ticket;

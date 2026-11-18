@@ -12,7 +12,10 @@ use Nabilet\Core\Errors\ValidationError;
 use Nabilet\Core\Support\Paging;
 use Nabilet\Core\Support\PublicationStatus;
 use Nabilet\Core\Tenancy\OrganizationContext;
+use Nabilet\Modules\Core\Support\PublicId;
 use Nabilet\Modules\Venues\Models\Hall;
+use Nabilet\Modules\Venues\Models\HallSchemaVersion;
+use Nabilet\Modules\Venues\Models\Venue;
 use Nabilet\Modules\Venues\Halls\Services\HallService;
 use Nabilet\Modules\Venues\Halls\Http\Resources\HallResource;
 use Nabilet\Modules\Venues\Halls\Http\Resources\HallCollection;
@@ -232,6 +235,76 @@ class HallController extends Controller
     {
         return new SchemaVersionResource(
             $this->service->archiveSchemaVersion($versionId, $publicId)
+        );
+    }
+
+    /* ── Площадка владеет схемой (упрощение модели 2026-11-18) ──────────── */
+
+    private function venueOrFail(string $publicId): Venue
+    {
+        $venue = Venue::query()->where('public_id', $publicId)->first();
+
+        if ($venue === null) {
+            throw new NotFoundError('Venue', $publicId);
+        }
+
+        return $venue;
+    }
+
+    /** Техническая строка схемы: одна на площадку, пользователю не показывается. */
+    private function shadowHall(Venue $venue): Hall
+    {
+        return Hall::query()->firstOrCreate(
+            ['venue_id' => $venue->id],
+            [
+                'public_id' => PublicId::generate(),
+                'name' => $venue->name,
+                'status' => PublicationStatus::ACTIVE,
+            ],
+        );
+    }
+
+    /** GET /venues/{publicId}/schema-versions — версии схемы площадки. */
+    public function venueSchemaVersions(string $publicId): JsonResponse
+    {
+        $venue = $this->venueOrFail($publicId);
+        $versions = HallSchemaVersion::query()
+            ->where('venue_id', $venue->id)
+            ->orderByDesc('version')
+            ->get();
+
+        return response()->json([
+            'data' => SchemaVersionResource::collection($versions)->resolve(),
+        ]);
+    }
+
+    /** POST /venues/{publicId}/schema-versions/draft. */
+    public function createVenueSchemaDraft(Request $request, string $publicId): SchemaVersionResource
+    {
+        $hall = $this->shadowHall($this->venueOrFail($publicId));
+
+        $validated = $request->validate([
+            'payload' => ['required', 'array'],
+            'version_id' => ['nullable', 'integer', 'min:1'],
+            'base_revision' => ['required_with:version_id', 'integer', 'min:1'],
+        ]);
+
+        return new SchemaVersionResource($this->service->createSchemaDraft(
+            $hall,
+            $validated['payload'],
+            $request->user()->id,
+            isset($validated['version_id']) ? (int) $validated['version_id'] : null,
+            isset($validated['base_revision']) ? (int) $validated['base_revision'] : null,
+        ));
+    }
+
+    /** POST /venues/{publicId}/schema-versions/{versionId}/publish. */
+    public function publishVenueSchemaVersion(Request $request, string $publicId, int $versionId): SchemaVersionResource
+    {
+        $hall = $this->shadowHall($this->venueOrFail($publicId));
+
+        return new SchemaVersionResource(
+            $this->service->publishSchemaVersion($versionId, $request->user()->id, $hall->public_id)
         );
     }
 

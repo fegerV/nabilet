@@ -187,6 +187,11 @@ export async function activateAdminRaffle(publicId: string): Promise<RaffleDetai
   return unwrap<RaffleDetail>(send<{ data: RaffleDetail }>(`/admin/raffles/${publicId}/activate`, 'POST', {}))
 }
 
+/** POST /admin/raffles/{id}/pause — поставить активный розыгрыш на паузу. */
+export async function pauseAdminRaffle(publicId: string): Promise<RaffleDetail> {
+  return unwrap<RaffleDetail>(send<{ data: RaffleDetail }>(`/admin/raffles/${publicId}/pause`, 'POST', {}))
+}
+
 /** POST /admin/raffles/{id}/cancel — закрыть без тиража. */
 export async function cancelAdminRaffle(publicId: string): Promise<RaffleDetail> {
   return unwrap<RaffleDetail>(send<{ data: RaffleDetail }>(`/admin/raffles/${publicId}/cancel`, 'POST', {}))

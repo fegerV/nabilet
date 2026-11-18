@@ -88,7 +88,10 @@ final class RaffleService
 
         $created = 0;
 
-        foreach ($this->acceptingRaffles($this->paidMoment($order)) as $raffle) {
+        // Билет organization B не должен попадать в розыгрыш organization A:
+        // джобы вызывают сервис внутри withoutScope(), где модельного скоупа
+        // уже нет. Фильтр здесь — единственная граница tenant isolation.
+        foreach ($this->acceptingRaffles($this->paidMoment($order), $order->organization_id) as $raffle) {
             if (RaffleEntry::remember($raffle->getKey(), $order) !== null) {
                 $created++;
             }
@@ -124,18 +127,28 @@ final class RaffleService
 
         Order::query()
             ->where('status', OrderStateMachine::PAID)
+            // См. комментарий в enterForOrder(): без этого фильтра backfill
+            // розыгрыша A забирал бы оплаченные заказы ВСЕХ арендаторов.
+            ->when(
+                $raffle->organization_id !== null,
+                static fn ($q) => $q->where('organization_id', $raffle->organization_id),
+            )
             // Тот же момент, что у обсервера: `paid_at`, а для заказов,
             // оплаченных до появления колонки, — `created_at`. COALESCE
             // держит обсервер и backfill на одном правиле.
             ->where(function ($query) use ($raffle): void {
                 $moment = 'COALESCE(paid_at, created_at)';
 
+                // Laravel биндит DateTime как 'Y-m-d H:i:s' и срезает
+                // микросекунды DATETIME(6): обсервер (PHP) и backfill (SQL)
+                // выбирали разные составы на границе окна. Явная строка
+                // с '.u' держит оба правила одинаковыми.
                 if ($raffle->starts_at !== null) {
-                    $query->whereRaw($moment . ' >= ?', [$raffle->starts_at]);
+                    $query->whereRaw($moment . ' >= ?', [$raffle->starts_at->format('Y-m-d H:i:s.u')]);
                 }
 
                 if ($raffle->ends_at !== null) {
-                    $query->whereRaw($moment . ' <= ?', [$raffle->ends_at]);
+                    $query->whereRaw($moment . ' <= ?', [$raffle->ends_at->format('Y-m-d H:i:s.u')]);
                 }
             })
             ->chunkById(self::BACKFILL_CHUNK, function ($orders) use ($raffle, &$created): void {
@@ -159,10 +172,14 @@ final class RaffleService
      *
      * @return Collection<int, Raffle>
      */
-    public function acceptingRaffles(\DateTimeInterface $moment): Collection
+    public function acceptingRaffles(\DateTimeInterface $moment, mixed $organizationId = null): Collection
     {
         return Raffle::query()
             ->whereIn('status', RaffleStateMachine::acceptingEntries())
+            ->when(
+                $organizationId !== null,
+                static fn ($q) => $q->where('organization_id', $organizationId),
+            )
             ->get()
             ->filter(fn (Raffle $raffle): bool => $raffle->covers($moment))
             ->values();
@@ -217,6 +234,26 @@ final class RaffleService
                 );
             }
 
+            // Окно активного розыгрыша задаёт состав участников. Менять его
+            // «на ходу» — значит оставить старые билеты и начать собирать новые
+            // по другим датам; повторный backfill при этом невозможен.
+            // ISO-строка из SPA и Carbon из БД — разные типы: сравнивать их
+            // напрямую нельзя, иначе любая правка active-розыгрыша выглядела
+            // бы как смена окна. Приводим обе стороны к timestamp.
+            $normalizeDate = static fn ($value): ?int => $value === null || $value === ''
+                ? null
+                : \Illuminate\Support\Carbon::parse($value)->getTimestamp();
+            $windowChanged = (array_key_exists('starts_at', $attributes)
+                    && $normalizeDate($attributes['starts_at']) !== $normalizeDate($raffle->starts_at))
+                || (array_key_exists('ends_at', $attributes)
+                    && $normalizeDate($attributes['ends_at']) !== $normalizeDate($raffle->ends_at));
+            if ($raffle->status === Raffle::STATUS_ACTIVE && $windowChanged) {
+                throw new DomainRuleViolation(
+                    'Окно активного розыгрыша нельзя менять: сначала поставьте его на паузу.',
+                    'RAFFLE_ACTIVE_WINDOW_IMMUTABLE',
+                );
+            }
+
             // Смена статуса возможна только через машину состояний: `fill()`
             // взял бы статус из тела запроса в обход activate()/cancel(), и
             // backfill при активации не запустился бы.
@@ -252,6 +289,24 @@ final class RaffleService
             BackfillRaffleEntriesJob::forRaffle($raffle)
                 ->onConnection('database')
                 ->afterCommit();
+
+            return $raffle->fresh();
+        });
+    }
+
+    /**
+     * Поставить активный розыгрыш на паузу: `active → draft`.
+     *
+     * Переход уже разрешён машиной состояний, но раньше не имел ни маршрута,
+     * ни UI. Без него правка окна активного розыгрыша рассинхронизировала
+     * состав участников, а повторно запустить backfill было нельзя.
+     */
+    public function pause(Raffle $raffle): Raffle
+    {
+        return DB::transaction(function () use ($raffle): Raffle {
+            $this->assertTransition($raffle, Raffle::STATUS_DRAFT);
+
+            $raffle->forceFill(['status' => Raffle::STATUS_DRAFT])->save();
 
             return $raffle->fresh();
         });
@@ -442,13 +497,28 @@ final class RaffleService
      */
     private function myRafflesScoped(\Nabilet\Modules\Core\Users\Models\User $user): array
     {
-        $raffleIds = RaffleEntry::query()
-            ->forUser($user->getKey())
-            ->pluck('raffle_id')
-            ->unique()
-            ->all();
+        // Гостевые покупки не имеют user_id: после регистрации человека с тем же
+        // e-mail участия должны «найтись» в кабинете. Ищем по entry_id, а не по
+        // winner.user_id — у гостевого победителя user_id тоже NULL.
+        $email = (string) ($user->email ?? '');
+        $entries = RaffleEntry::query()
+            ->where(function ($query) use ($user, $email): void {
+                $query->where('user_id', $user->getKey());
+                if ($email !== '') {
+                    $query->orWhere(function ($query) use ($email): void {
+                        $query->whereNull('user_id')->whereHas(
+                            'order',
+                            static fn ($q) => $q->where('customer_email', $email),
+                        );
+                    });
+                }
+            })
+            ->get(['id', 'raffle_id']);
 
-        if ($raffleIds === []) {
+        $raffleIds = $entries->pluck('raffle_id')->unique()->all();
+        $entryIds = $entries->pluck('id')->all();
+
+        if ($raffleIds === [] || $entryIds === []) {
             return [];
         }
 
@@ -458,10 +528,10 @@ final class RaffleService
             ->with('orderedPrizes')
             ->withCount('entries')
             ->get()
-            ->map(function (Raffle $raffle) use ($user): array {
+            ->map(function (Raffle $raffle) use ($entryIds): array {
                 $won = RaffleWinner::query()
                     ->where('raffle_id', $raffle->getKey())
-                    ->where('user_id', $user->getKey())
+                    ->whereIn('entry_id', $entryIds)
                     ->with('prize')
                     ->get()
                     ->map(fn (RaffleWinner $winner): array => [

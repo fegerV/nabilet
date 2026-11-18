@@ -99,6 +99,16 @@ class Event extends Model
         'seo_description',
         'canonical_url',
         'robots',
+        // Мероприятие владеет датой и площадкой (этап 2 упрощения модели).
+        // Сеанс остаётся скрытой технической тенью для инвентаря и билетов.
+        'starts_at',
+        'ends_at',
+        'sales_start_at',
+        'sales_end_at',
+        'timezone',
+        'venue_id',
+        'schema_version_id',
+        'primary_session_id',
     ];
 
     protected function casts(): array
@@ -106,6 +116,13 @@ class Event extends Model
         return [
             'duration_minutes' => 'integer',
             'ticket_template_id' => 'integer',
+            'venue_id' => 'integer',
+            'schema_version_id' => 'integer',
+            'primary_session_id' => 'integer',
+            'starts_at' => 'datetime:Y-m-d H:i:s.u',
+            'ends_at' => 'datetime:Y-m-d H:i:s.u',
+            'sales_start_at' => 'datetime:Y-m-d H:i:s.u',
+            'sales_end_at' => 'datetime:Y-m-d H:i:s.u',
             'published_at' => 'datetime:Y-m-d H:i:s.u',
             'created_at' => 'datetime:Y-m-d H:i:s.u',
             'updated_at' => 'datetime:Y-m-d H:i:s.u',
@@ -174,6 +191,21 @@ class Event extends Model
     public function sessions(): HasMany
     {
         return $this->hasMany(\Nabilet\Modules\Sessions\Models\Session::class);
+    }
+
+    /** Площадка мероприятия — та же, что у его основного сеанса. */
+    public function venue(): BelongsTo
+    {
+        return $this->belongsTo(\Nabilet\Modules\Venues\Models\Venue::class, 'venue_id');
+    }
+
+    /**
+     * Скрытая техническая тень: инвентарь, корзины и билеты живут по сеансу.
+     * Пользователь работает с мероприятием, но продажи идут через неё.
+     */
+    public function primarySession(): BelongsTo
+    {
+        return $this->belongsTo(\Nabilet\Modules\Sessions\Models\Session::class, 'primary_session_id');
     }
 
     public function translations(): HasMany

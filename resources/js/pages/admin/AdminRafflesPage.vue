@@ -38,6 +38,7 @@ import {
   fetchAdminRaffle,
   fromLocalInput,
   notifyAdminRaffle,
+  pauseAdminRaffle,
   toLocalInput,
   updateAdminRaffle,
   type RaffleDetail,
@@ -81,6 +82,17 @@ const form = ref(emptyForm())
 const pendingNotifications = computed(
   () => selected.value?.winners.filter((winner) => !winner.notified).length ?? 0,
 )
+
+/** Призы в черновике: без названия розыгрыш нельзя создать (422 от сервера). */
+const formPrizeError = computed(() =>
+  form.value.prizes.some((row) => row.title.trim() === '')
+    ? 'Укажите название хотя бы одного призового места'
+    : undefined,
+)
+const validPrizes = computed(() => form.value.prizes.filter((row) => row.title.trim() !== ''))
+
+/** Окно активного розыгрыша нельзя править: сервер отклонит правку. */
+const activeWindowLocked = computed(() => selected.value?.status === 'active')
 
 async function load(): Promise<void> {
   loading.value = true
@@ -163,17 +175,35 @@ function removePrize(index: number): void {
 }
 
 async function saveForm(): Promise<void> {
+  if (formPrizeError.value) return
   saving.value = true
   try {
-    const payload = {
+    const mappedPrizes = validPrizes.value.map((row) => ({
+      place: row.place,
+      title: row.title.trim(),
+      description: row.description.trim(),
+    }))
+    // Правка разыгранного розыгрыша: если призы не менялись, НЕ отсылаем их —
+    // иначе сервер отклоняет исправление даже опечатки в названии.
+    const prizesUnchanged = !!selected.value
+      && mappedPrizes.length === selected.value.prizes.length
+      && mappedPrizes.every((p, i) => {
+        const current = selected.value!.prizes[i]
+        return p.place === current.place && p.title === current.title && (p.description || '') === (current.description || '')
+      })
+    const payload: {
+      title: string
+      description: string
+      starts_at: string | null
+      ends_at: string | null
+      prizes?: RafflePrizeDraft[]
+    } = {
       title: form.value.title,
       description: form.value.description,
       starts_at: fromLocalInput(form.value.starts),
       ends_at: fromLocalInput(form.value.ends),
-      prizes: form.value.prizes
-        .filter((row) => row.title.trim() !== '')
-        .map((row) => ({ place: row.place, title: row.title.trim(), description: row.description.trim() })),
     }
+    if (!prizesUnchanged) payload.prizes = mappedPrizes
 
     const saved = editing.value && selected.value
       ? await updateAdminRaffle(selected.value.public_id, payload)
@@ -190,7 +220,7 @@ async function saveForm(): Promise<void> {
   }
 }
 
-async function runAction(kind: 'activate' | 'cancel' | 'draw' | 'notify', publicId: string): Promise<void> {
+async function runAction(kind: 'activate' | 'pause' | 'cancel' | 'draw' | 'notify', publicId: string): Promise<void> {
   actionBusy.value = `${kind}:${publicId}`
   try {
     if (kind === 'draw') {
@@ -200,10 +230,19 @@ async function runAction(kind: 'activate' | 'cancel' | 'draw' | 'notify', public
     } else if (kind === 'notify') {
       const result = await notifyAdminRaffle(publicId)
       ui.notify('mint', 'Письма в работе', result.pending > 0 ? `Отправляем ${result.pending} писем.` : 'Всем победителям письмо уже уходило.')
+    } else if (kind === 'activate' || kind === 'pause') {
+      await (kind === 'activate' ? activateAdminRaffle(publicId) : pauseAdminRaffle(publicId))
+      ui.notify(
+        'mint',
+        kind === 'activate' ? 'Розыгрыш активирован' : 'Розыгрыш на паузе',
+        kind === 'activate'
+          ? 'Оплаченные заказы окна становятся билетами.'
+          : 'Набор приостановлен. Теперь можно изменить окно и активировать снова — backfill повторится без дублей.',
+      )
     } else {
-      await (kind === 'activate' ? activateAdminRaffle(publicId) : cancelAdminRaffle(publicId))
+      await cancelAdminRaffle(publicId)
       cancelConfirm.value = false
-      ui.notify('mint', kind === 'activate' ? 'Розыгрыш активирован' : 'Розыгрыш отменён', kind === 'activate' ? 'Оплаченные заказы окна становятся билетами.' : 'Участники видят розыгрыш как отменённый.')
+      ui.notify('mint', 'Розыгрыш отменён', 'Участники видят розыгрыш как отменённый.')
     }
 
     selected.value = await fetchAdminRaffle(publicId)
@@ -370,6 +409,15 @@ async function runAction(kind: 'activate' | 'cancel' | 'draw' | 'notify', public
         <NButton
           v-if="selected.status === 'active'"
           size="sm"
+          :disabled="actionBusy !== null"
+          @click="runAction('pause', selected.public_id)"
+        >
+          Пауза
+        </NButton>
+
+        <NButton
+          v-if="selected.status === 'active'"
+          size="sm"
           variant="primary"
           :disabled="actionBusy !== null"
           @click="drawConfirm = true"
@@ -405,8 +453,23 @@ async function runAction(kind: 'activate' | 'cancel' | 'draw' | 'notify', public
         <NInput v-model="form.description" label="Описание" placeholder="Что за приз и по каким правилам разыгрывается" />
 
         <div class="grid gap-4 sm:grid-cols-2">
-          <NInput v-model="form.starts" type="datetime-local" label="Окно с" hint="Пусто — с начала времён" />
-          <NInput v-model="form.ends" type="datetime-local" label="Окно по" hint="Пусто — до тиража" />
+          <NInput
+            v-model="form.starts"
+            type="datetime-local"
+            label="Окно с"
+            hint="Пусто — с начала времён"
+            :disabled="activeWindowLocked"
+          />
+          <NInput
+            v-model="form.ends"
+            type="datetime-local"
+            label="Окно по"
+            hint="Пусто — до тиража"
+            :disabled="activeWindowLocked"
+          />
+          <p v-if="activeWindowLocked" class="text-xs text-sun-400 sm:col-span-2">
+            Активный розыгрыш: окно зафиксировано. Поставьте на паузу, чтобы изменить даты.
+          </p>
         </div>
 
         <div>
@@ -414,6 +477,7 @@ async function runAction(kind: 'activate' | 'cancel' | 'draw' | 'notify', public
             <p class="text-sm font-medium text-content">Призовые места</p>
             <NButton size="sm" variant="ghost" @click="addPrize">Добавить место</NButton>
           </div>
+          <p v-if="formPrizeError" class="mb-2 text-xs text-rose-400">{{ formPrizeError }}</p>
 
           <div class="space-y-2">
             <div v-for="(prize, index) in form.prizes" :key="prize.key" class="flex items-start gap-2">
@@ -437,7 +501,7 @@ async function runAction(kind: 'activate' | 'cancel' | 'draw' | 'notify', public
       <template #footer>
         <div class="flex items-center justify-end gap-2">
           <NButton size="sm" variant="ghost" @click="formOpen = false">Отмена</NButton>
-          <NButton size="sm" variant="primary" :disabled="saving || !form.title.trim()" @click="saveForm">
+          <NButton size="sm" variant="primary" :disabled="saving || !form.title.trim() || !!formPrizeError" @click="saveForm">
             {{ saving ? 'Сохранение…' : editing ? 'Сохранить' : 'Создать' }}
           </NButton>
         </div>

@@ -15,6 +15,7 @@ use Nabilet\Modules\Tickets\Models\Ticket;
 use Nabilet\Modules\Tickets\Models\TicketScan;
 use Nabilet\Modules\Tickets\Repositories\TicketRepository;
 use Nabilet\Modules\Tickets\StateMachines\TicketStateMachine;
+use Nabilet\Modules\Orders\Models\OrderItem;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -178,6 +179,28 @@ class TicketScanService
                 }
             }
 
+            // Заказ = билет: позиция заказа — такой же источник статуса, как
+            // tickets. Возвращённый/отозванный билет не проходит чек-ин даже
+            // если legacy-зеркало ещё говорит 'issued'.
+            $orderItemStatus = OrderItem::query()
+                ->where('order_id', $ticket->order_id)
+                ->where(function ($q) use ($ticket): void {
+                    $q->where('id', $ticket->order_item_id)
+                        ->orWhere('ticket_number', $ticket->ticket_number);
+                })
+                ->value('ticket_status');
+            if (in_array($orderItemStatus, [
+                TicketStateMachine::REFUNDED,
+                TicketStateMachine::CANCELLED,
+                TicketStateMachine::REVOKED,
+            ], true)) {
+                return [
+                    'success' => false,
+                    'message' => 'Ticket is no longer valid',
+                    'reason' => 'TICKET_REFUNDED',
+                ];
+            }
+
             // Межарендаторский доступ: билет другой организации неотличим от
             // несуществующего. `null` — внутренний вызов без HTTP-контекста
             // (например, `TicketService::checkInTicket`), для него проверка не
@@ -251,6 +274,17 @@ class TicketScanService
                     'status' => $outcome->resultingStatus,
                     'used_at' => now(),
                 ]);
+
+                // Заказ = билет: погашение отражается и в позиции заказа.
+                OrderItem::query()
+                    ->where(function ($q) use ($ticket): void {
+                        $q->where('id', $ticket->order_item_id)
+                            ->orWhere('ticket_number', $ticket->ticket_number);
+                    })
+                    ->update([
+                        'ticket_status' => $outcome->resultingStatus,
+                        'used_at' => now(),
+                    ]);
             }
 
             return [

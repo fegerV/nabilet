@@ -53,10 +53,6 @@ function openResults(publicId: string): void {
   void router.push(`/raffles/${publicId}`)
 }
 
-/** Есть ли выигрыш в этом розыгрыше. */
-function myWin(raffle: RaffleParticipation): RaffleParticipation['won'][number] | undefined {
-  return raffle.won[0]
-}
 </script>
 
 <template>
@@ -115,15 +111,23 @@ function myWin(raffle: RaffleParticipation): RaffleParticipation['won'][number] 
         </ul>
 
         <!-- Результат для меня -->
-        <p v-if="myWin(raffle)" class="mt-3 flex flex-wrap items-center gap-2 rounded-lg bg-mint-500/10 px-3 py-2 text-sm">
-          <span aria-hidden="true">🏆</span>
-          <span class="font-medium text-mint-400">
-            Вы победитель: {{ myWin(raffle)!.prize_title }} ({{ myWin(raffle)!.place }} место)
-          </span>
-          <span class="text-xs text-subtle">
-            {{ myWin(raffle)!.notified ? 'письмо отправлено' : 'письмо придёт на почту' }}
-          </span>
-        </p>
+        <!-- Один человек с двумя выигравшими билетами может взять два места:
+             показываем ВСЕ выигрыши, а не только первый. -->
+        <ul v-if="raffle.won.length > 0" class="mt-3 space-y-1.5">
+          <li
+            v-for="(win, index) in raffle.won"
+            :key="`${win.place}-${index}`"
+            class="flex flex-wrap items-center gap-2 rounded-lg bg-mint-500/10 px-3 py-2 text-sm"
+          >
+            <span aria-hidden="true">🏆</span>
+            <span class="font-medium text-mint-400">
+              Вы победитель: {{ win.prize_title }} ({{ win.place }} место)
+            </span>
+            <span class="text-xs text-subtle">
+              {{ win.notified ? 'письмо отправлено' : 'письмо придёт на почту' }}
+            </span>
+          </li>
+        </ul>
         <p v-else-if="raffle.status === 'drawn'" class="mt-3 rounded-lg bg-surface-2 px-3 py-2 text-xs text-subtle">
           Ваши билеты не выиграли в этом розыгрыше — следите за следующими.
         </p>

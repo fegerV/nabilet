@@ -94,6 +94,7 @@ class HallRepository
         $latestVersion = $hall->schemaVersions()->max('version') ?? 0;
 
         return $hall->schemaVersions()->create([
+            'venue_id' => $hall->venue_id,
             'version' => $latestVersion + 1,
             'revision' => 1,
             'schema_json' => $payload,

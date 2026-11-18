@@ -24,6 +24,7 @@ class SchemaVersionResource extends JsonResource
             'id' => $this->id,
             'public_id' => $this->public_id,
             'hall_id' => $this->hall_id,
+            'venue_id' => $this->venue_id,
             'version' => $this->version,
             'revision' => $this->revision ?? 1,
             'status' => $this->status,

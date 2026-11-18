@@ -9,6 +9,11 @@ use Nabilet\Modules\Events\Domain\EventStatus;
 use Nabilet\Modules\Events\Models\Event;
 use Nabilet\Modules\Events\Repositories\EventRepository;
 use Nabilet\Modules\Events\StateMachines\EventStateMachine;
+use Nabilet\Modules\Inventory\Services\InventoryService;
+use Nabilet\Modules\Sessions\Models\Session;
+use Nabilet\Modules\Venues\Models\Hall;
+use Nabilet\Modules\Venues\Models\HallSchemaVersion;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 
@@ -21,7 +26,8 @@ use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 class EventService
 {
     public function __construct(
-        private readonly EventRepository $eventRepository
+        private readonly EventRepository $eventRepository,
+        private readonly InventoryService $inventoryService,
     ) {}
 
     /**
@@ -82,7 +88,94 @@ class EventService
         // Default to draft if no status provided
         $data['status'] = $data['status'] ?? EventStatus::DRAFT;
 
-        return $this->eventRepository->create($data);
+        $event = $this->eventRepository->create($data);
+        $this->syncPrimarySession($event, $data);
+
+        return $event->fresh();
+    }
+
+    /**
+     * Мероприятие выглядит одной сущностью, но продажи идут через сеанс:
+     * корзины, инвентарь, билеты и чек-ин ссылаются на session_id. Поэтому
+     * дата/площадка мероприятия синхронизируются со скрытым основным сеансом.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function syncPrimarySession(Event $event, array $data): void
+    {
+        if ($event->starts_at === null || $event->venue_id === null) {
+            return;
+        }
+
+        DB::transaction(function () use ($event, $data): void {
+            $session = $event->primary_session_id !== null
+                ? Session::query()->find($event->primary_session_id)
+                : null;
+
+            $hall = Hall::query()->where('venue_id', $event->venue_id)->first();
+
+            $schemaVersionId = $event->schema_version_id;
+            if ($schemaVersionId === null) {
+                $schemaQuery = HallSchemaVersion::query()
+                    ->where('status', 'published')
+                    ->when(
+                        $hall !== null,
+                        static fn ($q) => $q->where(
+                            static fn ($q) => $q->where('venue_id', $event->venue_id)
+                                ->orWhere('hall_id', $hall->id),
+                        ),
+                        static fn ($q) => $q->where('venue_id', $event->venue_id),
+                    );
+                $schemaVersionId = $schemaQuery->orderByDesc('id')->value('id');
+            }
+            if ($hall === null && $schemaVersionId !== null) {
+                $legacyHallId = HallSchemaVersion::query()->whereKey($schemaVersionId)->value('hall_id');
+                $hall = $legacyHallId !== null ? Hall::query()->find($legacyHallId) : null;
+            }
+            if ($hall === null) {
+                // Площадка без technical-зала: схема ещё не рисовалась,
+                // продавать нечего — сеанс всё равно нужен для даты.
+                $hall = Hall::query()->create([
+                    'venue_id' => $event->venue_id,
+                    'name' => $event->title,
+                    'status' => 'active',
+                ]);
+            }
+
+            $attributes = [
+                'event_id' => $event->id,
+                'venue_id' => $event->venue_id,
+                'hall_id' => $hall->id,
+                'schema_version_id' => $schemaVersionId,
+                'starts_at' => $event->starts_at,
+                'ends_at' => $event->ends_at,
+                'sales_start_at' => $event->sales_start_at,
+                'sales_end_at' => $event->sales_end_at,
+                'timezone' => $event->timezone ?? config('app.timezone', 'UTC'),
+            ];
+
+            $schemaChanged = false;
+            if ($session === null) {
+                $session = Session::query()->create($attributes);
+                $schemaChanged = $schemaVersionId !== null;
+            } else {
+                $schemaChanged = (int) $session->schema_version_id !== (int) $schemaVersionId;
+                $session->fill($attributes)->save();
+            }
+
+            $event->primary_session_id = $session->id;
+            if ($schemaVersionId !== null) {
+                $event->schema_version_id = $schemaVersionId;
+            }
+            $event->save();
+
+            if ($schemaChanged && $schemaVersionId !== null) {
+                $this->inventoryService->generateFromSchema(
+                    HallSchemaVersion::query()->findOrFail($schemaVersionId),
+                    $session,
+                );
+            }
+        });
     }
 
     /**
@@ -97,7 +190,10 @@ class EventService
             );
         }
 
-        return $this->eventRepository->update($event, $data);
+        $event = $this->eventRepository->update($event, $data);
+        $this->syncPrimarySession($event, $data);
+
+        return $event->fresh();
     }
 
     public function delete(Event $event): bool

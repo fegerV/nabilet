@@ -89,7 +89,9 @@ trait PreparesEventPayload
      *
      * @var list<string>
      */
-    protected const NON_COLUMN_FIELDS = ['start_date', 'end_date', 'timezone', 'currency', 'is_featured', 'min_price', 'max_price', 'metadata'];
+    // `timezone` убран: с 2026-11-18 это реальная колонка events (мероприятие
+    // владеет датой), и вырезание её молча теряло таймзону.
+    protected const NON_COLUMN_FIELDS = ['start_date', 'end_date', 'currency', 'is_featured', 'min_price', 'max_price', 'metadata'];
 
     /**
      * Служебные ключи, которых нет ни в одной таблице: их ставит сам код

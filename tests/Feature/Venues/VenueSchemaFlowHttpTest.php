@@ -97,7 +97,9 @@ final class VenueSchemaFlowHttpTest extends TestCase
             'city' => 'Сургут',
         ])->assertCreated();
 
-        self::assertSame('Основной зал', $response->json('hall.name'));
+        // Техническая строка схемы больше не называется «Основной зал»:
+        // пользователь работает с площадкой, а не с вложенным залом.
+        self::assertSame('ДК «Маяк»', $response->json('hall.name'));
 
         $hallPublicId = $response->json('hall.public_id');
         self::assertIsString($hallPublicId);
@@ -106,7 +108,7 @@ final class VenueSchemaFlowHttpTest extends TestCase
 
         $this->assertDatabaseHas('halls', [
             'venue_id' => $venueId,
-            'name' => 'Основной зал',
+            'name' => 'ДК «Маяк»',
             'organization_id' => $organizationId,
         ]);
 
@@ -144,6 +146,34 @@ final class VenueSchemaFlowHttpTest extends TestCase
         $after = $this->getJson('/api/v1/venues?per_page=100')->assertOk();
         self::assertSame(1, $after->json('data.data.0.halls.0.current_schema_version.version'));
         self::assertSame('published', $after->json('data.data.0.halls.0.current_schema_version.status'));
+    }
+
+    /**
+     * Схема принадлежит площадке: конструктор работает с publicId площадки,
+     * а не с technical-строкой «зала», которую пользователь не видит.
+     */
+    public function test_schema_can_be_managed_by_venue_public_id(): void
+    {
+        $organizationId = $this->seedOrganization();
+        $this->actingAsStaff($organizationId);
+
+        $venue = $this->postJson('/api/v1/venues', ['name' => 'Филармония'])->assertCreated();
+        $venuePublicId = (string) $venue->json('data.public_id');
+
+        $draft = $this->postJson("/api/v1/venues/{$venuePublicId}/schema-versions/draft", [
+            'payload' => $this->schemaPayload(500000),
+        ])->assertSuccessful();
+
+        $versionId = (int) $draft->json('data.id');
+        self::assertGreaterThan(0, $versionId);
+        self::assertSame((string) $venue->json('data.id'), (string) $draft->json('data.venue_id'));
+
+        $list = $this->getJson("/api/v1/venues/{$venuePublicId}/schema-versions")->assertOk();
+        self::assertCount(1, $list->json('data'));
+
+        $this->postJson("/api/v1/venues/{$venuePublicId}/schema-versions/{$versionId}/publish", [])
+            ->assertSuccessful()
+            ->assertJsonPath('data.status', 'published');
     }
 
     public function test_schema_draft_and_publish_over_http(): void

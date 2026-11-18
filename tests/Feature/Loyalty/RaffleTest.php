@@ -208,7 +208,14 @@ class RaffleTest extends TestCase
      */
     private function paidOrder(User $user): Order
     {
-        [$organizationId, , , $inventoryId] = $this->seedSellableSeat(available: 1);
+        // Розыгрыш и заказ ОБЯЗАНЫ быть одного арендатора: сервис теперь
+        // фильтрует organization_id (иначе билеты organization B попадали
+        // в розыгрыш organization A). Тест использует ту же organization(),
+        // что и createRaffle().
+        [$organizationId, , , $inventoryId] = $this->seedSellableSeat(
+            available: 1,
+            organizationId: $this->organization(),
+        );
 
         $service = app(OrderService::class);
 
@@ -394,6 +401,117 @@ class RaffleTest extends TestCase
         self::assertNotEmpty($res[0]['won']);
         self::assertSame(1, $res[0]['won'][0]['place']);
         self::assertSame('Главный приз', $res[0]['won'][0]['prize_title']);
+    }
+
+    // ── регрессии аудита 2026-11-18 ────────────────────────────────────────
+
+    public function test_paid_order_of_another_organization_does_not_enter_the_raffle(): void
+    {
+        $raffle = $this->activeRaffle([['place' => 1, 'title' => 'Приз']]);
+
+        // Заказ СВОЕЙ организации (отличной от розыгрыша): без фильтра он
+        // становился билетом чужого розыгрыша.
+        [$organizationId, , , $inventoryId] = $this->seedSellableSeat(available: 1);
+        self::assertNotSame($this->organization(), $organizationId);
+
+        $service = app(OrderService::class);
+        $order = $service->createOrder([
+            'organization_id' => $organizationId,
+            'customer_email' => 'other-org@example.com',
+            'items' => [['inventory_item_id' => $inventoryId, 'quantity' => 1]],
+        ]);
+        $service->markAwaitingPayment($order);
+        $service->markPaid($order->fresh());
+        (new EnterRafflesJob(orderId: $order->id))->handle($this->raffles());
+
+        self::assertSame(0, $this->entryCount($raffle->id));
+    }
+
+    public function test_active_raffle_window_cannot_be_changed(): void
+    {
+        $raffle = $this->activeRaffle([['place' => 1, 'title' => 'Приз']]);
+
+        $this->putJson('/api/v1/admin/raffles/' . $raffle->public_id, [
+            'starts_at' => now()->addDay()->toIso8601String(),
+        ], $this->headers($this->apiToken()))
+            ->assertStatus(422)
+            ->assertJsonPath('error.code', 'RAFFLE_ACTIVE_WINDOW_IMMUTABLE');
+    }
+
+    public function test_pause_allows_window_edit_and_reactivation(): void
+    {
+        $raffle = $this->activeRaffle([['place' => 1, 'title' => 'Приз']]);
+        $headers = $this->headers($this->apiToken());
+
+        $this->postJson('/api/v1/admin/raffles/' . $raffle->public_id . '/pause', [], $headers)
+            ->assertOk()
+            ->assertJsonPath('data.status', Raffle::STATUS_DRAFT);
+
+        $startsAt = now()->subDay()->toIso8601String();
+        $this->putJson('/api/v1/admin/raffles/' . $raffle->public_id, [
+            'starts_at' => $startsAt,
+        ], $headers)->assertOk();
+
+        $this->postJson('/api/v1/admin/raffles/' . $raffle->public_id . '/activate', [], $headers)
+            ->assertOk()
+            ->assertJsonPath('data.status', Raffle::STATUS_ACTIVE);
+    }
+
+    public function test_notify_requires_a_drawn_raffle(): void
+    {
+        $raffle = $this->activeRaffle([['place' => 1, 'title' => 'Приз']]);
+
+        $this->postJson('/api/v1/admin/raffles/' . $raffle->public_id . '/notify', [], $this->headers($this->apiToken()))
+            ->assertStatus(422)
+            ->assertJsonPath('error.code', 'RAFFLE_NOT_DRAWN');
+    }
+
+    public function test_my_raffles_finds_guest_entries_by_email_after_registration(): void
+    {
+        $buyer = $this->user('guest-buyer@example.com');
+        $raffle = $this->activeRaffle([['place' => 1, 'title' => 'Главный приз']]);
+
+        [$organizationId, , , $inventoryId] = $this->seedSellableSeat(available: 1, organizationId: $this->organization());
+        $service = app(OrderService::class);
+        $order = $service->createOrder([
+            'organization_id' => $organizationId,
+            // Гость: user_id не задан, участвует по e-mail заказа.
+            'customer_email' => $buyer->email,
+            'items' => [['inventory_item_id' => $inventoryId, 'quantity' => 1]],
+        ]);
+        $service->markAwaitingPayment($order);
+        $service->markPaid($order->fresh());
+        (new EnterRafflesJob(orderId: $order->id))->handle($this->raffles());
+
+        $res = $this->getJson('/api/v1/me/raffles', $this->headers($this->tokenFor($buyer)))
+            ->assertOk()
+            ->json('data');
+
+        self::assertCount(1, $res);
+        self::assertSame($raffle->public_id, $res[0]['public_id']);
+    }
+
+    public function test_my_raffles_returns_every_win_not_only_the_first(): void
+    {
+        $buyer = $this->user('two-wins@example.com');
+        $raffle = $this->activeRaffle([
+            ['place' => 1, 'title' => 'Первый'],
+            ['place' => 2, 'title' => 'Второй'],
+        ]);
+
+        $this->paidOrder($buyer);
+        $this->paidOrder($buyer);
+        $this->drawScoped($raffle->fresh());
+
+        $res = $this->getJson('/api/v1/me/raffles', $this->headers($this->tokenFor($buyer)))
+            ->assertOk()
+            ->json('data');
+
+        self::assertCount(2, $res[0]['won']);
+        self::assertSame(
+            [1, 2],
+            collect($res[0]['won'])->pluck('place')->sort()->values()->all(),
+        );
     }
 
     // ── тест-аналоги системных путей (bypass) ──────────────────────────────
