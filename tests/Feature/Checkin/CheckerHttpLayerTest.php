@@ -646,7 +646,7 @@ class CheckerHttpLayerTest extends TestCase
      * Заказ → оплата → выпуск билетов: тот же путь, что и у покупателя, чтобы
      * `qr_payload` был подписан тем же секретом, каким его проверит контроллер.
      */
-    private function issueTicket(int $organizationId, int $inventoryItemId): Ticket
+    private function issueTicket(int $organizationId, int $inventoryItemId): \Nabilet\Modules\Orders\Models\OrderItem
     {
         $orders = app(OrderService::class);
 

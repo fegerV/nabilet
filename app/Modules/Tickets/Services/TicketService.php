@@ -70,7 +70,12 @@ class TicketService
             }
 
             // Идемпотентность: если билеты уже выпущены — ничего не создаём заново.
-            $existing = Ticket::where('order_id', $order->id)->orderBy('id')->get();
+            // tickets — VIEW над order_items: неоплаченная позиция тоже видна
+            // в нём, поэтому «уже выпущено» означает только ненулевой номер.
+            $existing = Ticket::where('order_id', $order->id)
+                ->whereNotNull('ticket_number')
+                ->orderBy('id')
+                ->get();
             if ($existing->isNotEmpty()) {
                 return $existing->all();
             }
@@ -149,29 +154,9 @@ class TicketService
                     // NB1.<ticketPublicId>.<token>.<signature>.
                     $signed = $signer->issue($publicId);
 
-                    $ticket = Ticket::create([
-                        'public_id' => $publicId,
-                        'ticket_number' => sprintf('TCK-%s-%03d', strtoupper(substr($order->public_id, 0, 8)), $seq),
-                        'ticket_index' => $i + 1,
-                        'order_id' => $order->id,
-                        'order_item_id' => $item->id,
-                        'event_id' => $eventId,
-                        'session_id' => $sessionId,
-                        'inventory_item_id' => $item->inventory_item_id,
-                        'seat_id' => $seatId,
-                        'holder_name' => $order->customer_name ?? $order->customer_email,
-                        'status' => TicketStateMachine::ISSUED,
-                        'qr_version' => 1,
-                        'qr_token_hash' => Sha256Hex::of($signed['token']),
-                        'qr_payload' => $signed['payload'],
-                        'issued_at' => now(),
-                        'created_at' => now(),
-                        'updated_at' => now(),
-                    ]);
-
-                    // Заказ = билет: то же состояние пишем прямо в позицию заказа.
-                    // Таблица tickets пока остаётся legacy-зеркалом для чек-ина,
-                    // но новые билеты уже читаются из order_items.
+                    // Заказ = билет: билет — это сама позиция заказа. Таблица
+                    // tickets заменена VIEW над order_items, поэтому отдельной
+                    // вставки нет: обновляем строку заказа и возвращаем её.
                     $orderItem = $item;
                     if ($i > 0) {
                         $copy = $item->toArray();
@@ -179,24 +164,29 @@ class TicketService
                         $newItemId = DB::table('order_items')->insertGetId($copy);
                         $orderItem = OrderItem::query()->findOrFail($newItemId);
                     }
+                    $ticketNumber = sprintf('TCK-%s-%03d', strtoupper(substr($order->public_id, 0, 8)), $seq);
+                    $qrHash = Sha256Hex::of($signed['token']);
+                    $issuedAt = now();
+                    $holder = $order->customer_name ?? $order->customer_email;
                     $orderItem->update([
+                        'organization_id' => $order->organization_id,
                         'public_id' => $publicId,
                         'event_id' => $eventId,
                         'session_id' => $sessionId,
                         'seat_id' => $seatId,
                         'standing_zone_id' => $inventory?->standing_zone_id,
-                        'ticket_number' => $ticket->ticket_number,
+                        'ticket_number' => $ticketNumber,
                         'ticket_index' => $i + 1,
                         'qr_version' => 1,
-                        'qr_token_hash' => $ticket->qr_token_hash,
+                        'qr_token_hash' => $qrHash,
                         'qr_payload' => $signed['payload'],
-                        'holder_name' => $ticket->holder_name,
+                        'holder_name' => $holder,
                         'ticket_status' => TicketStateMachine::ISSUED,
-                        'issued_at' => $ticket->issued_at,
+                        'issued_at' => $issuedAt,
                         'quantity' => 1,
                     ]);
 
-                    $tickets[] = $ticket;
+                    $tickets[] = $orderItem;
                 }
             }
 

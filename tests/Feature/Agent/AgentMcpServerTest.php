@@ -486,24 +486,33 @@ class AgentMcpServerTest extends TestCase
             $payload = 'nbl://t/'.Str::random(32);
             $qrPayload = $payload;
 
-            DB::table('tickets')->insert([
+            // tickets — VIEW над order_items: каждый билет = отдельная позиция.
+            $ticketFields = [
                 'public_id' => (string) Str::ulid()->toBase32(),
                 'organization_id' => $seed['orgId'],
                 'ticket_number' => 'T-'.Str::random(12),
                 'ticket_index' => $i,
-                'order_id' => $orderId,
-                'order_item_id' => $orderItemId,
                 'event_id' => $seed['eventId'],
                 'session_id' => $seed['sessionId'],
-                'inventory_item_id' => $seed['inventoryItemId'],
-                'status' => 'issued',
+                'ticket_status' => 'issued',
                 'qr_version' => 1,
                 'qr_token_hash' => hash('sha256', Str::random(32)),
                 'qr_payload' => $payload,
                 'issued_at' => $now,
-                'created_at' => $now,
-                'updated_at' => $now,
-            ]);
+            ];
+            if ($i === 1) {
+                DB::table('order_items')->where('id', $orderItemId)->update($ticketFields + [
+                    'quantity' => 1,
+                    'total_amount' => (int) DB::table('order_items')->where('id', $orderItemId)->value('unit_price'),
+                ]);
+            } else {
+                $copy = (array) DB::table('order_items')->where('id', $orderItemId)->first();
+                unset($copy['id']);
+                DB::table('order_items')->insertGetId(array_merge($copy, $ticketFields, [
+                    'quantity' => 1,
+                    'total_amount' => (int) $copy['unit_price'],
+                ]));
+            }
         }
 
         return ['orderId' => $orderId, 'orderPublicId' => $orderPublicId, 'orderNumber' => $orderNumber, 'qrPayload' => $qrPayload];

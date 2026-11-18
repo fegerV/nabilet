@@ -131,22 +131,10 @@ class TicketRepository
         ?array $metadata = null,
         ?\DateTimeImmutable $scannedAt = null,
     ): TicketScan {
-        // Чек-ин = событие позиции заказа. Пишем в каноническую таблицу,
-        // ticket_scans остаётся legacy-зеркалом до полного перевода читателей.
-        DB::table('order_item_scans')->insert([
-            'public_id' => PublicId::generate(),
-            'order_item_id' => $ticket->order_item_id,
-            'session_id' => $ticket->session_id,
-            'device_id' => $deviceId,
-            'client_scan_id' => $clientScanId,
-            'mode' => $mode,
-            'result' => $result,
-            'scanned_at' => $scannedAt === null ? now() : \Carbon\Carbon::instance($scannedAt),
-            'created_at' => now(),
-            'metadata_json' => $metadata === null ? null : json_encode($metadata),
-        ]);
-
+        // ticket_scans — VIEW над order_item_scans: одна вставка через связь
+        // билета автоматически попадает в каноническую таблицу сканирований.
         return $ticket->scans()->create([
+            'organization_id' => $ticket->order?->organization_id,
             'public_id' => PublicId::generate(),
             'session_id' => $ticket->session_id,
             'device_id' => $deviceId,

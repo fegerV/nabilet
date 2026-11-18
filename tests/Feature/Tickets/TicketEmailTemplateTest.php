@@ -918,26 +918,24 @@ final class TicketEmailTemplateTest extends TestCase
     {
         $now = now()->toDateTimeString();
 
-        return (int) DB::table('tickets')->insertGetId([
+        // tickets — VIEW над order_items: обновляем позицию заказа.
+        DB::table('order_items')->where('id', $orderItemId)->update([
             'public_id' => (string) Str::ulid(),
             'organization_id' => (int) DB::table('orders')->where('id', $orderId)->value('organization_id'),
             'ticket_number' => 'TCK-TEST-001',
             'ticket_index' => 1,
-            'order_id' => $orderId,
-            'order_item_id' => $orderItemId,
             'event_id' => $eventId,
             'session_id' => $sessionId,
-            'inventory_item_id' => $inventoryItemId,
             'seat_id' => $seatId,
             'holder_name' => 'Анонимный Покупатель',
-            'status' => 'issued',
+            'ticket_status' => 'issued',
             'qr_version' => 1,
             'qr_token_hash' => hash('sha256', 'test-token'),
             'qr_payload' => 'NB1.test-public-id.token.signature',
             'issued_at' => $now,
-            'created_at' => $now,
-            'updated_at' => $now,
         ]);
+
+        return $orderItemId;
     }
 
     /**

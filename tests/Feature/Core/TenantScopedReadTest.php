@@ -1761,20 +1761,18 @@ final class TenantScopedReadTest extends TestCase
             'created_at' => $now,
         ]);
 
-        return (int) DB::table('tickets')->insertGetId([
+        DB::table('order_items')->where('id', $orderItemId)->update([
             'public_id' => (string) Str::ulid()->toBase32(),
             'organization_id' => $organizationId,
             'ticket_number' => 'TCK-' . strtoupper(Str::random(10)),
-            'order_id' => $order->id,
-            'order_item_id' => $orderItemId,
             'event_id' => $eventId,
             'session_id' => $sessionId,
-            'inventory_item_id' => $inventoryId,
+            'ticket_status' => 'issued',
             'qr_token_hash' => hash('sha256', (string) Str::ulid()),
             'issued_at' => $now,
-            'created_at' => $now,
-            'updated_at' => $now,
         ]);
+
+        return $orderItemId;
     }
 
     private function makeScan(int $ticketId, int $organizationId): void

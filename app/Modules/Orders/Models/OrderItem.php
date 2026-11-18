@@ -54,6 +54,7 @@ class OrderItem extends Model
 
     protected $fillable = [
         'order_id',
+        'organization_id',
         'inventory_item_id',
         'quantity',
         'unit_price',
@@ -104,6 +105,33 @@ class OrderItem extends Model
     public function order(): BelongsTo
     {
         return $this->belongsTo(Order::class);
+    }
+
+    /**
+     * Алиасы для совместимости с кодом, который ещё работает с «билетом»:
+     * после перехода tickets → VIEW над order_items все читатели получают
+     * те же имена полей и связей, но данные идут из одной строки заказа.
+     */
+    public function getStatusAttribute(mixed $value): ?string
+    {
+        return $this->ticket_status;
+    }
+
+    public function getOrderItemAttribute(mixed $value): self
+    {
+        return $this;
+    }
+
+    /** @return \Illuminate\Database\Eloquent\Relations\HasMany<\Nabilet\Modules\Tickets\Models\TicketScan, $this> */
+    public function scans(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(\Nabilet\Modules\Tickets\Models\TicketScan::class, 'ticket_id', 'id');
+    }
+
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<\Nabilet\Modules\Events\Models\Event, $this> */
+    public function event(): BelongsTo
+    {
+        return $this->belongsTo(\Nabilet\Modules\Events\Models\Event::class, 'event_id');
     }
 
     public function inventoryItem(): BelongsTo

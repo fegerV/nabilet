@@ -711,8 +711,10 @@ class PaymentService
                 // Вторая и третья доставка того же уведомления не должны выпустить
                 // второй комплект билетов — оценщик обязан знать, что сайд-эффект
                 // уже произошёл.
+                // tickets — VIEW над order_items: неоплаченная позиция уже есть
+                // в заказе, но билетом она становится только с номером.
                 ticketsAlreadyIssued: $order !== null
-                    && Ticket::where('order_id', $order->id)->exists(),
+                    && Ticket::where('order_id', $order->id)->whereNotNull('ticket_number')->exists(),
             );
         } catch (DomainRuleViolation $e) {
             // Валюта заказа и валюта уведомления разошлись — конструктор

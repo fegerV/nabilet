@@ -82,10 +82,11 @@ class AnalyticsReportService
     {
         $since = $this->moment($since);
 
-        // Считаем заказы из orders, а не из tickets: три билета в одном заказе
-        // не должны утраивать выручку. DISTINCT ON (o.id) отбрасывает дубликаты
-        // строк от join с order_items.
-        return DB::table('orders as o')
+        // Один билет = одна позиция заказа, поэтому join с order_items даёт
+        // несколько строк на заказ. Сначала выбираем УНИКАЛЬНЫЕ пары
+        // (событие, заказ), и только потом суммируем сумму заказа — иначе
+        // выручка умножалась бы на число билетов в заказе.
+        $orders = DB::table('orders as o')
             ->join('order_items as oi', 'oi.order_id', '=', 'o.id')
             ->join('inventory_items as ii', 'ii.id', '=', 'oi.inventory_item_id')
             ->join('sessions as s', 's.id', '=', 'ii.session_id')
@@ -93,11 +94,21 @@ class AnalyticsReportService
             ->where('o.created_at', '>=', $since)
             ->where('o.status', OrderStateMachine::PAID)
             ->select(
+                'e.id as event_id',
                 'e.title as name',
-                DB::raw('COUNT(DISTINCT o.id) as orders'),
-                DB::raw('SUM(o.total_amount) as revenue')
+                'o.id as order_id',
+                'o.total_amount'
             )
-            ->groupBy('e.id', 'e.title')
+            ->distinct();
+
+        return DB::query()
+            ->fromSub($orders, 'x')
+            ->select(
+                'name',
+                DB::raw('COUNT(*) as orders'),
+                DB::raw('SUM(total_amount) as revenue')
+            )
+            ->groupBy('event_id', 'name')
             ->orderByDesc('revenue')
             ->limit(10)
             ->get();

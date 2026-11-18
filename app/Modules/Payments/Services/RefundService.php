@@ -200,6 +200,7 @@ final class RefundService
                     // чтобы их QR не проходил check-in (CheckinEvaluator отвергает REFUNDED).
                     if ($outcome->orderStatus() === OrderStateMachine::REFUNDED) {
                         Ticket::where('order_id', $order->id)
+                            ->whereNotNull('ticket_number')
                             ->where('status', TicketStateMachine::ISSUED)
                             ->update([
                                 'status' => TicketStateMachine::REFUNDED,

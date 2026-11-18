@@ -214,24 +214,33 @@ class AnalyticsReportTest extends TestCase
             'created_at' => $createdAt,
         ]);
 
+        // tickets — VIEW над order_items: каждый билет = отдельная позиция.
         for ($i = 1; $i <= $ticketCount; $i++) {
-            DB::table('tickets')->insert([
+            $ticketFields = [
                 'public_id' => (string) Str::ulid()->toBase32(),
                 'organization_id' => $organizationId,
                 'ticket_number' => 'T-' . Str::random(12),
                 'ticket_index' => $i,
-                'order_id' => $orderId,
-                'order_item_id' => $orderItemId,
                 'event_id' => $eventId,
                 'session_id' => $sessionId,
-                'inventory_item_id' => $inventoryItemId,
-                'status' => 'issued',
+                'ticket_status' => 'issued',
                 'qr_version' => 1,
                 'qr_token_hash' => hash('sha256', Str::random(32)),
                 'issued_at' => $createdAt,
-                'created_at' => $createdAt,
-                'updated_at' => $createdAt,
-            ]);
+            ];
+            if ($i === 1) {
+                DB::table('order_items')->where('id', $orderItemId)->update($ticketFields + [
+                    'quantity' => 1,
+                    'total_amount' => (int) self::PRICE,
+                ]);
+            } else {
+                $copy = (array) DB::table('order_items')->where('id', $orderItemId)->first();
+                unset($copy['id']);
+                DB::table('order_items')->insertGetId(array_merge($copy, $ticketFields, [
+                    'quantity' => 1,
+                    'total_amount' => (int) $copy['unit_price'],
+                ]));
+            }
         }
 
         return $orderId;

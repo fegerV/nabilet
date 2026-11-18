@@ -132,23 +132,19 @@ class MeEndpointsTest extends TestCase
             'created_at' => $now,
         ]);
 
-        DB::table('tickets')->insert([
+        // Билет — это сама позиция заказа (tickets теперь VIEW над order_items).
+        DB::table('order_items')->where('id', $orderItemId)->update([
             'public_id' => (string) Str::ulid()->toBase32(),
             'organization_id' => (int) DB::table('orders')->where('id', $orderId)->value('organization_id'),
             'ticket_number' => $ticketNumber,
             'ticket_index' => 1,
-            'order_id' => $orderId,
-            'order_item_id' => $orderItemId,
             'event_id' => $eventId,
             'session_id' => $sessionId,
-            'inventory_item_id' => $inventoryItemId,
-            'status' => 'issued',
+            'ticket_status' => 'issued',
             'qr_version' => 1,
             'qr_token_hash' => hash('sha256', Str::random(16)),
             'qr_payload' => 'NB1.' . Str::random(26) . '.token.signature',
             'issued_at' => $now,
-            'created_at' => $now,
-            'updated_at' => $now,
         ]);
 
         return $ticketNumber;
