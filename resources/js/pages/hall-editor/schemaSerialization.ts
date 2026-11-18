@@ -602,6 +602,17 @@ export function validateSchema(data: unknown): string[] | null {
   if (list.length === 0 && !Array.isArray(root.staticObjects) && !root.background && !root.backgrounds) {
     return ['В схеме нет ни одного сектора и ни одного объекта — импортировать нечего']
   }
+  /**
+   * Цены в схеме — целые копейки. Раньше validateSchema не смотрел на них,
+   * поэтому импорт «проходил», а автосохранение получало 422 от HallService.
+   */
+  const checkPrice = (value: unknown, path: string): void => {
+    if (value === undefined || value === null) return
+    if (typeof value !== 'number' || !Number.isInteger(value) || value < 1) {
+      errors.push(`${path}: цена должна быть целым числом копеек ≥ 1`)
+    }
+  }
+
   list.forEach((raw, i) => {
     if (typeof raw !== 'object' || raw === null) {
       errors.push(`sectors[${i}]: сектор должен быть объектом`)
@@ -616,6 +627,11 @@ export function validateSchema(data: unknown): string[] | null {
     }
     if (s.rows !== undefined && !Array.isArray(s.rows)) {
       errors.push(`sectors[${i}].rows: ряды должны быть массивом`)
+    }
+    checkPrice(s.priceMinor, `sectors[${i}].priceMinor`)
+    checkPrice(s.price, `sectors[${i}].price`)
+    if (s.rowPrices !== undefined && (typeof s.rowPrices !== 'object' || s.rowPrices === null || Array.isArray(s.rowPrices))) {
+      errors.push(`sectors[${i}].rowPrices: цены по рядам должны быть объектом`)
     }
     const shape = s.shape
     if (shape !== undefined && !['grid', 'arc', 'table'].includes(shape as string)) {
@@ -643,6 +659,9 @@ export function validateSchema(data: unknown): string[] | null {
       if (m.number !== undefined && (!Number.isInteger(m.number) || (m.number as number) < 1)) {
         errors.push(`${path}.number: номер места должен быть целым числом ≥ 1`)
       }
+      checkPrice(m.priceMinor, `${path}.priceMinor`)
+      checkPrice(m.price_amount, `${path}.price_amount`)
+      checkPrice(m.price, `${path}.price`)
     }
     if (Array.isArray(s.seats)) (s.seats as unknown[]).forEach((seat, j) => checkSeat(seat, `sectors[${i}].seats[${j}]`))
     if (Array.isArray(s.rows)) {
@@ -652,6 +671,7 @@ export function validateSchema(data: unknown): string[] | null {
           return
         }
         const rr = row as Record<string, unknown>
+        checkPrice(rr.price_amount, `sectors[${i}].rows[${r}].price_amount`)
         const no = rr.number
         if (no !== undefined && (!Number.isInteger(Number(no)) || Number(no) < 1)) {
           errors.push(`sectors[${i}].rows[${r}].number: номер ряда должен быть целым числом ≥ 1`)

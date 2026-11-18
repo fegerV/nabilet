@@ -1510,7 +1510,16 @@ function applyServerSchema(raw: unknown): void {
     // (все места в одной точке). Дорисовываем её подпись, иначе зал выглядит
     // пустым. Для редакторского формата зона уже есть в staticObjects, поэтому
     // функция возвращает null — импорт остаётся идемпотентным.
-    const zone = danceZoneFor(parsed.format, parsed.sectors, parsed.statics, parsed.canvas)
+    // Сектора без мест сервер всё равно отвергнет как пустые: говорим об этом
+  // сразу, а не после ошибки автосохранения.
+  if (parsed.droppedSectors.length > 0) {
+    ui.notify(
+      'sun',
+      'Часть секторов пропущена',
+      `Без мест: ${parsed.droppedSectors.slice(0, 5).join(', ')}${parsed.droppedSectors.length > 5 ? ` и ещё ${parsed.droppedSectors.length - 5}` : ''}`,
+    )
+  }
+  const zone = danceZoneFor(parsed.format, parsed.sectors, parsed.statics, parsed.canvas)
     if (zone) statics.value = [...statics.value, zone]
   } else if (parsed.format === 'empty') {
     // B8: импорт файла БЕЗ секторов обязан очищать схему, а не оставлять

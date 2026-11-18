@@ -106,6 +106,8 @@ async function save(): Promise<void> {
       address: form.value.address.trim() || null,
       description: form.value.description.trim() || null,
       status: form.value.status,
+      // Зал — это площадка: имя технической строки хранится прямо в ней.
+      hall_name: form.value.hallName.trim() || null,
     }
     if (editId.value) {
       await send<unknown>(`/venues/${editId.value}`, 'PATCH', payload)
@@ -259,7 +261,7 @@ async function createImported(): Promise<void> {
   importing.value = true
   importError.value = null
   try {
-    await send<unknown>('/venues', 'POST', {
+    const created = await send<{ public_id?: string }>('/venues', 'POST', {
       name: importForm.value.name.trim(),
       city: importForm.value.city.trim() || null,
       address: importForm.value.address.trim() || null,
@@ -271,6 +273,10 @@ async function createImported(): Promise<void> {
     ui.notify('mint', 'Площадка импортирована', importForm.value.name)
     importOpen.value = false
     await load()
+    // Импорт площадки — только первый шаг: сразу ведём в конструктор схемы,
+    // иначе цепочка «Афиша → площадка → схема» обрывалась на списке.
+    const publicId = created.data?.public_id
+    if (publicId) router.push(`/admin/halls/${publicId}/editor`)
   } catch (e) {
     importError.value = e instanceof Error ? e.message : String(e)
   } finally {
