@@ -11,6 +11,7 @@ use Nabilet\Modules\Tickets\Models\TicketScan;
 use Nabilet\Modules\Tickets\StateMachines\TicketStateMachine;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Facades\DB;
 use Nabilet\Modules\Core\Support\PublicId;
 
 class TicketRepository
@@ -130,6 +131,21 @@ class TicketRepository
         ?array $metadata = null,
         ?\DateTimeImmutable $scannedAt = null,
     ): TicketScan {
+        // Чек-ин = событие позиции заказа. Пишем в каноническую таблицу,
+        // ticket_scans остаётся legacy-зеркалом до полного перевода читателей.
+        DB::table('order_item_scans')->insert([
+            'public_id' => PublicId::generate(),
+            'order_item_id' => $ticket->order_item_id,
+            'session_id' => $ticket->session_id,
+            'device_id' => $deviceId,
+            'client_scan_id' => $clientScanId,
+            'mode' => $mode,
+            'result' => $result,
+            'scanned_at' => $scannedAt === null ? now() : \Carbon\Carbon::instance($scannedAt),
+            'created_at' => now(),
+            'metadata_json' => $metadata === null ? null : json_encode($metadata),
+        ]);
+
         return $ticket->scans()->create([
             'public_id' => PublicId::generate(),
             'session_id' => $ticket->session_id,
