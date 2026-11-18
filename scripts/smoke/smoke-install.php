@@ -62,13 +62,6 @@ function http(string $method, string $url, array $post = [], array $headers = []
 
 // ── ДО установки ─────────────────────────────────────────────────────────────
 
-// Симулируем следы ручной выкладки: хостер/админ кладёт info.php в docroot,
-// а из старой версии может остаться каталог install/ с точкой входа. Оба
-// должны исчезнуть САМИ после успешной установки (SetupArtifactCleaner).
-@mkdir($siteDir . '/install', 0777, true);
-file_put_contents($siteDir . '/info.php', "<?php phpinfo();\n");
-file_put_contents($siteDir . '/install/index.php', "<?php echo 'legacy installer';\n");
-
 [$status, $body, $head] = http('GET', $base . '/install');
 check('GET /install -> 200 HTML', $status === 200 && (str_contains($body, '<!DOCTYPE') || str_contains($body, '<html')), 'status=' . $status);
 
@@ -155,6 +148,16 @@ check(
 );
 
 // ── УСТАНОВКА ────────────────────────────────────────────────────────────────
+
+// Симулируем следы ручной выкладки: хостер/админ кладёт info.php в docroot,
+// а из старой версии может остаться каталог install/ с точкой входа. Оба
+// должны исчезнуть САМИ после успешной установки (SetupArtifactCleaner).
+// Создаём их прямо перед успешной установкой: пока install/ существует,
+// встроенный PHP-сервер переменывает /install/test-database и /install/log
+// (405/404), поэтому ложные артефакты не должны мешать проверкам визарда.
+@mkdir($siteDir . '/install', 0777, true);
+file_put_contents($siteDir . '/info.php', "<?php phpinfo();\n");
+file_put_contents($siteDir . '/install/index.php', "<?php echo 'legacy installer';\n");
 
 [$status, $body, $head] = http('POST', $base . '/install', $payload);
 check('POST /install -> 200 success:true', $status === 200 && str_contains($body, '"success":true'), 'status=' . $status . ($status !== 200 ? ' body=' . substr($body, 0, 300) : ''));
