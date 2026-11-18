@@ -56,6 +56,15 @@ export interface SeatGridConfig {
 
 const DEFAULT_CONFIG: SeatGridConfig = { seat: SEAT, gap: GAP, rowGap: ROW_GAP }
 
+/** Шаг мест/рядов сектора после «Применить шаг» (по умолчанию — константы редактора). */
+export function seatStepOf(sector: ESector, config: SeatGridConfig = DEFAULT_CONFIG): number {
+  return sector.seatStep ?? config.seat + config.gap
+}
+
+export function rowStepOf(sector: ESector, config: SeatGridConfig = DEFAULT_CONFIG): number {
+  return sector.rowStep ?? config.seat + config.rowGap
+}
+
 /** Координата места на дуге (амфитеатр). Центр кривизны — в (arcOffsetX, arcOffsetY). */
 export function arcSeatXY(sector: ESector, r: number, n: number, seatsPerRow: number): { x: number; y: number } {
   const theta = (safeArcSpread(sector.arcSpread) * Math.PI) / 180
@@ -172,8 +181,8 @@ export function appendRowToSector(
         row: nextRow,
         number: n + 1,
         kind: 'standard',
-        x: n * (config.seat + config.gap),
-        y: (nextRow - 1) * (config.seat + config.rowGap),
+        x: n * seatStepOf(sector, config),
+        y: (nextRow - 1) * rowStepOf(sector, config),
       }
       sector.seats.push(seat)
       newSeats.push(seat)
@@ -293,13 +302,27 @@ export function rebuildTableSeats(
   count: number,
   nextId: (prefix: string) => string,
   config: SeatGridConfig = DEFAULT_CONFIG,
+  preserve: readonly ESeat[] = [],
 ): void {
   const before = tableLayout(sector)
   const canvasCx = sector.x + before.cx
   const canvasCy = sector.y + before.cy
   const eff = Math.max(1, Math.min(60, Math.floor(count)))
   const { seats, cx, cy, ring } = buildTableSeats(eff, nextId, config)
-  sector.seats = seats
+  // Меня только число мест, нельзя терять типы (VIP/доступные) и индивидуальные
+  // цены существующих мест — они задаются вручную и не восстанавливаются из
+  // геометрии кольца. Сохраняем их по позициям, старые id не пересоздаём.
+  const kept = seats.map((seat, i) => {
+    const old = preserve[i]
+    if (!old) return seat
+    return {
+      ...seat,
+      id: old.id,
+      kind: old.kind,
+      ...(old.priceMinor != null ? { priceMinor: old.priceMinor } : {}),
+    }
+  })
+  sector.seats = kept
   sector.x = Math.round(canvasCx - cx)
   sector.y = Math.round(canvasCy - cy)
   sector.tableCx = cx
@@ -436,13 +459,16 @@ export function insertRowAfter(
 
   const count = Math.max(0, Math.floor(seatsPerRow))
   for (let n = 0; n < count; n += 1) {
+    const position = sector.shape === 'arc'
+      ? arcSeatXY(sector, target - 1, n, count)
+      : { x: n * seatStepOf(sector, config), y: (target - 1) * rowStepOf(sector, config) }
     sector.seats.push({
       id: nextId('seat'),
       row: target,
       number: n + 1,
       kind: 'standard',
-      x: n * (config.seat + config.gap),
-      y: (target - 1) * (config.seat + config.rowGap),
+      x: position.x,
+      y: position.y,
     })
   }
   return target

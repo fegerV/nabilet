@@ -53,6 +53,7 @@ import {
   buildGridSeats,
   buildTableSeats,
   alignTableSeatsEvenly,
+  arcSeatXY,
   deleteRow,
   distributeSeats,
   findFreeSeatPosition,
@@ -61,6 +62,8 @@ import {
   reflowRowsAfterMove,
   renumberAllSeats,
   rowNumbers,
+  rowStepOf,
+  seatStepOf,
   seatsInRow,
   tableLayout,
   type AlignEdge,
@@ -161,6 +164,10 @@ const draftVersion = ref(1)
 const autosave = ref<Autosave>('saved')
 /** Детали отклонения черновика сервером (422): сообщения валидации по полям (§66). */
 const autosaveErrors = ref<string[]>([])
+/** 409 SCHEMA_DRAFT_CONFLICT: требует перезагрузки, повторные сохранения бесполезны. */
+const draftConflict = ref(false)
+/** Строка с некорректно введённой ценой — подсвечиваем её, хотя модель не менялась. */
+const rowPriceInvalidRow = ref<number | null>(null)
 const lastSavedAt = ref<number>(Date.now())
 
 /* ── API-подключение: зал по publicId из роута ────────────────────── */
@@ -232,6 +239,28 @@ const overlayPanels = computed(() => contentWidth.value > 0 && contentWidth.valu
 
 /** Прошлый режим раскладки: переключаем панели только на смене, не на каждом ресайзе. */
 let overlayWas: boolean | null = null
+// Пользовательские предпочтения НЕ перезаписываем требованиями узкого режима:
+// перед входом в overlay запоминаем их, при выходе — возвращаем как было.
+let preOverlayInspector: boolean | null = null
+let preOverlayToolsWide: boolean | null = null
+
+function enterOverlay(): void {
+  if (preOverlayInspector === null) {
+    preOverlayInspector = showInspector.value
+    preOverlayToolsWide = toolsWide.value
+  }
+  showInspector.value = false
+  toolsWide.value = false
+}
+
+function leaveOverlay(): void {
+  if (preOverlayInspector !== null) {
+    showInspector.value = preOverlayInspector
+    toolsWide.value = preOverlayToolsWide ?? true
+    preOverlayInspector = null
+    preOverlayToolsWide = null
+  }
+}
 
 function applyContentWidth(width: number): void {
   contentWidth.value = width
@@ -241,22 +270,14 @@ function applyContentWidth(width: number): void {
   if (overlayWas === null) {
     overlayWas = overlay
     // Первый замер: если ширина уже узкая — сразу освобождаем холст.
-    if (overlay) {
-      showInspector.value = false
-      toolsWide.value = false
-    }
+    if (overlay) enterOverlay()
     return
   }
   if (overlay === overlayWas) return
 
   overlayWas = overlay
-  if (overlay) {
-    showInspector.value = false
-    toolsWide.value = false
-  } else {
-    showInspector.value = true
-    toolsWide.value = true
-  }
+  if (overlay) enterOverlay()
+  else leaveOverlay()
 }
 /** Привязка к сетке при перетаскивании: ряды перестают «плыть» на пару пикселей. */
 const snapEnabled = usePersistedRef('hallEditor.snap', false)
@@ -325,9 +346,11 @@ function redo(): void {
 
 /* ── Генератор рядов (§49) ─────────────────────────────────────────── */
 
-function generateSector(): void {
+function generateSector(overrides: Partial<typeof form.value> = {}): void {
   snapshot()
-  const { name, shape, rows, seatsPerRow, priceMinor, vipRows, arcSpread } = form.value
+  const values = { ...form.value, ...overrides }
+  const { shape, rows, seatsPerRow, priceMinor, vipRows, arcSpread } = values
+  const name = values.name.trim() || `Сектор ${sectors.value.length + 1}`
   const sector: ESector = {
     id: nextId('sec'),
     name,
@@ -475,12 +498,16 @@ function applyStep(seatStep: number, rowStep: number): void {
     ui.notify('sun', 'Только для сетки', 'Шаг мест и рядов задаётся у прямоугольного сектора; дуга и стол строятся по радиусу')
     return
   }
+  // Шаг — свойство сектора: без этого последующие «+ Ряд» и добавление мест
+  // возвращались к жёстким 22/28 px и сетка рвалась посередине.
+  sector.seatStep = seatStep
+  sector.rowStep = rowStep
   ui.notify('mint', 'Шаг обновлён', `Места — ${seatStep} px, ряды — ${rowStep} px`)
 }
 
 /* ── Выравнивание выделенных мест (§48) ────────────────────────────── */
 
-/** Места, к которым применяется выравнивание: только выделенные. */
+/** Все выделенные места (для чтения атрибутов, не для геометрических операций). */
 function selectedSeatObjects(): ESeat[] {
   const out: ESeat[] = []
   for (const sector of sectors.value) {
@@ -491,36 +518,67 @@ function selectedSeatObjects(): ESeat[] {
   return out
 }
 
+/**
+ * Выделенные места ПО СЕКТОРАМ. Выравнивание и распределение работают с
+ * локальными координатами, поэтому смесь мест из разных секторов нельзя
+ * обрабатывать одной операцией — это складывало весь зал в одну колонку.
+ */
+function selectedSeatsBySector(): Array<{ sector: ESector; seats: ESeat[] }> {
+  const out: Array<{ sector: ESector; seats: ESeat[] }> = []
+  for (const sector of sectors.value) {
+    const seats = sector.seats.filter((s) => selectedSeatIds.value.has(s.id))
+    if (seats.length > 0) out.push({ sector, seats })
+  }
+  return out
+}
+
+function singleSectorSelection(min: number): { sector: ESector; seats: ESeat[] } | null {
+  const groups = selectedSeatsBySector()
+  const total = groups.reduce((sum, g) => sum + g.seats.length, 0)
+  if (total < min) return null
+  if (groups.length > 1) {
+    ui.notify('sun', 'Нужны места одного сектора', 'Выравнивание работает в локальных координатах сектора')
+    return null
+  }
+  return groups[0] ?? null
+}
+
 /** Выровнять выделенные места по краю или центру. */
 function alignSelected(edge: AlignEdge): void {
   if (isLocked.value) return
-  const seats = selectedSeatObjects()
-  if (seats.length < 2) {
-    ui.notify('sun', 'Нужно минимум два места', 'Выровнять одно место не с чем — выделите ряд или группу')
+  const picked = singleSectorSelection(2)
+  if (!picked) {
+    if (selectedSeatsBySector().reduce((sum, g) => sum + g.seats.length, 0) < 2) {
+      ui.notify('sun', 'Нужно минимум два места', 'Выровнять одно место не с чем — выделите ряд или группу')
+    }
     return
   }
   snapshot()
-  if (!alignSeats(seats, edge)) {
+  if (!alignSeats(picked.seats, edge)) {
     editorHistory.undo()
     return
   }
-  ui.notify('mint', 'Выровнено', seatsLabel(seats.length))
+  renumberRows(picked.sector, new Set(picked.seats.map((s) => s.row)))
+  ui.notify('mint', 'Выровнено', seatsLabel(picked.seats.length))
 }
 
 /** Равномерно распределить выделенные места по горизонтали или вертикали. */
 function distributeSelected(axis: 'x' | 'y'): void {
   if (isLocked.value) return
-  const seats = selectedSeatObjects()
-  if (seats.length < 3) {
-    ui.notify('sun', 'Нужно минимум три места', 'Распределение задаёт равный шаг между крайними')
+  const picked = singleSectorSelection(3)
+  if (!picked) {
+    if (selectedSeatsBySector().reduce((sum, g) => sum + g.seats.length, 0) < 3) {
+      ui.notify('sun', 'Нужно минимум три места', 'Распределение задаёт равный шаг между крайними')
+    }
     return
   }
   snapshot()
-  if (!distributeSeats(seats, axis)) {
+  if (!distributeSeats(picked.seats, axis)) {
     editorHistory.undo()
     return
   }
-  ui.notify('mint', axis === 'x' ? 'Распределено по горизонтали' : 'Распределено по вертикали', seatsLabel(seats.length))
+  renumberRows(picked.sector, new Set(picked.seats.map((s) => s.row)))
+  ui.notify('mint', axis === 'x' ? 'Распределено по горизонтали' : 'Распределено по вертикали', seatsLabel(picked.seats.length))
 }
 
 /**
@@ -675,14 +733,16 @@ function addSeatAt(x: number, y: number): void {
   let localY = Math.round(y - target.y)
   const rows = Array.from(new Set(target.seats.map((s) => s.row))).sort((a, b) => a - b)
   const lastRow = rows[rows.length - 1] ?? 1
-  const rowStep = SEAT + ROW_GAP
+  const rowStep = rowStepOf(target)
   let newRow = rows.reduce(
     (best, r) => {
       const rep = target.seats.find((s) => s.row === r)
       if (!rep) return best
       return Math.abs(localY - (rep.y + SEAT / 2)) < Math.abs(localY - (best.y + SEAT / 2)) ? rep : best
     },
-    target.seats.find((s) => s.row === rows[0]) ?? { y: localY } as ESeat,
+    // Пустой сектор: reduce вернёт стартовое значение, поэтому у него
+    // ОБЯЗАТЕЛЬНО должен быть row — иначе место уедет в undefined.
+    target.seats.find((s) => s.row === rows[0]) ?? { row: 1, y: localY } as ESeat,
   ).row
   const inLastRow = target.seats.filter((s) => s.row === lastRow)
   if (inLastRow.length > 0 && localY > inLastRow[0].y + rowStep * 0.6) newRow = lastRow + 1
@@ -696,11 +756,11 @@ function addSeatAt(x: number, y: number): void {
   if (occupiedNear) {
     const anchor = nearestSeatAnchor(target, localX, localY)
     newRow = anchor.row
-    localX = anchor.x + (SEAT + GAP)
+    localX = anchor.x + seatStepOf(target)
     localY = anchor.y
   }
 
-  const freePosition = findFreeSeatPosition(target.seats, localX, localY)
+  const freePosition = findFreeSeatPosition(target.seats, localX, localY, SEAT, seatStepOf(target))
   if (freePosition.y !== localY) {
     newRow = lastRow + 1
   }
@@ -890,7 +950,7 @@ function createStaticAt(kind: StaticKind, x: number, y: number): void {
  * text/stage/entrance, которых раньше не было — кнопки выбирали инструмент,
  * но ничего не происходило.
  */
-function handleToolClick(clientX: number, clientY: number, altKey = false): void {
+function handleToolClick(clientX: number, clientY: number, altKey = false, target?: Konva.Node): void {
   // Клик «поверх» завершённого перетаскивания (Konva выдаёт click после
   // mouseup с тем же button) — не должен порождать второй объект.
   if (wasDragged) return
@@ -900,6 +960,9 @@ function handleToolClick(clientX: number, clientY: number, altKey = false): void
     return
   }
   if (isLocked.value) return
+  // Клик по существующему объекту — это выделение/перетаскивание, а не
+  // команда «создать объект» даже при активном инструменте создания.
+  if (t === 'sector' && target && target !== stage && target.name() !== 'canvas-bg') return
   if (!EDIT_TOOLS.includes(t) || t === 'image' || t === 'standing') return
   const p = toCanvasPoint(clientX, clientY)
   if (!p) return
@@ -918,9 +981,9 @@ function handleToolClick(clientX: number, clientY: number, altKey = false): void
  * в инспекторе (§49).
  */
 function createRectSector(x: number, y: number): void {
-  const prev = form.value
-  form.value = { ...prev, name: prev.name || `Сектор ${sectors.value.length + 1}` }
-  generateSector()
+  // Не меняем форму генератора: иначе следующий сектор, созданный кнопкой,
+  // неожиданно получает чужие размеры. Параметры передаём явно.
+  generateSector({ name: form.value.name.trim() || `Сектор ${sectors.value.length + 1}` })
   const created = sectors.value[sectors.value.length - 1]
   if (created) { created.x = x; created.y = y }
 }
@@ -943,8 +1006,12 @@ function onStageMouseDown(e: Konva.KonvaEventObject<MouseEvent>): void {
   wasDragged = false
   dragStart = p
   const t = tool.value
-  if (t === 'standing') dragMode = 'standing'
-  else if (t === 'sector') dragMode = 'sector'
+  // Создающие жесты стартуют ТОЛЬКО по пустому холсту. Иначе перетаскивание
+  // существующего объекта при активном инструменте создавало и его 이동, и
+  // новую зону/сектор по тому же жесту.
+  const startedOnCanvas = e.target === stage || e.target?.name() === 'canvas-bg'
+  if (t === 'standing') dragMode = startedOnCanvas ? 'standing' : null
+  else if (t === 'sector') dragMode = startedOnCanvas ? 'sector' : null
   else if (t === 'select') {
     // Перетаскивание ВЫДЕЛЕННЫХ мест (§48): mousedown по месту из мультиселекта.
     const under = findSelectedSeatUnder(e)
@@ -1022,11 +1089,13 @@ function onStageMouseUp(e: Konva.KonvaEventObject<MouseEvent>): void {
     // порядок — нумерация обязана остаться читаемой (§48).
     finalizeSeatMove()
     endMoveSnapshot()
+    scheduleAutosave()
     seatDragIds = new Set()
     seatDragBefore.clear()
   } else if (mode === 'seat-move') {
-    // Клик без движения — откат временных координат не нужен (их не меняли),
-    // состояние выбирается штатным обработчиком click.
+    // Клик без движения: снимок «до» всё равно был взят в mousedown — снимаем
+    // флаг, иначе следующий drag не получит корректную точку undo.
+    endMoveSnapshot()
     seatDragIds = new Set()
     seatDragBefore.clear()
   }
@@ -1059,9 +1128,12 @@ function createSectorFromRect(a: { x: number; y: number }, b: { x: number; y: nu
   const h = Math.abs(b.y - a.y)
   const seatsPerRow = Math.max(1, Math.round(w / (SEAT + GAP)))
   const rows = Math.max(1, Math.round(h / (SEAT + ROW_GAP)))
-  const prev = form.value
-  form.value = { ...prev, shape: 'grid', rows, seatsPerRow, name: prev.name || `Сектор ${sectors.value.length + 1}` }
-  generateSector()
+  generateSector({
+    shape: 'grid',
+    rows,
+    seatsPerRow,
+    name: form.value.name.trim() || `Сектор ${sectors.value.length + 1}`,
+  })
   const created = sectors.value[sectors.value.length - 1]
   if (created) { created.x = Math.min(a.x, b.x); created.y = Math.min(a.y, b.y) }
 }
@@ -1146,6 +1218,17 @@ function selectAllSeats(): void {
   selectedBgIds.value = new Set()
 }
 
+/** Удалить сектор вместе со всеми зависимыми выделениями. */
+function deleteSector(id: string, withSnapshot = true): void {
+  if (withSnapshot) snapshot()
+  sectors.value = sectors.value.filter((s) => s.id !== id)
+  selectedSectorId.value = null
+  selectedSeatIds.value = new Set()
+  selectedStaticIds.value = new Set()
+  selectedBgIds.value = new Set()
+  activeRow.value = null
+}
+
 function deleteSelection(): void {
   // Серверная защита есть (триггер неизменяемости), но клиент не обязан
   // дёргать удаление в заблокированной версии — иначе изменение состояния
@@ -1155,7 +1238,8 @@ function deleteSelection(): void {
     ui.notify('sun', 'Версия опубликована', 'Удаление недоступно — нажмите «Новая версия», чтобы править')
     return
   }
-  if (selectedSeatIds.value.size === 0 && selectedStaticIds.value.size === 0 && !selectedSectorId.value) return
+  if (selectedSeatIds.value.size === 0 && selectedStaticIds.value.size === 0
+    && selectedBgIds.value.size === 0 && !selectedSectorId.value) return
   snapshot()
   if (selectedSeatIds.value.size > 0) {
     for (const sector of sectors.value) {
@@ -1165,17 +1249,22 @@ function deleteSelection(): void {
   } else if (selectedStaticIds.value.size > 0) {
     statics.value = statics.value.filter((s) => !selectedStaticIds.value.has(s.id))
     selectedStaticIds.value = new Set()
+  } else if (selectedBgIds.value.size > 0) {
+    removeBackground()
   } else if (selectedSectorId.value) {
-    sectors.value = sectors.value.filter((s) => s.id !== selectedSectorId.value)
-    selectedSectorId.value = null
+    deleteSector(selectedSectorId.value, false) // snapshot уже взят выше
+    return
   }
 }
 
 function duplicateSelection(): void {
   if (selectedSeatIds.value.size === 0) return
   snapshot()
-  const additions: ESeat[] = []
   for (const sector of sectors.value) {
+    // additions — ТОЛЬКО для текущего сектора. Раньше массив жил вне цикла,
+    // поэтому следующие сектора получали копии мест предыдущих секторов
+    // с чужими локальными координатами → наложения и 422 от сервера.
+    const additions: ESeat[] = []
     const selected = sector.seats.filter((s) => selectedSeatIds.value.has(s.id))
     for (const seat of selected) {
       const maxInRow = sector.seats.filter((s) => s.row === seat.row).length
@@ -1183,10 +1272,12 @@ function duplicateSelection(): void {
         ...seat,
         id: nextId('seat'),
         number: maxInRow + additions.filter((a) => a.row === seat.row).length + 1,
-        x: seat.x + SEAT + GAP,
+        x: seat.x + seatStepOf(sector),
       })
     }
+    if (additions.length === 0) continue
     sector.seats.push(...additions)
+    renumberRows(sector, new Set(additions.map((s) => s.row)))
   }
   ui.notify('brand', 'Дублировано', seatsLabel(selectedSeatIds.value.size))
 }
@@ -1199,6 +1290,10 @@ let persistedEditRevision = -1
 let persistInFlight: Promise<boolean> | null = null
 let isHydratingSchema = false
 function scheduleAutosave(): void {
+  // Ревизия увеличивается ЗДЕСЬ, а не в watcher: во время drag watcher
+  // возвращается раньше, но модель уже изменилась, и dragend всё равно должен
+  // увеличить ревизию — иначе flushAutosave решит, что сохранять нечего.
+  editRevision += 1
   autosave.value = 'saving'
   if (saveTimer) clearTimeout(saveTimer)
   saveTimer = setTimeout(() => {
@@ -1223,7 +1318,7 @@ function buildSchemaPayload(): unknown {
 
 /** Реальное сохранение черновика на сервер. Повторные вызовы сериализуются. */
 async function persistSchema(): Promise<boolean> {
-  if (!hallPublicId.value || published.value !== null) return false
+  if (!hallPublicId.value || published.value !== null || draftConflict.value) return false
   if (!navigator.onLine) {
     autosave.value = 'offline'
     return false
@@ -1261,9 +1356,16 @@ async function persistSchema(): Promise<boolean> {
       persistedEditRevision = requestedEditRevision
       autosave.value = 'saved'
       autosaveErrors.value = []
+      draftConflict.value = false
       lastSavedAt.value = Date.now()
       return true
     } catch (e) {
+      if (e instanceof ApiError && e.status === 409 && e.code === 'SCHEMA_DRAFT_CONFLICT') {
+        draftConflict.value = true
+        autosave.value = 'error'
+        autosaveErrors.value = [e.message || 'Черновик изменён другим редактором']
+        return false
+      }
       if (e instanceof ApiError && e.status === 422) {
         autosave.value = 'error'
         autosaveErrors.value = describeValidationErrors(e)
@@ -1294,6 +1396,13 @@ async function flushAutosave(): Promise<boolean> {
   }
 }
 
+/** Путь восстановления после 409: перезагрузить серверную версию схемы. */
+async function reloadAfterConflict(): Promise<void> {
+  if (!window.confirm('Схема изменена другим редактором. Перезагрузить серверную версию? Локальные правки будут потеряны.')) return
+  draftConflict.value = false
+  await loadFromServer()
+}
+
 /** Сообщение об ошибке + список деталей валидации из конверта ответа (§66). */
 function describeValidationErrors(e: ApiError): string[] {
   const out: string[] = []
@@ -1313,7 +1422,10 @@ watch(
   [sectors, statics, backgrounds],
   () => {
     if (isHydratingSchema || published.value !== null) return
-    editRevision += 1
+    // Во время drag модель мутирует на каждом mousemove. Сохранять промежуточные
+    // координаты нельзя: сервер получит наложения и вернёт 422. Финальное
+    // сохранение планируют dragend-обработчики.
+    if (typeof Konva.isDragging === 'function' && Konva.isDragging()) return
     scheduleAutosave()
   },
   { deep: true },
@@ -1556,10 +1668,13 @@ function exportSchema(): void {
         if (!root) throw new Error('Файл должен содержать JSON-объект схемы зала')
         snapshot()
         applyServerSchema(root)
-        // Если загружали поверх published — снимем блокировку, чтобы можно было править
+        // Если загружали поверх published — снимем блокировку и ЯВНО запланируем
+        // сохранение: во время applyServerSchema watcher молчал (published !== null),
+        // поэтому импорт жил только в памяти до следующей правки.
         if (published.value !== null) {
           newVersion()
         }
+        scheduleAutosave()
         const count = sectors.value.reduce((acc, s) => acc + s.seats.length, 0)
         ui.notify('mint', 'Схема импортирована', `${sectors.value.length} ${plural(sectors.value.length, 'сектор', 'сектора', 'секторов')}, ${seatsLabel(count)}`)
       } catch (e) {
@@ -1596,9 +1711,14 @@ function triggerImageUpload(): void {
 }
 function onImageChosen(event: Event): void {
   const file = (event.target as HTMLInputElement).files?.[0]
-  if (!file) return
+  if (!file) {
+    tool.value = 'select'
+    return
+  }
   if (!['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml'].includes(file.type)) {
     ui.notify('rose', 'Формат не поддерживается', 'Только PNG, JPG, WEBP или SVG')
+    tool.value = 'select'
+    imageInput.value && (imageInput.value.value = '')
     return
   }
   const reader = new FileReader()
@@ -1615,7 +1735,9 @@ function onImageChosen(event: Event): void {
       locked: false,
       opacity: 1,
     })
+    tool.value = 'select' // диалог фона — одноразовый, не режим холста
   }
+  reader.onerror = () => { tool.value = 'select' }
   reader.readAsDataURL(file)
   if (imageInput.value) imageInput.value.value = ''
 }
@@ -1722,6 +1844,7 @@ function draw(): void {
       })
       group.on('dragend', () => {
         endMoveSnapshot()
+        scheduleAutosave()
         // Координаты писались в модель в dragmove, пока watcher был на паузе
         // (Konva.isDragging) — финальную перерисовку делаем здесь.
         draw()
@@ -1755,7 +1878,10 @@ function draw(): void {
         } else if (n === 'bg-rotate') {
           const pos = node.getAbsolutePosition(stage ?? undefined)
           const center = group.getAbsolutePosition(stage ?? undefined)
-          const deg = (Math.atan2(pos.y - center.y, pos.x - center.x) * 180) / Math.PI + 90
+          // Ручка стоит в (w/2, -h/2-28), а не строго над центром: её базовый
+          // угол ненулевой. Без вычитания первого движения давало скачок ~57°.
+          const baseAngle = Math.atan2(-(bg.height / 2 + 28), bg.width / 2)
+          const deg = (Math.atan2(pos.y - center.y, pos.x - center.x) - baseAngle) * 180 / Math.PI
           bg.rotation = Math.round(((deg % 360) + 360) % 360)
           group.rotation(bg.rotation)
           bgLayer?.batchDraw()
@@ -1765,6 +1891,7 @@ function draw(): void {
         const n = (e.target as Konva.Node).name()
         if (n === 'bg-resize' || n === 'bg-rotate') {
           endMoveSnapshot()
+          scheduleAutosave()
         }
       })
       bgLayer.add(group)
@@ -1855,6 +1982,7 @@ function draw(): void {
       // флаг остался бы true навсегда и история перестала бы фиксировать
       // любые последующие drag'и (дефект A8).
       endMoveSnapshot()
+      scheduleAutosave()
       // Координаты писались в модель в dragmove, пока watcher был на паузе
       // (Konva.isDragging) — финальную перерисовку делаем здесь.
       draw()
@@ -2024,13 +2152,17 @@ function draw(): void {
           selectedSeatIds.value = new Set([seat.id])
         }
         beginMoveSnapshot()
-        // Место в выделении — фиксируем
-        // стартовые позиции всех выделенных мест этого сектора.
-        seatDragIds = new Set(selectedSeatIds.value)
-        seatDragBefore.clear()
-        for (const s of sector.seats) {
-          if (seatDragIds.has(s.id)) {
-            seatDragBefore.set(s.id, { sectorId: sector.id, row: s.row, x: s.x, y: s.y })
+        // Групповой жест готовится в mousedown для ВСЕХ секторов. Не перезаписывать
+        // его данными только текущего сектора — иначе Ctrl+A двигал один сектор.
+        if (seatDragBefore.size === 0 || selectedSeatIds.value.size === 1) {
+          seatDragIds = new Set(selectedSeatIds.value)
+          seatDragBefore.clear()
+          for (const owner of sectors.value) {
+            for (const s of owner.seats) {
+              if (seatDragIds.has(s.id)) {
+                seatDragBefore.set(s.id, { sectorId: owner.id, row: s.row, x: s.x, y: s.y })
+              }
+            }
           }
         }
       })
@@ -2047,15 +2179,18 @@ function draw(): void {
         // модель не менялась, и после перерисовки место «возвращалось».
         for (const id of seatDragIds) {
           const b = seatDragBefore.get(id)
-          const target = sector.seats.find((s) => s.id === id)
-          if (!b || !target) continue
+          if (!b) continue
+          const owner = sectors.value.find((s) => s.id === b.sectorId)
+          const target = owner?.seats.find((s) => s.id === id)
+          if (!owner || !target) continue
           target.x = b.x + dx
           target.y = b.y + dy
           // Соседей по выделению двигаем вручную: watcher не перерисовывает
           // холст во время drag (см. watch ниже), а Konva двигает мышью
-          // только тот узел, за который тянут.
+          // только тот узел, за который тянут. id глобален на сцене — ищем
+          // узел по всему stage, а не только в группе текущего сектора.
           if (id !== seat.id) {
-            const node = group.getChildren((n) => n.id() === id)[0]
+            const node = stage?.findOne<Konva.Circle>(`#${id}`)
             node?.position({ x: target.x + SEAT / 2, y: target.y + SEAT / 2 })
           }
         }
@@ -2065,6 +2200,7 @@ function draw(): void {
         // ряда/сектора — это «пересадка», её учтёт finalizeSeatMove.
         finalizeSeatMove()
         endMoveSnapshot()
+        scheduleAutosave()
         seatDragIds = new Set()
         seatDragBefore.clear()
       })
@@ -2121,6 +2257,7 @@ function draw(): void {
         }
       }
       endMoveSnapshot()
+      scheduleAutosave()
     })
     sectorLayer?.add(group)
   }
@@ -2200,6 +2337,16 @@ function fitToContent(): void {
     pts.push({ x: sector.x + bb.x, y: sector.y + bb.y })
     pts.push({ x: sector.x + bb.x + bb.width, y: sector.y + bb.y + bb.height })
   }
+  // Зал может состоять только из standing-зон и фона — без учёта статики
+  // «Вписать содержимое» сбрасывало вид к 100 % вместо вписывания.
+  for (const item of statics.value) {
+    pts.push({ x: item.x, y: item.y })
+    pts.push({ x: item.x + (item.width ?? 80), y: item.y + (item.height ?? 40) })
+  }
+  for (const bg of backgrounds.value) {
+    pts.push({ x: bg.x, y: bg.y })
+    pts.push({ x: bg.x + bg.width, y: bg.y + bg.height })
+  }
   if (pts.length === 0) { fit(); return }
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
   for (const p of pts) {
@@ -2213,7 +2360,7 @@ function fitToContent(): void {
   const h = Math.max(1, maxY - minY)
   const viewW = Math.max(canvasSize.value.width, 300)
   const viewH = Math.max(canvasSize.value.height, 300)
-  const scale = Math.min(2, Math.max(0.3, Math.min((viewW - pad * 2) / w, (viewH - pad * 2) / h)))
+  const scale = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Math.min((viewW - pad * 2) / w, (viewH - pad * 2) / h)))
   stage.scale({ x: scale, y: scale })
   stage.position({
     x: (viewW - w * scale) / 2 - minX * scale,
@@ -2284,7 +2431,7 @@ function initCanvasAndLoad(): void {
 
   // Инструменты §47: клик по холсту создаёт объект выбранного инструмента.
   stage.on('click', (e) => {
-    handleToolClick(e.evt.clientX, e.evt.clientY, e.evt.altKey)
+    handleToolClick(e.evt.clientX, e.evt.clientY, e.evt.altKey, e.target)
   })
   stage.on('mousedown', onStageMouseDown)
   stage.on('mousemove', onStageMouseMove)
@@ -2354,14 +2501,22 @@ function nudgeSelection(dx: number, dy: number): boolean {
   const step = snapEnabled.value ? SNAP_STEP : 1
   snapshot()
   if (hasSeats) {
+    // Пересадка рядов и проверка наложений — те же правила, что и у мышиного
+    // drag. Раньше стрелки меняли только x/y, и место оставалось в старом ряду
+    // (неверная цена и номер на билете), а при 16 нажатиях возникал 422.
+    seatDragIds = new Set(selectedSeatIds.value)
+    seatDragBefore.clear()
     for (const sector of sectors.value) {
       for (const seat of sector.seats) {
-        if (selectedSeatIds.value.has(seat.id)) {
-          seat.x += dx * step
-          seat.y += dy * step
-        }
+        if (!seatDragIds.has(seat.id)) continue
+        seatDragBefore.set(seat.id, { sectorId: sector.id, row: seat.row, x: seat.x, y: seat.y })
+        seat.x += dx * step
+        seat.y += dy * step
       }
     }
+    finalizeSeatMove()
+    seatDragIds = new Set()
+    seatDragBefore.clear()
   }
   if (hasStatics) {
     for (const item of statics.value) {
@@ -2483,6 +2638,19 @@ const groupSeatPriceMinor = computed(() => {
   return 0
 })
 
+/**
+ * У места без СВОЕЙ цены поле должно быть пустым: `null` означает «наследовать
+ * ряд/сектор», а не ноль с красной ошибкой.
+ */
+const singleSeatPriceField = computed(() => {
+  const own = singleSelectedSeat.value?.priceMinor
+  return own == null ? '' : priceRubField(own)
+})
+const singleSeatPriceError = computed(() => {
+  const own = singleSelectedSeat.value?.priceMinor
+  return own == null ? undefined : rowPriceError(minorToRub(own))
+})
+
 /* ── Валидация числовых полей (§50: цены в копейках) ──────────────────
  * Нечисло / NaN / отрицательное значение / ноль для цены — ошибка: поле
  * подсвечивается, значение НЕ попадает в модель и, соответственно, в
@@ -2495,11 +2663,27 @@ const groupSeatPriceMinor = computed(() => {
  * Здесь остаются только сеттеры: снимок истории + запись в модель.
  */
 
+const sectorNameDraft = ref<string | null>(null)
+watch(selectedSectorId, () => { sectorNameDraft.value = null })
+const displayedSectorName = computed(() => sectorNameDraft.value ?? selectedSector.value?.name ?? '')
+const sectorNameError = computed(() =>
+  displayedSectorName.value.trim() === '' ? 'Название сектора не может быть пустым' : undefined,
+)
+
 function setSectorName(value: string): void {
+  sectorNameDraft.value = value
   const sector = selectedSector.value
-  if (!sector || isLocked.value || sector.name === value) return
+  if (!sector || isLocked.value) return
+  const trimmed = value.trim()
+  // Пустое имя сервер отвергает (422), поэтому в модель его не пишем.
+  if (!trimmed) return
+  if (sector.name === trimmed) {
+    sectorNameDraft.value = null
+    return
+  }
   snapshot()
-  sector.name = value
+  sector.name = trimmed
+  sectorNameDraft.value = null
 }
 
 function setSectorPriceRub(v: unknown): void {
@@ -2522,8 +2706,11 @@ const sectorPriceError = computed<string | undefined>(() => {
 function setTableSeatCount(sector: ESector, raw: unknown): void {
   if (isLocked.value || sector.shape !== 'table') return
   const n = clampIntOrNull(Math.floor(Number(raw) || 1), 1, 60) ?? 1
+  if (n === sector.seats.length) return // пустой шаг undo без видимых изменений
   snapshot()
-  rebuildTableSeats(sector, n, nextId)
+  rebuildTableSeats(sector, n, nextId, undefined, sector.seats)
+  const alive = new Set(sector.seats.map((s) => s.id))
+  selectedSeatIds.value = new Set([...selectedSeatIds.value].filter((id) => alive.has(id)))
   selectedSectorId.value = sector.id
 }
 
@@ -2580,6 +2767,15 @@ function rowPriceInputError(row: number): string | undefined {
   return rowPriceError(minorToRub(v))
 }
 
+/** Ошибка с учётом «сырого» некорректного ввода: модель при нём не менялась. */
+function displayedRowPriceError(row: number): string | undefined {
+  return rowPriceInvalidRow.value === row
+    ? 'Цена должна быть числом больше нуля'
+    : rowPriceInputError(row)
+}
+
+watch(selectedSectorId, () => { rowPriceInvalidRow.value = null })
+
 /**
  * Цена ряда из <input type=number> (§50): '' снимает переопределение;
  * нечисло/ноль/отрицательное — отклоняется (в модель и payload не попадает).
@@ -2587,26 +2783,31 @@ function rowPriceInputError(row: number): string | undefined {
 function onRowPriceInput(row: number, raw: string): void {
   const sector = selectedSector.value
   if (!sector) return
+  rowPriceInvalidRow.value = null
   if (raw.trim() === '') { setRowPrice(row, null); return }
   if (rubToMinor(raw) === null) {
+    rowPriceInvalidRow.value = row
     ui.notify('rose', 'Некорректная цена ряда', 'Цена должна быть числом больше нуля')
     return
   }
-  setRowPrice(row, Number(raw))
+  // Сырое значение, а не Number(raw): запятая («1250,50») корректно
+  // разбирается в rubToMinor, но превращалась в NaN при Number().
+  setRowPrice(row, raw)
 }
 
 /** Индивидуальная цена ряда в рублях; пустая строка снимает переопределение (§50). */
-function setRowPrice(row: number, rub: number | '' | null): void {
+function setRowPrice(row: number, rub: unknown): void {
   const sector = selectedSector.value
   if (!sector || isLocked.value) return
-  if (rub === '' || rub === null || Number.isNaN(Number(rub))) {
+  if (rub === '' || rub === null || rub === undefined) {
     if (sector.rowPrices[row] === undefined) return
     snapshot()
     delete sector.rowPrices[row]
     return
   }
   const next = rubToMinor(rub)
-  if (next === null || sector.rowPrices[row] === next) return
+  if (next === null) return
+  if (sector.rowPrices[row] === next) return
   snapshot()
   sector.rowPrices[row] = next
 }
@@ -2765,7 +2966,7 @@ function setSeatKindForSelection(kind: SeatKind): void {
  * изменениях (пустой прогон не захламляет undo), и группа получает
  * уведомление с числом изменённых мест.
  */
-function setSeatPriceRub(value: number | null): void {
+function setSeatPriceRub(value: unknown): void {
   if (selectedSeatIds.value.size === 0) return
   snapshot()
   let changed = 0
@@ -2799,21 +3000,51 @@ function reassignSelectedSeats(targetSectorId: string): void {
   if (!target) return
   snapshot()
   const moving: ESeat[] = []
+  const sourceRows = new Map<string, Set<number>>()
+
   for (const sector of sectors.value) {
     if (sector.id === targetSectorId) continue
     const kept: ESeat[] = []
     for (const seat of sector.seats) {
-      if (selectedSeatIds.value.has(seat.id)) {
-        const dx = sector.x - target.x
-        const dy = sector.y - target.y
-        moving.push({ ...seat, id: nextId('seat'), x: seat.x + dx, y: seat.y + dy })
-      } else {
+      if (!selectedSeatIds.value.has(seat.id)) {
         kept.push(seat)
+        continue
       }
+      const rows = sourceRows.get(sector.id) ?? new Set<number>()
+      rows.add(seat.row)
+      sourceRows.set(sector.id, rows)
+
+      const dx = sector.x - target.x
+      const dy = sector.y - target.y
+      const copy: ESeat = { ...seat, id: nextId('seat'), x: seat.x + dx, y: seat.y + dy }
+
+      // Стол — одно кольцо (ряд 1). У дуги места обязаны лежать на окружности,
+      // иначе перенос ломает геометрию и даёт наложения.
+      if (target.shape === 'table') {
+        copy.row = 1
+        // У стола номера идут по часовой стрелке, а не слева направо —
+        // renumberRows() здесь переставил бы их неправильно.
+        copy.number = target.seats.filter((s) => s.row === 1).length + 1
+      } else if (target.shape === 'arc') {
+        const perRow = Math.max(1, ...rowNumbers(target).map((r) => seatsInRow(target, r).length))
+        const rowNo = target.seats.some((s) => s.row === copy.row) ? copy.row : 1
+        const inRow = target.seats.filter((s) => s.row === rowNo).length
+        const p = arcSeatXY(target, rowNo - 1, inRow, perRow)
+        copy.row = rowNo
+        copy.x = p.x
+        copy.y = p.y
+      }
+      moving.push(copy)
     }
     sector.seats = kept
+    const rows = sourceRows.get(sector.id)
+    if (rows) renumberRows(sector, rows)
   }
+
   target.seats = [...target.seats, ...moving]
+  if (target.shape !== 'table') {
+    renumberRows(target, new Set(moving.map((s) => s.row)))
+  }
   selectedSectorId.value = targetSectorId
   selectedSeatIds.value = new Set(moving.map((s) => s.id))
   reassignTarget.value = ''
@@ -2868,6 +3099,16 @@ function reassignSelectedSeats(targetSectorId: string): void {
           : 'Нет связи'
         }}
       </span>
+
+      <button
+        v-if="draftConflict"
+        type="button"
+        class="rounded-lg border border-rose-500/40 px-2.5 py-1 text-2xs text-rose-400 hover:bg-rose-500/10"
+        title="Схема изменена другим редактором: повторные сохранения будут отвергнуты"
+        @click="reloadAfterConflict"
+      >
+        Схема изменена другим редактором — перезагрузить
+      </button>
 
       <div class="flex-1" />
 
@@ -3039,7 +3280,14 @@ function reassignSelectedSeats(targetSectorId: string): void {
           >Свойства</button>
         </div>
 
-        <input ref="imageInput" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" class="hidden" @change="onImageChosen" />
+        <input
+          ref="imageInput"
+          type="file"
+          accept="image/png,image/jpeg,image/webp,image/svg+xml"
+          class="hidden"
+          @change="onImageChosen"
+          @cancel="tool = 'select'"
+        />
         <input ref="jsonInput" type="file" accept=".json,application/json" class="hidden" @change="onJsonChosen" />
 
         <!-- Холст: занимает всю оставшуюся высоту. Обёртка relative — подложка
@@ -3125,7 +3373,7 @@ function reassignSelectedSeats(targetSectorId: string): void {
             <p class="mt-0.5 text-xs text-subtle">Зал на 400 мест — это четыре числа</p>
           </div>
           <div class="space-y-3 p-3">
-            <NInput v-model="form.name" label="Название" placeholder="Партер A" />
+            <NInput v-model="form.name" label="Название" placeholder="Партер A" :error="form.name.trim() === '' ? 'Введите название сектора' : undefined" />
             <NSegmented
               v-model="form.shape"
               :segments="[{ value: 'grid', label: 'Прямоугольник' }, { value: 'arc', label: 'Амфитеатр' }]"
@@ -3150,7 +3398,7 @@ function reassignSelectedSeats(targetSectorId: string): void {
               @update:model-value="setFormPriceRub($event)"
             />
             <NInput :model-value="form.vipRows" label="VIP-рядов сверху" type="number" @update:model-value="clampIntField('vipRows', $event, 0, 50)" />
-            <NButton block :disabled="isLocked" @click="generateSector">Создать сектор</NButton>
+            <NButton block :disabled="isLocked" @click="generateSector()">Создать сектор</NButton>
           </div>
         </div>
 
@@ -3160,7 +3408,7 @@ function reassignSelectedSeats(targetSectorId: string): void {
             <h2 class="text-sm font-semibold text-content">Сектор · {{ selectedSector.name }}</h2>
           </div>
           <div class="space-y-3 p-3">
-            <NInput :model-value="selectedSector.name" label="Название" :disabled="isLocked" @update:model-value="setSectorName" />
+            <NInput :model-value="displayedSectorName" label="Название" :disabled="isLocked" :error="sectorNameError" @update:model-value="setSectorName" />
             <NInput
               :model-value="priceRubField(selectedSector.priceMinor)"
               label="Цена по умолчанию, ₽"
@@ -3230,9 +3478,9 @@ function reassignSelectedSeats(targetSectorId: string): void {
                       step="1"
                       placeholder="—"
                       :disabled="isLocked"
-                      :title="rowPriceInputError(row)"
+                      :title="displayedRowPriceError(row)"
                       class="h-7 w-16 flex-none rounded-md border bg-surface px-1.5 text-right text-xs text-content tabular-nums focus:outline-none disabled:opacity-50"
-                      :class="rowPriceInputError(row) ? 'border-rose-500' : 'border-line focus:border-brand-400'"
+                      :class="displayedRowPriceError(row) ? 'border-rose-500' : 'border-line focus:border-brand-400'"
                       @change="onRowPriceInput(row, ($event.target as HTMLInputElement).value)"
                     />
                     <button
@@ -3291,7 +3539,7 @@ function reassignSelectedSeats(targetSectorId: string): void {
                 <NButton variant="secondary" size="sm" block :disabled="isLocked" @click="resequenceSelectedSector">Нумерация</NButton>
               </div>
             </template>
-            <NButton variant="danger" block :disabled="isLocked" @click="() => { snapshot(); sectors = sectors.filter((s) => s.id !== selectedSectorId); selectedSectorId = null }">Удалить сектор</NButton>
+            <NButton variant="danger" block :disabled="isLocked" @click="selectedSector && deleteSector(selectedSector.id)">Удалить сектор</NButton>
           </div>
         </div>
 
@@ -3316,14 +3564,14 @@ function reassignSelectedSeats(targetSectorId: string): void {
                 @update:model-value="setSeatKind"
               />
               <NInput
-                :model-value="priceRubField(singleSelectedSeat.priceMinor ?? 0)"
+                :model-value="singleSeatPriceField"
                 label="Цена места, ₽"
                 type="number"
                 :min="0"
                 hint="Пусто — цена ряда/сектора"
                 :disabled="isLocked"
-                :error="rowPriceError(minorToRub(singleSelectedSeat.priceMinor ?? 0))"
-                @update:model-value="(v: string | number) => setSeatPriceRub(String(v).trim() === '' ? null : Number(v))"
+                :error="singleSeatPriceError"
+                @update:model-value="(v: string | number) => setSeatPriceRub(String(v).trim() === '' ? null : String(v))"
               />
             </template>
             <p v-else class="text-xs text-subtle">Групповые операции действуют на все выделенные места.</p>
@@ -3335,7 +3583,7 @@ function reassignSelectedSeats(targetSectorId: string): void {
                 :min="0"
                 hint="Установит индивидуальную цену каждому месту"
                 :disabled="isLocked"
-                @update:model-value="(v: string | number) => setSeatPriceRub(String(v).trim() === '' ? null : Number(v))"
+                @update:model-value="(v: string | number) => setSeatPriceRub(String(v).trim() === '' ? null : String(v))"
               />
               <!-- Тип места для группы: без этого «сделать ряд VIP» требовало
                    бы выбирать место за местом — а ряд это ровно тот случай,

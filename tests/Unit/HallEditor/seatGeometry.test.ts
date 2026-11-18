@@ -14,6 +14,10 @@ import {
   alignTableSeatsEvenly,
   appendRowToSector,
   findFreeSeatPosition,
+  insertRowAfter,
+  rebuildTableSeats,
+  rowStepOf,
+  seatStepOf,
   arcLayoutParams,
   arcSeatXY,
   buildArcSeats,
@@ -289,6 +293,53 @@ describe('seatGeometry: alignTableSeatsEvenly (выравнивание «сыр
     alignTableSeatsEvenly(sector)
     expect(sector.seats[0]!.x).toBe(before.x)
     expect(sector.seats[0]!.y).toBe(before.y)
+  })
+})
+
+describe('seatGeometry: исправленные операции редактирования', () => {
+  it('insertRowAfter в амфитеатре кладёт места на дугу, а не в прямоугольную сетку', () => {
+    const sector = makeArcSector()
+    sector.seats = buildArcSeats(sector, 2, 5, 0, nextId)
+    const rowNo = insertRowAfter(sector, 1, 5, nextId)
+    const inserted = sector.seats.filter((s) => s.row === rowNo)
+    expect(inserted).toHaveLength(5)
+    const radius = sector.arcBaseR + (rowNo - 1) * sector.arcRowGap
+    for (const seat of inserted) {
+      const metric = Math.hypot(seat.x - sector.arcOffsetX, seat.y - sector.arcOffsetY)
+      expect(metric).toBeCloseTo(radius, 0)
+    }
+  })
+
+  it('rebuildTableSeats сохраняет типы, цены и id существующих мест', () => {
+    const sector: ESector = {
+      id: 'sec-table', name: 'Стол 1', priceMinor: 100000, x: 0, y: 0,
+      seats: [], rowPrices: {}, shape: 'table',
+    }
+    const original = [
+      { id: 'seat-a', row: 1, number: 1, kind: 'vip' as const, x: 0, y: 0, priceMinor: 900000 },
+      { id: 'seat-b', row: 1, number: 2, kind: 'accessible' as const, x: 20, y: 0, priceMinor: 700000 },
+    ]
+    sector.seats = original.map((s) => ({ ...s }))
+
+    rebuildTableSeats(sector, 3, nextId, undefined, sector.seats)
+
+    expect(sector.seats).toHaveLength(3)
+    expect(sector.seats[0]).toMatchObject({ id: 'seat-a', kind: 'vip', priceMinor: 900000 })
+    expect(sector.seats[1]).toMatchObject({ id: 'seat-b', kind: 'accessible', priceMinor: 700000 })
+    expect(sector.seats[2]!.priceMinor).toBeUndefined()
+  })
+
+  it('применённый шаг сетки используется новыми рядами', () => {
+    const sector: ESector = {
+      id: 'sec-grid', name: 'Партер', priceMinor: 100000, x: 0, y: 0,
+      seats: buildGridSeats(2, 3, 0, nextId), rowPrices: {}, shape: 'grid',
+      seatStep: 30, rowStep: 40,
+    }
+    expect(seatStepOf(sector)).toBe(30)
+    expect(rowStepOf(sector)).toBe(40)
+    const { seats } = appendRowToSector(sector, 3, nextId)
+    expect(seats[1]!.x).toBe(30)
+    expect(seats[0]!.y).toBe(80) // (row 3 - 1) * 40
   })
 })
 

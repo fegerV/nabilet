@@ -51,6 +51,9 @@ export interface SerializedSector {
   arcRowGap: number
   arcOffsetX: number
   arcOffsetY: number
+  /** Применённый шаг сетки (только grid) — чтобы новые ряды не рвались после F5. */
+  seatStep?: number
+  rowStep?: number
   seats: SerializedSeat[]
 }
 
@@ -104,6 +107,8 @@ export function serializeSchema(state: EditorSchemaState): SerializedSchema {
       arcRowGap: s.arcRowGap,
       arcOffsetX: s.arcOffsetX,
       arcOffsetY: s.arcOffsetY,
+      ...(s.seatStep != null ? { seatStep: s.seatStep } : {}),
+      ...(s.rowStep != null ? { rowStep: s.rowStep } : {}),
       // Геометрия банкетного стола (tableCx/tableCy/tableRing) НЕ пишется
       // намеренно: это производная от мест величина (см. tableLayout), и
       // дублировать её в payload — значит получить два источника правды,
@@ -236,6 +241,8 @@ interface ServerSector {
   arcRowGap?: unknown
   arcOffsetX?: unknown
   arcOffsetY?: unknown
+  seatStep?: unknown
+  rowStep?: unknown
   seats?: unknown
   rows?: unknown
 }
@@ -400,6 +407,8 @@ export function parseSchemaPayload(raw: unknown, canvasSize: SchemaCanvas): Norm
         arcRowGap: num(s.arcRowGap, 24),
         arcOffsetX: num(s.arcOffsetX, 0),
         arcOffsetY: num(s.arcOffsetY, 0),
+        seatStep: num(s.seatStep, NaN) > 0 ? num(s.seatStep, NaN) : undefined,
+        rowStep: num(s.rowStep, NaN) > 0 ? num(s.rowStep, NaN) : undefined,
         type: (s.type === 'standing' || s.type === 'mixed') ? s.type : 'seated',
       })
     }
@@ -495,6 +504,8 @@ export function parseSchemaPayload(raw: unknown, canvasSize: SchemaCanvas): Norm
         arcRowGap: num(s.arcRowGap, 24),
         arcOffsetX: 0,
         arcOffsetY: 0,
+        seatStep: num(s.seatStep, NaN) > 0 ? num(s.seatStep, NaN) : undefined,
+        rowStep: num(s.rowStep, NaN) > 0 ? num(s.rowStep, NaN) : undefined,
         type: (s.type === 'standing' || s.type === 'mixed') ? s.type : 'seated',
       })
     }
