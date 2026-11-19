@@ -82,13 +82,41 @@ require __DIR__ . '/spec-counts.php';
  * @var list<array{table: string, column: string, migration: string, pattern: string}>
  */
 const APPLICATION_SCHEMA_EXTENSIONS = [
-    // EMPTY on purpose. Every column that used to be listed here now lives in the
-    // Core DDL itself (nabilet_core_spec/migrations/012_application_domain.sql):
-    // hall_schema_versions.revision, halls.city/address/exterior_photo_url/
-    // interior_photo_url and seats.price_amount. The mechanism stays because it is
-    // the right place to record the NEXT application-owned column — the guard
-    // below fails loudly if an entry duplicates the Core DDL, which is exactly how
-    // this list was emptied.
+    // v1.5.0: упрощение домена (площадка = схема, событие = дата, заказ = билет).
+    // Все колонки объявлены миграциями приложения и НЕ входят в Core-бандл ядра,
+    // который остаётся контрактом NABILET Core. Каждая запись проверяется на
+    // устаревание: если миграция перестанет объявлять колонку — гейт упадёт.
+    ['table' => 'hall_schema_versions', 'column' => 'venue_id', 'migration' => 'database/migrations/2026_11_18_000100_venue_owns_schema.php', 'pattern' => "~unsignedBigInteger\\('venue_id'\\)~"],
+
+    ['table' => 'events', 'column' => 'starts_at', 'migration' => 'database/migrations/2026_11_18_000200_event_owns_primary_session.php', 'pattern' => "~dateTime\\('starts_at', 6\\)~"],
+    ['table' => 'events', 'column' => 'ends_at', 'migration' => 'database/migrations/2026_11_18_000200_event_owns_primary_session.php', 'pattern' => "~dateTime\\('ends_at', 6\\)~"],
+    ['table' => 'events', 'column' => 'sales_start_at', 'migration' => 'database/migrations/2026_11_18_000200_event_owns_primary_session.php', 'pattern' => "~dateTime\\('sales_start_at', 6\\)~"],
+    ['table' => 'events', 'column' => 'sales_end_at', 'migration' => 'database/migrations/2026_11_18_000200_event_owns_primary_session.php', 'pattern' => "~dateTime\\('sales_end_at', 6\\)~"],
+    ['table' => 'events', 'column' => 'timezone', 'migration' => 'database/migrations/2026_11_18_000200_event_owns_primary_session.php', 'pattern' => "~string\\('timezone', 64\\)~"],
+    ['table' => 'events', 'column' => 'venue_id', 'migration' => 'database/migrations/2026_11_18_000200_event_owns_primary_session.php', 'pattern' => "~unsignedBigInteger\\('venue_id'\\)~"],
+    ['table' => 'events', 'column' => 'schema_version_id', 'migration' => 'database/migrations/2026_11_18_000200_event_owns_primary_session.php', 'pattern' => "~unsignedBigInteger\\('schema_version_id'\\)~"],
+    ['table' => 'events', 'column' => 'primary_session_id', 'migration' => 'database/migrations/2026_11_18_000200_event_owns_primary_session.php', 'pattern' => "~unsignedBigInteger\\('primary_session_id'\\)~"],
+
+    ['table' => 'order_items', 'column' => 'event_id', 'migration' => 'database/migrations/2026_11_18_000300_order_item_is_ticket.php', 'pattern' => "~unsignedBigInteger\\('event_id'\\)~"],
+    ['table' => 'order_items', 'column' => 'session_id', 'migration' => 'database/migrations/2026_11_18_000300_order_item_is_ticket.php', 'pattern' => "~unsignedBigInteger\\('session_id'\\)~"],
+    ['table' => 'order_items', 'column' => 'ticket_number', 'migration' => 'database/migrations/2026_11_18_000300_order_item_is_ticket.php', 'pattern' => "~string\\('ticket_number', 100\\)~"],
+    ['table' => 'order_items', 'column' => 'ticket_index', 'migration' => 'database/migrations/2026_11_18_000300_order_item_is_ticket.php', 'pattern' => "~unsignedInteger\\('ticket_index'\\)~"],
+    ['table' => 'order_items', 'column' => 'qr_version', 'migration' => 'database/migrations/2026_11_18_000300_order_item_is_ticket.php', 'pattern' => "~unsignedSmallInteger\\('qr_version'\\)~"],
+    ['table' => 'order_items', 'column' => 'qr_token_hash', 'migration' => 'database/migrations/2026_11_18_000300_order_item_is_ticket.php', 'pattern' => "~char\\('qr_token_hash', 64\\)~"],
+    ['table' => 'order_items', 'column' => 'qr_payload', 'migration' => 'database/migrations/2026_11_18_000300_order_item_is_ticket.php', 'pattern' => "~string\\('qr_payload', 512\\)~"],
+    ['table' => 'order_items', 'column' => 'holder_name', 'migration' => 'database/migrations/2026_11_18_000300_order_item_is_ticket.php', 'pattern' => "~string\\('holder_name', 255\\)~"],
+    ['table' => 'order_items', 'column' => 'ticket_status', 'migration' => 'database/migrations/2026_11_18_000300_order_item_is_ticket.php', 'pattern' => "~string\\('ticket_status', 32\\)~"],
+    ['table' => 'order_items', 'column' => 'issued_at', 'migration' => 'database/migrations/2026_11_18_000300_order_item_is_ticket.php', 'pattern' => "~dateTime\\('issued_at', 6\\)~"],
+    ['table' => 'order_items', 'column' => 'used_at', 'migration' => 'database/migrations/2026_11_18_000300_order_item_is_ticket.php', 'pattern' => "~dateTime\\('used_at', 6\\)~"],
+    ['table' => 'order_items', 'column' => 'refunded_at', 'migration' => 'database/migrations/2026_11_18_000300_order_item_is_ticket.php', 'pattern' => "~dateTime\\('refunded_at', 6\\)~"],
+    ['table' => 'order_items', 'column' => 'revoked_at', 'migration' => 'database/migrations/2026_11_18_000300_order_item_is_ticket.php', 'pattern' => "~dateTime\\('revoked_at', 6\\)~"],
+    ['table' => 'order_items', 'column' => 'revoked_reason', 'migration' => 'database/migrations/2026_11_18_000300_order_item_is_ticket.php', 'pattern' => "~string\\('revoked_reason', 100\\)~"],
+
+    ['table' => 'order_items', 'column' => 'public_id', 'migration' => 'database/migrations/2026_11_18_000400_order_item_public_id.php', 'pattern' => "~char\\('public_id', 26\\)~"],
+    ['table' => 'order_items', 'column' => 'seat_id', 'migration' => 'database/migrations/2026_11_18_000400_order_item_public_id.php', 'pattern' => "~unsignedBigInteger\\('seat_id'\\)~"],
+    ['table' => 'order_items', 'column' => 'standing_zone_id', 'migration' => 'database/migrations/2026_11_18_000400_order_item_public_id.php', 'pattern' => "~unsignedBigInteger\\('standing_zone_id'\\)~"],
+
+    ['table' => 'venues', 'column' => 'hall_name', 'migration' => 'database/migrations/2026_11_18_000800_replace_halls_with_view.php', 'pattern' => "~string\\('hall_name', 255\\)~"],
 ];
 
 /**

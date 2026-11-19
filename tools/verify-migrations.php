@@ -609,6 +609,18 @@ echo "\n[4] Migrations vs spec\n";
  *   - `users.remember_token` (2026_09_22_001300) — Laravel auth.
  * These are owned by the framework, which may migrate them itself; promising a
  * stable Core contract for them would be a promise this project cannot keep.
+ *
+ * v1.5.0 добавляет второй вид ожидаемых расхождений — упрощение домена:
+ *   - `halls`, `tickets`, `ticket_scans` физически удалены, вместо них VIEW над
+ *     `venues` / `order_items` / `order_item_scans` (2026_11_18_0006/0008);
+ *   - FK на эти таблицы сняты (MySQL не разрешает FK на VIEW);
+ *   - площадка владеет схемой (`venues.hall_name`, `hall_schema_versions.venue_id`),
+ *     событие владеет датой (`events.starts_at`, `venue_id`, `primary_session_id`…),
+ *     заказ владеет билетом (`order_items.qr_token_hash`, `ticket_status`…),
+ *     сканирования переехали в отдельную таблицу `order_item_scans`.
+ * Core-спект остаётся контрактом ядра; приложение осознанно ушло дальше, поэтому
+ * все эти отличия названы поимённо и проверяются self-ratcheting: исчезновение любого
+ * из них всё равно ломает гейт, пока строка не удалена отсюда.
  */
 $knownExtensions = [
     'tables' => [
@@ -626,16 +638,49 @@ $knownExtensions = [
         'social_accounts',        // соц-вход (модуль Auth): привязка user → (provider, provider_user_id).
                                   // Спека соц-вход не описывает вовсе; `users` при этом уже допускает
                                   // NULL в email/password — это и был заложенный запас под такой вход
+        'order_item_scans',       // 1.5.0: сканирования билета хранятся в позиции заказа
+    ],
+    // Core-таблицы, заменённые VIEW и физически удалённые миграциями 1.5.0.
+    // Запись self-ratcheting: если таблица снова появится в миграциях, actual
+    // missing не совпадёт с этим списком и гейт упадёт.
+    'tables_missing' => [
+        'halls',        // halls → VIEW над venues (2026_11_18_000800)
+        'tickets',      // tickets → VIEW над order_items (2026_11_18_000600)
+        'ticket_scans', // ticket_scans → VIEW над order_item_scans (2026_11_18_000600)
     ],
     'columns' => [
         'users' => ['remember_token'],
+        // 1.5.0: событие владеет датой и площадкой (2026_11_18_000200).
+        'events' => [
+            'starts_at', 'ends_at', 'timezone', 'venue_id',
+            'primary_session_id', 'schema_version_id', 'sales_start_at', 'sales_end_at',
+        ],
+        // 1.5.0: имя технической строки схемы хранится в площадке (000800).
+        'venues' => ['hall_name'],
+        'hall_schema_versions' => ['venue_id'],
+        // 1.5.0: заказ = билет (000300), публичный идентификатор позиции (000400).
+        'order_items' => [
+            'public_id', 'event_id', 'session_id', 'seat_id', 'standing_zone_id',
+            'holder_name', 'ticket_number', 'ticket_index', 'qr_version',
+            'qr_token_hash', 'qr_payload', 'ticket_status', 'issued_at', 'used_at',
+            'cancelled_at', 'refunded_at', 'expired_at', 'revoked_at', 'revoked_reason',
+        ],
     ],
     // Значения по умолчанию для app-only колонок сюда НЕ пишутся: такие колонки
     // перечислены в APP_OWNED_COLUMNS и вычитаются из сравнения до diff-а.
     // Дублирование (было для carts.currency/carts.total_amount) ломало проверку
     // в обе стороны: колонка вычиталась, а ожидалась — и diff никогда не сходился.
     'defaults' => [],
-    'indexes' => [],
+    'indexes' => [
+        'events' => ['extra' => ['idx_events_venue_starts']],
+        'hall_schema_versions' => ['extra' => ['idx_schema_venue_status']],
+        'order_items' => ['extra' => [
+            'idx_order_items_event_ticket_status',
+            'uq_order_items_public_id',
+            'uq_order_items_qr_hash',
+            'uq_order_items_ticket_number',
+        ]],
+    ],
     // Внешние ключи app-only таблиц: спека описывает только свои таблицы, поэтому
     // FK внутри таблицы приложения сюда вносится поимённо. Список проверяется на
     // устаревание так же, как INVENTED_FIELDS: исключение, переставшее
@@ -643,6 +688,14 @@ $knownExtensions = [
     // должны быть видны, а не тихо разрешены навсегда.
     'foreign_keys' => [
         'fk_social_user', // social_accounts.user_id -> users(id) ON DELETE CASCADE
+    ],
+    // FK Core, снятые миграциями 1.5.0: целевые таблицы стали VIEW, на которые
+    // MySQL не позволяет ссылаться внешним ключам. self-ratcheting: если FK
+    // снова появится в миграциях, гейт упадёт.
+    'foreign_keys_missing' => [
+        'fk_schema_hall',        // hall_schema_versions.hall_id -> halls (снят 000800)
+        'fk_sessions_hall',      // sessions.hall_id -> halls (снят 000800)
+        'fk_ticket_scans_ticket', // ticket_scans.ticket_id -> tickets (снят 000600)
     ],
 ];
 
@@ -673,7 +726,7 @@ check('Core tables match; only named application tables are additional', functio
     assertExactDiff(
         array_values(array_diff($want, $have)),
         array_values(array_diff($have, $want)),
-        [],
+        $knownExtensions['tables_missing'] ?? [],
         $knownExtensions['tables'],
         'table set',
     );
@@ -908,11 +961,29 @@ check('same foreign keys, including ON DELETE', function () use ($tables, $recor
 
     $problems = [];
 
+    $seenDropped = [];
+
     foreach ($want as $name => $definition) {
         if (! isset($have[$name])) {
+            // 1.5.0: FK на таблицы, ставшие VIEW, сняты намеренно.
+            if (in_array($name, $knownExtensions['foreign_keys_missing'] ?? [], true)) {
+                $seenDropped[] = $name;
+                continue;
+            }
+
             $problems[] = $name . ' is in the spec but not declared';
         } elseif ($have[$name] !== $definition) {
             $problems[] = sprintf('%s: spec says "%s", migration says "%s"', $name, $definition, $have[$name]);
+        }
+    }
+
+    // self-ratcheting: снятый FK, который всё ещё объявлен в миграциях, — это
+    // не «просто разрешение», а забытая чистка списка.
+    foreach ($knownExtensions['foreign_keys_missing'] ?? [] as $name) {
+        if (isset($have[$name])) {
+            $problems[] = $name . ' is allow-listed as dropped but is still declared';
+        } elseif (! in_array($name, $seenDropped, true)) {
+            $problems[] = $name . ' is allow-listed as dropped but is missing from the spec';
         }
     }
 

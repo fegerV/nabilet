@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Nabilet\Modules\Events\Services;
 
 use Nabilet\Core\Errors\ConflictError;
+use Nabilet\Core\Support\PublicationStatus;
 use Nabilet\Modules\Events\Domain\EventStatus;
 use Nabilet\Modules\Events\Models\Event;
 use Nabilet\Modules\Events\Repositories\EventRepository;
@@ -138,7 +139,7 @@ class EventService
                 $hall = Hall::query()->create([
                     'venue_id' => $event->venue_id,
                     'name' => $event->title,
-                    'status' => 'active',
+                    'status' => PublicationStatus::ACTIVE,
                 ]);
             }
 

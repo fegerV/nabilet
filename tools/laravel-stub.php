@@ -686,6 +686,16 @@ namespace Illuminate\Database\Schema {
                     static fn (ForeignKeyDefinition $f): bool => $f->name !== $name
                 ));
 
+                // Deferred FKs (added by earlier `->foreign()` calls in another
+                // migration) live in addedForeignKeys, NOT in the table's own
+                // foreignKeys. A `dropForeign()` in a later migration must remove
+                // them too — otherwise the structural check still reports
+                // "FK -> halls (missing, deferred)" after halls became a VIEW.
+                $this->addedForeignKeys[$table] = array_values(array_filter(
+                    $this->addedForeignKeys[$table] ?? [],
+                    static fn (ForeignKeyDefinition $f): bool => $f->name !== $name
+                ));
+
                 // Also drop any column-level index that referenced the dropped name.
                 foreach ($existing->columns as $column) {
                     $column->indexes = array_values(array_filter(
@@ -752,6 +762,18 @@ namespace Illuminate\Database\Schema {
         }
 
         public static function dropIfExists(string $table): void
+        {
+            self::recorder()->dropIfExists($table);
+        }
+
+        /**
+         * Stand-in for Schema::drop(). Since 1.5.0 the "tickets" and
+         * "ticket_scans" tables are replaced by updatable VIEWs — the
+         * migration guards each drop with hasTable(), so on the first run
+         * the recorder does hold the table. Removing it from the recorder is
+         * the honest answer: a later hasTable() must report false.
+         */
+        public static function drop(string $table): void
         {
             self::recorder()->dropIfExists($table);
         }
@@ -1025,9 +1047,16 @@ namespace Illuminate\Support\Facades {
     }
 
     /**
-     * The row-count probe DB::table() returns. Fluent chain is preserved
-     * (`whereNull`, `where`), every terminal count answers zero: the verifier
-     * reasons about an EMPTY database, the only state it can honestly know.
+     * The row probe DB::table() returns. The sandbox records SCHEMA, it has no
+     * rows, so every DATA operation answers "nothing found / 0 rows affected" —
+     * the verifier reasons about an EMPTY database, the only state it can
+     * honestly know. Fluent chain is preserved so migrations that read rows
+     * (`orderBy()->get()`, `where()->first()`) don't abort the whole migration
+     * run with "undefined method" before the gate reaches later migrations.
+     *
+     * This is how 2026_11_18_000300_order_item_is_ticket.php reads the legacy
+     * `tickets` table: on a fresh DB there are no rows to backfill, so get()
+     * returns [] and the foreach body never runs — exactly the honest answer.
      */
     class DbTableProbe
     {
@@ -1045,7 +1074,44 @@ namespace Illuminate\Support\Facades {
             return $this;
         }
 
+        public function whereNotIn(string $column, mixed $values): self
+        {
+            return $this;
+        }
+
+        public function orderBy(string $column, string $direction = 'asc'): self
+        {
+            return $this;
+        }
+
         public function count(string $expression = '*'): int
+        {
+            return 0;
+        }
+
+        public function exists(): bool
+        {
+            return false;
+        }
+
+        /** @return array<int, \stdClass> — на пустой БД нечего отдавать. */
+        public function get(mixed $columns = '*'): array
+        {
+            return [];
+        }
+
+        public function first(mixed $columns = '*'): ?\stdClass
+        {
+            return null;
+        }
+
+        public function insertGetId(array $values, ?string $sequence = null): int
+        {
+            return 0;
+        }
+
+        /** @param array<string, mixed> $values */
+        public function update(array $values): int
         {
             return 0;
         }

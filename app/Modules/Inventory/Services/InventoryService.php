@@ -134,13 +134,10 @@ class InventoryService
                                                                                                 'rotation' => 0,
                                                                                                 'status' => 'active',
                                                                     // Индивидуальная цена места (§54): побеждает цену ряда.
-                                                                    // `priceMinor` — редактор, `price_amount`/`price` — rows-формат
-                                                                    // импорта и старые схемы. Один владелец цепочки — SchemaPrice:
-                                                                    // раньше читался только priceMinor, и индивидуальные цены
-                                                                    // импортированных мест молча терялись.
-                                                                    'price_amount' => SchemaPrice::seatOverride(
-                                                                        $seatData['priceMinor'] ?? $seatData['price_amount'] ?? $seatData['price'] ?? null
-                                                                    )?->minorUnits(),
+                                                                    // Выбор поля (`priceMinor` / `price_amount` / `price`) и
+                                                                    // разбор — в SchemaPrice: раньше цепочка ?? жила здесь,
+                                                                    // и импортированные цены молча терялись.
+                                                                    'price_amount' => SchemaPrice::seatOverride($seatData)?->minorUnits(),
                                         ]);
                                         $capacity += 1;
                                     }

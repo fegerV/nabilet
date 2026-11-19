@@ -146,6 +146,24 @@ final class SchemaPriceTest extends TestCase
         static::assertSame(80000, SchemaPrice::seatOverride('80000')?->minorUnits());
     }
 
+    public function test_a_seat_node_picks_the_first_present_price_field(): void
+    {
+        static::assertSame(80000, SchemaPrice::seatOverride(['priceMinor' => 80000])?->minorUnits());
+        static::assertSame(70000, SchemaPrice::seatOverride(['price_amount' => 70000])?->minorUnits());
+        static::assertSame(60000, SchemaPrice::seatOverride(['price' => 60000])?->minorUnits());
+
+        // Приоритет: priceMinor > price_amount > price.
+        static::assertSame(
+            80000,
+            SchemaPrice::seatOverride(['priceMinor' => 80000, 'price_amount' => 70000, 'price' => 60000])?->minorUnits()
+        );
+
+        // Первое ПРИСУТСТВУЮЩЕЕ поле побеждает, даже если оно мусор: своей
+        // цены у места тогда нет и оно наследует цену ряда.
+        static::assertNull(SchemaPrice::seatOverride(['priceMinor' => ' дорого ', 'price' => 60000]));
+        static::assertNull(SchemaPrice::seatOverride(['x' => 1, 'y' => 2]));
+    }
+
     public function test_an_invalid_seat_override_means_no_own_price(): void
     {
         // null, а не «цена ноль»: место наследует цену ряда.

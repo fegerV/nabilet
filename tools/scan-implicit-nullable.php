@@ -18,6 +18,11 @@ foreach ($rii as $file) {
     $path = $file->getPathname();
     if (str_contains($path, DIRECTORY_SEPARATOR . 'vendor' . DIRECTORY_SEPARATOR)) continue;
     if (str_contains($path, DIRECTORY_SEPARATOR . 'node_modules' . DIRECTORY_SEPARATOR)) continue;
+    // Сборщик релизного зипа оставляет после себя копию проекта в
+    // .tmp-release-stage/site — это НЕ исходники, а снимок уже собранной
+    // версии. Сканировать его бессмысленно (дубли находок) и вредно (после
+    // любой сборки линтер красный даже без правок кода).
+    if (str_contains($path, DIRECTORY_SEPARATOR . '.tmp-release-stage' . DIRECTORY_SEPARATOR)) continue;
 
     $src = file_get_contents($path);
     if ($src === false) continue;
@@ -95,6 +100,15 @@ foreach ($rii as $file) {
                         // ЯВНО nullable, как и `?`. Без этой ветки ложно падали
                         // union-параметры с допустимым null.
                         if ($pt[0] === T_STRING && strcasecmp($pt[1], 'null') === 0) {
+                            $nullable = true;
+                            continue;
+                        }
+                        // `mixed` УЖЕ включает null: `mixed $x = null` не является
+                        // неявно nullable и НЕ вызывает Deprecated в PHP 8.4
+                        // (проверено: f(mixed $x = null) молчит, а f(int $x = null)
+                        // ругается). Без этой ветки сканер ложно падал на
+                        // RaffleService::acceptingRaffles(mixed $organizationId = null).
+                        if ($pt[0] === T_STRING && strcasecmp($pt[1], 'mixed') === 0) {
                             $nullable = true;
                             continue;
                         }
