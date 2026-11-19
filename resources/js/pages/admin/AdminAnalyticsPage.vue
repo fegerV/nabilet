@@ -132,6 +132,7 @@ const statusRows = computed(() => {
 
     <div v-if="error" class="surface-card mt-5 border-rose-500/30 px-4 py-3 text-sm text-rose-400">
       Не удалось загрузить данные: {{ error }}
+      <button type="button" class="ml-3 text-xs text-brand-300 underline decoration-dotted hover:text-brand-200" @click="load">Повторить</button>
     </div>
 
     <p v-else-if="loading" class="mt-5 text-sm text-subtle">Считаем…</p>

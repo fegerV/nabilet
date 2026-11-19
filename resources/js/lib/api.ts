@@ -257,6 +257,39 @@ function extractErrorMeta(payload: unknown, status: number): { message: string; 
   return { message, code }
 }
 
+/**
+ * Лимит времени одного запроса.
+ *
+ * Без него «висящий» ответ (оборванное соединение, медленный хостинг, очередь
+ * PHP-FPM) оставляет страницу в состоянии `loading=true` навсегда: формы
+ * спрятаны за `v-if="!loading && !error"`, и пользователь видит только
+ * заголовок раздела. Таймаут превращает это в обычную ошибку с плашкой.
+ */
+const REQUEST_TIMEOUT_MS = 20_000
+
+/** fetch с AbortController: сетевой отказ и таймаут — одно и то же сообщение. */
+async function fetchJson(url: string, init: RequestInit): Promise<Response> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+  try {
+    return await fetch(url, { ...init, signal: controller.signal })
+  } catch (e) {
+    const aborted = e instanceof DOMException && e.name === 'AbortError'
+    throw new ApiError(0, aborted
+      ? 'Сервер не ответил вовремя. Повторите попытку.'
+      : 'Нет соединения с сервером. Проверьте связь.')
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/** 401 админки: токен уже удалён, но страница остаётся «пустой» без редиректа. */
+function handleUnauthorized(status: number, code: string | null, audience: TokenAudience | null): void {
+  if (status !== 401 || code === 'bad_credentials' || audience !== 'staff') return
+  if (typeof window === 'undefined' || window.location.pathname === '/admin/login') return
+  window.location.assign(`/admin/login?reason=expired&redirect=${encodeURIComponent(window.location.pathname + window.location.search)}`)
+}
+
 /** Универсальная выборка: возвращает объект { data, meta? } уже развёрнутым. */
 export async function request<T = unknown>(path: string, options: ApiOptions = {}): Promise<T> {
   const { token, audience } = activeToken(options.as)
@@ -282,16 +315,11 @@ export async function request<T = unknown>(path: string, options: ApiOptions = {
     if (guestToken) headers['X-Cart-Token'] = guestToken
   }
 
-  let res: Response
-  try {
-    res = await fetch(`${BASE_URL}${path}`, {
-      method: options.method ?? 'GET',
-      headers,
-      body: options.body === undefined ? undefined : JSON.stringify(options.body),
-    })
-  } catch {
-    throw new ApiError(0, 'Нет соединения с сервером. Проверьте связь.')
-  }
+  const res = await fetchJson(`${BASE_URL}${path}`, {
+    method: options.method ?? 'GET',
+    headers,
+    body: options.body === undefined ? undefined : JSON.stringify(options.body),
+  })
 
   // Сервер мог выдать новый токен (первый запрос без валидного) — сохраняем.
   const echoed = res.headers.get('X-Cart-Token')
@@ -310,7 +338,10 @@ export async function request<T = unknown>(path: string, options: ApiOptions = {
     // 401 → протухла сессия; гасим ИМЕННО ТУ, которой отвечал сервер, и даём
     // странице решить (редирект на логин).
     const { message, code } = extractErrorMeta(payload, res.status)
-    if (res.status === 401 && code !== 'bad_credentials') clearTokenFor(audience)
+    if (res.status === 401 && code !== 'bad_credentials') {
+      clearTokenFor(audience)
+      handleUnauthorized(res.status, code, audience)
+    }
     throw new ApiError(res.status, message, code, extractFieldErrors(payload))
   }
 
@@ -338,12 +369,7 @@ export async function upload<D>(path: string, formData: FormData, method: 'POST'
   const headers: Record<string, string> = { Accept: 'application/json' }
   if (token) headers.Authorization = `Bearer ${token}`
 
-  let res: Response
-  try {
-    res = await fetch(`${BASE_URL}${path}`, { method, headers, body: formData })
-  } catch {
-    throw new ApiError(0, 'Нет соединения с сервером. Проверьте связь.')
-  }
+  const res = await fetchJson(`${BASE_URL}${path}`, { method, headers, body: formData })
 
   let payload: unknown = null
   try {
@@ -354,7 +380,10 @@ export async function upload<D>(path: string, formData: FormData, method: 'POST'
 
   if (!res.ok) {
     const { message, code } = extractErrorMeta(payload, res.status)
-    if (res.status === 401 && code !== 'bad_credentials') clearTokenFor(audience)
+    if (res.status === 401 && code !== 'bad_credentials') {
+      clearTokenFor(audience)
+      handleUnauthorized(res.status, code, audience)
+    }
     throw new ApiError(res.status, message, code, extractFieldErrors(payload))
   }
 
