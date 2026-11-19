@@ -238,7 +238,7 @@ async function rotate(k: ApiKiosk): Promise<void> {
     oneTimeToken.value = res.data.token
     tokenFor.value = res.data.device.name
     tokenModal.value = true
-    ui.notify('sun', 'Токен ротирован', 'Старый токен немедленно перестал работать')
+    ui.notify('sun', 'Токен ротирован', 'Старый токен перестал работать; продажи на новом устройстве снова выключены — включите их вручную')
     await load()
   } catch (e) {
     ui.notify('rose', 'Ротация не удалась', e instanceof Error ? e.message : String(e))
