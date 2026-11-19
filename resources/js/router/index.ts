@@ -281,6 +281,8 @@ const routes: RouteRecordRaw[] = [
       // ИИ-агент: выпуск MCP-токенов без SSH + одобрение prepared-действий.
       // Объявлен до :section, иначе catch-all показывал бы заглушку.
       { path: 'agent', name: 'admin-agent', component: () => import('@/pages/admin/AdminAgentPage.vue') },
+      // Бэкапы: список локальных копий, скачивание и статус авто-выгрузки.
+      { path: 'backups', name: 'admin-backups', component: () => import('@/pages/admin/AdminBackupsPage.vue') },
       // Catch-all для неизвестных адресов админки. Разделов-заглушек больше нет:
       // все пункты меню ведут на реальные экраны, поэтому единственное, чем может
       // быть этот маршрут, — опечатка в URL. Он отдаёт честный «Раздел не найден»

@@ -93,7 +93,11 @@ final class HostChecks
      */
     public function lastBackup(): array
     {
-        $backupDir = $this->backupDir ?? database_path('backup');
+        // Реальные копии создаёт YandexDiskBackupService в storage/app/backups.
+        // Раньше здесь смотрели database_path('backup') — папку, куда никто не
+        // пишет, — поэтому админка и selfcheck ругались на «отсутствие бэкапов»
+        // даже когда свежий дамп лежал на диске и качался через /admin/backups.
+        $backupDir = $this->backupDir ?? storage_path('app/backups');
 
         if (! is_dir($backupDir)) {
             return ['status' => 'error', 'message' => 'Каталог резервных копий не найден'];
@@ -103,6 +107,9 @@ final class HostChecks
             glob($backupDir . '/nabilet_*.sql') ?: [],
             glob($backupDir . '/nabilet_*.sql.gz') ?: [],
             glob($backupDir . '/nabilet_*.sql.zst') ?: [],
+            // Фактические имена из YandexDiskBackupService / BackupRotation.
+            glob($backupDir . '/db_*.sql*') ?: [],
+            glob($backupDir . '/full_*.zip*') ?: [],
         );
 
         if ($files === []) {

@@ -63,7 +63,7 @@ final class SurgutVenuesSeeder extends Seeder
     public const CITY = 'Сургут';
 
     /** Регион — субъект РФ для `PostalAddress.addressRegion`. */
-    public const REGION = 'Ханты-Мансийский автономный округ — Югра';
+    public const REGION = 'ХМАО — Югра';
 
     /**
      * Код страны ISO 3166-1 alpha-2.

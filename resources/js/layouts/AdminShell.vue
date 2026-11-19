@@ -79,6 +79,10 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: 'Мероприятия', to: '/admin/events', icon: '▤' },
       { label: 'Площадки', to: '/admin/venues', icon: '⌂' },
+      // Схемы залов — полноценный раздел со своим списком и редактором.
+      // Раньше попасть туда можно было только кнопкой из списка мероприятий,
+      // поэтому пункт меню отсутствовал, хотя страница /admin/halls работает.
+      { label: 'Схемы залов', to: '/admin/halls', icon: '▦' },
       // «Сеансы» и «Схемы залов» спрятаны: дата/место/цена концерта правятся
       // в карточке мероприятия, а схема — в карточке площадки. Старые ссылки
       // и API-роуты продолжают работать, но лишний уровень в меню убран.
@@ -121,6 +125,9 @@ const NAV_GROUPS: NavGroup[] = [
       // Стоит рядом с «Аналитикой» — это тоже про «что происходит», только на
       // уровне записей, а не цифр.
       { label: 'Логи', to: '/admin/logs', icon: '≡' },
+      // Бэкапы: список локальных копий и скачивание. Авто-выгрузка на
+      // Яндекс.Диск идёт cron-ом, страница показывает статус и инструкцию.
+      { label: 'Бэкапы', to: '/admin/backups', icon: '⛁' },
       // Информационный центр: настройка системы, запуск концерта, все разделы.
       // Статическая страница — под ограничением доступа не нуждается в бэкенде.
       { label: 'Центр помощи', to: '/admin/help', icon: '?' },
@@ -198,9 +205,27 @@ async function loadAwaitingOrders(): Promise<void> {
   }
 }
 
+/**
+ * Версия приходит с сервера (config/nabilet.php → /admin/system/status),
+ * а не из package.json в бандле: собранный фронт может отстать от бэкенда,
+ * и админ должен видеть ту версию, которая реально работает на хостинге.
+ */
+const appVersion = ref('')
+async function loadVersion(): Promise<void> {
+  try {
+    // system/status отдаёт плоский ответ (без обёртки `{ data }`), в отличие
+    // от ресурсных эндпоинтов — читаем version напрямую из payload.
+    const res = await get<unknown>('/admin/system/status')
+    appVersion.value = (res as { version?: string }).version ?? '—'
+  } catch {
+    appVersion.value = '—'
+  }
+}
+
 onMounted(() => {
   void loadOrganizations()
   void loadAwaitingOrders()
+  void loadVersion()
 })
 </script>
 
@@ -219,7 +244,10 @@ onMounted(() => {
           class="grid h-9 w-9 flex-none place-items-center rounded-lg bg-brand-gradient text-base font-bold text-white shadow-brand"
           aria-hidden="true"
         >Н</span>
-        <span v-if="!collapsed" class="truncate text-base font-bold tracking-tight text-content">NABILET</span>
+        <span v-if="!collapsed" class="min-w-0">
+          <span class="block truncate text-base font-bold tracking-tight text-content">NABILET</span>
+          <span v-if="appVersion" class="block text-2xs text-subtle">v{{ appVersion }}</span>
+        </span>
       </div>
 
       <nav class="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
@@ -257,6 +285,14 @@ onMounted(() => {
           <span aria-hidden="true" class="grid h-5 w-5 flex-none place-items-center">{{ collapsed ? '»' : '«' }}</span>
           <span v-if="!collapsed">Свернуть</span>
         </button>
+        <RouterLink
+          v-if="!collapsed"
+          to="/admin/help"
+          class="block px-2.5 pt-2 text-2xs text-subtle hover:text-content"
+          title="Версия приложения — данные приходят с сервера"
+        >
+          {{ appVersion ? `Версия ${appVersion}` : 'Версия загружается…' }}
+        </RouterLink>
       </div>
     </aside>
 

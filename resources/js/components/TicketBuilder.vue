@@ -1,5 +1,9 @@
 <script setup>
 import { computed, ref, onMounted, watch } from 'vue';
+// Видимость боковых панелей хранится в localStorage — как в конструкторе залов:
+// пользователь, который скрыл панели ради места на холсте, не должен
+// возвращать их после каждой перезагрузки страницы.
+import { usePersistedRef } from '@/lib/usePersistedRef';
 // Раньше здесь был `axios` напрямую: он не несёт Authorization-заголовок
 // (интерсепторов в проекте нет) и обращался к `/api/ticket-templates` без
 // префикса версии, то есть сохранение шаблона уходило в 401/404. Теперь —
@@ -88,6 +92,9 @@ const internalId = ref(props.templateId ?? null);
 
 // Предпросмотр: прячет панели, показывает билет как его увидит покупатель.
 const previewMode = ref(false);
+// Сворачивание панелей «Элементы» (слева) и «Свойства/Холст» (справа).
+const showElements = usePersistedRef('ticketBuilder.elements.visible', true);
+const showProps = usePersistedRef('ticketBuilder.props.visible', true);
 // Тестовые данные в предпросмотре: подстановка {{...}} или сырые плейсхолдеры.
 const showSampleData = ref(true);
 
@@ -838,6 +845,15 @@ onMounted(() => {
                 <button @click="previewMode = !previewMode" class="btn btn-secondary">
                     {{ previewMode ? '✏️ Редактировать' : '👁 Предпросмотр' }}
                 </button>
+                <!-- Кнопки возврата скрытых панелей — рядом с остальными
+                     инструментами, чтобы место освобождалось, но панели можно
+                     было вернуть одним кликом без перезагрузки. -->
+                <button v-if="!previewMode && !showElements" @click="showElements = true" class="btn btn-secondary" title="Показать панель элементов">
+                    📦 Элементы
+                </button>
+                <button v-if="!previewMode && !showProps" @click="showProps = true" class="btn btn-secondary" title="Показать панель свойств">
+                    ⚙ Свойства
+                </button>
             </div>
             
             <div class="toolbar-section">
@@ -889,7 +905,11 @@ onMounted(() => {
 
         <div class="builder-main" :class="{ 'is-preview': previewMode }">
             <!-- Left Sidebar - Elements -->
-            <div v-if="!previewMode" class="sidebar sidebar-left">
+            <div v-if="!previewMode && showElements" class="sidebar sidebar-left">
+                <div class="sidebar-collapse-bar">
+                    <span>Панель элементов</span>
+                    <button type="button" class="btn-panel-close" title="Скрыть панель элементов" @click="showElements = false">✕</button>
+                </div>
                 <div class="sidebar-tabs">
                     <button 
                         :class="{ active: activeTab === 'elements' }" 
@@ -1241,8 +1261,11 @@ onMounted(() => {
             </div>
             
             <!-- Right Sidebar - Properties -->
-            <div v-if="!previewMode && selectedElement" class="sidebar sidebar-right">
-                <h3 class="properties-title">Свойства</h3>
+            <div v-if="!previewMode && showProps && selectedElement" class="sidebar sidebar-right">
+                <div class="sidebar-collapse-bar">
+                    <h3 class="properties-title">Свойства</h3>
+                    <button type="button" class="btn-panel-close" title="Скрыть свойства" @click="showProps = false">✕</button>
+                </div>
 
                 <!-- Фон холста: сплошной цвет и/или линейный градиент («текстура»).
                      Панель видна всегда — фон редактируется независимо от выбранного
@@ -1498,8 +1521,11 @@ onMounted(() => {
 
             <!-- Canvas Properties: когда ничего не выбрано — настройки холста,
                  а не пустая панель. Фон здесь же: раньше его было негде поменять. -->
-            <div v-else-if="!previewMode" class="sidebar sidebar-right">
-                <h3 class="properties-title">Холст</h3>
+            <div v-else-if="!previewMode && showProps" class="sidebar sidebar-right">
+                <div class="sidebar-collapse-bar">
+                    <h3 class="properties-title">Холст</h3>
+                    <button type="button" class="btn-panel-close" title="Скрыть свойства холста" @click="showProps = false">✕</button>
+                </div>
                 <div class="property-group">
                     <label class="property-label">Фон холста:</label>
                     <input type="color" v-model="canvasBackground" class="property-color" />
@@ -1733,6 +1759,45 @@ onMounted(() => {
 .sidebar-right {
     border-right: none;
     border-left: 1px solid #262b4d;
+}
+
+/* Сворачивание панелей: узкая полоска-шапка с крестиком. Холст при этом
+   получает всё освободившееся место; состояние панелей переживает F5. */
+.sidebar-collapse-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex: none;
+    padding: 6px 10px;
+    border-bottom: 1px solid #262b4d;
+    color: #9aa3c7;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+}
+
+.sidebar-collapse-bar .properties-title {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    font-size: 11px;
+    color: inherit;
+}
+
+.btn-panel-close {
+    flex: none;
+    border: 0;
+    background: transparent;
+    color: #9aa3c7;
+    font-size: 14px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 2px 4px;
+}
+
+.btn-panel-close:hover {
+    color: #fff;
 }
 
 .sidebar-tabs {
@@ -2449,6 +2514,15 @@ onMounted(() => {
 
 .builder-light .sidebar-tabs {
     border-bottom-color: #e2e8f0;
+}
+
+.builder-light .sidebar-collapse-bar {
+    border-bottom-color: #e2e8f0;
+    color: #64748b;
+}
+
+.builder-light .btn-panel-close {
+    color: #64748b;
 }
 
 .builder-light .tab-btn {
