@@ -49,6 +49,7 @@ nabilet_core_spec/
 | [`docs/LAUNCH-READINESS.md`](docs/LAUNCH-READINESS.md) | Готовность к запуску: что проверено, чего не хватает |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) · [`docs/INTERNAL_MODULES.md`](docs/INTERNAL_MODULES.md) | Архитектура и внутренние модули |
 | [`docs/TESTING_GUIDE.md`](docs/TESTING_GUIDE.md) · [`docs/UI-DESIGN.md`](docs/UI-DESIGN.md) · [`docs/MOBILE_OPTIMIZATION.md`](docs/MOBILE_OPTIMIZATION.md) | Практические руководства |
+| [`docs/KIOSKS.md`](docs/KIOSKS.md) | Информационные киоски: реестр устройств, аналитика, продажи, QR и удалённое обновление |
 
 ---
 

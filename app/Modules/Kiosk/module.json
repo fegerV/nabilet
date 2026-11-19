@@ -1,0 +1,11 @@
+{
+  "name": "kiosk",
+  "title": "Информационные киоски продажи билетов",
+  "version": "1.0.0",
+  "enabled": true,
+  "priority": 130,
+  "requires": ["cart", "orders", "payments", "sessions", "tickets"],
+  "permissions": ["kiosks.manage"],
+  "provides": ["kiosk.sale", "kiosk.heartbeat"],
+  "description": "Реестр self-service киосков, аналитика парка, управление продажами и удалённым обновлением. Киоск — устройство с токеном, а не пользователь."
+}

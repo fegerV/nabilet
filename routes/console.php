@@ -93,6 +93,10 @@ Schedule::command('backup:run')
 // минуты; два параллельных прохода опрашивали бы одни и те же платежи дважды.
 Schedule::command('payments:reconcile')->everyTenMinutes()->withoutOverlapping(9);
 
+// Продажи киосков: подтянуть оплату и выданные билеты (QR подписывается только
+// на сервере). Идемпотентно, поэтому безопасно каждые полминуты.
+Schedule::command('kiosks:sync-sales')->everyMinute()->withoutOverlapping();
+
 // Самопроверка установки (`system:selfcheck`): БД, Redis, очередь, диск,
 // свежесть бэкапа — с сигналом в канал `alerts` при ИЗМЕНЕНИИ состояния.
 //

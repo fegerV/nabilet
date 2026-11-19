@@ -115,6 +115,9 @@ return Application::configure(basePath: dirname(__DIR__))
         // обязательна — неизвестная команда в routes/console.php валит весь
         // `schedule:run`.
         \Nabilet\Modules\Payments\Console\ReconcilePaymentsCommand::class,
+        // Продажи киосков догоняют статус заказа: QR подписывается на сервере
+        // webhook'ом, поэтому экран киоска не может узнать о билете сам.
+        \Nabilet\Modules\Kiosk\Console\SyncKioskSalesCommand::class,
         // Автоматическое завершение прошедших событий (SEO-аудит P-06). Без него
         // `completed` ставился только вручную, прошедший концерт оставался
         // `published`, и разметка обещала Google событие в будущем с билетами в

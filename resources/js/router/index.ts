@@ -275,6 +275,9 @@ const routes: RouteRecordRaw[] = [
       // Встраивание: ключи, whitelist доменов, генератор iframe-кода (ТЗ §48–51).
       // Тоже объявлен до :section по той же причине, что и logs.
       { path: 'embed', name: 'admin-embed', component: () => import('@/pages/admin/AdminEmbedPage.vue') },
+      // Информационные киоски: реестр, аналитика, продажи, удалённые обновления.
+      // Объявлен до :section, иначе catch-all показывал бы «Раздел не найден».
+      { path: 'kiosks', name: 'admin-kiosks', component: () => import('@/pages/admin/AdminKiosksPage.vue') },
       // Catch-all для неизвестных адресов админки. Разделов-заглушек больше нет:
       // все пункты меню ведут на реальные экраны, поэтому единственное, чем может
       // быть этот маршрут, — опечатка в URL. Он отдаёт честный «Раздел не найден»

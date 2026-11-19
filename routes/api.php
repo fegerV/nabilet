@@ -97,6 +97,11 @@ $moduleRoutes = [
     // контракта отвечали 404, а колонка под токен устройства не имела ни
     // писателя, ни читателя. Подробности — в шапке файла маршрутов модуля.
     __DIR__ . '/../app/Modules/Checkin/routes/api.php',
+    // Информационные киоски: /api/v1/kiosk/* под токеном устройства
+    // (AuthenticateKiosk) и /api/v1/admin/kiosks/* под auth:api + admin.
+    // Как у чекера: организация выводится из токена, а не из хоста.
+    // Модуль НЕ грузит маршруты сам из провайдера.
+    __DIR__ . '/../app/Modules/Kiosk/routes/api.php',
     // Клуб зрителей, фаза 1 (`docs/LOYALTY-PLAN.md`): избранное и подписки
     // покупателя — `/me/favorites`, `/me/events/{event}/favorite`,
     // `/me/follows`, `/me/events/{event}/follow`. Весь префикс под `auth:api`:

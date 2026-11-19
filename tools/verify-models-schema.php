@@ -158,6 +158,8 @@ const APPLICATION_EXTENSION_FIELDS = [
 const APPLICATION_ONLY_TABLES = [
     'storefront_settings', // конструктор витрины (модуль Storefront)
     'social_accounts',     // соц-вход (модуль Auth): DDL в миграции, спека таблицу не описывает
+    'kiosk_devices',       // 1.6.0: реестр киосков, DDL в database/migrations/2026_11_19_000100
+    'kiosk_sales',         // 1.6.0: продажи киосков, DDL в database/migrations/2026_11_19_000200
 ];
 
 const INVENTED_FIELDS = [

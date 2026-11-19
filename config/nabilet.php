@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 return [
-    'version' => '1.5.1',
+    'version' => '1.6.0',
 
     /*
      * Шифрование бэкапов (AES-256-CBC). Ключ — из `.env`:
@@ -122,6 +122,9 @@ return [
         'hall_schemas' => \Nabilet\Modules\HallSchemas\Providers\HallSchemasServiceProvider::class,
         'heatmaps' => \Nabilet\Modules\Heatmaps\Providers\HeatmapsServiceProvider::class,
         'installer' => \Nabilet\Modules\Installer\Providers\InstallerServiceProvider::class,
+        // Информационные киоски: реестр устройств, аналитика, управление
+        // продажами и удалённым обновлением (docs/KIOSKS.md).
+        'kiosk' => \Nabilet\Modules\Kiosk\Providers\KioskServiceProvider::class,
         // Клуб зрителей: избранное и подписки покупателя (docs/LOYALTY-PLAN.md,
         // фаза 1). Между installer и localization по приоритету модуля (140).
         'loyalty' => \Nabilet\Modules\Loyalty\Providers\LoyaltyServiceProvider::class,
@@ -305,7 +308,21 @@ return [
         // теряет оплаченное место. Меняйте значение здесь, а не по месту.
         'hold_grace_minutes' => (int) env('CHECKOUT_HOLD_GRACE_MINUTES', 5),
     ],
-    
+
+    /*
+     * Информационные киоски (docs/KIOSKS.md).
+     *
+     * `enabled` — глобальный аварийный выключатель: снимает продажи со ВСЕХ
+     * киосков, не отзывая токены и не теряя канал heartbeat/обновления.
+     * По соображению безопасности новый киоск по умолчанию НЕ продаёт —
+     * `sales_enabled` включается администратором явно.
+     */
+    'kiosks' => [
+        'enabled' => (bool) env('NABILET_KIOSKS_ENABLED', true),
+        'offline_after_minutes' => (int) env('NABILET_KIOSK_OFFLINE_MINUTES', 5),
+        'default_sales_enabled' => false,
+    ],
+
     'payment' => [
         'providers' => explode(',', env('PAYMENT_PROVIDERS', 'yookassa')),
         'webhook_secret' => env('PAYMENT_WEBHOOK_SECRET'),

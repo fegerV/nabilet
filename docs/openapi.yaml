@@ -26,6 +26,8 @@ tags:
   - name: Admin Venues
   - name: Admin Orders
   - name: Admin Checkin
+  - name: Kiosk
+  - name: Admin Kiosks
   - name: Admin Embed
   - name: Analytics
   - name: Webhooks
@@ -2669,6 +2671,298 @@ paths:
       responses:
         '204': { description: Deleted }
 
+  /api/v1/admin/kiosks:
+    get:
+      tags: [Admin Kiosks]
+      summary: List kiosk devices with park analytics
+      operationId: adminListKiosks
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Devices and summary
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KioskListResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [Admin Kiosks]
+      summary: Register a kiosk device
+      operationId: adminCreateKiosk
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/KioskDeviceCreateRequest' }
+      responses:
+        '201':
+          description: Device registered; token is shown exactly once
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KioskDeviceTokenResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /api/v1/admin/kiosks/analytics:
+    get:
+      tags: [Admin Kiosks]
+      summary: Kiosk park analytics
+      operationId: adminKioskAnalytics
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Park summary
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KioskAnalyticsResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/v1/admin/kiosks/{kiosk}:
+    get:
+      tags: [Admin Kiosks]
+      summary: Kiosk card with stats and recent sales
+      operationId: adminGetKiosk
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: kiosk
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Device details
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KioskDeviceDetailResponse' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Admin Kiosks]
+      summary: Edit kiosk, enable or disable sales
+      operationId: adminUpdateKiosk
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: kiosk
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/KioskDeviceUpdateRequest' }
+      responses:
+        '200':
+          description: Updated device
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KioskDeviceResponse' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /api/v1/admin/kiosks/{kiosk}/rotate-token:
+    post:
+      tags: [Admin Kiosks]
+      summary: Rotate kiosk token (old token is revoked)
+      operationId: adminRotateKioskToken
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: kiosk
+          required: true
+          schema: { type: string }
+      responses:
+        '201':
+          description: New device and one-time token
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KioskDeviceTokenResponse' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/admin/kiosks/{kiosk}/revoke:
+    post:
+      tags: [Admin Kiosks]
+      summary: Revoke kiosk irreversibly
+      operationId: adminRevokeKiosk
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: kiosk
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Revoked device
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KioskDeviceResponse' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/admin/kiosks/{kiosk}/update:
+    post:
+      tags: [Admin Kiosks]
+      summary: Issue a remote update directive
+      operationId: adminIssueKioskUpdate
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: kiosk
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/KioskUpdateRequest' }
+      responses:
+        '200':
+          description: Device with pending directive
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KioskDeviceResponse' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /api/v1/admin/kiosks/{kiosk}/update/cancel:
+    post:
+      tags: [Admin Kiosks]
+      summary: Cancel pending update directive
+      operationId: adminCancelKioskUpdate
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: kiosk
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Device without directive
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KioskDeviceResponse' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /api/v1/admin/kiosks/{kiosk}/sales:
+    get:
+      tags: [Admin Kiosks]
+      summary: Kiosk sales journal
+      operationId: adminListKioskSales
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: kiosk
+          required: true
+          schema: { type: string }
+        - in: query
+          name: status
+          required: false
+          schema: { type: string }
+      responses:
+        '200':
+          description: Sales
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KioskSaleListResponse' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/kiosk/heartbeat:
+    post:
+      tags: [Kiosk]
+      summary: Device heartbeat and directive poll
+      operationId: kioskHeartbeat
+      security: [{ kioskAuth: [] }]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/KioskHeartbeatRequest' }
+      responses:
+        '200':
+          description: Heartbeat accepted
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KioskHeartbeatResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/v1/kiosk/config:
+    get:
+      tags: [Kiosk]
+      summary: Device config and update directive
+      operationId: kioskConfig
+      security: [{ kioskAuth: [] }]
+      responses:
+        '200':
+          description: Config
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KioskConfigResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/v1/kiosk/update-result:
+    post:
+      tags: [Kiosk]
+      summary: Report update result
+      operationId: kioskUpdateResult
+      security: [{ kioskAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/KioskUpdateResultRequest' }
+      responses:
+        '200':
+          description: Result accepted
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KioskUpdateDirective' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/ValidationError' }
+
+  /api/v1/kiosk/sales:
+    post:
+      tags: [Kiosk]
+      summary: Start an idempotent ticket sale
+      operationId: kioskCreateSale
+      security: [{ kioskAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/KioskSaleRequest' }
+      responses:
+        '200':
+          description: Existing sale replayed for the same client_sale_id
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KioskSaleResponse' }
+        '201':
+          description: Sale created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KioskSaleResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/ValidationError' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /api/v1/kiosk/sales/{clientSaleId}:
+    get:
+      tags: [Kiosk]
+      summary: Poll sale status and QR
+      operationId: kioskGetSale
+      security: [{ kioskAuth: [] }]
+      parameters:
+        - in: path
+          name: clientSaleId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Sale status; qr_payload is null until the ticket is issued
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KioskSaleResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
 components:
   securitySchemes:
     bearerAuth:
@@ -2676,6 +2970,10 @@ components:
       scheme: bearer
       bearerFormat: opaque
     checkerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: device-token
+    kioskAuth:
       type: http
       scheme: bearer
       bearerFormat: device-token
@@ -4431,3 +4729,227 @@ components:
         data:
           type: array
           items: { $ref: '#/components/schemas/UserRole' }
+
+    KioskDevice:
+      type: object
+      properties:
+        id: { type: integer }
+        public_id: { type: string }
+        name: { type: string }
+        location_address: { type: string, nullable: true }
+        location_note: { type: string, nullable: true }
+        status: { type: string, enum: [active, disabled, revoked] }
+        sales_enabled: { type: boolean }
+        platform: { type: string }
+        app_version: { type: string, nullable: true }
+        config_version: { type: string, nullable: true }
+        target_version: { type: string, nullable: true }
+        update_status: { type: string, enum: [none, pending, applied, failed] }
+        update_applied_version: { type: string, nullable: true }
+        update_error: { type: string, nullable: true }
+        last_seen_at: { type: string, format: date-time, nullable: true }
+        last_used_at: { type: string, format: date-time, nullable: true }
+        revoked_at: { type: string, format: date-time, nullable: true }
+        kiosk_token_hash: { type: string }
+
+    KioskDeviceCreateRequest:
+      type: object
+      required: [organization_id, name]
+      properties:
+        organization_id: { type: integer }
+        name: { type: string }
+        location_address: { type: string, nullable: true }
+        location_note: { type: string, nullable: true }
+        platform: { type: string }
+        app_version: { type: string, nullable: true }
+        sales_enabled: { type: boolean }
+
+    KioskDeviceUpdateRequest:
+      type: object
+      properties:
+        name: { type: string }
+        location_address: { type: string, nullable: true }
+        location_note: { type: string, nullable: true }
+        platform: { type: string }
+        app_version: { type: string, nullable: true }
+        sales_enabled: { type: boolean }
+        status: { type: string, enum: [active, disabled] }
+
+    KioskUpdateDirective:
+      type: object
+      nullable: true
+      properties:
+        target_version: { type: string }
+        url: { type: string }
+        checksum: { type: string, nullable: true }
+        issued_at: { type: string, format: date-time, nullable: true }
+
+    KioskUpdateRequest:
+      type: object
+      required: [target_version, update_url]
+      properties:
+        target_version: { type: string }
+        update_url: { type: string, format: uri }
+        update_checksum: { type: string, nullable: true }
+
+    KioskDeviceResponse:
+      type: object
+      properties:
+        data: { $ref: '#/components/schemas/KioskDevice' }
+
+    KioskDeviceTokenResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            device: { $ref: '#/components/schemas/KioskDevice' }
+            token: { type: string, description: 'One-time token (nbks_…).' }
+
+    KioskDeviceDetailResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            device: { $ref: '#/components/schemas/KioskDevice' }
+            stats:
+              type: object
+              properties:
+                total: { type: integer }
+                issued: { type: integer }
+                failed: { type: integer }
+                revenue_minor: { type: integer, description: 'Integer minor units (kopecks).' }
+            recent_sales:
+              type: array
+              items: { $ref: '#/components/schemas/KioskSale' }
+
+    KioskSale:
+      type: object
+      properties:
+        public_id: { type: string }
+        client_sale_id: { type: string, format: uuid }
+        status: { type: string, enum: [pending, awaiting_payment, paid, issued, failed, refunded] }
+        order_public_id: { type: string, nullable: true }
+        amount_minor: { type: integer, nullable: true, description: 'Integer minor units (kopecks).' }
+        currency: { type: string }
+        qr_payload: { type: string, nullable: true }
+        error_code: { type: string, nullable: true }
+        paid_at: { type: string, format: date-time, nullable: true }
+        issued_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
+
+    KioskSaleListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/KioskSale' }
+        meta: { $ref: '#/components/schemas/PaginationMeta' }
+
+    KioskListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/KioskDevice' }
+        meta: { $ref: '#/components/schemas/PaginationMeta' }
+        summary: { $ref: '#/components/schemas/KioskAnalytics' }
+
+    KioskAnalytics:
+      type: object
+      properties:
+        devices:
+          type: object
+          properties:
+            total: { type: integer }
+            active: { type: integer }
+            disabled: { type: integer }
+            revoked: { type: integer }
+            selling: { type: integer }
+            online: { type: integer }
+        today:
+          type: object
+          properties:
+            sales: { type: integer }
+            revenue_minor: { type: integer, description: 'Integer minor units (kopecks).' }
+        week:
+          type: object
+          properties:
+            sales: { type: integer }
+            revenue_minor: { type: integer, description: 'Integer minor units (kopecks).' }
+        top:
+          type: array
+          items:
+            type: object
+            properties:
+              device_id: { type: integer }
+              device_name: { type: string }
+              sales_count: { type: integer }
+              revenue_minor: { type: integer, description: 'Integer minor units (kopecks).' }
+        offline_after_minutes: { type: integer }
+
+    KioskAnalyticsResponse:
+      type: object
+      properties:
+        data: { $ref: '#/components/schemas/KioskAnalytics' }
+
+    KioskHeartbeatRequest:
+      type: object
+      properties:
+        app_version: { type: string }
+        config_version: { type: string }
+
+    KioskHeartbeatResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            status: { type: string }
+            sales_enabled: { type: boolean }
+            server_time: { type: string, format: date-time }
+            config_version: { type: string, nullable: true }
+            offline_after_minutes: { type: integer }
+            update: { $ref: '#/components/schemas/KioskUpdateDirective' }
+
+    KioskConfigResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            kiosk_id: { type: string }
+            name: { type: string }
+            sales_enabled: { type: boolean }
+            currency: { type: string }
+            config_version: { type: string, nullable: true }
+            update: { $ref: '#/components/schemas/KioskUpdateDirective' }
+
+    KioskUpdateResultRequest:
+      type: object
+      required: [status, version]
+      properties:
+        status: { type: string, enum: [applied, failed] }
+        version: { type: string }
+        error: { type: string, nullable: true }
+
+    KioskSaleRequest:
+      type: object
+      required: [client_sale_id, session_id, inventory_item_id]
+      properties:
+        client_sale_id: { type: string, format: uuid }
+        session_id: { type: string, description: 'Numeric id or public_id of the session.' }
+        inventory_item_id: { type: integer }
+        customer_email: { type: string, format: email, nullable: true }
+        holder_name: { type: string, nullable: true }
+
+    KioskSaleResponse:
+      type: object
+      properties:
+        data:
+          allOf:
+            - $ref: '#/components/schemas/KioskSale'
+            - type: object
+              properties:
+                payment_url: { type: string, nullable: true }
