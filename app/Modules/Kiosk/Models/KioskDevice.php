@@ -54,6 +54,14 @@ class KioskDevice extends Model
         'revoked_at',
     ];
 
+    /**
+     * `cart_token` — живой capability-токен корзины (не хеш). Ни в списке,
+     * ни в карточке его отдавать нельзя: это равносильно выдаче секрета.
+     * Продажи используют в качестве токена корзины client_sale_id, поэтому
+     * колонка сохранена только для совместимости и наружу не попадает.
+     */
+    protected $hidden = ['cart_token'];
+
     protected $casts = [
         'sales_enabled' => 'bool',
         'last_seen_at' => 'datetime',

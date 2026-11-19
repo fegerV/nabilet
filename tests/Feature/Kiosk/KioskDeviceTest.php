@@ -81,6 +81,20 @@ final class KioskDeviceTest extends TestCase
         $this->assertSame(1, $list->json('summary.devices.total'));
     }
 
+    public function test_raw_cart_token_is_never_returned_by_admin_api(): void
+    {
+        $organizationId = $this->organization();
+        [$deviceId] = $this->createKiosk($organizationId);
+
+        $list = $this->getJson('/api/v1/admin/kiosks')->assertOk()->getContent();
+        $card = $this->getJson('/api/v1/admin/kiosks/' . $deviceId)->assertOk()->getContent();
+
+        $cartToken = (string) KioskDevice::query()->findOrFail($deviceId)->getRawOriginal('cart_token');
+        $this->assertNotFalse($cartToken);
+        $this->assertStringNotContainsString($cartToken, $list);
+        $this->assertStringNotContainsString($cartToken, $card);
+    }
+
     public function test_admin_enables_and_disables_sales_without_revoking_device(): void
     {
         $organizationId = $this->organization();

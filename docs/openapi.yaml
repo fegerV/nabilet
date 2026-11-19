@@ -2914,7 +2914,7 @@ paths:
           description: Result accepted
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/KioskUpdateDirective' }
+              schema: { $ref: '#/components/schemas/KioskUpdateResultResponse' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '409': { $ref: '#/components/responses/ValidationError' }
 
@@ -4953,3 +4953,8 @@ components:
             - type: object
               properties:
                 payment_url: { type: string, nullable: true }
+
+    KioskUpdateResultResponse:
+      type: object
+      properties:
+        data: { $ref: '#/components/schemas/KioskUpdateDirective' }

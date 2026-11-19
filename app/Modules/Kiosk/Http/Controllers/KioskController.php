@@ -7,6 +7,7 @@ namespace Nabilet\Modules\Kiosk\Http\Controllers;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\DB;
 use Nabilet\Core\Errors\ConflictError;
 use Nabilet\Core\Errors\NotFoundError;
 use Nabilet\Modules\Cart\Services\CartCheckoutService;
@@ -144,75 +145,136 @@ final class KioskController extends Controller
         $validated = $request->validate([
             'client_sale_id' => ['required', 'string', 'uuid'],
             // ID сеанса приходит и числом, и public_id — как в Session::findOrFailBySessionId.
-            'session_id' => ['required', 'bail'],
+            // Без явной проверки скалярности массив ушёл бы в findOrFailBySessionId
+            // и упал TypeError'ом (500 вместо честной 422).
+            'session_id' => [
+                'required',
+                'bail',
+                static function (string $attribute, mixed $value, callable $fail): void {
+                    if (! is_int($value) && ! is_string($value)) {
+                        $fail('The ' . $attribute . ' must be an integer id or a public id.');
+                    }
+                },
+            ],
             'inventory_item_id' => ['required', 'integer', 'min:1'],
             'customer_email' => ['sometimes', 'nullable', 'email', 'max:255'],
             'holder_name' => ['sometimes', 'nullable', 'string', 'max:255'],
         ]);
 
         $clientSaleId = (string) $validated['client_sale_id'];
+        $sessionRaw = $validated['session_id'];
 
-        $existing = KioskSale::query()
-            ->where('kiosk_device_id', $device->id)
-            ->where('client_sale_id', $clientSaleId)
-            ->first();
+        /*
+         * ФАЗА 1 — резервирование продажи под локом строки устройства.
+         *
+         * Раньше existing-проверка и create были вне транзакции: два
+         * параллельных нажатия «Продать» с ОДНИМ client_sale_id оба видели
+         * «продажи нет», оба успевали создать заказ и платёж, а второй create
+         * падал на UNIQUE — 500 и висящий заказ. Блокировка строки киоска
+         * сериализует продажи одного устройства (одна касса — одна очередь),
+         * а UNIQUE (device, client_sale_id) остаётся вторым рубежом.
+         *
+         * Тяжёлая работа (корзина, платёж) идёт ПОСЛЕ коммита: не держим
+         * транзакцию во время сетевого вызова провайдера.
+         */
+        $result = DB::transaction(function () use ($device, $clientSaleId, $sessionRaw, $validated): array {
+            /** @var KioskDevice $locked */
+            $locked = KioskDevice::query()->whereKey($device->id)->lockForUpdate()->firstOrFail();
 
-        if ($existing !== null) {
-            return response()->json(['data' => $this->salePayload($existing)], 200);
+            $existing = KioskSale::query()
+                ->where('kiosk_device_id', $locked->id)
+                ->where('client_sale_id', $clientSaleId)
+                ->first();
+
+            if ($existing !== null) {
+                return ['sale' => $existing, 'replay' => true];
+            }
+
+            // Сеанс чужой организации неотличим от несуществующего.
+            $session = Session::findOrFailBySessionId($sessionRaw);
+
+            if ((int) $session->organization_id !== (int) $locked->organization_id) {
+                throw new NotFoundError('Session', (string) $sessionRaw);
+            }
+
+            $sale = KioskSale::create([
+                'kiosk_device_id' => $locked->id,
+                'client_sale_id' => $clientSaleId,
+                'status' => SalePolicy::STATUS_PENDING,
+                'customer_email' => $validated['customer_email'] ?? null,
+                'holder_name' => $validated['holder_name'] ?? null,
+            ]);
+
+            return ['sale' => $sale, 'replay' => false, 'session_id' => (string) $session->id];
+        });
+
+        if ($result['replay']) {
+            return response()->json(['data' => $this->salePayload($result['sale'])], 200);
         }
 
-        // Сеанс чужой организации неотличим от несуществующего: токен киоска
-        // задал контекст, поэтому дополнительно сверяем владельца явно.
-        $session = Session::findOrFailBySessionId($validated['session_id']);
+        /** @var KioskSale $sale */
+        $sale = $result['sale'];
+        $sessionKey = (string) $result['session_id'];
+        $paymentUrl = null;
 
-        if ((int) $session->organization_id !== (int) $device->organization_id) {
-            throw new NotFoundError('Session', $validated['session_id']);
+        // ФАЗА 2 — заказ и платёж. Ошибка фиксируется в самой продаже: клиент
+        // увидит её при повторном опросе, а не «тихий» 500 без следа.
+        try {
+            // Токен корзины — сам client_sale_id, а НЕ общий для устройства
+            // cart_token. Один общий токен означал бы, что два параллельных
+            // нажатия с РАЗНЫМИ sale_id добавляют места в одну корзину: второй
+            // checkout забирал бы заказ первого или падал дублем uq_carts_active.
+            // Уникальный токен продажи делает сцену независимой, как у гостя.
+            $cartToken = $clientSaleId;
+            $this->carts->getOrCreateCart($sessionKey, $cartToken);
+            $this->items->addItem(
+                sessionId: $sessionKey,
+                inventoryItemId: (int) $validated['inventory_item_id'],
+                quantity: 1,
+                token: $cartToken,
+            );
+
+            $checkout = $this->checkout->checkout(
+                sessionId: $sessionKey,
+                customer: array_filter([
+                    'email' => $validated['customer_email'] ?? null,
+                ]),
+                token: $cartToken,
+            );
+
+            $order = Order::query()->where('public_id', $checkout['order_id'])->firstOrFail();
+            $idempotencyKey = $this->idempotencyKey((int) $device->id, $clientSaleId);
+            $paymentResult = $this->payments->initiatePayment((int) $order->id, [
+                'idempotency_key' => $idempotencyKey,
+            ]);
+            $payment = $paymentResult['payment'];
+            $paymentUrl = $payment->payment_url ?? null;
+
+            $sale->forceFill([
+                'status' => SalePolicy::STATUS_AWAITING_PAYMENT,
+                'order_id' => $order->id,
+                'order_public_id' => $order->public_id,
+                'payment_id' => $payment->id,
+                'amount_minor' => (int) ($checkout['total_amount'] ?? $order->total_amount),
+                'currency' => 'RUB',
+                'idempotency_key' => $idempotencyKey,
+            ])->save();
+        } catch (\Throwable $e) {
+            $sale->forceFill([
+                'status' => SalePolicy::STATUS_FAILED,
+                'error_code' => 'KIOSK_SALE_FAILED',
+                'error_message' => mb_substr($e->getMessage(), 0, 2000),
+            ])->save();
+
+            throw new ConflictError(
+                'The kiosk sale could not be completed.',
+                'KIOSK_SALE_FAILED',
+                ['client_sale_id' => $clientSaleId],
+            );
         }
-
-        // cart.session_id — числовой ID сеанса (unsignedBigInteger), даже если
-        // клиент передал public_id: findOrFailBySessionId нормализует оба вида.
-        $sessionKey = (string) $session->id;
-        $cartToken = (string) $device->cart_token;
-        $this->carts->getOrCreateCart($sessionKey, $cartToken);
-        $this->items->addItem(
-            sessionId: $sessionKey,
-            inventoryItemId: (int) $validated['inventory_item_id'],
-            quantity: 1,
-            token: $cartToken,
-        );
-
-        $checkout = $this->checkout->checkout(
-            sessionId: $sessionKey,
-            customer: array_filter([
-                'email' => $validated['customer_email'] ?? null,
-            ]),
-            token: $cartToken,
-        );
-
-        $order = Order::query()->where('public_id', $checkout['order_id'])->firstOrFail();
-
-        $idempotencyKey = $this->idempotencyKey((int) $device->id, $clientSaleId);
-        $paymentResult = $this->payments->initiatePayment((int) $order->id, [
-            'idempotency_key' => $idempotencyKey,
-        ]);
-        $payment = $paymentResult['payment'];
-
-        $sale = KioskSale::create([
-            'kiosk_device_id' => $device->id,
-            'client_sale_id' => $clientSaleId,
-            'status' => SalePolicy::STATUS_AWAITING_PAYMENT,
-            'order_id' => $order->id,
-            'order_public_id' => $order->public_id,
-            'payment_id' => $payment->id,
-            'amount_minor' => (int) ($checkout['total_amount'] ?? $order->total_amount),
-            'currency' => 'RUB',
-            'customer_email' => $validated['customer_email'] ?? null,
-            'holder_name' => $validated['holder_name'] ?? null,
-            'idempotency_key' => $idempotencyKey,
-        ]);
 
         return response()->json([
-            'data' => $this->salePayload($sale, $payment->payment_url ?? null),
+            'data' => $this->salePayload($sale, $paymentUrl),
         ], 201);
     }
 
@@ -264,6 +326,16 @@ final class KioskController extends Controller
      */
     private function salePayload(KioskSale $sale, ?string $paymentUrl = null): array
     {
+        // Главный сценарий идемпотентности: сеть оборвалась ПОСЛЕ создания
+        // платежа, но ДО того, как ответ дошёл до киоска. Повтор с тем же
+        // client_sale_id получает 200 — и обязан снова отдать ссылку на оплату.
+        // Она восстанавливается из платежа по сохранённому payment_id.
+        if ($paymentUrl === null && $sale->payment_id !== null) {
+            $paymentUrl = DB::table('payments')
+                ->where('id', $sale->payment_id)
+                ->value('payment_url');
+        }
+
         return [
             'client_sale_id' => $sale->client_sale_id,
             'public_id' => $sale->public_id,
@@ -276,6 +348,7 @@ final class KioskController extends Controller
             'qr_payload' => $sale->status === SalePolicy::STATUS_ISSUED ? $sale->qr_payload : null,
             'payment_url' => $paymentUrl,
             'error_code' => $sale->error_code,
+            'created_at' => $sale->created_at?->toIso8601String(),
             'paid_at' => $sale->paid_at?->toIso8601String(),
             'issued_at' => $sale->issued_at?->toIso8601String(),
         ];

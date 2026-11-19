@@ -7,6 +7,7 @@ namespace Tests\Feature\Kiosk;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Kiosk\Domain\KioskSale as SalePolicy;
 use Nabilet\Modules\Kiosk\Models\KioskSale;
 use Nabilet\Modules\Orders\StateMachines\OrderStateMachine;
@@ -133,6 +134,9 @@ final class KioskSaleTest extends TestCase
             'qr_payload' => 'NB1.TEST.test.sig',
         ]);
 
+        // В кроне нет HTTP-контекста: снимаем его, чтобы тест поймал
+        // TenantContextMissingError на скоупированной модели.
+        app(OrganizationContext::class)->clear();
         $this->artisan('kiosks:sync-sales')->assertExitCode(0);
 
         $sale->refresh();
@@ -143,6 +147,60 @@ final class KioskSaleTest extends TestCase
         $this->withToken($token)->getJson('/api/v1/kiosk/sales/' . $clientSaleId)
             ->assertOk()
             ->assertJsonPath('data.qr_payload', 'NB1.TEST.test.sig');
+    }
+
+    public function test_sync_command_finishes_paid_sale_after_late_ticket_issue(): void
+    {
+        [, $token, , $sessionId, $inventoryItemId] = $this->setupKiosk(true);
+        $clientSaleId = (string) Str::uuid();
+
+        $this->withToken($token)->postJson('/api/v1/kiosk/sales', [
+            'client_sale_id' => $clientSaleId,
+            'session_id' => $sessionId,
+            'inventory_item_id' => $inventoryItemId,
+        ])->assertStatus(201);
+
+        $sale = KioskSale::query()->where('client_sale_id', $clientSaleId)->firstOrFail();
+        DB::table('orders')->where('id', $sale->order_id)->update(['status' => OrderStateMachine::PAID]);
+
+        // Билет ещё не выпущен: продажа переходит в paid, но НЕ должна
+        // выпасть из следующего прогона синка (баг: whereIn без PAID).
+        app(OrganizationContext::class)->clear();
+        $this->artisan('kiosks:sync-sales')->assertExitCode(0);
+        $this->assertSame(SalePolicy::STATUS_PAID, $sale->fresh()->status);
+
+        DB::table('order_items')->where('order_id', $sale->order_id)->limit(1)->update([
+            'ticket_status' => 'issued',
+            'qr_payload' => 'NB1.LATE.test.sig',
+        ]);
+        app(OrganizationContext::class)->clear();
+        $this->artisan('kiosks:sync-sales')->assertExitCode(0);
+
+        $sale->refresh();
+        $this->assertSame(SalePolicy::STATUS_ISSUED, $sale->status);
+        $this->assertSame('NB1.LATE.test.sig', $sale->qr_payload);
+    }
+
+    public function test_replay_returns_payment_url_from_the_stored_payment(): void
+    {
+        [, $token, , $sessionId, $inventoryItemId] = $this->setupKiosk(true);
+        $clientSaleId = (string) Str::uuid();
+        $payload = [
+            'client_sale_id' => $clientSaleId,
+            'session_id' => $sessionId,
+            'inventory_item_id' => $inventoryItemId,
+        ];
+
+        $this->withToken($token)->postJson('/api/v1/kiosk/sales', $payload)->assertStatus(201);
+
+        $sale = KioskSale::query()->where('client_sale_id', $clientSaleId)->firstOrFail();
+        DB::table('payments')->where('id', $sale->payment_id)->update([
+            'payment_url' => 'https://pay.example.test/confirm/123',
+        ]);
+
+        $this->withToken($token)->postJson('/api/v1/kiosk/sales', $payload)
+            ->assertStatus(200)
+            ->assertJsonPath('data.payment_url', 'https://pay.example.test/confirm/123');
     }
 
     public function test_revoked_kiosk_cannot_sell(): void

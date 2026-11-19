@@ -156,7 +156,7 @@ final class KioskDeviceController extends Controller
         ]);
 
         // Отзыв необратим: PATCH не должен воскресить отозванный киоск вместе
-        // с его (потенциально утёкшим) токеном. Verified тестом.
+        // с его (потенциально утёкшим) токеном. Проверено тестом.
         if ($device->status === DevicePolicy::STATUS_REVOKED && isset($validated['status'])) {
             throw new ValidationError([
                 'status' => ['A revoked kiosk cannot be reactivated; issue a new token instead.'],
