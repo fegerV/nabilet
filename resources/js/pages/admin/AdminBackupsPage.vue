@@ -142,10 +142,10 @@ onMounted(load)
       <h2 class="text-sm font-semibold text-content">Как настроить автоматические бэкапы</h2>
       <ul class="mt-3 space-y-2">
         <li>1. В <code>.env</code> задайте <code>YANDEX_DISK_OAUTH_TOKEN</code> (OAuth-токен Яндекс.Диска) и, при необходимости, <code>YANDEX_DISK_BACKUPS_PATH</code>. Без токена команда <code>backup:run</code> завершится ошибкой — бэкап на том же диске не защищает от его отказа.</li>
-        <li>2. В панели TimeWeb добавьте cron: <code>* * * * * /opt/php83/bin/php /путь/к/сайту/artisan schedule:run</code>. Расписание внутри приложения уже создаёт копию каждый день в 03:00 (<code>backup:run</code>).</li>
+        <li>2. В панели хостинга добавьте cron: <code>* * * * * /путь/к/php /путь/к/сайту/artisan schedule:run</code> (путь до PHP и каталог сайта уточните у провайдера). Расписание внутри приложения уже создаёт копию каждый день в 03:00 (<code>backup:run</code>).</li>
         <li>3. Для шифрования задайте <code>NABILET_BACKUP_ENCRYPTION_KEY</code>; без него копия уйдёт на Диск в открытом виде с предупреждением в логе.</li>
         <li>4. Разовый запуск вручную (по SSH): <code>php artisan backup:run --keep-local</code> — оставит файл и здесь, и на Диске. Ротация: <code>php artisan backup:rotate</code>.</li>
-        <li>5. Проверка: на этой странице статус «Свежая», а в журнале «Логи» нет ошибок <code>Backup failed</code>. Подробная инструкция восстановления — <code>docs/deploy-timeweb.md</code>, раздел про бэкапы.</li>
+        <li>5. Проверка: на этой странице статус «Свежая», а в журнале «Логи» нет ошибок <code>Backup failed</code>. Подробная инструкция восстановления — в документации по развёртыванию, раздел про бэкапы.</li>
       </ul>
     </section>
   </div>
