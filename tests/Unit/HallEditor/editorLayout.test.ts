@@ -13,8 +13,10 @@
  * Konva замокан: странице нужен только факт создания Stage и слоёв, а не
  * реальный рендер — рисование проверяется вживую, а здесь важен контракт.
  */
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
+import { get, send } from '@/lib/api'
+import { onBeforeRouteLeave } from 'vue-router'
 
 /* ── Konva: минимальный двойник, достаточный для initCanvasAndLoad ──── */
 
@@ -60,6 +62,8 @@ vi.mock('konva', () => ({ default: konvaStub }))
 /* ── jsdom не знает ResizeObserver (страница следит за размером холста) ── */
 
 class FakeResizeObserver {
+  static instances: FakeResizeObserver[] = []
+  constructor(readonly callback: ResizeObserverCallback) { FakeResizeObserver.instances.push(this) }
   observe(): void {}
   unobserve(): void {}
   disconnect(): void {}
@@ -69,6 +73,8 @@ class FakeResizeObserver {
 /* ── vue-router ────────────────────────────────────────────────────── */
 
 vi.mock('vue-router', () => ({
+  onBeforeRouteLeave: vi.fn(),
+  onBeforeRouteUpdate: vi.fn(),
   useRoute: () => ({ params: { publicId: 'HALL-PUBLIC-ID' } }),
   useRouter: () => ({ push: vi.fn() }),
 }))
@@ -169,6 +175,107 @@ describe('HallEditorPage — раскладка', () => {
     // Подписи убраны, но кнопки инструментов остались на месте.
     expect(wrapper.findAll('aside button').length).toBe(wideCount)
     expect(window.localStorage.getItem('nabilet:hallEditor.tools.wide')).toBe('false')
+    wrapper.unmount()
+  })
+})
+
+describe('HallEditorPage — сохранение и публикация', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.mocked(get).mockResolvedValue({ data: [] } as never)
+    vi.mocked(send).mockReset()
+    vi.mocked(send).mockResolvedValue({ data: { id: 5, revision: 1, version: 1 } } as never)
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: true })
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.restoreAllMocks()
+  })
+
+  async function createSector(wrapper: Awaited<ReturnType<typeof mountEditor>>) {
+    await wrapper.findAll('button').find(b => b.text().trim() === 'Создать сектор')!.trigger('click')
+  }
+
+  it('перед уходом сохраняет изменения, даже если debounce ещё не истёк', async () => {
+    const wrapper = await mountEditor()
+    await createSector(wrapper)
+    const guard = vi.mocked(onBeforeRouteLeave).mock.calls.at(-1)![0]
+    expect(await (guard as () => Promise<boolean>)()).toBe(true)
+    expect(send).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(send).mock.calls[0][0]).toContain('/schema-versions/draft')
+    expect(wrapper.text()).toContain('Сохранено')
+    wrapper.unmount()
+  })
+
+  it('при потере сети предупреждает о закрытии и сохраняет после online', async () => {
+    const wrapper = await mountEditor()
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: false })
+    await createSector(wrapper)
+    await vi.advanceTimersByTimeAsync(500)
+    expect(send).not.toHaveBeenCalled()
+    const close = new Event('beforeunload', { cancelable: true })
+    window.dispatchEvent(close)
+    expect(close.defaultPrevented).toBe(true)
+    vi.spyOn(window, 'confirm').mockReturnValue(false)
+    const guard = vi.mocked(onBeforeRouteLeave).mock.calls.at(-1)![0]
+    expect(await (guard as () => Promise<boolean>)()).toBe(false)
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: true })
+    window.dispatchEvent(new Event('online'))
+    await flushPromises()
+    expect(send).toHaveBeenCalledTimes(1)
+    const savedClose = new Event('beforeunload', { cancelable: true })
+    window.dispatchEvent(savedClose)
+    expect(savedClose.defaultPrevented).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('сериализует сохранение при новой правке во время запроса', async () => {
+    let finish!: (value: unknown) => void
+    vi.mocked(send).mockImplementationOnce(() => new Promise(resolve => { finish = resolve }) as never)
+    const wrapper = await mountEditor()
+    await createSector(wrapper)
+    await vi.advanceTimersByTimeAsync(500)
+    await createSector(wrapper)
+    await vi.advanceTimersByTimeAsync(500)
+    expect(send).toHaveBeenCalledTimes(1)
+    finish({ data: { id: 5, revision: 1, version: 1 } })
+    await flushPromises()
+    expect(send).toHaveBeenCalledTimes(2)
+    const payload = vi.mocked(send).mock.calls[1][2] as { base_revision: number; payload: { sectors: unknown[] } }
+    expect(payload.base_revision).toBe(1)
+    expect(payload.payload.sectors).toHaveLength(2)
+    expect(wrapper.text()).toContain('Сохранено')
+    wrapper.unmount()
+  })
+
+  it('публикация блокирует повторный запрос и выход до ответа сервера', async () => {
+    let finish!: (value: unknown) => void
+    vi.mocked(send).mockImplementationOnce(() => new Promise(resolve => { finish = resolve }) as never)
+    const wrapper = await mountEditor()
+    await createSector(wrapper)
+    const publish = wrapper.findAll('button').find(b => b.text().trim() === 'Опубликовать')!
+    await publish.trigger('click')
+    await flushPromises()
+    expect(publish.attributes('disabled')).toBeDefined()
+    const guard = vi.mocked(onBeforeRouteLeave).mock.calls.at(-1)![0]
+    expect(await (guard as () => Promise<boolean>)()).toBe(false)
+    expect(send).toHaveBeenCalledTimes(1)
+    finish({ data: { id: 5, revision: 1, version: 1 } })
+    await flushPromises()
+    expect(send).toHaveBeenCalledTimes(2)
+    expect(vi.mocked(send).mock.calls[1][0]).toContain('/5/publish')
+    expect(wrapper.text()).toContain('Опубликовано v1')
+    wrapper.unmount()
+  })
+
+  it('изменение размера окна не меняет размер сохраняемого документа', async () => {
+    const wrapper = await mountEditor()
+    const observer = FakeResizeObserver.instances.at(-1)!
+    observer.callback([{ contentRect: { width: 400, height: 300 } }] as ResizeObserverEntry[], observer as unknown as ResizeObserver)
+    await createSector(wrapper)
+    await vi.advanceTimersByTimeAsync(500)
+    const payload = vi.mocked(send).mock.calls[0][2] as { payload: { canvas: unknown } }
+    expect(payload.payload.canvas).toEqual({ width: 900, height: 520 })
     wrapper.unmount()
   })
 })

@@ -50,9 +50,10 @@ return [
     ],
 
     'links' => [
-        // Для шаред-хостинга (Timeweb) где public переименован в public_html
-        // При установке через installer путь будет автоматически адаптирован
         public_path('storage') => storage_path('app/public'),
+        // TimeWeb использует отдельный docroot, а public_path остаётся public/.
+        // storage:link должен обслуживать оба входа, включая вызов из cron/SSH.
+        ...(is_dir(base_path('public_html')) ? [base_path('public_html/storage') => storage_path('app/public')] : []),
     ],
 
 ];

@@ -20,6 +20,7 @@ Route::prefix('venues')->group(function () {
     // через POST /venues. ВАЖНО: до /{venue} — иначе сегмент попал бы в
     // route-model binding по public_id и вернул 404 Venue.
     Route::post('/import-afisha', [VenueImportController::class, 'parse'])->middleware(['auth:api', 'admin']);
+    Route::post('/import-hallplan', [VenueImportController::class, 'hallplan'])->middleware(['auth:api', 'admin', 'throttle:10,1']);
     Route::get('/{venue}', [VenueController::class, 'show']);
     Route::patch('/{venue}', [VenueController::class, 'update'])->middleware(['auth:api', 'admin']);
     Route::delete('/{venue}', [VenueController::class, 'destroy'])->middleware(['auth:api', 'admin']);

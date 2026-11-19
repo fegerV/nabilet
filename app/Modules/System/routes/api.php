@@ -37,4 +37,7 @@ Route::prefix('admin/system')->middleware(['auth:api', 'admin'])->group(function
     Route::get('/status', [SystemStatusController::class, 'status']);
     Route::get('/logs', [SystemStatusController::class, 'viewLogs']);
     Route::post('/cache/clear', [SystemStatusController::class, 'clearCache']);
+    // Применение ожидающих миграций без SSH (шаред-хостинг). Требует фразы
+    // MIGRATE и пишется в security-журнал; см. докблок метода.
+    Route::post('/migrate', [SystemStatusController::class, 'migrate']);
 });

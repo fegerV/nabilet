@@ -89,10 +89,11 @@ class EventService
         // Default to draft if no status provided
         $data['status'] = $data['status'] ?? EventStatus::DRAFT;
 
-        $event = $this->eventRepository->create($data);
-        $this->syncPrimarySession($event, $data);
-
-        return $event->fresh();
+        return DB::transaction(function () use ($data): Event {
+            $event = $this->eventRepository->create($data);
+            $this->syncPrimarySession($event, $data);
+            return $event->fresh();
+        });
     }
 
     /**
@@ -109,8 +110,9 @@ class EventService
         }
 
         DB::transaction(function () use ($event, $data): void {
+            \Nabilet\Modules\Venues\Models\Venue::query()->findOrFail($event->venue_id);
             $session = $event->primary_session_id !== null
-                ? Session::query()->find($event->primary_session_id)
+                ? Session::query()->lockForUpdate()->find($event->primary_session_id)
                 : null;
 
             $hall = Hall::query()->where('venue_id', $event->venue_id)->first();
@@ -133,9 +135,30 @@ class EventService
                 $legacyHallId = HallSchemaVersion::query()->whereKey($schemaVersionId)->value('hall_id');
                 $hall = $legacyHallId !== null ? Hall::query()->find($legacyHallId) : null;
             }
+            if ($schemaVersionId === null) {
+                // `sessions.schema_version_id` — NOT NULL. Раньше здесь создавали
+                // сеанс с NULL и получали 500 «Integrity constraint violation»
+                // вместо внятной ошибки поля. Площадка без опубликованной схемы
+                // не имеет продаваемого инвентаря — это ошибка выбора, а не
+                // основание для технического сеанса с битым foreign key.
+                throw new \Nabilet\Core\Errors\ValidationError([
+                    'schema_version_id' => ['У площадки нет опубликованной схемы зала. Нарисуйте и опубликуйте схему перед созданием мероприятия.'],
+                ]);
+            }
+            if ($schemaVersionId !== null) {
+                $schema = HallSchemaVersion::query()->find($schemaVersionId);
+                $sameExistingSchema = $session !== null && (int) $session->schema_version_id === (int) $schemaVersionId;
+                if ($schema === null || (int) ($schema->venue_id ?? $hall?->venue_id) !== (int) $event->venue_id
+                    || ($hall !== null && (int) $schema->hall_id !== (int) $hall->id)
+                    || !in_array($schema->status, $sameExistingSchema ? ['published', 'archived'] : ['published'], true)) {
+                    throw new \Nabilet\Core\Errors\ValidationError([
+                        'schema_version_id' => ['Выберите опубликованную схему выбранной площадки.'],
+                    ]);
+                }
+            }
             if ($hall === null) {
-                // Площадка без technical-зала: схема ещё не рисовалась,
-                // продавать нечего — сеанс всё равно нужен для даты.
+                // У площадки нет отдельной записи technical-зала (схема хранится
+                // на площадке) — создаём её как техническую тень для инвентаря.
                 $hall = Hall::query()->create([
                     'venue_id' => $event->venue_id,
                     'name' => $event->title,
@@ -191,10 +214,12 @@ class EventService
             );
         }
 
-        $event = $this->eventRepository->update($event, $data);
-        $this->syncPrimarySession($event, $data);
-
-        return $event->fresh();
+        return DB::transaction(function () use ($event, $data): Event {
+            $locked = Event::query()->lockForUpdate()->findOrFail($event->id);
+            $updated = $this->eventRepository->update($locked, $data);
+            $this->syncPrimarySession($updated, $data);
+            return $updated->fresh();
+        });
     }
 
     public function delete(Event $event): bool

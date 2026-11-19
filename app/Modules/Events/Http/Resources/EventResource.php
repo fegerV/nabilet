@@ -26,6 +26,12 @@ class EventResource extends JsonResource
             'public_id' => $this->public_id,
             'slug' => $this->slug,
             'organization_id' => $this->organization_id,
+            'primary_session_id' => $this->primary_session_id,
+            'venue_id' => $this->venue_id,
+            'schema_version_id' => $this->schema_version_id,
+            'starts_at' => $this->starts_at?->toIso8601String(),
+            'ends_at' => $this->ends_at?->toIso8601String(),
+            'timezone' => $this->timezone,
             // Макет билета. Отдаётся и id (для формы), и имя (для списка):
             // без имени админка показывала бы «Шаблон #4» и заставляла
             // открывать справочник, чтобы понять, что выбрано.

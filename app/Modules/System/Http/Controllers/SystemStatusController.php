@@ -164,6 +164,62 @@ class SystemStatusController extends Controller
     }
 
     /**
+     * Применить ожидающие миграции из админки.
+     *
+     * На шаред-хостинге TimeWeb нет SSH, поэтому после обновления файлов
+     * стандартный `php artisan migrate --force` недоступен. Этот интерес —
+     * не «удобство», а единственный способ дойти до рабочего состояния.
+     *
+     * Ограничения, чтобы не превратить эндпоинт в произвольный DDL-терминал:
+     *   - только pending-миграции (`migrate --force`, без `--path` и опций);
+     *   - явная фраза подтверждения MIGRATE в теле запроса;
+     *   - запись в security-журнал с пользователем и итогом;
+     *   - клиент получает только последние строки вывода (до 4000 знаков).
+     *
+     * Долгие миграции всё равно рискуют упереться в HTTP-таймаут хостинга —
+     * для больших баз это не замена cron/SSH, а мост для небольших обновлений.
+     */
+    public function migrate(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'confirm_phrase' => ['required', 'string', 'max:32'],
+        ]);
+        if (strtoupper(trim((string) $validated['confirm_phrase'])) !== 'MIGRATE') {
+            return $this->envelope('CONFIRMATION_REQUIRED', 'Для применения миграций введите MIGRATE.', 422);
+        }
+
+        @set_time_limit(0);
+
+        try {
+            $exit = Artisan::call('migrate', ['--force' => true]);
+            $output = trim(Artisan::output());
+
+            Log::channel('security')->warning('Миграции применены через админку', [
+                'user_id' => $request->user()?->getAuthIdentifier(),
+                'ip' => $request->ip(),
+                'exit_code' => $exit,
+                'output_lines' => count(explode("\n", $output)),
+            ]);
+
+            if ($exit !== 0) {
+                Log::error('Миграция через админку завершилась с ошибкой', ['output' => $output]);
+
+                return $this->envelope('MIGRATION_FAILED', 'Не удалось применить миграции. Подробности — в журнале.', 500);
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => $output === '' ? 'Новых миграций нет.' : 'Миграции применены.',
+                'output' => mb_substr($output, -4000),
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Миграция через админку выбросила исключение', ['exception' => $e]);
+
+            return $this->envelope('MIGRATION_FAILED', 'Не удалось применить миграции. Подробности — в журнале.', 500);
+        }
+    }
+
+    /**
      * Очистка кэша приложения.
      *
      * Событие пишется в канал `security`: очистка кэша — привилегированное

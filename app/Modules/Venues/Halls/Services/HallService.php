@@ -413,9 +413,9 @@ class HallService
      * автоинкрементные). Роут передаёт {publicId} из пути — то есть scope
      * задаётся залом, который оператор явно открыл.
      */
-    public function publishSchemaVersion(int $versionId, int $userId, string $hallPublicId): HallSchemaVersion
+    public function publishSchemaVersion(int $versionId, int $userId, string $hallPublicId, ?int $expectedRevision = null): HallSchemaVersion
     {
-        return DB::transaction(function () use ($versionId, $userId, $hallPublicId) {
+        return DB::transaction(function () use ($versionId, $userId, $hallPublicId, $expectedRevision) {
             // Locking the hall serialises lifecycle transitions so two drafts
             // cannot both pass the one-published-version policy concurrently.
             $hall = Hall::query()
@@ -432,6 +432,15 @@ class HallService
                 ->first();
             if ($version === null) {
                 throw new NotFoundError('HallSchemaVersion', (string) $versionId);
+            }
+
+            $currentRevision = (int) ($version->revision ?? 1);
+            if ($expectedRevision !== null && $expectedRevision !== $currentRevision) {
+                throw new ConflictError(
+                    'Черновик изменён другим редактором. Загрузите актуальную схему перед публикацией.',
+                    'SCHEMA_DRAFT_CONFLICT',
+                    ['expected_revision' => $expectedRevision, 'current_revision' => $currentRevision],
+                );
             }
 
             $siblings = $hall->schemaVersions()->lockForUpdate()->get();

@@ -80,6 +80,44 @@ class AgentMcpServerTest extends TestCase
             ->assertJsonPath('error.message', fn (string $message) => str_contains($message, 'agent:read'));
     }
 
+    /**
+     * Полный handshake по HTTP с валидным токеном: initialize → tools/list.
+     * Отрицательные пути выше доказывают, что «лишним» доступ закрыт, а этот
+     * тест — что легальному агенту доступ реально открыт (регрессия против
+     * ситуаций, когда маршрут зарегистрирован, но клиент не может им пользоваться).
+     */
+    public function test_valid_agent_token_can_initialize_and_list_tools(): void
+    {
+        [, $user] = $this->seedStaffWithOrg();
+        $token = $user->createToken('agent', ['agent:read'])->plainTextToken;
+        $headers = [
+            'Authorization' => 'Bearer '.$token,
+            'Accept' => 'application/json, text/event-stream',
+        ];
+
+        $this->postJson('/mcp', [
+            'jsonrpc' => '2.0',
+            'id' => 1,
+            'method' => 'initialize',
+            'params' => [
+                'protocolVersion' => '2025-06-18',
+                'capabilities' => new \stdClass(),
+                'clientInfo' => ['name' => 'test', 'version' => '1'],
+            ],
+        ], $headers)
+            ->assertOk()
+            ->assertJsonPath('result.serverInfo.name', 'nabilet-agent');
+
+        $this->postJson('/mcp', [
+            'jsonrpc' => '2.0',
+            'id' => 2,
+            'method' => 'tools/list',
+            'params' => new \stdClass(),
+        ], $headers)
+            ->assertOk()
+            ->assertJsonPath('result.tools.0.name', 'sales_summary');
+    }
+
     /** ── Инструменты ───────────────────────────────────────────────── */
 
     public function test_tools_list_exposes_exactly_the_five_read_only_tools(): void

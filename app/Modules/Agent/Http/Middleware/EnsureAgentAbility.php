@@ -24,9 +24,11 @@ use Symfony\Component\HttpFoundation\Response;
  *     (`customer`, «просто пользователь») агентом быть не может.
  *
  *   - `tokenCan('agent:read')` — ability выдаётся при выпуске токена
- *     (`nabilet:agent-token`). Токен пользователя с другой способностью
- *     (например, future `agent:write`) сюда не пройдёт: чтение — отдельное
- *     полномочие, а не его отсутствие.
+ *     (теперь и из админки: `/admin/agent/tokens`, и командой
+ *     `nabilet:agent-token`). Write-способности (`agent:events:write`,
+ *     `agent:schemas:publish`, `agent:refunds:write`, `agent:actions:confirm`)
+ *     проверяются ВНУТРИ write-инструментов: чтение — отдельное полномочие,
+ *     а не «отсутствие запрета».
  *
  * 403, а не 401: аутентификация выше уже прошла; повторная аутентификация
  * бессмысленна — клиенту нужно перевыпустить токен с нужной ability.

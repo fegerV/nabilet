@@ -358,40 +358,9 @@ class SessionController extends Controller
      */
     private function assertInventoryRegenerable(Session $session): void
     {
-        $itemIds = $session->inventoryItems()->pluck('id');
-
-        if ($itemIds->isEmpty()) {
-            return;
-        }
-
-        $hasSales = \Nabilet\Modules\Tickets\Models\Ticket::query()
-            ->whereIn('inventory_item_id', $itemIds)
-            ->exists();
-
-        if (! $hasSales) {
-            $hasSales = \Nabilet\Modules\Orders\Models\OrderItem::query()
-                ->whereIn('inventory_item_id', $itemIds)
-                ->exists();
-        }
-
-        if ($hasSales) {
-            throw new ConflictError(
-                'Нельзя изменить схему зала: по сеансу уже есть проданные места. Создайте новый сеанс для новой рассадки.',
-                'SESSION_SCHEMA_HAS_SALES',
-            );
-        }
-
-        $hasHolds = \Nabilet\Modules\Orders\Models\SeatHold::query()
-            ->whereIn('inventory_item_id', $itemIds)
-            ->exists();
-
-        if ($hasHolds) {
-            throw new ConflictError(
-                'Нельзя изменить схему зала: места сеанса находятся в корзинах покупателей. Попробуйте позже или дождитесь очистки корзин.',
-                'SESSION_SCHEMA_HELD',
-            );
-        }
+        app(\Nabilet\Modules\Inventory\Services\InventoryService::class)->assertRegenerable($session);
     }
+
 
     /** Удаление сеанса. Отменяем, если есть продажи — но в MVP удаляем каскадно. */
     public function destroy(Session $session): JsonResponse

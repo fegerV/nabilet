@@ -16,7 +16,7 @@
  *     удаление сектора через отмену, а не «ой, сейчас перерисую».
  */
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { onBeforeRouteLeave, onBeforeRouteUpdate, useRoute } from 'vue-router'
 import Konva from 'konva'
 import NButton from '@/components/ui/NButton.vue'
 import NInput from '@/components/ui/NInput.vue'
@@ -151,6 +151,14 @@ const ALIGN_ACTIONS: { edge: AlignEdge; label: string; hint: string }[] = [
 const sectors = ref<ESector[]>([])
 const statics = ref<EStatic[]>([])
 const backgrounds = ref<EBackground[]>([])
+// Размер документа не зависит от окна, сворачивания панелей и масштаба просмотра.
+const canvasSize = ref({ width: 900, height: 520 })
+const viewportSize = ref({ width: 900, height: 520 })
+const isPublishing = ref(false)
+const isLeaving = ref(false)
+const isImporting = ref(false)
+const importWarning = ref<string | null>(null)
+const editorBusy = computed(() => isPublishing.value || isLeaving.value || isImporting.value || hallLoadState.value !== 'ok')
 
 const selectedSectorId = ref<string | null>(null)
 const selectedSeatIds = ref<Set<string>>(new Set())
@@ -306,7 +314,7 @@ const form = ref({
 let idCounter = 0
 const nextId = (prefix: string): string => `${prefix}-${Date.now().toString(36)}-${(idCounter += 1)}`
 
-const editorHistory = useEditorHistory({ sectors, statics, backgrounds })
+const editorHistory = useEditorHistory({ sectors, statics, backgrounds, canvas: canvasSize })
 
 const canUndo = computed(() => editorHistory.canUndo())
 const canRedo = computed(() => editorHistory.canRedo())
@@ -325,11 +333,13 @@ function endMoveSnapshot(): void {
 }
 
 function undo(): void {
+  if (isLocked.value) return
   const prev = editorHistory.undo()
   if (!prev) return
   sectors.value = prev.sectors
   statics.value = prev.statics
   backgrounds.value = prev.backgrounds
+  canvasSize.value = prev.canvas
   selectedSectorId.value = null
   selectedSeatIds.value = new Set()
   selectedStaticIds.value = new Set()
@@ -337,16 +347,19 @@ function undo(): void {
 }
 
 function redo(): void {
+  if (isLocked.value) return
   const next = editorHistory.redo()
   if (!next) return
   sectors.value = next.sectors
   statics.value = next.statics
   backgrounds.value = next.backgrounds
+  canvasSize.value = next.canvas
 }
 
 /* ── Генератор рядов (§49) ─────────────────────────────────────────── */
 
 function generateSector(overrides: Partial<typeof form.value> = {}): void {
+  if (isLocked.value) return
   snapshot()
   const values = { ...form.value, ...overrides }
   const { shape, rows, seatsPerRow, priceMinor, vipRows, arcSpread } = values
@@ -355,8 +368,11 @@ function generateSector(overrides: Partial<typeof form.value> = {}): void {
     id: nextId('sec'),
     name,
     priceMinor,
-    x: 80 + sectors.value.length * 40,
-    y: 140 + sectors.value.length * 12,
+    x: sectors.value.reduce((right, existing) => {
+      const bounds = bbox(existing)
+      return Math.max(right, existing.x + bounds.x + bounds.width + 48)
+    }, 80),
+    y: 140,
     seats: [],
     rowPrices: {},
     shape,
@@ -1258,6 +1274,7 @@ function deleteSelection(): void {
 }
 
 function duplicateSelection(): void {
+  if (isLocked.value) return
   if (selectedSeatIds.value.size === 0) return
   snapshot()
   for (const sector of sectors.value) {
@@ -1266,13 +1283,16 @@ function duplicateSelection(): void {
     // с чужими локальными координатами → наложения и 422 от сервера.
     const additions: ESeat[] = []
     const selected = sector.seats.filter((s) => selectedSeatIds.value.has(s.id))
+    const bounds = bbox(sector)
+    const selectedLeft = Math.min(...selected.map(s => s.x))
+    const offsetX = bounds.x + bounds.width + GAP - selectedLeft
     for (const seat of selected) {
       const maxInRow = sector.seats.filter((s) => s.row === seat.row).length
       additions.push({
         ...seat,
         id: nextId('seat'),
         number: maxInRow + additions.filter((a) => a.row === seat.row).length + 1,
-        x: seat.x + seatStepOf(sector),
+        x: seat.x + offsetX,
       })
     }
     if (additions.length === 0) continue
@@ -1285,15 +1305,17 @@ function duplicateSelection(): void {
 /* ── Автосохранение (§52): 500 ms debounce, состояния ──────────────── */
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null
-let editRevision = 0
-let persistedEditRevision = -1
+const editRevision = ref(0)
+const persistedEditRevision = ref(0)
+const hasUnsavedChanges = computed(() => editRevision.value > persistedEditRevision.value)
 let persistInFlight: Promise<boolean> | null = null
 let isHydratingSchema = false
 function scheduleAutosave(): void {
+  if (isHydratingSchema || published.value !== null || hallLoadState.value !== 'ok') return
   // Ревизия увеличивается ЗДЕСЬ, а не в watcher: во время drag watcher
   // возвращается раньше, но модель уже изменилась, и dragend всё равно должен
   // увеличить ревизию — иначе flushAutosave решит, что сохранять нечего.
-  editRevision += 1
+  editRevision.value += 1
   autosave.value = 'saving'
   if (saveTimer) clearTimeout(saveTimer)
   saveTimer = setTimeout(() => {
@@ -1326,10 +1348,10 @@ async function persistSchema(): Promise<boolean> {
   if (persistInFlight) {
     const saved = await persistInFlight
     if (!saved) return false
-    return persistedEditRevision >= editRevision ? true : persistSchema()
+    return persistedEditRevision.value >= editRevision.value ? true : persistSchema()
   }
 
-  const requestedEditRevision = editRevision
+  const requestedEditRevision = editRevision.value
   const versionId = currentVersionId
   const payload: Record<string, unknown> = { payload: buildSchemaPayload() }
   if (versionId !== null) {
@@ -1353,8 +1375,8 @@ async function persistSchema(): Promise<boolean> {
         if (typeof d.revision === 'number') currentSchemaRevision = d.revision
         if (typeof d.version === 'number' && d.version > 0) draftVersion.value = d.version
       }
-      persistedEditRevision = requestedEditRevision
-      autosave.value = 'saved'
+      persistedEditRevision.value = requestedEditRevision
+      autosave.value = hasUnsavedChanges.value ? 'saving' : 'saved'
       autosaveErrors.value = []
       draftConflict.value = false
       lastSavedAt.value = Date.now()
@@ -1391,10 +1413,49 @@ async function flushAutosave(): Promise<boolean> {
       clearTimeout(saveTimer)
       saveTimer = null
     }
-    if (persistedEditRevision >= editRevision && currentVersionId !== null) return true
+    if (persistedEditRevision.value >= editRevision.value && currentVersionId !== null) return true
     if (!await persistSchema()) return false
   }
 }
+
+// Внутри SPA можно дождаться записи; закрытие вкладки допускает только
+// стандартное предупреждение браузера (асинхронный запрос там ненадёжен).
+async function prepareToLeave(): Promise<boolean> {
+  if (isPublishing.value || isLeaving.value || isImporting.value) return false
+  await nextTick()
+  if (!hasUnsavedChanges.value) return true
+  isLeaving.value = true
+  try {
+    if (await flushAutosave()) return true
+    const discard = window.confirm('Изменения схемы не сохранены. Уйти и потерять их? Можно остаться и экспортировать схему в JSON.')
+    if (discard && saveTimer) { clearTimeout(saveTimer); saveTimer = null }
+    return discard
+  } finally {
+    isLeaving.value = false
+  }
+}
+
+function beforeUnload(event: BeforeUnloadEvent): void {
+  if (!hasUnsavedChanges.value && !isPublishing.value && !isImporting.value) return
+  event.preventDefault()
+  event.returnValue = ''
+}
+
+function retrySave(): void {
+  if (hasUnsavedChanges.value && !draftConflict.value && !editorBusy.value) void flushAutosave()
+}
+
+onBeforeRouteLeave(prepareToLeave)
+onBeforeRouteUpdate(prepareToLeave)
+watch(() => route.params.publicId, () => { void loadFromServer() })
+onMounted(() => {
+  window.addEventListener('beforeunload', beforeUnload)
+  window.addEventListener('online', retrySave)
+})
+onUnmounted(() => {
+  window.removeEventListener('beforeunload', beforeUnload)
+  window.removeEventListener('online', retrySave)
+})
 
 /** Путь восстановления после 409: перезагрузить серверную версию схемы. */
 async function reloadAfterConflict(): Promise<void> {
@@ -1419,7 +1480,7 @@ function describeValidationErrors(e: ApiError): string[] {
 }
 
 watch(
-  [sectors, statics, backgrounds],
+  [sectors, statics, backgrounds, canvasSize],
   () => {
     if (isHydratingSchema || published.value !== null) return
     // Во время drag модель мутирует на каждом mousemove. Сохранять промежуточные
@@ -1433,9 +1494,10 @@ watch(
 
 /* ── Публикация ────────────────────────────────────────────────────── */
 
-const isLocked = computed(() => published.value !== null)
+const isLocked = computed(() => published.value !== null || editorBusy.value)
 
 function publish(): void {
+  if (isLocked.value) return
   const hasSellableContent = sectors.value.some((sector) => sector.seats.length > 0)
     || statics.value.some((object) => object.kind === 'standing' && (object.capacity ?? 0) > 0)
   if (!hasSellableContent) {
@@ -1444,7 +1506,9 @@ function publish(): void {
   }
 
   async function doPublish(): Promise<void> {
+    isPublishing.value = true
     try {
+      await nextTick()
       if (!await flushAutosave()) {
         ui.notify('rose', 'Черновик не сохранён', 'Исправьте ошибку автосохранения и повторите публикацию')
         return
@@ -1456,7 +1520,7 @@ function publish(): void {
       const res = await send<{ id: number; version: number; status: string }>(
         `/venues/${hallPublicId.value}/schema-versions/${currentVersionId}/publish`,
         'POST',
-        {},
+        { base_revision: currentSchemaRevision },
       )
       const d = res.data
       const publishedNo = (typeof d === 'object' && d && typeof d.version === 'number') ? d.version : draftVersion.value
@@ -1472,17 +1536,26 @@ function publish(): void {
     } catch (e) {
       autosave.value = 'error'
       ui.notify('rose', 'Ошибка публикации', e instanceof ApiError ? e.message : 'Не удалось опубликовать схему')
+      if (e instanceof ApiError && e.code === 'SCHEMA_DRAFT_CONFLICT') {
+        draftConflict.value = true
+        autosaveErrors.value = [e.message]
+      }
+    } finally {
+      isPublishing.value = false
     }
   }
   void doPublish()
 }
 
 function newVersion(): void {
+  if (editorBusy.value) return
   published.value = null
   currentVersionId = null
   currentSchemaRevision = null
   draftVersionId.value = null
-  persistedEditRevision = -1
+  persistedEditRevision.value = -1
+  editorHistory.reset()
+  scheduleAutosave()
   ui.notify('brand', 'Новый черновик', `Правки попадут в версию ${draftVersion.value}`)
 }
 
@@ -1534,6 +1607,7 @@ function applyServerSchema(raw: unknown): void {
 
 /** Загрузить зал и его версии с сервера. */
 async function loadFromServer(): Promise<void> {
+  if (saveTimer) { clearTimeout(saveTimer); saveTimer = null }
   hallLoadState.value = 'loading'
   const pid = route.params.publicId
   if (typeof pid !== 'string' || !pid) {
@@ -1549,7 +1623,20 @@ async function loadFromServer(): Promise<void> {
   try {
     const res = await get<{ data: Array<Record<string, unknown>> }>(`/venues/${pid}/schema-versions`)
     const inner = res.data
-    const versions = Array.isArray(inner) ? inner : (Array.isArray(inner.data) ? inner.data : [])
+    const versions = Array.isArray(inner) ? inner : (Array.isArray(inner?.data) ? inner.data : [])
+    published.value = null
+    loadedPublished.value = null
+    draftConflict.value = false
+    autosaveErrors.value = []
+    sectors.value = []
+    statics.value = []
+    backgrounds.value = []
+    selectedSectorId.value = null
+    selectedSeatIds.value = new Set()
+    selectedStaticIds.value = new Set()
+    selectedBgIds.value = new Set()
+    canvasSize.value = { width: 900, height: 520 }
+    editorHistory.reset()
     // Стартовый номер черновика НЕ фиксирован: он вычисляется из всех версий
     // зала (max(version)+1 для нового черновика), чтобы не «перезапускаться»
     // на v1 после публикации и не конфликтовать с серверной нумерацией.
@@ -1565,7 +1652,7 @@ async function loadFromServer(): Promise<void> {
     if (chosen) {
       const versionNo = Number(chosen.version ?? 0)
       currentVersionId = Number(chosen.id ?? 0)
-      currentSchemaRevision = typeof chosen.revision === 'number' ? chosen.revision : null
+      currentSchemaRevision = typeof chosen.revision === 'number' ? chosen.revision : 1
       if (chosen.status === 'published') {
         published.value = versionNo
         loadedPublished.value = versionNo
@@ -1595,16 +1682,18 @@ async function loadFromServer(): Promise<void> {
             }
             ui.notify('brand', chosen.status === 'published' ? 'Опубликована' : 'Черновик загружен', `Версия ${versionNo}`)
     } else {
+      draftVersion.value = maxVersionNo + 1
       ui.notify('brand', 'Черновик', 'У зала ещё нет схем — создайте новую')
     }
     hallLoadState.value = 'ok'
+    autosave.value = 'saved'
   } catch (e) {
     hallLoadState.value = 'error'
     ui.notify('rose', 'Ошибка загрузки', e instanceof Error ? e.message : String(e))
   } finally {
     await nextTick()
     isHydratingSchema = false
-    persistedEditRevision = editRevision
+    if (hallLoadState.value === 'ok') persistedEditRevision.value = editRevision.value
   }
 }
 
@@ -1628,6 +1717,7 @@ function exportSchema(): void {
 
   const jsonInput = ref<HTMLInputElement | null>(null)
   function importJsonClick(): void {
+    if (editorBusy.value) return
     jsonInput.value?.click()
   }
 
@@ -1637,14 +1727,33 @@ function exportSchema(): void {
     // Сброс value, чтобы можно было выбрать тот же файл повторно
     input.value = ''
     if (!file) return
+    if (file.size > 5 * 1024 * 1024) {
+      ui.notify('rose', 'Файл слишком большой', 'Размер JSON не должен превышать 5 МБ')
+      return
+    }
     const reader = new FileReader()
-    reader.onload = () => {
+    reader.onload = async () => {
+      if (editorBusy.value) return
       let data: unknown
       try {
         data = JSON.parse(reader.result as string)
       } catch {
         ui.notify('rose', 'Ошибка импорта', 'Файл не является корректным JSON')
         return
+      }
+      const source = data as { levels?: unknown; hallplan?: unknown; result?: { hallplan?: unknown } } | null
+      if (source && (source.levels || source.hallplan || source.result?.hallplan)) {
+        isImporting.value = true
+        try {
+          const response = await send<{ schema: unknown; warning: string }>('/venues/import-hallplan', 'POST', { hallplan: data })
+          data = response.data.schema
+          importWarning.value = response.data.warning
+        } catch (error) {
+          ui.notify('rose', 'Импорт отклонён', error instanceof Error ? error.message : 'Не удалось преобразовать hallplan')
+          return
+        } finally {
+          isImporting.value = false
+        }
       }
       // Валидируем СНАЧАЛА — плохой файл не должен затирать рабочую схему
       // и не должен сообщать об успехе (§54: конкретная ошибка по полям).
@@ -1675,14 +1784,14 @@ function exportSchema(): void {
       try {
         const root = unwrapSchemaRoot(data)
         if (!root) throw new Error('Файл должен содержать JSON-объект схемы зала')
-        snapshot()
-        applyServerSchema(root)
         // Если загружали поверх published — снимем блокировку и ЯВНО запланируем
         // сохранение: во время applyServerSchema watcher молчал (published !== null),
         // поэтому импорт жил только в памяти до следующей правки.
         if (published.value !== null) {
           newVersion()
         }
+        snapshot()
+        applyServerSchema(root)
         scheduleAutosave()
         const count = sectors.value.reduce((acc, s) => acc + s.seats.length, 0)
         ui.notify('mint', 'Схема импортирована', `${sectors.value.length} ${plural(sectors.value.length, 'сектор', 'сектора', 'секторов')}, ${seatsLabel(count)}`)
@@ -1732,6 +1841,7 @@ function onImageChosen(event: Event): void {
   }
   const reader = new FileReader()
   reader.onload = () => {
+    if (isLocked.value) return
     snapshot()
     backgrounds.value.push({
       id: nextId('bg'),
@@ -1754,7 +1864,6 @@ function onImageChosen(event: Event): void {
 /* ── Холст Konva (§46: 9 слоёв) ───────────────────────────────────── */
 
 const canvasHost = ref<HTMLDivElement | null>(null)
-const canvasSize = ref({ width: 900, height: 520 })
 let stage: Konva.Stage | null = null
 let bgLayer: Konva.Layer | null = null
 let staticLayer: Konva.Layer | null = null
@@ -2018,7 +2127,7 @@ function draw(): void {
       name: 'sector-group',
       x: sector.x,
       y: sector.y,
-      draggable: published.value === null && tool.value !== 'pan' && !seatsSelectedHere,
+      draggable: !isLocked.value && tool.value !== 'pan' && !seatsSelectedHere,
     })
 
     // Наименование «Столы на танцполе» не делает сектор standing: столы остаются
@@ -2145,7 +2254,7 @@ function draw(): void {
         // «Выделение» — dragstart сам выделит его (ниже). Раньше draggable
         // ставился только уже выделенным, и первая тяга по несинему месту
         // уходила в группу сектора: вместо места «уезжал» весь сектор.
-        draggable: published.value === null && tool.value === 'select',
+        draggable: !isLocked.value && tool.value === 'select',
       })
 
       rect.on('click', (e) => {
@@ -2367,8 +2476,8 @@ function fitToContent(): void {
   const pad = 48
   const w = Math.max(1, maxX - minX)
   const h = Math.max(1, maxY - minY)
-  const viewW = Math.max(canvasSize.value.width, 300)
-  const viewH = Math.max(canvasSize.value.height, 300)
+  const viewW = Math.max(viewportSize.value.width, 1)
+  const viewH = Math.max(viewportSize.value.height, 1)
   const scale = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Math.min((viewW - pad * 2) / w, (viewH - pad * 2) / h)))
   stage.scale({ x: scale, y: scale })
   stage.position({
@@ -2404,12 +2513,12 @@ onMounted(() => {
 function initCanvasAndLoad(): void {
   const host = canvasHost.value
   if (!host) return
-  canvasSize.value = { width: host.clientWidth || 900, height: host.clientHeight || 520 }
+  viewportSize.value = { width: host.clientWidth || 900, height: host.clientHeight || 520 }
 
   stage = new Konva.Stage({
     container: host,
-    width: canvasSize.value.width,
-    height: canvasSize.value.height,
+    width: viewportSize.value.width,
+    height: viewportSize.value.height,
     draggable: tool.value === 'pan',
   })
   bgLayer = new Konva.Layer()
@@ -2449,8 +2558,8 @@ function initCanvasAndLoad(): void {
   observer = new ResizeObserver((entries) => {
     const rect = entries[0]?.contentRect
     if (!rect || !stage) return
-    canvasSize.value = { width: rect.width, height: rect.height }
-    stage.size(canvasSize.value)
+    viewportSize.value = { width: rect.width, height: rect.height }
+    stage.size(viewportSize.value)
     draw()
   })
   observer.observe(host)
@@ -2539,6 +2648,7 @@ function nudgeSelection(dx: number, dy: number): boolean {
 }
 
 function onKeyDown(e: KeyboardEvent): void {
+  if (editorBusy.value) return
   if (isTypingTarget(e.target)) return
 
   // Модификаторы + буква — раскладка не должна влиять на срабатывание.
@@ -3078,8 +3188,8 @@ function reassignSelectedSeats(targetSectorId: string): void {
     <header class="flex flex-none flex-wrap items-center gap-x-3 gap-y-2 border-b border-line px-3 py-2">
       <div class="flex min-w-0 items-center gap-2">
         <h1 class="truncate text-sm font-semibold tracking-tight text-content">Схема зала</h1>
-        <NBadge :tone="isLocked ? 'mint' : 'sun'" dot>
-          {{ isLocked ? `Опубликовано v${published}` : `Черновик v${draftVersion}` }}
+        <NBadge :tone="published !== null ? 'mint' : 'sun'" dot>
+          {{ published !== null ? `Опубликовано v${published}` : `Черновик v${draftVersion}` }}
         </NBadge>
         <span class="hidden text-2xs text-subtle sm:inline">{{ totalSeats }} {{ plural(totalSeats, 'место', 'места', 'мест') }}</span>
       </div>
@@ -3123,7 +3233,8 @@ function reassignSelectedSeats(targetSectorId: string): void {
 
       <div class="flex flex-wrap items-center gap-1.5">
         <NButton variant="ghost" size="sm" @click="exportSchema">Экспорт</NButton>
-        <NButton variant="ghost" size="sm" @click="importJsonClick">Импорт</NButton>
+        <NButton variant="ghost" size="sm" :disabled="editorBusy" @click="importJsonClick">Импорт</NButton>
+        <NButton v-if="hasUnsavedChanges && !draftConflict" variant="secondary" size="sm" :disabled="editorBusy" @click="retrySave">Сохранить</NButton>
         <NButton
           v-if="tableSectorsCount > 0"
           variant="ghost"
@@ -3134,12 +3245,13 @@ function reassignSelectedSeats(targetSectorId: string): void {
         >
           Выровнять все столы
         </NButton>
-        <NButton v-if="isLocked" variant="secondary" size="sm" @click="newVersion">Новая версия</NButton>
-        <NButton v-else variant="primary" size="sm" @click="publish">Опубликовать</NButton>
+        <NButton v-if="published !== null" variant="secondary" size="sm" :disabled="editorBusy" @click="newVersion">Новая версия</NButton>
+        <NButton v-else variant="primary" size="sm" :disabled="editorBusy || draftConflict" @click="publish">{{ isPublishing ? 'Публикуется…' : 'Опубликовать' }}</NButton>
       </div>
     </header>
 
     <!-- Детали отклонения черновика (422, конверт §66) — отдельной строкой под шапкой -->
+    <p v-if="importWarning" role="status" class="border-b border-sun-400/30 bg-sun-400/10 px-3 py-2 text-xs text-content">{{ importWarning }}</p>
     <ul
       v-if="autosave === 'error' && autosaveErrors.length > 0"
       class="flex-none border-b border-rose-500/30 bg-rose-500/10 px-3 py-1.5 text-2xs text-rose-300"
@@ -3150,7 +3262,14 @@ function reassignSelectedSeats(targetSectorId: string): void {
     <!-- Рабочая область: инструменты · холст · свойства, каждый блок сворачивается.
          `relative` — потому что на узком экране панели выезжают ПОВЕРХ холста,
          а не сжимают его: место для работы с рядами важнее одновременного показа. -->
-    <div class="relative flex min-h-0 flex-1">
+    <div v-if="hallLoadState === 'error'" role="alert" class="flex items-center gap-3 border-b border-line px-3 py-2 text-sm">
+      Не удалось загрузить схему.
+      <NButton variant="secondary" size="sm" @click="loadFromServer">Повторить загрузку</NButton>
+    </div>
+    <div v-if="isPublishing || isLeaving || hallLoadState === 'loading'" role="status" class="border-b border-line px-3 py-2 text-sm">
+      {{ isPublishing ? 'Сохраняем и публикуем схему…' : isLeaving ? 'Сохраняем изменения перед выходом…' : 'Загружаем схему…' }}
+    </div>
+    <div class="relative flex min-h-0 flex-1" :inert="editorBusy || undefined" :aria-busy="editorBusy">
       <aside
         v-if="showTools"
         :class="cn(

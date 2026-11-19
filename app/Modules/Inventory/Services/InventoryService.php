@@ -26,6 +26,43 @@ use Illuminate\Support\Facades\DB;
 
 class InventoryService
 {
+    public function assertRegenerable(Session $session): void
+    {
+        $itemIds = $session->inventoryItems()->lockForUpdate()->pluck('id');
+
+        if ($itemIds->isEmpty()) {
+            return;
+        }
+
+        $hasSales = \Nabilet\Modules\Tickets\Models\Ticket::query()
+            ->whereIn('inventory_item_id', $itemIds)
+            ->exists();
+
+        if (! $hasSales) {
+            $hasSales = \Nabilet\Modules\Orders\Models\OrderItem::query()
+                ->whereIn('inventory_item_id', $itemIds)
+                ->exists();
+        }
+
+        if ($hasSales) {
+            throw new ConflictError(
+                'Нельзя изменить схему зала: по сеансу уже есть проданные места. Создайте новый сеанс для новой рассадки.',
+                'SESSION_SCHEMA_HAS_SALES',
+            );
+        }
+
+        $hasHolds = \Nabilet\Modules\Orders\Models\SeatHold::query()
+            ->whereIn('inventory_item_id', $itemIds)
+            ->exists();
+
+        if ($hasHolds) {
+            throw new ConflictError(
+                'Нельзя изменить схему зала: места сеанса находятся в корзинах покупателей. Попробуйте позже или дождитесь очистки корзин.',
+                'SESSION_SCHEMA_HELD',
+            );
+        }
+    }
+
     public function __construct(
         protected InventoryItemRepository $repository
     ) {}
@@ -49,6 +86,7 @@ class InventoryService
     public function generateFromSchema(HallSchemaVersion $schemaVersion, Session $session): int
     {
         return DB::transaction(function () use ($schemaVersion, $session) {
+            $this->assertRegenerable($session);
             $schema = $schemaVersion->schema_json ?? [];
 
             // rows-формат (конвертация канваса, если нужно)

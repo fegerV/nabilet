@@ -89,6 +89,9 @@ QUEUE_CONNECTION={QUEUE_CONNECTION}
 SESSION_DRIVER={SESSION_DRIVER}
 SESSION_LIFETIME=120
 
+# Региональный каталог площадок (выбор заказчика на шаге установки).
+NABILET_SEED_SURGUT={NABILET_SEED_SURGUT}
+
 MAIL_MAILER={MAIL_MAILER}
 MAIL_HOST={MAIL_HOST}
 MAIL_PORT={MAIL_PORT}
@@ -167,6 +170,9 @@ ENV;
                 // установки и ляжет (tickets + платежи обязаны жить на HTTPS).
                 // Отсекаем это НА форме, а не 500-й после неё.
                 'app_url' => ['required', 'url', 'max:255', 'starts_with:https://'],
+                // Региональный каталог — выбор заказчика, а не свойство движка.
+                // Чекбокс визарда присылает boolean; его absence означает false.
+                'seed_surgut' => ['nullable', 'boolean'],
                 'db_host' => ['required', 'string', 'max:255'],
                 'db_port' => ['required', 'integer', 'between:1,65535'],
                 'db_database' => ['required', 'string', 'max:255'],
@@ -205,6 +211,20 @@ ENV;
                 $validated['db_password']
             );
 
+            // MySQL 5.7 молча игнорирует CHECK — фиксируем это в журнале, который
+            // показывает визард. Установку не блокируем: для ручного тестирования
+            // на таком сервере система работоспособна, но без БД-инвариантов.
+            $dbWarning = $this->databaseVersionWarning(
+                $validated['db_host'],
+                (int) $validated['db_port'],
+                $validated['db_database'],
+                $validated['db_username'],
+                $validated['db_password'],
+            );
+            if ($dbWarning !== null) {
+                Log::warning('Installer: ' . $dbWarning);
+            }
+
             // Шаг 2: Запись .env файла (возвращает сгенерированный APP_KEY)
             $appKey = $this->writeEnvFile($validated);
 
@@ -227,6 +247,11 @@ ENV;
                 'database.connections.mysql.collation' => 'utf8mb4_unicode_ci',
                 'app.key' => $appKey,
                 'app.url' => $validated['app_url'],
+                // Значение в памяти должно совпадать с тем, что уехало в .env: db:seed
+                // выполняется в ЭТОМ ЖЕ запросе, а Dotenv уже загружен без нового
+                // флага. Без подмены каталог Сургута не загрузился бы даже при
+                // включённом чекбоксе — прочитался бы boot-дефолт false.
+                'nabilet.seed_surgut' => ! empty($validated['seed_surgut']),
                 'app.env' => 'production',
             ]);
             DB::purge('mysql');
@@ -349,6 +374,16 @@ ENV;
             return response()->json([
                 'success' => true,
                 'message' => 'Подключение установлено',
+                // Старый MySQL молча игнорирует CHECK: migration table покажет
+                // «Ran», а инварианты денег/статусов не будут enforced. Показываем
+                // это прямо в визарде, а не только в журнале.
+                'warning' => $this->databaseVersionWarning(
+                    $validated['db_host'],
+                    (int) $validated['db_port'],
+                    $validated['db_database'],
+                    $validated['db_username'],
+                    $validated['db_password'],
+                ),
             ]);
         } catch (ValidationException $e) {
             return response()->json(['error' => [
@@ -457,6 +492,59 @@ ENV;
     /**
      * Тестирование подключения к БД
      */
+    /**
+     * Предупреждение о версии сервера БД (или null, если всё в порядке).
+     *
+     * CHECK исполняются начиная с MySQL 8.0.16 / MariaDB 10.2.1. На более
+     * старых серверах (TimeWeb с MySQL 5.7) `ALTER TABLE ... ADD CONSTRAINT
+     * ... CHECK` синтаксически принимается, но инвариант НЕ создаётся, а
+     * `migrate:status` честно пишет «Ran». Без этого предупреждения установка
+     * выглядит успешной, хотя защита денег, статусов и состояний билета
+     * работает только на уровне PHP.
+     */
+    private function databaseVersionWarning(string $host, int $port, string $database, string $username, string $password): ?string
+    {
+        try {
+            $pdo = new \PDO(
+                "mysql:host={$host};port={$port};dbname={$database};charset=utf8mb4",
+                $username,
+                $password,
+                [\PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION, \PDO::ATTR_TIMEOUT => 3],
+            );
+            $version = trim((string) $pdo->query('select version() as srv_version')->fetchColumn());
+        } catch (\Throwable) {
+            return null; // подключение уже проверено отдельно; здесь только диагностика
+        }
+
+        return self::versionNeedsWarning($version);
+    }
+
+    /** Чистая проверка строки версии — вынесена, чтобы покрыть тестами без БД. */
+    private static function versionNeedsWarning(string $version): ?string
+    {
+        if ($version === '') {
+            return null;
+        }
+
+        $numeric = preg_replace('/[^0-9.].*$/', '', $version) ?? '';
+        $isMaria = stripos($version, 'mariadb') !== false;
+        $minimum = $isMaria ? '10.2.1' : '8.0.16';
+
+        if (version_compare($numeric, $minimum, '>=')) {
+            return null;
+        }
+
+        return sprintf(
+            'Внимание: сервер БД %s не исполняет CHECK-ограничения (нужен %s %s+). '
+            . 'Установка завершится, но инварианты сумм, статусов и состояний билета '
+            . 'будут защищены только кодом. Для тестового стенда это допустимо, '
+            . 'для реальных продаж переведите аккаунт на MySQL 8.0+.',
+            $version,
+            $isMaria ? 'MariaDB' : 'MySQL',
+            $minimum,
+        );
+    }
+
     private function testDatabaseConnection(string $host, int $port, string $database, string $username, string $password): void
     {
         try {
@@ -535,6 +623,7 @@ ENV;
             '{APP_KEY}' => $appKey,
             '{APP_DEBUG}' => 'false',
             '{APP_URL}' => $this->envValue((string) $data['app_url']),
+            '{NABILET_SEED_SURGUT}' => ! empty($data['seed_surgut']) ? 'true' : 'false',
             '{APP_LOCALE}' => 'ru',
             '{APP_FALLBACK_LOCALE}' => 'en',
             '{APP_TIMEZONE}' => 'Europe/Moscow',

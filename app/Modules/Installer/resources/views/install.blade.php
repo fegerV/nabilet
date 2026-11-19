@@ -330,6 +330,14 @@
                                         <input name="app_url" required type="url" class="field" placeholder="https://mysite.ru">
                                     </div>
                                 </div>
+
+                                <label class="mt-4 flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 bg-white p-3.5 dark:border-slate-700 dark:bg-slate-800/40">
+                                    <input name="seed_surgut" type="checkbox" value="1" class="mt-0.5 h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
+                                    <span class="text-sm text-slate-700 dark:text-slate-200">
+                                        <span class="font-medium">Загрузить каталог площадок Сургута</span>
+                                        <span class="mt-0.5 block text-xs text-slate-500 dark:text-slate-400">39 площадок и схемы «Нефтяника» / «Вавилона». Для другого города или заказчика оставьте выключенным — площадки можно добавить в админке.</span>
+                                    </span>
+                                </label>
                             </div>
 
                             <!-- ЮKassa (опционально) -->
@@ -409,6 +417,7 @@
                             </details>
 
                             <div id="db-error" class="hidden rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300"></div>
+                            <div id="db-warning" role="status" class="hidden rounded-xl border border-sun-400/40 bg-sun-400/10 p-3 text-sm text-sun-800 dark:text-sun-300"></div>
                         </form>
                     </div>
 
@@ -679,6 +688,8 @@
             if (!validateDb()) return;
             const f = $('#db-form');
             const err = $('#db-error');
+            const warnBox = $('#db-warning');
+            warnBox.classList.add('hidden');
             const orig = btn.innerHTML;
             btn.disabled = true;
             btn.innerHTML = '<svg class="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 0 1 8-8v4a4 4 0 0 0-4 4H4z"/></svg> Проверка…';
@@ -706,6 +717,12 @@
                 btn.innerHTML = '✓ Подключение проверено';
                 btn.classList.remove('btn-ghost'); btn.classList.add('btn-primary');
                 err.classList.add('hidden');
+                if (data.warning) {
+                    warnBox.textContent = data.warning;
+                    warnBox.classList.remove('hidden');
+                } else {
+                    warnBox.classList.add('hidden');
+                }
             } catch (e) {
                 btn.innerHTML = orig;
                 err.textContent = e.message;
@@ -775,6 +792,7 @@
             const payload = {
                 app_name: db.elements['app_name'].value,
                 app_url: db.elements['app_url'].value,
+                seed_surgut: db.elements['seed_surgut'].checked,
                 db_host: db.elements['db_host'].value,
                 db_port: parseInt(db.elements['db_port'].value, 10),
                 db_database: db.elements['db_database'].value,

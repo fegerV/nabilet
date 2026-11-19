@@ -10,11 +10,13 @@ import type { EBackground, ESector, EStatic, SchemaSnapshot } from './editorType
 
 const HISTORY_LIMIT = 50
 
-function cloneSchema(sectors: ESector[], statics: EStatic[], backgrounds: EBackground[]): SchemaSnapshot {
-  return JSON.parse(JSON.stringify({ sectors, statics, backgrounds })) as SchemaSnapshot
+function cloneSchema(state: EditorHistoryState): SchemaSnapshot {
+  return JSON.parse(JSON.stringify({ sectors: state.sectors.value, statics: state.statics.value,
+    backgrounds: state.backgrounds.value, canvas: state.canvas.value })) as SchemaSnapshot
 }
 
 export interface EditorHistoryState {
+  canvas: Ref<{ width: number; height: number }>
   sectors: Ref<ESector[]>
   statics: Ref<EStatic[]>
   backgrounds: Ref<EBackground[]>
@@ -32,7 +34,7 @@ export function useEditorHistory(state: EditorHistoryState) {
 
   /** Снапшот ДО изменения. */
   function snapshot(): void {
-    history.value.push(cloneSchema(state.sectors.value, state.statics.value, state.backgrounds.value))
+    history.value.push(cloneSchema(state))
     future.value = []
     if (history.value.length > HISTORY_LIMIT) history.value.shift()
   }
@@ -53,18 +55,24 @@ export function useEditorHistory(state: EditorHistoryState) {
   function undo(): SchemaSnapshot | null {
     const prev = history.value.pop()
     if (!prev) return null
-    future.value.push(cloneSchema(state.sectors.value, state.statics.value, state.backgrounds.value))
+    future.value.push(cloneSchema(state))
     return prev
   }
 
   function redo(): SchemaSnapshot | null {
     const next = future.value.pop()
     if (!next) return null
-    history.value.push(cloneSchema(state.sectors.value, state.statics.value, state.backgrounds.value))
+    history.value.push(cloneSchema(state))
     return next
   }
 
-  return { history, future, canUndo, canRedo, snapshot, beginMoveSnapshot, endMoveSnapshot, undo, redo }
+  function reset(): void {
+    history.value = []
+    future.value = []
+    moveSnapshotTaken = false
+  }
+
+  return { history, future, canUndo, canRedo, snapshot, beginMoveSnapshot, endMoveSnapshot, undo, redo, reset }
 }
 
 export type EditorHistory = ReturnType<typeof useEditorHistory>

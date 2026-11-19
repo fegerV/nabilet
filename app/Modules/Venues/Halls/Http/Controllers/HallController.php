@@ -225,7 +225,8 @@ class HallController extends Controller
      */
     public function publishSchemaVersion(Request $request, string $publicId, int $versionId): SchemaVersionResource
     {
-        $version = $this->service->publishSchemaVersion($versionId, $request->user()->id, $publicId);
+        $validated = $request->validate(['base_revision' => ['sometimes', 'integer', 'min:1']]);
+        $version = $this->service->publishSchemaVersion($versionId, $request->user()->id, $publicId, isset($validated['base_revision']) ? (int) $validated['base_revision'] : null);
 
         return new SchemaVersionResource($version);
     }
@@ -303,10 +304,11 @@ class HallController extends Controller
     /** POST /venues/{publicId}/schema-versions/{versionId}/publish. */
     public function publishVenueSchemaVersion(Request $request, string $publicId, int $versionId): SchemaVersionResource
     {
+        $validated = $request->validate(['base_revision' => ['sometimes', 'integer', 'min:1']]);
         $hall = $this->shadowHall($this->venueOrFail($publicId));
 
         return new SchemaVersionResource(
-            $this->service->publishSchemaVersion($versionId, $request->user()->id, $hall->public_id)
+            $this->service->publishSchemaVersion($versionId, $request->user()->id, $hall->public_id, isset($validated['base_revision']) ? (int) $validated['base_revision'] : null)
         );
     }
 

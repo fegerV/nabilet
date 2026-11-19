@@ -103,6 +103,7 @@ export interface EBackground {
 
 /** Снимок схемы для истории undo/redo. */
 export interface SchemaSnapshot {
+  canvas: { width: number; height: number }
   sectors: ESector[]
   statics: EStatic[]
   backgrounds: EBackground[]

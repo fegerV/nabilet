@@ -26,6 +26,13 @@ class VenueListPagingTest extends TestCase
 {
     use RefreshDatabase;
 
+    /** Каталог Сургута — региональный и подключается явно; тесту нужен он. */
+    protected function setUp(): void
+    {
+        parent::setUp();
+        config(['nabilet.seed_surgut' => true]);
+    }
+
     /** Потолок: без клампа `?per_page=1000000` — это выборка всей таблицы. */
     public function test_per_page_above_the_ceiling_is_clamped(): void
     {

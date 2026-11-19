@@ -278,6 +278,9 @@ const routes: RouteRecordRaw[] = [
       // Информационные киоски: реестр, аналитика, продажи, удалённые обновления.
       // Объявлен до :section, иначе catch-all показывал бы «Раздел не найден».
       { path: 'kiosks', name: 'admin-kiosks', component: () => import('@/pages/admin/AdminKiosksPage.vue') },
+      // ИИ-агент: выпуск MCP-токенов без SSH + одобрение prepared-действий.
+      // Объявлен до :section, иначе catch-all показывал бы заглушку.
+      { path: 'agent', name: 'admin-agent', component: () => import('@/pages/admin/AdminAgentPage.vue') },
       // Catch-all для неизвестных адресов админки. Разделов-заглушек больше нет:
       // все пункты меню ведут на реальные экраны, поэтому единственное, чем может
       // быть этот маршрут, — опечатка в URL. Он отдаёт честный «Раздел не найден»

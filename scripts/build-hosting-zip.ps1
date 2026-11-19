@@ -1,209 +1,109 @@
 <#
 .SYNOPSIS
-    Сборка установочного архива NABILET для шаред-хостинга (WordPress-style).
-
+    Build a clean shared-hosting release. Extract into the SITE DIRECTORY,
+    one level above public_html. Never extract into the document root.
 .DESCRIPTION
-    Корень архива РАВЕН docroot: после распаковки в public_html там лежат
-    index.php, .htaccess, .user.ini, robots.txt, favicon.svg и системные
-    каталоги (app/, config/, vendor/, storage/, ...) — «как на вордпрессе».
-    Файловый менеджер хостинга умеет распаковывать только внутрь public_html,
-    поэтому внутри архива нет папки-обёртки.
-
-    Состав:
-      - системные каталоги: app, bootstrap, config, database, lang, public,
-        resources, routes, dist, vendor;
-      - storage с демо-медиа, без runtime-мусора (логи/кэш/бэкапы);
-      - legacy-статика public_html/build -> build/ (отдаётся как есть);
-      - статика из public/ -> корень архива (robots.txt, favicon.svg, images/);
-      - корневые index.php (шим) и .htaccess (deny системных каталогов +
-        маппинг /storage/... -> storage/app/public/...);
-      - .user.ini, .env.example, composer.json/lock, CHANGELOG.md.
-
-.PARAMETER Version
-    Версия для имени архива, например 1.0.2.
-
-.EXAMPLE
-    powershell -File scripts\build-hosting-zip.ps1 -Version 1.0.2
+    Uses composer.lock for production dependencies and an empty storage tree.
+    Does not copy local vendor, environment, media, logs, backups or cached config.
+    Build the frontend with npm run build first. See docs/deploy-timeweb.md.
 #>
 param(
     [Parameter(Mandatory = $true)]
+    [ValidatePattern('^\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?$')]
     [string]$Version
 )
 
-$ErrorActionPreference = "Stop"
-$repo = Split-Path -Parent $PSScriptRoot
-$date = Get-Date -Format "yyyyMMdd"
-$zipName = "nabilet-hosting-v$Version-$date.zip"
-$zipPath = Join-Path $repo "releases\$zipName"
-$stageRoot = Join-Path $repo ".tmp-release-stage"
-$stage = Join-Path $stageRoot "site"
+$ErrorActionPreference = 'Stop'
+$repo = [IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
+$releaseDir = Join-Path $repo 'releases'
+$stageRoot = Join-Path $repo '.tmp-release-stage'
+# Previous builds left a full vendor/ tree in .tmp-release-stage (57k files),
+# which makes repo-wide linters scan a release copy instead of the sources.
+# Clean stale stages before creating this run's one.
+if (Test-Path -LiteralPath $stageRoot) {
+    Get-ChildItem -LiteralPath $stageRoot -Directory | Remove-Item -Recurse -Force
+}
+$stage = Join-Path $stageRoot ('site-' + [Guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Force -Path $stage, $releaseDir | Out-Null
+$zipPath = Join-Path $releaseDir ('nabilet-hosting-v' + $Version + '-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.zip')
+if (Test-Path -LiteralPath $zipPath) { throw 'Release already exists; wait a second and retry.' }
 
-function Copy-Tree($from, $to, $purge = $false) {
-    $args = @($from, $to, "/E", "/XJ", "/NFL", "/NDL", "/NJH", "/NJS", "/NP")
-    if ($purge) { $args += "/PURGE" }
-    robocopy @args | Out-Null
-    if ($LASTEXITCODE -ge 8) { throw "robocopy failed for '$from' (code $LASTEXITCODE)" }
+function Copy-Tree([string]$Source, [string]$Destination) {
+    if (-not (Test-Path -LiteralPath $Source)) { throw "Missing input: $Source" }
+    & robocopy $Source $Destination /E /XJ /NFL /NDL /NJH /NJS /NP | Out-Null
+    if ($LASTEXITCODE -ge 8) { throw "robocopy failed for $Source ($LASTEXITCODE)" }
 }
 
-# --- 1. Чистый staging -------------------------------------------------------
-if (Test-Path $stageRoot) { Remove-Item -Recurse -Force $stageRoot }
-New-Item -ItemType Directory -Force $stage | Out-Null
+$package = Get-Content -LiteralPath (Join-Path $repo 'package.json') -Raw | ConvertFrom-Json
+if ($package.version -ne $Version) { throw 'Version must match package.json.' }
+if (-not (Test-Path -LiteralPath (Join-Path $repo 'dist/index.html'))) { throw 'Run npm run build first.' }
 
-# --- 2. Системные каталоги, витрина, vendor ----------------------------------
-# /XJ: не ходить внутрь junction-ов (public/storage -> storage/app/public),
-# иначе в архив уезжает дубль медиа как обычный каталог.
-foreach ($d in "app", "bootstrap", "config", "database", "lang", "public", "resources", "routes", "dist", "vendor") {
-    Copy-Tree (Join-Path $repo $d) (Join-Path $stage $d)
+foreach ($name in 'app', 'config', 'database', 'lang', 'resources', 'routes', 'dist') {
+    Copy-Tree (Join-Path $repo $name) (Join-Path $stage $name)
+}
+New-Item -ItemType Directory -Force -Path (Join-Path $stage 'bootstrap/cache') | Out-Null
+Get-ChildItem -LiteralPath (Join-Path $repo 'bootstrap') -File -Filter '*.php' |
+    Copy-Item -Destination (Join-Path $stage 'bootstrap')
+
+foreach ($name in '.env.example', 'CHANGELOG.md', 'artisan', 'composer.json', 'composer.lock') {
+    Copy-Item -LiteralPath (Join-Path $repo $name) -Destination $stage
 }
 
-# --- 3. storage: демо-медиа остаются, runtime-мусор не едет -------------------
-Copy-Tree (Join-Path $repo "storage") (Join-Path $stage "storage")
-$cleaned = 0
-Get-ChildItem "$stage\storage\logs" -File -ErrorAction SilentlyContinue |
-    Where-Object { $_.Name -ne ".gitignore" } | ForEach-Object { Remove-Item $_.FullName; $cleaned++ }
-Get-ChildItem "$stage\storage\framework" -Recurse -File -ErrorAction SilentlyContinue |
-    Where-Object { $_.Name -ne ".gitignore" } | ForEach-Object { Remove-Item $_.FullName; $cleaned++ }
-foreach ($p in "storage\app\checkin", "storage\app\_probe_mail.php",
-    "storage\app\backups\db_test_2026-10-30.sql", "storage\app\backups\legit.sql",
-    "storage\app\private\backups\db_test_2026-10-30.sql", "storage\app\private\backups\legit.sql") {
-    $f = Join-Path $stage $p
-    if (Test-Path $f) { Remove-Item -Recurse -Force $f; $cleaned++ }
+# Only known public files enter the document root. Exclude local diagnostic
+# PHP files, junctions and obsolete development bundles.
+New-Item -ItemType Directory -Force -Path (Join-Path $stage 'public'), (Join-Path $stage 'public_html') | Out-Null
+Copy-Item -LiteralPath (Join-Path $repo 'public/index.php') -Destination (Join-Path $stage 'public')
+foreach ($name in 'index.php', '.htaccess', '.user.ini') {
+    Copy-Item -LiteralPath (Join-Path $repo "public_html/$name") -Destination (Join-Path $stage 'public_html')
 }
-foreach ($p in "storage\framework", "storage\framework\cache", "storage\framework\cache\data",
-    "storage\framework\sessions", "storage\framework\testing", "storage\framework\views",
-    "storage\logs", "bootstrap\cache") {
-    $dir = Join-Path $stage $p
-    if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Force $dir | Out-Null }
-    if (-not (Test-Path "$dir\.gitignore")) { Set-Content "$dir\.gitignore" "*`n!.gitignore" }
+foreach ($name in 'robots.txt', 'favicon.svg', 'installer-tailwind.js') {
+    Copy-Item -LiteralPath (Join-Path $repo "public/$name") -Destination (Join-Path $stage 'public_html')
 }
+Copy-Tree (Join-Path $repo 'public/images') (Join-Path $stage 'public_html/images')
+Copy-Tree (Join-Path $repo 'dist/assets') (Join-Path $stage 'public_html/assets')
 
-# --- 4. Legacy-статика и настройки из public_html -----------------------------
-# build/ остаётся в docroot: /build/assets/* отдаётся статикой (legacy).
-Copy-Tree (Join-Path $repo "public_html\build") (Join-Path $stage "build")
-Copy-Item (Join-Path $repo "public_html\.user.ini") $stage
-
-# --- 5. Статика docroot из public/ -------------------------------------------
-# robots.txt, favicon.svg и og-картинки: локально их отдаёт public/, в архиве
-# они лежат в корне docroot (WordPress-style) и отдаются Apache напрямую.
-Copy-Item (Join-Path $repo "public\robots.txt") $stage
-Copy-Item (Join-Path $repo "public\favicon.svg") $stage
-# installer-tailwind.js: локальная копия Tailwind Play CDN 3.4 (v1.0.4) —
-# мастер установки не должен зависеть от cdn.tailwindcss.com.
-Copy-Item (Join-Path $repo "public\installer-tailwind.js") $stage
-Copy-Tree (Join-Path $repo "public\images") (Join-Path $stage "images")
-
-# --- 6. Корневые файлы приложения --------------------------------------------
-foreach ($f in ".env.example", ".gitignore", "CHANGELOG.md", "artisan",
-    "composer.json", "composer.lock") {
-    Copy-Item (Join-Path $repo $f) $stage
+foreach ($name in 'storage/app/public', 'storage/app/private', 'storage/logs',
+    'storage/framework/cache/data', 'storage/framework/sessions', 'storage/framework/views', 'bootstrap/cache') {
+    $dir = Join-Path $stage $name
+    New-Item -ItemType Directory -Force -Path $dir | Out-Null
+    [IO.File]::WriteAllText((Join-Path $dir '.gitignore'), "*`n!.gitignore`n")
 }
 
-# Корневой index.php — шим на канонический фронт-контроллер public/index.php.
-# Внутри public/index.php все пути относительные (../vendor, ../bootstrap),
-# поэтому дерево целиком живёт в docroot. Только ASCII: BOM перед <?php
-# недопустим (Set-Content UTF8 в PS 5.1 пишет BOM).
-$shim = @'
-<?php
-
-declare(strict_types=1);
-
-// NABILET Core - shared hosting entrypoint (WordPress-style layout).
-//
-// DocumentRoot IS the application root: index.php, .htaccess, .user.ini,
-// robots.txt, favicon.svg and the system directories (app/, config/, vendor/,
-// storage/, ...) all live directly in public_html/, like WordPress.
-//
-// This thin entrypoint keeps a single source of truth: the canonical Laravel
-// front controller in public/index.php. Every path inside it resolves relative
-// to public/ (../vendor, ../bootstrap/app.php, ../storage), i.e. one level up,
-// which is exactly where those directories are.
-require __DIR__ . '/public/index.php';
-'@
-Set-Content -Path (Join-Path $stage "index.php") -Value $shim -Encoding ASCII
-
-# Корневой .htaccess. Только ASCII (см. комментарий выше): Apache 2.4.
-$htaccess = @'
-# NABILET Core - shared hosting front controller (WordPress-style layout)
-#
-# Document root IS the application root: after unpacking the release archive
-# into public_html/, index.php, .htaccess, .user.ini, robots.txt, favicon.svg
-# and the system directories (app/, config/, vendor/, storage/, ...) all live
-# at this level, like WordPress.
-#
-# Served statically:  /build/...   (legacy compiled assets)
-#                     /favicon.svg, /images/..., /robots.txt
-# Mapped to storage:  /storage/... -> storage/app/public/...  (media files)
-# Routed to Laravel:  everything else -> index.php
-#                     (/assets/* serves dist/assets from routes/web.php)
-
-<IfModule mod_rewrite.c>
-    <IfModule mod_negotiation.c>
-        Options -MultiViews -Indexes
-    </IfModule>
-
-    RewriteEngine On
-
-    # Pass the Authorization header through to PHP (Sanctum / bearer-token auth).
-    RewriteCond %{HTTP:Authorization} .
-    RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
-
-    # Strip a trailing slash (except for real directories).
-    RewriteCond %{REQUEST_FILENAME} !-d
-    RewriteCond %{REQUEST_URI} (.+)/$
-    RewriteRule ^ %1 [L,R=301]
-
-    # Media: /storage/{path} -> storage/app/public/{path}.
-    #
-    # WHY: on shared hosting DocumentRoot is public_html/ itself now, and the
-    # Laravel symlink public/storage is NOT inside it (plus symlinks are
-    # unreliable on shared hosts), so /storage/... URLs are mapped here.
-    # The -f condition prevents a rewrite loop: if the target file does not
-    # exist, the request falls through to the front controller (branded 404)
-    # instead of stacking storage/app/public/ prefixes.
-    RewriteCond %{DOCUMENT_ROOT}/storage/app/public/$1 -f
-    RewriteRule ^storage/(.+)$ storage/app/public/$1 [L]
-
-    # System directories are not reachable over HTTP directly: PHP sources,
-    # migrations, the compiled storefront (served via routes) and anything
-    # else that must not be fetched or executed as raw PHP.
-    RewriteRule ^(app|bootstrap|config|database|lang|public|resources|routes|dist|vendor)(/|$) - [F,L]
-
-    # Send all other requests to the front controller.
-    RewriteCond %{REQUEST_FILENAME} !-d
-    RewriteCond %{REQUEST_FILENAME} !-f
-    RewriteRule ^ index.php [L]
-</IfModule>
-
-# Block dotfiles (stray .env copies, .git, .user.ini itself) from being served.
-# PHP-FPM still reads .user.ini from disk, this only blocks HTTP access.
-# Apache 2.4 syntax.
-<FilesMatch "^\.">
-    Require all denied
-</FilesMatch>
-'@
-Set-Content -Path (Join-Path $stage ".htaccess") -Value $htaccess -Encoding ASCII
-
-# --- 7. Архив ----------------------------------------------------------------
-if (Test-Path $zipPath) { Remove-Item $zipPath }
 Push-Location $stage
 try {
-    tar -a -cf $zipPath app bootstrap config database dist images lang public resources routes storage vendor build `
-        ".env.example" ".gitignore" ".htaccess" ".user.ini" "CHANGELOG.md" "artisan" "composer.json" "composer.lock" `
-        "favicon.svg" "index.php" "installer-tailwind.js" "robots.txt"
-    if ($LASTEXITCODE -ne 0) { throw "tar failed (code $LASTEXITCODE)" }
-}
-finally {
-    Pop-Location
-}
+    & composer install --no-dev --no-scripts --prefer-dist --optimize-autoloader --no-interaction --no-progress
+    if ($LASTEXITCODE -ne 0) { throw 'Production dependency installation failed.' }
+    & composer check-platform-reqs --no-dev
+    if ($LASTEXITCODE -ne 0) { throw 'Platform requirements failed.' }
+    # Do not boot the application while packaging: no generated installation
+    # key, package caches, database calls or environment from this workstation.
+    & tar -a -cf $zipPath app bootstrap config database dist lang public public_html resources routes storage vendor `
+        .env.example CHANGELOG.md artisan composer.json composer.lock
+    if ($LASTEXITCODE -ne 0) { throw 'Archive creation failed.' }
+} finally { Pop-Location }
 
-# --- 8. Верификация ----------------------------------------------------------
 Add-Type -AssemblyName System.IO.Compression.FileSystem
-$zip = [System.IO.Compression.ZipFile]::OpenRead($zipPath)
-$top = $zip.Entries | ForEach-Object { ($_.FullName -split '/')[0] } | Sort-Object -Unique
-$backslashes = ($zip.Entries | Where-Object { $_.FullName -like '*\*' }).Count
-$zip.Dispose()
-$sizeMB = [math]::Round((Get-Item $zipPath).Length / 1MB, 1)
+$zip = [IO.Compression.ZipFile]::OpenRead($zipPath)
+try {
+    $names = @($zip.Entries | ForEach-Object { $_.FullName.Replace('\', '/') })
+    foreach ($name in $names) {
+        if ($name -match '(^|/)\.env($|\.(?!example$))' -or
+            ($name -match '^storage/.*[^/]$' -and $name -notmatch '/\.gitignore$') -or
+            ($name -match '^bootstrap/cache/.*[^/]$' -and $name -notmatch '/\.gitignore$') -or
+            $name -match '^vendor/(phpunit|phpstan|mockery|fakerphp|laravel/pint)/') {
+            throw "Unsafe release entry: $name"
+        }
+    }
+    if ($names -notcontains 'public_html/index.php' -or $names -contains 'index.php') {
+        throw 'Incorrect document-root layout.'
+    }
+} finally { $zip.Dispose() }
+$hash = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
+[IO.File]::WriteAllText("$zipPath.sha256", "$hash  $([IO.Path]::GetFileName($zipPath))`n")
+Write-Host "OK: $zipPath"
+Write-Host "SHA256: $hash"
+Write-Host 'Extract into the site directory ABOVE public_html. Storage contains no customer data.'
 
-Write-Host "OK: $zipPath ($sizeMB MB)"
-Write-Host "Top-level entries: $($top -join ', ')"
-Write-Host "Backslash entries: $backslashes"
+# The stage is a full release copy (vendor/, dist/, 9k files). Leaving it in
+# the working tree slows down lint/test discovery on every later run.
+Remove-Item -LiteralPath $stage -Recurse -Force

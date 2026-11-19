@@ -28,6 +28,17 @@ class SurgutVenuesSeederTest extends TestCase
 {
     use RefreshDatabase;
 
+    /**
+     * Региональный каталог теперь подключается явно (общая система для разных
+     * заказчиков). Эти тесты проверяют именно сценарий «Сургут-Концерт», поэтому
+     * включают флаг явно — production-дефолт остаётся выключенным.
+     */
+    protected function setUp(): void
+    {
+        parent::setUp();
+        config(['nabilet.seed_surgut' => true]);
+    }
+
     /* ── Установка: обычный `db:seed --force` доводит каталог до конца ─────── */
 
     public function test_a_plain_db_seed_brings_up_the_surgut_catalog(): void

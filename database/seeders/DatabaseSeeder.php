@@ -19,7 +19,8 @@ class DatabaseSeeder extends Seeder
         // создаёт либо установщик (шаг 5, до `db:seed`), либо NabiletAdminSeeder
         // (демо-организация вне production). Запустив этот сидер первым, мы
         // получили бы «нет организации» и пустой каталог на свежей установке.
-        $this->call(SurgutVenuesSeeder::class);
+        if (config('nabilet.seed_surgut')) {
+            $this->call(SurgutVenuesSeeder::class);
 
         // Зал «Концертно-театральный зал» Дворца искусств «Нефтяник» — вместе с
         // опубликованной схемой (1073 места, снята с Яндекс.Афиши и адаптирована
@@ -27,7 +28,8 @@ class DatabaseSeeder extends Seeder
         $this->call(NeftyanikHallSeeder::class);
 
         // Клуб «Вавилон»: основной зал со столовой схемой (62 стола, 359 мест).
-        $this->call(BabylonHallSeeder::class);
+            $this->call(BabylonHallSeeder::class);
+        }
 
         // Стандартный макет билета — вертикальный, 400×600. Последним: ему нужна
         // организация (администратора или первая по id), а не залы. Без него

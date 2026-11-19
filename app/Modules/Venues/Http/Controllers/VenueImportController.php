@@ -47,6 +47,26 @@ class VenueImportController extends Controller
 {
     private const ALLOWED_HOST = 'afisha.yandex.ru';
 
+    /** Uploaded public seating data only: no upstream cookies or credentials. */
+    public function hallplan(Request $request): JsonResponse
+    {
+        if (strlen($request->getContent()) > 5 * 1024 * 1024) {
+            throw new ValidationError(['hallplan' => ['Размер JSON не должен превышать 5 МБ.']]);
+        }
+        $data = $request->validate(['hallplan' => ['required', 'array']]);
+        try {
+            $schema = (new \Nabilet\Modules\Venues\Halls\Domain\YandexHallplanConverter())->convert($data['hallplan']);
+        } catch (\InvalidArgumentException $error) {
+            throw new ValidationError(['hallplan' => [$error->getMessage()]]);
+        } catch (\TypeError|\ErrorException $error) {
+            throw new ValidationError(['hallplan' => ['Некорректная структура hallplan. Экспортируйте ответ API карты мест.']]);
+        }
+        return response()->json(['data' => [
+            'schema' => $schema,
+            'warning' => 'Часть координат восстановлена расчётом. Вместимость стоячих зон взята из доступного остатка. Перед публикацией сверьте номера, геометрию, полную вместимость и задайте свои цены. Импорт не переносит продажи Яндекса.',
+        ]]);
+    }
+
     public function parse(Request $request): JsonResponse
     {
         $data = $request->validate([
@@ -55,7 +75,10 @@ class VenueImportController extends Controller
 
         $host = (string) (parse_url($data['url'], PHP_URL_HOST) ?? '');
 
-        if (strtolower($host) !== self::ALLOWED_HOST) {
+        if (strtolower($host) !== self::ALLOWED_HOST
+            || !in_array(parse_url($data['url'], PHP_URL_PORT), [null, 443], true)
+            || parse_url($data['url'], PHP_URL_USER) !== null
+            || parse_url($data['url'], PHP_URL_PASS) !== null) {
             throw new ValidationError([
                 'url' => ['Разрешены только ссылки на страницы событий ' . self::ALLOWED_HOST],
             ]);
@@ -63,6 +86,7 @@ class VenueImportController extends Controller
 
         // AF-страницы проверяют UA: без него — редирект на капчу/заглушку.
         $http = Http::timeout(15)
+            ->withoutRedirecting()
             ->withHeaders([
                 'User-Agent' => 'Mozilla/5.0 (compatible; NabiletVenueImport/1.0)',
                 'Accept' => 'text/html,application/xhtml+xml',
@@ -85,7 +109,7 @@ class VenueImportController extends Controller
             );
         }
 
-        if ($response->failed()) {
+        if (!$response->successful()) {
             throw new DomainRuleViolation(
                 'Страница Яндекс.Афиши недоступна (код ' . $response->status() . ').',
                 'AFISHA_UNREACHABLE',

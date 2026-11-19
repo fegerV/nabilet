@@ -40,7 +40,6 @@ import { useUiStore } from '@/stores/ui'
 import { ApiError, get, request, send, upload } from '@/lib/api'
 import { storageSrc } from '@/lib/mediaLibrary'
 import { dateFull, time, formatDateTimeLong, humanSize } from '@/lib/format'
-import { statusOptions } from '@/lib/statusLabels'
 import {
   buildSessionPayload,
   emptySessionForm,
@@ -445,7 +444,6 @@ function scrollToSessions(): void {
  * копии одного словаря означают, что исправлять пришлось бы обе, и вторую
  * обязательно забыли бы. Список — из `statusOptions('session')`.
  */
-const SESSION_STATUS_OPTIONS = statusOptions('session')
 
 /** Мероприятие уже создано, а сеанс — нет: храним id для ссылки на карточку. */
 const eventCreatedId = ref<number | null>(null)
@@ -459,8 +457,8 @@ function unwrapList<T>(payload: unknown): T[] {
 async function loadVenueHalls(): Promise<void> {
   try {
     const [venuesRes, hallsRes] = await Promise.all([
-      get<unknown>('/venues'),
-      get<unknown>('/halls'),
+      get<unknown>('/venues?per_page=100'),
+      get<unknown>('/halls?per_page=100'),
     ])
     venues.value = unwrapList<VenueOption>((venuesRes as { data: unknown }).data)
     halls.value = unwrapList<HallOption>((hallsRes as { data: unknown }).data)
@@ -505,13 +503,6 @@ function onVenueChangeDraft(): void {
  * проверка пары «площадка + зал» сработала на осмысленном значении, а не на
  * выведенном.
  */
-async function saveSessionDraft(eventId: number): Promise<number> {
-  const draft = { ...sessionDraft.value, event_id: String(eventId) }
-  const payload = buildSessionPayload(draft, { includeEvent: true })
-  const res = await send<{ id: number }>('/sessions', 'POST', payload)
-  return (res as unknown as { data: { id: number } }).data.id
-}
-
 async function load(): Promise<void> {
   setPosterFile(null)
   fieldErrors.value = {}
@@ -586,10 +577,18 @@ function validate(): boolean {
 /* ── Сохранение ─────────────────────────────────────────────────────────── */
 interface SavedEvent {
   id: number
+  primary_session_id?: number | null
 }
 
 /** Текстовые поля формы → в FormData или JSON-объект одним проходом. */
 function fillFields(set: (k: string, v: string | null) => void): void {
+  if (!isEdit.value && createSessionEnabled.value) {
+    const session = buildSessionPayload(sessionDraft.value, { includeEvent: false })
+    for (const key of ['venue_id', 'schema_version_id', 'starts_at', 'sales_start_at', 'sales_end_at']) {
+      const value = session[key]
+      if (value !== undefined) set(key, value === null ? null : String(value))
+    }
+  }
   set('title', form.value.title.trim())
   set('slug', form.value.slug.trim() || makeSlug(form.value.title))
   set('description', form.value.description.trim() || null)
@@ -626,6 +625,7 @@ async function save(notify = true): Promise<boolean> {
   }
   saving.value = true
   let savedId = 0
+  let primarySessionId: number | null = null
   try {
     let res: { data: SavedEvent }
     if (posterFile.value) {
@@ -650,6 +650,7 @@ async function save(notify = true): Promise<boolean> {
         : await send<SavedEvent>('/events', 'POST', payload)
     }
     savedId = res.data.id
+    primarySessionId = res.data.primary_session_id ?? null
     const title = form.value.title.trim()
     if (notify) ui.notify('mint', isEdit.value ? 'Мероприятие обновлено' : 'Мероприятие создано', title)
   } catch (err) {
@@ -682,7 +683,8 @@ async function save(notify = true): Promise<boolean> {
   if (createSessionEnabled.value) {
     saving.value = true
     try {
-      const sessionId = await saveSessionDraft(savedId)
+      const sessionId = primarySessionId
+      if (!sessionId) throw new Error('Мероприятие сохранено без даты. Откройте карточку и проверьте площадку и дату.')
       ui.notify('mint', 'Сеанс создан', 'Назначьте цены на ряды и опубликуйте мероприятие.')
       // Следующий логичный шаг после сеанса — назначение цен на ряды/столики.
       router.push(`/admin/sessions/${sessionId}/prices`)
@@ -1030,9 +1032,7 @@ const publishedAtText = computed<string | null>(() => {
               <NInput v-model="sessionDraft.sales_end_at" label="Окончание продаж (дата)" type="date" />
               <NInput v-model="sessionDraft.sales_end_time" label="Окончание продаж (время)" placeholder="23:59" />
             </div>
-            <div class="mt-3">
-              <NSelect v-model="sessionDraft.status" label="Статус" :options="SESSION_STATUS_OPTIONS" />
-            </div>
+            <p class="mt-3 text-xs text-subtle">Создаётся черновик мероприятия с датой. Продажи открываются после проверки цен и публикации.</p>
           </details>
         </div>
 

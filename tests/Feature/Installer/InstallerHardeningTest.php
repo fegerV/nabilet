@@ -85,6 +85,38 @@ class InstallerHardeningTest extends TestCase
         $this->assertStringContainsString('NABILET_ALLOW_DATABASE_CACHE=true', $env);
     }
 
+    /**
+     * Региональный каталог — выбор заказчика на шаге визарда. По умолчанию он
+     * выключен (общая система для разных городов), а включённый чекбокс должен
+     * попасть в .env. Регрессия: мастер перезаписывает .env из шаблона, поэтому
+     * «подложить» флаг в файл до установки нельзя — только через форму.
+     */
+    public function test_generated_env_reflects_the_regional_catalog_choice(): void
+    {
+        $off = $this->invoke('buildEnvContent', [$this->baseData(), 'base64:AAAA']);
+        $this->assertStringContainsString('NABILET_SEED_SURGUT=false', $off);
+
+        $on = $this->invoke('buildEnvContent', [$this->baseData() + ['seed_surgut' => true], 'base64:AAAA']);
+        $this->assertStringContainsString('NABILET_SEED_SURGUT=true', $on);
+    }
+
+    /** MySQL 5.7 молча игнорирует CHECK — визард обязан сказать об этом вслух. */
+    public function test_installer_warns_about_mysql_57_but_not_modern_servers(): void
+    {
+        $warn = static fn (string $v): ?string => (new \ReflectionMethod(InstallerController::class, 'versionNeedsWarning'))
+            ->invoke(null, $v);
+
+        $old = $warn('5.7.44-log');
+        $this->assertNotNull($old);
+        $this->assertStringContainsString('5.7.44-log', $old);
+        $this->assertStringContainsString('MySQL 8.0.16', $old);
+
+        $this->assertNull($warn('8.0.36'));
+        $this->assertNull($warn('8.4.11'));
+        $this->assertNull($warn('10.4.32-MariaDB')); // MariaDB исполняет CHECK с 10.2.1
+        $this->assertNotNull($warn('10.1.48-MariaDB'));
+    }
+
     /** Коллация обязательна: дефолт конфига (`''`) MySQL 8 валит миграции
      * ошибкой `Unknown collation: ''` — без этих строк установка обрывалась
      * прямо на шаге migrate (найдено прогоном визарда 2026-11-04).

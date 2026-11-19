@@ -25,6 +25,25 @@ final class HallSchemaLifecycleTest extends TestCase
 
     private HallService $service;
 
+    public function test_stale_publication_keeps_current_live_schema_and_newer_draft(): void
+    {
+        $first = $this->scoped(fn () => $this->service->createSchemaDraft($this->hall, $this->sellableSchema(1000), 1));
+        $this->scoped(fn () => $this->service->publishSchemaVersion((int) $first->id, 1, (string) $this->hall->public_id));
+        $draft = $this->scoped(fn () => $this->service->createSchemaDraft($this->hall, $this->sellableSchema(2000), 1));
+        $this->scoped(fn () => $this->service->createSchemaDraft($this->hall, $this->sellableSchema(3000), 1, (int) $draft->id, 1));
+
+        try {
+            $this->scoped(fn () => $this->service->publishSchemaVersion((int) $draft->id, 1, (string) $this->hall->public_id, 1));
+            self::fail('A stale editor must not publish someone else\'s changes.');
+        } catch (ConflictError $error) {
+            self::assertSame('SCHEMA_DRAFT_CONFLICT', $error->errorCode);
+        }
+        self::assertSame('published', $this->scoped(fn () => $first->fresh())->status);
+        self::assertSame('draft', $this->scoped(fn () => $draft->fresh())->status);
+        $published = $this->scoped(fn () => $this->service->publishSchemaVersion((int) $draft->id, 1, (string) $this->hall->public_id, 2));
+        self::assertSame('published', $published->status);
+    }
+
     protected function setUp(): void
     {
         parent::setUp();

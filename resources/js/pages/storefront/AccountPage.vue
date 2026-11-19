@@ -50,6 +50,7 @@ import {
 import { ApiError } from '@/lib/api'
 import { dateTime, money, plural } from '@/lib/format'
 import { useLoyaltyStore } from '@/stores/loyalty'
+import { purchaseAchievements } from '@/lib/achievements'
 
 const router = useRouter()
 
@@ -57,6 +58,8 @@ const me = ref<CustomerUser | null>(customerUser())
 const loading = ref(true)
 const loadError = ref<string | null>(null)
 const loyalty = useLoyaltyStore()
+const achievements = computed(() => loyalty.loyaltyLevel
+  ? purchaseAchievements(loyalty.loyaltyLevel.paid_orders) : [])
 
 const displayName = computed(() => {
   const name = [me.value?.first_name, me.value?.last_name].filter(Boolean).join(' ').trim()
@@ -87,7 +90,7 @@ function fillProfile(user: CustomerUser | null): void {
 }
 
 async function saveProfile(): Promise<void> {
-  if (profileSaving.value) return
+  if (profileSaving.value || loading.value || loadError.value) return
   profileSaving.value = true
   profileError.value = null
   profileFields.value = {}
@@ -160,11 +163,13 @@ async function savePassword(): Promise<void> {
 
 const orders = ref<CustomerOrder[]>([])
 const ordersLoading = ref(false)
+const ordersError = ref<string | null>(null)
 
 /* ── Сессии ────────────────────────────────────────────────────────────── */
 
 const sessions = ref<CustomerSession[]>([])
 const sessionsLoading = ref(false)
+const sessionsError = ref<string | null>(null)
 const revokingId = ref<string | null>(null)
 
 /* ── Загрузка ──────────────────────────────────────────────────────────── */
@@ -191,10 +196,11 @@ async function load(): Promise<void> {
 
 async function loadOrders(): Promise<void> {
   ordersLoading.value = true
+  ordersError.value = null
   try {
     orders.value = await fetchMyOrders()
   } catch {
-    orders.value = []
+    ordersError.value = 'Не удалось загрузить заказы. Ваши покупки сохранены — попробуйте ещё раз.'
   } finally {
     ordersLoading.value = false
   }
@@ -202,23 +208,24 @@ async function loadOrders(): Promise<void> {
 
 async function loadSessions(): Promise<void> {
   sessionsLoading.value = true
+  sessionsError.value = null
   try {
     sessions.value = await fetchSessions()
   } catch {
-    sessions.value = []
+    sessionsError.value = 'Не удалось загрузить устройства. Повторите запрос.'
   } finally {
     sessionsLoading.value = false
   }
 }
 
 async function endSession(id: string): Promise<void> {
+  if (revokingId.value) return
   revokingId.value = id
   try {
     await revokeSession(id)
     await loadSessions()
   } catch {
-    /* список перечитаем в любом случае — состояние важнее текста ошибки */
-    await loadSessions()
+    sessionsError.value = 'Не удалось завершить сессию. Повторите действие или смените пароль, чтобы выйти на всех устройствах.'
   } finally {
     revokingId.value = null
   }
@@ -277,6 +284,39 @@ onMounted(load)
       </p>
 
       <div class="mt-6 grid gap-5 lg:grid-cols-2">
+        <section class="overflow-hidden rounded-2xl border border-brand-500/20 bg-gradient-to-br from-brand-500/15 via-surface to-surface p-5 sm:p-7 lg:col-span-2">
+          <div class="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <p class="text-xs font-semibold uppercase tracking-widest text-brand-400">Ваш следующий выход</p>
+              <h2 class="mt-2 font-display text-2xl font-bold text-content">Билеты и впечатления — рядом</h2>
+              <p class="mt-2 max-w-xl text-sm text-muted">Откройте QR перед входом, сохраните интересные события и следите за бонусами.</p>
+            </div>
+            <div class="flex flex-wrap gap-2">
+              <NButton variant="primary" @click="router.push('/tickets')">Открыть мои билеты</NButton>
+              <NButton variant="secondary" @click="router.push('/')">Выбрать событие</NButton>
+            </div>
+          </div>
+          <div v-if="achievements.length" class="mt-6">
+            <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <h3 class="text-sm font-semibold text-content">Ваши достижения</h3>
+              <RouterLink to="/club" class="text-sm text-brand-400">Уровень: {{ loyalty.loyaltyLevel?.name }} →</RouterLink>
+            </div>
+            <ul class="grid gap-3 sm:grid-cols-3">
+              <li v-for="achievement in achievements" :key="achievement.id" class="rounded-xl border p-4"
+                :class="achievement.earned ? 'border-brand-500/40 bg-brand-500/10' : 'border-line bg-surface/70'">
+                <div class="flex items-center gap-2">
+                  <span aria-hidden="true" class="text-xl" :class="achievement.earned ? 'text-brand-400' : 'text-subtle'">{{ achievement.icon }}</span>
+                  <span class="font-semibold text-content">{{ achievement.title }}</span>
+                </div>
+                <p class="mt-2 text-xs text-muted">{{ achievement.description }}</p>
+                <p class="mt-2 text-xs font-medium" :class="achievement.earned ? 'text-brand-400' : 'text-subtle'">
+                  {{ achievement.earned ? 'Получено' : `${achievement.progress} из ${achievement.target}` }}
+                </p>
+              </li>
+            </ul>
+            <p class="mt-3 text-xs text-subtle">Учитываются оплаченные заказы. Возвраты меняют прогресс; достижения не начисляют дополнительные бонусы.</p>
+          </div>
+        </section>
         <!-- Профиль -->
         <section class="surface-card p-5">
           <h2 class="text-sm font-semibold uppercase tracking-wide text-subtle">Данные профиля</h2>
@@ -364,6 +404,11 @@ onMounted(load)
 
           <p v-if="ordersLoading" class="mt-4 text-sm text-subtle">Загружаем заказы…</p>
 
+          <div v-else-if="ordersError" role="alert" class="mt-4 text-sm text-rose-400">
+            <p>{{ ordersError }}</p>
+            <NButton variant="secondary" size="sm" class="mt-2" @click="loadOrders">Повторить</NButton>
+          </div>
+
           <NEmptyState
             v-else-if="orders.length === 0"
             class="mt-4"
@@ -421,7 +466,7 @@ onMounted(load)
             <span class="min-w-0 flex-1">
               <span class="block text-sm font-medium text-content">Бонусный счёт</span>
               <span class="block text-xs text-subtle">
-                {{ loyalty.bonusesCount }} {{ plural(loyalty.bonusesCount, 'бонус', 'бонуса', 'бонусов') }} · кэшбэк 5 % с оплаченных заказов
+                {{ loyalty.bonusesCount }} {{ plural(loyalty.bonusesCount, 'бонус', 'бонуса', 'бонусов') }} · условия начисления и списания
               </span>
             </span>
             <span class="flex-none text-xs text-brand-400">История →</span>
@@ -468,6 +513,11 @@ onMounted(load)
           </p>
 
           <p v-if="sessionsLoading" class="mt-4 text-sm text-subtle">Загружаем сессии…</p>
+
+          <div v-else-if="sessionsError" role="alert" class="mt-4 text-sm text-rose-400">
+            <p>{{ sessionsError }}</p>
+            <NButton variant="secondary" size="sm" class="mt-2" @click="loadSessions">Повторить</NButton>
+          </div>
 
           <p v-else-if="sessions.length === 0" class="mt-4 text-sm text-subtle">Активных сессий нет.</p>
 

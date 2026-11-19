@@ -16,7 +16,7 @@ use Nabilet\Modules\Core\Users\Models\User;
  * staff-пользователю: агент наследует роли владельца, а данные ограничены
  * организациями, где он состоит. Отдельного «пользователя-агента» не заводим:
  * сотрудник создаёт токен из СВОЕЙ учётки, и при увольнении/смене пароля
- * обычныйLifecycle сессий не отзывает PAT — отзыв токена отдельная команда.
+ * обычный lifecycle сессий не отзывает PAT — отзыв токена отдельная команда.
  *
  * Открытый текст печатается ОДИН раз и только в консоль: в БД живёт sha256
  * (как и у всех токенов системы), повторно показать токен невозможно —
@@ -25,7 +25,8 @@ use Nabilet\Modules\Core\Users\Models\User;
  * ПРИМЕРЫ
  *   php artisan nabilet:agent-token director@venue.ru
  *   php artisan nabilet:agent-token director@venue.ru --name="Дежурный агент"
- *   php artisan nabilet:agent-token director@venue.ru --revoke-all   # отозвать прежние
+ *   php artisan nabilet:agent-token director@venue.ru --revoke-all   # только отозвать (инцидент)
+ *   php artisan nabilet:agent-token director@venue.ru --rotate       # отозвать и выдать новый
  *   php artisan nabilet:agent-token director@venue.ru --list         # показать активные
  */
 class IssueAgentTokenCommand extends Command
@@ -36,7 +37,8 @@ class IssueAgentTokenCommand extends Command
     protected $signature = 'nabilet:agent-token
         {email : E-mail staff-пользователя, от имени которого работает агент}
         {--name=AI agent : Название токена (видно владельцу в списке)}
-        {--revoke-all : Отозвать все прежние agent-токены этого пользователя перед выпуском}
+        {--revoke-all : Отозвать ВСЕ agent-токены и выйти (для инцидента; новый не выпускается)}
+        {--rotate : Отозвать прежние agent-токены и выпустить новый}
         {--list : Только показать активные agent-токены, ничего не выпускать}';
 
     protected $description = 'Выпустить (или отозвать) Bearer-токен ИИ-агента с ability agent:read';
@@ -70,6 +72,16 @@ class IssueAgentTokenCommand extends Command
         }
 
         if ($this->option('revoke-all')) {
+            // Инцидент: доступ должен исчезнуть полностью. Раньше эта команда
+            // отзывала старые токены и ТУТ ЖЕ выпускала новый — документация
+            // обещала «все токены отозваны», а в БД оставался живой токен.
+            $revoked = $this->revokeAgentTokens($user);
+            $this->info(sprintf('Отозвано agent-токенов: %d. Новый токен не выпущен.', $revoked));
+
+            return self::SUCCESS;
+        }
+
+        if ($this->option('rotate')) {
             $revoked = $this->revokeAgentTokens($user);
             $this->info(sprintf('Отозвано прежних agent-токенов: %d.', $revoked));
         }
@@ -121,7 +133,7 @@ class IssueAgentTokenCommand extends Command
      * `agent:read` входит как часть (`agent:reader` не предусмотрен
      * словарём abilities проекта).
      */
-    private function agentTokens(User $user): \Illuminate\Database\Eloquent\Builder
+    private function agentTokens(User $user): \Illuminate\Database\Query\Builder
     {
         return DB::table('personal_access_tokens')
             ->where('tokenable_type', $user::class)

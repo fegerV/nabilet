@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 return [
-    'version' => '1.6.1',
+    'version' => '1.7.0',
 
     /*
      * Шифрование бэкапов (AES-256-CBC). Ключ — из `.env`:
@@ -33,6 +33,8 @@ return [
      * NABILET_SEED_DEMO=true (аудит установщика B-2).
      */
     'seed_demo' => env('NABILET_SEED_DEMO', false),
+    // Региональный каталог подключается явно для конкретного заказчика.
+    'seed_surgut' => env('NABILET_SEED_SURGUT', false),
 
     /*
      * Алерты самопроверки (`system:selfcheck`).

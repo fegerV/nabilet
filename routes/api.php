@@ -129,6 +129,9 @@ $moduleRoutes = [
     // До этого файла пути контракта отвечали 404, а колонка
     // `page_translations.slug` не имела ни писателя, ни читателя.
     __DIR__ . '/../app/Modules/Content/routes/api.php',
+    // ИИ-агент: управление токенами и отложенными действиями из админки
+    // (без SSH на шаред-хостинге). MCP-трафик агента — отдельно, routes/ai.php.
+    __DIR__ . '/../app/Modules/Agent/routes/api.php',
 ];
 
 foreach ($moduleRoutes as $routeFile) {

@@ -25,6 +25,42 @@ final class VenueAfishaImportTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_hallplan_preview_converts_without_creating_venues(): void
+    {
+        $before = DB::table('venues')->count();
+        $source = json_decode(file_get_contents(base_path('tests/Fixtures/hallplans/surgu.json')), true);
+        $response = $this->postJson('/api/v1/venues/import-hallplan', ['hallplan' => $source]);
+        $response->assertOk()->assertJsonCount(2, 'data.schema.sectors');
+        self::assertNotEmpty($response->json('data.warning'));
+        self::assertSame($before, DB::table('venues')->count());
+    }
+
+    public function test_malformed_hallplan_is_a_validation_error(): void
+    {
+        $this->postJson('/api/v1/venues/import-hallplan', ['hallplan' => ['levels' => ['invalid']]])
+            ->assertStatus(422)->assertJsonPath('error.code', 'VALIDATION_ERROR');
+    }
+
+    public function test_redirect_does_not_allow_fetching_another_host(): void
+    {
+        Http::fake([
+            'afisha.yandex.ru/*' => Http::response('', 302, ['Location' => 'http://127.0.0.1/internal']),
+        ]);
+        $this->postJson('/api/v1/venues/import-afisha', [
+            'url' => 'https://afisha.yandex.ru/surgut/concert/example',
+        ])->assertStatus(422)->assertJsonPath('error.code', 'AFISHA_UNREACHABLE');
+        Http::assertSentCount(1);
+    }
+
+    public function test_nonstandard_ports_and_url_credentials_are_rejected(): void
+    {
+        Http::fake();
+        foreach (['https://afisha.yandex.ru:8443/event', 'https://user:pass@afisha.yandex.ru/event'] as $url) {
+            $this->postJson('/api/v1/venues/import-afisha', ['url' => $url])->assertStatus(422);
+        }
+        Http::assertNothingSent();
+    }
+
     protected function setUp(): void
     {
         parent::setUp();
