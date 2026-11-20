@@ -48,7 +48,7 @@ Route::post('payments/demo-pay', [PaymentController::class, 'demoPay']);
 // перекрывают env и применяются к runtime-конфигу на каждом бутстрапе.
 //
 // `admin` поверх `auth:api`: здесь ключи приёма денег.
-Route::prefix('admin/payments')->middleware(['auth:api', 'admin'])->group(function () {
+Route::prefix('admin/payments')->middleware(['auth:api', 'admin', \Nabilet\Core\Http\Middleware\EnsurePlatformAdmin::class])->group(function () {
     Route::get('/settings', [PaymentSettingsController::class, 'show']);
     Route::put('/settings', [PaymentSettingsController::class, 'update']);
 });

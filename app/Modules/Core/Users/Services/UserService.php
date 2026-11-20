@@ -174,8 +174,8 @@ class UserService
         return $this->repository->hasPermission($user, $permission);
     }
 
-    public function searchUsers(string $query, int $limit = 15)
+    public function searchUsers(string $query, int $limit = 15, ?int $organizationId = null)
     {
-        return $this->repository->search($query, $limit);
+        return $this->repository->search($query, $limit, $organizationId);
     }
 }

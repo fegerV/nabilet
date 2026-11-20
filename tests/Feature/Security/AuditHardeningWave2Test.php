@@ -63,6 +63,65 @@ class AuditHardeningWave2Test extends TestCase
         $this->getJson('/api/v1/admin/backups/settings')->assertOk();
     }
 
+    public function test_tenant_admin_cannot_manage_users_of_a_foreign_organization(): void
+    {
+        config()->set('nabilet.platform_admins', ['platform@example.com']);
+
+        $admin = $this->admin('tenant-admin@example.com');
+        $otherOrgId = (int) DB::table('organizations')->insertGetId([
+            'public_id' => (string) Str::ulid()->toBase32(),
+            'name' => 'Other org',
+            'slug' => 'org-'.Str::lower(Str::random(12)),
+            'status' => 'active',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $victim = $this->memberIn($otherOrgId, 'victim@other-org.example.com');
+        $this->actingAs($admin, 'api');
+
+        $this->getJson('/api/v1/users')
+            ->assertOk()
+            ->assertJsonMissing(['public_id' => $victim->public_id]);
+        $this->getJson('/api/v1/users/'.$victim->public_id)->assertNotFound();
+        $this->putJson('/api/v1/users/'.$victim->public_id, ['status' => 'banned'])->assertNotFound();
+        $this->deleteJson('/api/v1/users/'.$victim->public_id)->assertNotFound();
+    }
+
+    public function test_platform_admin_can_manage_users_across_organizations(): void
+    {
+        config()->set('nabilet.platform_admins', ['platform@example.com']);
+
+        $admin = $this->admin('platform@example.com');
+        $otherOrgId = (int) DB::table('organizations')->insertGetId([
+            'public_id' => (string) Str::ulid()->toBase32(),
+            'name' => 'Other org',
+            'slug' => 'org-'.Str::lower(Str::random(12)),
+            'status' => 'active',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $victim = $this->memberIn($otherOrgId, 'victim@other-org.example.com');
+        $this->actingAs($admin, 'api');
+
+        $this->getJson('/api/v1/users/'.$victim->public_id)->assertOk();
+        $response = $this->getJson('/api/v1/users')->assertOk();
+        self::assertContains(
+            $victim->public_id,
+            collect($response->json('data'))->pluck('public_id')->all(),
+        );
+    }
+
+    public function test_tenant_admin_cannot_read_global_settings(): void
+    {
+        config()->set('nabilet.platform_admins', ['platform@example.com']);
+
+        $this->actingAs($this->admin('tenant-admin@example.com'), 'api');
+        foreach (['/api/v1/admin/payments/settings', '/api/v1/admin/mail/settings',
+                  '/api/v1/admin/matrix/settings', '/api/v1/admin/analytics/metrika'] as $url) {
+            $this->getJson($url)->assertForbidden();
+        }
+    }
+
     public function test_platform_fallback_keeps_single_tenant_installations_working(): void
     {
         config()->set('nabilet.platform_admins', []);
@@ -83,6 +142,26 @@ class AuditHardeningWave2Test extends TestCase
         DB::table('events')->where('id', $eventId)->update(['status' => 'draft']);
 
         return [$eventId, (string) DB::table('events')->where('id', $eventId)->value('slug')];
+    }
+
+    private function memberIn(int $organizationId, string $email): User
+    {
+        $now = now();
+        $memberRoleId = (int) (DB::table('roles')->where('slug', 'member')->value('id')
+            ?? DB::table('roles')->insertGetId(['name' => 'Участник', 'slug' => 'member']));
+        $userId = (int) DB::table('users')->insertGetId([
+            'public_id' => (string) Str::ulid()->toBase32(),
+            'email' => $email,
+            'status' => 'active',
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+        DB::table('user_organization')->insert([
+            'user_id' => $userId, 'organization_id' => $organizationId,
+            'role_id' => $memberRoleId, 'created_at' => $now,
+        ]);
+
+        return User::query()->findOrFail($userId);
     }
 
     private function admin(string $email = 'admin@example.com'): User

@@ -184,4 +184,36 @@ final class YandexDiskBackupServiceTest extends TestCase
 
         $this->assertStringContainsString('password="pa\\"ss\\\\word"', $contents);
     }
+
+    /** Пустой дамп не должен выгружаться как «успешный бэкап». */
+    public function testTheDumpSelfCheckRejectsAnEmptyFile(): void
+    {
+        $path = tempnam(sys_get_temp_dir(), 'nbk_empty_');
+        file_put_contents($path, "-- MySQL dump\n-- nothing else\n");
+        try {
+            $this->assertFalse(YandexDiskBackupService::dumpLooksValid($path));
+        } finally {
+            @unlink($path);
+        }
+    }
+
+    /** Нормальный дамп содержит CREATE TABLE в первой части файла. */
+    public function testTheDumpSelfCheckAcceptsARealSchemaDump(): void
+    {
+        $path = tempnam(sys_get_temp_dir(), 'nbk_dump_');
+        $dump = "-- MySQL dump 10.13\n" . str_repeat("-- padding\n", 200)
+            . "CREATE TABLE `settings` (\n  `id` bigint unsigned NOT NULL\n);\n";
+        file_put_contents($path, $dump);
+        try {
+            $this->assertTrue(YandexDiskBackupService::dumpLooksValid($path));
+        } finally {
+            @unlink($path);
+        }
+    }
+
+    /** Несуществующий файл — тоже провал самопроверки, а не тихий успех. */
+    public function testTheDumpSelfCheckRejectsAMissingFile(): void
+    {
+        $this->assertFalse(YandexDiskBackupService::dumpLooksValid(sys_get_temp_dir() . '/nbk-missing-' . uniqid()));
+    }
 }

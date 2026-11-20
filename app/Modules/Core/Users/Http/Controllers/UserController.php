@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\DB;
 use Nabilet\Core\Errors\NotFoundError;
 use Nabilet\Core\Errors\ValidationError;
 use Nabilet\Core\Support\Paging;
+use Nabilet\Core\Support\StaffRole;
 use Nabilet\Core\Support\UserOrganization;
 use Nabilet\Modules\Auth\Validation\PasswordRules;
 use Nabilet\Modules\Core\Users\Domain\UserStatus;
@@ -36,7 +37,7 @@ class UserController
     public function index(Request $request): JsonResponse
     {
         $limit = Paging::limit((int) $request->get('limit', 15), 15, 100);
-        $users = $this->service->searchUsers('', $limit);
+        $users = $this->service->searchUsers('', $limit, $this->tenantOrganizationId($request));
 
         return response()->json([
             'data' => $users->items(),
@@ -49,9 +50,9 @@ class UserController
         ]);
     }
 
-    public function show(string $publicId): JsonResponse
+    public function show(Request $request, string $publicId): JsonResponse
     {
-        return response()->json(['data' => $this->findOrFail($publicId)]);
+        return response()->json(['data' => $this->findOrFail($publicId, $this->tenantOrganizationId($request))]);
     }
 
     public function store(Request $request): JsonResponse
@@ -75,7 +76,7 @@ class UserController
 
     public function update(Request $request, string $publicId): JsonResponse
     {
-        $user = $this->findOrFail($publicId);
+        $user = $this->findOrFail($publicId, $this->tenantOrganizationId($request));
 
         $validated = $request->validate([
             'email' => 'sometimes|email|unique:users,email,' . $user->id,
@@ -95,9 +96,9 @@ class UserController
         return response()->json(['data' => $updatedUser, 'message' => 'User updated successfully']);
     }
 
-    public function destroy(string $publicId): JsonResponse
+    public function destroy(Request $request, string $publicId): JsonResponse
     {
-        $this->service->deleteUser($this->findOrFail($publicId));
+        $this->service->deleteUser($this->findOrFail($publicId, $this->tenantOrganizationId($request)));
 
         return response()->json(['message' => 'User deleted successfully']);
     }
@@ -182,7 +183,7 @@ class UserController
         $query = $request->get('q', '');
         $limit = Paging::limit((int) $request->get('limit', 15), 15, 100);
 
-        $users = $this->service->searchUsers($query, $limit);
+        $users = $this->service->searchUsers($query, $limit, $this->tenantOrganizationId($request));
 
         return response()->json([
             'data' => $users->items(),
@@ -193,6 +194,22 @@ class UserController
                 'last_page' => $users->lastPage(),
             ],
         ]);
+    }
+
+    /**
+     * Организация, в которой администратор видит пользователей.
+     *
+     * null — платформенный админ (или одноарендаторская установка без списка),
+     * видит всех. 0 — нет членства: подзапрос по organization_id=0 не вернёт
+     * ни одного пользователя, то есть отказ закрытый, а не «все».
+     */
+    private function tenantOrganizationId(Request $request): ?int
+    {
+        if (StaffRole::isPlatformAdmin($request->user())) {
+            return null;
+        }
+
+        return UserOrganization::id($request->user()) ?? 0;
     }
 
     /**

@@ -11,7 +11,7 @@ use Nabilet\Modules\Matrix\Http\Controllers\MatrixSettingsController;
 // сотрудники, и настраивается он токеном доступа к Synapse. Поэтому весь раздел
 // под `admin` поверх `auth:api`: покупателю здесь делать нечего, а токен — это
 // полный доступ к аккаунту бота.
-Route::prefix('admin/matrix')->middleware(['auth:api', 'admin'])->group(function () {
+Route::prefix('admin/matrix')->middleware(['auth:api', 'admin', \Nabilet\Core\Http\Middleware\EnsurePlatformAdmin::class])->group(function () {
     Route::get('/settings', [MatrixSettingsController::class, 'show']);
     Route::put('/settings', [MatrixSettingsController::class, 'update']);
     Route::post('/test', [MatrixSettingsController::class, 'sendTest']);

@@ -159,7 +159,11 @@ class UserRepository
         })->exists();
     }
 
-    public function search(string $query, int $limit = 15): LengthAwarePaginator
+    /**
+     * @param  int|null  $organizationId  null — платформенный админ (все),
+     *                                    0 — нет членства (не видно никого)
+     */
+    public function search(string $query, int $limit = 15, ?int $organizationId = null): LengthAwarePaginator
     {
         // Экранирование обязательно, и раньше его здесь НЕ БЫЛО: поиск
         // подставлял ввод прямо в шаблон (`"%{$query}%"`), поэтому `_` совпадал с
@@ -168,12 +172,23 @@ class UserRepository
         // заставить MySQL читать всю таблицу. См. `LikePattern`.
         $pattern = LikePattern::contains($query);
 
-        return $this->model->where(function ($q) use ($pattern) {
-                $q->whereRaw(LikePattern::expression('first_name'), [$pattern])
-                  ->orWhereRaw(LikePattern::expression('last_name'), [$pattern])
-                  ->orWhereRaw(LikePattern::expression('email'), [$pattern]);
-            })
-            ->with(['roles'])
-            ->paginate($limit);
+        $queryBuilder = $this->model->where(function ($q) use ($pattern) {
+            $q->whereRaw(LikePattern::expression('first_name'), [$pattern])
+              ->orWhereRaw(LikePattern::expression('last_name'), [$pattern])
+              ->orWhereRaw(LikePattern::expression('email'), [$pattern]);
+        });
+
+        if ($organizationId !== null) {
+            // Подзапрос по таблице, а не whereHas по Eloquent-связи: модель
+            // User не tenant-scoped, но явный subquery дешевле и не зависит от
+            // глобальных скоупов Organization.
+            $queryBuilder->whereIn('id', static function ($sub) use ($organizationId): void {
+                $sub->select('user_id')
+                    ->from('user_organization')
+                    ->where('organization_id', $organizationId);
+            });
+        }
+
+        return $queryBuilder->with(['roles'])->paginate($limit);
     }
 }

@@ -20,7 +20,7 @@ Route::prefix('notification-templates')->middleware(['auth:api', 'admin'])->grou
 
 // SMTP-РЅР°СЃС‚СЂРѕР№РєРё РІ Р°РґРјРёРЅРєРµ: Р±РµР· РЅРёС… РїРѕС‡С‚Сѓ РЅРµР»СЊР·СЏ РІРєР»СЋС‡РёС‚СЊ Р±РµР· РїСЂР°РІРєРё .env Рё
 // РїРµСЂРµР·Р°РїСѓСЃРєР°, С‡С‚Рѕ РЅР° С€Р°СЂРµРґ-С…РѕСЃС‚РёРЅРіРµ РЅРµРґРѕСЃС‚СѓРїРЅРѕ РІР»Р°РґРµР»СЊС†Сѓ РјР°РіР°Р·РёРЅР°.
-Route::prefix('admin/mail')->middleware(['auth:api', 'admin'])->group(function () {
+Route::prefix('admin/mail')->middleware(['auth:api', 'admin', \Nabilet\Core\Http\Middleware\EnsurePlatformAdmin::class])->group(function () {
     Route::get('/settings', [MailSettingsController::class, 'show']);
     Route::put('/settings', [MailSettingsController::class, 'update']);
     Route::post('/test', [MailSettingsController::class, 'sendTest']);

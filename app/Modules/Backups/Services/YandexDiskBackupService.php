@@ -66,6 +66,34 @@ class YandexDiskBackupService
     }
 
     /**
+     * Самопроверка дампа: файл не пустой и в нём есть definition таблицы.
+     *
+     * Простая проверка размера недостаточна: файл в 2 КБ с одним `-- Header`
+     * выглядит «непустым», но восстанавливать нечего. Ищем `CREATE TABLE` в
+     * первых 128 КБ — структура дампа начинается с DDL, а читать
+     * многосотмегабайтный файл целиком ради одной проверки незачем.
+     */
+    public static function dumpLooksValid(string $path): bool
+    {
+        if (! is_file($path) || filesize($path) < 1024) {
+            return false;
+        }
+
+        $handle = fopen($path, 'rb');
+        if ($handle === false) {
+            return false;
+        }
+
+        try {
+            $head = (string) fread($handle, 131072);
+        } finally {
+            fclose($handle);
+        }
+
+        return str_contains($head, 'CREATE TABLE');
+    }
+
+    /**
      * Содержимое временного файла креденшелов для `mysqldump`.
      *
      * Пароль ЗДЕСЬ ЕСТЬ — и это правильно: файл читает только `mysqldump`, он
@@ -130,6 +158,16 @@ class YandexDiskBackupService
             }
 
             throw new \RuntimeException("Failed to create database backup (mysqldump exited with {$exitCode})");
+        }
+
+        // mysqldump может завершиться с кодом 0 и при этом записать пустой или
+        // урезанный файл (неверная БД, сбой диска, нет места). Выгружать такой
+        // «бэкап» на Диск и удалять локальную копию нельзя — это потеря данных
+        // без возможности восстановления. Проверка дешёвая, и делать её надо
+        // ДО шифрования и выгрузки.
+        if (! self::dumpLooksValid($backupPath)) {
+            @unlink($backupPath);
+            throw new \RuntimeException('Database backup failed its self-check: the dump is empty or has no table definitions.');
         }
 
         if ($encrypt) {

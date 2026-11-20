@@ -102,7 +102,7 @@ Route::prefix('admin/raffles')->middleware(['auth:api', 'admin'])->group(functio
 //
 // Один экран настроек по образцу `admin/mail`: GET отдаёт значения и список
 // уровней для выпадающего списка порога, PUT сохраняет.
-Route::prefix('admin/loyalty')->middleware(['auth:api', 'admin'])->group(function (): void {
+Route::prefix('admin/loyalty')->middleware(['auth:api', 'admin', \Nabilet\Core\Http\Middleware\EnsurePlatformAdmin::class])->group(function (): void {
     Route::get('/settings', [LoyaltySettingsController::class, 'show']);
     Route::put('/settings', [LoyaltySettingsController::class, 'update']);
 });
