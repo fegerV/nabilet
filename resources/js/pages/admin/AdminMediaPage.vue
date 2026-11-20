@@ -427,13 +427,19 @@ onBeforeUnmount(() => observer?.disconnect())
 </script>
 
 <template>
-  <div class="mx-auto flex max-w-[1500px] gap-5">
-    <!-- Дерево папок -->
-    <aside class="hidden w-56 flex-none lg:block">
-      <div class="surface-card sticky top-20 p-3">
+  <div class="mx-auto flex max-w-[1500px] flex-col gap-5 lg:flex-row">
+    <!-- Дерево папок. На узких экранах оно не исчезает, а переезжает над
+         сеткой: вместе с ним пряталась и кнопка создания папки. -->
+    <aside class="w-full flex-none lg:w-56">
+      <div class="surface-card p-3 lg:sticky lg:top-20">
         <div class="flex items-center justify-between gap-2">
           <h2 class="text-xs font-semibold uppercase tracking-wider text-subtle">Папки</h2>
-          <button type="button" class="text-lg leading-none text-brand-300 hover:text-brand-200" title="Новая папка" @click="openFolderCreate">＋</button>
+          <button type="button"
+                  class="rounded-lg border border-brand-500/30 bg-brand-500/10 px-2 py-1 text-xs text-brand-300 hover:bg-brand-500/20"
+                  title="Создать папку"
+                  @click="openFolderCreate">
+            ＋ Новая папка
+          </button>
         </div>
         <ul class="mt-2 space-y-0.5">
           <li>
@@ -470,9 +476,12 @@ onBeforeUnmount(() => observer?.disconnect())
             </template>
           </p>
         </div>
-        <NButton variant="primary" :disabled="uploading" @click="fileInput?.click()">
-          {{ uploading ? `Загрузка ${uploadProgress.done}/${uploadProgress.total}…` : 'Загрузить файлы' }}
-        </NButton>
+        <div class="flex gap-2">
+          <NButton variant="secondary" @click="openFolderCreate">＋ Папка</NButton>
+          <NButton variant="primary" :disabled="uploading" @click="fileInput?.click()">
+            {{ uploading ? `Загрузка ${uploadProgress.done}/${uploadProgress.total}…` : 'Загрузить файлы' }}
+          </NButton>
+        </div>
       </div>
 
       <input ref="fileInput" type="file" multiple class="hidden" :accept="MEDIA_ACCEPT" @change="onFilesSelected" />
@@ -540,12 +549,18 @@ onBeforeUnmount(() => observer?.disconnect())
             </label>
 
             <div class="relative aspect-square bg-surface-3">
+              <!--
+                Картинка absolutely positioned: иначе её естественная высота
+                (например, вертикальная афиша 600×1200) участвует в расчёте
+                высоты flex-элемента, и aspect-square превращается в 1:2 —
+                превью получалось вертикальным вместо квадратного.
+              -->
               <img v-if="kindOf(item.mime_type) === 'image'"
                    :src="assetSrc(item)"
                    :alt="item.alt_text || item.filename"
-                   class="h-full w-full object-cover"
+                   class="absolute inset-0 h-full w-full object-cover"
                    loading="lazy" />
-              <div v-else class="flex h-full w-full items-center justify-center text-5xl" aria-hidden="true">
+              <div v-else class="absolute inset-0 flex items-center justify-center text-5xl" aria-hidden="true">
                 {{ KIND_ICON[kindOf(item.mime_type)] }}
               </div>
             </div>
