@@ -10,6 +10,7 @@ use Illuminate\Support\ServiceProvider;
 use Nabilet\Core\Support\Sha256Hex;
 use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Analytics\Models\EmbedDomain;
+use Nabilet\Modules\Embed\Domain\EmbedOrigin;
 use Nabilet\Modules\Embed\Domain\EmbedScope;
 use Nabilet\Modules\Embed\Services\EmbedAccessService;
 use Nabilet\Modules\Security\Domain\ApiKeyPolicy;
@@ -87,6 +88,20 @@ final class EmbedFrameProvider extends ServiceProvider
             $origins[] = 'http://' . $domain;
         }
 
-        return $origins;
+        // Порт в whitelist не хранится: список — это САЙТЫ. Но рамку часто
+        // открывают на staging-порту (127.0.0.1:8001, partner.example:8443),
+        // а CSP чувствителен к порту. Добавляем точный origin из Referer,
+        // ТОЛЬКО если его хост уже разрешён тем же списком доменов.
+        $referer = $request->header('Referer') ?? $request->header('Origin');
+        $host = EmbedOrigin::hostFrom($referer);
+        if ($host !== null && EmbedOrigin::isAllowed($host, $domains)) {
+            $parts = parse_url((string) $referer);
+            if ($parts !== false && isset($parts['scheme'], $parts['host'])) {
+                $origins[] = strtolower((string) $parts['scheme']) . '://' . strtolower((string) $parts['host'])
+                    . (isset($parts['port']) ? ':' . (int) $parts['port'] : '');
+            }
+        }
+
+        return array_values(array_unique($origins));
     }
 }

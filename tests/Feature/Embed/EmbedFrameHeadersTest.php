@@ -36,6 +36,35 @@ final class EmbedFrameHeadersTest extends TestCase
         );
     }
 
+    public function test_a_whitelisted_host_on_a_nonstandard_port_is_allowed(): void
+    {
+        $token = $this->seedEmbedAccess($this->organizationId(), 'partner.example');
+
+        // CSP чувствителен к порту, а whitelist хранит только сайт. Хост из
+        // Referer всё равно проверяется тем же списком доменов.
+        $response = $this->get('/api/v1/health?embed_token=' . urlencode($token), [
+            'Referer' => 'http://partner.example:8443/afisha',
+        ]);
+
+        $this->assertStringContainsString(
+            'frame-ancestors https://partner.example http://partner.example http://partner.example:8443',
+            (string) $response->headers->get('Content-Security-Policy'),
+        );
+    }
+
+    public function test_an_unlisted_referer_does_not_widen_frame_ancestors(): void
+    {
+        $token = $this->seedEmbedAccess($this->organizationId(), 'partner.example');
+
+        $response = $this->get('/api/v1/health?embed_token=' . urlencode($token), [
+            'Referer' => 'http://evil.example:8443/afisha',
+        ]);
+
+        $csp = (string) $response->headers->get('Content-Security-Policy');
+        $this->assertStringNotContainsString('evil.example', $csp);
+        $this->assertStringNotContainsString(':8443', $csp);
+    }
+
     public function test_an_unknown_token_fails_closed(): void
     {
         $response = $this->get('/api/v1/health?embed_token=never-issued');
