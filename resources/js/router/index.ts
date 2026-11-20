@@ -283,6 +283,12 @@ const routes: RouteRecordRaw[] = [
       { path: 'agent', name: 'admin-agent', component: () => import('@/pages/admin/AdminAgentPage.vue') },
       // Бэкапы: список локальных копий, скачивание и статус авто-выгрузки.
       { path: 'backups', name: 'admin-backups', component: () => import('@/pages/admin/AdminBackupsPage.vue') },
+      // Возврат из Яндекс OAuth: токен приходит во фрагменте URL.
+      {
+        path: 'backups/oauth',
+        name: 'admin-backups-oauth',
+        component: () => import('@/pages/admin/YandexOAuthCallbackPage.vue'),
+      },
       // Catch-all для неизвестных адресов админки. Разделов-заглушек больше нет:
       // все пункты меню ведут на реальные экраны, поэтому единственное, чем может
       // быть этот маршрут, — опечатка в URL. Он отдаёт честный «Раздел не найден»

@@ -86,6 +86,22 @@ final class BackupRotationTest extends TestCase
         $this->assertContains('full_2026-01-01_03-00-00.zip', $expired);
     }
 
+    public function test_files_backups_form_their_own_queue(): void
+    {
+        $names = array_merge(
+            $this->daily(3, 'db_nabilet', 'sql'),
+            $this->daily(3, 'files', 'zip'),
+            $this->daily(3, 'full', 'zip'),
+        );
+
+        $expired = BackupRotation::selectExpired($names, 2);
+
+        $this->assertCount(3, $expired, 'три режима — три независимые очереди');
+        $this->assertContains('db_nabilet_2026-01-01_03-00-00.sql', $expired);
+        $this->assertContains('files_2026-01-01_03-00-00.zip', $expired);
+        $this->assertContains('full_2026-01-01_03-00-00.zip', $expired);
+    }
+
     public function test_encrypted_backups_are_rotated_too(): void
     {
         $names = [

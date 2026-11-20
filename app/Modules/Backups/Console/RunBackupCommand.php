@@ -22,7 +22,8 @@ use Illuminate\Support\Facades\Log;
 final class RunBackupCommand extends Command
 {
     protected $signature = 'backup:run
-        {--database-only : Только дамп БД, без файлов storage}
+        {--mode=full : Режим: db (только БД), files (только файлы), full (БД + файлы)}
+        {--database-only : Только дамп БД, без файлов storage (алиас --mode=db)}
         {--keep-local : Не удалять локальную копию после выгрузки}
         {--no-encrypt : НЕ шифровать бэкап (по умолчанию шифруем, если задан ключ)}
         {--keep= : Сколько последних копий хранить в каждой очереди (по умолчанию NABILET_BACKUP_KEEP)}
@@ -58,14 +59,18 @@ final class RunBackupCommand extends Command
             $encrypt = false;
         }
 
+        $mode = $this->backupMode();
+
         try {
-            $result = $this->option('database-only')
-                ? $this->backupDatabaseOnly($service, $keepLocal, $encrypt)
-                : $service->createFullBackup(deleteLocal: ! $keepLocal, encrypt: $encrypt);
+            $result = match ($mode) {
+                'db' => $this->backupDatabaseOnly($service, $keepLocal, $encrypt),
+                'files' => $service->createFilesBackup(deleteLocal: ! $keepLocal, encrypt: $encrypt),
+                'full' => $service->createFullBackup(deleteLocal: ! $keepLocal, encrypt: $encrypt),
+            };
         } catch (\Throwable $e) {
             Log::error('Backup failed', [
                 'exception' => $e->getMessage(),
-                'database_only' => (bool) $this->option('database-only'),
+                'mode' => $mode,
             ]);
 
             $this->error('Резервное копирование не удалось: ' . $e->getMessage());
@@ -73,7 +78,11 @@ final class RunBackupCommand extends Command
             return self::FAILURE;
         }
 
-        $this->info('Бэкап создан и выгружен: ' . (string) ($result['remote_path'] ?? '—'));
+        $this->info(sprintf(
+            'Бэкап [%s] создан и выгружен: %s',
+            $mode,
+            (string) ($result['remote_path'] ?? '—'),
+        ));
 
         // Ротация — ПОСЛЕ успешной выгрузки. До неё удалять старое нельзя:
         // если диск недоступен и новый бэкап не создан, старая копия остаётся
@@ -94,6 +103,21 @@ final class RunBackupCommand extends Command
         }
 
         return self::SUCCESS;
+    }
+
+    /** Режим бэкапа: --mode или устаревший --database-only как алиас. */
+    private function backupMode(): string
+    {
+        if ($this->option('database-only')) {
+            return 'db';
+        }
+
+        $mode = strtolower(trim((string) ($this->option('mode') ?? 'full')));
+        if (! in_array($mode, ['db', 'files', 'full'], true)) {
+            throw new \InvalidArgumentException('--mode должен быть db, files или full.');
+        }
+
+        return $mode;
     }
 
     /**

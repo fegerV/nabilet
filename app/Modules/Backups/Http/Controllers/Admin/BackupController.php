@@ -5,8 +5,13 @@ declare(strict_types=1);
 namespace Nabilet\Modules\Backups\Http\Controllers\Admin;
 
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Nabilet\Core\Errors\NotFoundError;
+use Nabilet\Core\Errors\ValidationError;
+use Nabilet\Modules\Backups\Jobs\RunBackupJob;
+use Nabilet\Modules\Backups\Services\YandexDiskBackupService;
+use Nabilet\Modules\Backups\Services\YandexDiskSettings;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 /**
@@ -26,6 +31,11 @@ use Symfony\Component\HttpFoundation\BinaryFileResponse;
 final class BackupController extends Controller
 {
     private const DIR = 'backups';
+
+    public function __construct(
+        private readonly YandexDiskSettings $settings,
+        private readonly YandexDiskBackupService $disk,
+    ) {}
 
     /**
      * Список локальных бэкапов (имя, размер, дата), от новых к старым.
@@ -73,6 +83,109 @@ final class BackupController extends Controller
         }
 
         return response()->download($full, $safe);
+    }
+
+    /** Состояние подключения к Диску и последнего запуска. */
+    public function settings(): JsonResponse
+    {
+        return response()->json(['data' => $this->settings->forAdmin()]);
+    }
+
+    /** Сохранить ClientID приложения Яндекс OAuth. */
+    public function saveClientId(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'client_id' => ['required', 'string', 'max:255'],
+        ]);
+        $this->settings->saveClientId((string) $data['client_id']);
+
+        return response()->json(['data' => $this->settings->forAdmin()]);
+    }
+
+    /**
+     * Принять токен из OAuth-колбэка (fragment обработал браузер).
+     *
+     * Токен шифруется и больше НЕ возвращается наружу — только признак
+     * «подключён». Никогда не пишем его в логи и в ответ.
+     */
+    public function saveToken(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'access_token' => ['required', 'string', 'max:2048'],
+            'client_id' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'backups_path' => ['sometimes', 'nullable', 'string', 'max:255'],
+        ]);
+
+        if (isset($data['client_id'])) {
+            $this->settings->saveClientId((string) $data['client_id']);
+        }
+        if (isset($data['backups_path'])) {
+            $this->settings->saveBackupsPath((string) $data['backups_path']);
+        }
+        $this->settings->saveToken((string) $data['access_token']);
+
+        \Illuminate\Support\Facades\Log::channel('security')->info('Yandex Disk connected', [
+            'user_id' => $request->user()?->getAuthIdentifier(),
+        ]);
+
+        return response()->json(['data' => $this->settings->forAdmin()]);
+    }
+
+    public function disconnect(): JsonResponse
+    {
+        $this->settings->forgetToken();
+
+        return response()->json(['data' => $this->settings->forAdmin()]);
+    }
+
+    /** Проверить токен дешёвым запросом к API Диска. */
+    public function testConnection(): JsonResponse
+    {
+        $result = $this->disk->testConnection();
+
+        return response()->json(['data' => $result], $result['ok'] ? 200 : 422);
+    }
+
+    /** Резервные копии на Диске (только имена — скачивание через Диск). */
+    public function remote(): JsonResponse
+    {
+        try {
+            return response()->json(['data' => $this->disk->listRemoteBackups()]);
+        } catch (\Throwable $e) {
+            throw new ValidationError(['disk' => [$e->getMessage()]]);
+        }
+    }
+
+    /**
+     * Поставить бэкап в очередь. Режим db | files | full.
+     *
+     * Сам mysqldump НЕ запускается здесь: результат приходит в статусе
+     * последнего запуска, который пишет RunBackupJob.
+     */
+    public function run(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'mode' => ['required', 'string', 'in:db,files,full'],
+        ]);
+        $mode = (string) $data['mode'];
+
+        if (! $this->settings->isConnected()) {
+            throw new ValidationError(['disk' => ['Сначала подключите Яндекс.Диск.']]);
+        }
+
+        RunBackupJob::dispatch($mode, (int) $request->user()->getAuthIdentifier());
+        $this->settings->recordRun($mode, 'queued', 'Задача поставлена в очередь.');
+
+        \Illuminate\Support\Facades\Log::channel('security')->info('Backup queued', [
+            'mode' => $mode,
+            'user_id' => $request->user()->getAuthIdentifier(),
+        ]);
+
+        return response()->json(['data' => [
+            'queued' => true,
+            'mode' => $mode,
+            'message' => 'Бэкап поставлен в очередь. Результат появится в статусе последнего запуска.',
+        ]], 202);
     }
 
     /**

@@ -249,6 +249,117 @@ class YandexDiskBackupService
     }
 
     /**
+     * Проверка токена: дешёвый запрос к API Диска без записи файлов.
+     *
+     * Возвращает ok=false с текстом ошибки вместо исключения — админке
+     * нужно показать понятную причину («токен истёк», «нет прав»), а не 500.
+     *
+     * @return array{ok: bool, error: string|null}
+     */
+    public function testConnection(): array
+    {
+        $token = (string) ($this->oauthToken ?? '');
+        if ($token === '') {
+            return ['ok' => false, 'error' => 'Токен Яндекс.Диска не задан.'];
+        }
+
+        $ch = curl_init('https://cloud-api.yandex.net/v1/disk?fields=type,free_space');
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 20);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, ["Authorization: OAuth {$token}"]);
+
+        $response = curl_exec($ch);
+        $status = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $error = curl_error($ch);
+        curl_close($ch);
+
+        if ($error !== '') {
+            return ['ok' => false, 'error' => 'Не удалось связаться с API Диска: '.$error];
+        }
+        if ($status === 401 || $status === 403) {
+            return [
+                'ok' => false,
+                'error' => 'Токен недействителен или у него нет прав на Диск (HTTP '.$status.').',
+            ];
+        }
+        if ($status < 200 || $status >= 300) {
+            return ['ok' => false, 'error' => 'Диск ответил HTTP '.$status.'.'];
+        }
+
+        $data = json_decode((string) $response, true);
+        if (! is_array($data) || ($data['type'] ?? null) !== 'dir') {
+            return ['ok' => false, 'error' => 'Диск вернул неожиданный ответ.'];
+        }
+
+        return ['ok' => true, 'error' => null];
+    }
+
+    /**
+     * Бэкап только файлов системы: загруженные изображения, документы,
+     * а также конфигурация (.env) — но без дампа БД.
+     *
+     * .env попадает в архив только при заданном ключе шифрования: в противном
+     * случае архив с секретами уехал бы на внешний диск в открытом виде.
+     *
+     * @return array{success: bool, remote_path: string, url: string|null}
+     */
+    public function createFilesBackup(bool $deleteLocal = true, bool $encrypt = false)
+    {
+        $timestamp = date('Y-m-d_H-i-s');
+        $workDir = storage_path("app/backups/files_{$timestamp}");
+
+        if (! is_dir($workDir) && ! mkdir($workDir, 0755, true) && ! is_dir($workDir)) {
+            throw new \RuntimeException("Cannot create the backup directory: {$workDir}");
+        }
+
+        try {
+            $this->copyDirectory(storage_path('app/public'), "{$workDir}/storage_public");
+            $configIncluded = $this->copyConfig($workDir, $encrypt);
+
+            $archivePath = "{$workDir}.zip";
+            $this->createZip($workDir, $archivePath);
+
+            $uploadPath = $archivePath;
+            $remoteName = "files_{$timestamp}.zip";
+            if ($encrypt) {
+                $uploadPath = $this->encryptor()->encryptFile($archivePath);
+                @unlink($archivePath);
+                $remoteName .= '.enc';
+            }
+
+            $remoteDir = $this->remoteBackupsDir();
+
+            return $this->uploadToYandexDisk($uploadPath, "{$remoteDir}/{$remoteName}", $deleteLocal)
+                + ['config_included' => $configIncluded];
+        } finally {
+            $this->deleteDirectory($workDir);
+        }
+    }
+
+    /**
+     * Скопировать .env в архив. Без ключа шифрования секрет НЕ выносится
+     * за пределы хостинга — вместо этого в архив кладётся пояснение.
+     */
+    private function copyConfig(string $workDir, bool $encrypt): bool
+    {
+        $envPath = base_path('.env');
+
+        if (! $encrypt || ! is_file($envPath)) {
+            file_put_contents(
+                "{$workDir}/CONFIG-NOT-INCLUDED.txt",
+                "Файл .env не включён: задайте NABILET_BACKUP_ENCRYPTION_KEY, "
+                ."чтобы копировать конфигурацию с секретами в зашифрованном архиве.\n",
+            );
+
+            return false;
+        }
+
+        copy($envPath, "{$workDir}/env.txt");
+
+        return true;
+    }
+
+    /**
      * Полный бэкап системы (БД + файлы).
      *
      * @param  bool  $deleteLocal  удалить локальный архив после успешной выгрузки
@@ -267,9 +378,10 @@ class YandexDiskBackupService
         $dbBackupPath = $this->createDatabaseBackup();
         rename($dbBackupPath, "{$backupDir}/database.sql");
 
-        // Бэкап файлов (storage, public uploads)
+        // Бэкап файлов (storage, public uploads) и конфигурации.
         $this->copyDirectory(storage_path('app/public'), "{$backupDir}/storage_public");
-        
+        $this->copyConfig($backupDir, $encrypt);
+
         // Архивируем
         $archivePath = "{$backupDir}.zip";
         $this->createZip($backupDir, $archivePath);

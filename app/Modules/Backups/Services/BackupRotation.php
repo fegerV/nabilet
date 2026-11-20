@@ -16,6 +16,7 @@ namespace Nabilet\Modules\Backups\Services;
  *   - удаляются ТОЛЬКО файлы, чьё имя точно соответствует формату, который
  *     создаёт `YandexDiskBackupService`:
  *       `db_<база>_YYYY-MM-DD_HH-MM-SS.sql[.enc]`
+ *       `files_YYYY-MM-DD_HH-MM-SS.zip[.enc]`
  *       `full_YYYY-MM-DD_HH-MM-SS.zip[.enc]`
  *     Всё остальное (`.gitignore`, чужой файл, директория `full_*`, дамп с
  *     нестандартным именем) остаётся на месте — политика fail-closed;
@@ -34,7 +35,7 @@ final class BackupRotation
     /**
      * Формат имени, который создаёт сервис бэкапов. Группы: база, дата, тип.
      */
-    private const NAME_PATTERN = '/^(?:db_(?P<db>.+)_|full_)(?P<date>\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2})\.(?:sql|zip)(?:\.enc)?$/';
+    private const NAME_PATTERN = '/^(?:db_(?P<db>.+)_|full_|files_)(?P<date>\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2})\.(?:sql|zip)(?:\.enc)?$/';
 
     /**
      * Имена, которые нужно удалить.
@@ -107,10 +108,18 @@ final class BackupRotation
     }
 
     /**
-     * Очередь ротации: полные архивы и дампы БД независимы.
+     * Очередь ротации: три независимых режима. Делить их нельзя — недельный
+     * архив файлов и ежедневный дамп БД имеют разную ценность и частоту.
      */
     private static function groupOf(string $name): string
     {
-        return str_starts_with($name, 'full_') ? 'full' : 'db';
+        if (str_starts_with($name, 'full_')) {
+            return 'full';
+        }
+        if (str_starts_with($name, 'files_')) {
+            return 'files';
+        }
+
+        return 'db';
     }
 }
