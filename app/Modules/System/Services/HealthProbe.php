@@ -7,6 +7,7 @@ namespace Nabilet\Modules\System\Services;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
+use Nabilet\Core\Support\DatabaseInvariants;
 
 /**
  * Проверка работоспособности установки — единственный источник истины о том,
@@ -46,6 +47,12 @@ final class HealthProbe
     public const NOT_CONFIGURED = 'not_configured';
 
     public const ERROR = 'error';
+
+    /** Кэш дорогой проверки служебных таблиц: /health ходит сюда часто. */
+    private const INVARIANTS_CACHE_KEY = 'health:database-invariants';
+
+    /** @var int TTL в секундах */
+    private const INVARIANTS_CACHE_TTL = 3600;
 
     /**
      * @return array<string, array{state: string, critical: bool}>
@@ -128,6 +135,78 @@ final class HealthProbe
         } catch (\Throwable) {
             return ['state' => self::ERROR, 'critical' => true];
         }
+    }
+
+    /**
+     * Второй барьер БД: CHECK-ограничения и триггер неизменяемости схемы.
+     *
+     * На TimeWeb с MySQL 5.7 миграции честно помечаются «Ran», но CHECK не
+     * создаются, а CREATE TRIGGER часто отклоняется из-за прав на binary log.
+     * Установщик предупреждает один раз в журнале, а затем об этом забывают —
+     * поэтому состояние попадает в самопроверку и админскую диагностику.
+     * Не критично: без CHECK система работает, сохраняя только PHP-барьер.
+     */
+    public function databaseInvariants(): array
+    {
+        try {
+            /** @var array{state: string, critical: bool, detail: string} $result */
+            $result = Cache::remember(self::INVARIANTS_CACHE_KEY, self::INVARIANTS_CACHE_TTL, function (): array {
+                $connection = DB::connection();
+                $version = (string) ($connection->selectOne('select version() as v')?->v ?? '');
+                $minimum = DatabaseInvariants::missingCheckSupport($version);
+
+                if ($minimum !== null) {
+                    return [
+                        'state' => self::DEGRADED,
+                        'critical' => false,
+                        'detail' => sprintf(
+                            '%s не исполняет CHECK (нужен %s %s+): инварианты держит только код.',
+                            $version,
+                            DatabaseInvariants::isMariaDb($version) ? 'MariaDB' : 'MySQL',
+                            $minimum,
+                        ),
+                    ];
+                }
+
+                $checks = (int) ($connection->selectOne(
+                    "select count(*) as c from information_schema.table_constraints "
+                    . "where constraint_type='CHECK' and table_schema=database()"
+                )?->c ?? 0);
+                if ($checks < 40) {
+                    return [
+                        'state' => self::DEGRADED,
+                        'critical' => false,
+                        'detail' => sprintf('CHECK-ограничения не созданы (найдено %d, ожидалось ≥40).', $checks),
+                    ];
+                }
+
+                $trigger = (int) ($connection->selectOne(
+                    "select count(*) as c from information_schema.triggers "
+                    . "where trigger_name='trg_schema_version_immutable' and trigger_schema=database()"
+                )?->c ?? 0);
+                if ($trigger < 1) {
+                    return [
+                        'state' => self::DEGRADED,
+                        'critical' => false,
+                        'detail' => 'Триггер неизменяемости опубликованной схемы зала не создан: проверьте права CREATE TRIGGER у учётной записи БД на хостинге.',
+                    ];
+                }
+
+                return [
+                    'state' => self::OK,
+                    'critical' => false,
+                    'detail' => sprintf('CHECK: %d, триггер схемы: есть.', $checks),
+                ];
+            });
+        } catch (\Throwable) {
+            return [
+                'state' => self::ERROR,
+                'critical' => false,
+                'detail' => 'Не удалось проверить ограничения БД.',
+            ];
+        }
+
+        return $result;
     }
 
     /**

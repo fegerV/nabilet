@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Routing\Controller;
 use Illuminate\Validation\ValidationException;
+use Nabilet\Core\Support\DatabaseInvariants;
 use Nabilet\Core\Support\PublicationStatus;
 use Nabilet\Modules\Core\Support\PublicId;
 use Nabilet\Modules\Core\Users\Domain\UserStatus;
@@ -519,18 +520,11 @@ ENV;
         return self::versionNeedsWarning($version);
     }
 
-    /** Чистая проверка строки версии — вынесена, чтобы покрыть тестами без БД. */
+    /** Чистая проверка строки версии — владелец правила в `DatabaseInvariants`. */
     private static function versionNeedsWarning(string $version): ?string
     {
-        if ($version === '') {
-            return null;
-        }
-
-        $numeric = preg_replace('/[^0-9.].*$/', '', $version) ?? '';
-        $isMaria = stripos($version, 'mariadb') !== false;
-        $minimum = $isMaria ? '10.2.1' : '8.0.16';
-
-        if (version_compare($numeric, $minimum, '>=')) {
+        $minimum = DatabaseInvariants::missingCheckSupport($version);
+        if ($minimum === null) {
             return null;
         }
 
@@ -540,7 +534,7 @@ ENV;
             . 'будут защищены только кодом. Для тестового стенда это допустимо, '
             . 'для реальных продаж переведите аккаунт на MySQL 8.0+.',
             $version,
-            $isMaria ? 'MariaDB' : 'MySQL',
+            DatabaseInvariants::isMariaDb($version) ? 'MariaDB' : 'MySQL',
             $minimum,
         );
     }

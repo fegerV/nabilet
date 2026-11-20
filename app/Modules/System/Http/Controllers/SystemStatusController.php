@@ -83,6 +83,12 @@ class SystemStatusController extends Controller
             'status' => $this->probe->status(),
             'checks' => [
                 'database' => $this->describe($checks['database'], 'Соединение с БД установлено'),
+                // CHECK/триггер — не «живость» БД, а глубина защиты. Отдельной
+                // строкой: на MySQL 5.7 это degrade, но не отказ узла.
+                'database_invariants' => $this->describe(
+                    $this->probe->databaseInvariants(),
+                    'CHECK и триггер схемы активны',
+                ),
                 'redis' => $this->describe($checks['redis'], 'Redis отвечает'),
                 'queue' => $this->describe($checks['queue'], 'Очередь доступна'),
                 // Диск и свежесть бэкапов решает `HostChecks` — тот же владелец,
@@ -265,18 +271,25 @@ class SystemStatusController extends Controller
     }
 
     /**
-     * @param  array{state: string, critical: bool}  $check
+     * @param  array{state: string, critical: bool, detail?: string}  $check
      * @return array<string, mixed>
      */
     private function describe(array $check, string $okMessage): array
     {
+        $detail = isset($check['detail']) && $check['detail'] !== ''
+            ? (string) $check['detail']
+            : 'Проверка не пройдена';
+
         return match ($check['state']) {
             HealthProbe::OK => ['status' => 'ok', 'message' => $okMessage],
             HealthProbe::NOT_CONFIGURED => [
                 'status' => 'info',
                 'message' => 'Не используется в текущей конфигурации',
             ],
-            default => ['status' => 'error', 'message' => 'Проверка не пройдена'],
+            // Деградация второго барьера БД — предупреждение, не отказ: система
+            // работает, но money-инварианты держит только код.
+            HealthProbe::DEGRADED => ['status' => 'warning', 'message' => $detail],
+            default => ['status' => 'error', 'message' => $detail],
         };
     }
 }
