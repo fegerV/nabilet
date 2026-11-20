@@ -186,8 +186,31 @@ class MediaController extends Controller
             ->where(function ($builder) use ($organizationId): void {
                 $builder->where('organization_id', $organizationId)
                     ->orWhereNull('organization_id');
-            })
-            ->orderByDesc('id');
+            });
+
+        // Папка: 0/отсутствие = «все файлы», положительный id = только её содержимое.
+        // Фильтр применяется к БД, а не к коллекции — иначе пагинация считала бы
+        // общее количество до фильтрации и страницы были бы пустыми.
+        $folderId = $request->query('folder_id');
+        if ($folderId !== null && $folderId !== '' && (int) $folderId > 0) {
+            $query->where('folder_id', (int) $folderId);
+        }
+
+        $search = trim((string) ($request->query('search') ?? ''));
+        if ($search !== '') {
+            $query->where(function ($q) use ($search): void {
+                $q->where('filename', 'like', '%'.$search.'%')
+                    ->orWhere('title', 'like', '%'.$search.'%');
+            });
+        }
+
+        $kind = $request->query('kind');
+        if (in_array($kind, ['image', 'video', 'document'], true)) {
+            $prefix = ['image' => 'image/%', 'video' => 'video/%', 'document' => 'application/pdf'][$kind];
+            $query->where('mime_type', 'like', $prefix);
+        }
+
+        $query->orderByDesc('id');
 
         $paginator = $query->paginate($perPage);
 
@@ -255,9 +278,11 @@ class MediaController extends Controller
             'position' => ['sometimes', 'nullable', 'integer', 'min:0'],
         ]);
 
+        $folderId = $this->validatedFolderId($request, $organizationId);
+
         $asset = $request->hasFile('file')
-            ? $this->storeUploaded($request, $organizationId)
-            : $this->storeRegistered($request, $organizationId);
+            ? $this->storeUploaded($request, $organizationId, $folderId)
+            : $this->storeRegistered($request, $organizationId, $folderId);
 
         $this->attachIfRequested($attach, $asset);
 
@@ -295,7 +320,12 @@ class MediaController extends Controller
             'entity_id' => ['sometimes', 'nullable', 'integer', 'min:1'],
             'role' => ['sometimes', 'nullable', 'string', 'max:' . MediaRole::MAX_LENGTH],
             'position' => ['sometimes', 'nullable', 'integer', 'min:0'],
+            'folder_id' => ['sometimes', 'nullable', 'integer', 'min:0'],
         ]);
+
+        if (array_key_exists('folder_id', $data)) {
+            $data['folder_id'] = $this->validatedFolderId($request, $organizationId);
+        }
 
         $this->media->update($asset, $data);
 
@@ -328,7 +358,33 @@ class MediaController extends Controller
         return response()->json(null, 204);
     }
 
-    private function storeUploaded(Request $request, int $organizationId): MediaAsset
+    /**
+     * Папка загрузки/перемещения. 0 и пустое значение = корень (NULL в БД).
+     * Чужая папка — 422, а не молчаливая запись в другой тенант.
+     */
+    private function validatedFolderId(Request $request, int $organizationId): ?int
+    {
+        if (! $request->filled('folder_id')) {
+            return null;
+        }
+        $id = (int) $request->input('folder_id');
+        if ($id <= 0) {
+            return null;
+        }
+
+        $exists = app(OrganizationContext::class)->withoutScope(fn () => \Nabilet\Modules\Media\Models\MediaFolder::query()
+            ->where('id', $id)
+            ->where('organization_id', $organizationId)
+            ->exists());
+
+        if (! $exists) {
+            throw new ValidationError(['folder_id' => ['Папка не найдена.']]);
+        }
+
+        return $id;
+    }
+
+    private function storeUploaded(Request $request, int $organizationId, ?int $folderId = null): MediaAsset
     {
         $data = $request->validate([
             'file' => [
@@ -343,13 +399,14 @@ class MediaController extends Controller
 
         return $this->media->store($request->file('file'), [
             'organization_id' => $organizationId,
+            'folder_id' => $folderId,
             'title' => $data['title'] ?? null,
             'alt_text' => $data['alt_text'] ?? null,
             'uploaded_by' => $this->userId(),
         ]);
     }
 
-    private function storeRegistered(Request $request, int $organizationId): MediaAsset
+    private function storeRegistered(Request $request, int $organizationId, ?int $folderId = null): MediaAsset
     {        $data = $request->validate([
             'path' => ['required', 'string', 'max:1024'],
             'filename' => ['required', 'string', 'max:255'],
@@ -370,6 +427,7 @@ class MediaController extends Controller
 
         return $this->media->register($data + [
             'organization_id' => $organizationId,
+            'folder_id' => $folderId,
             'uploaded_by' => $this->userId(),
         ]);
     }

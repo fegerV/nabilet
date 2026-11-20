@@ -42,6 +42,8 @@ class MediaAssetResource extends JsonResource
         $data = [
             'id' => (int) $asset->id,
             'public_id' => (string) $asset->public_id,
+            // Виртуальная папка медиатеки; null — «Все файлы».
+            'folder_id' => $asset->folder_id === null ? null : (int) $asset->folder_id,
             'disk' => (string) $asset->disk,
             'path' => (string) $asset->path,
             'url' => AssetUrl::storageRelative((string) $asset->path),

@@ -122,6 +122,8 @@ class MediaService
 
         return MediaAsset::query()->create([
             'organization_id' => $attributes['organization_id'] ?? null,
+            // Папка — виртуальная группировка; путь на диске от неё не зависит.
+            'folder_id' => $attributes['folder_id'] ?? null,
             'disk' => $disk,
             'path' => (string) $stored,
             'filename' => (string) ($file->getClientOriginalName() ?: basename((string) $stored)),
@@ -166,6 +168,7 @@ class MediaService
     {
         return MediaAsset::query()->create([
             'organization_id' => $data['organization_id'] ?? null,
+            'folder_id' => $data['folder_id'] ?? null,
             'disk' => $data['disk'] ?? $this->disk(),
             'path' => (string) $data['path'],
             'filename' => (string) $data['filename'],
@@ -194,7 +197,7 @@ class MediaService
     public function update(MediaAsset $asset, array $data): MediaAsset
     {
         $asset->fill(array_intersect_key($data, array_flip([
-            'title', 'alt_text', 'variants_json',
+            'title', 'alt_text', 'variants_json', 'folder_id',
         ])));
 
         $asset->save();

@@ -31,6 +31,13 @@ final class AgentActionService
 {
     private const TTL_MINUTES = 30;
 
+    // Типы действий агента — один владелец, чтобы их нельзя было сравнить
+    // голой строкой в логике подтверждения (env-тест TransactionTypeCopy
+    // сторожит тот же подход для типов транзакций).
+    public const ACTION_CREATE_EVENT = 'create_event';
+    public const ACTION_PUBLISH_SCHEMA = 'publish_schema';
+    public const ACTION_REFUND = 'refund';
+
     public function __construct(
         private readonly EventService $events,
         private readonly HallService $halls,
@@ -117,7 +124,7 @@ final class AgentActionService
             $action->update(['status' => AgentAction::STATUS_EXPIRED]);
             throw new ValidationError(['status' => ['Срок подтверждения истёк — подготовьте действие заново.']]);
         }
-        if ($action->action === 'refund' && strtoupper(trim((string) $confirmPhrase)) !== 'REFUND') {
+        if ($action->action === self::ACTION_REFUND && strtoupper(trim((string) $confirmPhrase)) !== 'REFUND') {
             throw new ValidationError(['confirm_phrase' => ['Для возврата введите REFUND.']]);
         }
 

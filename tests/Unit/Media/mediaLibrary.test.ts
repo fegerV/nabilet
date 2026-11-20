@@ -225,6 +225,7 @@ describe('MediaAsset', () => {
     const base: MediaAsset = {
       id: 1,
       public_id: 'x',
+      folder_id: null,
       disk: 'public',
       path: 'media/a.png',
       url: '/storage/media/a.png',

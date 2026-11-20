@@ -641,6 +641,8 @@ $knownExtensions = [
         'order_item_scans',       // 1.5.0: сканирования билета хранятся в позиции заказа
         'kiosk_devices',          // 1.6.0: реестр информационных киосков (устройства)
         'kiosk_sales',            // 1.6.0: продажи киосков с идемпотентностью по (устройство, sale)
+        'agent_actions',          // 1.7.0: двухфазные действия ИИ-агента и их аудит
+        'media_folders',          // 1.7.5: виртуальные папки медиатеки (без каталогов на диске)
     ],
     // Core-таблицы, заменённые VIEW и физически удалённые миграциями 1.5.0.
     // Запись self-ratcheting: если таблица снова появится в миграциях, actual
@@ -659,6 +661,7 @@ $knownExtensions = [
         ],
         // 1.5.0: имя технической строки схемы хранится в площадке (000800).
         'venues' => ['hall_name'],
+        'media_assets' => ['folder_id'], // 1.7.5: виртуальная папка файла
         'hall_schema_versions' => ['venue_id'],
         // 1.5.0: заказ = билет (000300), публичный идентификатор позиции (000400).
         'order_items' => [
@@ -675,6 +678,7 @@ $knownExtensions = [
     'defaults' => [],
     'indexes' => [
         'events' => ['extra' => ['idx_events_venue_starts']],
+        'media_assets' => ['extra' => ['idx_media_assets_folder']],
         'hall_schema_versions' => ['extra' => ['idx_schema_venue_status']],
         'order_items' => ['extra' => [
             'idx_order_items_event_ticket_status',

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Illuminate\Support\Facades\Route;
 use Nabilet\Modules\Media\Http\Controllers\MediaController;
+use Nabilet\Modules\Media\Http\Controllers\MediaFolderController;
 
 // Подключается централизованно из routes/api.php — префикс /api/v1 уже задан
 // глобально в bootstrap/app.php. Повторять сегмент версии здесь нельзя: это дало
@@ -18,6 +19,9 @@ Route::prefix('media')->group(function (): void {
     // есть. Список и карточка файла доступны любому сотруднику с сессией.
     Route::middleware(['auth:api'])->group(function (): void {
         Route::get('/', [MediaController::class, 'index']);
+        // Папки объявлены ДО /{media}: несмотря на то что whereNumber уже
+        // отсекает нечисловой сегмент, явный порядок убирает зависимость от этого.
+        Route::get('/folders', [MediaFolderController::class, 'index']);
         Route::get('/{media}', [MediaController::class, 'show'])->whereNumber('media');
     });
 
@@ -29,6 +33,11 @@ Route::prefix('media')->group(function (): void {
         // PUT и PATCH — один обработчик: контракт объявляет только PATCH, но
         // админский клиент исторически шлёт PUT, и отвечать на него 405 значило
         // бы ломать клиент ради формальности.
+        Route::post('/folders', [MediaFolderController::class, 'store']);
+        Route::patch('/folders/{folder}', [MediaFolderController::class, 'update'])->whereNumber('folder');
+        Route::delete('/folders/{folder}', [MediaFolderController::class, 'destroy'])->whereNumber('folder');
+        Route::post('/folders/move', [MediaFolderController::class, 'moveFiles']);
+
         Route::match(['put', 'patch'], '/{media}', [MediaController::class, 'update'])->whereNumber('media');
         Route::delete('/{media}', [MediaController::class, 'destroy'])->whereNumber('media');
     });

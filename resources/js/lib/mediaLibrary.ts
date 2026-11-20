@@ -32,6 +32,8 @@ export interface MediaLinkRef {
 export interface MediaAsset {
   id: number
   public_id: string
+  /** Виртуальная папка; null — «Все файлы». */
+  folder_id: number | null
   disk: string
   path: string
   url: string

@@ -54,6 +54,8 @@ class MediaAsset extends Model
     protected $fillable = [
         'public_id',
         'organization_id',
+        // Виртуальная папка медиатеки; путь на диске от неё не зависит.
+        'folder_id',
         'disk',
         'path',
         'filename',
