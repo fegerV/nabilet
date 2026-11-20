@@ -91,6 +91,23 @@ class EventController extends Controller
         return $user !== null && StaffRole::isStaff($user);
     }
 
+    /**
+     * Публичный JSON не должен отдавать черновики: HTML-страница события уже
+     * закрывает их, а API — нет. Для администратора исключение сохраняется.
+     */
+    private function assertPubliclyVisible(Event $event): void
+    {
+        if ($this->maySeeUnpublished(request())) {
+            return;
+        }
+        // Та же витрина каталога использует EventStatus::publiclyVisible()
+        // (опубликованные и завершённые) — карточка не должна расходиться со
+        // списком и отдавать 404 на событие, которое в афише есть.
+        if (! EventStatus::isPubliclyVisible((string) $event->status)) {
+            throw new NotFoundError('Event', (string) $event->public_id);
+        }
+    }
+
     public function show(int $event): JsonResponse
         {
             // Публичная карточка (без auth): numeric binding заменён на явный
@@ -105,6 +122,7 @@ class EventController extends Controller
             if ($model === null) {
                 throw new NotFoundError('Event', $event);
             }
+            $this->assertPubliclyVisible($model);
 
             $event = $model;
             // Переводы — скоупнутые чтения (двадцать шестая модель): у гостя
@@ -159,6 +177,8 @@ class EventController extends Controller
                         ],
                     ], 404);
                 }
+
+                $this->assertPubliclyVisible($event);
 
                 // Переводы — скоупнутые чтения: у гостя контекста нет, весь
                 // eager-набор грузим в bypass (остальные связи набора

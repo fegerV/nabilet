@@ -12,6 +12,7 @@ use Illuminate\Support\Str;
 use Nabilet\Core\Errors\DomainRuleViolation;
 use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Cart\Support\CartToken;
+use Nabilet\Modules\Core\Users\Models\User;
 use Nabilet\Modules\Loyalty\Domain\BonusReason;
 use Nabilet\Modules\Loyalty\Jobs\AccrueOrderBonusJob;
 use Nabilet\Modules\Loyalty\Jobs\RefundOrderBonusJob;
@@ -72,6 +73,9 @@ class BonusSpendTest extends TestCase
 
     private PaymentService $payments;
 
+    /** Созданный покупатель: бонусы можно тратить только будучи вошедшим. */
+    private ?int $buyerId = null;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -90,13 +94,15 @@ class BonusSpendTest extends TestCase
     /** Покупатель с адресом заказа: именно по нему чекаут находит владельца. */
     private function seedBuyer(string $email = self::EMAIL): int
     {
-        return (int) DB::table('users')->insertGetId([
+        $this->buyerId = (int) DB::table('users')->insertGetId([
             'public_id' => (string) Str::ulid()->toBase32(),
             'email' => $email,
             'status' => 'active',
             'created_at' => now()->toDateTimeString(),
             'updated_at' => now()->toDateTimeString(),
         ]);
+
+        return $this->buyerId;
     }
 
     /**
@@ -148,6 +154,12 @@ class BonusSpendTest extends TestCase
      */
     private function checkout(int $sessionId, array $extra = [], string $email = self::EMAIL)
     {
+        // Списание бонусов требует входа: одного e-mail в чекауте мало —
+        // иначе любой гость тратил бы бонусы владельца адреса (аудит M-7).
+        if ($this->buyerId !== null) {
+            $this->actingAs(User::query()->findOrFail($this->buyerId), 'api');
+        }
+
         return $this->postJson('/api/v1/cart/checkout', array_merge([
             'session_id' => $sessionId,
             'customer_email' => $email,
@@ -351,6 +363,40 @@ class BonusSpendTest extends TestCase
         $this->assertSame(0, $this->ledgerCount($userId, BonusReason::SPEND));
         $this->assertSame(50_000, $this->balanceOf($userId));
         $this->assertSame('active', DB::table('carts')->value('status'));
+    }
+
+    /**
+     * Аудит M-7: Knowledge of someone's e-mail must not grant access to their
+     * bonuses. The account is auto-resolved by e-mail on guest checkout, which
+     * is exactly why spending needs an explicit login.
+     */
+    public function test_a_guest_cannot_spend_bonuses_of_the_account_matching_the_order_email(): void
+    {
+        Bus::fake();
+
+        [, , $sessionId, $inventoryItemId] = $this->seedSellableSeat(
+            available: 2,
+            priceAmount: self::SUBTOTAL,
+        );
+
+        $victimId = $this->seedBuyer();
+        $this->seedBonusAccount($victimId, 50_000);
+        $this->addToCart($sessionId, $inventoryItemId);
+
+        // Не авторизуемся: злоумышленник знает только e-mail владельца бонусов.
+        $this->postJson('/api/v1/cart/checkout', [
+            'session_id' => $sessionId,
+            'customer_email' => self::EMAIL,
+            'customer_email_confirmation' => self::EMAIL,
+            'customer_name' => 'Злоумышленник',
+            'bonus_amount' => 30_000,
+        ], $this->cartHeaders())
+            ->assertStatus(422)
+            ->assertJsonPath('error.code', 'BONUS_LOGIN_REQUIRED');
+
+        $this->assertSame(0, DB::table('orders')->count());
+        $this->assertSame(50_000, $this->balanceOf($victimId));
+        $this->assertSame(0, $this->ledgerCount($victimId, BonusReason::SPEND));
     }
 
     public function test_a_guest_without_an_account_cannot_spend(): void

@@ -34,6 +34,20 @@ class SessionController extends Controller
         $perPage = Paging::limit((int) $request->get('per_page', 20), 20, 100);
         
         $query = Session::query()->with(['event', 'hall', 'venue', 'schemaVersion']);
+
+        // Гость витрины видит только сеансы опубликованных мероприятий,
+        // Administrator — все. Раньше публичный список отдавал черновики
+        // вместе с сырыми внутренними связями.
+        if (! \Nabilet\Core\Support\StaffRole::isStaff($request->user())) {
+            // Подзапрос по ТАБЛИЦЕ, а не whereHas по Eloquent-модели Event:
+            // модель tenant-scoped, и её global scope сработал бы внутри
+            // безконтекстного запроса витрины (TenantContextMissingError).
+            $query->whereIn('event_id', static function ($q): void {
+                $q->select('id')
+                    ->from('events')
+                    ->whereIn('status', \Nabilet\Modules\Events\Domain\EventStatus::publiclyVisible());
+            });
+        }
         
         if (isset($filters['event_id'])) {
             $query->where('event_id', $filters['event_id']);
@@ -78,6 +92,14 @@ class SessionController extends Controller
 
         if ($model === null) {
             throw new NotFoundError('Session', (string) $session);
+        }
+        if (! \Nabilet\Core\Support\StaffRole::isStaff(request()->user())) {
+            $eventStatus = app(OrganizationContext::class)->withoutScope(
+                fn () => $model->event?->status
+            );
+            if ($eventStatus === null || ! \Nabilet\Modules\Events\Domain\EventStatus::isPubliclyVisible((string) $eventStatus)) {
+                throw new NotFoundError('Session', (string) $session);
+            }
         }
 
         $session = $model;

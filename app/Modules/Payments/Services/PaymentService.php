@@ -485,9 +485,15 @@ class PaymentService
                 );
             }
 
-            // Find payment by provider payment ID (шлюз шлёт его в object.id)
+            // Find payment by provider payment ID (шлюз шлёт его в object.id).
+            // Блокировка обязательна: провайдер может доставить succeeded и
+            // failed с РАЗНЫМИ event_id почти одновременно. Оба event уникальны,
+            // поэтому claim их не различает, и без лока второй запрос читает
+            // старый `pending` и перезаписывает уже `succeeded` платёж — деньги
+            // при этом остаются полученными, а возврат отказан.
             $payment = Payment::where('provider', $provider)
                 ->where('provider_payment_id', $paymentId)
+                ->lockForUpdate()
                 ->first();
 
             if (!$payment) {
@@ -1040,6 +1046,14 @@ class PaymentService
             return;
         }
 
+        // Ещё одна проверка свежего статуса: модель могла быть прочитана до
+        // того, как параллельный webhook закоммитил succeeded. fail-closed —
+        // поздний failed не должен перезаписать оплаченный платёж.
+        $fresh = Payment::query()->whereKey($payment->id)->value('status');
+        if (! in_array((string) $fresh, [PaymentStateMachine::PENDING, PaymentStateMachine::WAITING_FOR_CAPTURE], true)) {
+            return;
+        }
+
         $cancellation = is_array($payload['cancellation_details'] ?? null)
             ? $payload['cancellation_details']
             : (is_array($payload['object']['cancellation_details'] ?? null) ? $payload['object']['cancellation_details'] : []);
@@ -1085,6 +1099,11 @@ class PaymentService
     protected function handlePaymentCanceled(Payment $payment, array $payload): void
     {
         if (!$this->machine->can($payment->status, PaymentStateMachine::CANCELED)) {
+            return;
+        }
+
+        $fresh = Payment::query()->whereKey($payment->id)->value('status');
+        if (! in_array((string) $fresh, [PaymentStateMachine::PENDING, PaymentStateMachine::WAITING_FOR_CAPTURE], true)) {
             return;
         }
 

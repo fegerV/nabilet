@@ -51,7 +51,7 @@ Route::prefix('me')->middleware('auth:api')->group(function (): void {
  * Адресация только по public_id (`[A-Za-z0-9]+` отсекает `id` и мусор
  * до 404): числовой инкрементальный идентификатор наружу не отдаётся.
  */
-Route::prefix('admin/privacy-requests')->middleware(['auth:api', 'admin'])->group(function (): void {
+Route::prefix('admin/privacy-requests')->middleware(['auth:api', 'admin', \Nabilet\Core\Http\Middleware\EnsurePlatformAdmin::class])->group(function (): void {
     Route::get('/', [AdminPrivacyRequestController::class, 'index']);
     Route::get('/{publicId}', [AdminPrivacyRequestController::class, 'show'])
         ->where('publicId', '[A-Za-z0-9]+');

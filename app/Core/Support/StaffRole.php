@@ -85,6 +85,31 @@ final class StaffRole
             ->exists();
     }
 
+    /**
+     * Платформенный администратор (все арендаторы) или любой admin, если
+     * список не настроен — обратная совместимость с одноарендаторской установкой.
+     */
+    public static function isPlatformAdmin(?object $user): bool
+    {
+        if ($user === null) {
+            return false;
+        }
+
+        $emails = (array) config('nabilet.platform_admins', []);
+        if ($emails === []) {
+            // Одноарендаторская установка: список не настроен, любой admin —
+            // платформенный. E-mail здесь НЕ обязателен (старые фикстуры и
+            // служебные учётки создаются без него).
+            return self::isStaff($user);
+        }
+
+        if (! isset($user->email)) {
+            return false;
+        }
+
+        return in_array(strtolower((string) $user->email), array_map('strtolower', $emails), true);
+    }
+
     private static function currentOrganizationId(?object $user): ?int
     {
         try {

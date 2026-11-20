@@ -33,7 +33,7 @@ Route::get('/health', [HealthController::class, 'show']);
  * было бы разведкой перед атакой: точные версии PHP и Laravel, геометрия
  * диска, содержимое логов.
  */
-Route::prefix('admin/system')->middleware(['auth:api', 'admin'])->group(function () {
+Route::prefix('admin/system')->middleware(['auth:api', 'admin', \Nabilet\Core\Http\Middleware\EnsurePlatformAdmin::class])->group(function () {
     Route::get('/status', [SystemStatusController::class, 'status']);
     Route::get('/logs', [SystemStatusController::class, 'viewLogs']);
     Route::post('/cache/clear', [SystemStatusController::class, 'clearCache']);

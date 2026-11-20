@@ -46,14 +46,78 @@ final class RefundService
      */
     public function refund(Payment $payment, ?int $amount = null, ?string $reason = null): Payment
     {
-        return app(OrganizationContext::class)->withoutScope(
-            fn (): Payment => $this->refundScoped($payment, $amount, $reason)
-        );
+        // Public ID возврата и детерминированный ключ идемпотентности живут ДО
+        // транзакции: если она откатится после вызова провайдера (деньги уже
+        // ушли), компенсирующая запись сохранится с тем же ключом — иначе
+        // «деньги вернулись, в базе нет ничего» и сверка невозможна.
+        $refundPublicId = (string) \Illuminate\Support\Str::ulid()->toBase32();
+        // Компенсация нужна только если провайдер реально получил запрос: при
+        // отказе валидации (нет денег, платёж не оплачен) транзакция откатывается
+        // честно и записывать «неудавшийся возврат» нельзя — это ложный след.
+        $providerCalled = false;
+
+        try {
+            return app(OrganizationContext::class)->withoutScope(
+                fn (): Payment => $this->refundScoped($payment, $amount, $reason, $refundPublicId, $providerCalled)
+            );
+        } catch (\Throwable $e) {
+            if ($providerCalled) {
+                $this->recordCompensation($payment, $amount, $reason, $refundPublicId, $e);
+            }
+            throw $e;
+        }
     }
 
-    private function refundScoped(Payment $payment, ?int $amount, ?string $reason): Payment
+    /**
+     * Компенсирующая запись выполняется в НОВОЙ транзакции — откат основной её
+     * не заденет. Статус FAILED и тот же idempotency-key позволяют найти платёж
+     * при сверке с выпиской провайдера и безопасно повторить операцию.
+     */
+    private function recordCompensation(Payment $payment, ?int $amount, ?string $reason, string $publicId, \Throwable $error): void
     {
-        return DB::transaction(function () use ($payment, $amount, $reason): Payment {
+        try {
+            $paid = (int) $payment->amount;
+            DB::transaction(function () use ($payment, $amount, $reason, $publicId, $paid): void {
+                if (Refund::query()->where('public_id', $publicId)->exists()) {
+                    return;
+                }
+
+                $refund = $payment->refunds()->create([
+                    'public_id' => $publicId,
+                    'order_id' => $payment->order_id,
+                    'amount' => $amount ?? $paid,
+                    'currency' => $payment->currency,
+                    'reason' => $reason,
+                    'status' => RefundStateMachine::FAILED,
+                    'provider_refund_id' => null,
+                ]);
+                $refund->update(['completed_at' => now()]);
+
+                $this->repository->addTransaction($payment, [
+                    'type' => TransactionType::FAILURE,
+                    'amount' => 0,
+                    'status' => PaymentStateMachine::FAILED,
+                    'provider_event_id' => 'refund_failed:' . $publicId,
+                    'payload_json' => [
+                        'refund_id' => $refund->id,
+                        'reason' => $reason,
+                        'compensation' => true,
+                    ],
+                ]);
+            });
+        } catch (\Throwable $inner) {
+            \Illuminate\Support\Facades\Log::error('Refund compensation record failed', [
+                'payment_id' => $payment->id,
+                'refund_public_id' => $publicId,
+                'original_error' => $error->getMessage(),
+                'compensation_error' => $inner->getMessage(),
+            ]);
+        }
+    }
+
+    private function refundScoped(Payment $payment, ?int $amount, ?string $reason, string $refundPublicId, bool &$providerCalled): Payment
+    {
+        return DB::transaction(function () use ($payment, $amount, $reason, $refundPublicId, &$providerCalled): Payment {
             // Блокируем строку платежа на время транзакции: без этого два
             // параллельных полных возврата читали одинаковый `totalRefunded = 0`,
             // оба проходили проверку остатка и возвращали деньги дважды.
@@ -123,6 +187,7 @@ final class RefundService
             // только после того, как провайдер принял запрос.
             /** @var Refund $refund */
             $refund = $payment->refunds()->create([
+                'public_id' => $refundPublicId,
                 'order_id' => $payment->order_id,
                 'amount' => $refundAmount,
                 'currency' => $payment->currency,
@@ -132,6 +197,9 @@ final class RefundService
             ]);
 
             try {
+                // Отметка ДО сетевого вызова: таймаут — это неопределённый
+                // исход (деньги могли уйти), поэтому компенсация обязательна.
+                $providerCalled = true;
                 $provider = $this->providers->make((string) ($payment->provider ?: 'yookassa'));
 
                 $providerResponse = $provider->refund([
@@ -144,7 +212,7 @@ final class RefundService
                     // провайдер генерировал `uniqid()` на каждый вызов, поэтому
                     // повтор после неопределённого исхода воспринимался ЮKassa как
                     // НОВЫЙ возврат — и деньги уходили дважды.
-                    'idempotency_key' => 'refund_' . $refund->public_id,
+                    'idempotency_key' => 'refund_' . $refundPublicId,
                 ]);
             } catch (\Throwable $e) {
                 // Провайдер не принял запрос — возврат неудачен, деньги не
@@ -170,7 +238,7 @@ final class RefundService
                 // дублей. Детерминированный маркер — тот же, что в
                 // Idempotence-Key, поэтому повторная инициация того же возврата
                 // не может плодить парные транзакции.
-                'provider_event_id' => 'refund:' . $refund->public_id,
+                'provider_event_id' => 'refund:' . $refundPublicId,
                 'payload_json' => ['refund_id' => $refund->id, 'reason' => $reason],
             ]);
 

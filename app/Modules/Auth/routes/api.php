@@ -21,7 +21,9 @@ use Nabilet\Modules\Auth\Http\Controllers\SocialAuthController;
 Route::post('/telegram/auth', [SocialAuthController::class, 'telegram'])->middleware('throttle:auth');
 
 Route::prefix('auth')->group(function () {
-    Route::post('/register', [AuthController::class, 'register']);
+    // Регистрация без лимита — открытый канал создания аккаунтов (засорение
+    // users, подготовка credential stuffing, нагрузка на bcrypt).
+    Route::post('/register', [AuthController::class, 'register'])->middleware('throttle:auth');
 
     /*
      * `throttle:auth` = 5 per minute per IP (`Nabilet\Core\Http\Middleware\RateLimiter`).

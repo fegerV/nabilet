@@ -497,11 +497,32 @@ final class CartCheckoutService
             // РЅРµ РїРµСЂРµСЃС‡РёС‚С‹РІР°СЋС‚, РёРЅР°С‡Рµ В«30%В» СЃСѓС‰РµСЃС‚РІРѕРІР°Р»Рѕ Р±С‹ РІ РґРІСѓС… РјРµСЃС‚Р°С….
             $currency = (string) ($cart->currency ?? 'RUB');
             $requestedBonus = (int) ($customer['bonus_amount'] ?? 0);
+
+            // Бонусы можно списывать ТОЛЬКО со своего аккаунта. Гость может
+            // указать чужой e-mail — resolveBuyerId() найдёт этого пользователя,
+            // и без этой проверки злоумышленник тратил бы чужие бонусы, зная
+            // только адрес. Начисление по e-mail остаётся разрешённым.
+            //
+            // Вошедший покупатель приходит в $buyer (публичный checkout) или в
+            // $userId (spec-вход /orders). Гость без аккаунта получает обычный
+            // BONUS_LIMIT_EXCEEDED от BonusPolicy — его искать нечего.
+            $authenticatedUserId = $userId ?? ($buyer !== null ? (int) $buyer->getAuthIdentifier() : null);
             $bonusCap = $this->bonus->spendableFor(
                 $buyerId,
                 Money::of($subtotalAmount, $currency),
                 Money::of($discountAmount, $currency),
             );
+
+            // Только когда списывать реально ЕСТЬ что: у гостя без аккаунта
+            // лимит ноль и он получает привычный BONUS_LIMIT_EXCEEDED.
+            if ($requestedBonus > 0 && $buyerId !== null && $bonusCap->minorUnits() > 0 && $authenticatedUserId !== (int) $buyerId) {
+                throw new DomainRuleViolation(
+                    'Bonuses can only be spent by the authenticated account owner.',
+                    'BONUS_LOGIN_REQUIRED',
+                    ['requested' => $requestedBonus],
+                    422,
+                );
+            }
 
             // РћС‚РєР°Р·, Р° РЅРµ С‚РёС…РѕРµ СѓСЂРµР·Р°РЅРёРµ. РњРѕР»С‡Р°Р»РёРІРѕРµ СѓСЂРµР·Р°РЅРёРµ РёР·РјРµРЅРёР»Рѕ Р±С‹ С†РµРЅСѓ,
             // РєРѕС‚РѕСЂСѓСЋ РїРѕРєСѓРїР°С‚РµР»СЊ РїРѕРґС‚РІРµСЂРґРёР»: РѕРЅ РїСЂРѕСЃРёР» СЃРїРёСЃР°С‚СЊ 600, Р° Р·Р°РїР»Р°С‚РёР»

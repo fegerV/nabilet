@@ -123,7 +123,10 @@ return [
             'with' => [
                 'stream' => 'php://stderr',
             ],
-            'processors' => [PsrLogMessageProcessor::class],
+            'processors' => [
+                PsrLogMessageProcessor::class,
+                RedactSensitiveData::class,
+            ],
         ],
 
         'null' => [

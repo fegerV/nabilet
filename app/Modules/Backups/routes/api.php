@@ -10,7 +10,7 @@ use Nabilet\Modules\Backups\Http\Controllers\Admin\BackupController;
 // Ручное скачивание локальных бэкапов — чувствительная операция (данные
 // покупателей), поэтому `admin` поверх `auth:api`: только сотрудник с ролью
 // admin. Список и скачивание — под одним префиксом.
-Route::prefix('admin/backups')->middleware(['auth:api', 'admin'])->group(function () {
+Route::prefix('admin/backups')->middleware(['auth:api', 'admin', \Nabilet\Core\Http\Middleware\EnsurePlatformAdmin::class])->group(function () {
     Route::get('/', [BackupController::class, 'index']);
 
     // Яндекс.Диск и управление бэкапами — объявлены ДО /{file},

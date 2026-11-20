@@ -3,7 +3,19 @@
 declare(strict_types=1);
 
 return [
-    'version' => '1.8.0',
+    'version' => '1.9.0',
+
+    /*
+     * Платформенные администраторы: e-mail через запятую. Только они могут
+     * читать бэкапы всех арендаторов, системные логи и менять глобальные
+     * настройки (оплата, почта, Диск). Пустой список = обратная совместимость
+     * с одноарендаторской установкой (любой admin). На multi-client хостинге
+     * список ОБЯЗАТЕЛЬНО должен быть задан.
+     */
+    'platform_admins' => array_values(array_filter(array_map(
+        static fn (string $email): string => strtolower(trim($email)),
+        explode(',', (string) env('NABILET_PLATFORM_ADMINS', '')),
+    ))),
 
     /*
      * Шифрование бэкапов (AES-256-CBC). Ключ — из `.env`:
