@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Loyalty\Observers;
 
+use Illuminate\Support\Facades\DB;
 use Nabilet\Modules\Loyalty\Jobs\AccrueOrderBonusJob;
 use Nabilet\Modules\Loyalty\Jobs\RefundOrderBonusJob;
 use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Orders\StateMachines\OrderStateMachine;
+use Nabilet\Modules\Payments\StateMachines\RefundStateMachine;
 
 /**
  * Реакция на смену статуса заказа: начислить кэшбэк за оплату, вернуть бонусы
@@ -77,6 +79,23 @@ class OrderBonusObserver
 
         if ($order->status === OrderStateMachine::PAID) {
             AccrueOrderBonusJob::forOrder($order)
+                ->onConnection('database')
+                ->afterCommit();
+
+            return;
+        }
+
+        if ($order->status === OrderStateMachine::PARTIALLY_REFUNDED) {
+            // Сумма берётся из тех же строк refunds, по которым RefundLedger
+            // выбрал этот статус: неудачные возвраты не считаются. Не держим её
+            // в колонке заказа — это было бы вторым источником правды о деньгах.
+            $refunded = (int) (DB::table('refunds')
+                ->join('payments', 'payments.id', '=', 'refunds.payment_id')
+                ->where('payments.order_id', $order->getKey())
+                ->where('refunds.status', '!=', RefundStateMachine::FAILED)
+                ->sum('refunds.amount'));
+
+            RefundOrderBonusJob::forOrder($order, max(0, $refunded))
                 ->onConnection('database')
                 ->afterCommit();
 

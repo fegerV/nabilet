@@ -52,12 +52,14 @@ class RefundOrderBonusJob implements ShouldQueue
 
     public function __construct(
         public readonly int $orderId,
+        /** Накопленная возвращённая сумма денег при частичном возврате. */
+        public readonly ?int $refundedMinor = null,
     ) {}
 
     /** @return PendingDispatch постановка, а не готовая джоба — см. `AccrueOrderBonusJob::forOrder()`. */
-    public static function forOrder(Order $order): PendingDispatch
+    public static function forOrder(Order $order, ?int $refundedMinor = null): PendingDispatch
     {
-        return self::dispatch(orderId: (int) $order->getKey());
+        return self::dispatch(orderId: (int) $order->getKey(), refundedMinor: $refundedMinor);
     }
 
     public function handle(BonusService $bonus): void
@@ -71,10 +73,14 @@ class RefundOrderBonusJob implements ShouldQueue
                 return;
             }
 
-            // Решение «возвращать ли» принимает сервис: там же проверка
+            // Решение «сколько возвращать» принимает сервис: там же проверка
             // `bonus_amount` и владельца. Дублировать её здесь значило бы иметь два
             // места, которые могут разойтись.
-            $bonus->refundForOrder($order);
+            if ($this->refundedMinor !== null && $this->refundedMinor > 0) {
+                $bonus->refundForOrderPortion($order, $this->refundedMinor);
+            } else {
+                $bonus->refundForOrder($order);
+            }
         });
     }
 }

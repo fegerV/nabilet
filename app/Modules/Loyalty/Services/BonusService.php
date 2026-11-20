@@ -10,6 +10,7 @@ use Nabilet\Core\Support\Money;
 use Nabilet\Modules\Core\Users\Models\User;
 use Nabilet\Modules\Loyalty\Domain\BonusPolicy;
 use Nabilet\Modules\Loyalty\Domain\BonusReason;
+use Nabilet\Modules\Loyalty\Domain\BonusRefundPolicy;
 use Nabilet\Modules\Loyalty\Models\BonusAccount;
 use Nabilet\Modules\Loyalty\Models\BonusTransaction;
 use Nabilet\Modules\Orders\Models\Order;
@@ -314,15 +315,23 @@ class BonusService
             return null;
         }
 
+        // Частичный возврат мог уже вернуть часть бонусов. Полный возврат после
+        // него обязан вернуть ТОЛЬКО остаток — иначе покупатель получил бы
+        // бонусы дважды за один заказ.
+        $amount = $spent - $this->returnedForOrder($order);
+        if ($amount <= 0) {
+            return null;
+        }
+
         $currency = (string) ($order->currency ?: 'RUB');
 
-        return DB::transaction(function () use ($order, $userId, $spent, $currency): ?BonusTransaction {
+        return DB::transaction(function () use ($order, $userId, $amount, $currency): ?BonusTransaction {
             $transaction = BonusTransaction::query()->createOrFirst(
                 ['dedupe_key' => self::dedupeKeyForRefund($order)],
                 [
                     'user_id' => $userId,
                     'order_id' => $order->getKey(),
-                    'delta' => $spent,
+                    'delta' => $amount,
                     'reason' => BonusReason::REFUND,
                 ],
             );
@@ -336,10 +345,72 @@ class BonusService
 
             BonusAccount::query()
                 ->whereKey($account->getKey())
-                ->increment('balance', $spent);
+                ->increment('balance', $amount);
 
             return $transaction;
         });
+    }
+
+    /**
+     * Вернуть долю бонусов при частичном возврате денег.
+     *
+     * Ключ идемпотентности привязан к НАКОПЛЕННОЙ сумме возврата: повтор той же
+     * джобы не создаст вторую строку, а следующий возврат с другой суммой --
+     * создаст свою. Итог по заказу никогда не превышает списанное.
+     */
+    public function refundForOrderPortion(Order $order, int $refundedMinor): ?BonusTransaction
+    {
+        $spent = (int) ($order->bonus_amount ?? 0);
+        $userId = $order->user_id;
+        if ($spent <= 0 || $userId === null || $refundedMinor <= 0) {
+            return null;
+        }
+
+        $already = $this->returnedForOrder($order);
+        $amount = BonusRefundPolicy::portion(
+            $spent,
+            (int) ($order->total_amount ?? 0),
+            $refundedMinor,
+            $already,
+        );
+        if ($amount <= 0) {
+            return null;
+        }
+
+        $currency = (string) ($order->currency ?: 'RUB');
+
+        return DB::transaction(function () use ($order, $userId, $amount, $currency, $refundedMinor): ?BonusTransaction {
+            $key = 'partial_refund:' . $order->getKey() . ':' . $refundedMinor;
+            $transaction = BonusTransaction::query()->createOrFirst(
+                ['dedupe_key' => $key],
+                [
+                    'user_id' => $userId,
+                    'order_id' => $order->getKey(),
+                    'delta' => $amount,
+                    'reason' => BonusReason::REFUND,
+                ],
+            );
+
+            if (! $transaction->wasRecentlyCreated) {
+                return null;
+            }
+
+            $account = BonusAccount::forUserOrCreate($userId, $currency);
+            BonusAccount::query()
+                ->whereKey($account->getKey())
+                ->increment('balance', $amount);
+
+            return $transaction;
+        });
+    }
+
+    /** Сколько бонусов уже возвращено по заказу (все строки возврата). */
+    private function returnedForOrder(Order $order): int
+    {
+        return (int) (BonusTransaction::query()
+            ->where('order_id', $order->getKey())
+            ->where('reason', BonusReason::REFUND)
+            ->sum('delta'));
     }
 
     /**

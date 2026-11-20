@@ -214,9 +214,9 @@ class BonusSpendTest extends TestCase
         (new AccrueOrderBonusJob($orderId))->handle($this->app->make(BonusService::class));
     }
 
-    private function runRefund(int $orderId): void
+    private function runRefund(int $orderId, ?int $refundedMinor = null): void
     {
-        (new RefundOrderBonusJob($orderId))->handle($this->app->make(BonusService::class));
+        (new RefundOrderBonusJob($orderId, $refundedMinor))->handle($this->app->make(BonusService::class));
     }
 
     // ── 1. сумма ───────────────────────────────────────────────────────────
@@ -672,6 +672,87 @@ class BonusSpendTest extends TestCase
         $this->assertSame(
             $this->balanceOf($userId),
             (int) DB::table('bonus_transactions')->where('user_id', $userId)->sum('delta'),
+        );
+    }
+
+    /**
+     * Частичный возврат money → частичный возврат бонусов.
+     *
+     * Списано 30 000 из 70 000 суммы заказа. Возврат 35 000 (50%) обязан вернуть
+     * 15 000 бонусов, следующий возврат до 52 500 (75%) — ещё 7 500, а финальный
+     * полный возврат добирает оставшиеся 7 500. Повтор не должен ничего начислить.
+     */
+    public function test_partial_refunds_return_bonuses_proportionally_and_settle_the_rest(): void
+    {
+        Bus::fake();
+
+        [, , $sessionId, $inventoryItemId] = $this->seedSellableSeat(
+            available: 2,
+            priceAmount: self::SUBTOTAL,
+        );
+
+        $userId = $this->seedBuyer();
+        $this->seedBonusAccount($userId, 50_000);
+        $this->addToCart($sessionId, $inventoryItemId);
+
+        $response = $this->checkout($sessionId, ['bonus_amount' => 30_000])->assertStatus(200);
+        $order = $this->orderByPublicId((string) $response->json('data.order_id'));
+
+        $payment = $this->payments->createPayment($order->id, [
+            'provider' => 'yookassa',
+            'provider_payment_id' => 'yk-refund-partial',
+        ]);
+        $this->payments->processWebhook('yookassa', [
+            'event' => 'payment.succeeded',
+            'object' => [
+                'id' => 'yk-refund-partial',
+                'status' => 'succeeded',
+                'amount' => ['value' => '700.00', 'currency' => 'RUB'],
+            ],
+        ]);
+        $this->runAccrual($order->id);
+        $this->assertSame(23_500, $this->balanceOf($userId));
+
+        config([
+            'nabilet.payment.yookassa.shop_id' => 'test-shop',
+            'nabilet.payment.yookassa.secret_key' => 'test-secret',
+        ]);
+        Http::fake([
+            '*/refunds' => Http::sequence()
+                ->push(['id' => 'rf-1', 'status' => 'succeeded', 'amount' => ['value' => '350.00', 'currency' => 'RUB']], 200)
+                ->push(['id' => 'rf-2', 'status' => 'succeeded', 'amount' => ['value' => '175.00', 'currency' => 'RUB']], 200)
+                ->push(['id' => 'rf-3', 'status' => 'succeeded', 'amount' => ['value' => '175.00', 'currency' => 'RUB']], 200),
+        ]);
+
+        // 50% денег → 15 000 бонусов.
+        $this->payments->refundPayment($payment->fresh(), 35_000, 'часть');
+        $this->assertSame(
+            OrderStateMachine::PARTIALLY_REFUNDED,
+            (string) DB::table('orders')->where('id', $order->id)->value('status'),
+        );
+        $this->runRefund($order->id, 35_000);
+        $this->assertSame(38_500, $this->balanceOf($userId));
+
+        // Повтор той же джобы не должен начислить ещё раз (dedupe_key по сумме).
+        $this->runRefund($order->id, 35_000);
+        $this->assertSame(38_500, $this->balanceOf($userId));
+
+        // 75% денег → всего 22 500 бонусов, то есть ещё 7 500.
+        $this->payments->refundPayment($payment->fresh(), 17_500, 'ещё часть');
+        $this->runRefund($order->id, 52_500);
+        $this->assertSame(46_000, $this->balanceOf($userId));
+
+        // Финальный возврат добирает остаток 7 500, а не все 30 000 снова.
+        $this->payments->refundPayment($payment->fresh(), 17_500, 'остаток');
+        $this->assertSame(
+            OrderStateMachine::REFUNDED,
+            (string) DB::table('orders')->where('id', $order->id)->value('status'),
+        );
+        $this->runRefund($order->id);
+        $this->assertSame(50_000 + 3_500, $this->balanceOf($userId));
+        $this->assertSame(
+            30_000,
+            $this->ledgerByReason($userId, BonusReason::REFUND)->sum(static fn ($row): int => (int) $row->delta),
         );
     }
 
