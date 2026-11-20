@@ -40,4 +40,9 @@ return [
     // заполняет статический реестр, который читает middleware `throttle`,
     // поэтому провайдер обязан быть booted. Маршрутов не грузит.
     Nabilet\Modules\System\Providers\RateLimitServiceProvider::class,
+
+    // Регистрирует хук `embed.allowed_ancestors`: без него middleware безопасности
+    // ставит `frame-ancestors 'none'` и виджет не открывается на чужом сайте —
+    // fallback-окно при ошибке загрузки тоже не появилось бы. Маршрутов не грузит.
+    Nabilet\Modules\Embed\Providers\EmbedFrameProvider::class,
 ];

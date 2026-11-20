@@ -63,6 +63,18 @@ export interface FooterConfig {
   social: LinkItem[]
 }
 
+/**
+ * Запасные каналы продаж для виджета схемы зала: если сервер недоступен,
+ * покупатель видит эти контакты вместо пустого экрана.
+ */
+export interface SupportConfig {
+  phone: string
+  email: string
+  telegram: string
+  whatsapp: string
+  message: string
+}
+
 export interface StorefrontSection {
   id: string
   type: SectionType
@@ -78,6 +90,7 @@ export interface StorefrontConfig {
   branding: BrandingConfig
   header: HeaderConfig
   footer: FooterConfig
+  support: SupportConfig
   sections: StorefrontSection[]
 }
 
@@ -242,6 +255,13 @@ export function defaultConfig(): StorefrontConfig {
       ],
       links: [],
       social: [],
+    },
+    support: {
+      phone: '',
+      email: '',
+      telegram: '',
+      whatsapp: '',
+      message: 'Не удалось загрузить схему зала. Позвоните или напишите — билет подберём вручную.',
     },
     // Зеркало StorefrontService::defaultConfig() (бэкенд — источник правды).
     // hero и featured остаются в палитре виджетов, но НЕ входят в дефолт:

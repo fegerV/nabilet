@@ -43,6 +43,10 @@ return Application::configure(basePath: dirname(__DIR__))
     // при регистрации провайдеров, то есть до разбора запроса.
     ->withSingletons([
         \Nabilet\Core\Tenancy\OrganizationContext::class => \Nabilet\Core\Tenancy\OrganizationContext::class,
+        // Реестр хуков обязан быть ОДНИМ на процесс: add_filter() из провайдера
+        // и apply_filters() из middleware иначе работали бы с разными объектами,
+        // и embed-фрейм молча получал бы `frame-ancestors 'none'`.
+        \Nabilet\Core\Hooks\HookRegistry::class => \Nabilet\Core\Hooks\HookRegistry::class,
     ])
     // Providers here are kept explicit and minimal on purpose (see the note below).
     // The Installer provider is registered so its Blade view namespace (`installer::`)
@@ -75,6 +79,11 @@ return Application::configure(basePath: dirname(__DIR__))
         // runtime-конфигу. Маршруты модуля подключены централизованно в
         // routes/api.php, так что префикс /api/v1 не теряется.
         \Nabilet\Modules\Matrix\Providers\MatrixServiceProvider::class,
+        // Регистрирует хук `embed.allowed_ancestors`. Без него `frame-ancestors`
+        // остаётся 'none' и виджет не открывается на сайте партнёра, поэтому
+        // fallback-окно при ошибке загрузки схемы тоже недостижимо. Маршрутов
+        // провайдер не грузит — префикс /api/v1 не теряется.
+        \Nabilet\Modules\Embed\Providers\EmbedFrameProvider::class,
     ])
     ->withRouting(
         web: __DIR__ . '/../routes/web.php',

@@ -25,7 +25,13 @@ final class ApplySecurityHeaders
     {
         $response = $next($request);
 
-        $isEmbed = $request->is('embed/*');
+        // Рамка живёт на адресе обычной витрины (`/event/{slug}?embed_token=…`),
+        // поэтому одного префикса /embed/* мало: без учёта токена партнёрская
+        // страница получила бы `frame-ancestors 'self'` и пустой iframe.
+        // Имя параметра продублировано как строка намеренно: Core не импортирует
+        // Modules (verify-module-structure), а владелец константы — EmbedAccessService.
+        $isEmbed = $request->is('embed/*')
+            || $request->query('embed_token') !== null;
 
         $headers = [
             'X-Content-Type-Options' => 'nosniff',

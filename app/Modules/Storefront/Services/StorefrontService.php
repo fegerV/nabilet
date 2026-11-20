@@ -7,6 +7,7 @@ namespace Nabilet\Modules\Storefront\Services;
 use Illuminate\Support\Arr;
 use Nabilet\Core\Support\CssColor;
 use Nabilet\Core\Support\Text;
+use Nabilet\Modules\Core\Organizations\Models\Organization;
 use Nabilet\Modules\Storefront\Models\StorefrontSetting;
 
 /**
@@ -115,6 +116,22 @@ final class StorefrontService
                 'social' => [],
             ],
             /*
+             * Запасные каналы продаж для встраиваемого виджета схемы зала.
+             *
+             * Виджет открывается на ЧУЖОМ сайте: если сервер продаж недоступен
+             * или схема не загрузилась, покупатель не должен уходить в пустой
+             * экран. Телефон и e-mail подставляются из организации, мессенджеры
+             * и текст администратор задаёт здесь. Всё — обычный текст/ссылки,
+             * без HTML: конфиг уезжает в браузер.
+             */
+            'support' => [
+                'phone' => '',
+                'email' => '',
+                'telegram' => '',
+                'whatsapp' => '',
+                'message' => 'Не удалось загрузить схему зала. Позвоните или напишите — билет подберём вручную.',
+            ],
+            /*
              * Порядок секций по умолчанию: сразу афиша.
              *
              * Раньше первым шёл `hero` — крупный баннер с заголовком во всю
@@ -193,10 +210,43 @@ final class StorefrontService
             ?? ($organizationId !== null ? $this->findRow(null) : null);
 
         if ($row === null) {
-            return $this->defaultConfig();
+            return $this->withOrganizationContacts($this->defaultConfig(), $organizationId);
         }
 
-        return $this->normalize($row->config ?? []);
+        return $this->withOrganizationContacts($this->normalize($row->config ?? []), $organizationId);
+    }
+
+    /**
+     * Телефон и e-mail организации — уже существующие поля `organizations`.
+     *
+     * Если организатор ещё не заполнил эти поля в конструкторе, подставляем
+     * реальные контакты площадки: fallback-окно виджета обязано дать рабочий
+     * способ купить билет, а не инструкцию «напишите unspecified».
+     */
+    private function withOrganizationContacts(array $config, ?string $organizationId): array
+    {
+        if ($config['support']['phone'] !== '' && $config['support']['email'] !== '') {
+            return $config;
+        }
+
+        $query = Organization::query();
+        if ($organizationId !== null && ctype_digit($organizationId)) {
+            $query->where('id', (int) $organizationId);
+        } else {
+            $query->orderBy('id');
+        }
+        $org = $query->first(['phone', 'email']);
+
+        if ($org !== null) {
+            if ($config['support']['phone'] === '') {
+                $config['support']['phone'] = $this->phone($org->phone);
+            }
+            if ($config['support']['email'] === '') {
+                $config['support']['email'] = filter_var($org->email, FILTER_VALIDATE_EMAIL) ? (string) $org->email : '';
+            }
+        }
+
+        return $config;
     }
 
     /** Признак «организатор ещё ничего не сохранял». */
@@ -272,6 +322,7 @@ final class StorefrontService
             'branding' => $this->normalizeBranding(is_array($input['branding'] ?? null) ? $input['branding'] : [], $defaults['branding']),
             'header' => $this->normalizeHeader(is_array($input['header'] ?? null) ? $input['header'] : [], $defaults['header']),
             'footer' => $this->normalizeFooter(is_array($input['footer'] ?? null) ? $input['footer'] : [], $defaults['footer']),
+            'support' => $this->normalizeSupport(is_array($input['support'] ?? null) ? $input['support'] : [], $defaults['support']),
             'sections' => $this->normalizeSections(is_array($input['sections'] ?? null) ? $input['sections'] : []),
         ];
     }
@@ -345,6 +396,26 @@ final class StorefrontService
             'columns' => $columns,
             'links' => $this->normalizeLinks($input['links'] ?? [], 'url', 8),
             'social' => $this->normalizeLinks($input['social'] ?? [], 'url', 6),
+        ];
+    }
+
+    /**
+     * Контакты для fallback-окна embed-виджета. Никакого HTML: только
+     * проверенный телефон, e-mail и http(s)-ссылки на мессенджеры.
+     */
+    private function normalizeSupport(array $input, array $defaults): array
+    {
+        $email = $this->text($input['email'] ?? null, 255, '');
+        if ($email !== '' && ! filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            $email = '';
+        }
+
+        return [
+            'phone' => $this->phone($input['phone'] ?? null),
+            'email' => $email,
+            'telegram' => $this->messengerUrl($input['telegram'] ?? null),
+            'whatsapp' => $this->messengerUrl($input['whatsapp'] ?? null),
+            'message' => $this->text($input['message'] ?? null, 240, $defaults['message']),
         ];
     }
 
@@ -576,6 +647,31 @@ final class StorefrontService
         }
 
         return '';
+    }
+
+    /** Телефон: цифры, +, скобки, пробелы и дефисы. Всё остальное отбрасываем. */
+    private function phone(mixed $value): string
+    {
+        if (! is_string($value) && ! is_numeric($value)) {
+            return '';
+        }
+        $clean = trim((string) $value);
+        if ($clean === '' || ! preg_match('/^[0-9+()\s\-]{5,50}$/u', $clean)) {
+            return '';
+        }
+
+        return $clean;
+    }
+
+    /** Ссылка на мессенджер: только http(s), чтобы в href не уехал javascript:. */
+    private function messengerUrl(mixed $value): string
+    {
+        if (! is_string($value)) {
+            return '';
+        }
+        $value = trim($value);
+
+        return preg_match('#^https?://#i', $value) ? mb_substr($value, 0, 500) : '';
     }
 
     private function bool(mixed $value, bool $default): bool

@@ -44,6 +44,7 @@ const TABS = [
   { value: 'branding', label: 'Брендинг' },
   { value: 'theme', label: 'Цвета' },
   { value: 'chrome', label: 'Меню и подвал' },
+  { value: 'support', label: 'Контакты' },
   { value: 'preview', label: 'Предпросмотр' },
 ]
 
@@ -650,6 +651,30 @@ const previewModeClass = computed(() => {
           </div>
           <NButton variant="secondary" size="sm" icon="+" @click="addSocial">Добавить соцсеть</NButton>
         </div>
+      </div>
+    </div>
+
+    <!-- ── Запасные контакты для виджета на чужом сайте ────────────── -->
+    <div v-else-if="tab === 'support'" class="mt-5 grid gap-5 lg:grid-cols-2">
+      <div class="surface-card space-y-4 p-4 sm:p-5">
+        <p class="text-sm font-semibold text-content">Если касса недоступна</p>
+        <p class="text-xs text-muted">
+          Эти контакты увидит покупатель в окне виджета схемы зала, когда сервер продаж
+          не отвечает или схема не загрузилась. Телефон и e-mail подставлены из карточки
+          организации — можно заменить на дежурные.
+        </p>
+        <NInput v-model="draft.support.phone" label="Телефон" placeholder="+7 999 123-45-67" />
+        <NInput v-model="draft.support.email" label="E-mail" placeholder="cash@example.ru" />
+        <NInput v-model="draft.support.telegram" label="Telegram (ссылка)" placeholder="https://t.me/..." />
+        <NInput v-model="draft.support.whatsapp" label="WhatsApp (ссылка)" placeholder="https://wa.me/..." />
+      </div>
+      <div class="surface-card space-y-4 p-4 sm:p-5">
+        <p class="text-sm font-semibold text-content">Сообщение</p>
+        <NInput v-model="draft.support.message" label="Что написать покупателю" />
+        <p class="text-xs text-muted">
+          Кнопки «Позвонить», мессенджеры и e-mail появятся автоматически для заполненных полей.
+          Всегда есть кнопка повтора и ссылка на страницу «Контакты».
+        </p>
       </div>
     </div>
 

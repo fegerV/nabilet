@@ -28,6 +28,7 @@ import { useRoute, useRouter } from 'vue-router'
 import NBadge from '@/components/ui/NBadge.vue'
 import NStatusBadge from '@/components/ui/NStatusBadge.vue'
 import PurchaseWidget, { type WidgetSession } from '@/components/storefront/PurchaseWidget.vue'
+import EmbedFallback from '@/components/storefront/EmbedFallback.vue'
 import { get } from '@/lib/api'
 import { customerUser, isCustomerSession } from '@/lib/customer'
 import { trackEvent } from '@/lib/metrika'
@@ -353,8 +354,13 @@ const widgetSessions = computed<WidgetSession[]>(() =>
       Загрузка события…
     </div>
 
-    <div v-else-if="loadError" class="mx-auto max-w-content px-4 py-8 text-sm text-danger-500">
-      Не удалось загрузить событие: {{ loadError }}
+    <div v-else-if="loadError" class="mx-auto max-w-content px-4 py-8">
+      <EmbedFallback
+        :error="loadError"
+        title="Не удалось загрузить событие"
+        retry-label="Повторить"
+        @retry="loadEvent"
+      />
     </div>
 
     <!--

@@ -172,6 +172,7 @@ function mergeWithDefaults(payload: StorefrontConfig): StorefrontConfig {
       links: Array.isArray(payload.footer?.links) ? payload.footer.links : base.footer.links,
       social: Array.isArray(payload.footer?.social) ? payload.footer.social : base.footer.social,
     },
+    support: { ...base.support, ...(payload.support ?? {}) },
     // ДОПОЛНЯЕМ КАЖДУЮ СЕКЦИЮ дефолтами её виджета, а не только верхние ветки:
     // старый/урезанный конфиг без `settings.columns` не должен ронять виджет.
     sections: mergeSections(Array.isArray(payload.sections) ? payload.sections : null, base.sections),

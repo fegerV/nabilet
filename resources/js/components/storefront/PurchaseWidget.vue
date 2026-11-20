@@ -42,6 +42,7 @@ import NCheckbox from '@/components/ui/NCheckbox.vue'
 import NCountdown from '@/components/ui/NCountdown.vue'
 import CoordSeatMap from '@/components/seat/CoordSeatMap.vue'
 import SeatMap from '@/components/seat/SeatMap.vue'
+import EmbedFallback from '@/components/storefront/EmbedFallback.vue'
 import { seatLineLabel, seatLineTotal, useCartStore } from '@/stores/cart'
 import { useLoyaltyStore } from '@/stores/loyalty'
 import { useUiStore } from '@/stores/ui'
@@ -372,10 +373,15 @@ async function signOut(): Promise<void> {
           Загружаем схему зала…
         </div>
 
-        <div v-else-if="loadError" class="surface-card flex flex-col items-center gap-3 px-4 py-10 text-center">
-          <p class="text-sm text-danger-500">Не удалось загрузить места: {{ loadError }}</p>
-          <NButton variant="secondary" size="sm" @click="load">Повторить</NButton>
-        </div>
+        <!-- Любая ошибка загрузки — не пустой экран: виджет на чужом сайте,
+             поэтому рядом с повтором всегда есть живые контакты кассы. -->
+        <EmbedFallback
+          v-else-if="loadError"
+          :error="loadError"
+          title="Не удалось загрузить схему зала"
+          retry-label="Повторить загрузку"
+          @retry="load"
+        />
 
         <div v-else-if="inventory.length === 0" class="surface-card px-4 py-6 text-center text-sm text-subtle">
           Для этого сеанса пока нет опубликованной схемы зала.
