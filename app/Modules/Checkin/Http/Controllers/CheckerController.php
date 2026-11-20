@@ -90,7 +90,15 @@ final class CheckerController extends Controller
             $this->sameEvent($ticket, $sessionId)
         );
 
-        return $this->respond($verdict, $decision['reason'] ?? null, 200, $ticket);
+        // Билет (с QR-пейлоадом и PII) отдаём ТОЛЬКО при успешном вердикте.
+        // Раньше при отказе «чужой билет» ответ всё равно содержал весь Ticket —
+        // то есть рабочий проходной токен другой организации.
+        return $this->respond(
+            $verdict,
+            $decision['reason'] ?? null,
+            200,
+            $verdict === CheckinVerdict::VALID ? $ticket : null,
+        );
     }
 
     /**
@@ -260,7 +268,12 @@ final class CheckerController extends Controller
             default => CheckinVerdict::fromOutcome($code, $this->sameEventFromResult($result, $sessionId)),
         };
 
-        return $this->respond($verdict, $result['reason'] ?? null, CheckinVerdict::httpStatus($verdict), $ticket instanceof Ticket ? $ticket : null);
+        return $this->respond(
+            $verdict,
+            $result['reason'] ?? null,
+            CheckinVerdict::httpStatus($verdict),
+            $verdict === CheckinVerdict::VALID && $ticket instanceof Ticket ? $ticket : null,
+        );
     }
 
     /**

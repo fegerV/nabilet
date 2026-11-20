@@ -294,10 +294,22 @@ class MediaService
      *
      * @return Collection<int, MediaLink>
      */
-    public function forEntity(string $entityType, int $entityId, ?string $role = null): Collection
+    public function forEntity(string $entityType, int $entityId, ?string $role = null, ?int $organizationId = null): Collection
     {
-        return MediaLink::query()
-            ->forEntity($entityType, $entityId, $role)
+        $query = MediaLink::query()
+            ->forEntity($entityType, $entityId, $role);
+
+        // Кросс-тенантная утечка: entity_id угадывается из публичного каталога,
+        // а media_links не имеет арендатора. Фильтруем по владельцу файла —
+        // ровно тому же правилу, что и общий список media_assets (org OR NULL).
+        if ($organizationId !== null) {
+            $query->whereHas('mediaAsset', static function ($q) use ($organizationId): void {
+                $q->where('organization_id', $organizationId)
+                    ->orWhereNull('organization_id');
+            });
+        }
+
+        return $query
             ->with('mediaAsset')
             ->get()
             ->filter(static fn (MediaLink $link): bool => $link->mediaAsset !== null)

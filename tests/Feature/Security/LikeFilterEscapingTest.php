@@ -229,6 +229,14 @@ class LikeFilterEscapingTest extends TestCase
             'created_at' => $now,
         ]);
 
+        // Членство обязательно: без него OrganizationContext не выставит арендатора.
+        DB::table('user_organization')->insertOrIgnore([
+            'user_id' => $user->id,
+            'organization_id' => $organizationId,
+            'role_id' => (int) $roleId,
+            'created_at' => $now,
+        ]);
+
         $this->actingAs($user, 'api');
 
         return $user;

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Nabilet\Core\Support;
 
+use Illuminate\Support\Facades\DB;
+
 /**
  * Единая точка ответа на вопрос «от лица какой организации действует пользователь».
  *
@@ -59,6 +61,39 @@ final class UserOrganization
     {
         if ($user === null || ! method_exists($user, 'organizations')) {
             return null;
+        }
+
+        // ВАЖНО: только реальные членства из user_organization. Роль без
+        // членства не даёт контекст (иначе admin чужой организации мог бы
+        // создавать в ней события). Среди членств предпочитаем то, где у
+        // пользователя есть роль admin — иначе admin org A с рядовым
+        // membership в org B (меньший id) получил бы контекст B.
+        $adminRoleId = DB::table('roles')->where('slug', 'admin')->value('id');
+        $userId = $user->id ?? $user->getAuthIdentifier();
+
+        if ($adminRoleId !== null) {
+            $adminOrgId = DB::table('user_organization')
+                ->where('user_id', $userId)
+                ->where('role_id', $adminRoleId)
+                ->orderBy('organization_id')
+                ->value('organization_id');
+            if ($adminOrgId !== null) {
+                return (int) $adminOrgId;
+            }
+
+            // Роль лежит в user_roles, но членство обязательно должно быть.
+            $adminOrgId = DB::table('user_organization')
+                ->join('user_roles', function ($join) use ($userId, $adminRoleId): void {
+                    $join->on('user_roles.user_id', '=', 'user_organization.user_id')
+                        ->on('user_roles.organization_id', '=', 'user_organization.organization_id')
+                        ->where('user_roles.user_id', '=', $userId)
+                        ->where('user_roles.role_id', '=', $adminRoleId);
+                })
+                ->orderBy('user_organization.organization_id')
+                ->value('user_organization.organization_id');
+            if ($adminOrgId !== null) {
+                return (int) $adminOrgId;
+            }
         }
 
         $id = $user->organizations()

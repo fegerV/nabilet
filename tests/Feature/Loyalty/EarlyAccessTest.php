@@ -129,6 +129,14 @@ class EarlyAccessTest extends TestCase
             'created_at' => $now,
         ]);
 
+        // Членство обязательно: без него OrganizationContext не выставит арендатора.
+        DB::table('user_organization')->insertOrIgnore([
+            'user_id' => $user->id,
+            'organization_id' => $organizationId,
+            'role_id' => $roleId,
+            'created_at' => $now,
+        ]);
+
         return User::query()->findOrFail($user->id);
     }
 

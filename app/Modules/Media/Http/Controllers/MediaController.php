@@ -140,7 +140,8 @@ class MediaController extends Controller
             $links = $this->media->forEntity(
                 $entityType,
                 $entityIdInt,
-                $request->filled('role') ? (string) $request->query('role') : null
+                $request->filled('role') ? (string) $request->query('role') : null,
+                $organizationId,
             );
 
             $assets = $links

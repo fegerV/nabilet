@@ -43,13 +43,13 @@ final class EventWriteAuthorizationTest extends TestCase
         $this->assertFalse($this->authorizeAs(UpdateRowPricesRequest::class, 'PATCH', $user));
     }
 
-    public function test_a_manager_is_staff_for_every_write_request(): void
+    public function test_a_manager_role_no_longer_grants_admin_access(): void
     {
         $user = $this->userWithRoles(['manager']);
 
-        $this->assertTrue($this->authorizeAs(StoreEventRequest::class, 'POST', $user));
-        $this->assertTrue($this->authorizeAs(UpdateEventRequest::class, 'PUT', $user));
-        $this->assertTrue($this->authorizeAs(UpdateRowPricesRequest::class, 'PATCH', $user));
+        $this->assertFalse($this->authorizeAs(StoreEventRequest::class, 'POST', $user));
+        $this->assertFalse($this->authorizeAs(UpdateEventRequest::class, 'PUT', $user));
+        $this->assertFalse($this->authorizeAs(UpdateRowPricesRequest::class, 'PATCH', $user));
     }
 
     public function test_an_admin_is_staff_for_every_write_request(): void

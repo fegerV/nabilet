@@ -34,9 +34,11 @@ class CheckOrganizationAccess
      *
      * @param  \Closure(\Illuminate\Http\Request): (\Symfony\Component\HttpFoundation\Response)  $next
      */
-    public function handle(Request $request, Closure $next, string $param = 'publicId'): Response
+    public function handle(Request $request, Closure $next, string $mode = 'member'): Response
     {
-        $publicId = $request->route($param);
+        // `CheckOrganizationAccess:admin` требует роли администратора именно в
+        // этой организации. Обычное чтение карточки достаточно membership.
+        $publicId = $request->route('publicId');
 
         if (!$publicId) {
             return $next($request);
@@ -63,6 +65,10 @@ class CheckOrganizationAccess
             // by naming it, and `NotFoundError` here would be misleading rather than
             // protective.
             throw new AuthError('Access denied to this organization.', 'FORBIDDEN', 403);
+        }
+
+        if ($mode === 'admin' && ! \Nabilet\Core\Support\StaffRole::isStaff($user, (int) $organization->id)) {
+            throw new AuthError('Administrator role is required in this organization.', 'FORBIDDEN', 403);
         }
 
         // Добавляем организацию в запрос для дальнейшего использования

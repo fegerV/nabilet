@@ -24,6 +24,13 @@ use Nabilet\Core\Errors\DomainRuleViolation;
 class WebhookEndpointGuard
 {
     /**
+     * Инъекция резолвера только для тестов: в изолированном окружении DNS может
+     * быть недоступен, и проверка безопасности/webhook падала бы не по своей
+     * причине. В проде остаётся системный dns_get_record.
+     */
+    public function __construct(private readonly ?\Closure $dnsResolver = null) {}
+
+    /**
      * Resolve and validate an endpoint; return cURL entries pinning the result.
      *
      * @return list<string> CURLOPT_RESOLVE entries for each validated public DNS address
@@ -73,7 +80,9 @@ class WebhookEndpointGuard
             throw $this->rejected('Некорректное доменное имя вебхука.');
         }
 
-        $records = @dns_get_record($host, DNS_A | DNS_AAAA);
+        $records = $this->dnsResolver !== null
+            ? ($this->dnsResolver)($host)
+            : @dns_get_record($host, DNS_A | DNS_AAAA);
 
         if (! is_array($records) || $records === []) {
             throw $this->rejected('Домен вебхука не удалось разрешить в публичный IP-адрес.');

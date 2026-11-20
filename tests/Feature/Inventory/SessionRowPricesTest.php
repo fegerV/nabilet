@@ -292,7 +292,7 @@ final class SessionRowPricesTest extends TestCase
      * `manager` — пишет (200). Второй assert не про вежливость: он ловит
      * rewiring, который сузил набор ролей до одного `admin`.
      */
-    public function test_the_prices_endpoint_refuses_a_plain_user_and_admits_a_manager(): void
+    public function test_the_prices_endpoint_refuses_a_plain_user_and_admits_an_admin(): void
     {
         $sessionId = $this->createSession($this->hallId, '2026-11-20 19:00');
         $rowId = $this->rowIdOf($sessionId, number: '1');
@@ -313,7 +313,7 @@ final class SessionRowPricesTest extends TestCase
 
         $this->assertSame($before, $priceOf(), 'пользователь без роли прошёл authorize() и цена изменилась');
 
-        $this->actingAs($this->actingAsUserWithRole('manager'), 'api');
+        $this->actingAs($this->actingAsUserWithRole('admin'), 'api');
         $this->patchJson("/api/v1/inventory/sessions/{$sessionId}/prices", $payload)
             ->assertStatus(200);
 

@@ -23,6 +23,9 @@ const routes: RouteRecordRaw[] = [
     component: StorefrontShell,
     children: [
       { path: '', name: 'catalog', component: () => import('@/pages/storefront/CatalogPage.vue'), meta: { title: 'Афиша мероприятий' } },
+      { path: 'calendar', name: 'calendar', component: () => import('@/pages/storefront/CalendarPage.vue'), meta: { title: 'Календарь' } },
+      { path: 'venues', name: 'venues', component: () => import('@/pages/storefront/VenuesPage.vue'), meta: { title: 'Залы и площадки' } },
+      { path: 'promos', name: 'promos', component: () => import('@/pages/storefront/PromosPage.vue'), meta: { title: 'Акции' } },
       {
         /*
          * `:publicId?` — канонический адрес серверной SEO-страницы

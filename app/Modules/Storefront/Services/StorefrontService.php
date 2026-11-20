@@ -80,17 +80,38 @@ final class StorefrontService
                 'showThemeToggle' => true,
                 'nav' => [
                     ['label' => 'Афиша', 'to' => '/'],
-                    ['label' => 'Мои билеты', 'to' => '/tickets'],
-                    ['label' => 'Организаторам', 'to' => '/admin'],
+                    ['label' => 'Календарь', 'to' => '/calendar'],
+                    ['label' => 'Залы', 'to' => '/venues'],
+                    ['label' => 'Жанры', 'to' => '/?genres=1'],
+                    ['label' => 'Акции', 'to' => '/promos'],
                 ],
             ],
             'footer' => [
                 'text' => 'NABILET — билеты на события без наценки за кассу.',
-                'links' => [
-                    ['label' => 'Помощь', 'url' => '/'],
-                    ['label' => 'Возврат', 'url' => '/'],
-                    ['label' => 'Организаторам', 'url' => '/admin'],
+                'columns' => [
+                    [
+                        'title' => 'Помощь',
+                        'links' => [
+                            ['label' => 'Правила продажи билетов', 'url' => '/page/payment'],
+                            ['label' => 'Правила возврата билетов', 'url' => '/page/return'],
+                            ['label' => 'Возврат билетов', 'url' => '/page/refund'],
+                        ],
+                    ],
+                    [
+                        'title' => 'Информация',
+                        'links' => [
+                            ['label' => 'Публичная оферта', 'url' => '/page/public-offer'],
+                            ['label' => 'Пушкинская карта', 'url' => '/page/pushkin'],
+                        ],
+                    ],
+                    [
+                        'title' => 'О нас',
+                        'links' => [
+                            ['label' => 'Контакты', 'url' => '/page/contacts'],
+                        ],
+                    ],
                 ],
+                'links' => [],
                 'social' => [],
             ],
             /*
@@ -304,8 +325,24 @@ final class StorefrontService
 
     private function normalizeFooter(array $input, array $defaults): array
     {
+        $columns = [];
+        $rawColumns = $input['columns'] ?? $defaults['columns'] ?? [];
+        if (is_array($rawColumns)) {
+            foreach (array_slice(array_values($rawColumns), 0, 4) as $column) {
+                if (! is_array($column)) {
+                    continue;
+                }
+                $title = $this->text($column['title'] ?? null, 40, '');
+                $links = $this->normalizeLinks($column['links'] ?? [], 'url', 8);
+                if ($title !== '' && $links !== []) {
+                    $columns[] = ['title' => $title, 'links' => $links];
+                }
+            }
+        }
+
         return [
             'text' => $this->text($input['text'] ?? null, 240, $defaults['text']),
+            'columns' => $columns,
             'links' => $this->normalizeLinks($input['links'] ?? [], 'url', 8),
             'social' => $this->normalizeLinks($input['social'] ?? [], 'url', 6),
         ];

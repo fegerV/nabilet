@@ -12,6 +12,7 @@
  * поэтому мы его не допускаем.
  */
 import { computed, onMounted, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import SectionShell from '@/components/storefront/widgets/SectionShell.vue'
 import { isFlushWidget, widgetComponent } from '@/components/storefront/widgets/index'
 import { useStorefrontStore } from '@/stores/storefront'
@@ -21,6 +22,14 @@ import { useSeo } from '@/lib/seo'
 
 const storefront = useStorefrontStore()
 const catalog = useCatalogStore()
+const route = useRoute()
+const router = useRouter()
+
+/** переход «Жанры» в меню открывает панель рубрик поверх афиши */
+const showGenres = computed(() => String(route.query.genres ?? '') === '1')
+function pickGenre(name: string): void {
+  void router.push({ path: '/', query: { cat: name } })
+}
 
 onMounted(() => {
   void catalog.load()
@@ -70,6 +79,19 @@ useSeo(() => {
 
 <template>
   <div>
+    <section v-if="showGenres" class="mx-auto max-w-content px-4 pt-6 sm:px-6">
+      <h1 class="text-xl font-bold tracking-tight text-content">Жанры</h1>
+      <p class="mt-1 text-sm text-muted">Выберите категорию — покажем события этого жанра.</p>
+      <div class="mt-3 flex flex-wrap gap-2">
+        <button v-for="name in catalog.categories" :key="name" type="button"
+                class="rounded-full border border-line bg-surface-2 px-3 py-1.5 text-sm text-muted transition hover:border-brand-500 hover:text-content"
+                @click="pickGenre(name)">
+          {{ name }}
+        </button>
+        <p v-if="catalog.categories.length === 0" class="text-sm text-subtle">Жанры появятся, когда в афише будут события с категориями.</p>
+      </div>
+    </section>
+
     <template v-for="(section, index) in sections" :key="section.id">
       <SectionShell
         v-if="widgetComponent(section.type)"

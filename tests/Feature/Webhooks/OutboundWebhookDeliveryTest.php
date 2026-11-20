@@ -23,6 +23,17 @@ class OutboundWebhookDeliveryTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        // Тесты не должны зависеть от доступности внешнего DNS: подменяем
+        // резолвер публичным адресом, остальная проверка безопасности
+        // (https, запрет приватных IP, pinning) работает как в проде.
+        $this->app->instance(WebhookEndpointGuard::class, new WebhookEndpointGuard(
+            static fn (string $host): array => [['ip' => '93.184.215.14']],
+        ));
+    }
+
     public function test_posts_exact_signed_json_and_marks_delivery_successful(): void
     {
         Http::fake(fn () => Http::response('accepted', 202));

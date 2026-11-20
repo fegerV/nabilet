@@ -51,8 +51,14 @@ export interface HeaderConfig {
   nav: LinkItem[]
 }
 
+export interface FooterColumn {
+  title: string
+  links: LinkItem[]
+}
+
 export interface FooterConfig {
   text: string
+  columns: FooterColumn[]
   links: LinkItem[]
   social: LinkItem[]
 }
@@ -208,17 +214,33 @@ export function defaultConfig(): StorefrontConfig {
       showThemeToggle: true,
       nav: [
         { label: 'Афиша', to: '/' },
-        { label: 'Мои билеты', to: '/tickets' },
-        { label: 'Организаторам', to: '/admin' },
+        { label: 'Календарь', to: '/calendar' },
+        { label: 'Залы', to: '/venues' },
+        { label: 'Жанры', to: '/?genres=1' },
+        { label: 'Акции', to: '/promos' },
       ],
     },
     footer: {
       text: 'NABILET — билеты на события без наценки за кассу.',
-      links: [
-        { label: 'Помощь', url: '/' },
-        { label: 'Возврат', url: '/' },
-        { label: 'Организаторам', url: '/admin' },
+      columns: [
+        {
+          title: 'Помощь',
+          links: [
+            { label: 'Правила продажи билетов', url: '/page/payment' },
+            { label: 'Правила возврата билетов', url: '/page/return' },
+            { label: 'Возврат билетов', url: '/page/refund' },
+          ],
+        },
+        {
+          title: 'Информация',
+          links: [
+            { label: 'Публичная оферта', url: '/page/public-offer' },
+            { label: 'Пушкинская карта', url: '/page/pushkin' },
+          ],
+        },
+        { title: 'О нас', links: [{ label: 'Контакты', url: '/page/contacts' }] },
       ],
+      links: [],
       social: [],
     },
     // Зеркало StorefrontService::defaultConfig() (бэкенд — источник правды).

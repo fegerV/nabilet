@@ -116,8 +116,19 @@ class UserAdminAccessTest extends TestCase
 
     public function test_staff_can_still_assign_roles(): void
     {
+        $staff = $this->staffUser();
+        // Цель должна быть участником организации администратора: чужого
+        // пользователя нельзя наделять ролью в чужом арендаторе.
+        $organizationId = (int) DB::table('user_organization')
+            ->where('user_id', $staff->id)->value('organization_id');
         $target = $this->plainUser('target@example.com');
-        $this->actingAs($this->staffUser(), 'api');
+        DB::table('user_organization')->insert([
+            'user_id' => $target->id,
+            'organization_id' => $organizationId,
+            'role_id' => $this->adminRoleId(),
+            'created_at' => now(),
+        ]);
+        $this->actingAs($staff, 'api');
 
         $this->postJson("/api/v1/users/{$target->public_id}/roles", [
             'role_id' => $this->adminRoleId(),

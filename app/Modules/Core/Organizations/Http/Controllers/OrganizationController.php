@@ -87,7 +87,7 @@ class OrganizationController extends Controller
             // comparison against a string, it coerces it, so `exists` can match
             // `'1abc'` to row 1. See `CartController::addItem()` for the measurements.
             'user_id' => ['bail', 'required', 'integer', 'exists:users,id'],
-            'role' => ['required', 'in:admin,member,cashier,manager'],
+            'role' => ['required', 'in:admin,member,cashier'],
         ]);
 
         $organization = $this->findOrFail($publicId);

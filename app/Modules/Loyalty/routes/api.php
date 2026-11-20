@@ -79,6 +79,7 @@ Route::prefix('me')->middleware('auth:api')->group(function (): void {
 //
 // Розыгрыш идентифицируется `public_id` (26 символов), не `id`: соглашение
 // проекта — внутренний BIGINT не покидает API (`DATABASE.md` §9).
+Route::get('/raffles', [RaffleController::class, 'publicIndex']);
 Route::get('/raffles/{public_id}', [RaffleController::class, 'results']);
 
 Route::prefix('admin/raffles')->middleware(['auth:api', 'admin'])->group(function (): void {

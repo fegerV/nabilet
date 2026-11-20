@@ -187,7 +187,9 @@ final class OrganizationContextResolutionTest extends TestCase
             'slug' => 'sobytie-bez-arendatora',
         ]);
 
-        $response->assertStatus(422);
+        // Роль без членства теперь означает отказ на middleware (403), а не
+        // попытку создать событие от чужого имени. Раньше здесь был 201.
+        $response->assertStatus(403);
 
         // И главное — строки в `events` нет вовсе. До правки здесь был 201 и
         // мероприятие, принадлежащее `$foreign`.

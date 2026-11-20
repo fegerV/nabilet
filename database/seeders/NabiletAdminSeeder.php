@@ -31,7 +31,6 @@ class NabiletAdminSeeder extends Seeder
     {
         $roles = [
             'admin' => ['Администратор', 'Полный доступ к системе'],
-            'manager' => ['Менеджер', 'Управление мероприятиями и заказами'],
             'support' => ['Саппорт', 'Просмотр данных, управление билетами'],
         ];
 
@@ -48,7 +47,6 @@ class NabiletAdminSeeder extends Seeder
         }
 
         $adminRoleId = $roleIds['admin'];
-        $managerRoleId = $roleIds['manager'];
         $supportRoleId = $roleIds['support'];
 
         // permissions: id, name, slug (таблица без timestamps)
@@ -87,11 +85,7 @@ class NabiletAdminSeeder extends Seeder
         // role_permissions: role_id, permission_id — PK-пары, повтор глушим.
         $rolePerms = [
             $adminRoleId => array_values($permIds),
-            $managerRoleId => array_map(
-                fn (string $slug): int => $permIds[$slug],
-                ['view_events', 'create_events', 'edit_events', 'view_orders', 'edit_orders',
-                 'view_payments', 'view_tickets', 'checkin_tickets', 'view_users', 'view_analytics']
-            ),
+
             $supportRoleId => array_map(
                 fn (string $slug): int => $permIds[$slug],
                 ['view_events', 'view_orders', 'view_payments', 'view_tickets', 'checkin_tickets', 'view_users']
@@ -147,7 +141,6 @@ class NabiletAdminSeeder extends Seeder
         // locale, timezone, email_verified_at, created_at, updated_at
         $accounts = [
             ['admin@nabilet.local', 'admin123', 'Admin', 'User', $adminRoleId],
-            ['manager@nabilet.local', 'manager123', 'Manager', 'User', $managerRoleId],
             ['support@nabilet.local', 'support123', 'Support', 'User', $supportRoleId],
         ];
 
@@ -194,7 +187,6 @@ class NabiletAdminSeeder extends Seeder
 
         $this->command?->line('NABILET admin panel seeded:');
         $this->command?->line('  Admin:   admin@nabilet.local / admin123');
-        $this->command?->line('  Manager: manager@nabilet.local / manager123');
         $this->command?->line('  Support: support@nabilet.local / support123');
     }
 

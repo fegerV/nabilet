@@ -1084,6 +1084,42 @@ namespace Illuminate\Support\Facades {
             return $this;
         }
 
+        /** Миграции данных читают отдельное значение; на пустой БД его нет. */
+        public function value(string $column): mixed
+        {
+            return null;
+        }
+
+        public function select(mixed ...$args): self
+        {
+            return $this;
+        }
+
+        public function groupBy(mixed ...$args): self
+        {
+            return $this;
+        }
+
+        public function havingRaw(string $expression, array $bindings = []): self
+        {
+            return $this;
+        }
+
+        public function join(mixed ...$args): self
+        {
+            return $this;
+        }
+
+        public function insert(mixed ...$args): bool
+        {
+            return true;
+        }
+
+        public function delete(): int
+        {
+            return 0;
+        }
+
         public function count(string $expression = '*'): int
         {
             return 0;

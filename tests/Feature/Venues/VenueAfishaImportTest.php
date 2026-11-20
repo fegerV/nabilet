@@ -101,6 +101,14 @@ final class VenueAfishaImportTest extends TestCase
             'created_at' => $now,
         ]);
 
+        // Членство обязательно: без него OrganizationContext не выставит арендатора.
+        DB::table('user_organization')->insertOrIgnore([
+            'user_id' => $userId,
+            'organization_id' => $organizationId,
+            'role_id' => (int) $roleId,
+            'created_at' => $now,
+        ]);
+
         $this->actingAs(User::query()->findOrFail($userId), 'api');
     }
 

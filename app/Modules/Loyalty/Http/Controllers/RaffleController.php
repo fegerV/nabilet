@@ -54,6 +54,39 @@ class RaffleController extends Controller
     }
 
     /**
+     * GET /api/v1/raffles — публичный список акций витрины.
+     *
+     * Только видимые статусы и только организация текущего контекста: гость без
+     * OrganizationContext видит пустой список, а не розыгрыши всех арендаторов.
+     */
+    public function publicIndex(): JsonResponse
+    {
+        $organizationId = app(OrganizationContext::class)->idOrNull();
+        if ($organizationId === null) {
+            return response()->json(['data' => []]);
+        }
+
+        $raffles = app(OrganizationContext::class)->withoutScope(
+            fn () => Raffle::query()
+                ->where('organization_id', $organizationId)
+                ->whereIn('status', RaffleStateMachine::visible())
+                ->orderByDesc('id')
+                ->limit(50)
+                ->get(['public_id', 'title', 'status', 'starts_at', 'ends_at'])
+                ->map(static fn (Raffle $r): array => [
+                    'public_id' => (string) $r->public_id,
+                    'title' => (string) $r->title,
+                    'status' => (string) $r->status,
+                    'starts_at' => $r->starts_at?->toIso8601String(),
+                    'ends_at' => $r->ends_at?->toIso8601String(),
+                ])
+                ->all()
+        );
+
+        return response()->json(['data' => $raffles]);
+    }
+
+    /**
      * GET /api/v1/raffles/{public_id} — результаты розыгрыша (публично).
      *
      * 404 для черновика, отменённого и несуществующего: у всех трёх случаев

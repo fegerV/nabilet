@@ -69,13 +69,32 @@ const footer = computed(() => storefront.config.footer)
 
 /* Иконка пункта меню: конфиг хранит подпись и путь, glyph подбираем по пути,
  * чтобы организатор не вводил «▦» руками. */
-const ICONS: Record<string, string> = { '/': '▦', '/tickets': '◫', '/admin': '◈' }
+const ICONS: Record<string, string> = {
+  '/': '▦',
+  '/calendar': '◷',
+  '/venues': '⌂',
+  '/promos': '★',
+  '/tickets': '◫',
+  '/admin': '◈',
+}
 
 const nav = computed(() => {
   const configured = header.value.nav ?? []
-  if (!configured.length) return [{ label: 'Афиша', to: '/', icon: '▦' }]
-  return configured.map((item) => ({ label: item.label, to: item.to ?? '/', icon: ICONS[item.to ?? ''] ?? '◇' }))
+  if (!configured.length) return [{ label: 'Афиша', to: '/', icon: '▦', external: false }]
+  return configured.map((item) => {
+    const to = item.to ?? item.url ?? '/'
+    return {
+      label: item.label,
+      to,
+      icon: ICONS[to] ?? (to.startsWith('/?') ? '▤' : '◇'),
+      // CMS-страницы и внешние адреса — обычные <a>: в SPA нет /page/:slug.
+      external: to.startsWith('/page/') || /^https?:\/\//.test(to),
+    }
+  })
 })
+
+const mobileMenuOpen = ref(false)
+watch(() => route.fullPath, () => { mobileMenuOpen.value = false })
 
 function submitSearch(): void {
   if (search.value.trim()) router.push({ path: '/', query: { q: search.value.trim() } })
@@ -157,16 +176,20 @@ if (isInsideIframe()) {
           </div>
         </form>
 
-        <nav class="hidden items-center gap-1 md:flex">
-          <RouterLink
-            v-for="item in nav"
-            :key="item.to"
-            :to="item.to"
-            class="rounded-md px-3 py-2 text-sm text-muted transition-colors hover:bg-surface-3 hover:text-content"
-            active-class="text-content bg-surface-3"
-          >
-            {{ item.label }}
-          </RouterLink>
+        <nav class="hidden items-center gap-1 md:flex" aria-label="Основное меню">
+          <template v-for="item in nav" :key="item.to">
+            <a
+              v-if="item.external"
+              :href="item.to"
+              class="rounded-md px-3 py-2 text-sm text-muted transition-colors hover:bg-surface-3 hover:text-content"
+            >{{ item.label }}</a>
+            <RouterLink
+              v-else
+              :to="item.to"
+              class="rounded-md px-3 py-2 text-sm text-muted transition-colors hover:bg-surface-3 hover:text-content"
+              active-class="text-content bg-surface-3"
+            >{{ item.label }}</RouterLink>
+          </template>
         </nav>
 
         <!--
@@ -230,9 +253,26 @@ if (isInsideIframe()) {
           type="button"
           class="grid h-9 w-9 flex-none place-items-center rounded-lg border border-line text-sm md:hidden"
           aria-label="Меню"
-          aria-expanded="false"
-          @click="router.push('/tickets')"
-        >☰</button>
+          :aria-expanded="mobileMenuOpen"
+          @click="mobileMenuOpen = !mobileMenuOpen"
+        >{{ mobileMenuOpen ? '✕' : '☰' }}</button>
+      </div>
+
+      <!-- Раскрывающееся мобильное меню: нижняя панель показывает только
+           основные разделы, а полный список — здесь. -->
+      <div v-if="mobileMenuOpen" class="border-t border-line bg-surface px-4 py-2 md:hidden">
+        <template v-for="item in nav" :key="'m-' + item.to">
+          <a
+            v-if="item.external"
+            :href="item.to"
+            class="block rounded-md px-2 py-2.5 text-sm text-muted hover:bg-surface-3 hover:text-content"
+          >{{ item.label }}</a>
+          <RouterLink
+            v-else
+            :to="item.to"
+            class="block rounded-md px-2 py-2.5 text-sm text-muted hover:bg-surface-3 hover:text-content"
+          >{{ item.label }}</RouterLink>
+        </template>
       </div>
     </header>
 
@@ -245,29 +285,51 @@ if (isInsideIframe()) {
       class="glass fixed inset-x-0 bottom-0 z-40 flex border-t border-line md:hidden"
       aria-label="Основная навигация"
     >
-      <RouterLink
-        v-for="item in nav"
-        :key="item.to"
-        :to="item.to"
-        class="flex flex-1 flex-col items-center gap-0.5 py-2 text-2xs text-subtle transition-colors safe-bottom"
-        active-class="!text-brand-400"
-      >
-        <span aria-hidden="true" class="text-lg leading-none">{{ item.icon }}</span>
-        {{ item.label }}
-      </RouterLink>
+      <template v-for="item in nav.slice(0, 5)" :key="'b-' + item.to">
+        <a
+          v-if="item.external"
+          :href="item.to"
+          class="flex flex-1 flex-col items-center gap-0.5 py-2 text-2xs text-subtle transition-colors safe-bottom"
+        >
+          <span aria-hidden="true" class="text-lg leading-none">{{ item.icon }}</span>
+          {{ item.label }}
+        </a>
+        <RouterLink
+          v-else
+          :to="item.to"
+          class="flex flex-1 flex-col items-center gap-0.5 py-2 text-2xs text-subtle transition-colors safe-bottom"
+          active-class="!text-brand-400"
+        >
+          <span aria-hidden="true" class="text-lg leading-none">{{ item.icon }}</span>
+          {{ item.label }}
+        </RouterLink>
+      </template>
     </nav>
 
-    <footer class="hidden border-t border-line md:block">
-      <div class="mx-auto flex max-w-content flex-wrap items-center justify-between gap-3 px-6 py-6 text-sm text-subtle">
-        <p>{{ footer.text || branding.name }}</p>
-        <p v-if="footer.links.length || footer.social.length" class="flex items-center gap-4">
+    <footer class="border-t border-line">
+      <div class="mx-auto max-w-content px-6 py-8">
+        <div class="flex flex-wrap gap-8 md:justify-between">
+          <div class="min-w-[180px] flex-1">
+            <p class="text-sm font-semibold text-content">{{ branding.name }}</p>
+            <p class="mt-1 max-w-xs text-xs leading-relaxed text-subtle">{{ footer.text || branding.tagline }}</p>
+          </div>
+          <div v-for="column in footer.columns ?? []" :key="column.title" class="min-w-[150px]">
+            <p class="text-xs font-semibold uppercase tracking-wide text-content">{{ column.title }}</p>
+            <ul class="mt-2 space-y-1.5">
+              <li v-for="link in column.links" :key="link.label">
+                <a :href="link.url" class="text-xs text-subtle transition-colors hover:text-content">{{ link.label }}</a>
+              </li>
+            </ul>
+          </div>
+        </div>
+        <div v-if="footer.links?.length || footer.social?.length" class="mt-6 flex flex-wrap gap-4 border-t border-line pt-4">
           <a
-            v-for="link in [...footer.links, ...footer.social]"
+            v-for="link in [...(footer.links ?? []), ...(footer.social ?? [])]"
             :key="link.label"
             :href="link.url"
-            class="transition-colors hover:text-content"
+            class="text-xs text-subtle transition-colors hover:text-content"
           >{{ link.label }}</a>
-        </p>
+        </div>
       </div>
     </footer>
   </div>

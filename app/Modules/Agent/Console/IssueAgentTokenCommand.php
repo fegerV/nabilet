@@ -58,7 +58,7 @@ class IssueAgentTokenCommand extends Command
 
         if (! StaffRole::isStaff($user)) {
             $this->error(sprintf(
-                'Пользователь %s не имеет роли admin/manager — агентские токены выпускаются только сотрудникам.',
+                'Пользователь %s не является администратором организации — агентские токены выпускаются только администраторам.',
                 $email,
             ));
 

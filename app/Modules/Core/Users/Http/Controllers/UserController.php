@@ -122,7 +122,20 @@ class UserController
 
     public function assignRole(Request $request, string $publicId): JsonResponse
     {
-        $user = $this->findOrFail($publicId);
+        // Организацию определяем ДО поиска цели: пользователь другой организации
+        // неотличим от несуществующего. Раньше findOrFail находил любого user,
+        // и admin мог выдать роль (в своей org!) чужому аккаунту.
+        $organizationId = UserOrganization::id($request->user());
+        if (empty($organizationId)) {
+            throw new ValidationError([
+                'role_id' => ['No organization to attach this role to.'],
+            ]);
+        }
+        $user = $this->findOrFail($publicId, (int) $organizationId);
+
+        if ((int) $user->id === (int) $request->user()->getAuthIdentifier()) {
+            throw new ValidationError(['role_id' => ['Нельзя менять собственную роль.']]);
+        }
 
         $validated = $request->validate([
             // `bail` is required in addition to `integer`: `roles.id` is BIGINT and
@@ -142,22 +155,24 @@ class UserController
         // Членство — `UserOrganization`, как и везде: здесь стоял `->value()`
         // без сортировки, то есть у администратора с двумя членствами роль
         // уходила в ту организацию, которую отдаст MySQL.
-        $organizationId = UserOrganization::id($request->user());
-
-        if (empty($organizationId)) {
-            throw new ValidationError([
-                'role_id' => ['No organization to attach this role to.'],
-            ]);
-        }
-
         $this->service->assignRoleToUser($user, (int) $validated['role_id'], (int) $organizationId);
 
         return response()->json(['message' => 'Role assigned successfully']);
     }
 
-    public function removeRole(string $publicId, int $roleId): JsonResponse
+    public function removeRole(Request $request, string $publicId, int $roleId): JsonResponse
     {
-        $this->service->removeRoleFromUser($this->findOrFail($publicId), $roleId);
+        $organizationId = UserOrganization::id($request->user());
+        if (empty($organizationId)) {
+            throw new NotFoundError('User', $publicId);
+        }
+        $user = $this->findOrFail($publicId, (int) $organizationId);
+
+        if ((int) $user->id === (int) $request->user()->getAuthIdentifier()) {
+            throw new ValidationError(['role_id' => ['Нельзя менять собственную роль.']]);
+        }
+
+        $this->service->removeRoleFromUser($user, $roleId);
 
         return response()->json(['message' => 'Role removed successfully']);
     }
@@ -183,11 +198,17 @@ class UserController
     /**
      * @throws NotFoundError
      */
-    private function findOrFail(string $publicId): User
+    private function findOrFail(string $publicId, ?int $organizationId = null): User
     {
         $user = $this->service->findUserByPublicId($publicId);
 
         if (!$user) {
+            throw new NotFoundError('User', $publicId);
+        }
+        if ($organizationId !== null && ! DB::table('user_organization')
+            ->where('user_id', $user->id)
+            ->where('organization_id', $organizationId)
+            ->exists()) {
             throw new NotFoundError('User', $publicId);
         }
 
