@@ -17,7 +17,12 @@
 import { computed, ref, type ComputedRef, type Ref } from 'vue'
 import { useCartStore, type CartSeat } from '@/stores/cart'
 import { useUiStore } from '@/stores/ui'
-import { holdSeat, releaseSeat, fetchCart, type InventoryItem, type HoldResponse } from '@/lib/inventory'
+import {
+  holdSeat, releaseSeat, fetchCart,
+  holdEmbedSeat, fetchEmbedCart,
+  type InventoryItem, type HoldResponse,
+} from '@/lib/inventory'
+import { isEmbedMode } from '@/lib/embed-api'
 import { ApiError } from '@/lib/api'
 import { trackEvent } from '@/lib/metrika'
 import { plural, seatsLabel, ticketsLabel } from '@/lib/format'
@@ -101,7 +106,7 @@ export function useSeatHolds(options: UseSeatHoldsOptions) {
   async function hydrateCart(sid: string): Promise<void> {
     let serverCart: Awaited<ReturnType<typeof fetchCart>> = null
     try {
-      serverCart = await fetchCart(sid)
+      serverCart = isEmbedMode() ? await fetchEmbedCart(sid) : await fetchCart(sid)
     } catch {
       // Корзина недоступна (сеть/500) — не трогаем локальное состояние, работаем
       // от локального отсчёта. Ошибочно снимать выбор из-за сбоя нельзя.
@@ -254,7 +259,9 @@ export function useSeatHolds(options: UseSeatHoldsOptions) {
       }
 
       // Холдим на сервере
-      const res = await holdSeat(sessionId.value, seat.id)
+      const res = isEmbedMode()
+        ? await holdEmbedSeat(sessionId.value, seat.id)
+        : await holdSeat(sessionId.value, seat.id)
       adoptHoldResponse(seat.id, res)
       cart.toggle({
         id: seat.id,
@@ -294,7 +301,9 @@ export function useSeatHolds(options: UseSeatHoldsOptions) {
           return
         }
         // Покупка qty билетов на стоячую зону: одна позиция корзины, N билетов.
-        const res = await holdSeat(sessionId.value, item.id, qty)
+        const res = isEmbedMode()
+          ? await holdEmbedSeat(sessionId.value, item.id, qty)
+          : await holdSeat(sessionId.value, item.id, qty)
         adoptHoldResponse(id, res)
         cart.toggle({
           id,
@@ -326,7 +335,9 @@ export function useSeatHolds(options: UseSeatHoldsOptions) {
         return
       }
 
-      const res = await holdSeat(sessionId.value, item.id)
+      const res = isEmbedMode()
+        ? await holdEmbedSeat(sessionId.value, item.id)
+        : await holdSeat(sessionId.value, item.id)
       adoptHoldResponse(id, res)
       cart.toggle({
         id,

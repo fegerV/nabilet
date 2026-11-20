@@ -15,9 +15,11 @@ import { useCartStore } from '@/stores/cart'
 import { get } from '@/lib/api'
 import {
   fetchInventory,
+  fetchEmbedInventory,
   MAX_TICKETS_PER_ORDER,
   type InventoryItem,
 } from '@/lib/inventory'
+import { isEmbedMode } from '@/lib/embed-api'
 import { seatStateFromStatus } from '@/lib/seatStatus'
 import { trackEvent } from '@/lib/metrika'
 import { dateFull, time } from '@/lib/format'
@@ -96,7 +98,7 @@ export function useSeatInventory() {
    * (config/metrika.php), поэтому отправляется здесь же, а не на странице.
    */
   async function fetchSeats(sid: string): Promise<void> {
-    const result = await fetchInventory(sid)
+    const result = isEmbedMode() ? await fetchEmbedInventory(sid) : await fetchInventory(sid)
 
     inventory.value = result.items
     totalSeats.value = result.total || result.items.length

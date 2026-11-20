@@ -191,6 +191,10 @@ interface ApiOptions {
    * см. `logoutCustomer()`.
    */
   as?: TokenAudience
+  /** Дополнительные заголовки: embed-режим кладёт сюда Idempotency-Key. */
+  headers?: Record<string, string>
+  /** Дополнительные query-параметры: embed_token на каждом embed-запросе. */
+  query?: Record<string, string | number>
 }
 
 export interface PageMeta {
@@ -308,14 +312,23 @@ export async function request<T = unknown>(path: string, options: ApiOptions = {
   // `user_id = NULL`, проверить владельца больше нечем), и без него оплата
   // отвечала 404 «чужой заказ». Плодить токены на запросах админки при этом
   // не нужно — поэтому `getCartToken()`, а не `ensureCartToken()`.
-  if (path.startsWith('/cart')) {
+  if (path.startsWith('/cart') || path.startsWith('/embed/carts')) {
     headers['X-Cart-Token'] = ensureCartToken()
   } else {
     const guestToken = getCartToken()
     if (guestToken) headers['X-Cart-Token'] = guestToken
   }
 
-  const res = await fetchJson(`${BASE_URL}${path}`, {
+  Object.assign(headers, options.headers ?? {})
+
+  const query = new URLSearchParams()
+  for (const [key, value] of Object.entries(options.query ?? {})) {
+    if (value !== '' && value !== undefined && value !== null) query.set(key, String(value))
+  }
+  const suffix = query.toString()
+  const url = `${BASE_URL}${path}${suffix ? (path.includes('?') ? '&' : '?') + suffix : ''}`
+
+  const res = await fetchJson(url, {
     method: options.method ?? 'GET',
     headers,
     body: options.body === undefined ? undefined : JSON.stringify(options.body),

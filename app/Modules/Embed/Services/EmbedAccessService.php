@@ -201,7 +201,13 @@ final class EmbedAccessService
             );
         }
 
-        if (! EmbedOrigin::isAllowed($host, $domains)) {
+        // iframe грузит НАШУ витрину, поэтому браузерные fetch из неё приходят
+        // с Origin/Referer нашего же домена, а не сайта партнёра. Такой запрос
+        // всё равно не может прийти с чужой страницы (там Origin другой), а
+        // а токен в URL уже проверен выше. CSP frame-ancestors остаётся
+        // настоящим барьером для чужих сайтов.
+        $sameOriginHost = EmbedOrigin::hostFrom('https://' . $request->getHost());
+        if ($host !== $sameOriginHost && ! EmbedOrigin::isAllowed($host, $domains)) {
             throw new AuthError(
                 sprintf('The site "%s" is not allowed to embed this organization.', $host),
                 'EMBED_ORIGIN_NOT_ALLOWED',

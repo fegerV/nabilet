@@ -4,6 +4,36 @@
 
 Формат — [Keep a Changelog](https://keepachangelog.com/ru-RU/1.1.0/), версионирование — [SemVer](https://semver.org/).
 
+## [1.13.0] - 2026-11-21
+
+Тема релиза — денежный флоу виджета на `/api/v1/embed/*`.
+
+### Changed
+
+- Карта зала, холды, чекаут и платёж внутри встраиваемого виджета теперь идут
+  через embed API. Обычная витрина продолжает пользоваться публичными ручками —
+  переключение включается только при `embed_token` в адресе рамки.
+- Embed `GET /sessions/{id}/seatmap` отдаёт конверт, совместимый с витринным
+  `/inventory` (поля мест, `meta.max_tickets_per_order`, `meta.stage_side`),
+  плюс прежние поля `inventory`/`session`/`schema`.
+- Embed-холд принимает ULID из seatmap наравне с числовым id.
+- Embed-чекаут принимает `bonus_amount` и `referral_code`, как витринный.
+- `stageSide()` вынесен в `Inventory\Support\StageSide`: витрина и embed считают
+  сторону сцены по одному правилу.
+
+### Fixed
+
+- Запросы из iframe приходят с Origin нашего домена — embed API теперь разрешает
+  same-origin при валидном токене; чужие Origin по-прежнему отклоняются.
+- `CartItemResource` внутри embed больше не падает 500 из-за незагруженных
+  связей `inventoryItem.seat.row.sector`.
+
+### Tests
+
+- Happy-path embed API (seatmap → cart → item → order → payment) и транспорт
+  виджета. В браузере на партнёрском сайте проведён полный сценарий: все пять
+  embed-запросов 201/200, постсообщения `order`/`payment` доходят родителю.
+
 ## [1.12.1] - 2026-11-21
 
 ### Fixed

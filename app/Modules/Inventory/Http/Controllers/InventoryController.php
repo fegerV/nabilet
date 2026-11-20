@@ -9,6 +9,7 @@ use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Inventory\StateMachines\InventoryItemStateMachine;
 use Nabilet\Modules\Inventory\Models\InventoryItem;
 use Nabilet\Modules\Inventory\Services\InventoryService;
+use Nabilet\Modules\Inventory\Support\StageSide;
 use Nabilet\Modules\Sessions\Models\Session;
 use Nabilet\Modules\Tickets\Models\Ticket;
 use Nabilet\Modules\Tickets\StateMachines\TicketStateMachine;
@@ -117,7 +118,7 @@ class InventoryController extends Controller
     private function stageSide(?string $sessionId): string
     {
         if ($sessionId === null || $sessionId === '') {
-            return 'top';
+            return StageSide::TOP;
         }
 
         // WITHOUT SCOPE — как и вся ветка гостя выше: витринный маршрут без
@@ -141,49 +142,9 @@ class InventoryController extends Controller
             return is_array($schemaJson) ? $schemaJson : null;
         });
 
-        if ($schema === null) {
-            return 'top';
-        }
-
-        $stage = null;
-
-        foreach ((array) ($schema['staticObjects'] ?? []) as $object) {
-            if (is_array($object) && ($object['kind'] ?? null) === 'stage') {
-                $stage = $object;
-                break;
-            }
-        }
-
-        if ($stage === null) {
-            return 'top';
-        }
-
-        $seatYs = [];
-
-        foreach ((array) ($schema['sectors'] ?? []) as $sector) {
-            if (! is_array($sector)) {
-                continue;
-            }
-
-            $offsetY = (float) ($sector['y'] ?? 0);
-
-            foreach ((array) ($sector['seats'] ?? []) as $seat) {
-                if (is_array($seat)) {
-                    $seatYs[] = $offsetY + (float) ($seat['y'] ?? 0);
-                }
-            }
-        }
-
-        if ($seatYs === []) {
-            return 'top';
-        }
-
-        sort($seatYs);
-        $medianY = $seatYs[intdiv(count($seatYs), 2)];
-
-        $stageCenterY = (float) ($stage['y'] ?? 0) + (float) ($stage['height'] ?? 0) / 2;
-
-        return $stageCenterY > $medianY ? 'bottom' : 'top';
+        // Само правило «где сцена» — в StageSide: embed-карта зала считает
+        // его из той же схемы и не может разойтись с витриной.
+        return StageSide::fromSchema($schema);
     }
 
     public function show(int $inventoryItem): JsonResponse

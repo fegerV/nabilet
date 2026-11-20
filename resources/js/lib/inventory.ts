@@ -12,6 +12,7 @@
  */
 
 import { request, get, send } from './api'
+import { embedGet, embedSend } from './embed-api'
 
 /**
  * Максимум билетов за один заказ — ЗАПАСНОЕ значение.
@@ -260,4 +261,151 @@ export async function extendCartHold(sessionId: number | string): Promise<string
     session_id: Number(sessionId),
   })
   return res.data.expires_at
+}
+
+/* ── embed API: те же операции, но под capability-ключ виджета ───────────── */
+
+const EMBED_CART_KEY = 'nabilet_embed_cart_'
+
+function savedEmbedCart(sessionId: number | string): string {
+  try {
+    return sessionStorage.getItem(EMBED_CART_KEY + sessionId) ?? ''
+  } catch {
+    return ''
+  }
+}
+
+function rememberEmbedCart(sessionId: number | string, cartId: string): void {
+  try {
+    sessionStorage.setItem(EMBED_CART_KEY + sessionId, cartId)
+  } catch {
+    // приватный режим: корзина всё равно вернётся сервером по cart_token
+  }
+}
+
+/** Корзина embed-виджета создаётся один раз и переиспользуется между местами. */
+export async function ensureEmbedCart(sessionId: number | string): Promise<string> {
+  const saved = savedEmbedCart(sessionId)
+  if (saved) return saved
+
+  const res = await embedSend<{ id: string | number }>('/carts', 'POST', {
+    session_id: String(sessionId),
+  })
+  const cartId = String(res.data.id)
+  rememberEmbedCart(sessionId, cartId)
+  return cartId
+}
+
+/** Карта зала из embed API: конверт совпадает с витринным /inventory. */
+export async function fetchEmbedInventory(sessionId: number | string): Promise<InventoryResult> {
+  const payload = await embedGet<{
+    data: InventoryItem[]
+    total?: number
+    last_page?: number
+  }>(`/sessions/${encodeURIComponent(String(sessionId))}/seatmap`)
+  const list = Array.isArray(payload.data?.data) ? payload.data.data : []
+  const meta = (payload.meta ?? {}) as {
+    total?: number
+    last_page?: number
+    max_tickets_per_order?: number
+    stage_side?: string
+  }
+  const total = Number(meta.total ?? list.length) || list.length
+  const serverLimit = Number(meta.max_tickets_per_order)
+
+  return {
+    items: list,
+    total,
+    truncated: list.length < total,
+    maxTicketsPerOrder: Number.isFinite(serverLimit) && serverLimit >= 1
+      ? Math.floor(serverLimit)
+      : MAX_TICKETS_PER_ORDER,
+    stageSide: meta.stage_side === 'bottom' ? 'bottom' : 'top',
+  }
+}
+
+/** Холд места через embed API. cart_item_id достаём из ответа CartResource. */
+export async function holdEmbedSeat(
+  sessionId: number | string,
+  inventoryItemId: number | string,
+  quantity = 1,
+): Promise<HoldResponse> {
+  const cartId = await ensureEmbedCart(sessionId)
+  const res = await embedSend<{
+    id?: string | number
+    expires_at?: string
+    items?: Array<{ id?: string | number; inventory_item?: { public_id?: string; id?: string | number } }>
+  }>(`/carts/${encodeURIComponent(cartId)}/items`, 'POST', {
+    inventory_item_id: String(inventoryItemId),
+    quantity,
+  })
+
+  const items = Array.isArray(res.data.items) ? res.data.items : []
+  const placed = items.find((item) => {
+    const ref = String(item.inventory_item?.public_id ?? item.inventory_item?.id ?? '')
+    return ref === String(inventoryItemId)
+  }) ?? items[items.length - 1]
+
+  return {
+    data: { id: placed?.id, inventory_item_id: Number(inventoryItemId) },
+    cart: { expires_at: res.data.expires_at ?? '' },
+  }
+}
+
+/** Восстановление корзины после F5 внутри embed-рамки. */
+export async function fetchEmbedCart(sessionId: number | string): Promise<ServerCart | null> {
+  // У embed API нет GET корзины по id: POST /carts идемпотентен по cart_token
+  // и возвращает ту же корзину с позициями.
+  const res = await embedSend<ServerCart>('/carts', 'POST', { session_id: String(sessionId) })
+  if (res.data?.id !== undefined) rememberEmbedCart(sessionId, String(res.data.id))
+  return res.data ?? null
+}
+
+/** Чекаут embed-виджета: OrderResource → привычный CheckoutResult витрины. */
+export async function checkoutEmbedOrder(
+  sessionId: number | string,
+  customer: {
+    customer_name?: string
+    customer_email: string
+    customer_email_confirmation?: string
+    customer_phone?: string
+    bonus_amount?: number
+    referral_code?: string
+  },
+): Promise<{ data: CheckoutResult }> {
+  const cartId = await ensureEmbedCart(sessionId)
+  const res = await embedSend<{
+    id: string
+    totals: {
+      subtotal_amount: number
+      discount_amount: number
+      bonus_amount: number
+      total_amount: number
+      currency: string
+    }
+    items?: CheckoutResult['items']
+  }>('/orders', 'POST', {
+    cart_id: cartId,
+    customer_name: customer.customer_name ?? null,
+    customer_email: customer.customer_email,
+    customer_email_confirmation: customer.customer_email_confirmation ?? null,
+    customer_phone: customer.customer_phone ?? null,
+    bonus_amount: customer.bonus_amount ?? 0,
+    referral_code: customer.referral_code ?? null,
+  })
+  const order = res.data
+
+  return {
+    data: {
+      cart_id: cartId,
+      order_id: order.id,
+      session_id: Number(sessionId),
+      total_amount: order.totals.total_amount,
+      subtotal_amount: order.totals.subtotal_amount,
+      discount_amount: order.totals.discount_amount,
+      bonus_amount: order.totals.bonus_amount,
+      currency: order.totals.currency,
+      items: order.items ?? [],
+    },
+  }
 }

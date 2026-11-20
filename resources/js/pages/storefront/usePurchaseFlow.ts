@@ -28,13 +28,14 @@ import { computed, ref, type Ref } from 'vue'
 import { useCartStore } from '@/stores/cart'
 import { useLoyaltyStore } from '@/stores/loyalty'
 import { useUiStore } from '@/stores/ui'
-import { checkoutSession } from '@/lib/inventory'
+import { checkoutSession, checkoutEmbedOrder } from '@/lib/inventory'
 import { ApiError } from '@/lib/api'
 import {
   anchorDemoUrl,
   confirmDemoPayment,
   demoPaymentId,
   initiatePayment,
+  initiateEmbedPayment,
   isDemoConfirmation,
   newIdempotencyKey,
 } from '@/lib/payments'
@@ -44,6 +45,7 @@ import { clearRememberedReferralCode, rememberedReferralCode } from '@/lib/refer
 import { money, plural } from '@/lib/format'
 import { phoneError } from '@/lib/phone'
 import { postEmbedEvent } from '@/lib/embed-bridge'
+import { isEmbedMode } from '@/lib/embed-api'
 import { trackEvent } from '@/lib/metrika'
 
 /** Где покупатель находится внутри виджета. */
@@ -382,14 +384,17 @@ export function usePurchaseFlow(options: UsePurchaseFlowOptions) {
       // 1. Заказ из удержанных мест. Бонусы уходят тем же запросом: списание —
       //    часть оформления, и считать его отдельным вызовом значило бы получить
       //    заказ с одной суммой, а списание — с другой.
-      const { data: order } = await checkoutSession(sessionId.value, {
+      const customer = {
         customer_name: name.value.trim(),
         customer_email: email.value.trim(),
         customer_email_confirmation: emailConfirm.value.trim(),
         customer_phone: phone.value.trim(),
         bonus_amount: bonusMinor.value,
         referral_code: referralCode.value ?? undefined,
-      })
+      }
+      const { data: order } = isEmbedMode()
+        ? await checkoutEmbedOrder(sessionId.value, customer)
+        : await checkoutSession(sessionId.value, customer)
 
       // 2. Итог — из ответа сервера, он источник правды о цене.
       cart.setOrder(order.order_id, Number(order.total_amount))
@@ -410,7 +415,10 @@ export function usePurchaseFlow(options: UsePurchaseFlowOptions) {
 
       // 3. Платёж. Гостевой заказ авторизуется заголовком X-Cart-Token,
       //    который подставляет api.ts (`PaymentController::mayPay()`).
-      const { confirmation_url, payment } = await initiatePayment(order.order_id, idempotencyKey())
+      const key = idempotencyKey()
+      const { confirmation_url, payment } = isEmbedMode()
+        ? await initiateEmbedPayment(order.order_id, key)
+        : await initiatePayment(order.order_id, key)
 
       if (!confirmation_url) {
         outcome.value = {

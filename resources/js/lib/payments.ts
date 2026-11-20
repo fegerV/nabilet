@@ -19,6 +19,7 @@
  */
 
 import { get, send } from './api'
+import { embedSend, idempotencyHeaders } from './embed-api'
 
 /** Ресурс платежа (подмножество, нужное витрине). */
 export interface PaymentResource {
@@ -70,6 +71,28 @@ export async function initiatePayment(
   })
 
   return res.data
+}
+
+/**
+ * Платёж embed-виджета. Ответ ручки — `{ data: Payment }` с `payment_url`;
+ * витринный контур ждёт `{ payment, confirmation_url }`, поэтому адаптируем
+ * здесь же, а не в композабле покупки.
+ */
+export async function initiateEmbedPayment(
+  orderId: string | number,
+  idempotencyKey: string,
+): Promise<InitiatePaymentResult> {
+  const res = await embedSend<PaymentResource & { payment_url?: string | null }>(
+    `/orders/${encodeURIComponent(String(orderId))}/payment`,
+    'POST',
+    undefined,
+    idempotencyHeaders(idempotencyKey),
+  )
+
+  return {
+    payment: res.data,
+    confirmation_url: res.data.payment_url ?? null,
+  }
 }
 
 /**

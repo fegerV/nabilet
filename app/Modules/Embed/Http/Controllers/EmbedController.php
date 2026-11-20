@@ -25,6 +25,7 @@ use Nabilet\Modules\Events\Http\Resources\EventResource;
 use Nabilet\Modules\Events\Models\Event;
 use Nabilet\Modules\Events\Repositories\EventRepository;
 use Nabilet\Modules\Inventory\Models\InventoryItem;
+use Nabilet\Modules\Inventory\Support\StageSide;
 use Nabilet\Modules\Orders\Http\Resources\OrderResource;
 use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Payments\Models\Payment;
@@ -171,12 +172,47 @@ final class EmbedController extends Controller
         // контекста у виджета нет — в bypass.
         $inventory = app(OrganizationContext::class)->withoutScope(
             fn () => InventoryItem::query()
+                ->with(['seat.row.sector', 'standingZone'])
                 ->where('session_id', $model->id)
                 ->orderBy('id')
                 ->get()
         );
 
+        // Те же вычисляемые поля, что отдаёт витринный GET /inventory: без
+        // row_number/sector_name рядная карта и подписи зон в виджете пустые.
+        $inventory->each(function (InventoryItem $item): void {
+            $seat = $item->seat;
+            if ($seat !== null) {
+                $seat->setAttribute('row_number', $seat->row?->number);
+                $seat->setAttribute('sector_name', $seat->row?->sector?->name);
+            }
+        });
+
+        // Фронт виджета переходит с витринного `/inventory` на embed-ручку без
+        // переписывания парсера: отдаём тот же конверт {data, meta}, плюс
+        // исторические поля `inventory`/`schema` для старых клиентов.
+        $items = $inventory->map(fn (InventoryItem $item): array => $item->toArray())->all();
+        $total = count($items);
+        $maxPerOrder = max(1, (int) config('nabilet.checkout.max_items_per_order', 10));
+        $schemaJson = $model->schemaVersion?->schema_json;
+        $stageSide = StageSide::fromSchema(is_array($schemaJson) ? $schemaJson : null);
+
         return response()->json([
+            'data' => [
+                'data' => $items,
+                'current_page' => 1,
+                'per_page' => max(1, $total),
+                'total' => $total,
+                'last_page' => 1,
+            ],
+            'meta' => [
+                'current_page' => 1,
+                'per_page' => max(1, $total),
+                'total' => $total,
+                'last_page' => 1,
+                'max_tickets_per_order' => $maxPerOrder,
+                'stage_side' => $stageSide,
+            ],
             'session' => $this->sessionPayload($model),
             'schema' => $this->schemaPayload($model->schemaVersion),
             'inventory' => $inventory
@@ -233,7 +269,7 @@ final class EmbedController extends Controller
         // гостю без тенант-контекста, eager `items` на скоупе `CartItem`
         // отказал бы. Корзина только что создана этой же сессией виджета.
         app(OrganizationContext::class)->withoutScope(
-            fn () => $cart->load('items.inventoryItem')
+            fn () => $cart->load('items.inventoryItem.seat.row.sector')
         );
 
         return response()
@@ -265,13 +301,26 @@ final class EmbedController extends Controller
         $maxPerOrder = max(1, (int) config('nabilet.checkout.max_items_per_order', 10));
 
         $validated = $request->validate([
-            'inventory_item_id' => ['bail', 'required', 'integer', 'exists:inventory_items,id'],
+            // Seatmap отдаёт ULID в поле `id`, а витринный чекаут — числовой
+            // внутренний id. Принимаем оба: иначе виджет не мог бы зарезервировать
+            // то, что только что показал.
+            'inventory_item_id' => ['bail', 'required', 'string', 'max:64'],
             'quantity' => ['required', 'integer', 'min:1', 'max:' . $maxPerOrder],
         ]);
 
+        $reference = trim((string) $validated['inventory_item_id']);
+        $itemId = ctype_digit($reference)
+            ? (int) $reference
+            : (int) (app(OrganizationContext::class)->withoutScope(
+                fn () => InventoryItem::query()->where('public_id', $reference)->value('id')
+            ) ?? 0);
+        if ($itemId < 1) {
+            throw new NotFoundError('InventoryItem', $reference);
+        }
+
         $this->cartItems->addItem(
             (string) $model->session_id,
-            (int) $validated['inventory_item_id'],
+            $itemId,
             (int) $validated['quantity'],
             $token,
             $request->user('api'),
@@ -280,7 +329,7 @@ final class EmbedController extends Controller
         // Корзина с позициями — дети capability-токена: витрина-эмбед отвечает
         // гостю без тенант-контекста, перечитывание после добавления — в bypass.
         $fresh = app(OrganizationContext::class)->withoutScope(
-            fn () => Cart::query()->with('items.inventoryItem')->find($model->id)
+            fn () => Cart::query()->with('items.inventoryItem.seat.row.sector')->find($model->id)
         );
 
         return response()->json(['data' => new CartResource($fresh)], 201);
@@ -309,6 +358,11 @@ final class EmbedController extends Controller
             'customer_name' => ['nullable', 'string', 'max:255'],
             'customer_phone' => ['nullable', 'string', 'max:32'],
             'promo_code' => ['nullable', 'string', 'max:64'],
+            // Те же поля, что принимает витринный /cart/checkout: без них
+            // бонусы и рефералы в рамке молча перестали бы работать после
+            // переключения денежного флоу на embed-ручки.
+            'bonus_amount' => ['nullable', 'integer', 'min:0', 'max:100000000'],
+            'referral_code' => ['nullable', 'string', 'max:32'],
         ]);
 
         // An array/object in `cart_id` is a client error, not a 500 on a cast —
@@ -326,6 +380,8 @@ final class EmbedController extends Controller
             'customer_email' => $validated['customer_email'],
             'customer_phone' => $validated['customer_phone'] ?? null,
             'promo_code' => $validated['promo_code'] ?? null,
+            'bonus_amount' => (int) ($validated['bonus_amount'] ?? 0),
+            'referral_code' => $validated['referral_code'] ?? null,
         ], $token);
 
         // Заказ только что создан чекаутом этой корзины: чтение для ответа —

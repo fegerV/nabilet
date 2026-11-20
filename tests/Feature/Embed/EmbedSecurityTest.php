@@ -154,6 +154,21 @@ class EmbedSecurityTest extends TestCase
             ->assertJsonPath('error.code', 'EMBED_ORIGIN_MISSING');
     }
 
+    public function test_a_same_origin_request_from_the_iframe_is_allowed(): void
+    {
+        [$organizationId, $eventId] = $this->seedPublishedEvent();
+        // В iframe документ — с нашего домена, поэтому fetch уходит с Origin
+        // витрины, а не сайта партнёра. Такой вызов должен работать: CSP
+        // frame-ancestors уже ограничивает, кто вообще может открыть рамку.
+        $this->seedEmbedDomain($organizationId, 'partner.example');
+        $token = $this->seedEmbedKey($organizationId);
+
+        $this->getJson(
+            $this->embedUrl("/api/v1/embed/events/{$eventId}", $token),
+            ['Origin' => 'https://' . parse_url((string) config('app.url'), PHP_URL_HOST)]
+        )->assertOk();
+    }
+
     public function test_an_organization_without_a_whitelist_cannot_be_embedded_at_all(): void
     {
         [$organizationId, $eventId] = $this->seedPublishedEvent();
