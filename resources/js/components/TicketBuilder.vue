@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, onMounted, watch } from 'vue';
+import { computed, ref, onMounted, onBeforeUnmount, nextTick, watch } from 'vue';
 // Видимость боковых панелей хранится в localStorage — как в конструкторе залов:
 // пользователь, который скрыл панели ради места на холсте, не должен
 // возвращать их после каждой перезагрузки страницы.
@@ -147,6 +147,85 @@ const canvasGradientConfig = computed(() =>
 
 // Элементы на холсте
 const elements = ref([]);
+
+/*
+ * Undo/redo. История — снимки всего состояния макета, а не только элементов:
+ * смена размера/фона тоже правка, и «отменить» обязано вернуть её.
+ * Во время drag/resize обновления приходят каждый кадр — такой шум в историю
+ * не пишем: stopDrag() делает один снимок после завершения жеста.
+ */
+const history = ref([]);
+const historyIndex = ref(-1);
+const canUndo = computed(() => historyIndex.value > 0);
+const canRedo = computed(() => historyIndex.value < history.value.length - 1);
+let historyTimer = null;
+let interacting = false;
+let restoring = false;
+
+function captureState() {
+    return cloneElement({
+        elements: elements.value,
+        canvasWidth: canvasWidth.value,
+        canvasHeight: canvasHeight.value,
+        canvasBackground: canvasBackground.value,
+        useGradient: useGradient.value,
+        gradientFrom: gradientFrom.value,
+        gradientTo: gradientTo.value,
+        gradientDir: gradientDir.value,
+    });
+}
+
+function pushHistory() {
+    if (historyIndex.value < history.value.length - 1) {
+        history.value.splice(historyIndex.value + 1);
+    }
+    history.value.push(captureState());
+    if (history.value.length > 60) history.value.shift();
+    historyIndex.value = history.value.length - 1;
+}
+
+function applySnapshot(snapshot) {
+    restoring = true;
+    elements.value = cloneElement(snapshot.elements ?? []);
+    canvasWidth.value = snapshot.canvasWidth ?? 400;
+    canvasHeight.value = snapshot.canvasHeight ?? 600;
+    canvasBackground.value = snapshot.canvasBackground ?? '#ffffff';
+    useGradient.value = Boolean(snapshot.useGradient);
+    gradientFrom.value = snapshot.gradientFrom ?? '#0f766e';
+    gradientTo.value = snapshot.gradientTo ?? '#1e293b';
+    gradientDir.value = snapshot.gradientDir ?? 'to bottom';
+    selectedElement.value = null;
+    void nextTick(() => { restoring = false; });
+}
+
+function undo() {
+    if (!canUndo.value) return;
+    historyIndex.value -= 1;
+    applySnapshot(history.value[historyIndex.value]);
+}
+
+function redo() {
+    if (!canRedo.value) return;
+    historyIndex.value += 1;
+    applySnapshot(history.value[historyIndex.value]);
+}
+
+function scheduleHistory() {
+    if (interacting || restoring || loading.value) return;
+    if (historyTimer) clearTimeout(historyTimer);
+    historyTimer = setTimeout(() => {
+        const current = captureState();
+        const last = history.value[historyIndex.value];
+        if (JSON.stringify(current) !== JSON.stringify(last)) pushHistory();
+    }, 350);
+}
+
+function onKeyDown(event) {
+    if (!(event.ctrlKey || event.metaKey)) return;
+    const key = String(event.key || '').toLowerCase();
+    if (key === 'z' && !event.shiftKey) { event.preventDefault(); undo(); }
+    else if (key === 'z' && event.shiftKey || key === 'y') { event.preventDefault(); redo(); }
+}
 
 // Готовые шаблоны, загруженные из БД (GET /ticket-templates).
 //
@@ -309,6 +388,7 @@ function addElement(item) {
     const newElement = normalizeNewElement(item);
     elements.value.push(newElement);
     selectElement(newElement);
+    pushHistory();
 }
 
 // Выбор элемента
@@ -317,11 +397,24 @@ function selectElement(element) {
 }
 
 // Начало перетаскивания
+// Pointer capture: палец/курсор может уйти за пределы холста, а жест должен
+// продолжаться — без этого на планшете перетаскивание обрывалось на первом же
+// выходе за край. touch-action:none снимает прокрутку страницы во время жеста.
+function capturePointer(event) {
+    try {
+        document.getElementById('ticket-canvas')?.setPointerCapture?.(event.pointerId);
+    } catch {
+        // старый браузер — работает обычный pointermove без захвата
+    }
+}
+
 function startDrag(event, element) {
     // В предпросмотре жест не должен ничего двигать: макет только смотрят.
     if (previewMode.value) return;
+    interacting = true;
     isDragging.value = true;
     selectedElement.value = element;
+    capturePointer(event);
     
     const rect = event.target.getBoundingClientRect();
     dragOffset.value = {
@@ -339,7 +432,9 @@ function startDrag(event, element) {
 const resizing = ref(null);
 
 function startResize(event, element, corner) {
+    interacting = true;
     selectedElement.value = element;
+    capturePointer(event);
     resizing.value = {
         corner,
         startX: event.clientX,
@@ -415,6 +510,7 @@ function clampElementToCanvas(element) {
 // Перестановка splice'ом сохраняет объект элемента — выделение не слетает.
 function moveLayer(id, direction) {
     moveElementInList(elements.value, id, direction);
+    pushHistory();
 }
 
 // Позиция выбранного снизу (1 — самый нижний) — для строки «Слой i из n».
@@ -460,8 +556,12 @@ function handleDrag(event) {
 
 // Завершение перетаскивания (и тянучки за угол — жест тот же).
 function stopDrag() {
+    const wasInteracting = interacting || isDragging.value || Boolean(resizing.value);
     isDragging.value = false;
     resizing.value = null;
+    interacting = false;
+    // Один снимок на жест: без этого история состояла бы из сотен кадров.
+    if (wasInteracting) pushHistory();
 }
 
 // Диспетчер движения по холсту: ресайз за угол или обычное перетаскивание.
@@ -480,6 +580,7 @@ function deleteSelected() {
     if (index > -1) {
         elements.value.splice(index, 1);
         selectedElement.value = null;
+        pushHistory();
     }
 }
 
@@ -489,6 +590,7 @@ function duplicateElement() {
     if (!duplicate) return;
     elements.value.push(duplicate);
     selectElement(duplicate);
+    pushHistory();
 }
 
 // Применение шаблона
@@ -551,6 +653,7 @@ function applyLayout(layout) {
     if (typeof bg === 'string' && bg !== '') {
         canvasBackground.value = bg;
     }
+    pushHistory();
 }
 
 /** Переключить формат холста, сохранив относительное расположение элементов. */
@@ -567,6 +670,7 @@ function setOrientation(orientation) {
     canvasWidth.value = next.width;
     canvasHeight.value = next.height;
     selectedElement.value = null;
+    pushHistory();
 }
 
 // Начать новый шаблон с пустого холста.
@@ -588,6 +692,7 @@ function clearCanvas() {
     selectedTemplate.value = null;
     templateName.value = '';
     currentTemplateName.value = '';
+    pushHistory();
 }
 
 // Сборка `template_json` из состояния редактора.
@@ -726,6 +831,9 @@ async function loadTemplate() {
             gradientTo.value = '#1e293b';
             gradientDir.value = 'to bottom';
         }
+        history.value = [];
+        historyIndex.value = -1;
+        pushHistory();
     } catch (e) {
         loadError.value = e instanceof Error ? e.message : String(e);
     } finally {
@@ -887,12 +995,25 @@ function resizeCanvas(preset) {
     canvasHeight.value = size.height;
 }
 
+watch(
+    [elements, canvasWidth, canvasHeight, canvasBackground, useGradient, gradientFrom, gradientTo, gradientDir],
+    scheduleHistory,
+    { deep: true },
+);
+
 onMounted(() => {
     // Шаблоны нужны всегда (вкладка «Шаблоны»), поэтому грузим сразу.
     loadTemplates();
     if (props.templateId) {
         loadTemplate();
     }
+    pushHistory();
+    window.addEventListener('keydown', onKeyDown);
+});
+
+onBeforeUnmount(() => {
+    window.removeEventListener('keydown', onKeyDown);
+    if (historyTimer) clearTimeout(historyTimer);
 });
 </script>
 
@@ -907,6 +1028,8 @@ onMounted(() => {
                 <button @click="printPreview" class="btn btn-success">
                     🖨️ Печать / PDF
                 </button>
+                <button @click="undo" :disabled="!canUndo" class="btn btn-secondary" title="Отменить (Ctrl+Z)">↶</button>
+                <button @click="redo" :disabled="!canRedo" class="btn btn-secondary" title="Повторить (Ctrl+Shift+Z)">↷</button>
                 <button @click="deleteSelected" :disabled="!selectedElement" class="btn btn-danger">
                     🗑️ Удалить
                 </button>
@@ -1186,9 +1309,9 @@ onMounted(() => {
                         width: `${canvasWidth * zoom / 100}px`,
                         height: `${canvasHeight * zoom / 100}px`
                     }"
-                    @mousemove="onCanvasPointerMove"
-                    @mouseup="stopDrag"
-                    @mouseleave="stopDrag"
+                    @pointermove="onCanvasPointerMove"
+                    @pointerup="stopDrag"
+                    @pointercancel="stopDrag"
                 >
                     <div
                         class="canvas-inner"
@@ -1213,7 +1336,7 @@ onMounted(() => {
                                 transform: `rotate(${element.rotation}deg)`,
                                 opacity: element.opacity
                             }"
-                            @mousedown.stop="startDrag($event, element)"
+                            @pointerdown.stop="startDrag($event, element)"
                             @click.stop="selectElement(element)"
                         >
                             <!-- Text Element -->
@@ -1340,7 +1463,7 @@ onMounted(() => {
                                 class="resize-handle"
                                 :class="'resize-' + corner"
                                 title="Потяните, чтобы изменить размер"
-                                @mousedown.stop="startResize($event, element, corner)"
+                                @pointerdown.stop="startResize($event, element, corner)"
                             />
                         </div>
                         
@@ -2136,6 +2259,9 @@ onMounted(() => {
     position: relative;
     overflow: hidden;
     flex: none;
+    /* Тач-перетаскивание элементов: без этого браузер прокручивает страницу
+       вместо жеста на холсте. */
+    touch-action: none;
 }
 
 .canvas-inner {

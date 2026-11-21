@@ -144,14 +144,42 @@ describe('TicketBuilder в режиме создания', () => {
 
     const handle = wrapper.find('.resize-handle.resize-se')
     expect(handle.exists()).toBe(true)
-    await handle.trigger('mousedown', { clientX: 100, clientY: 100 })
+    // jsdom не умеет PointerEvent: создаём MouseEvent с нужным типом и pointerId.
+    const pointerEvent = (type: string, clientX: number, clientY: number): MouseEvent => {
+      const event = new MouseEvent(type, { bubbles: true, clientX, clientY })
+      Object.defineProperty(event, 'pointerId', { value: 1 })
+      return event
+    }
+    handle.element.dispatchEvent(pointerEvent('pointerdown', 100, 100))
+    await wrapper.vm.$nextTick()
 
     const canvas = wrapper.find('#ticket-canvas')
-    await canvas.trigger('mousemove', { clientX: 150, clientY: 130 })
-    await canvas.trigger('mouseup')
+    canvas.element.dispatchEvent(pointerEvent('pointermove', 150, 130))
+    canvas.element.dispatchEvent(pointerEvent('pointerup', 150, 130))
+    await wrapper.vm.$nextTick()
 
     const after = wrapper.find('.element-image').attributes('style') ?? ''
     expect(after).not.toBe(before)
+  })
+
+  it('undo/redo отменяет и возвращает добавление элемента', async () => {
+    const wrapper = mount(TicketBuilder, { props: { templateId: null } })
+    const count = () => wrapper.findAll('.canvas-element').length
+
+    const before = count()
+    const textBtn = wrapper.findAll('.element-item').find((b) => b.text().includes('Заголовок'))
+    await textBtn!.trigger('click')
+    expect(count()).toBe(before + 1)
+
+    const undo = wrapper.findAll('button').find((b) => b.attributes('title') === 'Отменить (Ctrl+Z)')
+    const redo = wrapper.findAll('button').find((b) => b.attributes('title') === 'Повторить (Ctrl+Shift+Z)')
+    expect(undo?.attributes('disabled')).toBeUndefined()
+
+    await undo!.trigger('click')
+    expect(count()).toBe(before)
+
+    await redo!.trigger('click')
+    expect(count()).toBe(before + 1)
   })
 
   it('вкладка слоёв показывает порядок сверху вниз и двигает слой', async () => {
