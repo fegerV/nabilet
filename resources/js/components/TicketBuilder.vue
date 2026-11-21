@@ -22,6 +22,7 @@ import {
     moveElementInList,
     normalizeNewElement,
     resizeHandlesFor,
+    scaleElementsToCanvas,
     syncDerivedCoordinates,
     duplicateAsElement,
     renderTextContent as renderVars,
@@ -73,6 +74,10 @@ const saving = ref(false);
 const loading = ref(false);
 const deleting = ref(false);
 const loadError = ref(null);
+// Валидация имени — рядом с полем, а не блокирующим alert().
+const saveError = ref('');
+// Подтверждение необратимых действий внутри редактора, без window.confirm.
+const pendingConfirm = ref(null);
 // Имя открытого шаблона: подставляется в модалку сохранения, чтобы при
 // обновлении не печатать название заново.
 const currentTemplateName = ref('');
@@ -532,20 +537,52 @@ function templateBackground(source) {
 // размер, и фон: иначе макет вылезал бы за вертикальный холст по умолчанию,
 // а фон оставался бы от прошлого макета.
 function applyLayout(layout) {
-    applyTemplate(layout);
-    canvasWidth.value = 600;
-    canvasHeight.value = 400;
+    // Заготовки нарисованы под 600×400, а холст по умолчанию вертикальный.
+    // Пересчитываем геометрию вместо того, чтобы заставлять шаблон становиться
+    // горизонтальным: вертикальный билет — основной формат для телефона.
+    const source = layout?.config?.elements || [];
+    const scaled = scaleElementsToCanvas(
+        source,
+        { width: 600, height: 400 },
+        { width: canvasWidth.value, height: canvasHeight.value }
+    );
+    applyTemplate({ ...layout, config: { ...layout.config, elements: scaled } });
     const bg = layout?.config?.backgroundColor;
     if (typeof bg === 'string' && bg !== '') {
         canvasBackground.value = bg;
     }
 }
 
+/** Переключить формат холста, сохранив относительное расположение элементов. */
+function setOrientation(orientation) {
+    const next = orientation === 'horizontal'
+        ? { width: 600, height: 400 }
+        : { width: 400, height: 600 };
+    if (next.width === canvasWidth.value && next.height === canvasHeight.value) return;
+    elements.value = scaleElementsToCanvas(
+        elements.value,
+        { width: canvasWidth.value, height: canvasHeight.value },
+        next
+    );
+    canvasWidth.value = next.width;
+    canvasHeight.value = next.height;
+    selectedElement.value = null;
+}
+
 // Начать новый шаблон с пустого холста.
 function resetCanvas() {
-    if (elements.value.length && !window.confirm('Очистить холст? Несохранённые изменения будут потеряны.')) {
+    if (elements.value.length) {
+        pendingConfirm.value = {
+            title: 'Очистить холст?',
+            message: 'Несохранённые изменения будут потеряны.',
+            action: () => clearCanvas(),
+        };
         return;
     }
+    clearCanvas();
+}
+
+function clearCanvas() {
     elements.value = [];
     selectedElement.value = null;
     selectedTemplate.value = null;
@@ -577,6 +614,7 @@ function openSaveModal() {
     // При редактировании существующего шаблона предлагаем его текущее имя:
     // пустое поле на каждое «сохранить» заставляло печатать название заново.
     templateName.value = currentTemplateName.value || '';
+    saveError.value = '';
     showTemplateModal.value = true;
 }
 
@@ -592,9 +630,18 @@ function openSaveModal() {
 async function saveTemplate() {
     const name = templateName.value.trim();
     if (!name) {
-        alert('Введите название шаблона');
+        saveError.value = 'Введите название шаблона';
         return;
     }
+    if (name.length > 255) {
+        saveError.value = 'Название не длиннее 255 символов';
+        return;
+    }
+    if (elements.value.length > 300) {
+        saveError.value = 'Слишком много элементов (максимум 300)';
+        return;
+    }
+    saveError.value = '';
 
     saving.value = true;
     try {
@@ -623,7 +670,8 @@ async function saveTemplate() {
         const detail = e instanceof ApiError && e.details
             ? Object.values(e.details).flat().join(' ')
             : (e instanceof Error ? e.message : String(e));
-        alert('Ошибка при сохранении шаблона: ' + detail);
+        saveError.value = detail;
+        ui.notify('rose', 'Не удалось сохранить шаблон', detail);
     } finally {
         saving.value = false;
     }
@@ -639,6 +687,7 @@ async function loadTemplate() {
     if (!props.templateId) return;
 
     loading.value = true;
+    loadError.value = null;
     try {
         const res = await get(`/ticket-templates/${props.templateId}`);
         const template = res.data;
@@ -649,8 +698,10 @@ async function loadTemplate() {
             ? JSON.parse(template.template_json)
             : (template.template_json ?? {});
 
-        canvasWidth.value = template.width || 600;
-        canvasHeight.value = template.height || 400;
+        // Вертикальный билет — основной формат; старые записи без размеров
+        // тоже должны открываться вертикальными, а не наследовать 600×400.
+        canvasWidth.value = template.width || 400;
+        canvasHeight.value = template.height || 600;
         canvasBackground.value = typeof config.backgroundColor === 'string' && config.backgroundColor !== ''
             ? config.backgroundColor
             : '#ffffff';
@@ -686,19 +737,33 @@ async function loadTemplate() {
 //
 // Подтверждение обязательно: макет собирается вручную и нигде не дублируется,
 // поэтому удаление необратимо.
+function requestDelete() {
+    if (internalId.value === null || internalId.value === undefined || internalId.value === '') return;
+    pendingConfirm.value = {
+        title: 'Удалить шаблон?',
+        message: 'Действие необратимо. Билеты, уже выданные с этим макетом, останутся действительными.',
+        action: () => { void deleteTemplate(); },
+    };
+}
+
 async function deleteTemplate() {
     if (internalId.value === null || internalId.value === undefined || internalId.value === '') return;
-    if (!window.confirm('Удалить шаблон? Действие необратимо.')) return;
-
     deleting.value = true;
     try {
         await send(`/ticket-templates/${internalId.value}`, 'DELETE');
         emit('template-deleted', internalId.value);
+        ui.notify('mint', 'Шаблон удалён');
     } catch (e) {
-        alert('Не удалось удалить шаблон: ' + (e instanceof Error ? e.message : String(e)));
+        ui.notify('rose', 'Не удалось удалить шаблон', e instanceof Error ? e.message : String(e));
     } finally {
         deleting.value = false;
     }
+}
+
+function confirmPending() {
+    const action = pendingConfirm.value?.action;
+    pendingConfirm.value = null;
+    if (typeof action === 'function') action();
 }
 
 // Текст элемента на холсте: с тестовыми данными или сырым плейсхолдером.
@@ -812,6 +877,12 @@ function printPreview() {
 function resizeCanvas(preset) {
     const size = CANVAS_PRESETS[preset];
     if (!size) return;
+    if (size.width === canvasWidth.value && size.height === canvasHeight.value) return;
+    elements.value = scaleElementsToCanvas(
+        elements.value,
+        { width: canvasWidth.value, height: canvasHeight.value },
+        size,
+    );
     canvasWidth.value = size.width;
     canvasHeight.value = size.height;
 }
@@ -857,6 +928,24 @@ onMounted(() => {
             </div>
             
             <div class="toolbar-section">
+                <span class="toolbar-label">Формат:</span>
+                <button
+                    @click="setOrientation('vertical')"
+                    :class="['btn', 'btn-secondary', canvasHeight > canvasWidth ? 'btn-active' : '']"
+                    title="Вертикальный билет — удобно смотреть на телефоне"
+                >
+                    ▯ Вертикальный
+                </button>
+                <button
+                    @click="setOrientation('horizontal')"
+                    :class="['btn', 'btn-secondary', canvasWidth >= canvasHeight ? 'btn-active' : '']"
+                    title="Горизонтальный макет"
+                >
+                    ▭ Горизонтальный
+                </button>
+            </div>
+
+            <div class="toolbar-section">
                 <label class="toolbar-label">Размер:</label>
                 <select :value="presetKey" @change="resizeCanvas($event.target.value)" class="toolbar-select">
                     <option value="mobile">Мобильный (400×600)</option>
@@ -883,6 +972,7 @@ onMounted(() => {
             <span v-if="loading">Загружаем шаблон…</span>
             <span v-else-if="loadError" class="builder-status-error">
                 Не удалось загрузить шаблон: {{ loadError }}
+                <button class="btn btn-secondary" style="margin-left:8px" @click="loadTemplate">Повторить</button>
             </span>
             <span v-else-if="!internalId && !currentTemplateName">
                 Новый шаблон — выберите заготовку на вкладке «Шаблоны» или соберите макет из элементов.
@@ -982,7 +1072,7 @@ onMounted(() => {
                         <button @click="resetCanvas" class="btn btn-secondary btn-block">＋ Новый пустой</button>
                         <button
                             v-if="internalId"
-                            @click="deleteTemplate"
+                            @click="requestDelete"
                             :disabled="deleting"
                             class="btn btn-danger btn-block"
                         >
@@ -1544,7 +1634,10 @@ onMounted(() => {
                     placeholder="Название шаблона" 
                     class="modal-input"
                     autofocus
+                    maxlength="255"
+                    @input="saveError = ''"
                 />
+                <p v-if="saveError" class="panel-hint panel-hint-error">{{ saveError }}</p>
                 <div class="modal-actions">
                     <button @click="showTemplateModal = false" class="btn btn-secondary">
                         Отмена
@@ -1552,6 +1645,18 @@ onMounted(() => {
                     <button @click="saveTemplate" class="btn btn-primary">
                         Сохранить
                     </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Подтверждения внутри редактора вместо блокирующих window.confirm. -->
+        <div v-if="pendingConfirm" class="modal-overlay" @click.self="pendingConfirm = null">
+            <div class="modal">
+                <h3>{{ pendingConfirm.title }}</h3>
+                <p class="panel-hint">{{ pendingConfirm.message }}</p>
+                <div class="modal-actions">
+                    <button class="btn btn-secondary" @click="pendingConfirm = null">Отмена</button>
+                    <button class="btn btn-danger" @click="confirmPending">Подтвердить</button>
                 </div>
             </div>
         </div>
@@ -1696,6 +1801,12 @@ onMounted(() => {
 
 .btn-secondary:hover:not(:disabled) {
     background: #475569;
+}
+
+/* Активный формат холста: сразу видно, вертикальный билет или горизонтальный. */
+.btn-active {
+    background: #0f766e !important;
+    box-shadow: 0 0 0 2px rgba(15, 118, 110, 0.35);
 }
 
 .btn-icon {

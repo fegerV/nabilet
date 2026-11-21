@@ -13,6 +13,7 @@ import {
   FONT_STACKS,
   applyCornerResize,
   buildTemplatePayload,
+  formatForCanvas,
   cloneElement,
   duplicateAsElement,
   elementLayerLabel,
@@ -23,6 +24,7 @@ import {
   normalizeNewElement,
   renderTextContent,
   resizeHandlesFor,
+  scaleElementsToCanvas,
   syncDerivedCoordinates,
 } from '../../../resources/js/lib/ticketBuilder'
 
@@ -52,6 +54,32 @@ describe('buildTemplatePayload', () => {
       config: { backgroundColor: '#fff', elements: [] },
     })
     expect('organization_id' in payload).toBe(false)
+  })
+})
+
+describe('ticket format', () => {
+  it('derives the format from the canvas instead of hardcoding mobile', () => {
+    expect(formatForCanvas(400, 600)).toBe('mobile')
+    expect(formatForCanvas(600, 400)).toBe('desktop')
+    expect(buildTemplatePayload({
+      name: 'Широкий',
+      canvasWidth: 600,
+      canvasHeight: 400,
+      config: { backgroundColor: '#fff', elements: [] },
+    }).format).toBe('desktop')
+  })
+
+  it('scales a built-in 600x400 layout into a vertical 400x600 canvas', () => {
+    const [scaled] = scaleElementsToCanvas(
+      [{ id: 1, type: 'rectangle', x: 600, y: 400, width: 600, height: 400, fontSize: 20 }],
+      { width: 600, height: 400 },
+      { width: 400, height: 600 },
+    )
+    expect(scaled.x).toBe(400)
+    expect(scaled.y).toBe(600)
+    expect(scaled.width).toBe(400)
+    expect(scaled.height).toBe(600)
+    expect(scaled.fontSize).toBe(13)
   })
 })
 

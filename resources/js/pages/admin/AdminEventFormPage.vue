@@ -1135,9 +1135,19 @@ const publishedAtText = computed<string | null>(() => {
           :hint="templatesLoading ? 'Загружаем список макетов…' : 'Макет попадает в письмо с билетом и на страницу билета. Новое мероприятие получает макет по умолчанию автоматически.'"
         />
         <div v-if="isEdit && !templatesLoading && templates.length > 0" class="mt-2">
-          <NButton variant="ghost" size="sm" :loading="duplicatingTemplate" @click="duplicateTemplateForEvent">
-            Создать макет для этого мероприятия
-          </NButton>
+          <div class="flex flex-wrap items-center gap-2">
+            <NButton variant="ghost" size="sm" :loading="duplicatingTemplate" @click="duplicateTemplateForEvent">
+              Создать макет для этого мероприятия
+            </NButton>
+            <NButton
+              v-if="form.ticket_template_id"
+              variant="secondary"
+              size="sm"
+              @click="router.push(`/admin/ticket-templates?template=${form.ticket_template_id}`)"
+            >
+              Открыть выбранный макет
+            </NButton>
+          </div>
           <p class="mt-1 text-xs text-subtle">
             Копия текущего макета с привязкой к событию — дальше настройте типографику и фон в конструкторе.
           </p>

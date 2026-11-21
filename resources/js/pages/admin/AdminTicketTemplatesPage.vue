@@ -117,6 +117,17 @@ function onDeleted(): void {
   load()
 }
 
+/** Включить/выключить макет: раньше бейдж был, но переключателя не было. */
+async function toggleActive(template: TicketTemplate): Promise<void> {
+  try {
+    await send(`/ticket-templates/${template.id}`, 'PUT', { active: !template.active })
+    template.active = !template.active
+    ui.notify('mint', template.active ? 'Шаблон включён' : 'Шаблон выключен', template.name)
+  } catch (e) {
+    ui.notify('rose', 'Не удалось изменить статус', e instanceof ApiError ? e.message : String(e))
+  }
+}
+
 async function removeFromList(template: TicketTemplate): Promise<void> {
   if (!window.confirm(`Удалить шаблон «${template.name}»? Действие необратимо.`)) return
   try {
@@ -352,6 +363,10 @@ async function duplicateFromList(template: TicketTemplate): Promise<void> {
 
             <div class="mt-4 flex flex-wrap items-center gap-2">
               <NButton @click="openTemplate(template.id)">Открыть</NButton>
+              <NButton
+                variant="secondary"
+                @click="toggleActive(template)"
+              >{{ template.active ? 'Выключить' : 'Включить' }}</NButton>
               <NButton
                 variant="secondary"
                 :loading="duplicatingId === template.id"

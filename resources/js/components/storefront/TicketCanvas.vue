@@ -11,6 +11,7 @@
  */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import QRCode from 'qrcode'
+import JsBarcode from 'jsbarcode'
 import {
   flattenVariables,
   type BuilderElement,
@@ -19,6 +20,7 @@ import {
 import { dateTime, time } from '@/lib/format'
 import { minorToRub } from '@/lib/money'
 import type { TicketTemplateConfig } from '@/lib/types'
+import { storageSrc } from '@/lib/mediaLibrary'
 
 const props = defineProps<{
   config: TicketTemplateConfig
@@ -43,20 +45,53 @@ const props = defineProps<{
 const els = computed<BuilderElement[]>(() => props.config.elements as BuilderElement[])
 
 const qrUrl = ref('')
+// Смена payload во время генерации не должна записать в qrUrl устаревший код.
+let qrGeneration = 0
 watch(
   () => props.ticket.qrPayload,
   async (payload) => {
+    const generation = ++qrGeneration
     qrUrl.value = ''
     if (!payload) return
     try {
-      qrUrl.value = await QRCode.toDataURL(payload, {
+      const url = await QRCode.toDataURL(payload, {
         width: 320,
         margin: 1,
         errorCorrectionLevel: 'M',
         color: { dark: '#120F24', light: '#FFFFFF' },
       })
+      if (generation === qrGeneration) qrUrl.value = url
     } catch {
-      qrUrl.value = ''
+      if (generation === qrGeneration) qrUrl.value = ''
+    }
+  },
+  { immediate: true },
+)
+
+// Штрихкод из номера билета — локально, через JS-кодировщик; данные никуда не
+// уходят. Раньше витрина показывала текстовую заглушку «|| || ||».
+const barcodeUrl = ref('')
+watch(
+  () => props.ticket.code,
+  (code) => {
+    if (!code) {
+      barcodeUrl.value = ''
+      return
+    }
+    try {
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+      JsBarcode(svg, code, {
+        format: 'CODE128',
+        displayValue: false,
+        lineColor: '#120F24',
+        background: '#ffffff',
+        margin: 0,
+        width: 2,
+        height: 60,
+      })
+      barcodeUrl.value = `data:image/svg+xml;base64,${btoa(svg.outerHTML)}`
+    } catch {
+      barcodeUrl.value = ''
     }
   },
   { immediate: true },
@@ -97,8 +132,10 @@ const variables = computed<TicketVariables>(() => ({
 
 const background = computed(() => {
   const g = props.config.backgroundGradient
-  if (g && g.from && g.to) {
-    return `linear-gradient(${g.direction || 'to bottom'}, ${g.from}, ${g.to})`
+  if (g && g.from) {
+    // Как и в миниатюре конструктора: достаточно `from`. Требовать `to`
+    // означало бы, что сохранённый градиент на витрине внезапно стал сплошным.
+    return `linear-gradient(${g.direction || 'to bottom'}, ${g.from}, ${g.to || g.from})`
   }
   return props.config.backgroundColor || '#ffffff'
 })
@@ -114,6 +151,25 @@ function num(value: unknown, fallback = 0): number {
   if (typeof value === 'number' && Number.isFinite(value)) return value
   const parsed = parseFloat(String(value))
   return Number.isFinite(parsed) ? parsed : fallback
+}
+
+/**
+ * Общие визуальные свойства элемента: поворот и прозрачность задаются в
+ * конструкторе, но раньше на витрине игнорировались — билет выглядел не так,
+ * как администратор видел в редакторе.
+ */
+function commonStyle(el: BuilderElement): Record<string, string> {
+  const style: Record<string, string> = {}
+  const rotation = num(el.rotation, 0)
+  if (rotation !== 0) style.transform = `rotate(${rotation}deg)`
+  const opacity = num(el.opacity, 1)
+  if (opacity >= 0 && opacity < 1) style.opacity = String(opacity)
+  return style
+}
+
+function imageSrc(el: BuilderElement): string {
+  const raw = typeof el.src === 'string' ? el.src : ''
+  return raw ? storageSrc(raw) : ''
 }
 
 function textStyle(el: BuilderElement): Record<string, string> {
@@ -133,7 +189,7 @@ function textStyle(el: BuilderElement): Record<string, string> {
   if (typeof el.fontFamily === 'string' && el.fontFamily) {
     s.fontFamily = el.fontFamily
   }
-  return s
+  return { ...s, ...commonStyle(el) }
 }
 
 function rectStyle(el: BuilderElement): Record<string, string> {
@@ -150,7 +206,7 @@ function rectStyle(el: BuilderElement): Record<string, string> {
   if (sw > 0 && typeof el.stroke === 'string' && el.stroke) {
     s.border = `${sw}px solid ${el.stroke}`
   }
-  return s
+  return { ...s, ...commonStyle(el) }
 }
 
 function circleStyle(el: BuilderElement): Record<string, string> {
@@ -168,7 +224,7 @@ function circleStyle(el: BuilderElement): Record<string, string> {
   if (sw > 0 && typeof el.stroke === 'string' && el.stroke) {
     s.border = `${sw}px solid ${el.stroke}`
   }
-  return s
+  return { ...s, ...commonStyle(el) }
 }
 
 function lineStyle(el: BuilderElement): Record<string, string> {
@@ -185,14 +241,17 @@ function lineStyle(el: BuilderElement): Record<string, string> {
       : typeof el.color === 'string' && el.color
         ? el.color
         : '#111827'
+  const common = commonStyle(el)
+  const extraRotation = common.transform ? ` ${common.transform}` : ''
   return {
+    ...common,
     position: 'absolute',
     left: `${x}px`,
     top: `${y}px`,
     width: `${len}px`,
     height: `${sw}px`,
     background: stroke,
-    transform: `rotate(${angle}deg)`,
+    transform: `rotate(${angle}deg)${extraRotation}`,
     transformOrigin: '0 0',
   }
 }
@@ -200,6 +259,7 @@ function lineStyle(el: BuilderElement): Record<string, string> {
 function qrStyle(el: BuilderElement): Record<string, string> {
   const w = num(el.size ?? el.width, 140)
   return {
+    ...commonStyle(el),
     position: 'absolute',
     left: `${num(el.x)}px`,
     top: `${num(el.y)}px`,
@@ -212,6 +272,7 @@ function placeholderStyle(el: BuilderElement): Record<string, string> {
   const w = num(el.width, 100)
   const h = num(el.height, 100)
   return {
+    ...commonStyle(el),
     position: 'absolute',
     left: `${num(el.x)}px`,
     top: `${num(el.y)}px`,
@@ -285,9 +346,35 @@ onBeforeUnmount(() => observer?.disconnect())
               <img v-if="qrUrl" :src="qrUrl" alt="QR билета" style="width:100%;height:100%;display:block" />
               <div v-else class="qr-fallback">QR</div>
             </div>
-            <div v-else :style="placeholderStyle(el)">
-              {{ el.type === 'barcode' ? '|| || ||' : 'IMG' }}
+            <div
+              v-else-if="el.type === 'image'"
+              :style="imageSrc(el)
+                ? { ...placeholderStyle(el), background: 'transparent', border: 'none' }
+                : placeholderStyle(el)"
+            >
+              <img
+                v-if="imageSrc(el)"
+                :src="imageSrc(el)"
+                :alt="typeof el.alt === 'string' ? el.alt : 'Оформление билета'"
+                style="width:100%;height:100%;object-fit:cover;display:block"
+              />
+              <span v-else>IMG</span>
             </div>
+            <div
+              v-else-if="el.type === 'barcode'"
+              :style="barcodeUrl
+                ? { ...placeholderStyle(el), background: 'transparent', border: 'none' }
+                : placeholderStyle(el)"
+            >
+              <img
+                v-if="barcodeUrl"
+                :src="barcodeUrl"
+                alt="Штрихкод билета"
+                style="width:100%;height:100%;object-fit:contain;display:block"
+              />
+              <span v-else>{{ ticket.code }}</span>
+            </div>
+            <div v-else :style="placeholderStyle(el)">?</div>
           </template>
         </div>
       </div>

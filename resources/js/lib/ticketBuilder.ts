@@ -87,14 +87,61 @@ export function buildTemplatePayload(params: {
   canvasWidth: number
   canvasHeight: number
   config: CanvasConfig
+  format?: string
 }): Record<string, unknown> {
   return {
     name: params.name,
-    format: 'mobile',
+    // Формат — производная размера, а не константа: раньше горизонтальный
+    // макет 600×400 всё равно сохранялся как 'mobile', и витрина не могла
+    // выбрать подходящий вариант отображения.
+    format: params.format ?? formatForCanvas(params.canvasWidth, params.canvasHeight),
     width: params.canvasWidth,
     height: params.canvasHeight,
     template_json: params.config,
   }
+}
+
+/** Вертикальный билет для телефона или широкий для экрана/печати. */
+export function formatForCanvas(width: number, height: number): 'mobile' | 'desktop' {
+  return height > width ? 'mobile' : 'desktop'
+}
+
+/**
+ * Масштабирование элементов при смене размера холста.
+ *
+ * Заготовки рисовались под 600×400, а новый шаблон по умолчанию вертикальный
+ * 400×600. Раньше применение заготовки принудительно делало холст горизонтальным.
+ * Теперь геометрия пересчитывается под выбранный формат: пропорции сохраняются,
+ * кегль текста масштабируется по меньшей стороне, чтобы не вылезать за холст.
+ */
+export function scaleElementsToCanvas(
+  elements: BuilderElement[],
+  from: { width: number; height: number },
+  to: { width: number; height: number },
+): BuilderElement[] {
+  const sx = to.width / (from.width || 1)
+  const sy = to.height / (from.height || 1)
+  const sf = Math.min(sx, sy)
+
+  return elements.map((el) => {
+    const next: BuilderElement = { ...el }
+    const scalePoint = (key: 'x' | 'y' | 'x1' | 'x2' | 'y2' | 'cx' | 'cy'): void => {
+      if (typeof el[key] === 'number') {
+        ;(next[key] as number) = Math.round((el[key] as number) * (key === 'x' || key === 'x1' || key === 'x2' || key === 'cx' ? sx : sy))
+      }
+    }
+    ;(['x', 'y', 'x1', 'x2', 'y2', 'cx', 'cy'] as const).forEach(scalePoint)
+
+    for (const key of ['width', 'height', 'r', 'size'] as const) {
+      if (typeof el[key] === 'number') {
+        ;(next[key] as number) = Math.max(1, Math.round((el[key] as number) * (key === 'width' ? sx : key === 'height' ? sy : sf)))
+      }
+    }
+    if (typeof el.fontSize === 'number') {
+      next.fontSize = Math.max(8, Math.round((el.fontSize as number) * sf))
+    }
+    return next
+  })
 }
 
 /**
