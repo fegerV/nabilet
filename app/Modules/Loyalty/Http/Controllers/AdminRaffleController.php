@@ -288,7 +288,7 @@ class AdminRaffleController extends Controller
 
         return [
             'attributes' => $attributes,
-            'prizes' => $prizes,
+            'prizes' => array_key_exists('prizes', $data) ? $prizes : null,
         ];
     }
 

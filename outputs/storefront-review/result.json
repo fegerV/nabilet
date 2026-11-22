@@ -1,0 +1,32 @@
+{
+  "saves": 1,
+  "errors": [],
+  "widths": {
+    "Секции": {
+      "viewport": 390,
+      "content": 390
+    },
+    "Брендинг": {
+      "viewport": 390,
+      "content": 390
+    },
+    "Цвета": {
+      "viewport": 390,
+      "content": 390
+    },
+    "Меню и подвал": {
+      "viewport": 390,
+      "content": 390
+    },
+    "Контакты": {
+      "viewport": 390,
+      "content": 390
+    },
+    "Предпросмотр": {
+      "viewport": 390,
+      "content": 390
+    }
+  },
+  "lightCanvas": "246 245 250",
+  "darkCanvas": "11 9 24"
+}

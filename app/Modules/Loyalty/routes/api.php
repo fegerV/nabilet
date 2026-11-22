@@ -47,6 +47,7 @@ Route::prefix('me')->middleware('auth:api')->group(function (): void {
     // пересчитывается обсервером при смене статуса заказа. Гость получает 401,
     // авторизованный без заказов — Старт с нулём оплаченных, а не 404.
     Route::get('/loyalty-level', [LoyaltyLevelController::class, 'show']);
+    Route::get('/achievements', [\Nabilet\Modules\Loyalty\Http\Controllers\AchievementController::class, 'show']);
 
     // «Пригласите друга» (фаза 4): код, ссылка `/r/{code}` и статистика.
     // Код выдаётся лениво — первое обращение заводит строку в

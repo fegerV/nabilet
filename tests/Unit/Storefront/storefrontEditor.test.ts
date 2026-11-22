@@ -23,6 +23,7 @@ vi.mock('@/lib/api', () => ({ get: getMock, send: sendMock }))
 
 // Виджеты в предпросмотре используют useRoute/useRouter — в unit-маунте их нет.
 vi.mock('vue-router', () => ({
+  onBeforeRouteLeave: vi.fn(),
   useRoute: () => ({ query: {} }),
   useRouter: () => ({ push: vi.fn() }),
   RouterLink: { template: '<a><slot /></a>' },
@@ -74,6 +75,33 @@ function dragSections(wrapper: ReturnType<typeof mount>) {
 }
 
 describe('AdminStorefrontPage / defaults', () => {
+  it('reads organization metadata from the API envelope', async () => {
+    await mountPage()
+    expect(useStorefrontStore().editingOrganizationId).toBe('1')
+  })
+
+  it('blocks editing after a failed load and offers retry', async () => {
+    getMock.mockRejectedValue(new Error('Настройки недоступны'))
+    const wrapper = await mountPage()
+    expect(wrapper.text()).toContain('Повторить загрузку')
+    expect(wrapper.find('fieldset').exists()).toBe(false)
+    expect(paletteButton(wrapper, 'Сохранить').attributes('disabled')).toBeDefined()
+    wrapper.unmount()
+  })
+
+  it('edits footer columns and includes them in the save request', async () => {
+    const wrapper = await mountPage()
+    await paletteButton(wrapper, 'Меню и подвал').trigger('click')
+    const before = wrapper.findAll('input').length
+    await paletteButton(wrapper, 'Добавить колонку').trigger('click')
+    expect(wrapper.findAll('input').length).toBeGreaterThan(before)
+    await paletteButton(wrapper, 'Сохранить').trigger('click')
+    await flushPromises()
+    const body = sendMock.mock.calls[0][2]
+    expect(body.config.footer.columns.at(-1)).toEqual({ title: 'Раздел', links: [{ label: 'Ссылка', url: '/' }] })
+    wrapper.unmount()
+  })
+
   it('дефолт фронта повторяет дефолт бэкенда: витрина начинается с афиши', () => {
     expect(defaultConfig().sections.map((s) => s.type)).toEqual([
       'posters', 'categories', 'promo', 'stats', 'subscribe',
@@ -118,6 +146,25 @@ describe('AdminStorefrontPage / редактирование секций', () =
 })
 
 describe('AdminStorefrontPage / предпросмотр и сохранение', () => {
+  it('keeps the draft after a failed save and blocks reset while saving', async () => {
+    let fail!: (reason: Error) => void
+    sendMock.mockImplementationOnce(() => new Promise((_resolve, reject) => { fail = reject }))
+    const wrapper = await mountPage()
+    await paletteButton(wrapper, 'Обратный отсчёт').trigger('click')
+    const count = dragSections(wrapper).length
+    await paletteButton(wrapper, 'Сохранить').trigger('click')
+    expect(wrapper.find('fieldset').attributes('disabled')).toBeDefined()
+    expect(paletteButton(wrapper, 'Сбросить').attributes('disabled')).toBeDefined()
+    fail(new Error('Offline'))
+    await flushPromises()
+    expect(dragSections(wrapper)).toHaveLength(count)
+    expect(wrapper.text()).toContain('Есть несохранённые изменения')
+    expect(wrapper.find('fieldset').attributes('disabled')).toBeUndefined()
+    await paletteButton(wrapper, 'Отменить').trigger('click')
+    expect(dragSections(wrapper)).toHaveLength(count - 1)
+    wrapper.unmount()
+  })
+
   it('предпросмотр показывает брендинг и подвал, а не только секции', async () => {
     const wrapper = await mountPage()
     await paletteButton(wrapper, 'Предпросмотр').trigger('click')

@@ -151,8 +151,8 @@ export interface RafflePrizeDraft {
 interface RafflePayload {
   title: string
   description: string
-  starts_at: string | null
-  ends_at: string | null
+  starts_at?: string | null
+  ends_at?: string | null
   prizes?: RafflePrizeDraft[]
 }
 

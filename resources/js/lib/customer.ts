@@ -45,6 +45,7 @@ export interface CustomerUser {
 /** Одна строка `GET /me/sessions` (см. `UserSessionResource`). */
 export interface CustomerSession {
   id: string
+  is_current?: boolean
   device_name?: string | null
   user_agent?: string | null
   last_seen_at?: string | null
@@ -262,17 +263,15 @@ export interface ProfilePatch {
 /**
  * `PATCH /me` — правка профиля.
  *
- * Телефон отправляем только если он непустой: у `PATCH` поля `sometimes`, и
- * пустая строка — это не «стереть телефон», а значение, которое сервер
- * отбросит. Явная отправка `null` тоже не нужна — витрина не даёт стереть поле
- * отдельным действием.
+ * Отсутствующее поле не меняется; очищенный телефон отправляем как null,
+ * который разрешён ProfileUpdateRequest. Иначе форма молча возвращала старый номер.
  */
 export async function updateMe(patch: ProfilePatch): Promise<CustomerUser> {
-  const body: Record<string, string> = {}
+  const body: Record<string, string | null> = {}
   if (patch.first_name !== undefined) body.first_name = patch.first_name.trim()
   if (patch.last_name !== undefined) body.last_name = patch.last_name.trim()
   if (patch.email !== undefined) body.email = patch.email.trim()
-  if (patch.phone !== undefined && patch.phone.trim() !== '') body.phone = patch.phone.trim()
+  if (patch.phone !== undefined) body.phone = patch.phone.trim() || null
 
   const res = await send<CustomerUser>('/me', 'PATCH', body)
   saveCustomerUser(res.data)
@@ -322,6 +321,14 @@ export async function fetchMyOrders(): Promise<CustomerOrder[]> {
   const list = Array.isArray(res.data) ? res.data : []
 
   return list.map(normalizeOrder)
+}
+
+/** Paginated history; do not silently stop at the API's first twenty orders. */
+export async function fetchMyOrdersPage(page = 1): Promise<{ orders: CustomerOrder[]; page: number; lastPage: number; total: number }> {
+  const res = await get<Array<Record<string, unknown>>>(`/me/orders?page=${Math.max(1, Math.floor(page))}&per_page=10`)
+  const rows = Array.isArray(res.data) ? res.data : []
+  const meta = res.meta as { current_page?: number; last_page?: number; total?: number } | undefined
+  return { orders: rows.map(normalizeOrder), page: meta?.current_page ?? page, lastPage: meta?.last_page ?? page, total: meta?.total ?? rows.length }
 }
 
 /**

@@ -149,12 +149,19 @@ class TicketTemplateEventFlowTest extends TestCase
             'updated_at' => now(),
         ]);
 
+        $templatesBefore = TicketTemplate::query()->count();
+
         $response = $this->postJson("/api/v1/ticket-templates/{$sourceId}/duplicate", [
             'event_id' => $foreignEventId,
         ]);
 
         $response->assertStatus(422);
         $response->assertJsonPath('error.code', 'VALIDATION_ERROR');
+        $this->assertSame(
+            $templatesBefore,
+            TicketTemplate::query()->count(),
+            'отклонённый запрос не должен оставлять копию макета'
+        );
     }
 
     public function test_duplicate_of_a_foreign_template_is_not_found(): void

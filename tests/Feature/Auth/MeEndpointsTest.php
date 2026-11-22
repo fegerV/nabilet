@@ -421,6 +421,9 @@ class MeEndpointsTest extends TestCase
 
         $this->assertSame($expected, $returned, 'список обязан совпасть с сессиями этого аккаунта');
         $this->assertNotEmpty($returned, 'предусловие: у вызывающего есть хотя бы одна сессия');
+        $current = array_values(array_filter($rows, static fn (array $row): bool => $row['is_current'] === true));
+        $this->assertCount(1, $current);
+        $this->assertSame((string) DB::table('user_sessions')->where('session_token_hash', hash('sha256', $token))->value('id'), $current[0]['id']);
 
         $otherSessionRowId = (int) DB::table('user_sessions')->where('user_id', $otherId)->value('id');
         $this->assertNotContains((string) $otherSessionRowId, $returned, 'чужая сессия не попадает в список');

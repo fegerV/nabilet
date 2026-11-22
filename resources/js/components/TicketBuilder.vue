@@ -608,15 +608,24 @@ function elementsOf(source) {
 }
 
 function applyTemplate(template) {
+    const raw = template?.template_json ?? template?.config ?? {};
+    const config = typeof raw === 'string' ? JSON.parse(raw) : raw;
     selectedTemplate.value = template;
-    elements.value = cloneElement(elementsOf(template));
+    elements.value = cloneElement(elementsOf(template)).map(ensureElementDefaults);
     selectedElement.value = null;
-    if (template?.name) {
-        templateName.value = template.name;
-        // Имя из БД — это имя открытого шаблона: подставляем в модалку
-        // сохранения, чтобы обновление не создавало второй с тем же именем.
-        if (template.id) currentTemplateName.value = template.name;
+    if (template?.width && template?.height) {
+        canvasWidth.value = template.width;
+        canvasHeight.value = template.height;
     }
+    canvasBackground.value = config.backgroundColor || '#ffffff';
+    useGradient.value = Boolean(config.backgroundGradient?.from);
+    gradientFrom.value = config.backgroundGradient?.from || '#0f766e';
+    gradientTo.value = config.backgroundGradient?.to || '#1e293b';
+    gradientDir.value = config.backgroundGradient?.direction || 'to bottom';
+    if (!internalId.value && template?.name) {
+        templateName.value = template.name;
+    }
+    pushHistory();
 }
 
 // Фон для миниатюры шаблона в сетке: реальный цвет либо линейный градиент
@@ -649,11 +658,6 @@ function applyLayout(layout) {
         { width: canvasWidth.value, height: canvasHeight.value }
     );
     applyTemplate({ ...layout, config: { ...layout.config, elements: scaled } });
-    const bg = layout?.config?.backgroundColor;
-    if (typeof bg === 'string' && bg !== '') {
-        canvasBackground.value = bg;
-    }
-    pushHistory();
 }
 
 /** Переключить формат холста, сохранив относительное расположение элементов. */
@@ -718,7 +722,7 @@ function buildCanvasConfig() {
 function openSaveModal() {
     // При редактировании существующего шаблона предлагаем его текущее имя:
     // пустое поле на каждое «сохранить» заставляло печатать название заново.
-    templateName.value = currentTemplateName.value || '';
+    templateName.value = currentTemplateName.value || templateName.value || '';
     saveError.value = '';
     showTemplateModal.value = true;
 }

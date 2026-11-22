@@ -43,6 +43,16 @@ const props = defineProps<{
 }>()
 
 const els = computed<BuilderElement[]>(() => props.config.elements as BuilderElement[])
+const fallbackQr = computed<BuilderElement | null>(() => {
+  if (els.value.some((el) => el.type === 'qr')) return null
+  const size = 140
+  return {
+    id: 'fallback-qr', type: 'qr',
+    x: (props.config.width - size) / 2,
+    y: props.config.height - size - 40,
+    size,
+  }
+})
 
 const qrUrl = ref('')
 // Смена payload во время генерации не должна записать в qrUrl устаревший код.
@@ -310,6 +320,15 @@ onMounted(() => {
   measure()
 })
 
+// Карточка билета может остаться смонтированной, пока API подменяет макет
+// (например, при переходе между билетами в списке). ResizeObserver следит за
+// шириной контейнера, но не за размерами самого холста, поэтому без этого
+// наблюдателя вертикальный билет мог масштабироваться по ширине старого макета.
+watch(
+  () => [props.config.width, props.config.height],
+  () => measure(),
+)
+
 onBeforeUnmount(() => observer?.disconnect())
 </script>
 
@@ -376,6 +395,10 @@ onBeforeUnmount(() => observer?.disconnect())
             </div>
             <div v-else :style="placeholderStyle(el)">?</div>
           </template>
+          <div v-if="fallbackQr" :style="qrStyle(fallbackQr)">
+            <img v-if="qrUrl" :src="qrUrl" alt="QR билета" style="width:100%;height:100%;display:block" />
+            <div v-else class="qr-fallback">QR</div>
+          </div>
         </div>
       </div>
     </div>

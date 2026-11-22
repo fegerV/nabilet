@@ -142,18 +142,11 @@ class TicketTemplateController extends Controller
 
         $name = trim((string) ($data['name'] ?? ''));
 
-        $copy = TicketTemplate::query()->create([
-            'organization_id' => $source->organization_id,
-            'name' => $name !== '' ? $name : $source->name . ' (копия)',
-            'format' => $source->format,
-            'width' => $source->width,
-            'height' => $source->height,
-            // PHP-массивы копируются по значению: правка копии исходник не заденет.
-            'template_json' => $source->template_json,
-            'active' => $source->active,
-        ]);
-
-        if (! empty($data['event_id'])) {
+        // Сначала проверяем событие: раньше копия создавалась до проверки
+        // event_id, поэтому запрос с чужим событием завершался 422, но оставлял
+        // в списке организатора лишний макет.
+        $event = null;
+        if (array_key_exists('event_id', $data) && $data['event_id'] !== null) {
             $event = \Nabilet\Modules\Events\Models\Event::query()
                 ->whereKey((int) $data['event_id'])
                 ->where('organization_id', $this->requireOrganizationId())
@@ -165,9 +158,26 @@ class TicketTemplateController extends Controller
                     'Некорректное мероприятие.'
                 );
             }
-
-            $event->update(['ticket_template_id' => $copy->id]);
         }
+
+        $copy = DB::transaction(function () use ($source, $name, $event): TicketTemplate {
+            $copy = TicketTemplate::query()->create([
+                'organization_id' => $source->organization_id,
+                'name' => $name !== '' ? $name : $source->name . ' (копия)',
+                'format' => $source->format,
+                'width' => $source->width,
+                'height' => $source->height,
+                // PHP-массивы копируются по значению: правка копии исходник не заденет.
+                'template_json' => $source->template_json,
+                'active' => $source->active,
+            ]);
+
+            if ($event !== null) {
+                $event->update(['ticket_template_id' => $copy->id]);
+            }
+
+            return $copy;
+        });
 
         $copy->load(['events' => fn ($q) => $q->select('id', 'title', 'ticket_template_id')]);
 

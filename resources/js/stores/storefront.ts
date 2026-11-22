@@ -75,8 +75,9 @@ export const useStorefrontStore = defineStore('storefront', () => {
       const res = await get<{ data: StorefrontConfig; meta?: { is_default?: boolean; organization_id?: string | null } }>('/admin/storefront')
       const payload = res.data as unknown as { data?: StorefrontConfig; meta?: { is_default?: boolean; organization_id?: string | null } }
       config.value = mergeWithDefaults((payload.data ?? payload) as StorefrontConfig)
-      isDefault.value = payload.meta?.is_default ?? false
-      editingOrganizationId.value = payload.meta?.organization_id ?? null
+      const meta = (res as unknown as { meta?: typeof payload.meta }).meta ?? payload.meta
+      isDefault.value = meta?.is_default ?? false
+      editingOrganizationId.value = meta?.organization_id ?? null
     } catch (e) {
       error.value = e instanceof Error ? e.message : String(e)
       config.value = defaultConfig()
@@ -98,7 +99,6 @@ export const useStorefrontStore = defineStore('storefront', () => {
       const warnings = (res as unknown as { meta?: { warnings?: string[] } }).meta?.warnings ?? []
       config.value = mergeWithDefaults(saved)
       isDefault.value = false
-      apply()
       return { ok: true, warnings }
     } catch {
       return { ok: false, warnings: [] }
@@ -112,7 +112,6 @@ export const useStorefrontStore = defineStore('storefront', () => {
       const saved = (payload as { data?: StorefrontConfig }).data ?? (payload as StorefrontConfig)
       config.value = mergeWithDefaults(saved)
       isDefault.value = true
-      apply()
       return true
     } catch {
       return false
@@ -169,6 +168,7 @@ function mergeWithDefaults(payload: StorefrontConfig): StorefrontConfig {
     footer: {
       ...base.footer,
       ...(payload.footer ?? {}),
+      columns: Array.isArray(payload.footer?.columns) ? payload.footer.columns : base.footer.columns,
       links: Array.isArray(payload.footer?.links) ? payload.footer.links : base.footer.links,
       social: Array.isArray(payload.footer?.social) ? payload.footer.social : base.footer.social,
     },

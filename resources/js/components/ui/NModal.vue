@@ -50,7 +50,7 @@ onUnmounted(() => {
 
       <div
         :class="[
-          'relative w-full animate-scale-in rounded-xl border border-line bg-surface shadow-xl',
+          'relative max-h-[calc(100dvh-2rem)] w-full overflow-y-auto animate-scale-in rounded-xl border border-line bg-surface shadow-xl',
           destructive ? 'ring-1 ring-rose-500/30' : '',
           SIZES[size],
         ]"

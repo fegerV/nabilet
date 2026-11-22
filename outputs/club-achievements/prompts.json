@@ -1,0 +1,66 @@
+{
+  "generator": "Built-in image_gen.imagegen",
+  "style": "Sculpted gold and jewel enamel collectible medals",
+  "prompts": [
+    {
+      "id": "first-step",
+      "prompt": "Use case: stylized-concept. Asset type: premium collectible achievement medal for NABILET concert and theatre club. Create ONE square image of ONE centered beautiful 3D enamel pin medal. Subject: A golden admission ticket with a luminous four-point star. Unified series art direction: round dark obsidian metal medallion, thick polished champagne gold bevel rim, emerald jewel enamel inset, sculpted gold central subject, tiny refined engraved details, subtle studio rim lighting from upper left, front view with slight depth, sophisticated tactile collectible, exceptionally clear silhouette readable at 120px. Badge fills 76 percent of canvas with generous equal margins. Solid very dark navy background #111322. No text, no letters, no numbers, no watermark, no extra badges."
+    },
+    {
+      "id": "getting-taste",
+      "prompt": "Use case: stylized-concept. Asset type: premium collectible achievement medal for NABILET concert and theatre club. Create ONE square image of ONE centered beautiful 3D enamel pin medal. Subject: Five overlapping admission tickets arranged as a fan. Unified series art direction: round dark obsidian metal medallion, thick polished champagne gold bevel rim, emerald jewel enamel inset, sculpted gold central subject, tiny refined engraved details, subtle studio rim lighting from upper left, front view with slight depth, sophisticated tactile collectible, exceptionally clear silhouette readable at 120px. Badge fills 76 percent of canvas with generous equal margins. Solid very dark navy background #111322. No text, no letters, no numbers, no watermark, no extra badges."
+    },
+    {
+      "id": "regular",
+      "prompt": "Use case: stylized-concept. Asset type: premium collectible achievement medal for NABILET concert and theatre club. Create ONE square image of ONE centered beautiful 3D enamel pin medal. Subject: An elegant crown above a theatre seat. Unified series art direction: round dark obsidian metal medallion, thick polished champagne gold bevel rim, emerald jewel enamel inset, sculpted gold central subject, tiny refined engraved details, subtle studio rim lighting from upper left, front view with slight depth, sophisticated tactile collectible, exceptionally clear silhouette readable at 120px. Badge fills 76 percent of canvas with generous equal margins. Solid very dark navy background #111322. No text, no letters, no numbers, no watermark, no extra badges."
+    },
+    {
+      "id": "legend",
+      "prompt": "Use case: stylized-concept. Asset type: premium collectible achievement medal for NABILET concert and theatre club. Create ONE square image of ONE centered beautiful 3D enamel pin medal. Subject: A magnificent golden trophy with crown and symmetrical laurel branches. Unified series art direction: round dark obsidian metal medallion, thick polished champagne gold bevel rim, violet jewel enamel inset, sculpted gold central subject, tiny refined engraved details, subtle studio rim lighting from upper left, front view with slight depth, sophisticated tactile collectible, exceptionally clear silhouette readable at 120px. Badge fills 76 percent of canvas with generous equal margins. Solid very dark navy background #111322. No text, no letters, no numbers, no watermark, no extra badges."
+    },
+    {
+      "id": "meloman",
+      "prompt": "Use case: stylized-concept. Asset type: premium collectible achievement medal for NABILET concert and theatre club. Create ONE square image of ONE centered beautiful 3D enamel pin medal. Subject: A vinyl record with a musical eighth note. Unified series art direction: round dark obsidian metal medallion, thick polished champagne gold bevel rim, violet jewel enamel inset, sculpted gold central subject, tiny refined engraved details, subtle studio rim lighting from upper left, front view with slight depth, sophisticated tactile collectible, exceptionally clear silhouette readable at 120px. Badge fills 76 percent of canvas with generous equal margins. Solid very dark navy background #111322. No text, no letters, no numbers, no watermark, no extra badges."
+    },
+    {
+      "id": "rock-alive",
+      "prompt": "Use case: stylized-concept. Asset type: premium collectible achievement medal for NABILET concert and theatre club. Create ONE square image of ONE centered beautiful 3D enamel pin medal. Subject: An electric guitar crossed by a lightning bolt, energetic rock music emblem. Unified series art direction: round dark obsidian metal medallion, thick polished champagne gold bevel rim, violet jewel enamel inset, sculpted gold central subject, tiny refined engraved details, subtle studio rim lighting from upper left, front view with slight depth, sophisticated tactile collectible, exceptionally clear silhouette readable at 120px. Badge fills 76 percent of canvas with generous equal margins. Solid very dark navy background #111322. No text, no letters, no numbers, no watermark, no extra badges."
+    },
+    {
+      "id": "all-genres",
+      "prompt": "Use case: stylized-concept. Asset type: premium collectible achievement medal for NABILET concert and theatre club. Create ONE square image of ONE centered beautiful 3D enamel pin medal. Subject: Four interlocking colored vinyl records around a gold star. Unified series art direction: round dark obsidian metal medallion, thick polished champagne gold bevel rim, violet jewel enamel inset, sculpted gold central subject, tiny refined engraved details, subtle studio rim lighting from upper left, front view with slight depth, sophisticated tactile collectible, exceptionally clear silhouette readable at 120px. Badge fills 76 percent of canvas with generous equal margins. Solid very dark navy background #111322. No text, no letters, no numbers, no watermark, no extra badges."
+    },
+    {
+      "id": "same-wave",
+      "prompt": "Use case: stylized-concept. Asset type: premium collectible achievement medal for NABILET concert and theatre club. Create ONE square image of ONE centered beautiful 3D enamel pin medal. Subject: A studio microphone surrounded by symmetrical sound waves. Unified series art direction: round dark obsidian metal medallion, thick polished champagne gold bevel rim, violet jewel enamel inset, sculpted gold central subject, tiny refined engraved details, subtle studio rim lighting from upper left, front view with slight depth, sophisticated tactile collectible, exceptionally clear silhouette readable at 120px. Badge fills 76 percent of canvas with generous equal margins. Solid very dark navy background #111322. No text, no letters, no numbers, no watermark, no extra badges."
+    },
+    {
+      "id": "theatregoer",
+      "prompt": "Use case: stylized-concept. Asset type: premium collectible achievement medal for NABILET concert and theatre club. Create ONE square image of ONE centered beautiful 3D enamel pin medal. Subject: Two expressive classical theatre masks, comedy and tragedy. Unified series art direction: round dark obsidian metal medallion, thick polished champagne gold bevel rim, rose jewel enamel inset, sculpted gold central subject, tiny refined engraved details, subtle studio rim lighting from upper left, front view with slight depth, sophisticated tactile collectible, exceptionally clear silhouette readable at 120px. Badge fills 76 percent of canvas with generous equal margins. Solid very dark navy background #111322. No text, no letters, no numbers, no watermark, no extra badges."
+    },
+    {
+      "id": "backstage",
+      "prompt": "Use case: stylized-concept. Asset type: premium collectible achievement medal for NABILET concert and theatre club. Create ONE square image of ONE centered beautiful 3D enamel pin medal. Subject: Parted theatre curtains revealing a luminous star. Unified series art direction: round dark obsidian metal medallion, thick polished champagne gold bevel rim, rose jewel enamel inset, sculpted gold central subject, tiny refined engraved details, subtle studio rim lighting from upper left, front view with slight depth, sophisticated tactile collectible, exceptionally clear silhouette readable at 120px. Badge fills 76 percent of canvas with generous equal margins. Solid very dark navy background #111322. No text, no letters, no numbers, no watermark, no extra badges."
+    },
+    {
+      "id": "stage-expert",
+      "prompt": "Use case: stylized-concept. Asset type: premium collectible achievement medal for NABILET concert and theatre club. Create ONE square image of ONE centered beautiful 3D enamel pin medal. Subject: A miniature classical theatre facade with three columns. Unified series art direction: round dark obsidian metal medallion, thick polished champagne gold bevel rim, rose jewel enamel inset, sculpted gold central subject, tiny refined engraved details, subtle studio rim lighting from upper left, front view with slight depth, sophisticated tactile collectible, exceptionally clear silhouette readable at 120px. Badge fills 76 percent of canvas with generous equal margins. Solid very dark navy background #111322. No text, no letters, no numbers, no watermark, no extra badges."
+    },
+    {
+      "id": "explorer",
+      "prompt": "Use case: stylized-concept. Asset type: premium collectible achievement medal for NABILET concert and theatre club. Create ONE square image of ONE centered beautiful 3D enamel pin medal. Subject: An ornate compass with a glowing star needle. Unified series art direction: round dark obsidian metal medallion, thick polished champagne gold bevel rim, cyan jewel enamel inset, sculpted gold central subject, tiny refined engraved details, subtle studio rim lighting from upper left, front view with slight depth, sophisticated tactile collectible, exceptionally clear silhouette readable at 120px. Badge fills 76 percent of canvas with generous equal margins. Solid very dark navy background #111322. No text, no letters, no numbers, no watermark, no extra badges."
+    },
+    {
+      "id": "open-talents",
+      "prompt": "Use case: stylized-concept. Asset type: premium collectible achievement medal for NABILET concert and theatre club. Create ONE square image of ONE centered beautiful 3D enamel pin medal. Subject: A rising shooting star above a tiny illuminated stage. Unified series art direction: round dark obsidian metal medallion, thick polished champagne gold bevel rim, cyan jewel enamel inset, sculpted gold central subject, tiny refined engraved details, subtle studio rim lighting from upper left, front view with slight depth, sophisticated tactile collectible, exceptionally clear silhouette readable at 120px. Badge fills 76 percent of canvas with generous equal margins. Solid very dark navy background #111322. No text, no letters, no numbers, no watermark, no extra badges."
+    },
+    {
+      "id": "culture-marathon",
+      "prompt": "Use case: stylized-concept. Asset type: premium collectible achievement medal for NABILET concert and theatre club. Create ONE square image of ONE centered beautiful 3D enamel pin medal. Subject: A calendar with three stars and a small laurel wreath. Unified series art direction: round dark obsidian metal medallion, thick polished champagne gold bevel rim, amber jewel enamel inset, sculpted gold central subject, tiny refined engraved details, subtle studio rim lighting from upper left, front view with slight depth, sophisticated tactile collectible, exceptionally clear silhouette readable at 120px. Badge fills 76 percent of canvas with generous equal margins. Solid very dark navy background #111322. No text, no letters, no numbers, no watermark, no extra badges."
+    },
+    {
+      "id": "nightlife",
+      "prompt": "Use case: stylized-concept. Asset type: premium collectible achievement medal for NABILET concert and theatre club. Create ONE square image of ONE centered beautiful 3D enamel pin medal. Subject: A crescent moon with tiny stars above a theatre roof. Unified series art direction: round dark obsidian metal medallion, thick polished champagne gold bevel rim, midnight blue jewel enamel inset, sculpted gold central subject, tiny refined engraved details, subtle studio rim lighting from upper left, front view with slight depth, sophisticated tactile collectible, exceptionally clear silhouette readable at 120px. Badge fills 76 percent of canvas with generous equal margins. Solid very dark navy background #111322. No text, no letters, no numbers, no watermark, no extra badges."
+    }
+  ]
+}

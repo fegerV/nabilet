@@ -12,7 +12,7 @@
  * вместо молчаливого показа чужих билетов.
  */
 import { computed, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import TicketCard from '@/components/storefront/TicketCard.vue'
 import NEmptyState from '@/components/ui/NEmptyState.vue'
 import NButton from '@/components/ui/NButton.vue'
@@ -25,6 +25,7 @@ import { useUiStore } from '@/stores/ui'
 import type { TicketCard as TicketCardType } from '@/lib/types'
 
 const router = useRouter()
+const route = useRoute()
 const ui = useUiStore()
 
 const tickets = ref<TicketCardType[]>([])
@@ -45,8 +46,10 @@ async function load(): Promise<void> {
 
 onMounted(load)
 
-const active = computed(() => tickets.value.filter((t) => t.status === 'issued'))
-const past = computed(() => tickets.value.filter((t) => t.status !== 'issued'))
+const orderFilter = computed(() => typeof route.query.order === 'string' ? route.query.order : '')
+const visibleTickets = computed(() => orderFilter.value ? tickets.value.filter(t => String(t.orderId) === orderFilter.value) : tickets.value)
+const active = computed(() => visibleTickets.value.filter((t) => t.status === 'issued'))
+const past = computed(() => visibleTickets.value.filter((t) => t.status !== 'issued'))
 
 /**
  * Заказы, по которым можно переслать письмо с билетом.
@@ -105,7 +108,7 @@ async function submitResend(): Promise<void> {
       resendError.value = 'Слишком много попыток. Подождите минуту и повторите.'
     } else if (e instanceof ApiError && e.status === 404) {
       resendError.value =
-        'Заказ не найден для этого браузера. Откройте «Мои билеты» там, где оформляли покупку.'
+        'Заказ не найден. Войдите в аккаунт покупки или откройте билеты в браузере, где оформляли заказ.'
     } else if (e instanceof ApiError && e.status === 409) {
       resendError.value = 'Билет ещё не выпущен: письмо отправляется после оплаты заказа.'
     } else {
@@ -119,7 +122,12 @@ async function submitResend(): Promise<void> {
 
 <template>
   <div class="mx-auto max-w-content px-4 py-6 sm:px-6">
+    <RouterLink to="/account" class="mb-4 inline-block text-sm text-muted underline underline-offset-4">Личный кабинет</RouterLink>
     <h1 class="text-2xl font-bold tracking-tight text-content">Мои билеты</h1>
+    <div v-if="orderFilter" class="surface-card mt-4 flex flex-wrap items-center justify-between gap-3 p-4">
+      <p class="text-sm text-muted">Показаны билеты выбранного заказа</p>
+      <RouterLink to="/tickets" class="text-sm font-medium text-brand-400">Показать все билеты</RouterLink>
+    </div>
 
     <p v-if="loading" class="mt-6 text-sm text-subtle">Загружаем ваши билеты…</p>
 
@@ -132,10 +140,10 @@ async function submitResend(): Promise<void> {
       v-else-if="active.length === 0 && past.length === 0"
       class="surface-card mt-6"
       icon="◫"
-      title="Билетов пока нет"
-      description="Как только оплатите заказ, билет появится здесь — с QR, который работает без интернета."
-      action-label="К афише"
-      @action="router.push('/')"
+      :title="orderFilter ? 'Билеты этого заказа не найдены' : 'Билетов пока нет'"
+      :description="orderFilter ? 'Проверьте статус оплаты в кабинете или откройте весь список билетов.' : 'После оплаты здесь появится билет с QR-кодом для входа.'"
+      :action-label="orderFilter ? 'Все мои билеты' : 'К афише'"
+      @action="router.push(orderFilter ? '/tickets' : '/')"
     />
 
     <template v-else>

@@ -32,6 +32,10 @@ class UserSessionResource extends JsonResource
     {
         return [
             'id' => (string) $this->id,
+            'is_current' => $request->bearerToken() !== null && hash_equals(
+                (string) $this->session_token_hash,
+                \Nabilet\Modules\Auth\Domain\SessionToken::hashOf($request->bearerToken()),
+            ),
             'device_name' => $this->device_name,
             'user_agent' => $this->user_agent,
             'last_seen_at' => $this->last_seen_at?->toIso8601String(),

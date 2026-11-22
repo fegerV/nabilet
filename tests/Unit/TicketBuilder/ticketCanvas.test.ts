@@ -81,4 +81,35 @@ describe('TicketCanvas', () => {
     const wrapper = mountCanvas()
     expect(wrapper.find('.ticket-canvas').attributes('style')).toContain('linear-gradient')
   })
+
+  it('recalculates the mobile scale when the ticket template dimensions change', async () => {
+    const wrapper = mountCanvas()
+    const root = wrapper.find('.ticket-canvas-root').element
+    Object.defineProperty(root, 'clientWidth', { configurable: true, value: 200 })
+
+    await wrapper.setProps({
+      config: {
+        width: 800,
+        height: 400,
+        backgroundColor: '#fff',
+        elements: [],
+      },
+    })
+
+    // 200px available / 800px canvas = 0.25 scale; outer width stays 200px.
+    expect(wrapper.find('.ticket-canvas-root > div').attributes('style')).toContain('width: 200px')
+  })
+
+  it('shows the same fallback QR as the PDF when a layout has no QR element', async () => {
+    const wrapper = mountCanvas()
+    await wrapper.setProps({
+      config: { width: 400, height: 600, backgroundColor: '#fff', elements: [] },
+    })
+    await Promise.resolve()
+
+    const qr = wrapper.find('img[alt="QR билета"]')
+    expect(qr.exists()).toBe(true)
+    expect(qr.element.parentElement?.getAttribute('style')).toContain('left: 130px')
+    expect(qr.element.parentElement?.getAttribute('style')).toContain('top: 420px')
+  })
 })

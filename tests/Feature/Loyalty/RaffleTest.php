@@ -438,6 +438,21 @@ class RaffleTest extends TestCase
             ->assertJsonPath('error.code', 'RAFFLE_ACTIVE_WINDOW_IMMUTABLE');
     }
 
+    public function test_text_only_update_preserves_prizes_including_after_draw(): void
+    {
+        $raffle = $this->activeRaffle([['place' => 1, 'title' => 'Приз']]);
+        $headers = $this->headers($this->apiToken());
+        $url = '/api/v1/admin/raffles/' . $raffle->public_id;
+        $before = $this->getJson($url, $headers)->assertOk()->json('data.prizes');
+
+        $this->putJson($url, ['title' => 'Новое название'], $headers)
+            ->assertOk()->assertJsonPath('data.prizes', $before);
+
+        $raffle->forceFill(['status' => Raffle::STATUS_DRAWN, 'drawn_at' => now()])->save();
+        $this->putJson($url, ['description' => 'Уточнение'], $headers)
+            ->assertOk()->assertJsonPath('data.prizes', $before);
+    }
+
     public function test_pause_allows_window_edit_and_reactivation(): void
     {
         $raffle = $this->activeRaffle([['place' => 1, 'title' => 'Приз']]);

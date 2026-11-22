@@ -1,0 +1,15 @@
+{
+  "writes": [
+    {
+      "title": "Исправленное название",
+      "description": "Призы участникам"
+    }
+  ],
+  "size": {
+    "width": 356,
+    "content": 356,
+    "height": 810,
+    "viewport": 844
+  },
+  "errors": []
+}

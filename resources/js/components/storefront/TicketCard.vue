@@ -53,7 +53,7 @@ watch(
   { immediate: true },
 )
 
-const inactive = props.ticket.status !== 'issued'
+const inactive = computed(() => props.ticket.status !== 'issued')
 
 /**
  * Осознанные отклонения от словаря — и ТОЛЬКО они.
@@ -107,7 +107,7 @@ const qrCaption = computed(
       <div class="mb-3 flex items-start justify-between gap-3">
         <div class="min-w-0 flex-1">
           <p class="text-2xs uppercase tracking-wider text-subtle">{{ ticket.sector }}</p>
-          <h3 class="mt-0.5 truncate text-base font-semibold text-content">{{ ticket.eventTitle }}</h3>
+          <h3 class="mt-0.5 break-words text-base font-semibold text-content">{{ ticket.eventTitle }}</h3>
           <p class="mt-0.5 truncate text-xs text-muted">{{ ticket.venue }}</p>
         </div>
         <NStatusBadge kind="ticket" :status="ticket.status" />
@@ -165,6 +165,7 @@ const qrCaption = computed(
       <p class="mt-3 border-t border-dashed border-line pt-3 font-mono text-2xs text-subtle">
         {{ ticket.code }}
       </p>
+      <a v-if="qrUrl && ticket.status === 'issued'" :href="qrUrl" :download="'nabilet-' + ticket.code + '-qr.png'" class="mt-3 inline-flex min-h-11 items-center rounded-lg border border-line px-4 text-sm font-medium text-content hover:bg-surface-2">Сохранить QR для входа</a>
     </div>
   </article>
 </template>

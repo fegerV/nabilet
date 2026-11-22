@@ -4,7 +4,7 @@
  * в браузере он показывал пустую страницу.
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import TicketBuilder from '../../../resources/js/components/TicketBuilder.vue'
 
@@ -29,6 +29,33 @@ beforeEach(() => {
 })
 
 describe('TicketBuilder в режиме создания', () => {
+  it('applies a saved portrait design with its background and can undo the whole change', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true, status: 200, headers: new Headers(),
+      json: async () => ({ data: [{
+        id: 91, name: 'Вертикальный дизайн', width: 450, height: 800,
+        template_json: {
+          backgroundColor: '#123456',
+          backgroundGradient: { from: '#123456', to: '#abcdef', direction: 'to bottom' },
+          elements: [{ id: 1, type: 'text', x: 20, y: 20, content: 'Концерт' }],
+        },
+      }] }),
+    } as Response)
+    const wrapper = mount(TicketBuilder, { props: { templateId: null } })
+    await flushPromises()
+    await wrapper.findAll('.tab-btn').find((b) => b.text().includes('Шаблоны'))!.trigger('click')
+    await wrapper.findAll('.template-card').find((b) => b.text().includes('Вертикальный дизайн'))!.trigger('click')
+    expect(wrapper.find('.canvas-inner').attributes('style')).toContain('width: 450px')
+    expect(wrapper.find('.canvas-inner').attributes('style')).toContain('height: 800px')
+    expect(wrapper.find('.canvas-inner').attributes('style')).toContain('linear-gradient')
+    expect(wrapper.find('.canvas-element').attributes('style')).not.toContain('undefined')
+    await wrapper.find('button[title="Отменить (Ctrl+Z)"]').trigger('click')
+    expect(wrapper.find('.canvas-inner').attributes('style')).toContain('width: 400px')
+    expect(wrapper.find('.canvas-inner').attributes('style')).not.toContain('linear-gradient')
+    expect(wrapper.findAll('.canvas-element')).toHaveLength(0)
+    wrapper.unmount()
+  })
+
   it('монтируется с templateId=null и показывает кнопку сохранения', () => {
     const wrapper = mount(TicketBuilder, {
       props: { templateId: null },

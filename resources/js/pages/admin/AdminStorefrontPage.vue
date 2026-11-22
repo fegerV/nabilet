@@ -10,7 +10,8 @@
  * Порядок секций — drag & drop плюс кнопки ↑/↓: перетаскивание нельзя делать
  * единственным способом, иначе раздел недоступен с клавиатуры.
  */
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { onBeforeRouteLeave } from 'vue-router'
 import NButton from '@/components/ui/NButton.vue'
 import NInput from '@/components/ui/NInput.vue'
 import NSelect from '@/components/ui/NSelect.vue'
@@ -56,17 +57,43 @@ const resetting = ref(false)
 const savedSnapshot = ref('')
 /** Что сервер не сохранил при последней записи (лимиты, приведённые значения). */
 const saveWarnings = ref<string[]>([])
+const ready = ref(false)
+const systemTheme = window.matchMedia('(prefers-color-scheme: dark)')
+const systemDark = ref(systemTheme.matches)
+function updateSystemTheme(event: MediaQueryListEvent): void { systemDark.value = event.matches }
+systemTheme.addEventListener('change', updateSystemTheme)
+onBeforeUnmount(() => systemTheme.removeEventListener('change', updateSystemTheme))
+const previewMode = computed(() => draft.value.theme.mode === 'auto'
+  ? (systemDark.value ? 'dark' : 'light') : draft.value.theme.mode)
 
-onMounted(async () => {
-  void storefront.loadPublicMeta()
+async function loadEditor(): Promise<void> {
+  ready.value = false
   await storefront.loadAdmin()
+  if (storefront.error) return
   draft.value = cloneConfig(storefront.config)
   savedSnapshot.value = JSON.stringify(draft.value)
   selectedId.value = draft.value.sections[0]?.id ?? null
-  void catalog.load()
-})
+  ready.value = true
+}
 
-const dirty = computed(() => JSON.stringify(draft.value) !== savedSnapshot.value)
+onMounted(() => {
+  void storefront.loadPublicMeta()
+  void loadEditor()
+  void catalog.load()
+  window.addEventListener('beforeunload', warnBeforeUnload)
+})
+onBeforeUnmount(() => window.removeEventListener('beforeunload', warnBeforeUnload))
+
+const dirty = computed(() => ready.value && JSON.stringify(draft.value) !== savedSnapshot.value)
+function warnBeforeUnload(event: BeforeUnloadEvent): void {
+  if (!dirty.value) return
+  event.preventDefault()
+  event.returnValue = ''
+}
+onBeforeRouteLeave(() => {
+  if (saving.value || resetting.value) return false
+  return !dirty.value || window.confirm('Есть несохранённые изменения витрины. Уйти без сохранения?')
+})
 
 /**
  * При нескольких организациях гость видит витрину первой из них, а админ
@@ -99,6 +126,7 @@ function select(section: StorefrontSection): void {
 }
 
 function addWidget(type: SectionType): void {
+  if (draft.value.sections.length >= 40) return
   // `once` в реестре виджетов перестал быть мёртвым флагом: hero — первый экран,
   // второй такой же баннер ломает структуру страницы.
   const meta = WIDGETS.find((w) => w.type === type)
@@ -119,6 +147,8 @@ function removeSection(id: string): void {
 }
 
 function duplicate(index: number): void {
+  const source = draft.value.sections[index]
+  if (!source || draft.value.sections.length >= 40 || WIDGETS.find((w) => w.type === source.type)?.once) return
   const copy: StorefrontSection = JSON.parse(JSON.stringify(draft.value.sections[index]))
   copy.id = createSection(copy.type).id
   draft.value.sections.splice(index + 1, 0, copy)
@@ -189,6 +219,7 @@ function presetActive(key: string): boolean {
 /* ── Меню и подвал ──────────────────────────────────────────────────────── */
 
 function addNav(): void {
+  if (draft.value.header.nav.length >= 6) return
   draft.value.header.nav.push({ label: 'Раздел', to: '/' })
 }
 
@@ -197,6 +228,7 @@ function removeNav(index: number): void {
 }
 
 function addFooterLink(): void {
+  if (draft.value.footer.links.length >= 8) return
   draft.value.footer.links.push({ label: 'Ссылка', url: '/' })
 }
 
@@ -205,6 +237,7 @@ function removeFooterLink(index: number): void {
 }
 
 function addSocial(): void {
+  if (draft.value.footer.social.length >= 6) return
   draft.value.footer.social.push({ label: 'Соцсеть', url: 'https://' })
 }
 
@@ -215,10 +248,11 @@ function removeSocial(index: number): void {
 /* ── Сохранение ─────────────────────────────────────────────────────────── */
 
 async function save(): Promise<void> {
-  if (saving.value || resetting.value) return
+  if (!ready.value || saving.value || resetting.value) return
   saving.value = true
   saveWarnings.value = []
-  const result = await storefront.save(draft.value)
+  const submitted = cloneConfig(draft.value)
+  const result = await storefront.save(submitted)
   saving.value = false
   if (!result.ok) {
     ui.notify('rose', 'Не удалось сохранить', 'Проверьте подключение и попробуйте ещё раз.')
@@ -226,8 +260,11 @@ async function save(): Promise<void> {
   }
   // Черновик обязан стать ТЕМ, что реально легло в БД: сервер нормализует
   // конфиг, и иначе «Сохранено» скрывало бы брошенные поля до перезагрузки.
-  draft.value = cloneConfig(storefront.config)
-  savedSnapshot.value = JSON.stringify(draft.value)
+  savedSnapshot.value = JSON.stringify(storefront.config)
+  if (JSON.stringify(draft.value) === JSON.stringify(submitted)) {
+    draft.value = cloneConfig(storefront.config)
+  }
+  selectedId.value = draft.value.sections.find((s) => s.id === selectedId.value)?.id ?? draft.value.sections[0]?.id ?? null
   saveWarnings.value = result.warnings
   ui.notify(
     result.warnings.length ? 'sun' : 'mint',
@@ -239,7 +276,7 @@ async function save(): Promise<void> {
 }
 
 async function resetToDefault(): Promise<void> {
-  if (saving.value || resetting.value) return
+  if (!ready.value || saving.value || resetting.value) return
   if (!window.confirm('Вернуть витрину к настройкам по умолчанию? Текущая верстка будет потеряна.')) return
   resetting.value = true
   const ok = await storefront.reset()
@@ -251,22 +288,21 @@ async function resetToDefault(): Promise<void> {
   draft.value = cloneConfig(storefront.config)
   savedSnapshot.value = JSON.stringify(draft.value)
   saveWarnings.value = []
+  selectedId.value = draft.value.sections[0]?.id ?? null
   ui.notify('sun', 'Витрина сброшена', 'Вернулись к конфигурации по умолчанию.')
 }
 
 function discard(): void {
+  if (saving.value || resetting.value) return
   draft.value = cloneConfig(storefront.config)
   savedSnapshot.value = JSON.stringify(draft.value)
   saveWarnings.value = []
+  selectedId.value = draft.value.sections[0]?.id ?? null
   ui.notify('neutral', 'Изменения отменены')
 }
 
 /** Режим темы для предпросмотра: не трогаем глобальную тему админки. */
-const previewModeClass = computed(() => {
-  if (draft.value.theme.mode === 'dark') return 'dark'
-  if (draft.value.theme.mode === 'light') return ''
-  return '' // auto — используем тему самой админки
-})
+const previewModeClass = computed(() => previewMode.value === 'dark' ? 'dark' : '')
 </script>
 
 <template>
@@ -277,15 +313,15 @@ const previewModeClass = computed(() => {
         <h1 class="text-2xl font-bold tracking-tight text-content">Витрина</h1>
         <p class="mt-1 text-sm text-muted">
           Секции, цвета и брендинг публичной афиши.
-          <span v-if="storefront.isDefault" class="text-sun-400">Сейчас — конфигурация по умолчанию.</span>
-          <span v-else-if="dirty" class="text-sun-400">Есть несохранённые изменения.</span>
-          <span v-else class="text-mint-400">Сохранено.</span>
+          <span v-if="dirty" class="text-sun-400">Есть несохранённые изменения.</span>
+          <span v-else-if="ready && storefront.isDefault" class="text-sun-400">Сейчас — конфигурация по умолчанию.</span>
+          <span v-else-if="ready" class="text-mint-400">Сохранено.</span>
         </p>
       </div>
 
       <div class="flex flex-wrap items-center gap-2">
-        <NButton variant="ghost" :disabled="!dirty" @click="discard">Отменить</NButton>
-        <NButton variant="outline" :loading="resetting" :disabled="resetting" @click="resetToDefault">Сбросить</NButton>
+        <NButton variant="ghost" :disabled="!dirty || saving || resetting" @click="discard">Отменить</NButton>
+        <NButton variant="outline" :loading="resetting" :disabled="!ready || saving || resetting" @click="resetToDefault">Сбросить</NButton>
         <a
           href="/"
           target="_blank"
@@ -294,7 +330,7 @@ const previewModeClass = computed(() => {
         >
           Открыть витрину ↗
         </a>
-        <NButton variant="primary" :loading="saving" :disabled="!dirty" @click="save">Сохранить</NButton>
+        <NButton variant="primary" :loading="saving" :disabled="!dirty || saving || resetting" @click="save">Сохранить</NButton>
       </div>
     </div>
 
@@ -310,6 +346,12 @@ const previewModeClass = computed(() => {
       </ul>
     </div>
 
+    <p v-if="storefront.loading" class="mt-5 text-sm text-muted" role="status">Загружаем настройки витрины…</p>
+    <div v-else-if="!ready" class="surface-card mt-5 p-4" role="alert">
+      <p class="mb-3 text-sm text-rose-400">Не удалось загрузить настройки: {{ storefront.error }}</p>
+      <NButton @click="loadEditor">Повторить загрузку</NButton>
+    </div>
+    <fieldset v-if="ready" :disabled="saving || resetting" class="min-w-0 border-0 p-0">
     <div class="mt-5">
       <NSegmented v-model="tab" :segments="TABS" aria-label="Разделы конструктора" />
     </div>
@@ -368,6 +410,7 @@ const previewModeClass = computed(() => {
                 type="button"
                 class="grid h-7 w-7 place-items-center rounded text-xs text-subtle hover:bg-surface-3 hover:text-content"
                 aria-label="Дублировать"
+                :disabled="draft.sections.length >= 40 || WIDGETS.some((w) => w.type === section.type && w.once)"
                 @click.stop="duplicate(index)"
               >⧉</button>
               <button
@@ -385,7 +428,7 @@ const previewModeClass = computed(() => {
         </div>
 
         <!-- Добавление виджетов -->
-        <p class="px-1 pb-2 pt-4 text-xs font-semibold uppercase tracking-wide text-subtle">Добавить виджет</p>
+        <p class="px-1 pb-2 pt-4 text-xs font-semibold uppercase tracking-wide text-subtle">Добавить виджет · {{ draft.sections.length }}/40</p>
         <div class="grid grid-cols-2 gap-1.5">
           <button
             v-for="widget in WIDGETS"
@@ -393,6 +436,7 @@ const previewModeClass = computed(() => {
             type="button"
             class="flex items-center gap-2 rounded-lg border border-line px-2.5 py-2 text-left text-xs text-muted transition-colors hover:border-brand-500/40 hover:bg-surface-2 hover:text-content"
             :title="widget.hint"
+            :disabled="draft.sections.length >= 40 || (widget.once && draft.sections.some((s) => s.type === widget.type))"
             @click="addWidget(widget.type)"
           >
             <span aria-hidden="true" class="text-sm">{{ widget.icon }}</span>
@@ -590,7 +634,7 @@ const previewModeClass = computed(() => {
       </div>
 
       <!-- Превью темы -->
-      <div class="surface-card p-4" :style="previewVars">
+      <div class="surface-card p-4" :style="previewVars" :data-preview-mode="previewMode" :data-preview-surface="draft.theme.surface">
         <p class="mb-3 text-xs font-semibold uppercase tracking-wide text-subtle">Пробник</p>
         <div class="space-y-3 rounded-lg border border-line bg-surface p-4">
           <div class="rounded-lg bg-brand-gradient px-4 py-5 text-center text-sm font-semibold text-brand-on">
@@ -619,12 +663,12 @@ const previewModeClass = computed(() => {
 
         <div class="border-t border-line pt-4">
           <p class="mb-2 text-sm text-content">Пункты меню</p>
-          <div v-for="(item, index) in draft.header.nav" :key="index" class="mb-2 flex items-start gap-2">
-            <NInput v-model="item.label" placeholder="Афиша" class="flex-1" />
-            <NInput v-model="item.to" placeholder="/" class="w-32" />
+          <div v-for="(item, index) in draft.header.nav" :key="index" class="mb-3 grid items-end gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+            <NInput v-model="item.label" label="Название пункта" placeholder="Афиша" class="min-w-0" />
+            <NInput v-model="item.to" label="Адрес" placeholder="/" class="min-w-0" />
             <NButton variant="ghost" size="sm" aria-label="Удалить пункт" @click="removeNav(index)">✕</NButton>
           </div>
-          <NButton variant="secondary" size="sm" icon="+" @click="addNav">Добавить пункт</NButton>
+          <NButton variant="secondary" size="sm" icon="+" :disabled="draft.header.nav.length >= 6" @click="addNav">Добавить пункт ({{ draft.header.nav.length }}/6)</NButton>
         </div>
       </div>
 
@@ -632,24 +676,42 @@ const previewModeClass = computed(() => {
         <p class="text-sm font-semibold text-content">Подвал</p>
         <NInput v-model="draft.footer.text" label="Строка копирайта" />
 
+        <div class="space-y-3 border-t border-line pt-4">
+          <p class="text-sm font-medium text-content">Колонки подвала</p>
+          <p class="text-xs text-muted">До четырёх колонок, до восьми ссылок в каждой. Заполните заголовок и хотя бы одну ссылку.</p>
+          <div v-for="(column, index) in draft.footer.columns" :key="index" class="space-y-3 rounded-lg border border-line p-3">
+            <NInput v-model="column.title" label="Заголовок колонки" maxlength="40" />
+            <div v-for="(link, linkIndex) in column.links" :key="linkIndex" class="grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
+              <NInput v-model="link.label" label="Название ссылки" />
+              <NInput v-model="link.url" label="Адрес ссылки" placeholder="/contacts" />
+              <NButton variant="ghost" aria-label="Удалить ссылку из колонки" @click="column.links.splice(linkIndex, 1)">✕</NButton>
+            </div>
+            <div class="flex flex-wrap gap-2">
+              <NButton variant="secondary" size="sm" :disabled="column.links.length >= 8" @click="column.links.push({ label: 'Ссылка', url: '/' })">Добавить ссылку в колонку</NButton>
+              <NButton variant="ghost" size="sm" @click="draft.footer.columns.splice(index, 1)">Удалить колонку</NButton>
+            </div>
+          </div>
+          <NButton variant="secondary" size="sm" :disabled="draft.footer.columns.length >= 4" @click="draft.footer.columns.push({ title: 'Раздел', links: [{ label: 'Ссылка', url: '/' }] })">Добавить колонку</NButton>
+        </div>
+
         <div class="border-t border-line pt-4">
           <p class="mb-2 text-sm text-content">Ссылки в подвале</p>
-          <div v-for="(link, index) in draft.footer.links" :key="index" class="mb-2 flex items-start gap-2">
-            <NInput v-model="link.label" placeholder="Помощь" class="flex-1" />
-            <NInput v-model="link.url" placeholder="/" class="w-32" />
+          <div v-for="(link, index) in draft.footer.links" :key="index" class="mb-3 grid items-end gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+            <NInput v-model="link.label" label="Название ссылки" placeholder="Помощь" class="min-w-0" />
+            <NInput v-model="link.url" label="Адрес" placeholder="/" class="min-w-0" />
             <NButton variant="ghost" size="sm" aria-label="Удалить ссылку" @click="removeFooterLink(index)">✕</NButton>
           </div>
-          <NButton variant="secondary" size="sm" icon="+" @click="addFooterLink">Добавить ссылку</NButton>
+          <NButton variant="secondary" size="sm" icon="+" :disabled="draft.footer.links.length >= 8" @click="addFooterLink">Добавить ссылку ({{ draft.footer.links.length }}/8)</NButton>
         </div>
 
         <div class="border-t border-line pt-4">
           <p class="mb-2 text-sm text-content">Соцсети</p>
-          <div v-for="(link, index) in draft.footer.social" :key="index" class="mb-2 flex items-start gap-2">
-            <NInput v-model="link.label" placeholder="Телеграм" class="flex-1" />
-            <NInput v-model="link.url" placeholder="https://" class="w-32" />
+          <div v-for="(link, index) in draft.footer.social" :key="index" class="mb-3 grid items-end gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+            <NInput v-model="link.label" label="Название соцсети" placeholder="Телеграм" class="min-w-0" />
+            <NInput v-model="link.url" label="Адрес" placeholder="https://" class="min-w-0" />
             <NButton variant="ghost" size="sm" aria-label="Удалить соцсеть" @click="removeSocial(index)">✕</NButton>
           </div>
-          <NButton variant="secondary" size="sm" icon="+" @click="addSocial">Добавить соцсеть</NButton>
+          <NButton variant="secondary" size="sm" icon="+" :disabled="draft.footer.social.length >= 6" @click="addSocial">Добавить соцсеть ({{ draft.footer.social.length }}/6)</NButton>
         </div>
       </div>
     </div>
@@ -696,6 +758,7 @@ const previewModeClass = computed(() => {
         <div
           :style="previewVars"
           :data-preview-surface="draft.theme.surface"
+          :data-preview-mode="previewMode"
           :class="[previewModeClass, 'max-h-[75vh] overflow-y-auto bg-canvas']"
         >
           <header class="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-3">
@@ -739,6 +802,12 @@ const previewModeClass = computed(() => {
           </p>
 
           <footer class="border-t border-line px-4 py-5 text-xs text-subtle">
+            <div class="mb-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <div v-for="(column, index) in draft.footer.columns" :key="index">
+                <p class="mb-2 text-sm font-semibold text-content">{{ column.title }}</p>
+                <p v-for="(link, linkIndex) in column.links" :key="linkIndex" class="mt-1">{{ link.label }}</p>
+              </div>
+            </div>
             <p>{{ draft.footer.text }}</p>
             <p class="mt-2 flex flex-wrap gap-3">
               <span v-for="(link, index) in draft.footer.links" :key="index">{{ link.label }}</span>
@@ -748,5 +817,6 @@ const previewModeClass = computed(() => {
         </div>
       </div>
     </div>
+    </fieldset>
   </div>
 </template>
