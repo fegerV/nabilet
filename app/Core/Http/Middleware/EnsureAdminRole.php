@@ -10,7 +10,7 @@ use Nabilet\Core\Support\StaffRole;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * Доступ к админ-API: только пользователи с ролью admin или manager.
+ * Доступ к админ-API: только администраторы текущей организации (роль admin).
  * Применяется к write-роутам (CRUD), публичные read-роуты витрины — открыты.
  *
  * Проверка ролей вынесена в `StaffRole`: тот же вопрос задают контроллеры

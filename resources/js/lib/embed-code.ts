@@ -14,7 +14,7 @@
  * переписывания на сервере (см. `router/index.ts`). `embed_token` кладётся
  * в query: его читает `route.query` vue-router'а. Денежный флоу рамки
  * пока НЕ переключён на `/api/v1/embed/*` (это следующий шаг) — переключение
- * не потребует правки этого генератора: токен уже в адресе.
+ * не требует правки: токен уже в адресе.
  */
 
 /** id элемента `<iframe>` в сниппете; слушатель находит по нему рамку. */
@@ -68,7 +68,10 @@ export function buildIframeSnippet(options: EmbedCodeOptions): string {
   const title = (options.title ?? 'NABILET').replace(/"/g, '&quot;')
 
   return [
-    `<iframe id="${EMBED_FRAME_ID}" src="${url}" title="${title}"`,
+    // data-атрибут, а не только id: на странице партнёра может быть два
+    // виджета (каталог и конкретное событие), слушатель должен различать их
+    // по e.source, а не брать первый элемент с одинаковым id.
+    `<iframe id="${EMBED_FRAME_ID}" data-nabilet-embed src="${url}" title="${title}"`,
     `  style="width:100%;height:640px;border:0" loading="lazy"></iframe>`,
   ].join('\n')
 }
@@ -83,14 +86,21 @@ export function buildIframeSnippet(options: EmbedCodeOptions): string {
  * обязательный: в том же окне живут и чужие postMessage (аналитика,
  * расширения) — реагировать на мусор значило бы портить себе вёрстку.
  */
-export function buildListenerSnippet(): string {
+export function buildListenerSnippet(options?: { storefrontOrigin?: string }): string {
+  const origin = options?.storefrontOrigin?.replace(/\/+$/, '') ?? ''
+  const originCheck = origin
+    ? `    if (e.origin !== ${JSON.stringify(origin)}) return;\n`
+    : ''
+
   return [
     '<script>',
     `  window.addEventListener('message', function (e) {`,
     `    var m = e.data;`,
     `    if (!m || m.source !== '${WIDGET_MESSAGE_SOURCE}') return;`,
-    `    var frame = document.getElementById('${EMBED_FRAME_ID}');`,
-    `    if (m.type === 'height' && frame && m.height) {`,
+    originCheck,
+    `    var frame = [].slice.call(document.querySelectorAll('iframe[data-nabilet-embed]')).filter(function (f) { return f.contentWindow === e.source; })[0];`,
+    `    if (!frame) return;`,
+    `    if (m.type === 'height' && m.height) {`,
     `      frame.style.height = m.height + 'px';`,
     `    }`,
     `    if (m.type === 'cart') {`,
@@ -112,5 +122,5 @@ export function buildListenerSnippet(): string {
 
 /** Полный блок для копирования: рамка и слушатель рядом. */
 export function buildFullSnippet(options: EmbedCodeOptions): string {
-  return `${buildIframeSnippet(options)}\n${buildListenerSnippet()}`
+  return `${buildIframeSnippet(options)}\n${buildListenerSnippet({ storefrontOrigin: options.storefrontOrigin })}`
 }

@@ -57,11 +57,11 @@ describe('lib/embed-code: buildEmbedUrl', () => {
 })
 
 describe('lib/embed-code: buildIframeSnippet', () => {
-  it('точный текст: id, стартовая высота 640, lazy', () => {
+  it('точный текст: id, data-атрибут, стартовая высота 640, lazy', () => {
     expect(
       buildIframeSnippet({ storefrontOrigin: 'https://tickets.example', path: '/event/x', token: 'TK' }),
     ).toBe(
-      `<iframe id="nabilet-embed" src="https://tickets.example/event/x?embed_token=TK" title="NABILET"\n` +
+      `<iframe id="nabilet-embed" data-nabilet-embed src="https://tickets.example/event/x?embed_token=TK" title="NABILET"\n` +
         `  style="width:100%;height:640px;border:0" loading="lazy"></iframe>`,
     )
   })
@@ -86,9 +86,15 @@ describe('lib/embed-code: buildIframeSnippet', () => {
 describe('lib/embed-code: buildListenerSnippet', () => {
   const listener = buildListenerSnippet()
 
-  it('фильтрует по source и находит рамку по id', () => {
+  it('фильтрует по source и находит рамку по e.source среди всех виджетов', () => {
     expect(listener).toContain(`m.source !== 'nabilet-embed'`)
-    expect(listener).toContain(`document.getElementById('nabilet-embed')`)
+    expect(listener).toContain(`iframe[data-nabilet-embed]`)
+    expect(listener).toContain(`f.contentWindow === e.source`)
+  })
+
+  it('полный сниппет проверяет origin отправителя', () => {
+    const full = buildFullSnippet({ storefrontOrigin: 'https://tickets.example', token: 'TK' })
+    expect(full).toContain(`e.origin !== "https://tickets.example"`)
   })
 
   it('содержит все пять веток моста в видимом для партнёра виде', () => {
@@ -115,7 +121,9 @@ describe('lib/embed-code: buildFullSnippet', () => {
   it('рамка и слушатель рядом, вывод детерминирован', () => {
     const options = { storefrontOrigin: 'https://tickets.example', token: 'TK' }
     const full = buildFullSnippet(options)
-    expect(full).toBe(`${buildIframeSnippet(options)}\n${buildListenerSnippet()}`)
+    expect(full).toBe(
+      `${buildIframeSnippet(options)}\n${buildListenerSnippet({ storefrontOrigin: options.storefrontOrigin })}`,
+    )
     expect(buildFullSnippet(options)).toBe(full)
   })
 })

@@ -55,6 +55,9 @@ const LABELS: Record<string, string> = {
   'order.reminder': 'Напоминание за сутки',
   'account.password_reset': 'Смена пароля',
   'account.email_verification': 'Подтверждение адреса',
+  'follow.new_session': 'Новый сеанс подписки',
+  'follow.sales_open': 'Открыта продажа',
+  'raffle.winner': 'Победитель розыгрыша',
 }
 
 function labelFor(code: string): string {
@@ -81,10 +84,14 @@ const isDirty = computed(() => JSON.stringify(form.value) !== savedSnapshot.valu
 const GROUPS = computed(() => {
   const order = templates.value.filter((t) => t.code.startsWith('order.'))
   const account = templates.value.filter((t) => t.code.startsWith('account.'))
-  const other = templates.value.filter((t) => !t.code.startsWith('order.') && !t.code.startsWith('account.'))
+  const follow = templates.value.filter((t) => t.code.startsWith('follow.'))
+  const raffle = templates.value.filter((t) => t.code.startsWith('raffle.'))
+  const other = templates.value.filter((t) => !['order.', 'account.', 'follow.', 'raffle.'].some((p) => t.code.startsWith(p)))
   const groups: Array<{ label: string; items: Template[] }> = []
   if (order.length) groups.push({ label: 'Заказы', items: order })
   if (account.length) groups.push({ label: 'Доступ к аккаунту', items: account })
+  if (follow.length) groups.push({ label: 'Подписки', items: follow })
+  if (raffle.length) groups.push({ label: 'Розыгрыши', items: raffle })
   if (other.length) groups.push({ label: 'Прочее', items: other })
   return groups
 })
@@ -201,7 +208,7 @@ onMounted(load)
   <div class="mx-auto max-w-[1200px]">
     <NPageHeader
       title="Шаблоны писем"
-      subtitle="Письма покупателю по событиям заказа и доступа к аккаунту. Переменные подставляются как &#123;&#123;имя&#125;&#125;."
+      subtitle="Все 13 писем: заказы, доступ, подписки и розыгрыши. Переменные подставляются как &#123;&#123;имя&#125;&#125;."
     />
 
     <p v-if="error" class="surface-card mt-5 border-rose-500/30 px-4 py-3 text-sm text-rose-400">{{ error }}</p>
@@ -325,6 +332,12 @@ onMounted(load)
         class="mt-3 h-[460px] w-full rounded-lg border border-line bg-white"
         title="Предпросмотр письма"
       />
+      <!-- Текстовая версия возвращается API, но раньше в интерфейсе не
+           показывалась: ошибка в body_text известна была только после отправки. -->
+      <div class="mt-4">
+        <p class="mb-1 text-sm font-medium">Текстовая версия</p>
+        <pre class="max-h-48 overflow-auto rounded-lg bg-canvas p-3 text-xs whitespace-pre-wrap text-subtle">{{ preview.text || 'Пусто' }}</pre>
+      </div>
     </NCard>
   </div>
 </template>

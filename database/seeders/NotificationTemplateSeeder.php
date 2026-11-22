@@ -63,6 +63,7 @@ final class NotificationTemplateSeeder extends Seeder
         // их берёт `SessionObserver`, `raffle.*` — с `RaffleNotificationCodes`,
         // оттуда их берёт `NotifyRaffleWinnersJob`.
         $this->assertCodesMatch('order.', $templates, OrderNotificationCodes::all());
+        $this->assertCodesMatch('account.', $templates, AccountNotificationCodes::all());
         $this->assertCodesMatch('follow.', $templates, FollowNotificationCodes::all());
         $this->assertCodesMatch('raffle.', $templates, RaffleNotificationCodes::all());
 

@@ -11,6 +11,9 @@ use Illuminate\Contracts\Support\Htmlable;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Nabilet\Modules\Notifications\Mail\TemplateMail;
+use Nabilet\Modules\Notifications\Support\AccountNotificationCodes;
+use Nabilet\Modules\Loyalty\Support\FollowNotificationCodes;
+use Nabilet\Modules\Loyalty\Support\RaffleNotificationCodes;
 use Throwable;
 
 /**
@@ -55,18 +58,18 @@ class TransactionalMailService
      * редакторе шаблонов, чтобы не угадывать имена.
      *
      * Список — ОБЪЕДИНЕНИЕ по всем видам писем (заказы, доступ к аккаунту,
-     * подписки на мероприятия): редактор шаблонов один на все коды, и
+     * подписки, розыгрыши): редактор шаблонов один на все 13 кодов, и
      * плейсхолдер из чужого письма должен быть в нём виден — иначе при
-     * предпросмотре он молча не подставится. Что подставляет конкретный код:
-     * заказы — `OrderNotificationData::build()`, доступ к аккаунту —
-     * `AccountNotificationCodes::variables()`, подписки —
-     * `FollowNotificationCodes::variables()`.
+     * предпросмотре он молча не подставится. Переменные аккаунта/подписок/
+     * розыгрыша берём из тех же классов, которые их объявляют для отправки:
+     * раньше список был захардкожен и розыгрышевые `raffle_title/prize_*`
+     * в редакторе отсутствовали.
      *
      * @return list<string>
      */
     public static function availableVariables(): array
     {
-        return [
+        $order = [
             'customer_name',
             'order_number',
             'event_name',
@@ -75,10 +78,14 @@ class TransactionalMailService
             'total',
             'tickets_html',
             'tickets_text',
-            'action_url',
-            'expires_in_minutes',
-            'sales_note',
         ];
+
+        return array_values(array_unique(array_merge(
+            $order,
+            AccountNotificationCodes::variables(),
+            FollowNotificationCodes::variables(),
+            RaffleNotificationCodes::variables(),
+        )));
     }
 
     /**

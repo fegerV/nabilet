@@ -158,6 +158,15 @@ class NotificationTemplateController extends Controller
             'tickets_html' => new HtmlString('<div style="border:1px dashed #cbd5e1;padding:12px;">'
                 . 'Билет NB-20261007-0001 — место Партер 1 / 12</div>'),
             'tickets_text' => 'Билет NB-20261007-0001 — место Партер 1 / 12',
+            // Раньше превью писем о пароле/подписке/розыгрыше показывало
+            // незаменённые {{action_url}}, {{raffle_title}} и т.п. — ровно то,
+            // от чего предпросмотр и должен избавлять.
+            'action_url' => url('/bonus'),
+            'expires_in_minutes' => '60',
+            'sales_note' => 'Билеты уже в продаже',
+            'raffle_title' => 'Счастливый билет',
+            'prize_place' => '1 место',
+            'prize_title' => 'Приз от организатора',
         ];
     }
 }
