@@ -464,14 +464,23 @@ zip стирает `.tmp-release-stage` целиком, поэтому посл�
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\build-hosting-zip.ps1 -Version X.Y.Z
-php .tmp-release-stage\db-setup-smoke.php              # чистая БД install_smoke + юзер installer
+# сборщик удаляет свой staging-каталог — распакуйте архив заново:
+$site = '.tmp-release-stage\site'
+tar -xf (Get-ChildItem releases\nabilet-hosting-vX.Y.Z-*.zip | Select-Object -First 1) -C $site
+Copy-Item scripts\smoke\db-setup-smoke.php .tmp-release-stage\
 Copy-Item scripts\smoke\smoke-install.php .tmp-release-stage\
-Copy-Item scripts\smoke\router-smoke.php .tmp-release-stage\site\
+# роутер имитирует .htaccess из public_html — класть надо именно туда:
+Copy-Item scripts\smoke\router-smoke.php "$site\public_html\router-smoke.php"
+php .tmp-release-stage\db-setup-smoke.php              # чистая БД install_smoke + юзер installer
 # в .tmp-release-stage\site не должно быть .env и storage/install.lock
-# в отдельном окне, из каталога .tmp-release-stage\site:
+# в отдельном окне, из каталога .tmp-release-stage\site\public_html:
 php -S 127.0.0.1:8088 router-smoke.php
 php .tmp-release-stage\smoke-install.php
 ```
+
+Роутер требует `index.php` рядом с собой, поэтому рабочим каталогом сервера
+должен быть `public_html/`, а не корень распакованного сайта. Иначе Laravel не
+найдёт фронт-контроллер, и все проверки installation/health уйдут в GUI-ошибки.
 
 `router-smoke.php` имитирует правила поставляемого `.htaccess` (dot-файлы и
 системные каталоги → 403, `/storage/…` → медиатека, остальное →
