@@ -24,7 +24,7 @@ import NSelect from '@/components/ui/NSelect.vue'
 import NBadge from '@/components/ui/NBadge.vue'
 import NSegmented from '@/components/ui/NSegmented.vue'
 import { useUiStore } from '@/stores/ui'
-import { money, plural, rowsLabel, seatsLabel, time } from '@/lib/format'
+import { humanSize, money, plural, rowsLabel, seatsLabel, time } from '@/lib/format'
 import { buildSeatPricePalette, effectiveSeatPrice } from '@/lib/hall'
 import { minorToRub, rubToMinor } from '@/lib/money'
 import { cn } from '@/lib/cn'
@@ -78,6 +78,8 @@ import {
 } from './schemaSerialization'
 import { useEditorHistory } from './useEditorHistory'
 import {
+  BACKGROUND_MAX_DATA_URL_BYTES,
+  backgroundDataUrlBytes,
   clampFloatOrNull,
   clampIntOrNull,
   normalizeRotation,
@@ -1870,6 +1872,12 @@ function exportSchema(): void {
   /* ── Фон-изображение (§51) ────────────────────────────────────────── */
 
 const imageInput = ref<HTMLInputElement | null>(null)
+/**
+ * Data URL фона уезжает внутри `template_json`, а сервер ограничивает весь
+ * payload 2 МБ (`HallService::assertPayloadSize`). base64 добавляет ~33%,
+ * поэтому держим запас под саму схему. Раньше большой файл тихо уходил в
+ * автосохранение и ломал его уже после того, как администратор увидел фон.
+ */
 function triggerImageUpload(): void {
   if (tool.value === 'image') imageInput.value?.click()
 }
@@ -1885,6 +1893,20 @@ function onImageChosen(event: Event): void {
     imageInput.value && (imageInput.value.value = '')
     return
   }
+  // Проверяем размер до чтения: data URL почти всегда превышает серверный
+  // лимит payload в 2 МБ раньше, чем сама схема.
+  const dataUrlBytes = backgroundDataUrlBytes(file.size)
+  if (dataUrlBytes > BACKGROUND_MAX_DATA_URL_BYTES) {
+    ui.notify(
+      'rose',
+      'Изображение слишком большое',
+      `Максимум ~1.1 МБ файла (сейчас ${humanSize(file.size)}): схема не поместится в лимит сервера`,
+    )
+    tool.value = 'select'
+    if (imageInput.value) imageInput.value.value = ''
+    return
+  }
+
   const reader = new FileReader()
   reader.onload = () => {
     if (isLocked.value) return
@@ -2649,7 +2671,9 @@ function isTypingTarget(target: EventTarget | null): boolean {
   const el = target as HTMLElement | null
   if (!el) return false
   const tag = el.tagName
-  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable
+  // BUTTON тоже исключён: пробел/буквы должны принадлежать кнопке (активация,
+  // доступность), а не переключать инструмент редактора.
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || tag === 'BUTTON' || el.isContentEditable
 }
 
 /**

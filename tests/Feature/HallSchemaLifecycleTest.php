@@ -44,6 +44,19 @@ final class HallSchemaLifecycleTest extends TestCase
         self::assertSame('published', $published->status);
     }
 
+    public function test_payload_limit_comes_from_config_and_rejects_huge_drafts(): void
+    {
+        config(['nabilet.hall_schema.max_payload_bytes' => 100]);
+
+        try {
+            $this->scoped(fn () => $this->service->createSchemaDraft($this->hall, $this->sellableSchema(1000), 1));
+            self::fail('A payload above the configured limit must be refused.');
+        } catch (ValidationError $error) {
+            self::assertArrayHasKey('payload', $error->errors);
+            self::assertStringContainsString('Уменьшите фоновую картинку', (string) $error->errors['payload'][0]);
+        }
+    }
+
     protected function setUp(): void
     {
         parent::setUp();

@@ -306,6 +306,17 @@ return [
     ],
 
 
+    /*
+     * Лимит размера `template_json` схемы зала. Раньше число жило только
+     * литералом в HallService, а клиентский лимит фоновой картинки нельзя было
+     * с ним сверить. Изменение здесь автоматически меняет серверную проверку;
+     * клиентский запас (`BACKGROUND_MAX_DATA_URL_BYTES`) оставляет место под
+     * саму схему внутри этого бюджета.
+     */
+    'hall_schema' => [
+        'max_payload_bytes' => (int) env('HALL_SCHEMA_MAX_PAYLOAD_BYTES', 2_000_000),
+    ],
+
     'checkout' => [
         'hold_duration_minutes' => (int) env('CHECKOUT_HOLD_DURATION', 15),
         'max_items_per_order' => (int) env('CHECKOUT_MAX_ITEMS', 10),

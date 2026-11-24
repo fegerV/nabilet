@@ -19,6 +19,8 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
+  BACKGROUND_MAX_DATA_URL_BYTES,
+  backgroundDataUrlBytes,
   clampFloatOrNull,
   clampIntOrNull,
   normalizeRotation,
@@ -27,6 +29,19 @@ import {
   roundOrNull,
   rowPriceError,
 } from '../../../resources/js/pages/hall-editor/hallEditorFields'
+
+describe('фон: лимит перед автосохранением', () => {
+  it('base64 оценивает размер до чтения файла', () => {
+    expect(backgroundDataUrlBytes(3)).toBe(4)
+    expect(backgroundDataUrlBytes(1_000_000)).toBe(1_333_336)
+  })
+
+  it('лимит оставляет запас под схему внутри серверных 2 МБ', () => {
+    expect(BACKGROUND_MAX_DATA_URL_BYTES).toBeLessThan(2_000_000)
+    expect(backgroundDataUrlBytes(1_200_000)).toBeGreaterThan(BACKGROUND_MAX_DATA_URL_BYTES)
+    expect(backgroundDataUrlBytes(1_000_000)).toBeLessThan(BACKGROUND_MAX_DATA_URL_BYTES)
+  })
+})
 
 describe('priceRubField', () => {
   it('показывает копейки в рублях', () => {

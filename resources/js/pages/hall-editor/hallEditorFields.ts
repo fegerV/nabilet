@@ -39,6 +39,21 @@ export function priceRubField(minor: number): string {
 }
 
 /**
+ * Лимит фоновой картинки перед автосохранением.
+ *
+ * Сервер ограничивает весь `template_json` 2 000 000 байт
+ * (`HallService::assertPayloadSize`), а картинка едет внутри data URL: base64
+ * добавляет ~33%. Оставляем 500 КБ под саму схему, поэтому предел — 1.5 МБ
+ * закодированных данных (~1.1 МБ исходного файла).
+ */
+export const BACKGROUND_MAX_DATA_URL_BYTES = 1_500_000
+
+/** Размер data URL без чтения файла — можно проверить сразу после выбора. */
+export function backgroundDataUrlBytes(fileBytes: number): number {
+  return Math.ceil(fileBytes / 3) * 4
+}
+
+/**
  * Цена ряда: `undefined/null/''` — сброс индивидуальной цены (ряд берёт цену
  * сектора), это НЕ ошибка. Всё остальное проверяется как цена.
  */
