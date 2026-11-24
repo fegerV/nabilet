@@ -6,6 +6,7 @@ namespace Nabilet\Modules\Events\Services;
 
 use Nabilet\Core\Errors\ConflictError;
 use Nabilet\Core\Support\PublicationStatus;
+use Nabilet\Modules\HallSchemas\Domain\SchemaVersionState;
 use Nabilet\Modules\Events\Domain\EventStatus;
 use Nabilet\Modules\Events\Models\Event;
 use Nabilet\Modules\Events\Repositories\EventRepository;
@@ -120,7 +121,7 @@ class EventService
             $schemaVersionId = $event->schema_version_id;
             if ($schemaVersionId === null) {
                 $schemaQuery = HallSchemaVersion::query()
-                    ->where('status', 'published')
+                    ->where('status', SchemaVersionState::PUBLISHED)
                     ->when(
                         $hall !== null,
                         static fn ($q) => $q->where(
@@ -129,7 +130,7 @@ class EventService
                         ),
                         static fn ($q) => $q->where('venue_id', $event->venue_id),
                     );
-                $schemaVersionId = $schemaQuery->orderByDesc('id')->value('id');
+                $schemaVersionId = $schemaQuery->orderByDesc('version')->value('id');
             }
             if ($hall === null && $schemaVersionId !== null) {
                 $legacyHallId = HallSchemaVersion::query()->whereKey($schemaVersionId)->value('hall_id');
@@ -150,7 +151,9 @@ class EventService
                 $sameExistingSchema = $session !== null && (int) $session->schema_version_id === (int) $schemaVersionId;
                 if ($schema === null || (int) ($schema->venue_id ?? $hall?->venue_id) !== (int) $event->venue_id
                     || ($hall !== null && (int) $schema->hall_id !== (int) $hall->id)
-                    || !in_array($schema->status, $sameExistingSchema ? ['published', 'archived'] : ['published'], true)) {
+                    || !in_array($schema->status, $sameExistingSchema
+                        ? [SchemaVersionState::PUBLISHED, SchemaVersionState::ARCHIVED]
+                        : [SchemaVersionState::PUBLISHED], true)) {
                     throw new \Nabilet\Core\Errors\ValidationError([
                         'schema_version_id' => ['Выберите опубликованную схему выбранной площадки.'],
                     ]);

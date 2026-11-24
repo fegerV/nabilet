@@ -60,6 +60,8 @@ final class TenantResolver
 
         // Залы и схемы
         'halls' => ['venue_id', 'venues'],
+        // hall_id == venue.id (halls — VIEW над venues): legacy-цепочка
+        // остаётся рабочей для строк, где venue_id ещё не заполнен.
         'hall_schema_versions' => ['hall_id', 'halls'],
         'sectors' => ['schema_version_id', 'hall_schema_versions'],
         'hall_rows' => ['sector_id', 'sectors'],

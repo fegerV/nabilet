@@ -162,7 +162,7 @@ class SessionController extends Controller
             $data['schema_version_id'] = HallSchemaVersion::query()
                 ->where('hall_id', $data['hall_id'])
                 ->where('status', SchemaVersionState::PUBLISHED)
-                ->orderByDesc('id')
+                ->orderByDesc('version')
                 ->value('id');
         }
 
@@ -226,7 +226,7 @@ class SessionController extends Controller
             $data['schema_version_id'] = HallSchemaVersion::query()
                 ->where('hall_id', $data['hall_id'])
                 ->where('status', SchemaVersionState::PUBLISHED)
-                ->orderByDesc('id')
+                ->orderByDesc('version')
                 ->value('id');
         }
 
