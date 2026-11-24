@@ -180,6 +180,36 @@ final class VenueSchemaFlowHttpTest extends TestCase
      * Публичный список версий площадки не должен падать 500 для гостя:
      * модель версий tenant-scoped, поэтому чтение идёт в OrganizationContext::withoutScope.
      */
+    public function test_version_list_is_light_and_full_schema_is_loaded_on_demand(): void
+    {
+        $organizationId = $this->seedOrganization();
+        $this->actingAsStaff($organizationId);
+
+        $venue = $this->postJson('/api/v1/venues', ['name' => 'Лёгкий список версий'])->assertCreated();
+        $venuePublicId = (string) $venue->json('data.public_id');
+        $hallPublicId = (string) $venue->json('hall.public_id');
+        $versionId = $this->publishSchemaViaHttp($hallPublicId, $this->schemaPayload(500000));
+
+        $list = $this->getJson("/api/v1/venues/{$venuePublicId}/schema-versions")->assertOk();
+        $first = $list->json('data.0');
+        self::assertArrayNotHasKey('schema', $first, 'список не должен тащить схему до 2 МБ на версию');
+        self::assertSame($versionId, (int) $first['id']);
+
+        $detail = $this->getJson("/api/v1/venues/{$venuePublicId}/schema-versions/{$versionId}")->assertOk();
+        self::assertNotEmpty($detail->json('data.schema.sectors'));
+
+        // Черновик виден сотруднику, но не гостю витрины.
+        $draft = $this->postJson("/api/v1/halls/{$hallPublicId}/schema-versions/draft", [
+            'payload' => $this->schemaPayload(600000),
+        ])->assertSuccessful();
+        $draftId = (int) $draft->json('data.id');
+        $this->getJson("/api/v1/venues/{$venuePublicId}/schema-versions/{$draftId}")->assertOk();
+
+        $this->app['auth']->forgetGuards();
+        $this->getJson("/api/v1/venues/{$venuePublicId}/schema-versions/{$versionId}")->assertOk();
+        $this->getJson("/api/v1/venues/{$venuePublicId}/schema-versions/{$draftId}")->assertNotFound();
+    }
+
     public function test_a_guest_can_list_schema_versions_of_a_venue(): void
     {
         $organizationId = $this->seedOrganization();

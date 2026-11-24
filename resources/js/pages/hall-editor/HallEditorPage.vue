@@ -1713,7 +1713,11 @@ async function loadFromServer(): Promise<void> {
         draftVersion.value = versionNo > 0 ? versionNo : maxVersionNo + 1
         draftVersionId.value = Number(chosen.id ?? null)
       }
-      const schema = chosen.schema
+      // Список версий лёгкий: геометрию догружаем только выбранной версии.
+      const detail = await get<Record<string, unknown>>(
+        `/venues/${pid}/schema-versions/${chosen.id}`
+      )
+      const schema = detail.data?.schema
             if (schema) { applyServerSchema(schema); fit() }
             // Фон мог быть сохранён не в payload, а в отдельную колонку
             // background_url (+ width/height версии) — если в схеме фона нет,

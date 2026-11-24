@@ -20,6 +20,7 @@ use Nabilet\Modules\Venues\Halls\Services\HallService;
 use Nabilet\Modules\Venues\Halls\Http\Resources\HallResource;
 use Nabilet\Modules\Venues\Halls\Http\Resources\HallCollection;
 use Nabilet\Modules\Venues\Halls\Http\Resources\SchemaVersionResource;
+use Nabilet\Modules\Venues\Halls\Http\Resources\SchemaVersionSummaryResource;
 use Nabilet\Modules\Venues\Halls\Domain\SchemaPayloadNormalizer;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -287,8 +288,33 @@ class HallController extends Controller
         );
 
         return response()->json([
-            'data' => SchemaVersionResource::collection($versions)->resolve(),
+            'data' => SchemaVersionSummaryResource::collection($versions)->resolve(),
         ]);
+    }
+
+    /**
+     * GET /venues/{publicId}/schema-versions/{versionId} — полная геометрия
+     * одной версии. ПубличнаяVerify: черновик через этот путь не светится.
+     */
+    public function venueSchemaVersion(string $publicId, int $versionId): JsonResponse
+    {
+        $venue = $this->venueOrFail($publicId);
+        $version = app(OrganizationContext::class)->withoutScope(
+            fn () => HallSchemaVersion::query()
+                ->where('venue_id', $venue->id)
+                ->whereKey($versionId)
+                ->first()
+        );
+
+        // Редактор правит черновик, поэтому полную геометрию черновика видят
+        // только сотрудники; публичный витринный путь — только published.
+        $user = request()->user();
+        $maySeeDraft = $user !== null && \Nabilet\Core\Support\StaffRole::isStaff($user);
+        if ($version === null || ($version->status !== 'published' && ! $maySeeDraft)) {
+            throw new NotFoundError('HallSchemaVersion', $versionId);
+        }
+
+        return response()->json(['data' => new SchemaVersionResource($version)]);
     }
 
     /** POST /venues/{publicId}/schema-versions/draft. */

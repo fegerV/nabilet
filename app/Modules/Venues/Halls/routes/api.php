@@ -26,6 +26,10 @@ use Nabilet\Modules\Venues\Halls\Http\Controllers\HallController;
 Route::get('/venues/{venuePublicId}/halls', [HallController::class, 'index'])->name('halls.index');
 // Схема принадлежит площадке: конструктор работает с publicId площадки, а не зала.
 Route::get('/venues/{publicId}/schema-versions', [HallController::class, 'venueSchemaVersions'])->name('venues.schema-versions.index');
+// Полная геометрия одной версии выборочно, а не весь JSON в списке.
+Route::get('/venues/{publicId}/schema-versions/{versionId}', [HallController::class, 'venueSchemaVersion'])
+    ->name('venues.schema-versions.show')
+    ->whereNumber('versionId');
 Route::get('/halls', [HallController::class, 'indexAll'])->name('halls.all');
 Route::get('/halls/{publicId}', [HallController::class, 'show'])->name('halls.show');
 // Публичная схема для витрины мест (B10): только опубликованная версия.
