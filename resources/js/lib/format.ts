@@ -60,6 +60,11 @@ export function rowsLabel(n: number): string {
   return `${n} ${plural(n, 'ряд', 'ряда', 'рядов')}`
 }
 
+/** Номер страницы в подписях: «страница 2». */
+export function pageLabel(n: number): string {
+  return `страница ${n}`
+}
+
 const MONTHS_GEN = [
   'января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
   'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря',
@@ -92,6 +97,25 @@ export function dateTime(iso: string): string {
 export function time(iso: string): string {
   const d = new Date(iso)
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+
+/** Число месяца для декоративной карточки билета. */
+export function dayOfMonth(iso: string | null | undefined): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  return Number.isNaN(d.getTime()) ? '' : String(d.getDate())
+}
+
+/** Название месяца в родительном падеже: «ноября». */
+export function monthName(iso: string | null | undefined): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  return Number.isNaN(d.getTime()) ? '' : (MONTHS_GEN[d.getMonth()] ?? '')
+}
+
+/** IANA-имя часового пояса, в котором браузер редактирует локальные даты. */
+export function browserTimeZone(): string {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
 }
 
 /**

@@ -10,6 +10,9 @@
         </testsuite>
     </testsuites>
     <php>
+        <!-- Full Feature suite inspects generated image payloads through fileinfo.
+             PHP's 128M default is exhausted late in a single-process run. -->
+        <ini name="memory_limit" value="512M"/>
         <env name="APP_ENV" value="testing" force="true"/>
         <!--
             MySQL 8.4 — disposable Feature-test database. RefreshDatabase drops and

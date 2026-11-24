@@ -45,7 +45,7 @@ import {
   type RaffleListItem,
   type RafflePrizeDraft,
 } from '@/lib/raffles'
-import { formatDateTimeShort } from '@/lib/format'
+import { browserTimeZone, formatDateTimeShort } from '@/lib/format'
 
 const ui = useUiStore()
 
@@ -477,7 +477,7 @@ async function runAction(kind: 'activate' | 'pause' | 'cancel' | 'draw' | 'notif
         <NInput v-model="form.description" label="Описание" placeholder="Что за приз и по каким правилам разыгрывается" />
 
         <div class="grid gap-4 sm:grid-cols-2">
-          <p class="text-xs text-muted sm:col-span-2">Даты и время указаны в часовом поясе браузера: {{ Intl.DateTimeFormat().resolvedOptions().timeZone }}.</p>
+          <p class="text-xs text-muted sm:col-span-2">Даты и время указаны в часовом поясе браузера: {{ browserTimeZone() }}.</p>
           <NInput
             v-model="form.starts"
             type="datetime-local"

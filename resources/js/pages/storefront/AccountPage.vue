@@ -6,7 +6,7 @@ import NInput from '@/components/ui/NInput.vue'
 import AccountOrderList from '@/components/storefront/AccountOrderList.vue'
 import { changePassword, clearCustomerSession, customerUser, fetchMe, fetchMyOrdersPage, fetchSessions, logoutCustomer, revokeSession, updateMe, type CustomerOrder, type CustomerSession, type CustomerUser } from '@/lib/customer'
 import { ApiError } from '@/lib/api'
-import { dateTime, dateFull, time } from '@/lib/format'
+import { dateTime, dateFull, dayOfMonth, monthName, pageLabel, time } from '@/lib/format'
 import { useLoyaltyStore } from '@/stores/loyalty'
 import { achievementCollection, achievementImage, fetchClub, type ClubSnapshot } from '@/lib/achievementsCatalog'
 import { fetchMyTickets } from '@/lib/tickets'
@@ -188,7 +188,7 @@ onUnmounted(() => { clearInterval(timer); window.removeEventListener('beforeunlo
                 <template v-else-if="nextTicket"><h2>{{ nextTicket.eventTitle }}</h2><p class="outing-date">{{ dateFull(nextTicket.sessionAt) }} · {{ time(nextTicket.sessionAt) }}</p><p>{{ nextTicket.venue || 'Площадка уточняется' }}</p><RouterLink :to="{ path: '/tickets', query: nextTicket.orderId ? { order: String(nextTicket.orderId) } : {} }" class="account-primary">Открыть билет и QR</RouterLink></template>
                 <template v-else><h2>{{ me?.first_name ? me.first_name + ', какой' : 'Какой' }} будет ваша следующая история?</h2><p>Предстоящих событий пока нет. Самое время найти концерт, спектакль или новое любимое место.</p><RouterLink to="/" class="account-primary">Посмотреть афишу</RouterLink><RouterLink v-if="tickets.length" to="/tickets" class="outing-secondary">Все мои билеты</RouterLink></template>
               </div>
-              <div class="outing-art" aria-hidden="true"><div class="decorative-ticket"><span>NABILET</span><b>{{ nextTicket ? new Date(nextTicket.sessionAt).getDate() : '✦' }}</b><small>{{ nextTicket ? new Date(nextTicket.sessionAt).toLocaleDateString('ru-RU', { month: 'long' }) : 'ВАШ СЛЕДУЮЩИЙ ВЫХОД' }}</small><div class="ticket-perforation" /><i>МЕСТО ДЛЯ ВПЕЧАТЛЕНИЙ</i></div></div>
+              <div class="outing-art" aria-hidden="true"><div class="decorative-ticket"><span>NABILET</span><b>{{ nextTicket ? dayOfMonth(nextTicket.sessionAt) : '✦' }}</b><small>{{ nextTicket ? monthName(nextTicket.sessionAt) : 'ВАШ СЛЕДУЮЩИЙ ВЫХОД' }}</small><div class="ticket-perforation" /><i>МЕСТО ДЛЯ ВПЕЧАТЛЕНИЙ</i></div></div>
             </section>
             <section class="account-stats" aria-label="Ваш аккаунт в цифрах">
               <RouterLink to="/tickets"><span class="stat-icon">▱</span><div><strong>{{ ticketsLoading || ticketsError ? '—' : upcoming.length }}</strong><p>Билетов на будущие события</p></div></RouterLink>
@@ -196,7 +196,7 @@ onUnmounted(() => { clearInterval(timer); window.removeEventListener('beforeunlo
               <RouterLink to="/favorites"><span class="stat-icon heart">♡</span><div><strong>{{ loyalty.loaded ? loyalty.favoritesCount : '—' }}</strong><p>Событий в избранном</p></div></RouterLink>
             </section>
             <div class="account-overview-grid">
-              <section class="account-panel recent-orders"><div class="panel-heading"><h2>{{ orderPage === 1 ? 'Последние заказы' : 'Заказы · страница ' + orderPage }}</h2><RouterLink to="/account?tab=orders">Все заказы</RouterLink></div>
+              <section class="account-panel recent-orders"><div class="panel-heading"><h2>{{ orderPage === 1 ? 'Последние заказы' : `Заказы · ${pageLabel(orderPage)}` }}</h2><RouterLink to="/account?tab=orders">Все заказы</RouterLink></div>
                 <p v-if="ordersLoading" class="panel-state" role="status">Загружаем заказы…</p>
                 <div v-else-if="ordersError" class="panel-state" role="alert"><p>{{ ordersError }}</p><button class="text-action" @click="loadOrders()">Повторить</button></div>
                 <AccountOrderList v-else-if="orders.length" :orders="orders.slice(0, 3)" />

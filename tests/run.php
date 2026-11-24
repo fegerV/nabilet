@@ -90,7 +90,16 @@ $notRunnable = [];
 
 foreach (discoverTestFiles(__DIR__) as $path) {
     if (str_starts_with($path, $unitDir)) {
-        $runnable[] = $path;
+        $source = file_get_contents($path);
+
+        // A PHPUnit test may legitimately live under tests/Unit. Requiring it in
+        // this dependency-free runner would fatal before it can be reported and
+        // executed by PHPUnit. Keep it in the explicit NOT RUN list instead.
+        if ($source !== false && str_contains($source, 'PHPUnit\\Framework\\TestCase')) {
+            $notRunnable[] = $path;
+        } else {
+            $runnable[] = $path;
+        }
 
         continue;
     }
