@@ -15,7 +15,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
-import { get, send } from '@/lib/api'
+import { ApiError, get, send } from '@/lib/api'
 import { onBeforeRouteLeave } from 'vue-router'
 
 /* ── Konva: минимальный двойник, достаточный для initCanvasAndLoad ──── */
@@ -30,7 +30,11 @@ class FakeNode {
   draw(): void {}
   batchDraw(): void {}
   size(): void {}
-  draggable(): void {}
+  draggable(value?: boolean): boolean {
+    if (value !== undefined) FakeNode.lastDraggable = value
+    return FakeNode.lastDraggable
+  }
+  static lastDraggable = false
   scale(): number { return 1 }
   position(): void {}
   container(): { getBoundingClientRect: () => DOMRect } {
@@ -82,7 +86,14 @@ vi.mock('vue-router', () => ({
 /* ── API: страница грузит зал и черновик схемы ────────────────────── */
 
 vi.mock('@/lib/api', () => ({
-  ApiError: class ApiError extends Error {},
+  ApiError: class ApiError extends Error {
+    constructor(
+      readonly status: number,
+      message: string,
+      readonly code: string | null = null,
+      readonly details: Record<string, string[]> | null = null,
+    ) { super(message) }
+  },
   get: vi.fn(async () => ({ data: null })),
   send: vi.fn(async () => ({ data: null })),
 }))
@@ -204,6 +215,8 @@ describe('HallEditorPage — сохранение и публикация', () =
     expect(send).toHaveBeenCalledTimes(1)
     expect(vi.mocked(send).mock.calls[0][0]).toContain('/schema-versions/draft')
     expect(wrapper.text()).toContain('Сохранено')
+    expect(wrapper.get('[role="status"]').attributes('aria-live')).toBe('polite')
+    expect(wrapper.get('[role="status"]').text()).toMatch(/Сохранено\s*·\s*\d{2}:\d{2}/)
     wrapper.unmount()
   })
 
@@ -245,6 +258,40 @@ describe('HallEditorPage — сохранение и публикация', () =
     expect(payload.base_revision).toBe(1)
     expect(payload.payload.sectors).toHaveLength(2)
     expect(wrapper.text()).toContain('Сохранено')
+    wrapper.unmount()
+  })
+
+  it('отличает сетевой сбой от отклонённой схемы и даёт повторить сохранение', async () => {
+    vi.mocked(send)
+      .mockRejectedValueOnce(new Error('Сервер недоступен'))
+      .mockResolvedValueOnce({ data: { id: 5, revision: 1, version: 1 } } as never)
+    const wrapper = await mountEditor()
+    await createSector(wrapper)
+    await vi.advanceTimersByTimeAsync(500)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Не сохранено')
+    expect(wrapper.text()).not.toContain('Схема отклонена')
+    await wrapper.findAll('button').find(b => b.text().trim() === 'Сохранить')!.trigger('click')
+    await flushPromises()
+    expect(send).toHaveBeenCalledTimes(2)
+    expect(wrapper.text()).toContain('Сохранено')
+    wrapper.unmount()
+  })
+
+  it('при конфликте ревизий блокирует повторную запись до перезагрузки', async () => {
+    vi.mocked(send).mockRejectedValueOnce(
+      new ApiError(409, 'Схема уже изменена', 'SCHEMA_DRAFT_CONFLICT'),
+    )
+    const wrapper = await mountEditor()
+    await createSector(wrapper)
+    await vi.advanceTimersByTimeAsync(500)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Конфликт версий')
+    expect(wrapper.text()).toContain('перезагрузить')
+    expect(wrapper.findAll('button').some(b => b.text().trim() === 'Сохранить')).toBe(false)
+    expect(wrapper.findAll('button').find(b => b.text().includes('Опубликовать'))!.attributes('disabled')).toBeDefined()
     wrapper.unmount()
   })
 
@@ -291,9 +338,21 @@ describe('HallEditorPage — горячие клавиши и привязка',
     window.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, ...opts }))
   }
 
+  it('Space временно включает панораму, keyup её выключает', async () => {
+    const wrapper = await mountEditor()
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', code: 'Space', bubbles: true, cancelable: true }))
+    await flushPromises()
+    expect(FakeNode.lastDraggable).toBe(true)
+
+    window.dispatchEvent(new KeyboardEvent('keyup', { key: ' ', code: 'Space', bubbles: true }))
+    await flushPromises()
+    expect(FakeNode.lastDraggable).toBe(false)
+    wrapper.unmount()
+  })
+
   /** Подпись активного инструмента из тулбара холста (единственный источник правды). */
   function activeToolLabel(wrapper: ReturnType<typeof mount>): string {
-    const chip = wrapper.find('section .bg-surface-3')
+    const chip = wrapper.find('[data-testid="active-canvas-tool"]')
     return chip.exists() ? chip.text().trim() : ''
   }
 
@@ -383,6 +442,18 @@ describe('HallEditorPage — инструменты правки', () => {
     expect(inspector.text()).toContain('Шаг мест и рядов')
     expect(inspector.text()).toContain('Применить шаг')
     expect(inspector.find('input[type="number"]').exists()).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('основная кнопка добавляет ряд даже после выбора другого инструмента', async () => {
+    const wrapper = await mountEditor()
+    await wrapper.findAll('button').find(b => b.text().trim() === 'Создать сектор')!.trigger('click')
+    await wrapper.findAll('button').find(b => b.text().includes('Добавить место'))!.trigger('click')
+    const before = wrapper.text()
+    expect(before).toContain('Ряды · 8')
+
+    await wrapper.findAll('button').find(b => b.text().includes('Добавить ряд'))!.trigger('click')
+    expect(wrapper.text()).toContain('Ряды · 9')
     wrapper.unmount()
   })
 

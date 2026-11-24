@@ -243,7 +243,11 @@ class HallController extends Controller
 
     private function venueOrFail(string $publicId): Venue
     {
-        $venue = Venue::query()->where('public_id', $publicId)->first();
+        // Вызывается и из публичных роутов (список версий площадки): у гостя
+        // нет OrganizationContext, а Venue tenant-scoped.
+        $venue = app(OrganizationContext::class)->withoutScope(
+            fn (): ?Venue => Venue::query()->where('public_id', $publicId)->first()
+        );
 
         if ($venue === null) {
             throw new NotFoundError('Venue', $publicId);
@@ -271,10 +275,16 @@ class HallController extends Controller
     public function venueSchemaVersions(string $publicId): JsonResponse
     {
         $venue = $this->venueOrFail($publicId);
-        $versions = HallSchemaVersion::query()
-            ->where('venue_id', $venue->id)
-            ->orderByDesc('version')
-            ->get();
+        // Роут публичный: у анонима нет OrganizationContext, а модель
+        // HallSchemaVersion глобально tenant-scoped. Без bypass список версий
+        // площадки падал 500 TenantContextMissingError (см. тот же приём в
+        // publishedSchema/show). Организация уже выбрана по public_id площадки.
+        $versions = app(OrganizationContext::class)->withoutScope(
+            fn () => HallSchemaVersion::query()
+                ->where('venue_id', $venue->id)
+                ->orderByDesc('version')
+                ->get()
+        );
 
         return response()->json([
             'data' => SchemaVersionResource::collection($versions)->resolve(),

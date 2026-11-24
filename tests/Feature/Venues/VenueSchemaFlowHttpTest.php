@@ -176,6 +176,29 @@ final class VenueSchemaFlowHttpTest extends TestCase
             ->assertJsonPath('data.status', 'published');
     }
 
+    /**
+     * Публичный список версий площадки не должен падать 500 для гостя:
+     * модель версий tenant-scoped, поэтому чтение идёт в OrganizationContext::withoutScope.
+     */
+    public function test_a_guest_can_list_schema_versions_of_a_venue(): void
+    {
+        $organizationId = $this->seedOrganization();
+        $this->actingAsStaff($organizationId);
+
+        $venue = $this->postJson('/api/v1/venues', ['name' => 'Гостьовая площадка'])->assertCreated();
+        $venuePublicId = (string) $venue->json('data.public_id');
+        $this->postJson("/api/v1/venues/{$venuePublicId}/schema-versions/draft", [
+            'payload' => $this->schemaPayload(500000),
+        ])->assertSuccessful();
+
+        // Снимаем авторизацию: этот endpoint объявлен публичным.
+        $this->app['auth']->forgetGuards();
+
+        $this->getJson("/api/v1/venues/{$venuePublicId}/schema-versions")
+            ->assertOk()
+            ->assertJsonCount(1, 'data');
+    }
+
     public function test_schema_draft_and_publish_over_http(): void
     {
         $organizationId = $this->seedOrganization();

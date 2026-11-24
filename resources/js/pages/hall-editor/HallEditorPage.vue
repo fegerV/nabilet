@@ -24,7 +24,7 @@ import NSelect from '@/components/ui/NSelect.vue'
 import NBadge from '@/components/ui/NBadge.vue'
 import NSegmented from '@/components/ui/NSegmented.vue'
 import { useUiStore } from '@/stores/ui'
-import { money, plural, rowsLabel, seatsLabel } from '@/lib/format'
+import { money, plural, rowsLabel, seatsLabel, time } from '@/lib/format'
 import { buildSeatPricePalette, effectiveSeatPrice } from '@/lib/hall'
 import { minorToRub, rubToMinor } from '@/lib/money'
 import { cn } from '@/lib/cn'
@@ -117,14 +117,44 @@ const TOOLS: { value: Tool; label: string; icon: string; hint: string; key?: str
   { value: 'entrance', label: 'Вход', icon: '↗', hint: 'Клик — поставить вход', key: 'E' },
 ]
 
+/** Группы превращают длинный список значков в понятные шаги работы. */
+const TOOL_GROUPS = [
+  { label: 'Просмотр и выбор', values: ['select', 'pan', 'zoom'] as Tool[] },
+  { label: 'Места и зоны', values: ['sector', 'row', 'seat', 'table', 'standing'] as Tool[] },
+  { label: 'Подписи и ориентиры', values: ['stage', 'entrance', 'text', 'image'] as Tool[] },
+].map((group) => ({ ...group, tools: TOOLS.filter((item) => group.values.includes(item.value)) }))
+
 /** Выбранный инструмент одним объектом — для подписи в тулбаре холста. */
 const currentTool = computed(() => TOOLS.find((t) => t.value === tool.value))
 
 /** Выбор инструмента из панели: фон открывает диалог файла, остальные — нет. */
 function selectTool(value: Tool): void {
   tool.value = value
+  if (overlayPanels.value) {
+    showTools.value = false
+    showInspector.value = false
+  }
   if (value === 'image') triggerImageUpload()
 }
+
+const generatorPanel = ref<HTMLElement | null>(null)
+async function openSectorGenerator(): Promise<void> {
+  tool.value = 'select'
+  if (overlayPanels.value) showTools.value = false
+  showInspector.value = true
+  await nextTick()
+  generatorPanel.value?.scrollIntoView({ block: 'nearest' })
+}
+
+const canvasInstruction = computed(() => {
+  if (tool.value === 'select') return 'Чтобы переместить место, зажмите его мышью и перетащите. Несколько мест: обведите рамкой на пустом холсте и тяните за одно из выделенных. Клик по месту открывает его свойства.'
+  if (tool.value === 'seat') return sectors.value.length
+    ? 'Щёлкните в секторе там, где нужно новое место. Каждый клик добавляет ещё одно. Для перемещения вернитесь в «Выбрать / переместить».'
+    : 'Сначала нажмите «Новый сектор» и задайте число рядов и мест. После этого можно добавлять отдельные места кликом.'
+  if (tool.value === 'pan') return 'Зажмите пустую область и тяните, чтобы передвинуть вид схемы. Для перемещения самих мест выберите «Выбрать / переместить».'
+  if (tool.value === 'row') return 'Выберите сектор по его названию в списке слева. Затем нажмите «Добавить ряд» над холстом.'
+  return currentTool.value?.hint ?? ''
+})
 
 /** Подписи видов статики для панели свойств (§47). */
 const STATIC_KIND_LABELS: Record<StaticKind, string> = {
@@ -172,11 +202,17 @@ const draftVersion = ref(1)
 const autosave = ref<Autosave>('saved')
 /** Детали отклонения черновика сервером (422): сообщения валидации по полям (§66). */
 const autosaveErrors = ref<string[]>([])
+type AutosaveErrorKind = 'validation' | 'conflict' | 'network'
+const autosaveErrorKind = ref<AutosaveErrorKind | null>(null)
 /** 409 SCHEMA_DRAFT_CONFLICT: требует перезагрузки, повторные сохранения бесполезны. */
 const draftConflict = ref(false)
 /** Строка с некорректно введённой ценой — подсвечиваем её, хотя модель не менялась. */
 const rowPriceInvalidRow = ref<number | null>(null)
-const lastSavedAt = ref<number>(Date.now())
+const lastSavedAt = ref<number | null>(null)
+const lastSavedLabel = computed(() => {
+  if (lastSavedAt.value === null) return ''
+  return time(new Date(lastSavedAt.value).toISOString())
+})
 
 /* ── API-подключение: зал по publicId из роута ────────────────────── */
 
@@ -212,6 +248,8 @@ watch(autosaveErrors, (list) => {
 }, { immediate: true })
 
 const tool = ref<Tool>('select')
+/** Space+тяга — панорама, как в графических редакторах (подсказка в футере). */
+const spaceHeld = ref(false)
 
 /*
  * Полоски панелей и их вид — ПРЕДПОЧТЕНИЕ человека, а не данные схемы, поэтому
@@ -398,12 +436,8 @@ function generateSector(overrides: Partial<typeof form.value> = {}): void {
 }
 
 function addRowToSelected(): void {
-  // Инструмент «ряд» (§47): либо выбран сам инструмент, либо кнопка «+ Ряд» в
-  // инспекторе — иначе клик по кнопке молча игнорировался (дефект A4).
-  if (tool.value !== 'row' && tool.value !== 'select') {
-    ui.notify('sun', 'Не тот инструмент', 'Кнопка «+ Ряд» работает с инструментами «Ряд» или «Выделение»')
-    return
-  }
+  // Явная кнопка «Добавить ряд» — самостоятельное действие: оно не должно
+  // зависеть от того, какой инструмент пользователь выбирал перед этим.
   const sector = sectors.value.find((s) => s.id === selectedSectorId.value)
   if (!sector) {
     ui.notify('rose', 'Сначала выберите сектор', 'Кликните по сектору на холсте')
@@ -1016,6 +1050,8 @@ const dragOffsets = new Map<string, { dx: number; dy: number }>()
 
 function onStageMouseDown(e: Konva.KonvaEventObject<MouseEvent>): void {
   if (isLocked.value) return
+  // Space+тяга — только панорама: никаких создающих жестов и выделений.
+  if (spaceHeld.value) return
   if (e.evt.button !== 0) return
   const p = toCanvasPoint(e.evt.clientX, e.evt.clientY)
   if (!p) return
@@ -1311,7 +1347,9 @@ const hasUnsavedChanges = computed(() => editRevision.value > persistedEditRevis
 let persistInFlight: Promise<boolean> | null = null
 let isHydratingSchema = false
 function scheduleAutosave(): void {
-  if (isHydratingSchema || published.value !== null || hallLoadState.value !== 'ok') return
+  // Пока идёт публикация, модель обязана быть неизменной: UI блокирует ввод,
+  // но программная мутация не должна тихо записать следующий черновик.
+  if (isHydratingSchema || isPublishing.value || published.value !== null || hallLoadState.value !== 'ok') return
   // Ревизия увеличивается ЗДЕСЬ, а не в watcher: во время drag watcher
   // возвращается раньше, но модель уже изменилась, и dragend всё равно должен
   // увеличить ревизию — иначе flushAutosave решит, что сохранять нечего.
@@ -1378,6 +1416,7 @@ async function persistSchema(): Promise<boolean> {
       persistedEditRevision.value = requestedEditRevision
       autosave.value = hasUnsavedChanges.value ? 'saving' : 'saved'
       autosaveErrors.value = []
+      autosaveErrorKind.value = null
       draftConflict.value = false
       lastSavedAt.value = Date.now()
       return true
@@ -1385,14 +1424,17 @@ async function persistSchema(): Promise<boolean> {
       if (e instanceof ApiError && e.status === 409 && e.code === 'SCHEMA_DRAFT_CONFLICT') {
         draftConflict.value = true
         autosave.value = 'error'
+        autosaveErrorKind.value = 'conflict'
         autosaveErrors.value = [e.message || 'Черновик изменён другим редактором']
         return false
       }
       if (e instanceof ApiError && e.status === 422) {
         autosave.value = 'error'
+        autosaveErrorKind.value = 'validation'
         autosaveErrors.value = describeValidationErrors(e)
       } else {
         autosave.value = navigator.onLine ? 'error' : 'offline'
+        autosaveErrorKind.value = 'network'
         autosaveErrors.value = e instanceof Error ? [e.message] : []
       }
       return false
@@ -1461,6 +1503,7 @@ onUnmounted(() => {
 async function reloadAfterConflict(): Promise<void> {
   if (!window.confirm('Схема изменена другим редактором. Перезагрузить серверную версию? Локальные правки будут потеряны.')) return
   draftConflict.value = false
+  autosaveErrorKind.value = null
   await loadFromServer()
 }
 
@@ -1535,9 +1578,11 @@ function publish(): void {
       )
     } catch (e) {
       autosave.value = 'error'
+      autosaveErrorKind.value = 'network'
       ui.notify('rose', 'Ошибка публикации', e instanceof ApiError ? e.message : 'Не удалось опубликовать схему')
       if (e instanceof ApiError && e.code === 'SCHEMA_DRAFT_CONFLICT') {
         draftConflict.value = true
+        autosaveErrorKind.value = 'conflict'
         autosaveErrors.value = [e.message]
       }
     } finally {
@@ -1628,6 +1673,7 @@ async function loadFromServer(): Promise<void> {
     loadedPublished.value = null
     draftConflict.value = false
     autosaveErrors.value = []
+    autosaveErrorKind.value = null
     sectors.value = []
     statics.value = []
     backgrounds.value = []
@@ -2519,7 +2565,7 @@ function initCanvasAndLoad(): void {
     container: host,
     width: viewportSize.value.width,
     height: viewportSize.value.height,
-    draggable: tool.value === 'pan',
+    draggable: tool.value === 'pan' || spaceHeld.value,
   })
   bgLayer = new Konva.Layer()
   staticLayer = new Konva.Layer()
@@ -2583,8 +2629,8 @@ onUnmounted(() => {
   stage?.destroy()
 })
 
-watch([sectors, statics, backgrounds, selectedSeatIds, selectedSectorId, tool], () => {
-  if (stage) stage.draggable(tool.value === 'pan')
+watch([sectors, statics, backgrounds, selectedSeatIds, selectedSectorId, tool, spaceHeld], () => {
+  if (stage) stage.draggable(tool.value === 'pan' || spaceHeld.value)
   // Во время Konva-drag полная перерисовка СМЕРТЕЛЬНА: draw() пересоздаёт
   // узлы слоёв (destroyChildren), и тянущийся узел отсоединяется от сцены —
   // Konva теряет stage у _dragNode, и жест замирает после первого движения
@@ -2649,6 +2695,12 @@ function nudgeSelection(dx: number, dy: number): boolean {
 
 function onKeyDown(e: KeyboardEvent): void {
   if (editorBusy.value) return
+  if (e.code === 'Space' && !isTypingTarget(e.target)) {
+    // Панорама по Space не должна прокручивать страницу или переключать инструмент.
+    e.preventDefault()
+    spaceHeld.value = true
+    return
+  }
   if (isTypingTarget(e.target)) return
 
   // Модификаторы + буква — раскладка не должна влиять на срабатывание.
@@ -2704,8 +2756,25 @@ function onKeyDown(e: KeyboardEvent): void {
     selectTool(picked.value)
   }
 }
-onMounted(() => window.addEventListener('keydown', onKeyDown))
-onUnmounted(() => window.removeEventListener('keydown', onKeyDown))
+function onKeyUp(e: KeyboardEvent): void {
+  if (e.code === 'Space') spaceHeld.value = false
+}
+
+function onWindowBlur(): void {
+  spaceHeld.value = false
+}
+
+onMounted(() => {
+  window.addEventListener('keydown', onKeyDown)
+  window.addEventListener('keyup', onKeyUp)
+  // Если фокус ушёл из окна, пока Space был зажат, панорама не должна «залипнуть».
+  window.addEventListener('blur', onWindowBlur)
+})
+onUnmounted(() => {
+  window.removeEventListener('keydown', onKeyDown)
+  window.removeEventListener('keyup', onKeyUp)
+  window.removeEventListener('blur', onWindowBlur)
+})
 
 /* ── Инспектор ─────────────────────────────────────────────────────── */
 
@@ -3196,6 +3265,8 @@ function reassignSelectedSeats(targetSectorId: string): void {
 
       <!-- Индикатор автосохранения: точка + текст, без отдельного блока -->
       <span
+        role="status"
+        aria-live="polite"
         :class="cn(
           'flex items-center gap-1 text-2xs',
           autosave === 'saving' && 'text-sun-400',
@@ -3214,9 +3285,14 @@ function reassignSelectedSeats(targetSectorId: string): void {
         {{
           autosave === 'saving' ? 'Сохраняется…'
           : autosave === 'saved' ? 'Сохранено'
-          : autosave === 'error' ? (autosaveErrors.length ? 'Схема отклонена' : 'Ошибка')
+          : autosave === 'error' ? (
+            autosaveErrorKind === 'validation' ? 'Схема отклонена'
+            : autosaveErrorKind === 'conflict' ? 'Конфликт версий'
+            : 'Не сохранено'
+          )
           : 'Нет связи'
         }}
+        <span v-if="autosave === 'saved' && lastSavedLabel" class="text-subtle">· {{ lastSavedLabel }}</span>
       </span>
 
       <button
@@ -3297,25 +3373,31 @@ function reassignSelectedSeats(targetSectorId: string): void {
         </div>
 
         <div class="min-h-0 flex-1 overflow-y-auto">
-          <!-- Инструменты §47: плиткой в развёрнутом виде, колонкой — в компактном -->
-          <div :class="cn('grid gap-1 p-2', toolsWide ? 'grid-cols-2' : 'grid-cols-1')">
-            <button
-              v-for="item in TOOLS"
-              :key="item.value"
-              type="button"
-              :title="`${item.label} — ${item.hint}${item.key ? ` (${item.key})` : ''}`"
-              :disabled="isLocked && item.value !== 'select' && item.value !== 'pan' && item.value !== 'zoom'"
-              :class="cn(
-                'flex items-center gap-1.5 rounded-md text-2xs transition-colors',
-                toolsWide ? 'flex-col gap-0.5 px-1.5 py-2' : 'justify-center px-1 py-2',
-                tool === item.value ? 'bg-brand-500/15 text-brand-300 ring-1 ring-brand-500/30' : 'text-muted hover:bg-surface-3 hover:text-content',
-                isLocked && item.value !== 'select' && item.value !== 'pan' && item.value !== 'zoom' && 'cursor-not-allowed opacity-40',
-              )"
-              @click="selectTool(item.value)"
-            >
-              <span aria-hidden="true" class="text-base leading-none">{{ item.icon }}</span>
-              <span v-if="toolsWide" class="truncate">{{ item.label }}</span>
-            </button>
+          <!-- Сначала действие, затем тип объектов, которые оно создаёт. -->
+          <div class="space-y-1.5 p-2" role="group" aria-label="Инструменты схемы">
+            <section v-for="group in TOOL_GROUPS" :key="group.label" class="space-y-0.5">
+              <h3 v-if="toolsWide" class="px-1 pb-0.5 text-2xs font-medium text-subtle">{{ group.label }}</h3>
+              <button
+                v-for="item in group.tools"
+                :key="item.value"
+                type="button"
+                :title="`${item.label}: ${item.hint}${item.key ? ` · Клавиша ${item.key}` : ''}`"
+                :aria-label="`${item.label}${item.key ? `, клавиша ${item.key}` : ''}`"
+                :aria-pressed="tool === item.value"
+                :disabled="isLocked && item.value !== 'select' && item.value !== 'pan' && item.value !== 'zoom'"
+                :class="cn(
+                  'flex w-full items-center rounded-md text-2xs transition-colors',
+                  toolsWide ? 'gap-2 px-2 py-1.5 text-left' : 'justify-center px-1 py-2',
+                  tool === item.value ? 'bg-brand-500/15 text-brand-300 ring-1 ring-brand-500/30' : 'text-muted hover:bg-surface-3 hover:text-content',
+                  isLocked && item.value !== 'select' && item.value !== 'pan' && item.value !== 'zoom' && 'cursor-not-allowed opacity-40',
+                )"
+                @click="selectTool(item.value)"
+              >
+                <span aria-hidden="true" class="grid size-5 flex-none place-items-center text-base leading-none">{{ item.icon }}</span>
+                <span v-if="toolsWide" class="min-w-0 flex-1 truncate">{{ item.label }}</span>
+                <kbd v-if="toolsWide && item.key" class="rounded border border-line px-1 font-mono text-[10px] text-subtle">{{ item.key }}</kbd>
+              </button>
+            </section>
           </div>
 
           <!-- История §52 -->
@@ -3333,7 +3415,9 @@ function reassignSelectedSeats(targetSectorId: string): void {
           <div class="border-t border-line">
             <h2 v-if="toolsWide" class="px-3 pt-2 text-2xs font-semibold uppercase tracking-wide text-subtle">Секторы</h2>
             <ul class="divide-y divide-line">
-              <li v-if="sectors.length === 0" class="px-3 py-4 text-center text-2xs text-subtle">Пока пусто</li>
+              <li v-if="sectors.length === 0" class="px-3 py-3 text-center text-2xs leading-relaxed text-subtle">
+                Задайте число рядов и мест в панели «Свойства», затем нажмите «Создать сектор».
+              </li>
               <li v-for="sector in sectors" :key="sector.id">
                 <button
                   type="button"
@@ -3356,6 +3440,16 @@ function reassignSelectedSeats(targetSectorId: string): void {
 
       <!-- Колонка холста -->
       <section class="flex min-h-0 min-w-0 flex-1 flex-col">
+        <div class="flex-none space-y-2 border-b border-line bg-surface px-3 py-2.5">
+          <div class="flex flex-wrap items-center gap-2" role="group" aria-label="Основные действия со схемой">
+            <NButton :variant="tool === 'select' ? 'primary' : 'secondary'" size="sm" :aria-pressed="tool === 'select'" @click="selectTool('select')">↖ Выбрать / переместить</NButton>
+            <NButton :variant="tool === 'seat' ? 'primary' : 'secondary'" size="sm" :disabled="isLocked" :aria-pressed="tool === 'seat'" @click="selectTool('seat')">+ Добавить место</NButton>
+            <NButton variant="secondary" size="sm" :disabled="isLocked || !selectedSector" :title="selectedSector ? `Добавить ряд в ${selectedSector.name}` : 'Сначала выберите сектор по названию в списке или щёлкните по его месту'" @click="addRowToSelected">+ Добавить ряд</NButton>
+            <NButton variant="secondary" size="sm" :disabled="isLocked" @click="openSectorGenerator">Новый сектор</NButton>
+          </div>
+          <p class="text-xs leading-relaxed text-muted" aria-live="polite">{{ canvasInstruction }}</p>
+          <p v-if="selectedSector" class="text-2xs text-subtle">Выбран сектор: <span class="font-medium text-content">{{ selectedSector.name }}</span> · {{ seatsLabel(selectedSeatIds.size) }} выделено</p>
+        </div>
         <!-- Тулбар холста: текущий инструмент, масштаб, режимы привязки -->
         <div class="flex flex-none flex-wrap items-center gap-2 border-b border-line px-2 py-1.5">
           <button
@@ -3366,12 +3460,12 @@ function reassignSelectedSeats(targetSectorId: string): void {
             @click="showTools = true"
           >Инструменты</button>
 
-          <div class="flex min-w-0 items-center gap-1.5 text-2xs text-subtle">
-            <span class="rounded bg-surface-3 px-1.5 py-0.5 text-content">{{ currentTool?.label }}</span>
-            <span class="hidden truncate md:inline">{{ currentTool?.hint }}</span>
+          <div class="hidden min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5 text-2xs text-subtle sm:flex" role="status" aria-live="polite">
+            <span data-testid="active-canvas-tool" class="rounded bg-surface-3 px-1.5 py-0.5 font-medium text-content">{{ currentTool?.label }}</span>
+            <span class="min-w-0 text-muted">{{ currentTool?.hint }}</span>
           </div>
 
-          <div class="flex-1" />
+          <div class="hidden flex-1 sm:block" />
 
           <!-- Режимы, влияющие на работу с рядами/местами -->
           <div class="flex items-center gap-1">
@@ -3425,7 +3519,7 @@ function reassignSelectedSeats(targetSectorId: string): void {
             ref="canvasHost"
             :class="cn(
               'absolute inset-0 bg-surface-2',
-              tool === 'pan' ? 'cursor-grab active:cursor-grabbing' : 'cursor-crosshair',
+              tool === 'pan' ? 'cursor-grab active:cursor-grabbing' : tool === 'select' ? 'cursor-default' : 'cursor-crosshair',
               isLocked && 'cursor-default',
             )"
           />
@@ -3459,7 +3553,7 @@ function reassignSelectedSeats(targetSectorId: string): void {
 
         <div class="flex flex-none flex-wrap items-center justify-between gap-2 border-t border-line px-3 py-1 text-2xs text-subtle">
           <span class="truncate">
-            Колесо — масштаб · <kbd class="rounded border border-line px-1 font-mono">Space</kbd>+тяга или средняя кнопка — панорама · <kbd class="rounded border border-line px-1 font-mono">V</kbd>/<kbd class="rounded border border-line px-1 font-mono">H</kbd> — инструменты · тяга за место двигает место, за подпись сектора — весь сектор
+            Колесо — масштаб · <kbd class="rounded border border-line px-1 font-mono">Space</kbd>+тяга — панорама · <kbd class="rounded border border-line px-1 font-mono">V</kbd>/<kbd class="rounded border border-line px-1 font-mono">H</kbd> — инструменты · тяга за место двигает место, за подпись сектора — весь сектор
           </span>
           <span v-if="isLocked" class="flex-none">Опубликованная версия неизменяема</span>
         </div>
@@ -3495,10 +3589,10 @@ function reassignSelectedSeats(targetSectorId: string): void {
 
         <div class="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
         <!-- Генератор сектора (§49) -->
-        <div class="surface-card overflow-hidden">
+        <div ref="generatorPanel" class="surface-card overflow-hidden">
           <div class="border-b border-line px-3 py-2.5">
-            <h2 class="text-sm font-semibold text-content">Новый сектор · §49</h2>
-            <p class="mt-0.5 text-xs text-subtle">Зал на 400 мест — это четыре числа</p>
+            <h2 class="text-sm font-semibold text-content">Создать сектор</h2>
+            <p class="mt-0.5 text-xs text-subtle">Укажите размер рядов — места расставятся автоматически.</p>
           </div>
           <div class="space-y-3 p-3">
             <NInput v-model="form.name" label="Название" placeholder="Партер A" :error="form.name.trim() === '' ? 'Введите название сектора' : undefined" />
