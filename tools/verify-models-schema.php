@@ -204,10 +204,9 @@ const INVENTED_FIELDS = [
         'properties' => 'names properties/scroll_depth; heatmap_events stores payload_json and has no scroll depth',
         'scroll_depth' => 'names properties/scroll_depth; heatmap_events stores payload_json and has no scroll depth',
     ],
-    'IdempotencyKey' => [
-        'key' => 'names key/value; idempotency_keys stores key_hash and has no value column. This is the SAME defect the middleware had before it was fixed, reintroduced in the model',
-        'value' => 'names key/value; idempotency_keys stores key_hash and has no value column. This is the SAME defect the middleware had before it was fixed, reintroduced in the model',
-    ],
+    // `IdempotencyKey` снят с исключений: модель приведена к реальной схеме
+    // (`scope`/`key_hash`/`request_hash`/`response_*`/`locked_at`/`expires_at`),
+    // выдуманных `key`/`value` больше нет.
     'IpRule' => [
         'is_active' => 'names is_active; ip_rules stores active',
     ],
