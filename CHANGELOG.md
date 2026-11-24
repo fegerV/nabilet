@@ -25,6 +25,11 @@
   lock — 409 `REQUEST_ALREADY_PROCESSED`, повтор после завершения — replay с
   заголовком `Idempotent-Replay`, другое тело с тем же ключом — 409
   `IDEMPOTENCY_KEY_REUSED`. Тест падает на старом коде и зелёный после фикса.
+- `PromoConcurrencyTest`: гонка D-6 — конкурент успевает исчерпать
+  `max_redemptions` между перепроверкой `per_user_limit` и условным UPDATE;
+  второй redeem обязан получить `PROMO_CODE_EXHAUSTED`. Плюс последовательный
+  сценарий одноразового кода. Тест падает, если убрать условие
+  `redemptions_count < max_redemptions` из UPDATE.
 
 ## [1.16.0] - 2026-11-25
 
