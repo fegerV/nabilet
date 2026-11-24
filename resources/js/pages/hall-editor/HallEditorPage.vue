@@ -1050,15 +1050,44 @@ const DRAG_THRESHOLD = 4
 /** Смещения выделенных статик относительно тянутого объекта (групповой drag). */
 const dragOffsets = new Map<string, { dx: number; dy: number }>()
 
-function onStageMouseDown(e: Konva.KonvaEventObject<MouseEvent>): void {
+/**
+ * Мышь и касание приходят в разных полях события: Konva кладёт исходный
+ * MouseEvent/TouchEvent в `evt`. Приводим оба к одному виду, чтобы одни и те же
+ * жесты (рамка, зона, сектор, групповое перемещение) работали пальцем.
+ */
+function pointerOf(e: unknown): {
+  clientX: number
+  clientY: number
+  button: number
+  altKey: boolean
+  target: unknown
+} {
+  const wrapper = e as { evt?: Record<string, unknown>; target?: unknown }
+  const evt = wrapper?.evt ?? {}
+  const touch = (evt.touches as Array<{ clientX: number; clientY: number }> | undefined)?.[0]
+    ?? (evt.changedTouches as Array<{ clientX: number; clientY: number }> | undefined)?.[0]
+  return {
+    clientX: Number(touch?.clientX ?? evt.clientX ?? 0),
+    clientY: Number(touch?.clientY ?? evt.clientY ?? 0),
+    button: Number(evt.button ?? 0),
+    altKey: Boolean(evt.altKey),
+    target: wrapper?.target,
+  }
+}
+
+let lastTouchAt = 0
+
+function onStageMouseDown(e: Konva.KonvaEventObject<MouseEvent>, source: 'mouse' | 'touch' = 'mouse'): void {
   if (isLocked.value) return
-  // Браузер эмулирует mousedown и для касаний: во время щипка он не должен
-  // создавать зону/рамку или начинать перетаскивание.
+  // Браузер эмулирует mouse-события после касаний: не запускаем жест дважды.
+  if (source === 'mouse' && lastTouchAt > 0 && Date.now() - lastTouchAt < 800) return
+  // Во время щипка creating-жест не должен начинаться.
   if (pinch) return
   // Space+тяга — только панорама: никаких создающих жестов и выделений.
   if (spaceHeld.value) return
-  if (e.evt.button !== 0) return
-  const p = toCanvasPoint(e.evt.clientX, e.evt.clientY)
+  const ptr = pointerOf(e)
+  if (ptr.button !== 0) return
+  const p = toCanvasPoint(ptr.clientX, ptr.clientY)
   if (!p) return
   wasDragged = false
   dragStart = p
@@ -1066,12 +1095,12 @@ function onStageMouseDown(e: Konva.KonvaEventObject<MouseEvent>): void {
   // Создающие жесты стартуют ТОЛЬКО по пустому холсту. Иначе перетаскивание
   // существующего объекта при активном инструменте создавало и его 이동, и
   // новую зону/сектор по тому же жесту.
-  const startedOnCanvas = e.target === stage || e.target?.name() === 'canvas-bg'
+  const startedOnCanvas = ptr.target === stage || (ptr.target as { name?: () => string } | undefined)?.name?.() === 'canvas-bg'
   if (t === 'standing') dragMode = startedOnCanvas ? 'standing' : null
   else if (t === 'sector') dragMode = startedOnCanvas ? 'sector' : null
   else if (t === 'select') {
     // Перетаскивание ВЫДЕЛЕННЫХ мест (§48): mousedown по месту из мультиселекта.
-    const under = findSelectedSeatUnder(e)
+    const under = findSelectedSeatUnder({ target: ptr.target } as Konva.KonvaEventObject<MouseEvent>)
     if (under && selectedSeatIds.value.size > 1) {
       beginMoveSnapshot()
       seatDragIds = new Set(selectedSeatIds.value)
@@ -1087,15 +1116,16 @@ function onStageMouseDown(e: Konva.KonvaEventObject<MouseEvent>): void {
       return
     }
     // Рамка группового выделения (§48): mousedown по пустому месту холста.
-    const clickedShape = e.target
-    if (clickedShape === stage || clickedShape?.name() === 'canvas-bg') dragMode = 'marquee'
+    const clickedShape = ptr.target as { name?: () => string } | undefined
+    if (clickedShape === stage || clickedShape?.name?.() === 'canvas-bg') dragMode = 'marquee'
     else dragMode = null
   } else dragMode = null
 }
 
 function onStageMouseMove(e: Konva.KonvaEventObject<MouseEvent>): void {
   if (!dragStart || !dragMode) return
-  const p = toCanvasPoint(e.evt.clientX, e.evt.clientY)
+  const ptr = pointerOf(e)
+  const p = toCanvasPoint(ptr.clientX, ptr.clientY)
   if (!p) return
   if (Math.hypot(p.x - dragStart.x, p.y - dragStart.y) > DRAG_THRESHOLD) wasDragged = true
   if (!wasDragged) return
@@ -1131,7 +1161,8 @@ function onStageMouseUp(e: Konva.KonvaEventObject<MouseEvent>): void {
   const mode = dragMode
   dragStart = null
   dragMode = null
-  const p = start ? toCanvasPoint(e.evt.clientX, e.evt.clientY) : null
+  const ptr = pointerOf(e)
+  const p = start ? toCanvasPoint(ptr.clientX, ptr.clientY) : null
   if (start && p && mode === 'standing' && wasDragged) {
     createStandingZone(start, p)
   }
@@ -2500,9 +2531,17 @@ function touchPair(e: unknown): { distance: number; x: number; y: number } | nul
   }
 }
 
+/**
+ * Один палец повторяет мышиный жест (рамка, standing, сектор, перенос мест),
+ * два — масштаб. Эмулированные браузером mouse-события после касания игнорируются.
+ */
 function onStageTouchStart(e: unknown): void {
+  lastTouchAt = Date.now()
   const pair = touchPair(e)
-  if (!pair) return
+  if (!pair) {
+    onStageMouseDown(e as Konva.KonvaEventObject<MouseEvent>, 'touch')
+    return
+  }
   // Оба пальца — это масштаб, а не создание зоны/рамки выделения.
   pinch = { lastDistance: pair.distance }
   dragMode = null
@@ -2511,7 +2550,10 @@ function onStageTouchStart(e: unknown): void {
 }
 
 function onStageTouchMove(e: unknown): void {
-  if (!pinch) return
+  if (!pinch) {
+    onStageMouseMove(e as Konva.KonvaEventObject<MouseEvent>)
+    return
+  }
   const pair = touchPair(e)
   if (!pair) return
   const evt = e as { evt?: { preventDefault?: () => void } }
@@ -2522,7 +2564,11 @@ function onStageTouchMove(e: unknown): void {
 }
 
 function onStageTouchEnd(e: unknown): void {
-  if (touchPair(e) === null) pinch = null
+  if (pinch) {
+    if (touchPair(e) === null) pinch = null
+    return
+  }
+  onStageMouseUp(e as Konva.KonvaEventObject<MouseEvent>)
 }
 
 function zoomBy(factor: number): void {

@@ -52,6 +52,10 @@ class FakeNode {
   on(event: string, handler: (e: unknown) => void): void {
     ;(this.listeners[event] ??= []).push(handler)
   }
+  getParent(): FakeNode | null { return null }
+  getClientRect(): { x: number; y: number; width: number; height: number } {
+    return { x: 0, y: 0, width: 100, height: 100 }
+  }
   getAbsolutePosition(): { x: number; y: number } { return { x: 0, y: 0 } }
   getAbsoluteTransform(): { copy: () => { invert: () => { point: (p: unknown) => unknown } } } {
     return { copy: () => ({ invert: () => ({ point: (p: unknown) => p }) }) }
@@ -141,6 +145,39 @@ describe('HallEditorPage — раскладка', () => {
     FakeNode.lastScale = 1
     FakeNode.lastDraggable = false
     Object.defineProperty(window, 'innerWidth', { value: 1440, configurable: true })
+  })
+
+  it('один палец растягивает стоячую зону и не дублирует мышиный жест', async () => {
+    const wrapper = await mountEditor()
+    const stage = FakeStage.last!
+    const standing = wrapper.findAll('button').find(b => (b.attributes('title') ?? '').includes('Standing'))!
+    await standing.trigger('click')
+
+    const target = { name: () => 'canvas-bg' }
+    const touch = (x: number, y: number): unknown => ({
+      target,
+      evt: { touches: [{ clientX: x, clientY: y }], changedTouches: [{ clientX: x, clientY: y }], preventDefault: vi.fn() },
+    })
+
+    try {
+      stage.listeners['touchstart']![0](touch(100, 100))
+      stage.listeners['touchmove']![0](touch(300, 300))
+      stage.listeners['touchend']![0](touch(300, 300))
+      // Эмулированное браузером mouse-событие сразу после касания игнорируется.
+      stage.listeners['mousedown']![0]({ target, evt: { button: 0, clientX: 100, clientY: 100 } })
+
+      await new Promise((resolve) => setTimeout(resolve, 650))
+      await flushPromises()
+      const payload = vi.mocked(send).mock.calls[0]?.[2] as {
+        payload?: { staticObjects?: Array<{ kind: string }> }
+      } | undefined
+      // Один палец создал ровно одну стоячую зону; эмулированное мышиное
+      // событие после касания не создало вторую.
+      expect(payload?.payload?.staticObjects).toHaveLength(1)
+      expect(payload?.payload?.staticObjects?.[0]?.kind).toBe('standing')
+    } finally {
+      wrapper.unmount()
+    }
   })
 
   it('щипок двумя пальцами увеличивает масштаб вокруг середины', async () => {
