@@ -1052,6 +1052,9 @@ const dragOffsets = new Map<string, { dx: number; dy: number }>()
 
 function onStageMouseDown(e: Konva.KonvaEventObject<MouseEvent>): void {
   if (isLocked.value) return
+  // Браузер эмулирует mousedown и для касаний: во время щипка он не должен
+  // создавать зону/рамку или начинать перетаскивание.
+  if (pinch) return
   // Space+тяга — только панорама: никаких создающих жестов и выделений.
   if (spaceHeld.value) return
   if (e.evt.button !== 0) return
@@ -2473,6 +2476,51 @@ function draw(): void {
   selectionLayer?.draw()
 }
 
+/*
+ * Щипок двумя пальцами: Konva не даёт готового жеста, а колесо на планшете
+ * недоступно. Масштабируем вокруг середины пальцев инкрементально — так центр
+ * остаётся под пальцами даже при движении руки.
+ */
+let pinch: { lastDistance: number } | null = null
+
+function touchPair(e: unknown): { distance: number; x: number; y: number } | null {
+  // Konva отдаёт обёртку: сам жест лежит в `e.evt`, а не в `e`.
+  const evt = e as { evt?: { touches?: Array<{ clientX: number; clientY: number }> } }
+  const touches = evt?.evt?.touches
+  if (!touches || touches.length < 2) return null
+  const [a, b] = touches
+  return {
+    distance: Math.max(1, Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY)),
+    x: (a.clientX + b.clientX) / 2,
+    y: (a.clientY + b.clientY) / 2,
+  }
+}
+
+function onStageTouchStart(e: unknown): void {
+  const pair = touchPair(e)
+  if (!pair) return
+  // Оба пальца — это масштаб, а не создание зоны/рамки выделения.
+  pinch = { lastDistance: pair.distance }
+  dragMode = null
+  const evt = e as { evt?: { preventDefault?: () => void } }
+  evt.evt?.preventDefault?.()
+}
+
+function onStageTouchMove(e: unknown): void {
+  if (!pinch) return
+  const pair = touchPair(e)
+  if (!pair) return
+  const evt = e as { evt?: { preventDefault?: () => void } }
+  evt.evt?.preventDefault?.()
+  const factor = pair.distance / pinch.lastDistance
+  pinch.lastDistance = pair.distance
+  zoomAt(factor, pair.x, pair.y)
+}
+
+function onStageTouchEnd(e: unknown): void {
+  if (touchPair(e) === null) pinch = null
+}
+
 function zoomBy(factor: number): void {
   if (!stage) return
   const next = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, stage.scaleX() * factor))
@@ -2622,6 +2670,11 @@ function initCanvasAndLoad(): void {
   stage.on('mousedown', onStageMouseDown)
   stage.on('mousemove', onStageMouseMove)
   stage.on('mouseup', onStageMouseUp)
+  // Щипок: масштаб на планшете без колеса мыши.
+  stage.on('touchstart', onStageTouchStart)
+  stage.on('touchmove', onStageTouchMove)
+  stage.on('touchend', onStageTouchEnd)
+  stage.on('touchcancel', onStageTouchEnd)
 
   observer = new ResizeObserver((entries) => {
     const rect = entries[0]?.contentRect

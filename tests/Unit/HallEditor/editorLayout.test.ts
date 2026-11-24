@@ -35,19 +35,36 @@ class FakeNode {
     return FakeNode.lastDraggable
   }
   static lastDraggable = false
-  scale(): number { return 1 }
+  scale(value?: number | { x: number }): number {
+    if (typeof value === 'number') FakeNode.lastScale = value
+    else if (value && typeof value.x === 'number') FakeNode.lastScale = value.x
+    return FakeNode.lastScale
+  }
+  static lastScale = 1
+  scaleX(): number { return FakeNode.lastScale }
+  x(): number { return 0 }
+  y(): number { return 0 }
   position(): void {}
   container(): { getBoundingClientRect: () => DOMRect } {
     return { getBoundingClientRect: () => ({ left: 0, top: 0, width: 900, height: 520 }) as DOMRect }
   }
-  on(): void {}
+  listeners: Record<string, Array<(e: unknown) => void>> = {}
+  on(event: string, handler: (e: unknown) => void): void {
+    ;(this.listeners[event] ??= []).push(handler)
+  }
   getAbsolutePosition(): { x: number; y: number } { return { x: 0, y: 0 } }
   getAbsoluteTransform(): { copy: () => { invert: () => { point: (p: unknown) => unknown } } } {
     return { copy: () => ({ invert: () => ({ point: (p: unknown) => p }) }) }
   }
   name(): string { return '' }
 }
-class FakeStage extends FakeNode {}
+class FakeStage extends FakeNode {
+  static last: FakeStage | null = null
+  constructor(attrs: Record<string, unknown> = {}) {
+    super(attrs)
+    FakeStage.last = this
+  }
+}
 class FakeLayer extends FakeNode {}
 
 const konvaStub = {
@@ -121,7 +138,27 @@ function asideCount(wrapper: ReturnType<typeof mount>): number {
 describe('HallEditorPage — раскладка', () => {
   beforeEach(() => {
     window.localStorage.clear()
+    FakeNode.lastScale = 1
+    FakeNode.lastDraggable = false
     Object.defineProperty(window, 'innerWidth', { value: 1440, configurable: true })
+  })
+
+  it('щипок двумя пальцами увеличивает масштаб вокруг середины', async () => {
+    const wrapper = await mountEditor()
+    const stage = FakeStage.last!
+    const touchEvent = (x1: number, x2: number): unknown => ({
+      evt: {
+        touches: [{ clientX: x1, clientY: 200 }, { clientX: x2, clientY: 200 }],
+        preventDefault: vi.fn(),
+      },
+    })
+
+    stage.listeners['touchstart']![0](touchEvent(100, 200))
+    const before = FakeNode.lastScale
+    stage.listeners['touchmove']![0](touchEvent(50, 250))
+    expect(FakeNode.lastScale).toBeGreaterThan(before)
+    stage.listeners['touchend']![0]({ evt: { touches: [] } })
+    wrapper.unmount()
   })
 
   it('по умолчанию показывает обе панели на широком экране', async () => {
