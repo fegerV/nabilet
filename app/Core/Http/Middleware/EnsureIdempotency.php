@@ -36,9 +36,10 @@ use Symfony\Component\HttpFoundation\Response;
  * database or an HTTP stack.
  *
  * THE ROW IS WRITTEN BEFORE THE HANDLER RUNS, with no response yet. That insert is
- * the lock: if a duplicate arrives concurrently, the UNIQUE index on
- * (scope, key_hash) makes it fail, and the loser is told IN_FLIGHT instead of
- * running the checkout a second time.
+ * the lock: the UNIQUE index on (scope, key_hash) serialises concurrent requests.
+ * A loser that lost the race between `find()` and `lock()` must re-read the row
+ * and re-apply the decision — swallowing the duplicate INSERT and running the
+ * handler anyway would execute the checkout twice.
  */
 final class EnsureIdempotency
 {
@@ -93,16 +94,40 @@ final class EnsureIdempotency
 
         // PROCEED — take the lock first, so a concurrent duplicate sees IN_FLIGHT
         // rather than racing us into a second execution.
-        $this->lock($scoped, $this->policy->keyHash($key), $requestHash, $now);
+        $keyHash = $this->policy->keyHash($key);
+        if (! $this->lock($scoped, $keyHash, $requestHash, $now)) {
+            // Другой запрос успел вставить строку между нашим find() и lock().
+            // Хендлер ещё НЕ выполнялся, поэтому безопасно перечитать строку и
+            // применить решение заново: проигравший получает IN_FLIGHT/REPLAY,
+            // а не второй запуск платной операции.
+            $winner = $this->find($scoped, $keyHash);
+            if ($winner !== null) {
+                $decision = $this->policy->decide($key, $scoped, $requestHash, $winner, $now);
+                if ($decision === IdempotencyDecision::REPLAY) {
+                    return $this->replay($winner);
+                }
+                if ($decision === IdempotencyDecision::CONFLICT) {
+                    throw ConflictError::idempotencyConflict($key);
+                }
+                // IN_FLIGHT (или PROCEED, если победитель уже освободил лок
+                // после 5xx). Во втором случае пробуем занять лок ещё раз.
+                if ($decision !== IdempotencyDecision::PROCEED || ! $this->lock($scoped, $keyHash, $requestHash, $now)) {
+                    throw ConflictError::alreadyProcessed(
+                        'request',
+                        ['detail' => 'A request with this idempotency key is still being processed.']
+                    );
+                }
+            }
+        }
 
         $response = $next($request);
 
         if ($this->policy->shouldRecord($response->getStatusCode())) {
-            $this->storeResponse($scoped, $this->policy->keyHash($key), $response, $now);
+            $this->storeResponse($scoped, $keyHash, $response, $now);
         } else {
             // A 5xx must stay retryable: leaving the lock in place would make a
             // transient failure permanent, so release it by deleting the row.
-            $this->release($scoped, $this->policy->keyHash($key));
+            $this->release($scoped, $keyHash);
         }
 
         return $response;
@@ -118,7 +143,8 @@ final class EnsureIdempotency
         return $row === null ? null : IdempotencyRecord::fromArray((array) $row);
     }
 
-    private function lock(string $scope, string $keyHash, string $requestHash, \DateTimeImmutable $now): void
+    /** True — лок наш; false — строку уже вставил конкурент. */
+    private function lock(string $scope, string $keyHash, string $requestHash, \DateTimeImmutable $now): bool
     {
         try {
             DB::table(self::TABLE)->insert([
@@ -131,10 +157,12 @@ final class EnsureIdempotency
                 'expires_at' => $this->policy->expiresAt($now),
                 'created_at' => $now,
             ]);
+
+            return true;
         } catch (\Illuminate\Database\UniqueConstraintViolationException) {
-            // A concurrent request won the race. Nothing to do: it owns the lock
-            // and this request has not executed anything yet, so there is no
-            // partial work to undo.
+            // Конкурент выиграл гонку. Мы ещё НЕ вызывали хендлер, поэтому
+            // частичной работы нет; handle() перечитает строку и решит,
+            // что делать (IN_FLIGHT / REPLAY / CONFLICT).
             //
             // ПОЧЕМУ НЕ `insertOrIgnore()` И НЕ `createOrFirst()`.
             // Здесь работает query builder, а не Eloquent, поэтому
@@ -144,6 +172,8 @@ final class EnsureIdempotency
             // молча не вставленный из-за обрезанного `request_hash`, — это
             // отсутствующая идемпотентность, которую никто не заметит. `catch`
             // ловит ровно дубликат, и это здесь важно.
+
+            return false;
         }
     }
 
