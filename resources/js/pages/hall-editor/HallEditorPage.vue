@@ -1749,24 +1749,24 @@ async function loadFromServer(): Promise<void> {
         `/venues/${pid}/schema-versions/${chosen.id}`
       )
       const schema = detail.data?.schema
-            if (schema) { applyServerSchema(schema); fit() }
-            // Фон мог быть сохранён не в payload, а в отдельную колонку
-            // background_url (+ width/height версии) — если в схеме фона нет,
-            // восстанавливаем его из колонок, иначе F5 «теряет» подложку (B7).
-            if (backgrounds.value.length === 0 && typeof chosen.background_url === 'string' && chosen.background_url) {
-              backgrounds.value = [{
-                id: 'bg-column',
-                src: chosen.background_url,
-                x: 0,
-                y: 0,
-                width: Number(chosen.width) > 0 ? Number(chosen.width) : canvasSize.value.width,
-                height: Number(chosen.height) > 0 ? Number(chosen.height) : canvasSize.value.height,
-                rotation: 0,
-                locked: false,
-                opacity: 1,
-              }]
-            }
-            ui.notify('brand', chosen.status === 'published' ? 'Опубликована' : 'Черновик загружен', `Версия ${versionNo}`)
+      if (schema) { applyServerSchema(schema); fit() }
+      // Фон мог быть сохранён не в payload, а в отдельную колонку
+      // background_url (+ width/height версии) — если в схеме фона нет,
+      // восстанавливаем его из колонок, иначе F5 «теряет» подложку (B7).
+      if (backgrounds.value.length === 0 && typeof chosen.background_url === 'string' && chosen.background_url) {
+        backgrounds.value = [{
+          id: 'bg-column',
+          src: chosen.background_url,
+          x: 0,
+          y: 0,
+          width: Number(chosen.width) > 0 ? Number(chosen.width) : canvasSize.value.width,
+          height: Number(chosen.height) > 0 ? Number(chosen.height) : canvasSize.value.height,
+          rotation: 0,
+          locked: false,
+          opacity: 1,
+        }]
+      }
+      ui.notify('brand', chosen.status === 'published' ? 'Опубликована' : 'Черновик загружен', `Версия ${versionNo}`)
     } else {
       draftVersion.value = maxVersionNo + 1
       ui.notify('brand', 'Черновик', 'У зала ещё нет схем — создайте новую')
