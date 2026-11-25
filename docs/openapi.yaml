@@ -42,6 +42,80 @@ tags:
   - name: Storefront
 
 paths:
+  /api/v1/ticket-templates:
+    get:
+      tags: [Tickets]
+      summary: List ticket templates of the current organization
+      operationId: listTicketTemplates
+      responses:
+        '200': { description: Templates }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [Tickets]
+      summary: Create a ticket template
+      operationId: createTicketTemplate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TicketTemplateWriteRequest' }
+      responses:
+        '201': { description: Created }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /api/v1/ticket-templates/{template}:
+    get:
+      tags: [Tickets]
+      summary: Get a ticket template
+      operationId: getTicketTemplate
+      parameters:
+        - $ref: '#/components/parameters/TemplateId'
+      responses:
+        '200': { description: Template }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [Tickets]
+      summary: Update a ticket template (optimistic concurrency via base_updated_at)
+      operationId: updateTicketTemplate
+      parameters:
+        - $ref: '#/components/parameters/TemplateId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TicketTemplateWriteRequest' }
+      responses:
+        '200': { description: Updated }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+    delete:
+      tags: [Tickets]
+      summary: Delete a ticket template
+      operationId: deleteTicketTemplate
+      parameters:
+        - $ref: '#/components/parameters/TemplateId'
+      responses:
+        '200': { description: Deleted }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/v1/ticket-templates/{template}/preview:
+    get:
+      tags: [Tickets]
+      summary: Server-side ticket preview on sample data (same renderer as a real ticket)
+      operationId: previewTicketTemplate
+      parameters:
+        - $ref: '#/components/parameters/TemplateId'
+        - name: format
+          in: query
+          schema: { type: string, enum: [html, png, pdf], default: html }
+      responses:
+        '200':
+          description: HTML, PNG or PDF marked ОБРАЗЕЦ; QR payload is intentionally invalid for check-in
+          content:
+            text/html:
+              schema: { type: string }
+            image/png:
+              schema: { type: string, format: binary }
+            application/pdf:
+              schema: { type: string, format: binary }
   /api/v1/auth/register:
     post:
       tags: [Auth]
@@ -2983,6 +3057,12 @@ components:
       name: X-Checkout-Token
 
   parameters:
+    TemplateId:
+      in: path
+      name: template
+      required: true
+      schema: { type: integer, minimum: 1 }
+      description: Internal id of the ticket template (scoped to the current organization).
     EventIdPath:
       in: path
       name: event
@@ -4958,3 +5038,73 @@ components:
       type: object
       properties:
         data: { $ref: '#/components/schemas/KioskUpdateDirective' }
+
+    TicketTemplateWriteRequest:
+      type: object
+      required: [name, width, height, template_json]
+      properties:
+        name: { type: string, maxLength: 255 }
+        format: { type: string, maxLength: 32 }
+        width: { type: integer, minimum: 50, maximum: 5000 }
+        height: { type: integer, minimum: 50, maximum: 5000 }
+        active: { type: boolean }
+        base_updated_at:
+          type: string
+          description: >-
+            Required on PUT/PATCH. ISO-8601 `updated_at` of the version the
+            administrator opened; a stale value returns 409 TICKET_TEMPLATE_CONFLICT.
+        template_json:
+          $ref: '#/components/schemas/TicketTemplateConfig'
+
+    TicketTemplateConfig:
+      type: object
+      description: >-
+        Versioned ticket canvas contract v1.0. Legacy templates are normalized
+        to this shape on read; canvas is the single source of size/geometry.
+      required: [version, canvas, background, elements]
+      properties:
+        version: { type: string, enum: ['1.0'] }
+        canvas:
+          type: object
+          required: [width, height, unit]
+          properties:
+            width: { type: integer, minimum: 50, maximum: 5000 }
+            height: { type: integer, minimum: 50, maximum: 5000 }
+            unit: { type: string, enum: [px] }
+        background:
+          type: object
+          properties:
+            color: { type: string }
+            gradient:
+              type: object
+              nullable: true
+              properties:
+                from: { type: string }
+                to: { type: string }
+                direction: { type: string }
+        elements:
+          type: array
+          maxItems: 300
+          items:
+            type: object
+            required: [id, type, x, y, rotation, opacity]
+            properties:
+              id: { type: string, description: Stable unique element id }
+              type: { type: string, enum: [text, rectangle, circle, line, qr, barcode, image] }
+              z: { type: integer, description: Layer order }
+              x: { type: number }
+              y: { type: number }
+              width: { type: number }
+              height: { type: number }
+              r: { type: number, description: Circle radius (single source of its size) }
+              x1: { type: number }
+              y1: { type: number }
+              x2: { type: number }
+              y2: { type: number }
+              rotation: { type: number }
+              opacity: { type: number, minimum: 0, maximum: 1 }
+              visible: { type: boolean }
+              when: { type: object, nullable: true, description: Conditional visibility rules }
+              content: { type: string, description: Text with {{variable}} placeholders }
+              media_id: { type: string, nullable: true, description: Trusted media asset id }
+              data: { type: string, description: Barcode value }
