@@ -7,6 +7,7 @@ namespace Nabilet\Modules\Tickets\Services;
 use Nabilet\Modules\Tickets\Models\Ticket;
 use Nabilet\Modules\Tickets\Repositories\TicketRepository;
 use Nabilet\Modules\Tickets\Domain\TicketIssuance;
+use Nabilet\Modules\Tickets\Domain\TicketTemplateConfig;
 use Nabilet\Modules\Tickets\StateMachines\TicketStateMachine;
 use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Orders\Models\OrderItem;
@@ -119,6 +120,12 @@ class TicketService
                     continue;
                 }
 
+                // Оформление фиксируется В МОМЕНТ ВЫПУСКА. Позднейшая правка,
+                // отключение или удаление шаблона не меняет уже проданный билет.
+                // Динамические данные (дата/площадка/цена) продолжают читаться из
+                // текущего заказа/сеанса; подписанный QR не пересоздаётся.
+                $designSnapshot = $this->snapshotDesign((int) $eventId, (int) $sessionId, $order);
+
                 for ($i = 0; $i < max(1, (int) $item->quantity); $i++) {
                     $seq++;
                     $publicId = PublicId::generate();
@@ -180,6 +187,7 @@ class TicketService
                         'qr_version' => 1,
                         'qr_token_hash' => $qrHash,
                         'qr_payload' => $signed['payload'],
+                        'template_snapshot_json' => $designSnapshot,
                         'holder_name' => $holder,
                         'ticket_status' => TicketStateMachine::ISSUED,
                         'issued_at' => $issuedAt,
@@ -192,6 +200,35 @@ class TicketService
 
             return $tickets;
         });
+    }
+
+    /**
+     * Снимок канонического шаблона для билета.
+     *
+     * `null` — легасный билет без шаблона: рендереры продолжают фолбэчить на
+     * живой шаблон/дефолт, поэтому старые продажи не ломаются.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function snapshotDesign(int $eventId, int $sessionId, Order $order): ?array
+    {
+        $probe = (new Ticket())->forceFill([
+            'event_id' => $eventId,
+            'session_id' => $sessionId,
+            'organization_id' => $order->organization_id,
+        ]);
+        $template = app(TicketTemplateResolver::class)->resolveForTicket($probe);
+
+        if ($template === null) {
+            return null;
+        }
+        $raw = is_array($template->template_json) ? $template->template_json : [];
+
+        return TicketTemplateConfig::normalize(
+            $raw,
+            isset($template->width) ? (int) $template->width : null,
+            isset($template->height) ? (int) $template->height : null,
+        );
     }
 
     /**

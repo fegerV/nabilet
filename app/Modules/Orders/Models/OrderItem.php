@@ -76,6 +76,8 @@ class OrderItem extends Model
         'qr_version',
         'qr_token_hash',
         'qr_payload',
+        // Снимок оформления, зафиксированный при выпуске билета.
+        'template_snapshot_json',
         'holder_name',
         'ticket_status',
         'issued_at',
@@ -92,6 +94,7 @@ class OrderItem extends Model
         'fee_amount' => 'integer',
         'total_amount' => 'integer',
         'seat_snapshot_json' => 'array',
+        'template_snapshot_json' => 'array',
         'event_id' => 'integer',
         'session_id' => 'integer',
         'ticket_index' => 'integer',

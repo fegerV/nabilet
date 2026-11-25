@@ -79,6 +79,20 @@ class TicketCardResource extends JsonResource
      */
     private function resolveTemplate(Ticket $ticket): ?array
     {
+        // Снимок оформления на момент покупки имеет приоритет над живым шаблоном.
+        $snapshot = $ticket->template_snapshot_json;
+        if (is_array($snapshot) && is_array($snapshot['elements'] ?? null)) {
+            $canonical = \Nabilet\Modules\Tickets\Domain\TicketTemplateConfig::normalize($snapshot);
+
+            return [
+                'width' => (int) $canonical['canvas']['width'],
+                'height' => (int) $canonical['canvas']['height'],
+                'backgroundColor' => (string) $canonical['background']['color'],
+                'backgroundGradient' => $canonical['background']['gradient'],
+                'elements' => $canonical['elements'],
+            ];
+        }
+
         $template = app(TicketTemplateResolver::class)->resolveForTicket($ticket);
 
         if ($template === null) {

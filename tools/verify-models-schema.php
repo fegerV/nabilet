@@ -104,6 +104,7 @@ const APPLICATION_SCHEMA_EXTENSIONS = [
     ['table' => 'order_items', 'column' => 'qr_version', 'migration' => 'database/migrations/2026_11_18_000300_order_item_is_ticket.php', 'pattern' => "~unsignedSmallInteger\\('qr_version'\\)~"],
     ['table' => 'order_items', 'column' => 'qr_token_hash', 'migration' => 'database/migrations/2026_11_18_000300_order_item_is_ticket.php', 'pattern' => "~char\\('qr_token_hash', 64\\)~"],
     ['table' => 'order_items', 'column' => 'qr_payload', 'migration' => 'database/migrations/2026_11_18_000300_order_item_is_ticket.php', 'pattern' => "~string\\('qr_payload', 512\\)~"],
+
     ['table' => 'order_items', 'column' => 'holder_name', 'migration' => 'database/migrations/2026_11_18_000300_order_item_is_ticket.php', 'pattern' => "~string\\('holder_name', 255\\)~"],
     ['table' => 'order_items', 'column' => 'ticket_status', 'migration' => 'database/migrations/2026_11_18_000300_order_item_is_ticket.php', 'pattern' => "~string\\('ticket_status', 32\\)~"],
     ['table' => 'order_items', 'column' => 'issued_at', 'migration' => 'database/migrations/2026_11_18_000300_order_item_is_ticket.php', 'pattern' => "~dateTime\\('issued_at', 6\\)~"],

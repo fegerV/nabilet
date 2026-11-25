@@ -2795,4 +2795,11 @@ ALTER TABLE privacy_requests
   ADD COLUMN due_at DATETIME(6) NOT NULL AFTER status,
   ADD CONSTRAINT ck_privacy_requests_type CHECK (type IN ('access','erasure','rectification','restriction','portability'));
 
+-- 2026_11_26_000200: неизменяемый снимок оформления на момент выпуска билета.
+-- Динамические данные (дата/площадка/цена) читаются из сеанса/заказа.
+ALTER TABLE order_items
+  ADD COLUMN template_snapshot_json JSON NULL AFTER qr_payload;
+ALTER TABLE tickets
+  ADD COLUMN template_snapshot_json JSON NULL AFTER qr_payload;
+
 SET FOREIGN_KEY_CHECKS = 1;

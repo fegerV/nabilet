@@ -94,6 +94,13 @@ final class TicketPdfRenderer
      */
     private function configForTicket(Ticket $ticket, array $data): array
     {
+        // Снимок на момент выпуска НЕЗАМЕНИМ: правка/удаление шаблона после
+        // продажи не должна менять оформление уже купленного билета.
+        $snapshot = $ticket->template_snapshot_json;
+        if (is_array($snapshot) && is_array($snapshot['elements'] ?? null)) {
+            return TicketTemplateConfig::normalize($snapshot);
+        }
+
         $template = $this->resolver->resolveForTicket($ticket);
         $raw = is_array($template?->template_json) ? $template->template_json : [];
 
