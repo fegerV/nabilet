@@ -563,7 +563,9 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          # Блокировка требует ^22.22.2 || ^24.15.0 || >=26 (abbrev/nopt),
+          # а локально всё проверяется на Node 24 — выравниваем раннер с ним.
+          node-version: '24'
           cache: npm
 
       # `package-lock.json` is committed, so `npm ci` installs the exact tree
