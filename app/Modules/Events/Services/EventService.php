@@ -160,12 +160,19 @@ class EventService
                 }
             }
             if ($hall === null) {
-                // У площадки нет отдельной записи technical-зала (схема хранится
-                // на площадке) — создаём её как техническую тень для инвентаря.
-                $hall = Hall::query()->create([
-                    'venue_id' => $event->venue_id,
-                    'name' => $event->title,
-                    'status' => PublicationStatus::ACTIVE,
+                // `halls` — VIEW над venues: INSERT в неё невозможен. Зал — это
+                // сама площадка, поэтому техническая тень создаётся В ПАМЯТИ
+                // с id площадки (как в HallController::shadowHall). Раньше здесь
+                // был `Hall::query()->create()`, который падал 500 на любом пути,
+                // где tenant scope скрывал строку view.
+                $venue = \Nabilet\Modules\Venues\Models\Venue::query()->findOrFail($event->venue_id);
+                $hall = (new Hall())->forceFill([
+                    'id' => $venue->id,
+                    'public_id' => $venue->public_id,
+                    'venue_id' => $venue->id,
+                    'name' => $venue->hall_name ?? $venue->name,
+                    'organization_id' => $venue->organization_id,
+                    'status' => $venue->status,
                 ]);
             }
 

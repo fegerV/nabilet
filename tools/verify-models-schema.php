@@ -118,6 +118,13 @@ const APPLICATION_SCHEMA_EXTENSIONS = [
 
     ['table' => 'venues', 'column' => 'hall_name', 'migration' => 'database/migrations/2026_11_18_000800_replace_halls_with_view.php', 'pattern' => "~string\\('hall_name', 255\\)~"],
 
+    // 2026_11_26_000100: поля бывшего halls на реальной таблице venues.
+    ['table' => 'venues', 'column' => 'capacity', 'migration' => 'database/migrations/2026_11_26_000100_finish_hall_view_write_paths.php', 'pattern' => "~unsignedInteger\\('capacity'\\)~"],
+    ['table' => 'venues', 'column' => 'width', 'migration' => 'database/migrations/2026_11_26_000100_finish_hall_view_write_paths.php', 'pattern' => "~unsignedInteger\\('width'\\)~"],
+    ['table' => 'venues', 'column' => 'height', 'migration' => 'database/migrations/2026_11_26_000100_finish_hall_view_write_paths.php', 'pattern' => "~unsignedInteger\\('height'\\)~"],
+    ['table' => 'venues', 'column' => 'exterior_photo_url', 'migration' => 'database/migrations/2026_11_26_000100_finish_hall_view_write_paths.php', 'pattern' => "~string\\('exterior_photo_url', 2048\\)~"],
+    ['table' => 'venues', 'column' => 'interior_photo_url', 'migration' => 'database/migrations/2026_11_26_000100_finish_hall_view_write_paths.php', 'pattern' => "~string\\('interior_photo_url', 2048\\)~"],
+
     // v1.7.5: виртуальные папки медиатеки; колонка добавлена миграцией модуля.
     ['table' => 'media_assets', 'column' => 'folder_id', 'migration' => 'database/migrations/2026_11_20_050000_create_media_folders.php', 'pattern' => "~unsignedBigInteger\\('folder_id'\\)~"],
 ];

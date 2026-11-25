@@ -229,8 +229,10 @@ class VenueController extends Controller
      * причины. 409, а не 422: запрос корректен, отказ вызван состоянием
      * ресурса (та же конвенция, что у `EventController::publish`).
      *
-     * Залы при удалении уходят каскадом (`halls.venue_id` CASCADE, включая
-     * версии схем) — поэтому в подтверждении на клиенте стоит честный текст.
+     * Зал — это сама площадка (halls → VIEW). Версии схемы больше не удаляются
+     * каскадом: archived-схема нужна для исторических билетов. Поэтому перед
+     * удалением площадки проверяем замороженные версии и здесь, и БД-триггером
+     * (2026_11_26_000100).
      */
     public function destroy(Venue $venue): JsonResponse
     {
@@ -241,6 +243,18 @@ class VenueController extends Controller
                 'Нельзя удалить площадку: к ней привязаны сеансы. Сначала удалите или переназначьте их.',
                 'VENUE_HAS_SESSIONS',
                 ['sessions_count' => $sessionsCount],
+            );
+        }
+
+        $frozenCount = (int) \Nabilet\Modules\Venues\Models\HallSchemaVersion::query()
+            ->where('venue_id', $venue->id)
+            ->whereIn('status', ['published', 'archived'])
+            ->count();
+        if ($frozenCount > 0) {
+            throw new ConflictError(
+                'Нельзя удалить площадку: у неё есть опубликованные или архивные схемы зала.',
+                'VENUE_HAS_FROZEN_SCHEMA_VERSIONS',
+                ['frozen_versions_count' => $frozenCount],
             );
         }
 
