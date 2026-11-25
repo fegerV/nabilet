@@ -197,13 +197,16 @@ final class KioskController extends Controller
                 throw new NotFoundError('Session', (string) $sessionRaw);
             }
 
-            $sale = KioskSale::create([
+            // `new + save()` вместо `create()`: PHPStan без Larastan не видит
+            // __callStatic у Eloquent-модели.
+            $sale = new KioskSale([
                 'kiosk_device_id' => $locked->id,
                 'client_sale_id' => $clientSaleId,
                 'status' => SalePolicy::STATUS_PENDING,
                 'customer_email' => $validated['customer_email'] ?? null,
                 'holder_name' => $validated['holder_name'] ?? null,
             ]);
+            $sale->save();
 
             return ['sale' => $sale, 'replay' => false, 'session_id' => (string) $session->id];
         });

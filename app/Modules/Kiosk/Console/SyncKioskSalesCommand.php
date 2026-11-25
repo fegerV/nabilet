@@ -48,6 +48,7 @@ final class SyncKioskSalesCommand extends Command
                 ->orderBy('id')
                 ->chunkById(200, function ($sales) use (&$count, $paidAt): void {
                     foreach ($sales as $sale) {
+                        /** @var KioskSale $sale */
                         $order = DB::table('orders')->where('id', $sale->order_id)->first();
 
                         if ($order === null || $order->status !== OrderStateMachine::PAID) {

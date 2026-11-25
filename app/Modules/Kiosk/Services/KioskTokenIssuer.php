@@ -42,7 +42,9 @@ final class KioskTokenIssuer
     ): array {
         $token = self::TOKEN_PREFIX . Str::random(self::TOKEN_BODY_LENGTH);
 
-        $device = KioskDevice::create([
+        // `new + save()` вместо `create()`: без Larastan PHPStan не знает
+        // __callStatic на Eloquent-модели и принимает вызов за ошибку.
+        $device = new KioskDevice([
             'organization_id' => $organizationId,
             'name' => $name,
             'location_address' => $locationAddress,
@@ -56,6 +58,7 @@ final class KioskTokenIssuer
             'kiosk_token_hash' => self::hash($token),
             'cart_token' => (string) Str::uuid(),
         ]);
+        $device->save();
 
         return ['device' => $device, 'token' => $token];
     }

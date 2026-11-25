@@ -185,7 +185,7 @@ final class MediaFolderController extends Controller
         ];
     }
 
-    /** @template T @param callable():T $cb @return T */
+    /** @param callable():mixed $cb */
     private function tenant(callable $cb): mixed
     {
         return app(\Nabilet\Core\Tenancy\OrganizationContext::class)->withoutScope($cb);

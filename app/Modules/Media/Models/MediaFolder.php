@@ -30,7 +30,12 @@ final class MediaFolder extends Model
 
     public function children(): HasMany
     {
-        return $this->hasMany(self::class, 'parent_id')->orderBy('name');
+        // Без Larastan PHPStan теряет тип после orderBy() на relation и думает,
+        // что здесь Query\Builder. Возвращаем саму связь после мутации.
+        $relation = $this->hasMany(self::class, 'parent_id');
+        $relation->orderBy('name');
+
+        return $relation;
     }
 
     public function assets(): HasMany
