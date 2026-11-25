@@ -8,7 +8,6 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Nabilet\Modules\Core\Users\Models\User;
-use Nabilet\Modules\Venues\Models\HallSchemaVersion;
 use Tests\TestCase;
 
 /**
@@ -58,6 +57,22 @@ final class TenantIsolationHallSchemaTest extends TestCase
         $publishedAId = $this->seedSchema($venueAId, 'published', 1);
         $this->sessionAId = $this->seedSession($this->orgA, $this->eventAId, $venueAId, $publishedAId);
         $this->sessionBId = $this->seedSession($this->orgB, $this->eventBId, $venueBId, $this->publishedBId);
+    }
+
+    public function test_the_owner_still_sees_its_own_draft_and_halls(): void
+    {
+        $this->actingAs($this->adminB, 'api');
+
+        $this->getJson("/api/v1/venues/{$this->venueBPublicId}/schema-versions")
+            ->assertOk()
+            ->assertJsonCount(2, 'data');
+        $this->getJson("/api/v1/venues/{$this->venueBPublicId}/schema-versions/{$this->draftBId}")
+            ->assertOk();
+
+        $this->actingAs($this->adminA, 'api');
+        $this->getJson("/api/v1/venues/{$this->venueAPublicId}/schema-versions")
+            ->assertOk()
+            ->assertJsonCount(1, 'data');
     }
 
     public function test_admin_of_another_organization_cannot_read_a_foreign_draft_version(): void
@@ -214,17 +229,21 @@ final class TenantIsolationHallSchemaTest extends TestCase
 
     private function seedSchema(int $venueId, string $status, int $version): int
     {
-        $model = HallSchemaVersion::create([
+        $now = now()->toDateTimeString();
+
+        return (int) DB::table('hall_schema_versions')->insertGetId([
+            'public_id' => (string) Str::ulid()->toBase32(),
+            'organization_id' => (int) DB::table('venues')->where('id', $venueId)->value('organization_id'),
             'hall_id' => $venueId,
             'venue_id' => $venueId,
             'version' => $version,
             'revision' => 1,
             'status' => $status,
-            'published_at' => $status === 'published' ? now() : null,
-            'schema_json' => $this->payload(),
+            'published_at' => $status === 'published' ? $now : null,
+            'schema_json' => json_encode($this->payload()),
+            'created_at' => $now,
+            'updated_at' => $now,
         ]);
-
-        return (int) $model->id;
     }
 
     private function seedSession(int $organizationId, int $eventId, int $venueId, int $schemaId): int

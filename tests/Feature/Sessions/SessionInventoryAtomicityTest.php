@@ -10,7 +10,6 @@ use Illuminate\Support\Str;
 use Mockery\MockInterface;
 use Nabilet\Modules\Core\Users\Models\User;
 use Nabilet\Modules\Inventory\Services\InventoryService;
-use Nabilet\Modules\Venues\Models\HallSchemaVersion;
 use Tests\TestCase;
 
 /**
@@ -308,17 +307,21 @@ final class SessionInventoryAtomicityTest extends TestCase
     /** @param array<string, mixed> $schema */
     private function seedSchema(int $hallId, array $schema): int
     {
-        $version = HallSchemaVersion::create([
+        $now = now()->toDateTimeString();
+
+        return (int) DB::table('hall_schema_versions')->insertGetId([
+            'public_id' => (string) Str::ulid()->toBase32(),
+            'organization_id' => $this->organizationId,
             'hall_id' => $hallId,
             'venue_id' => $hallId,
             'version' => 1,
             'revision' => 1,
             'status' => 'published',
-            'published_at' => now(),
-            'schema_json' => $schema,
+            'published_at' => $now,
+            'schema_json' => json_encode($schema),
+            'created_at' => $now,
+            'updated_at' => $now,
         ]);
-
-        return (int) $version->id;
     }
 
     private function actingAsAdmin(int $organizationId): User

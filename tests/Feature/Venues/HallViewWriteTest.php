@@ -8,7 +8,6 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Nabilet\Modules\Core\Users\Models\User;
-use Nabilet\Modules\Venues\Models\HallSchemaVersion;
 use Tests\TestCase;
 
 /**
@@ -66,14 +65,19 @@ final class HallViewWriteTest extends TestCase
         $venueId = (int) $venue->json('data.id');
         $publicId = (string) $venue->json('data.public_id');
 
-        HallSchemaVersion::create([
+        $now = now()->toDateTimeString();
+        DB::table('hall_schema_versions')->insertGetId([
+            'public_id' => (string) Str::ulid()->toBase32(),
+            'organization_id' => $this->organizationId,
             'hall_id' => $venueId,
             'venue_id' => $venueId,
             'version' => 1,
             'revision' => 1,
             'status' => 'published',
-            'published_at' => now(),
-            'schema_json' => ['sectors' => []],
+            'published_at' => $now,
+            'schema_json' => json_encode(['sectors' => []]),
+            'created_at' => $now,
+            'updated_at' => $now,
         ]);
 
         $this->deleteJson("/api/v1/venues/{$publicId}")

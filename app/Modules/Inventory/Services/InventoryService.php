@@ -169,9 +169,9 @@ class InventoryService
             // Проданные билеты по-прежнему защищены: у `tickets.seat_id` тоже
             // RESTRICT, поэтому пересборка зала с продажами падает — но уже
             // явно и не разрушая данные.
-            $itemIds = InventoryItem::where('session_id', $session->id)->pluck('id')->all();
+            $itemIds = InventoryItem::query()->where('session_id', $session->id)->pluck('id')->all();
             $this->purgeStaleReservations($itemIds);
-            InventoryItem::where('session_id', $session->id)->delete();
+            InventoryItem::query()->where('session_id', $session->id)->delete();
 
             // 1. Геометрия — ОДИН раз на версию схемы (см. docblock метода).
             //

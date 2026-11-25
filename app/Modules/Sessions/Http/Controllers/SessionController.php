@@ -199,6 +199,7 @@ class SessionController extends Controller
             // Канвасный формат редактора конвертируется в rows автоматически
             // (HallSchemaVersion::toInventoryFormat).
             if ($session->schema_version_id !== null) {
+                /** @var HallSchemaVersion $schemaVersion */
                 $schemaVersion = HallSchemaVersion::query()
                     ->whereKey($session->schema_version_id)
                     ->lockForUpdate()
@@ -290,6 +291,7 @@ class SessionController extends Controller
             $locked->update($data);
 
             if ($schemaChanged) {
+                /** @var HallSchemaVersion $schemaVersion */
                 $schemaVersion = HallSchemaVersion::query()
                     ->whereKey($effectiveSchemaId)
                     ->lockForUpdate()
