@@ -31,7 +31,7 @@ import {
   pointBounds,
   projectPoint,
 } from '@/lib/seatViewport'
-import { DANCE_BOX_HEIGHT, danceZonesLayout, type DanceZoneText } from '@/lib/danceZone'
+import { DANCE_BOX_HEIGHT, danceZoneBoxAt, danceZonesLayout, type DanceZoneText, type DanceZoneBox } from '@/lib/danceZone'
 
 /** Палитра состояний — согласована с CSS-классами seat--* и основной легендой. */
 const STATE_FILL: Record<string, string> = {
@@ -138,6 +138,29 @@ const stage = computed(() => ({
 const seats = computed(() =>
   props.inventory.filter((i) => i.type === 'seat' && i.seat),
 )
+
+/** Все продаваемые standing-позиции. */
+const danceZones = computed(() => props.inventory.filter((i) => i.type === 'standing'))
+
+/**
+ * Геометрия зоны из схемы зала (аудит 2026-11-25, 5.2).
+ *
+ * Новые схемы кладут нормализованные x/y в metadata_json. Такую зону нельзя
+ * прибивать к нижней полосе — она должна остаться там, где её нарисовал
+ * конструктор. Легаси-позиции без геометрии по-прежнему раскладываются внизу.
+ */
+function zoneGeometry(zone: InventoryItem): { x: number; y: number } | null {
+  const meta = zone.metadata_json
+  if (!meta || typeof meta !== 'object') return null
+  const raw = (meta as Record<string, unknown>).standing_zone
+  if (!raw || typeof raw !== 'object') return null
+  const point = raw as Record<string, unknown>
+  const x = Number(point.x)
+  const y = Number(point.y)
+  return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null
+}
+
+const legacyDanceZones = computed(() => danceZones.value.filter((zone) => zoneGeometry(zone) === null))
 
 const priceColors = computed(() => buildSeatPricePalette(seats.value.map((item) => Number(item.price_amount ?? 0))))
 
@@ -286,7 +309,7 @@ const fit = computed(() =>
       reservedTop: stageAtBottom.value ? 0 : STAGE_H,
       // Нижняя полоса отдана зонам танцпола (и пикеру количества, когда он
       // раскрыт) — иначе места ложатся на зону.
-      reservedBottom: (stageAtBottom.value ? STAGE_H : 0) + (danceZones.value.length > 0
+      reservedBottom: (stageAtBottom.value ? STAGE_H : 0) + (legacyDanceZones.value.length > 0
         ? DANCE_BOX_HEIGHT + DANCE_GAP + (pickerZoneId.value !== null ? DANCE_PICKER_RESERVE : 0)
         : 0),
     },
@@ -333,8 +356,6 @@ function px(item: InventoryItem): { x: number; y: number; n: number } {
  * категория не отображалась на витрине вовсе: её билеты было невозможно
  * купить. Теперь зоны раскладываются рядом в нижней полосе.
  */
-const danceZones = computed(() => props.inventory.filter((i) => i.type === 'standing'))
-
 /** Суммарный остаток стоячих билетов — для строки-сводки над картой. */
 const standingTotal = computed(() => danceZones.value
   .reduce((sum, zone) => sum + Number(zone.available_quantity ?? 0), 0))
@@ -369,17 +390,35 @@ function zoneText(zone: InventoryItem): DanceZoneText {
  */
 const zoneBoxes = computed(() => {
   const zones = danceZones.value
-  const boxes = danceZonesLayout(zones.map(zoneText), {
+  const legacy = zones.filter((zone) => zoneGeometry(zone) === null)
+  const legacyBoxes = danceZonesLayout(legacy.map(zoneText), {
     canvasWidth: SVG_W,
     y: SVG_H - PAD - DANCE_BOX_HEIGHT,
     gap: 10,
   })
-  return zones.map((zone, i) => ({
-    zone,
-    box: boxes[i],
-    text: zoneText(zone),
-    selected: isZoneSelected(zone),
-  }))
+  let legacyIndex = 0
+
+  return zones.map((zone) => {
+    const text = zoneText(zone)
+    const geometry = zoneGeometry(zone)
+    let box: DanceZoneBox
+    if (geometry) {
+      const center = projectPoint(geometry.x, geometry.y, fit.value)
+      box = danceZoneBoxAt(text, center, {
+        canvasWidth: SVG_W,
+        canvasHeight: SVG_H,
+        pad: PAD,
+      })
+    } else {
+      box = legacyBoxes[legacyIndex++]
+    }
+    return {
+      zone,
+      box,
+      text,
+      selected: isZoneSelected(zone),
+    }
+  })
 })
 
 /** Пикер количества открыт не более чем у одной зоны: второй некуда поставить. */

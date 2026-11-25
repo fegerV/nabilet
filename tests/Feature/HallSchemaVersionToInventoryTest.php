@@ -147,9 +147,10 @@ class HallSchemaVersionToInventoryTest extends TestCase
         // массив из 800 виртуальных посетителей.
         $this->assertSame(800, $out[0]['standing_capacity']);
         $this->assertCount(0, $out[0]['rows'][0]['seats']);
-        $this->assertSame(40.0, $out[0]['standing_zone']['x']);
-        $this->assertSame(40.0, $out[0]['standing_zone']['y']);
-        $this->assertSame(680.0, $out[0]['standing_zone']['width']);
+        // Геометрия зоны проецируется в ту же сетку, что и места (60/760).
+        $this->assertSame(3.158, $out[0]['standing_zone']['x']);
+        $this->assertSame(3.158, $out[0]['standing_zone']['y']);
+        $this->assertSame(53.684, $out[0]['standing_zone']['width']);
     }
 
     public function test_two_standing_zones_with_the_same_label_but_different_ids_are_kept(): void
@@ -179,7 +180,7 @@ class HallSchemaVersionToInventoryTest extends TestCase
         $this->assertSame(150, $out[1]['standing_capacity']);
         $this->assertSame('zone-left', $out[0]['standing_zone']['id']);
         $this->assertSame('zone-right', $out[1]['standing_zone']['id']);
-        $this->assertSame(300.0, $out[1]['standing_zone']['y'], 'геометрия зоны потеряна');
+        $this->assertSame(20.0, $out[1]['standing_zone']['y'], 'геометрия зоны потеряна');
         $this->assertSame(0, count($out[0]['rows'][0]['seats']), 'созданы фиктивные места');
     }
 }

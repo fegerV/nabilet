@@ -123,6 +123,28 @@ export function danceZonesLayout(texts: DanceZoneText[], options: DanceZonesOpti
 
 
 /**
+ * Рамка зоны в точке, пришедшей из схемы зала (аудит 2026-11-25, 5.2).
+ *
+ * Легаси-версия витрины прибивала все standing-зоны к нижней полосе и
+ * перекомпоновывала их поровну. Здесь положение берётся из нормализованных
+ * координат схемы; размер по-прежнему считается по тексту, а рамка --
+ * по центру заданной точки и не выходит за холст.
+ */
+export function danceZoneBoxAt(
+  text: DanceZoneText,
+  center: { x: number; y: number },
+  options: { canvasWidth: number; canvasHeight: number; pad?: number },
+): DanceZoneBox {
+  const pad = options.pad ?? 12
+  const sized = danceZoneLayout(text, {
+    canvasWidth: options.canvasWidth,
+    y: Math.max(pad, Math.min(options.canvasHeight - pad - DANCE_BOX_HEIGHT, center.y - DANCE_BOX_HEIGHT / 2)),
+  })
+  const x = Math.max(sized.w / 2 + pad, Math.min(options.canvasWidth - sized.w / 2 - pad, center.x))
+  return { ...sized, x: x - sized.w / 2 }
+}
+
+/**
  * Рамка зоны танцпола, растянутая под фактический текст.
  *
  * Рамка центрируется по холсту и ограничена его шириной: на узком холсте

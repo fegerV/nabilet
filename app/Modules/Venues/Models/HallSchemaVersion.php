@@ -166,7 +166,7 @@ class HallSchemaVersion extends Model
                             // создавал 2 000 000 фейковых «мест» для вместимости
                             // 2 000 000 (OOM) и терял геометрию зоны.
                             $sector['standing_capacity'] = $cap;
-                            $sector['standing_zone'] = $this->standingZoneDescriptor($obj, $sector);
+                            $sector['standing_zone'] = $this->standingZoneDescriptor($obj, $sector, $unit);
                             $sector['rows'] = [[
                                 'number' => '1',
                                 'label' => (string) ($obj['text'] ?? 'Танцпол'),
@@ -341,7 +341,7 @@ class HallSchemaVersion extends Model
                     'x' => 0,
                     'y' => 0,
                     'standing_capacity' => $cap,
-                    'standing_zone' => $this->standingZoneDescriptor($objRaw),
+                    'standing_zone' => $this->standingZoneDescriptor($objRaw, [], $unit),
                     'rows' => [[
                         'number' => '1',
                         'label' => (string) ($objRaw['text'] ?? 'Танцпол'),
@@ -387,15 +387,22 @@ class HallSchemaVersion extends Model
      * @param  array<string, mixed>  $sector  резервные координаты для старых схем без x/y
      * @return array<string, mixed>
      */
-    private function standingZoneDescriptor(array $object, array $sector = []): array
+    private function standingZoneDescriptor(array $object, array $sector = [], float $unit = 1.0): array
     {
+        // Координаты переводим в ту же нормализованную сетку, что и места:
+        // витрина проецирует и места, и зоны одним `fit`.
+        $scale = static fn (mixed $value): float => round(
+            (is_numeric($value) ? (float) $value : 0.0) * $unit,
+            3,
+        );
+
         return [
             'id' => (string) ($object['id'] ?? ''),
             'name' => (string) ($object['text'] ?? 'Стоячая зона'),
-            'x' => is_numeric($object['x'] ?? null) ? (float) $object['x'] : (float) ($sector['x'] ?? 0),
-            'y' => is_numeric($object['y'] ?? null) ? (float) $object['y'] : (float) ($sector['y'] ?? 0),
-            'width' => is_numeric($object['width'] ?? null) ? (float) $object['width'] : 0.0,
-            'height' => is_numeric($object['height'] ?? null) ? (float) $object['height'] : 0.0,
+            'x' => $scale($object['x'] ?? ($sector['x'] ?? 0)),
+            'y' => $scale($object['y'] ?? ($sector['y'] ?? 0)),
+            'width' => $scale($object['width'] ?? 0),
+            'height' => $scale($object['height'] ?? 0),
             'rotation' => is_numeric($object['rotation'] ?? null) ? (float) $object['rotation'] : 0.0,
             'opacity' => is_numeric($object['opacity'] ?? null) ? (float) $object['opacity'] : 1.0,
             'locked' => (bool) ($object['locked'] ?? false),
