@@ -63,6 +63,13 @@ const ACCEPTED = [
     // response body. Same reasoning as the two entries above, same call site lineage.
     'Modules/Orders/Services/StaleOrderExpirer.php#E2' =>
         'Console/queue service (extracted from HoldSweeper): log context for one failed order, not an HTTP body.',
+
+    // `testConnection()` returns a DOMAIN result `['ok'=>bool,'error'=>string|null]`.
+    // BackupController wraps it as `{"data": result}` — the string `error` lives
+    // inside `data`, is shown to the admin as a human-readable reason, and is never
+    // an HTTP error envelope. Tests assert it is a string (MatrixSettingsTest).
+    'Modules/Backups/Services/YandexDiskBackupService.php#E1' =>
+        'Domain connectivity-check result wrapped in {"data": ...}; `error` is a human-readable reason string, not an HTTP error envelope.',
 ];
 
 /** The only keys the §66 envelope defines inside `error`. */

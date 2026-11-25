@@ -28,6 +28,16 @@ final class KioskSaleTest extends TestCase
     use SellableSeatFixtures;
     use StaffAuth;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // phpunit.xml не задаёт демо-режим: без этой строки тест проходил только
+        // на машине с PAYMENT_DEMO_MODE=true в .env, а в CI фаза 2 киоска падала
+        // «платёжный провайдер не настроен» и отдавала 409 вместо 201.
+        config(['nabilet.payment.demo_mode' => true]);
+    }
+
     /** @return array{int, string, int, int, int} [orgId, token, deviceId, sessionId, inventoryId] */
     private function setupKiosk(bool $salesEnabled): array
     {

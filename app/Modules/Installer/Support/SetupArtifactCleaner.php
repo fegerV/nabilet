@@ -150,13 +150,20 @@ final class SetupArtifactCleaner
 
     private function displayPath(string $path): string
     {
+        // Тесты и шаред-хостинг собирают пути со слешами и на Windows, поэтому
+        // сравнивать надо НОРМАЛИЗОВАННЫЕ пути. Иначе на Linux результат
+        // «public/info.php», а на Windows — «info.php» (fallback на basename):
+        // один и тот же код даёт разные ответы в ответе установщика и в логе.
+        $separator = DIRECTORY_SEPARATOR;
+        $normalized = str_replace(['/', '\\'], $separator, $path);
         foreach ([$this->basePath, $this->publicPath] as $root) {
-            $prefix = rtrim($root, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
-            if (str_starts_with($path, $prefix)) {
-                return substr($path, strlen($prefix));
+            $prefix = rtrim(str_replace(['/', '\\'], $separator, $root), $separator) . $separator;
+            if (str_starts_with($normalized, $prefix)) {
+                // Контракт ответа стабилен: прямые слеши на любой ОС.
+                return str_replace('\\', '/', substr($normalized, strlen($prefix)));
             }
         }
 
-        return basename($path);
+        return str_replace('\\', '/', basename($normalized));
     }
 }

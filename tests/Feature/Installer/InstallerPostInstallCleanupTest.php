@@ -63,11 +63,14 @@ final class InstallerPostInstallCleanupTest extends TestCase
             $removed = (new SetupArtifactCleaner($root, $public))->purge();
             sort($removed);
 
+            // Пути ОТНОСИТЕЛЬНО корня проекта (документированный контракт):
+            // файлы из public/ обязаны сохранять префикс на Laravel и Windows.
             $this->assertSame([
                 'info.php',
                 'install.php',
                 'install/',
-                'phpinfo.php',
+                'public/info.php',
+                'public/phpinfo.php',
             ], $removed);
 
             $this->assertFileDoesNotExist($root . '/info.php');

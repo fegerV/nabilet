@@ -117,6 +117,9 @@ const APPLICATION_SCHEMA_EXTENSIONS = [
     ['table' => 'order_items', 'column' => 'standing_zone_id', 'migration' => 'database/migrations/2026_11_18_000400_order_item_public_id.php', 'pattern' => "~unsignedBigInteger\\('standing_zone_id'\\)~"],
 
     ['table' => 'venues', 'column' => 'hall_name', 'migration' => 'database/migrations/2026_11_18_000800_replace_halls_with_view.php', 'pattern' => "~string\\('hall_name', 255\\)~"],
+
+    // v1.7.5: виртуальные папки медиатеки; колонка добавлена миграцией модуля.
+    ['table' => 'media_assets', 'column' => 'folder_id', 'migration' => 'database/migrations/2026_11_20_050000_create_media_folders.php', 'pattern' => "~unsignedBigInteger\\('folder_id'\\)~"],
 ];
 
 /**
@@ -144,6 +147,9 @@ const APPLICATION_EXTENSION_FIELDS = [
     'Seat' => [
         'price_amount' => 'цена конкретного места (миграция 2026_10_07_000400); перекрывает цену ряда, поэтому не выводима из inventories',
     ],
+    'MediaAsset' => [
+        'folder_id' => 'виртуальная папка медиатеки (миграция 2026_11_20_050000); таблица есть в Core, колонка — в приложении',
+    ],
 ];
 
 /**
@@ -160,6 +166,8 @@ const APPLICATION_ONLY_TABLES = [
     'social_accounts',     // соц-вход (модуль Auth): DDL в миграции, спека таблицу не описывает
     'kiosk_devices',       // 1.6.0: реестр киосков, DDL в database/migrations/2026_11_19_000100
     'kiosk_sales',         // 1.6.0: продажи киосков, DDL в database/migrations/2026_11_19_000200
+    'agent_actions',       // 1.7.0: двухфазные действия агента, DDL в миграциях приложения
+    'media_folders',       // 1.7.5: виртуальные папки медиатеки, DDL в 2026_11_20_050000
 ];
 
 const INVENTED_FIELDS = [
