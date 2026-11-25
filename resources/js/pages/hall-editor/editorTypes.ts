@@ -26,6 +26,16 @@ export interface ESeat {
   y: number
   /** Индивидуальная цена места (минорные единицы). null — брать цену ряда/сектора. */
   priceMinor?: number | null
+  /** Происхождение импортированного места: yandex_exact | reconstructed | user. */
+  source?: string
+  source_id?: string
+  source_row?: string
+  source_number?: string
+  source_x?: number | null
+  source_y?: number | null
+  confidence?: 'exact' | 'inferred' | 'unknown'
+  coordinate_source?: string
+  price_source?: string
 }
 
 export type SectorShape = 'grid' | 'arc' | 'table'
@@ -87,6 +97,13 @@ export interface EStatic {
   capacity?: number
   /** Цена standing-зоны в минорных единицах (копейках). */
   priceMinor?: number
+  /** Происхождение imported standing-зоны (емкость из остатка — не подтверждена). */
+  source_id?: string
+  source_kind?: string
+  capacity_source?: string
+  capacity_confirmed?: boolean
+  price_source?: string
+  tariffs?: Array<Record<string, unknown>>
 }
 
 export interface EBackground {

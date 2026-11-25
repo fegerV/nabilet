@@ -125,6 +125,15 @@ export function serializeSchema(state: EditorSchemaState): SerializedSchema {
         ...(seat.priceMinor != null && seat.priceMinor > 0
           ? { priceMinor: Math.round(seat.priceMinor) }
           : {}),
+        ...(seat.source ? { source: seat.source } : {}),
+        ...(seat.source_id ? { source_id: seat.source_id } : {}),
+        ...(seat.source_row ? { source_row: seat.source_row } : {}),
+        ...(seat.source_number ? { source_number: seat.source_number } : {}),
+        ...(seat.source_x !== undefined ? { source_x: seat.source_x } : {}),
+        ...(seat.source_y !== undefined ? { source_y: seat.source_y } : {}),
+        ...(seat.confidence ? { confidence: seat.confidence } : {}),
+        ...(seat.coordinate_source ? { coordinate_source: seat.coordinate_source } : {}),
+        ...(seat.price_source ? { price_source: seat.price_source } : {}),
       })),
     })),
     staticObjects: state.statics.map((o) => ({ ...o })),
@@ -159,6 +168,12 @@ export function normalizeStaticObject(o: unknown): EStatic | null {
     text: typeof rec.text === 'string' ? rec.text : undefined,
     capacity: Number.isFinite(Number(rec.capacity)) ? Math.max(0, Math.round(Number(rec.capacity))) : undefined,
     priceMinor: staticPrice === null ? undefined : Math.max(0, staticPrice),
+    ...(typeof rec.source_id === 'string' ? { source_id: rec.source_id } : {}),
+    ...(typeof rec.source_kind === 'string' ? { source_kind: rec.source_kind } : {}),
+    ...(typeof rec.capacity_source === 'string' ? { capacity_source: rec.capacity_source } : {}),
+    ...(typeof rec.capacity_confirmed === 'boolean' ? { capacity_confirmed: rec.capacity_confirmed } : {}),
+    ...(typeof rec.price_source === 'string' ? { price_source: rec.price_source } : {}),
+    ...(Array.isArray(rec.tariffs) ? { tariffs: rec.tariffs as Array<Record<string, unknown>> } : {}),
   }
 }
 
@@ -376,6 +391,21 @@ export function parseSchemaPayload(raw: unknown, canvasSize: SchemaCanvas): Norm
 
   const out: ESector[] = []
 
+  // Происхождение импортированных мест НЕ должно теряться при round-trip:
+  // без него редактор показывает восстановленные места как достоверные.
+  const provenanceOf = (raw: unknown): Partial<ESeat> => {
+    if (!raw || typeof raw !== 'object') return {}
+    const r = raw as Record<string, unknown>
+    const out: Partial<ESeat> = {}
+    for (const key of ['source', 'source_id', 'source_row', 'source_number', 'coordinate_source', 'price_source'] as const) {
+      if (typeof r[key] === 'string') (out as Record<string, unknown>)[key] = r[key]
+    }
+    if (typeof r.source_x === 'number' || r.source_x === null) out.source_x = r.source_x as number | null
+    if (typeof r.source_y === 'number' || r.source_y === null) out.source_y = r.source_y as number | null
+    if (r.confidence === 'exact' || r.confidence === 'inferred' || r.confidence === 'unknown') out.confidence = r.confidence
+    return out
+  }
+
   if (isEditorFormat) {
     for (const { sector: s, seats: flatSeats } of collected) {
       const srcId = typeof s.id === 'string' ? s.id : `s${out.length + 1}`
@@ -399,6 +429,7 @@ export function parseSchemaPayload(raw: unknown, canvasSize: SchemaCanvas): Norm
           x: Math.round(p.x),
           y: Math.round(p.y),
           priceMinor: p.priceMinor,
+          ...provenanceOf(rawSeats[i]),
         })),
         rowPrices,
         shape: s.shape === 'arc' ? 'arc' : (s.shape === 'table' ? 'table' : 'grid'),

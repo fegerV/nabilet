@@ -32,6 +32,10 @@ final class VenueAfishaImportTest extends TestCase
         $response = $this->postJson('/api/v1/venues/import-hallplan', ['hallplan' => $source]);
         $response->assertOk()->assertJsonCount(2, 'data.schema.sectors');
         self::assertNotEmpty($response->json('data.warning'));
+        self::assertSame('reconstructed', $response->json('data.report.exactness'));
+        self::assertGreaterThan(0, (int) $response->json('data.report.known_seats'));
+        self::assertGreaterThan(0, (int) $response->json('data.report.reconstructed_seats'));
+        self::assertNotEmpty($response->json('data.report.warnings'));
         self::assertSame($before, DB::table('venues')->count());
     }
 

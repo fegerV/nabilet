@@ -191,6 +191,8 @@ const isPublishing = ref(false)
 const isLeaving = ref(false)
 const isImporting = ref(false)
 const importWarning = ref<string | null>(null)
+/** Структурированный отчёт конвертера: точные/восстановленные места и предупреждения. */
+const importReport = ref<Record<string, unknown> | null>(null)
 const editorBusy = computed(() => isPublishing.value || isLeaving.value || isImporting.value || hallLoadState.value !== 'ok')
 
 const selectedSectorId = ref<string | null>(null)
@@ -1825,6 +1827,9 @@ function exportSchema(): void {
     // Сброс value, чтобы можно было выбрать тот же файл повторно
     input.value = ''
     if (!file) return
+    // Отчёт предыдущего hallplan импорта не должен «залипать» на новом файле.
+    importWarning.value = null
+    importReport.value = null
     if (file.size > 5 * 1024 * 1024) {
       ui.notify('rose', 'Файл слишком большой', 'Размер JSON не должен превышать 5 МБ')
       return
@@ -1843,9 +1848,10 @@ function exportSchema(): void {
       if (source && (source.levels || source.hallplan || source.result?.hallplan)) {
         isImporting.value = true
         try {
-          const response = await send<{ schema: unknown; warning: string }>('/venues/import-hallplan', 'POST', { hallplan: data })
+          const response = await send<{ schema: unknown; warning: string; report?: Record<string, unknown> }>('/venues/import-hallplan', 'POST', { hallplan: data })
           data = response.data.schema
           importWarning.value = response.data.warning
+          importReport.value = response.data.report ?? null
         } catch (error) {
           ui.notify('rose', 'Импорт отклонён', error instanceof Error ? error.message : 'Не удалось преобразовать hallplan')
           return
@@ -3467,6 +3473,14 @@ function reassignSelectedSeats(targetSectorId: string): void {
 
     <!-- Детали отклонения черновика (422, конверт §66) — отдельной строкой под шапкой -->
     <p v-if="importWarning" role="status" class="border-b border-sun-400/30 bg-sun-400/10 px-3 py-2 text-xs text-content">{{ importWarning }}</p>
+    <div v-if="importReport" role="status" class="border-b border-sun-400/20 bg-sun-400/5 px-3 py-2 text-xs text-content">
+      <span>Импорт: секторов {{ importReport.result_sectors }}, рядов {{ importReport.rows }},
+        известных мест {{ importReport.known_seats }}, восстановлено {{ importReport.reconstructed_seats }},
+        неизвестных цен {{ importReport.unknown_prices }}, неподтверждённых зон {{ importReport.unknown_capacity }}.</span>
+      <ul v-if="Array.isArray(importReport.warnings)" class="mt-1 list-disc pl-4">
+        <li v-for="(warning, i) in importReport.warnings" :key="i">{{ warning }}</li>
+      </ul>
+    </div>
     <ul
       v-if="autosave === 'error' && autosaveErrors.length > 0"
       class="flex-none border-b border-rose-500/30 bg-rose-500/10 px-3 py-1.5 text-2xs text-rose-300"
