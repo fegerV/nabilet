@@ -52,6 +52,7 @@ class Ticket extends Model
         'qr_version',
         'qr_token_hash',
         'qr_payload',
+        'template_snapshot_json',
         'issued_at',
         'used_at',
         'cancelled_at',
@@ -64,6 +65,7 @@ class Ticket extends Model
     protected $casts = [
         'ticket_index' => 'integer',
         'qr_version' => 'integer',
+        'template_snapshot_json' => 'array',
         'issued_at' => 'datetime',
         'used_at' => 'datetime',
         'cancelled_at' => 'datetime',

@@ -59,7 +59,7 @@ declare(strict_types=1);
 const EXPECTED_TABLES = 88;
 
 /** Колонок в бандле спеки (CREATE TABLE + ALTER TABLE ADD COLUMN). */
-const EXPECTED_COLUMNS = 953;
+const EXPECTED_COLUMNS = 955;
 
 /**
  * Сколько `CREATE TABLE` в бандле — независимая от парсеров величина.
