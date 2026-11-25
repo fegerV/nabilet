@@ -1,5 +1,6 @@
 <script setup>
 import { computed, ref, onMounted, onBeforeUnmount, nextTick, watch } from 'vue';
+import { onBeforeRouteLeave } from 'vue-router';
 // Видимость боковых панелей хранится в localStorage — как в конструкторе залов:
 // пользователь, который скрыл панели ради места на холсте, не должен
 // возвращать их после каждой перезагрузки страницы.
@@ -53,6 +54,23 @@ const props = defineProps({
 });
 
 const emit = defineEmits(['template-saved', 'template-deleted']);
+
+// Несохранённые правки: защита от ухода со страницы и от закрытия вкладки.
+const currentUpdatedAt = ref(null);
+const savedFingerprint = ref('');
+function designFingerprint() {
+    return JSON.stringify({
+        elements: elements.value,
+        canvasWidth: canvasWidth.value,
+        canvasHeight: canvasHeight.value,
+        canvasBackground: canvasBackground.value,
+        useGradient: useGradient.value,
+        gradientFrom: gradientFrom.value,
+        gradientTo: gradientTo.value,
+        gradientDir: gradientDir.value,
+    });
+}
+const isDirty = computed(() => designFingerprint() !== savedFingerprint.value);
 
 // Тема — из общего стора (класс `dark` на <html>): конструктор живёт внутри
 // тёмной админки, поэтому тёмное оформление у него базовое, а светлое —
@@ -172,6 +190,9 @@ function captureState() {
         gradientFrom: gradientFrom.value,
         gradientTo: gradientTo.value,
         gradientDir: gradientDir.value,
+        // Выделение — часть состояния редактора: undo не должен сбрасывать
+        // выбор пользователя и заставлять его искать элемент заново.
+        selectedId: selectedElement.value?.id ?? null,
     });
 }
 
@@ -194,7 +215,10 @@ function applySnapshot(snapshot) {
     gradientFrom.value = snapshot.gradientFrom ?? '#0f766e';
     gradientTo.value = snapshot.gradientTo ?? '#1e293b';
     gradientDir.value = snapshot.gradientDir ?? 'to bottom';
-    selectedElement.value = null;
+    const restoredId = snapshot.selectedId ?? null;
+    selectedElement.value = restoredId === null
+        ? null
+        : elements.value.find((el) => el.id === restoredId) ?? null;
     void nextTick(() => { restoring = false; });
 }
 
@@ -210,18 +234,30 @@ function redo() {
     applySnapshot(history.value[historyIndex.value]);
 }
 
+/**
+ * Каждое завершённое пользовательское действие — одна запись истории.
+ * Раньше здесь был debounce 350 мс: две быстрые правки слипались в один
+ * снимок, и Ctrl+Z отменял сразу обе. Жесты drag/resize сами выставляют
+ * `interacting`, поэтому шум кадров в историю не попадает.
+ */
 function scheduleHistory() {
     if (interacting || restoring || loading.value) return;
     if (historyTimer) clearTimeout(historyTimer);
-    historyTimer = setTimeout(() => {
-        const current = captureState();
-        const last = history.value[historyIndex.value];
-        if (JSON.stringify(current) !== JSON.stringify(last)) pushHistory();
-    }, 350);
+    historyTimer = null;
+    const current = captureState();
+    const last = history.value[historyIndex.value];
+    if (JSON.stringify(current) !== JSON.stringify(last)) pushHistory();
 }
 
 function onKeyDown(event) {
     if (!(event.ctrlKey || event.metaKey)) return;
+    // В полях ввода Ctrl+Z/Ctrl+Y принадлежит браузеру и тексту, а не холсту:
+    // иначе набор текста отменял весь макет вместо последнего слова.
+    const target = event.target;
+    if (target instanceof HTMLElement) {
+        const tag = target.tagName.toLowerCase();
+        if (tag === 'input' || tag === 'textarea' || tag === 'select' || target.isContentEditable) return;
+    }
     const key = String(event.key || '').toLowerCase();
     if (key === 'z' && !event.shiftKey) { event.preventDefault(); undo(); }
     else if (key === 'z' && event.shiftKey || key === 'y') { event.preventDefault(); redo(); }
@@ -762,6 +798,12 @@ async function saveTemplate() {
         });
 
         const isUpdate = internalId.value !== null && internalId.value !== undefined && internalId.value !== '';
+        if (isUpdate) {
+            if (!currentUpdatedAt.value) {
+                throw new Error('Шаблон был изменён другим редактором. Перезагрузите страницу.');
+            }
+            payload.base_updated_at = currentUpdatedAt.value;
+        }
         const res = isUpdate
             ? await send(`/ticket-templates/${internalId.value}`, 'PUT', payload)
             : await send('/ticket-templates', 'POST', payload);
@@ -771,11 +813,20 @@ async function saveTemplate() {
         if (!isUpdate && node && node.id !== undefined) {
             internalId.value = node.id;
         }
+        if (node && node.updated_at) {
+            currentUpdatedAt.value = node.updated_at;
+        }
+        savedFingerprint.value = designFingerprint();
         currentTemplateName.value = name;
         showTemplateModal.value = false;
         emit('template-saved', saved);
         await loadTemplates();
     } catch (e) {
+        if (e instanceof ApiError && e.status === 409 && e.code === 'TICKET_TEMPLATE_CONFLICT') {
+            saveError.value = 'Шаблон изменён другим редактором. Экспортируйте свои правки и перезагрузите страницу.';
+            ui.notify('rose', 'Конфликт редактирования', saveError.value);
+            return;
+        }
         const detail = e instanceof ApiError && e.details
             ? Object.values(e.details).flat().join(' ')
             : (e instanceof Error ? e.message : String(e));
@@ -817,6 +868,7 @@ async function loadTemplate() {
         elements.value = (config.elements || []).map((el) => ensureElementDefaults(cloneElement(el)));
         internalId.value = template.id ?? props.templateId;
         currentTemplateName.value = template.name || '';
+        currentUpdatedAt.value = template.updated_at ?? null;
 
         // Восстановить фон холста: сплошной цвет либо линейный градиент.
         // Раньше фон при загрузке сбрасывался на белый, поэтому сохранённый
@@ -838,6 +890,7 @@ async function loadTemplate() {
         history.value = [];
         historyIndex.value = -1;
         pushHistory();
+        savedFingerprint.value = designFingerprint();
     } catch (e) {
         loadError.value = e instanceof Error ? e.message : String(e);
     } finally {
@@ -918,6 +971,10 @@ async function openMediaPicker() {
 // лишний шаг. Вручную размер правится ниже, в секции «Размер».
 function pickMedia(asset) {
     if (!selectedElement.value) return;
+    // В шаблоне храним ССЫЛКУ НА ФАЙЛ, а не произвольный URL: серверный
+    // рендерер проверяет принадлежность медиаресурса организации и не делает
+    // внешних запросов по данным из template_json.
+    selectedElement.value.media_id = asset.public_id || asset.id || null;
     selectedElement.value.src = asset.url;
 
     const naturalWidth = Number(asset.width);
@@ -1005,6 +1062,19 @@ watch(
     { deep: true },
 );
 
+function confirmUnsaved() {
+    if (!isDirty.value) return true;
+    return window.confirm('Есть несохранённые изменения макета. Покинуть редактор?');
+}
+
+function onBeforeUnload(event) {
+    if (!isDirty.value) return;
+    event.preventDefault();
+    event.returnValue = '';
+}
+
+onBeforeRouteLeave(() => confirmUnsaved());
+
 onMounted(() => {
     // Шаблоны нужны всегда (вкладка «Шаблоны»), поэтому грузим сразу.
     loadTemplates();
@@ -1012,11 +1082,14 @@ onMounted(() => {
         loadTemplate();
     }
     pushHistory();
+    savedFingerprint.value = designFingerprint();
     window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('beforeunload', onBeforeUnload);
 });
 
 onBeforeUnmount(() => {
     window.removeEventListener('keydown', onKeyDown);
+    window.removeEventListener('beforeunload', onBeforeUnload);
     if (historyTimer) clearTimeout(historyTimer);
 });
 </script>

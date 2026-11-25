@@ -42,6 +42,80 @@ tags:
   - name: Storefront
 
 paths:
+  /api/v1/ticket-templates:
+    get:
+      tags: [Tickets]
+      summary: List ticket templates of the current organization
+      operationId: listTicketTemplates
+      responses:
+        '200': { description: Templates }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [Tickets]
+      summary: Create a ticket template
+      operationId: createTicketTemplate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TicketTemplateWriteRequest' }
+      responses:
+        '201': { description: Created }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /api/v1/ticket-templates/{template}:
+    get:
+      tags: [Tickets]
+      summary: Get a ticket template
+      operationId: getTicketTemplate
+      parameters:
+        - $ref: '#/components/parameters/TemplateId'
+      responses:
+        '200': { description: Template }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [Tickets]
+      summary: Update a ticket template (optimistic concurrency via base_updated_at)
+      operationId: updateTicketTemplate
+      parameters:
+        - $ref: '#/components/parameters/TemplateId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TicketTemplateWriteRequest' }
+      responses:
+        '200': { description: Updated }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+    delete:
+      tags: [Tickets]
+      summary: Delete a ticket template
+      operationId: deleteTicketTemplate
+      parameters:
+        - $ref: '#/components/parameters/TemplateId'
+      responses:
+        '200': { description: Deleted }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/v1/ticket-templates/{template}/preview:
+    get:
+      tags: [Tickets]
+      summary: Server-side ticket preview on sample data (same renderer as a real ticket)
+      operationId: previewTicketTemplate
+      parameters:
+        - $ref: '#/components/parameters/TemplateId'
+        - name: format
+          in: query
+          schema: { type: string, enum: [html, png, pdf], default: html }
+      responses:
+        '200':
+          description: HTML, PNG or PDF marked ОБРАЗЕЦ; QR payload is intentionally invalid for check-in
+          content:
+            text/html:
+              schema: { type: string }
+            image/png:
+              schema: { type: string, format: binary }
+            application/pdf:
+              schema: { type: string, format: binary }
   /api/v1/auth/register:
     post:
       tags: [Auth]
@@ -150,42 +224,6 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '422': { $ref: '#/components/responses/ValidationError' }
 
-  /auth/{provider}/start:
-    get:
-      tags: [Auth]
-      summary: Start OAuth (Yandex, VK)
-      description: >-
-        Web-маршрут вне `/api` (редирект на провайдера). Параметр `provider`
-        принимает `yandex` или `vk` — SOCIAL_PROVIDERS конфига. Спека раньше
-        объявляла четыре отдельных пути (`/auth/yandex/start` и т.д.); роут
-        приложения один и параметризованный, поэтому спека приведена к нему.
-      operationId: providerStart
-      parameters:
-        - in: path
-          name: provider
-          required: true
-          schema: { type: string, enum: [yandex, vk] }
-      responses:
-        '302': { description: Redirect to the provider }
-
-  /auth/{provider}/callback:
-    get:
-      tags: [Auth]
-      summary: OAuth callback (Yandex, VK)
-      description: >-
-        Web-маршрут вне `/api`: принимает code/state провайдера, привязывает
-        или создаёт пользователя (соц-вход, ТЗ §17) и редиректит в приложение.
-      operationId: providerCallback
-      parameters:
-        - in: path
-          name: provider
-          required: true
-          schema: { type: string, enum: [yandex, vk] }
-        - $ref: '#/components/parameters/OAuthCode'
-        - $ref: '#/components/parameters/OAuthState'
-      responses:
-        '302': { description: Redirect to application }
-
   /api/v1/events:
     get:
       tags: [Catalog]
@@ -257,7 +295,6 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/EventResponse' }
         '422': { $ref: '#/components/responses/ValidationError' }
-
   /api/v1/events/by-slug/{slug}:
     get:
       tags: [Catalog]
@@ -330,7 +367,6 @@ paths:
       responses:
         '204': { description: Archived/deleted }
         '409': { $ref: '#/components/responses/Conflict' }
-
   /api/v1/sessions/{session}:
     get:
       tags: [Sessions]
@@ -367,30 +403,6 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/SessionResponse' }
-
-  /api/v1/sessions:
-    post:
-      tags: [Admin Events]
-      summary: Create session
-      description: >-
-        Создание сеанса на ресурсном пути (бывший `POST /api/v1/admin/sessions`).
-        Список сеансов отдаёт `GET /api/v1/sessions` — объявление списка
-        возвращается в спеку отдельным шагом вместе со страницей сеансов.
-      operationId: adminCreateSession
-      security: [{ bearerAuth: [] }]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/SessionWriteRequest' }
-      responses:
-        '201':
-          description: Created
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/SessionResponse' }
-        '422': { $ref: '#/components/responses/ValidationError' }
-
   /api/v1/carts:
     post:
       tags: [Cart]
@@ -476,43 +488,6 @@ paths:
         '204': { description: Released }
         '404': { $ref: '#/components/responses/NotFound' }
 
-  /api/v1/cart/extend:
-    post:
-      tags: [Cart]
-      summary: Extend the active guest-cart hold
-      description: >-
-        Extends an unexpired, non-empty cart and its active seat holds by the
-        configured checkout hold duration. A cart that has expired cannot be
-        revived, because its inventory may already have been released.
-      operationId: extendGuestCartHold
-      parameters:
-        - $ref: '#/components/parameters/CartToken'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [session_id]
-              properties:
-                session_id: { type: integer, minimum: 1 }
-      responses:
-        '200':
-          description: Hold extended
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [data]
-                properties:
-                  data:
-                    type: object
-                    required: [expires_at]
-                    properties:
-                      expires_at: { type: string, format: date-time }
-        '409': { $ref: '#/components/responses/Conflict' }
-        '422': { $ref: '#/components/responses/ValidationError' }
-
   /api/v1/orders:
     post:
       tags: [Orders]
@@ -568,7 +543,6 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/OrderListResponse' }
-
   /api/v1/orders/{order}:
     get:
       tags: [Orders]
@@ -585,50 +559,6 @@ paths:
               schema: { $ref: '#/components/schemas/OrderResponse' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
-
-  /api/v1/payments:
-    post:
-      tags: [Payments]
-      summary: Create payment for order
-      description: >-
-        Фактический способ создать платёж по заказу (PaymentController::store,
-        `order_id` в теле). Спека раньше объявляла `POST /api/v1/orders/{order}/payment`
-        — такого пути в приложении нет; для встроенного модуля (embed) платёж
-        создаётся на `/api/v1/embed/orders/{order}/payment`.
-      operationId: createOrderPayment
-      security:
-        - bearerAuth: []
-        - checkoutAuth: []
-      parameters:
-        - $ref: '#/components/parameters/IdempotencyKey'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [order_id]
-              properties:
-                order_id: { type: string, description: Public ULID заказа }
-                provider:
-                  type: string
-                  default: yookassa
-      responses:
-        '200':
-          description: Existing payment returned — the Idempotency-Key was already used for this order
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/PaymentResponse' }
-        '201':
-          description: Payment created
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/PaymentResponse' }
-        '409':
-          description: Order not payable
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/ErrorResponse' }
 
   /api/v1/payments/{payment}:
     get:
@@ -673,111 +603,6 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/TicketListResponse' }
-
-  /api/v1/my-tickets:
-    get:
-      tags: [Tickets]
-      summary: List tickets belonging to the current guest browser
-      description: >-
-        Guest storefront endpoint. The high-entropy X-Cart-Token capability
-        scopes the response to orders created from carts belonging to that
-        browser. Without a valid token, returns an empty list. No bearer token
-        is required; do not expose tickets from other cart tokens.
-      operationId: listGuestTickets
-      parameters:
-        - $ref: '#/components/parameters/CartTokenOptional'
-      responses:
-        '200':
-          description: Guest tickets
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [data]
-                properties:
-                  data:
-                    type: array
-                    items:
-                      type: object
-                      required: [id, code, eventTitle, venue, sessionAt, sector, row, seat, priceMinor, status, qrPayload]
-                      properties:
-                        id: { type: string, description: Ticket public_id }
-                        code: { type: string }
-                        eventTitle: { type: string }
-                        venue: { type: string }
-                        sessionAt: { type: string, format: date-time, nullable: true }
-                        sector: { type: string }
-                        row: { type: integer }
-                        seat: { type: integer }
-                        priceMinor: { type: integer, minimum: 0 }
-                        status: { type: string, enum: [issued, used, cancelled, refunded, expired, revoked] }
-                        qrPayload: { type: string, nullable: true, description: Signed payload; only active issued tickets should be presented for entry }
-
-  /api/v1/my-tickets/resend:
-    post:
-      tags: [Tickets]
-      summary: Re-send the ticket e-mail, optionally to a corrected address
-      description: >-
-        Guest storefront self-service. The ticket e-mail goes to
-        `orders.customer_email`, so a single mistyped letter means the buyer
-        never receives the ticket and has no way to notice. This endpoint queues
-        the message again and, when `email` is supplied, replaces the stored
-        address first — the buyer can correct a typo without contacting support.
-        Access is the same capability as `GET /api/v1/my-tickets`: the
-        high-entropy X-Cart-Token of the order's cart, or a bearer token that
-        owns the order. A foreign or unknown order answers 404, never 403: 403
-        would confirm that the order exists, and would turn the endpoint into an
-        e-mail relay aimed at someone else's address.
-      operationId: resendTicketEmail
-      parameters:
-        - $ref: '#/components/parameters/CartTokenOptional'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [order]
-              properties:
-                order:
-                  type: string
-                  description: >-
-                    `orders.public_id`, as returned by `GET /api/v1/my-tickets`
-                    in `orderId`. The internal BIGINT never leaves the API
-                    (DATABASE.md 9); the buyer passes this public id back.
-                email:
-                  type: string
-                  format: email
-                  nullable: true
-                  description: >-
-                    Corrected address. The stored `customer_email` is kept when
-                    this is omitted — that is the plain "send it again" case.
-      responses:
-        '200':
-          description: Message queued
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [data]
-                properties:
-                  data:
-                    type: object
-                    required: [sent, email]
-                    properties:
-                      sent: { type: boolean }
-                      email: { type: string, format: email, description: Address the message was queued to }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '409':
-          description: >-
-            The order is not paid, so no ticket has been issued yet
-            (`error.code` = ORDER_NOT_PAID). The address is NOT changed.
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/ErrorResponse' }
-        '422': { $ref: '#/components/responses/ValidationError' }
-        '429': { $ref: '#/components/responses/RateLimited' }
-
   /api/v1/tickets/{ticket}:
     get:
       tags: [Tickets]
@@ -1379,6 +1204,27 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /api/v1/admin/raffles/{raffle}/pause:
+    post:
+      tags: [Admin Raffles]
+      summary: Pause an active raffle
+      description: >-
+        Перевод `active → draft`. После паузы можно изменить окно и активировать
+        розыгрыш снова: backfill повторится без дублей.
+      operationId: adminPauseRaffle
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/RaffleIdPath'
+      responses:
+        '200':
+          description: Paused raffle
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RaffleResponse' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
   /api/v1/admin/raffles/{raffle}/cancel:
     post:
       tags: [Admin Raffles]
@@ -1438,156 +1284,6 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
 
-  /api/v1/venues:
-    get:
-      tags: [Admin Venues]
-      summary: List venues
-      description: >-
-        Ресурсный путь (бывший `GET /api/v1/admin/venues`); публичный запрос
-        видит подмножество, staff-токен — полный список (VenueController::index).
-      operationId: adminListVenues
-      security: []
-      parameters:
-        - $ref: '#/components/parameters/Page'
-        - $ref: '#/components/parameters/PerPage'
-      responses:
-        '200':
-          description: Venues
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/VenueListResponse' }
-    post:
-      tags: [Admin Venues]
-      summary: Create venue
-      operationId: adminCreateVenue
-      security: [{ bearerAuth: [] }]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/VenueWriteRequest' }
-      responses:
-        '201':
-          description: Venue created
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/VenueResponse' }
-
-  /api/v1/venues/{venue}/halls:
-    get:
-      tags: [Admin Venues]
-      summary: List halls of venue
-      description: >-
-        Список залов площадки (Halls-модуль); раньше спека объявляла здесь же
-        создание зала POST'ом, но приложение создаёт залы на `/api/v1/halls` —
-        операция перенесена туда.
-      operationId: listVenueHalls
-      security: [{ bearerAuth: [] }]
-      parameters:
-        - $ref: '#/components/parameters/VenueIdPath'
-      responses:
-        '200':
-          description: Halls of the venue
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data:
-                    type: array
-                    items: { $ref: '#/components/schemas/HallResponse' }
-
-  /api/v1/halls:
-    post:
-      tags: [Admin Venues]
-      summary: Create hall
-      description: Создание зала (бывший `POST /api/v1/admin/venues/{venue}/halls`).
-      operationId: adminCreateHall
-      security: [{ bearerAuth: [] }]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/HallWriteRequest' }
-      responses:
-        '201':
-          description: Hall created
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/HallResponse' }
-
-  /api/v1/halls/{hall}/schema-versions:
-    get:
-      tags: [Admin Venues]
-      summary: List schema versions
-      description: >-
-        Версии схемы зала на ресурсном пути (бывший
-        `GET /api/v1/admin/halls/{hall}/schema-versions`).
-      operationId: adminListSchemaVersions
-      security: [{ bearerAuth: [] }]
-      parameters:
-        - $ref: '#/components/parameters/HallIdPath'
-      responses:
-        '200':
-          description: Versions
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data:
-                    type: array
-                    items: { $ref: '#/components/schemas/HallSchemaVersion' }
-
-  /api/v1/halls/{hall}/schema-versions/draft:
-    post:
-      tags: [Admin Venues]
-      summary: Create schema draft
-      description: >-
-        Приложение создаёт только черновики и только на выделенном пути
-        `/schema-versions/draft` (триггеры жизненного цикла запрещают создание
-        строки сразу в published); бывший `POST /api/v1/admin/halls/{hall}/schema-versions`
-        приведён к фактическому пути.
-      operationId: adminCreateSchemaVersion
-      security: [{ bearerAuth: [] }]
-      parameters:
-        - $ref: '#/components/parameters/HallIdPath'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/HallSchemaWriteRequest' }
-      responses:
-        '201':
-          description: Schema draft
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/HallSchemaResponse' }
-
-  /api/v1/halls/{hall}/schema-versions/{version}/publish:
-    post:
-      tags: [Admin Venues]
-      summary: Publish immutable schema version
-      description: >-
-        Публикация версии по вложенному пути (бывший
-        `POST /api/v1/admin/schema-versions/{schema}/publish`); экспорт/импорт
-        версий в приложении не построены и из спеки сняты.
-      operationId: adminPublishSchema
-      security: [{ bearerAuth: [] }]
-      parameters:
-        - $ref: '#/components/parameters/HallIdPath'
-        - in: path
-          name: version
-          required: true
-          schema: { type: integer }
-      responses:
-        '200':
-          description: Published
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/HallSchemaResponse' }
-        '409': { $ref: '#/components/responses/Conflict' }
-
   /api/v1/admin/orders/{order}/refund:
     post:
       tags: [Admin Orders]
@@ -1634,29 +1330,24 @@ paths:
               schema:
                 $ref: '#/components/schemas/TicketScanListResponse'
 
-  /api/v1/payments/webhooks/{provider}:
-    post:
-      tags: [Webhooks]
-      summary: Receive payment provider webhook
-      description: >-
-        Фактический путь приёмного вебхука платежей (PaymentController::webhook);
-        канонический провайдер сегодня — `yookassa`. Бывший
-        `POST /api/v1/webhooks/yookassa` приведён к параметризованному пути;
-        остальные провайдеры включаются тем же контроллером.
-      operationId: yookassaWebhook
-      parameters:
-        - in: path
-          name: provider
-          required: true
-          schema: { type: string, enum: [yookassa] }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { type: object, additionalProperties: true }
+  /api/v1/analytics/metrika/config:
+    get:
+      tags: [Analytics]
+      summary: Public Yandex Metrika counter configuration for the SPA
+      description: |
+        Returns the non-secret part of the Yandex Metrika settings used for
+        Yandex Direct conversion attribution. The SPA loads the counter tag
+        lazily and sends `ym(id, 'reachGoal', goal)` for funnel events listed
+        in `goals`. Server-side source: `config/metrika.php` (env) merged with
+        DB overrides from table `metrika_settings` (module Analytics,
+        service `MetrikaSettings`). No secrets are exposed here.
+      operationId: metrikaConfig
       responses:
-        '200': { description: Accepted }
-        '400': { $ref: '#/components/responses/BadRequest' }
+        '200':
+          description: Counter configuration
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MetrikaConfigResponse' }
 
   /api/v1/embed/events/{event}:
     get:
@@ -1744,31 +1435,6 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/HealthResponse' }
 
-
-  /api/v1/halls/{hall}:
-    put:
-      tags: [Admin Venues]
-      summary: Update hall
-      description: >-
-        Ресурсный путь (бывший `PATCH /api/v1/admin/halls/{hall}`); маршрут
-        приложения отвечает на PUT. Чтение и удаление зала — те же
-        `GET/DELETE /api/v1/halls/{hall}`.
-      operationId: adminUpdateHall
-      security: [{ bearerAuth: [] }]
-      parameters:
-        - $ref: '#/components/parameters/HallIdPath'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/HallWriteRequest' }
-      responses:
-        '200':
-          description: Updated
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/HallResponse' }
-        '403': { $ref: '#/components/responses/Forbidden' }
 
   /api/v1/admin/checkin/devices:
     get:
@@ -1974,79 +1640,6 @@ paths:
       responses:
         '200':
           description: Domain removed
-
-  /api/v1/webhook-subscriptions:
-    get:
-      tags: [System]
-      summary: List outbound webhooks
-      description: >-
-        Ресурсный путь модуля Webhooks (бывший `GET/POST /api/v1/admin/webhooks`).
-      operationId: adminListWebhooks
-      security: [{ bearerAuth: [] }]
-      responses:
-        '200':
-          description: Webhooks
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data:
-                    type: array
-                    items: { $ref: '#/components/schemas/Webhook' }
-    post:
-      tags: [System]
-      summary: Create outbound webhook
-      operationId: adminCreateWebhook
-      security: [{ bearerAuth: [] }]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/WebhookWriteRequest' }
-      responses:
-        '201':
-          description: Created
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/WebhookResponse' }
-
-  /api/v1/webhook-subscriptions/{webhook}:
-    put:
-      tags: [System]
-      summary: Update outbound webhook
-      description: >-
-        Маршрут приложения отвечает на PUT (бывший `PATCH /api/v1/admin/webhooks/{webhook}`).
-      operationId: adminUpdateWebhook
-      security: [{ bearerAuth: [] }]
-      parameters:
-        - in: path
-          name: webhook
-          required: true
-          schema: { type: string }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/WebhookWriteRequest' }
-      responses:
-        '200':
-          description: Updated
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/WebhookResponse' }
-    delete:
-      tags: [System]
-      summary: Delete outbound webhook
-      operationId: adminDeleteWebhook
-      security: [{ bearerAuth: [] }]
-      parameters:
-        - in: path
-          name: webhook
-          required: true
-          schema: { type: string }
-      responses:
-        '204': { description: Deleted }
 
   /api/v1/embed/carts:
     post:
@@ -2365,6 +1958,105 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '422': { $ref: '#/components/responses/ValidationError' }
 
+  /api/v1/storefront:
+    get:
+      tags: [Storefront]
+      summary: Public storefront configuration (sections, theme, branding, header, footer)
+      operationId: showStorefrontConfig
+      responses:
+        '200':
+          description: Storefront config and the organization it belongs to
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data: { type: object }
+                  meta:
+                    type: object
+                    properties:
+                      organization_id: { type: string, nullable: true }
+
+  /api/v1/admin/storefront/schema:
+    get:
+      tags: [Storefront]
+      summary: Widget registry, palettes and default config for the page builder
+      operationId: storefrontSchema
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Builder reference data }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/v1/admin/storefront:
+    get:
+      tags: [Storefront]
+      summary: Storefront config for editing
+      operationId: editStorefront
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Config with is_default flag
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data: { type: object }
+                  meta:
+                    type: object
+                    properties:
+                      organization_id: { type: string, nullable: true }
+                      is_default: { type: boolean }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    put:
+      tags: [Storefront]
+      summary: Save storefront config
+      description: >-
+        The config is normalized server-side; values that cannot be accepted are
+        replaced or dropped. See meta.warnings for a human-readable list.
+      operationId: updateStorefront
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [config]
+              properties:
+                config: { type: object }
+      responses:
+        '200':
+          description: Saved config and normalization warnings
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: object }
+                  meta:
+                    type: object
+                    properties:
+                      warnings:
+                        type: array
+                        items: { type: string }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '500': { description: Storefront save failed }
+
+  /api/v1/admin/storefront/reset:
+    post:
+      tags: [Storefront]
+      summary: Reset the storefront to defaults
+      operationId: resetStorefront
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Default config }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
   /api/v1/pages/{page}/translations:
     get:
       tags: [Translations]
@@ -2522,146 +2214,536 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
 
-  /api/v1/analytics/metrika/config:
+  /api/v1/my-tickets:
     get:
-      tags: [Analytics]
-      summary: Public Yandex Metrika counter configuration for the SPA
-      description: |
-        Returns the non-secret part of the Yandex Metrika settings used for
-        Yandex Direct conversion attribution. The SPA loads the counter tag
-        lazily and sends `ym(id, 'reachGoal', goal)` for funnel events listed
-        in `goals`. Server-side source: `config/metrika.php` (env) merged with
-        DB overrides from table `metrika_settings` (module Analytics,
-        service `MetrikaSettings`). No secrets are exposed here.
-      operationId: metrikaConfig
-      responses:
-        '200':
-          description: Counter configuration
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/MetrikaConfigResponse' }
-
-  /api/v1/admin/raffles/{raffle}/pause:
-    post:
-      tags: [Admin Raffles]
-      summary: Pause an active raffle
+      tags: [Tickets]
+      summary: List tickets belonging to the current guest browser
       description: >-
-        Перевод `active → draft`. После паузы можно изменить окно и активировать
-        розыгрыш снова: backfill повторится без дублей.
-      operationId: adminPauseRaffle
-      security: [{ bearerAuth: [] }]
+        Guest storefront endpoint. The high-entropy X-Cart-Token capability
+        scopes the response to orders created from carts belonging to that
+        browser. Without a valid token, returns an empty list. No bearer token
+        is required; do not expose tickets from other cart tokens.
+      operationId: listGuestTickets
       parameters:
-        - $ref: '#/components/parameters/RaffleIdPath'
+        - $ref: '#/components/parameters/CartTokenOptional'
       responses:
         '200':
-          description: Paused raffle
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/RaffleResponse' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '422': { $ref: '#/components/responses/ValidationError' }
-
-
-  /api/v1/storefront:
-    get:
-      tags: [Storefront]
-      summary: Public storefront configuration (sections, theme, branding, header, footer)
-      operationId: showStorefrontConfig
-      responses:
-        '200':
-          description: Storefront config and the organization it belongs to
+          description: Guest tickets
           content:
             application/json:
               schema:
                 type: object
-                required: [data, meta]
+                required: [data]
                 properties:
-                  data: { type: object }
-                  meta:
-                    type: object
-                    properties:
-                      organization_id: { type: string, nullable: true }
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, code, eventTitle, venue, sessionAt, sector, row, seat, priceMinor, status, qrPayload]
+                      properties:
+                        id: { type: string, description: Ticket public_id }
+                        code: { type: string }
+                        eventTitle: { type: string }
+                        venue: { type: string }
+                        sessionAt: { type: string, format: date-time, nullable: true }
+                        sector: { type: string }
+                        row: { type: integer }
+                        seat: { type: integer }
+                        priceMinor: { type: integer, minimum: 0 }
+                        status: { type: string, enum: [issued, used, cancelled, refunded, expired, revoked] }
+                        qrPayload: { type: string, nullable: true, description: Signed payload; only active issued tickets should be presented for entry; also exposed as `orderId` on each item (order public_id) }
 
-  /api/v1/admin/storefront/schema:
-    get:
-      tags: [Storefront]
-      summary: Widget registry, palettes and default config for the page builder
-      operationId: storefrontSchema
-      security: [{ bearerAuth: [] }]
-      responses:
-        '200': { description: Builder reference data }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-
-  /api/v1/admin/storefront:
-    get:
-      tags: [Storefront]
-      summary: Storefront config for editing
-      operationId: editStorefront
-      security: [{ bearerAuth: [] }]
-      responses:
-        '200':
-          description: Config with is_default flag
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [data, meta]
-                properties:
-                  data: { type: object }
-                  meta:
-                    type: object
-                    properties:
-                      organization_id: { type: string, nullable: true }
-                      is_default: { type: boolean }
-        '403': { $ref: '#/components/responses/Forbidden' }
-    put:
-      tags: [Storefront]
-      summary: Save storefront config
+  /api/v1/my-tickets/resend:
+    post:
+      tags: [Tickets]
+      summary: Re-send the ticket e-mail, optionally to a corrected address
       description: >-
-        The config is normalized server-side; values that cannot be accepted are
-        replaced or dropped. See meta.warnings for a human-readable list.
-      operationId: updateStorefront
-      security: [{ bearerAuth: [] }]
+        Guest storefront self-service. The ticket e-mail goes to
+        `orders.customer_email`, so a single mistyped letter means the buyer
+        never receives the ticket and has no way to notice. This endpoint queues
+        the message again and, when `email` is supplied, replaces the stored
+        address first — the buyer can correct a typo without contacting support.
+        Access is the same capability as `GET /api/v1/my-tickets`: the
+        high-entropy X-Cart-Token of the order's cart, or a bearer token that
+        owns the order. A foreign or unknown order answers 404, never 403: 403
+        would confirm that the order exists, and would turn the endpoint into an
+        e-mail relay aimed at someone else's address.
+      operationId: resendTicketEmail
+      parameters:
+        - $ref: '#/components/parameters/CartTokenOptional'
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [config]
+              required: [order]
               properties:
-                config: { type: object }
+                order:
+                  type: string
+                  description: >-
+                    `orders.public_id`, as returned by `GET /api/v1/my-tickets`
+                    in `orderId`. The internal BIGINT never leaves the API
+                    (DATABASE.md 9); the buyer passes this public id back.
+                email:
+                  type: string
+                  format: email
+                  nullable: true
+                  description: >-
+                    Corrected address. The stored `customer_email` is kept when
+                    this is omitted — that is the plain "send it again" case.
       responses:
         '200':
-          description: Saved config and normalization warnings
+          description: Message queued
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [sent, email]
+                    properties:
+                      sent: { type: boolean }
+                      email: { type: string, format: email, description: Address the message was queued to }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: >-
+            The order is not paid, so no ticket has been issued yet
+            (`error.code` = ORDER_NOT_PAID). The address is NOT changed.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /api/v1/cart/extend:
+    post:
+      tags: [Cart]
+      summary: Extend the active guest-cart hold
+      description: >-
+        Extends an unexpired, non-empty cart and its active seat holds by the
+        configured checkout hold duration. A cart that has expired cannot be
+        revived, because its inventory may already have been released.
+      operationId: extendGuestCartHold
+      parameters:
+        - $ref: '#/components/parameters/CartToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [session_id]
+              properties:
+                session_id: { type: integer, minimum: 1 }
+      responses:
+        '200':
+          description: Hold extended
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [expires_at]
+                    properties:
+                      expires_at: { type: string, format: date-time }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  # -------------------------------- аменд путей (2026-11-03): путь приведён к фактическому маршруту приложения
+  /auth/{provider}/start:
+    get:
+      tags: [Auth]
+      summary: Start OAuth (Yandex, VK)
+      description: >-
+        Web-маршрут вне `/api` (редирект на провайдера). Параметр `provider`
+        принимает `yandex` или `vk` — SOCIAL_PROVIDERS конфига. Спека раньше
+        объявляла четыре отдельных пути (`/auth/yandex/start` и т.д.); роут
+        приложения один и параметризованный, поэтому спека приведена к нему.
+      operationId: providerStart
+      parameters:
+        - in: path
+          name: provider
+          required: true
+          schema: { type: string, enum: [yandex, vk] }
+      responses:
+        '302': { description: Redirect to the provider }
+
+  # -------------------------------- аменд путей (2026-11-03): путь приведён к фактическому маршруту приложения
+  /auth/{provider}/callback:
+    get:
+      tags: [Auth]
+      summary: OAuth callback (Yandex, VK)
+      description: >-
+        Web-маршрут вне `/api`: принимает code/state провайдера, привязывает
+        или создаёт пользователя (соц-вход, ТЗ §17) и редиректит в приложение.
+      operationId: providerCallback
+      parameters:
+        - in: path
+          name: provider
+          required: true
+          schema: { type: string, enum: [yandex, vk] }
+        - $ref: '#/components/parameters/OAuthCode'
+        - $ref: '#/components/parameters/OAuthState'
+      responses:
+        '302': { description: Redirect to application }
+
+  # -------------------------------- аменд путей (2026-11-03): путь приведён к фактическому маршруту приложения
+  /api/v1/sessions:
+    post:
+      tags: [Admin Events]
+      summary: Create session
+      description: >-
+        Создание сеанса на ресурсном пути (бывший `POST /api/v1/admin/sessions`).
+        Список сеансов отдаёт `GET /api/v1/sessions` — объявление списка
+        возвращается в спеку отдельным шагом вместе со страницей сеансов.
+      operationId: adminCreateSession
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SessionWriteRequest' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SessionResponse' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  # -------------------------------- аменд путей (2026-11-03): путь приведён к фактическому маршруту приложения
+  /api/v1/venues:
+    get:
+      tags: [Admin Venues]
+      summary: List venues
+      description: >-
+        Ресурсный путь (бывший `GET /api/v1/admin/venues`); публичный запрос
+        видит подмножество, staff-токен — полный список (VenueController::index).
+      operationId: adminListVenues
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          description: Venues
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VenueListResponse' }
+    post:
+      tags: [Admin Venues]
+      summary: Create venue
+      operationId: adminCreateVenue
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/VenueWriteRequest' }
+      responses:
+        '201':
+          description: Venue created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VenueResponse' }
+
+  # -------------------------------- аменд путей (2026-11-03): путь приведён к фактическому маршруту приложения
+  /api/v1/venues/{venue}/halls:
+    get:
+      tags: [Admin Venues]
+      summary: List halls of venue
+      description: >-
+        Список залов площадки (Halls-модуль); раньше спека объявляла здесь же
+        создание зала POST'ом, но приложение создаёт залы на `/api/v1/halls` —
+        операция перенесена туда.
+      operationId: listVenueHalls
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/VenueIdPath'
+      responses:
+        '200':
+          description: Halls of the venue
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  data: { type: object }
-                  meta:
-                    type: object
-                    properties:
-                      warnings:
-                        type: array
-                        items: { type: string }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '422': { $ref: '#/components/responses/ValidationError' }
-        '500': { description: Storefront save failed }
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/HallResponse' }
 
-  /api/v1/admin/storefront/reset:
+  # -------------------------------- аменд путей (2026-11-03): путь приведён к фактическому маршруту приложения
+  /api/v1/halls:
     post:
-      tags: [Storefront]
-      summary: Reset the storefront to defaults
-      operationId: resetStorefront
+      tags: [Admin Venues]
+      summary: Create hall
+      description: Создание зала (бывший `POST /api/v1/admin/venues/{venue}/halls`).
+      operationId: adminCreateHall
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/HallWriteRequest' }
+      responses:
+        '201':
+          description: Hall created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HallResponse' }
+
+  # -------------------------------- аменд путей (2026-11-03): путь приведён к фактическому маршруту приложения
+  /api/v1/halls/{hall}:
+    put:
+      tags: [Admin Venues]
+      summary: Update hall
+      description: >-
+        Ресурсный путь (бывший `PATCH /api/v1/admin/halls/{hall}`); маршрут
+        приложения отвечает на PUT. Чтение и удаление зала — те же
+        `GET/DELETE /api/v1/halls/{hall}`.
+      operationId: adminUpdateHall
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/HallIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/HallWriteRequest' }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HallResponse' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  # -------------------------------- аменд путей (2026-11-03): путь приведён к фактическому маршруту приложения
+  /api/v1/halls/{hall}/schema-versions:
+    get:
+      tags: [Admin Venues]
+      summary: List schema versions
+      description: >-
+        Версии схемы зала на ресурсном пути (бывший
+        `GET /api/v1/admin/halls/{hall}/schema-versions`).
+      operationId: adminListSchemaVersions
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/HallIdPath'
+      responses:
+        '200':
+          description: Versions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/HallSchemaVersion' }
+
+  # -------------------------------- аменд путей (2026-11-03): путь приведён к фактическому маршруту приложения
+  /api/v1/halls/{hall}/schema-versions/draft:
+    post:
+      tags: [Admin Venues]
+      summary: Create schema draft
+      description: >-
+        Приложение создаёт только черновики и только на выделенном пути
+        `/schema-versions/draft` (триггеры жизненного цикла запрещают создание
+        строки сразу в published); бывший `POST /api/v1/admin/halls/{hall}/schema-versions`
+        приведён к фактическому пути.
+      operationId: adminCreateSchemaVersion
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/HallIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/HallSchemaWriteRequest' }
+      responses:
+        '201':
+          description: Schema draft
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HallSchemaResponse' }
+
+  # -------------------------------- аменд путей (2026-11-03): путь приведён к фактическому маршруту приложения
+  /api/v1/halls/{hall}/schema-versions/{version}/publish:
+    post:
+      tags: [Admin Venues]
+      summary: Publish immutable schema version
+      description: >-
+        Публикация версии по вложенному пути (бывший
+        `POST /api/v1/admin/schema-versions/{schema}/publish`); экспорт/импорт
+        версий в приложении не построены и из спеки сняты.
+      operationId: adminPublishSchema
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/HallIdPath'
+        - in: path
+          name: version
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Published
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HallSchemaResponse' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  # -------------------------------- аменд путей (2026-11-03): путь приведён к фактическому маршруту приложения
+  /api/v1/payments:
+    post:
+      tags: [Payments]
+      summary: Create payment for order
+      description: >-
+        Фактический способ создать платёж по заказу (PaymentController::store,
+        `order_id` в теле). Спека раньше объявляла `POST /api/v1/orders/{order}/payment`
+        — такого пути в приложении нет; для встроенного модуля (embed) платёж
+        создаётся на `/api/v1/embed/orders/{order}/payment`.
+      operationId: createOrderPayment
+      security:
+        - bearerAuth: []
+        - checkoutAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [order_id]
+              properties:
+                order_id: { type: string, description: Public ULID заказа }
+                provider:
+                  type: string
+                  default: yookassa
+      responses:
+        '200':
+          description: Existing payment returned — the Idempotency-Key was already used for this order
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaymentResponse' }
+        '201':
+          description: Payment created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaymentResponse' }
+        '409':
+          description: Order not payable
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  # -------------------------------- аменд путей (2026-11-03): путь приведён к фактическому маршруту приложения
+  /api/v1/payments/webhooks/{provider}:
+    post:
+      tags: [Webhooks]
+      summary: Receive payment provider webhook
+      description: >-
+        Канонический путь приёмного вебхука платежей (WebhookController::payment);
+        канонический провайдер сегодня — `yookassa`. Исторический алиас
+        `POST /api/v1/webhooks/payment/{provider}` ведёт в тот же обработчик,
+        поэтому настроенные кабинеты провайдеров продолжают работать. Остальные
+        провайдеры включаются тем же контроллером.
+      operationId: yookassaWebhook
+      parameters:
+        - in: path
+          name: provider
+          required: true
+          schema: { type: string, enum: [yookassa] }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: true }
+      responses:
+        '200': { description: Accepted }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  # -------------------------------- аменд путей (2026-11-03): путь приведён к фактическому маршруту приложения
+  /api/v1/webhook-subscriptions:
+    get:
+      tags: [System]
+      summary: List outbound webhooks
+      description: >-
+        Ресурсный путь модуля Webhooks (бывший `GET/POST /api/v1/admin/webhooks`).
+      operationId: adminListWebhooks
       security: [{ bearerAuth: [] }]
       responses:
-        '200': { description: Default config }
-        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: Webhooks
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Webhook' }
+    post:
+      tags: [System]
+      summary: Create outbound webhook
+      operationId: adminCreateWebhook
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/WebhookWriteRequest' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WebhookResponse' }
 
+  # -------------------------------- аменд путей (2026-11-03): путь приведён к фактическому маршруту приложения
+  /api/v1/webhook-subscriptions/{webhook}:
+    put:
+      tags: [System]
+      summary: Update outbound webhook
+      description: >-
+        Маршрут приложения отвечает на PUT (бывший `PATCH /api/v1/admin/webhooks/{webhook}`).
+      operationId: adminUpdateWebhook
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: webhook
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/WebhookWriteRequest' }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WebhookResponse' }
+    delete:
+      tags: [System]
+      summary: Delete outbound webhook
+      operationId: adminDeleteWebhook
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: webhook
+          required: true
+          schema: { type: string }
+      responses:
+        '204': { description: Deleted }
 
   /api/v1/admin/kiosks:
     get:
@@ -2975,6 +3057,12 @@ components:
       name: X-Checkout-Token
 
   parameters:
+    TemplateId:
+      in: path
+      name: template
+      required: true
+      schema: { type: integer, minimum: 1 }
+      description: Internal id of the ticket template (scoped to the current organization).
     EventIdPath:
       in: path
       name: event
@@ -3096,18 +3184,6 @@ components:
       name: X-Checkout-Token
       required: true
       schema: { type: string }
-    CartToken:
-      in: header
-      name: X-Cart-Token
-      required: true
-      description: High-entropy guest cart capability issued to this browser.
-      schema: { type: string, minLength: 32, maxLength: 64 }
-    CartTokenOptional:
-      in: header
-      name: X-Cart-Token
-      required: false
-      description: Guest cart capability. If omitted, the endpoint returns an empty ticket list.
-      schema: { type: string, minLength: 32, maxLength: 64 }
 
     PromoCodeIdPath:
       in: path
@@ -3145,6 +3221,19 @@ components:
       required: true
       schema: { type: string }
 
+    CartToken:
+      in: header
+      name: X-Cart-Token
+      required: true
+      description: High-entropy guest cart capability issued to this browser.
+      schema: { type: string, minLength: 32, maxLength: 64 }
+    CartTokenOptional:
+      in: header
+      name: X-Cart-Token
+      required: false
+      description: Guest cart capability. If omitted, the endpoint returns an empty ticket list.
+      schema: { type: string, minLength: 32, maxLength: 64 }
+
   responses:
     ValidationError:
       description: Validation error
@@ -3161,16 +3250,16 @@ components:
       content:
         application/json:
           schema: { $ref: '#/components/schemas/ErrorResponse' }
+    NotFound:
+      description: Not found
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
     Gone:
       description: >-
         Ресурс существовал и удалён навсегда. Отличается от 404 намеренно:
         поисковик снимает такой URL из индекса, не дожидаясь повторных обходов,
         а клиент может показать «снято с продажи» вместо «проверьте адрес».
-      content:
-        application/json:
-          schema: { $ref: '#/components/schemas/ErrorResponse' }
-    NotFound:
-      description: Not found
       content:
         application/json:
           schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -3194,34 +3283,6 @@ components:
           schema: { $ref: '#/components/schemas/ErrorResponse' }
 
   schemas:
-    MetrikaConfigResponse:
-      type: object
-      description: >
-        Non-secret Yandex Metrika settings for the SPA. Goals must exist in the
-        counter with exactly these names; purchase goal carries revenue/currency
-        for Yandex Direct auto-bidding strategies.
-      required: [enabled, counter_id, goals]
-      properties:
-        enabled: { type: boolean, description: 'false when counter_id is 0 — integration off' }
-        counter_id: { type: integer, description: 'Yandex Metrika counter ID' }
-        counter_auth: { type: string, nullable: true, description: 'Auth token (&ct=) for cross-domain placement' }
-        counter_type: { type: string, enum: [web, hit], default: web }
-        safe_mode: { type: boolean, description: 'Reduced-data mode (clickBeacon false, WebVisor off)' }
-        ecommerce: { type: boolean, description: 'Send product params with cart/purchase goals' }
-        currency: { type: string, example: RUB }
-        goals:
-          type: object
-          description: 'Funnel event name -> Metrika goal name (reachGoal). payment_success maps to purchase.'
-          additionalProperties: { type: string }
-          example:
-            event_view: event_view
-            seatmap_open: seatmap_open
-            seat_selected: seat_selected
-            checkout_started: checkout_started
-            payment_attempt: payment_attempt
-            payment_success: purchase
-            payment_fail: payment_fail
-
     ErrorResponse:
       type: object
       required: [error]
@@ -3340,8 +3401,20 @@ components:
         cover: { type: string, nullable: true }
         age_limit: { type: string, nullable: true }
         duration_minutes: { type: integer, nullable: true }
-        status: { type: string, enum: [draft, scheduled, published, completed, cancelled, archived] }
+        status:
+          type: string
+          enum: [draft, scheduled, published, completed, cancelled, archived]
         published_at: { type: string, format: date-time, nullable: true }
+        robots:
+          type: string
+          nullable: true
+          description: >-
+            Директивы `<meta name="robots">` для страницы мероприятия. Значение —
+            список директив через запятую; допустимы all, none, index, noindex,
+            follow, nofollow, noarchive, nosnippet, noimageindex, notranslate,
+            nocache. Взаимоисключающие директивы схлопываются в запрещающую.
+            Запрет по статусу (scheduled, cancelled) неотменяем: index в этом
+            поле его не снимает.
         seo:
           $ref: '#/components/schemas/SeoMeta'
 
@@ -3740,7 +3813,13 @@ components:
         organization_id: { type: string }
         category_id: { type: string, nullable: true }
         title: { type: string, maxLength: 500 }
-        slug: { type: string, maxLength: 255 }
+        slug:
+          type: string
+          maxLength: 255
+          description: >-
+            Публичный адрес мероприятия: `/event/{slug}/{publicId}`. Уникален
+            ГЛОБАЛЬНО, а не внутри организации, потому что URL организации не
+            содержит. Занятый slug отклоняется с 422 (поле slug).
         short_description: { type: string }
         description: { type: string }
         poster: { type: string }
@@ -3751,7 +3830,14 @@ components:
         seo_title: { type: string }
         seo_description: { type: string }
         canonical_url: { type: string, format: uri }
-        robots: { type: string }
+        robots:
+          type: string
+          maxLength: 255
+          description: >-
+            Директивы индексации через запятую. Допустимы all, none, index,
+            noindex, follow, nofollow, noarchive, nosnippet, noimageindex,
+            notranslate, nocache. Директивы с параметрами (max-snippet:160)
+            не поддерживаются. Неизвестная директива — 422 (поле robots).
 
     Venue:
       type: object
@@ -3891,7 +3977,9 @@ components:
         sales_start_at: { type: string, format: date-time, nullable: true }
         sales_end_at: { type: string, format: date-time, nullable: true }
         timezone: { type: string }
-        status: { type: string, enum: [draft, scheduled, on_sale, sold_out, closed, completed, cancelled] }
+        status:
+          type: string
+          enum: [draft, scheduled, on_sale, sold_out, closed, completed, cancelled]
 
     SessionResponse:
       type: object
@@ -3919,7 +4007,9 @@ components:
         sales_start_at: { type: string, format: date-time, nullable: true }
         sales_end_at: { type: string, format: date-time, nullable: true }
         timezone: { type: string }
-        status: { type: string, enum: [draft, scheduled, on_sale, sold_out, closed, completed, cancelled] }
+        status:
+          type: string
+          enum: [draft, scheduled, on_sale, sold_out, closed, completed, cancelled]
 
     InventoryItem:
       type: object
@@ -3934,7 +4024,9 @@ components:
         currency: { type: string, example: RUB }
         capacity: { type: integer }
         available_quantity: { type: integer }
-        status: { type: string, enum: [available, held, sold_out, sold, blocked, disabled] }
+        status:
+          type: string
+          enum: [available, held, sold_out, sold, blocked, disabled]
 
     SeatMapResponse:
       type: object
@@ -3951,6 +4043,9 @@ components:
       properties:
         id: { type: string }
         session_id: { type: string }
+        # Словарь закреплён `ck_carts_status` и владельцем `Cart\Domain\CartStatus`.
+        # Здесь было `{ type: string }` — «любая строка»; контракт отставал от схемы.
+        # `expired` из архивного `CartState` намеренно НЕТ: CHECK его не допускает.
         status: { type: string, enum: [active, converted, abandoned] }
         expires_at: { type: string, format: date-time, nullable: true }
         items:
@@ -4028,7 +4123,9 @@ components:
       properties:
         id: { type: string }
         order_number: { type: string }
-        status: { type: string, enum: [pending, awaiting_payment, payment_failed, paid, cancelled, expired, partially_refunded, refunded] }
+        status:
+          type: string
+          enum: [pending, awaiting_payment, payment_failed, paid, cancelled, expired, partially_refunded, refunded]
         payment_status: { type: string, enum: [pending, succeeded] }
         totals: { $ref: '#/components/schemas/MoneyTotals' }
         customer_email: { type: string, format: email }
@@ -4076,7 +4173,9 @@ components:
         provider_payment_id: { type: string, nullable: true }
         amount: { type: integer }
         currency: { type: string }
-        status: { type: string, enum: [pending, waiting_for_capture, succeeded, canceled, failed] }
+        status:
+          type: string
+          enum: [pending, waiting_for_capture, succeeded, canceled, failed]
         payment_url: { type: string, format: uri, nullable: true }
         created_at: { type: string, format: date-time }
         paid_at: { type: string, format: date-time, nullable: true }
@@ -4102,7 +4201,9 @@ components:
         amount: { type: integer }
         currency: { type: string }
         reason: { type: string, nullable: true }
-        status: { type: string, enum: [requested, processing, succeeded, failed] }
+        status:
+          type: string
+          enum: [requested, processing, succeeded, failed]
         provider_refund_id: { type: string, nullable: true }
 
     RefundResponse:
@@ -4234,6 +4335,34 @@ components:
         og_description: { type: string, nullable: true }
         og_image: { type: string, nullable: true }
         schema: { type: object, additionalProperties: true, nullable: true }
+
+    MetrikaConfigResponse:
+      type: object
+      description: >
+        Non-secret Yandex Metrika settings for the SPA. Goals must exist in the
+        counter with exactly these names; purchase goal carries revenue/currency
+        for Yandex Direct auto-bidding strategies.
+      required: [enabled, counter_id, goals]
+      properties:
+        enabled: { type: boolean, description: 'false when counter_id is 0 — integration off' }
+        counter_id: { type: integer, description: 'Yandex Metrika counter ID' }
+        counter_auth: { type: string, nullable: true, description: 'Auth token (&ct=) for cross-domain placement' }
+        counter_type: { type: string, enum: [web, hit], default: web }
+        safe_mode: { type: boolean, description: 'Reduced-data mode (clickBeacon false, WebVisor off)' }
+        ecommerce: { type: boolean, description: 'Send product params with cart/purchase goals' }
+        currency: { type: string, example: RUB }
+        goals:
+          type: object
+          description: 'Funnel event name -> Metrika goal name (reachGoal). payment_success maps to purchase.'
+          additionalProperties: { type: string }
+          example:
+            event_view: event_view
+            seatmap_open: seatmap_open
+            seat_selected: seat_selected
+            checkout_started: checkout_started
+            payment_attempt: payment_attempt
+            payment_success: purchase
+            payment_fail: payment_fail
 
     AsyncJobResponse:
       type: object
@@ -4447,7 +4576,8 @@ components:
       properties:
         code: { type: string }
         cart_id: { type: string, nullable: true }
-        order_amount: { type: integer, description: Integer minor units (kopecks) }
+        cart_token: { type: string, nullable: true, description: Guest cart token (X-Cart-Token); alternative to cart_id }
+        order_amount: { type: integer, description: Integer minor units (kopecks). Used when there is no cart yet; scope event/category cannot be checked against a bare amount and such codes are rejected with an explicit reason. }
 
     PromoCodeValidation:
       type: object
@@ -4908,3 +5038,73 @@ components:
       type: object
       properties:
         data: { $ref: '#/components/schemas/KioskUpdateDirective' }
+
+    TicketTemplateWriteRequest:
+      type: object
+      required: [name, width, height, template_json]
+      properties:
+        name: { type: string, maxLength: 255 }
+        format: { type: string, maxLength: 32 }
+        width: { type: integer, minimum: 50, maximum: 5000 }
+        height: { type: integer, minimum: 50, maximum: 5000 }
+        active: { type: boolean }
+        base_updated_at:
+          type: string
+          description: >-
+            Required on PUT/PATCH. ISO-8601 `updated_at` of the version the
+            administrator opened; a stale value returns 409 TICKET_TEMPLATE_CONFLICT.
+        template_json:
+          $ref: '#/components/schemas/TicketTemplateConfig'
+
+    TicketTemplateConfig:
+      type: object
+      description: >-
+        Versioned ticket canvas contract v1.0. Legacy templates are normalized
+        to this shape on read; canvas is the single source of size/geometry.
+      required: [version, canvas, background, elements]
+      properties:
+        version: { type: string, enum: ['1.0'] }
+        canvas:
+          type: object
+          required: [width, height, unit]
+          properties:
+            width: { type: integer, minimum: 50, maximum: 5000 }
+            height: { type: integer, minimum: 50, maximum: 5000 }
+            unit: { type: string, enum: [px] }
+        background:
+          type: object
+          properties:
+            color: { type: string }
+            gradient:
+              type: object
+              nullable: true
+              properties:
+                from: { type: string }
+                to: { type: string }
+                direction: { type: string }
+        elements:
+          type: array
+          maxItems: 300
+          items:
+            type: object
+            required: [id, type, x, y, rotation, opacity]
+            properties:
+              id: { type: string, description: Stable unique element id }
+              type: { type: string, enum: [text, rectangle, circle, line, qr, barcode, image] }
+              z: { type: integer, description: Layer order }
+              x: { type: number }
+              y: { type: number }
+              width: { type: number }
+              height: { type: number }
+              r: { type: number, description: Circle radius (single source of its size) }
+              x1: { type: number }
+              y1: { type: number }
+              x2: { type: number }
+              y2: { type: number }
+              rotation: { type: number }
+              opacity: { type: number, minimum: 0, maximum: 1 }
+              visible: { type: boolean }
+              when: { type: object, nullable: true, description: Conditional visibility rules }
+              content: { type: string, description: Text with {{variable}} placeholders }
+              media_id: { type: string, nullable: true, description: Trusted media asset id }
+              data: { type: string, description: Barcode value }

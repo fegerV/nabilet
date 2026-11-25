@@ -90,14 +90,21 @@ class TicketCardResource extends JsonResource
             return null;
         }
 
-        $elements = is_array($tj['elements'] ?? null) ? $tj['elements'] : [];
+        // Личный кабинет читает тот же нормализованный контракт, что и
+        // PDF/PNG: раньше размер брался из колонок модели, а печать — из JSON,
+        // и один и тот же билет выглядел по-разному.
+        $config = \Nabilet\Modules\Tickets\Domain\TicketTemplateConfig::normalize(
+            $tj,
+            isset($template->width) ? (int) $template->width : null,
+            isset($template->height) ? (int) $template->height : null,
+        );
 
         return [
-            'width' => (int) ($template->width ?? 400),
-            'height' => (int) ($template->height ?? 600),
-            'backgroundColor' => is_string($tj['backgroundColor'] ?? null) ? $tj['backgroundColor'] : '#ffffff',
-            'backgroundGradient' => is_array($tj['backgroundGradient'] ?? null) ? $tj['backgroundGradient'] : null,
-            'elements' => $elements,
+            'width' => (int) $config['canvas']['width'],
+            'height' => (int) $config['canvas']['height'],
+            'backgroundColor' => (string) $config['background']['color'],
+            'backgroundGradient' => $config['background']['gradient'],
+            'elements' => $config['elements'],
         ];
     }
 }

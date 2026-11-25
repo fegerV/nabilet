@@ -4,9 +4,12 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Tickets\Http\Controllers;
 
+use Nabilet\Core\Errors\ConflictError;
+use Nabilet\Core\Http\ContentType;
 use Nabilet\Core\Errors\NotFoundError;
 use Nabilet\Core\Errors\ValidationError;
 use Nabilet\Core\Tenancy\OrganizationContext;
+use Nabilet\Modules\Tickets\Domain\TicketTemplateConfig;
 use Nabilet\Modules\Tickets\Http\Resources\TicketTemplateResource;
 use Nabilet\Modules\Tickets\Models\TicketTemplate;
 use Illuminate\Http\JsonResponse;
@@ -45,6 +48,8 @@ class TicketTemplateController extends Controller
 
     public function __construct(
         private readonly OrganizationContext $context,
+        private readonly \Nabilet\Modules\Tickets\Services\TicketPdfRenderer $renderer,
+        private readonly \Nabilet\Modules\Tickets\Services\TicketGeneratorService $generator,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -109,14 +114,87 @@ class TicketTemplateController extends Controller
 
     public function update(Request $request, int $template): JsonResponse
     {
+        $validated = $request->validate([
+            'base_updated_at' => ['required', 'string', 'max:64'],
+        ]);
         $model = $this->find($template);
+
+        // Конкурентное редактирование: два администратора открыли один макет
+        // и по очереди сохранили его — последний выигрывал молча. Теперь
+        // устаревший редактор получает 409 и может экспортировать свои правки.
+        $actual = $model->updated_at?->toIso8601String() ?? '';
+        if ($actual !== (string) $validated['base_updated_at']) {
+            throw new ConflictError(
+                'Макет изменён другим редактором. Перезагрузите его перед сохранением.',
+                'TICKET_TEMPLATE_CONFLICT',
+                ['expected' => $validated['base_updated_at'], 'current' => $actual],
+            );
+        }
+
         $data = $this->validatePayload($request, partial: true);
+        unset($data['base_updated_at']);
 
         // `organization_id` не обновляем: шаблон принадлежит организации, и
         // перенос между ними — это не «правка макета».
         $model->update($data);
 
         return response()->json(['data' => new TicketTemplateResource($model->fresh() ?? $model)]);
+    }
+
+    /**
+     * Серверный предпросмотр на тестовых данных.
+     *
+     * Использует ТОТ ЖЕ рендерер, что и билет покупателя: HTML/PNG/PDF строятся
+     * из нормализованного TicketTemplateConfig. QR — по заведомо недействительному
+     * payload, на выходе билет помечен «ОБРАЗЕЦ».
+     */
+    public function preview(Request $request, int $template): \Symfony\Component\HttpFoundation\Response
+    {
+        $model = $this->find($template);
+        $format = (string) $request->get('format', 'html');
+        $config = TicketTemplateConfig::normalize(
+            is_array($model->template_json) ? $model->template_json : [],
+            (int) $model->width,
+            (int) $model->height,
+        );
+        // Маркировка образца — явный элемент поверх макета; в настоящий билет
+        // она никогда не попадает.
+        $config['elements'][] = [
+            'id' => 'sample-watermark',
+            'type' => 'text',
+            'z' => 100000,
+            'x' => 10,
+            'y' => 10,
+            'width' => (int) $config['canvas']['width'] - 20,
+            'height' => 30,
+            'content' => 'ОБРАЗЕЦ',
+            'color' => '#dc2626',
+            'fontSize' => 20,
+            'fontWeight' => 'bold',
+            'rotation' => 0,
+            'opacity' => 1,
+            'visible' => true,
+            'when' => null,
+        ];
+        $data = $this->generator->previewData();
+
+        return match ($format) {
+            'pdf' => response(
+                $this->renderer->renderFromConfig($config, $data) ?? '',
+                200,
+                ['Content-Type' => ContentType::PDF, 'Content-Disposition' => 'inline; filename="ticket-sample.pdf"'],
+            ),
+            'png' => response(
+                $this->renderer->renderPngFromConfig($config, $data, (int) $model->organization_id) ?? '',
+                200,
+                ['Content-Type' => ContentType::PNG, 'Content-Disposition' => 'inline; filename="ticket-sample.png"'],
+            ),
+            default => response(
+                $this->renderer->renderHtmlFromConfig($config, $data),
+                200,
+                ['Content-Type' => ContentType::HTML],
+            ),
+        };
     }
 
     /**
@@ -243,6 +321,25 @@ class TicketTemplateController extends Controller
                     'Некорректный макет шаблона.'
                 );
             }
+
+            if (strlen(json_encode($config, JSON_UNESCAPED_UNICODE) ?: '') > 2_000_000) {
+                throw new ValidationError(
+                    ['template_json' => ['Макет слишком большой (лимит 2 МБ).']],
+                    'Некорректный макет шаблона.'
+                );
+            }
+
+            // Единственный источник геометрии — канонический canvas. Поля
+            // width/height в модели синхронизируются с ним, а не наоборот.
+            $canonical = TicketTemplateConfig::normalize(
+                $config,
+                isset($data['width']) ? (int) $data['width'] : null,
+                isset($data['height']) ? (int) $data['height'] : null,
+            );
+            TicketTemplateConfig::validate($canonical);
+            $data['template_json'] = $canonical;
+            $data['width'] = (int) $canonical['canvas']['width'];
+            $data['height'] = (int) $canonical['canvas']['height'];
         }
 
         return $data;

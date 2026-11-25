@@ -24,6 +24,8 @@ Route::prefix('ticket-templates')->middleware(['auth:api', 'admin'])->group(func
     // `whereNumber` — по той же причине, что и у `/tickets/{ticket}`: неявная
     // привязка приводит путь к int, поэтому `/ticket-templates/1abc` открывал
     // шаблон 1. С ограничением — 404.
+    // Серверный предпросмотр использует тот же рендерер, что и выданный билет.
+    Route::get('/{template}/preview', [TicketTemplateController::class, 'preview'])->whereNumber('template');
     Route::get('/{template}', [TicketTemplateController::class, 'show'])->whereNumber('template');
     Route::put('/{template}', [TicketTemplateController::class, 'update'])->whereNumber('template');
     Route::patch('/{template}', [TicketTemplateController::class, 'update'])->whereNumber('template');
