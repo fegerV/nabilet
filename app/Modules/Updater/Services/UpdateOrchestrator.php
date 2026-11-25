@@ -33,6 +33,7 @@ final class UpdateOrchestrator
 {
     public function __construct(
         private readonly UpdateStorage $storage,
+        private readonly UpdateJournal $journal,
         private readonly UpdateFeed $feed,
         private readonly ManifestVerifier $verifier,
         private readonly ArchiveDownloader $downloader,
@@ -55,6 +56,20 @@ final class UpdateOrchestrator
      * @param array{version: string, source: string, file?: string, checksum?: string} $data
      */
     public function start(array $data, int $actorId): SystemUpdate
+    {
+        // Проверка «нет активного обновления» и создание записи обязаны быть
+        // одной критической секцией: два администратора могли одновременно
+        // пройти проверку и запустить два обновления.
+        $result = $this->storage->withGlobalLock(fn (): SystemUpdate => $this->startLocked($data, $actorId));
+        if ($result === null) {
+            throw new ConflictError('Обновление уже выполняется.', 'UPDATE_IN_PROGRESS');
+        }
+
+        return $result;
+    }
+
+    /** @param array{version: string, source: string, file?: string, checksum?: string} $data */
+    private function startLocked(array $data, int $actorId): SystemUpdate
     {
         if (SystemUpdate::query()->whereIn('status', UpdateStatus::ACTIVE)->exists()) {
             throw new ConflictError('Обновление уже выполняется.', 'UPDATE_IN_PROGRESS');
@@ -100,6 +115,13 @@ final class UpdateOrchestrator
             'backup_status' => null,
             'actor_id' => $actorId,
             'started_at' => now(),
+        ]);
+
+        $this->journal->begin((int) $update->id, [
+            'from_version' => $current,
+            'to_version' => $version,
+            'source' => $source,
+            'artifact_sha256' => (string) $update->artifact_sha256,
         ]);
 
         $backup = $this->preflight->backupState();
@@ -153,15 +175,60 @@ final class UpdateOrchestrator
      */
     public function tick(): array
     {
-        $this->storage->touchHeartbeat();
+        // Один тик на весь сайт: параллельные schedule:run не должны оба
+        // захватывать один и тот же шаг или крутить откат.
+        $result = $this->storage->withGlobalLock(function (): array {
+            $this->storage->touchHeartbeat();
+            $this->recoverInterrupted();
 
+            return $this->tickLocked();
+        });
+
+        return $result ?? ['handled' => false, 'message' => 'Другое обновление уже выполняется.'];
+    }
+
+    /**
+     * Обновление, прерванное SIGKILL/перезапуском PHP, оставалось в APPLYING
+     * навсегда: блокировка истекала, а статус — нет. Переводим его в состояние,
+     * из которого планировщик сможет инициировать откат.
+     */
+    private function recoverInterrupted(): void
+    {
+        $staleMinutes = max(5, (int) config('updates.lock_stale_minutes', 15));
+        $stale = SystemUpdate::query()
+            ->whereIn('status', [UpdateStatus::APPLYING, UpdateStatus::MIGRATING, UpdateStatus::VERIFYING])
+            ->where(static function ($q) use ($staleMinutes): void {
+                $q->whereNull('locked_at')->orWhere('locked_at', '<=', now()->subMinutes($staleMinutes));
+            })
+            ->orderBy('id')
+            ->get();
+
+        foreach ($stale as $update) {
+            /** @var SystemUpdate $update */
+            if (! UpdateStatus::canTransition((string) $update->status, UpdateStatus::FAILED_AFTER_SWAP)) {
+                continue;
+            }
+            $update->status = UpdateStatus::FAILED_AFTER_SWAP;
+            $update->step = 'interrupted_by_process_exit';
+            $update->error = 'Обновление прервано завершением процесса; требуется откат.';
+            $update->finished_at = now();
+            $update->save();
+            $this->writeState($update);
+            Log::channel('alerts')->warning('self-update: обнаружено прерванное обновление', ['update_id' => $update->id]);
+        }
+    }
+
+    /** @return array{handled: bool, update_id?: int, status?: string, message?: string} */
+    private function tickLocked(): array
+    {
+        $staleMinutes = max(5, (int) config('updates.lock_stale_minutes', 15));
         /** @var SystemUpdate|null $update */
-        $update = DB::transaction(function (): ?SystemUpdate {
+        $update = DB::transaction(function () use ($staleMinutes): ?SystemUpdate {
             /** @var SystemUpdate|null $candidate */
             $candidate = SystemUpdate::query()
                 ->whereIn('status', UpdateStatus::ACTIVE)
-                ->where(static function ($q): void {
-                    $q->whereNull('locked_at')->orWhere('locked_at', '<', now()->subMinutes(5));
+                ->where(static function ($q) use ($staleMinutes): void {
+                    $q->whereNull('locked_at')->orWhere('locked_at', '<', now()->subMinutes($staleMinutes));
                 })
                 ->orderBy('id')
                 ->lockForUpdate()
@@ -247,6 +314,13 @@ final class UpdateOrchestrator
 
     public function cancel(int $updateId): void
     {
+        $this->storage->withGlobalLock(function () use ($updateId): void {
+            $this->cancelLocked($updateId);
+        });
+    }
+
+    private function cancelLocked(int $updateId): void
+    {
         /** @var SystemUpdate $update */
         $update = SystemUpdate::query()->findOrFail($updateId);
         if (! in_array((string) $update->status, [UpdateStatus::PREPARING, UpdateStatus::READY], true)) {
@@ -264,10 +338,43 @@ final class UpdateOrchestrator
     /** Поставить откат в очередь тика (не выполнять в HTTP-запросе). */
     public function requestRollback(int $updateId): SystemUpdate
     {
+        $result = $this->storage->withGlobalLock(fn (): SystemUpdate => $this->requestRollbackLocked($updateId));
+        if ($result === null) {
+            throw new ConflictError('Обновление уже выполняется.', 'UPDATE_IN_PROGRESS');
+        }
+
+        return $result;
+    }
+
+    private function requestRollbackLocked(int $updateId): SystemUpdate
+    {
         /** @var SystemUpdate $update */
         $update = SystemUpdate::query()->findOrFail($updateId);
         if (! in_array((string) $update->status, [UpdateStatus::DONE, UpdateStatus::FAILED_AFTER_SWAP], true)) {
             throw new ConflictError('Откат доступен только после обновления или ошибки после замены файлов.', 'UPDATE_NOT_ROLLBACKABLE');
+        }
+
+        // Откат более старого релиза поверх последующего вернул бы код назад,
+        // но оставил бы новую схему БД и проданные по ней билеты.
+        $latestId = (int) SystemUpdate::query()
+            ->whereIn('status', [UpdateStatus::DONE, UpdateStatus::FAILED_AFTER_SWAP, UpdateStatus::ROLLED_BACK])
+            ->max('id');
+        if ($updateId !== $latestId) {
+            throw new ConflictError(
+                'Нельзя откатить устаревшее обновление: после него были установлены другие версии.',
+                'UPDATE_STALE_ROLLBACK',
+                ['update_id' => $updateId, 'latest_update_id' => $latestId],
+            );
+        }
+
+        // Миграции не транзакционны в MySQL: после их применения откат только
+        // файлов оставит несовместимую пару «новый код / старый код + новая БД».
+        if ($this->journal->migrationApplied($updateId)) {
+            throw new ConflictError(
+                'Миграции уже применены. Откат файлов невозможен без восстановления БД из проверенной копии.',
+                'UPDATE_ROLLBACK_REQUIRES_DB_RESTORE',
+                ['update_id' => $updateId],
+            );
         }
 
         if (SystemUpdate::query()->whereIn('status', UpdateStatus::ACTIVE)->exists()) {
@@ -423,6 +530,12 @@ final class UpdateOrchestrator
             return ['handled' => true, 'status' => UpdateStatus::FAILED_AFTER_SWAP, 'message' => 'Миграции не применены'];
         }
 
+        $this->journal->record((int) $update->id, 'migrate', [
+            'status' => 'done',
+            'from_version' => (string) $update->from_version,
+            'to_version' => (string) $update->to_version,
+            'output' => mb_substr($output, -1000),
+        ]);
         $this->applier->clearCaches();
         $this->transition($update, UpdateStatus::VERIFYING, 'migrations_done');
 
@@ -449,6 +562,10 @@ final class UpdateOrchestrator
         }
 
         $this->applier->maintenanceOff();
+        $this->journal->record((int) $update->id, 'complete', [
+            'status' => 'done',
+            'version' => $installed,
+        ]);
         $this->transition($update, UpdateStatus::DONE, 'verified');
         $update->finished_at = now();
         $update->save();

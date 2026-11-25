@@ -108,7 +108,7 @@ final class UpdatePreflight
         $remoteFresh = ($remote['status'] ?? '') === 'success'
             && ($remote['mode'] ?? '') === 'full'
             && $remoteAt !== false
-            && $remoteAt >= time() - 26 * 3600;
+            && $remoteAt >= time() - (int) config('updates.backup_max_age_hours', 24) * 3600;
         $fresh = $localFresh || $remoteFresh;
 
         return [
@@ -123,18 +123,64 @@ final class UpdatePreflight
     public function hasFreshLocalFullBackup(): bool
     {
         $dir = storage_path('app/backups');
-        $threshold = time() - 26 * 3600;
+        $threshold = time() - (int) config('updates.backup_max_age_hours', 24) * 3600;
 
         foreach (['full_*.zip', 'full_*.zip.enc'] as $pattern) {
             foreach (glob($dir . '/' . $pattern) ?: [] as $file) {
                 $mtime = @filemtime($file);
-                if ($mtime !== false && $mtime >= $threshold && (int) filesize($file) > 0) {
+                if ($mtime === false || $mtime < $threshold || (int) filesize($file) <= 0) {
+                    continue;
+                }
+                // Само существование ненулевого файла НЕ доказательство:
+                // проверяем целостность и наличие дампа БД внутри архива.
+                if (str_ends_with($file, '.enc')) {
+                    $key = (string) config('nabilet.backup.encryption_key', '');
+                    if ($key === '') {
+                        continue;
+                    }
+                    $encryptor = new \Nabilet\Modules\Backups\Services\BackupEncryptor($key);
+                    if (! $encryptor->verifyIntegrity($file)) {
+                        continue;
+                    }
+                    // Содержимое зашифрованного архива проверить нельзя, пока
+                    // ключ не расшифрован; HMAC и ключ доступны — принимаем.
+                    return true;
+                }
+                if ($this->archiveHasDbDump($file)) {
                     return true;
                 }
             }
         }
 
         return false;
+    }
+
+    /** ZIP-архив должен открываться и содержать SQL-дамп без ZIP Slip. */
+    private function archiveHasDbDump(string $file): bool
+    {
+        $zip = new \ZipArchive();
+        if ($zip->open($file) !== true) {
+            return false;
+        }
+        try {
+            if ($zip->numFiles < 1) {
+                return false;
+            }
+            $hasDump = false;
+            for ($i = 0; $i < $zip->numFiles; $i++) {
+                $name = (string) $zip->getNameIndex($i);
+                if (str_contains($name, '..') || str_starts_with($name, '/')) {
+                    return false;
+                }
+                if (str_ends_with(strtolower($name), '.sql')) {
+                    $hasDump = true;
+                }
+            }
+
+            return $hasDump;
+        } finally {
+            $zip->close();
+        }
     }
 
     /** @return list<string> */
