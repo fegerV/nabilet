@@ -28,9 +28,20 @@ class VenueController extends Controller
         // всю таблицу — тот же дефект, что закрыт в остальных списках (`Paging`).
         $perPage = Paging::limit((int) $request->get('per_page', 20), 20, 100);
         
-        $query = Venue::query()->with(['halls', 'organization']);
-        
-        if (isset($filters['organization_id'])) {
+        // `settings_json` организации содержит служебные настройки — в
+        // публичный каталог отдаём только витринные колонки (аудит I-2/I-10).
+        $query = Venue::query()->with([
+            'halls',
+            'organization:id,public_id,name,slug,logo,email,phone',
+        ]);
+
+        if (\Nabilet\Modules\Core\Users\Support\StaffRole::isStaff($request->user())) {
+            // Админ работает внутри своей организации: присланный
+            // `organization_id` не должен расширять выборку до чужого тенанта.
+            $query->where('organization_id', app(OrganizationContext::class)->id());
+        } elseif (isset($filters['organization_id'])) {
+            // Гость каталога может фильтровать по организации, но не должен
+            // получать служебные поля самой организации (см. выборку выше).
             $query->where('organization_id', $filters['organization_id']);
         }
         
@@ -96,7 +107,11 @@ class VenueController extends Controller
         // Адрес решает shallow-binding по route {venue}, читается перевод
         // выбранного места.
         app(OrganizationContext::class)->withoutScope(
-            fn () => $venue->load(['halls', 'organization', 'venueTranslations'])
+            fn () => $venue->load([
+                'halls',
+                'organization:id,public_id,name,slug,logo,email,phone',
+                'venueTranslations',
+            ])
         );
 
         return response()->json(['data' => $venue]);

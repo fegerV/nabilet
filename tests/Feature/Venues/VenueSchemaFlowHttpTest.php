@@ -221,12 +221,18 @@ final class VenueSchemaFlowHttpTest extends TestCase
             'payload' => $this->schemaPayload(500000),
         ])->assertSuccessful();
 
-        // Снимаем авторизацию: этот endpoint объявлен публичным.
+        // Сотрудник своей организации видит черновик.
+        $this->getJson("/api/v1/venues/{$venuePublicId}/schema-versions")
+            ->assertOk()
+            ->assertJsonCount(1, 'data');
+
+        // Аудит 2026-11-25 (I-6): endpoint объявлен публичным, поэтому гость
+        // не должен перечислять черновики — раньше он получал тот же список.
         $this->app['auth']->forgetGuards();
 
         $this->getJson("/api/v1/venues/{$venuePublicId}/schema-versions")
             ->assertOk()
-            ->assertJsonCount(1, 'data');
+            ->assertJsonCount(0, 'data');
     }
 
     public function test_schema_draft_and_publish_over_http(): void

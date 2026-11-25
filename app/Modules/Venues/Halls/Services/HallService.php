@@ -285,12 +285,11 @@ class HallService
          */
         public function findAll(): LengthAwarePaginator
         {
-            // Публичный маршрут `GET /halls` (решение видимости в
-            // docs/REVIEW-spec-bundle.md не закрыто) — у гостя контекста нет:
-            // читаем в bypass, контракт ответа не меняет.
-            return app(OrganizationContext::class)->withoutScope(
-                fn () => $this->repository->paginate(100)
-            );
+            // Административная выборка для формы сеанса. Роут переведён под
+            // `auth:api` + `admin` (I-3): обход скоупа здесь означал бы, что
+            // admin организации A видит залы организации B. Контекст есть —
+            // читаем через глобальный tenant scope.
+            return $this->repository->paginate(100);
         }
 
     public function findByPublicId(string $publicId): ?Hall

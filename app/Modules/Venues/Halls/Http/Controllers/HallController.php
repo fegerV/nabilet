@@ -12,6 +12,7 @@ use Nabilet\Core\Errors\ValidationError;
 use Nabilet\Core\Support\Paging;
 use Nabilet\Core\Support\PublicationStatus;
 use Nabilet\Core\Tenancy\OrganizationContext;
+use Nabilet\Modules\HallSchemas\Domain\SchemaVersionState;
 use Nabilet\Modules\Core\Support\PublicId;
 use Nabilet\Modules\Venues\Models\Hall;
 use Nabilet\Modules\Venues\Models\HallSchemaVersion;
@@ -257,6 +258,34 @@ class HallController extends Controller
         return $venue;
     }
 
+    /**
+     * Может ли текущий пользователь править схему этой площадки.
+     *
+     * Роль проверяется в текущей организации, а принадлежность площадки —
+     * отдельно: `StaffRole::isStaff()` сама по себе отвечает только «админ ли
+     * это», и если не сверить `venue.organization_id`, админ A правил бы зал B.
+     */
+    private function mayManageVenue(Venue $venue): bool
+    {
+        $user = request()->user();
+
+        if ($user === null || ! \Nabilet\Modules\Core\Users\Support\StaffRole::isStaff($user)) {
+            return false;
+        }
+
+        return app(OrganizationContext::class)->allows($venue->organization_id);
+    }
+
+    /** Fail-closed проверка владельца площадки для административных операций. */
+    private function assertVenueOwnership(Venue $venue): void
+    {
+        app(OrganizationContext::class)->assertCanAccess(
+            $venue->organization_id,
+            'Venue',
+            $venue->public_id,
+        );
+    }
+
     /** Техническая строка схемы: одна на площадку, пользователю не показывается. */
     private function shadowHall(Venue $venue): Hall
     {
@@ -276,6 +305,13 @@ class HallController extends Controller
     public function venueSchemaVersions(string $publicId): JsonResponse
     {
         $venue = $this->venueOrFail($publicId);
+        // ПРАВИЛО ДОСТУПА (аудит 2026-11-25, I-1/I-6). Роут публичный, поэтому
+        // black-box «мы нашли версию по public_id площадки» НЕ даёт права
+        // читать черновики: так admin другой организации перебирал чужие
+        // public_id и видел черновики и архивные версии. Полный список —
+        // только сотруднику СОБСТВЕННОЙ организации площадки; гостю — только
+        // опубликованная версия.
+        $maySeeDrafts = $this->mayManageVenue($venue);
         // Роут публичный: у анонима нет OrganizationContext, а модель
         // HallSchemaVersion глобально tenant-scoped. Без bypass список версий
         // площадки падал 500 TenantContextMissingError (см. тот же приём в
@@ -283,6 +319,7 @@ class HallController extends Controller
         $versions = app(OrganizationContext::class)->withoutScope(
             fn () => HallSchemaVersion::query()
                 ->where('venue_id', $venue->id)
+                ->when(! $maySeeDrafts, static fn ($query) => $query->where('status', SchemaVersionState::PUBLISHED))
                 ->orderByDesc('version')
                 ->get()
         );
@@ -306,11 +343,12 @@ class HallController extends Controller
                 ->first()
         );
 
-        // Редактор правит черновик, поэтому полную геометрию черновика видят
-        // только сотрудники; публичный витринный путь — только published.
-        $user = request()->user();
-        $maySeeDraft = $user !== null && \Nabilet\Modules\Core\Users\Support\StaffRole::isStaff($user);
-        if ($version === null || ($version->status !== 'published' && ! $maySeeDraft)) {
+        // Редактор правит черновик, поэтому полную геометрию черновика видит
+        // только сотрудник СОБСТВЕННОЙ организации площадки. Проверка роли
+        // без принадлежности (I-1) давала admin'у другой организации полный
+        // JSON чужого черновика и архивной версии. 404, а не 403: существование
+        // чужой версии не подтверждается.
+        if ($version === null || ($version->status !== SchemaVersionState::PUBLISHED && ! $this->mayManageVenue($venue))) {
             throw new NotFoundError('HallSchemaVersion', $versionId);
         }
 
@@ -320,7 +358,9 @@ class HallController extends Controller
     /** POST /venues/{publicId}/schema-versions/draft. */
     public function createVenueSchemaDraft(Request $request, string $publicId): SchemaVersionResource
     {
-        $hall = $this->shadowHall($this->venueOrFail($publicId));
+        $venue = $this->venueOrFail($publicId);
+        $this->assertVenueOwnership($venue);
+        $hall = $this->shadowHall($venue);
 
         $validated = $request->validate([
             'payload' => ['required', 'array'],
@@ -341,7 +381,9 @@ class HallController extends Controller
     public function publishVenueSchemaVersion(Request $request, string $publicId, int $versionId): SchemaVersionResource
     {
         $validated = $request->validate(['base_revision' => ['sometimes', 'integer', 'min:1']]);
-        $hall = $this->shadowHall($this->venueOrFail($publicId));
+        $venue = $this->venueOrFail($publicId);
+        $this->assertVenueOwnership($venue);
+        $hall = $this->shadowHall($venue);
 
         return new SchemaVersionResource(
             $this->service->publishSchemaVersion($versionId, $request->user()->id, $hall->public_id, isset($validated['base_revision']) ? (int) $validated['base_revision'] : null)

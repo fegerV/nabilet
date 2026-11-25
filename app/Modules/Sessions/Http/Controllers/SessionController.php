@@ -39,7 +39,13 @@ class SessionController extends Controller
         // Гость витрины видит только сеансы опубликованных мероприятий,
         // Administrator — все. Раньше публичный список отдавал черновики
         // вместе с сырыми внутренними связями.
-        if (! \Nabilet\Modules\Core\Users\Support\StaffRole::isStaff($request->user())) {
+        $isStaff = \Nabilet\Modules\Core\Users\Support\StaffRole::isStaff($request->user());
+        if ($isStaff) {
+            // Админ видит сеансы ТОЛЬКО своей организации. Раньше ветка staff
+            // вообще не фильтровала, а исполнялась в bypass: admin A получал
+            // список сеансов admin'а B вместе с venue/schemaVersion (I-4).
+            $query->where('organization_id', app(OrganizationContext::class)->id());
+        } else {
             // Подзапрос по ТАБЛИЦЕ, а не whereHas по Eloquent-модели Event:
             // модель tenant-scoped, и её global scope сработал бы внутри
             // безконтекстного запроса витрины (TenantContextMissingError).
@@ -94,7 +100,11 @@ class SessionController extends Controller
         if ($model === null) {
             throw new NotFoundError('Session', (string) $session);
         }
-        if (! \Nabilet\Modules\Core\Users\Support\StaffRole::isStaff(request()->user())) {
+        if (\Nabilet\Modules\Core\Users\Support\StaffRole::isStaff(request()->user())) {
+            // Админ чужой организации не должен получать карточку сеанса
+            // (вместе с инвентарём и схемой) только по числовому id.
+            app(OrganizationContext::class)->assertCanAccess($model->organization_id, 'Session', $session);
+        } else {
             $eventStatus = app(OrganizationContext::class)->withoutScope(
                 fn () => $model->event?->status
             );
