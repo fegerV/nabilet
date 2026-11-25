@@ -67,6 +67,28 @@ final class BackupEncryptor
     }
 
     /**
+     * Проверить HMAC зашифрованной копии, не расшифровывая содержимое.
+     * Используется перед обновлением: ключ должен быть доступен, а архив — целым.
+     */
+    public function verifyIntegrity(string $encryptedPath): bool
+    {
+        try {
+            $this->assertKey();
+            $payload = file_get_contents($encryptedPath);
+            if ($payload === false || strlen($payload) < self::IV_LEN + self::HMAC_LEN) {
+                return false;
+            }
+            $iv = substr($payload, 0, self::IV_LEN);
+            $expected = substr($payload, self::IV_LEN, self::HMAC_LEN);
+            $ciphertext = substr($payload, self::IV_LEN + self::HMAC_LEN);
+
+            return hash_equals($expected, HmacSignature::digest($iv . $ciphertext, $this->key, true));
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    /**
      * Расшифровать файл (для восстановления). Возвращает открытый текст.
      */
     public function decrypt(string $encryptedPath): string

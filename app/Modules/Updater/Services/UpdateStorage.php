@@ -16,6 +16,9 @@ final class UpdateStorage
 {
     private const ROOT = 'app/updates';
 
+    /** Дополнительный guard для вложенных вызовов в одном PHP-процессе. */
+    private static bool $lockHeld = false;
+
     public function root(): string
     {
         return storage_path(self::ROOT);
@@ -51,6 +54,57 @@ final class UpdateStorage
         return $this->base($updateId) . '/state.json';
     }
 
+    /** Append-only журнал операций: переживает SIGKILL и недоступность БД. */
+    public function journalFile(int $updateId): string
+    {
+        return $this->base($updateId) . '/operations.jsonl';
+    }
+
+    public function globalLockFile(): string
+    {
+        return storage_path('framework/updates/update.lock');
+    }
+
+    /**
+     * Глобальная эксклюзивная блокировка обновления.
+     *
+     * Неблокирующий захват: если другой процесс уже обновляется, вызывающий
+     * получает false, а не ждёт вечно. Файл живёт в storage — вне заменяемых
+     * каталогов.
+     *
+     * @template T
+     * @param  callable(): T  $callback
+     * @return T|null  null — блокировка занята
+     */
+    public function withGlobalLock(callable $callback): mixed
+    {
+        if (self::$lockHeld) {
+            return null;
+        }
+        $dir = dirname($this->globalLockFile());
+        if (! is_dir($dir) && ! mkdir($dir, 0775, true) && ! is_dir($dir)) {
+            return null;
+        }
+        $handle = @fopen($this->globalLockFile(), 'c+b');
+        if ($handle === false) {
+            return null;
+        }
+        self::$lockHeld = true;
+        try {
+            if (! flock($handle, LOCK_EX | LOCK_NB)) {
+                self::$lockHeld = false;
+
+                return null;
+            }
+
+            return $callback();
+        } finally {
+            flock($handle, LOCK_UN);
+            fclose($handle);
+            self::$lockHeld = false;
+        }
+    }
+
     public function heartbeatFile(): string
     {
         return storage_path('framework/updates/tick.marker');
@@ -82,7 +136,15 @@ final class UpdateStorage
     public function ensureRecoveryScript(): void
     {
         $target = $this->recoveryScript();
-        if (is_file($target)) {
+        $source = base_path('scripts/updater-recover.php');
+        if (! is_file($source)) {
+            throw new \RuntimeException('Не удалось найти исходник аварийного отката.');
+        }
+
+        // Раньше existence проверялась только по is_file: устаревшая копия
+        // оставалась навсегда и восстанавливала файлы по старым правилам.
+        $sourceHash = hash_file('sha256', $source);
+        if (is_file($target) && $sourceHash !== false && hash_file('sha256', $target) === $sourceHash) {
             return;
         }
 
@@ -91,9 +153,10 @@ final class UpdateStorage
             throw new \RuntimeException('Не удалось создать каталог аварийного отката.');
         }
 
-        $source = base_path('scripts/updater-recover.php');
-        if (! is_file($source) || ! copy($source, $target)) {
-            throw new \RuntimeException('Не удалось установить скрипт аварийного отката.');
+        $tmp = $target . '.tmp';
+        if (! copy($source, $tmp) || ! rename($tmp, $target)) {
+            @unlink($tmp);
+            throw new \RuntimeException('Не удалось обновить скрипт аварийного отката.');
         }
     }
 

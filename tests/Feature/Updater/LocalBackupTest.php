@@ -99,7 +99,10 @@ final class LocalBackupTest extends TestCase
         if (! is_dir($dir)) {
             mkdir($dir, 0775, true);
         }
-        file_put_contents($path, 'backup');
+        $zip = new \ZipArchive();
+        $zip->open($path, \ZipArchive::CREATE);
+        $zip->addFromString('db_test.sql', 'SELECT 1;');
+        $zip->close();
         $this->createdFiles[] = $path;
 
         $status->recordSuccess(42, $name);
@@ -116,8 +119,11 @@ final class LocalBackupTest extends TestCase
 
         $preflight = app(UpdatePreflight::class);
         $this->assertFalse($preflight->hasFreshLocalFullBackup(), 'Удалённый full-архив не должен считаться свежим');
-        file_put_contents($path, 'backup');
-        $this->assertTrue($preflight->hasFreshLocalFullBackup());
+        $zip = new \ZipArchive();
+        $zip->open($path, \ZipArchive::CREATE);
+        $zip->addFromString('db_test.sql', 'SELECT 1;');
+        $zip->close();
+        $this->assertTrue($preflight->hasFreshLocalFullBackup(), 'Проверенный ZIP с дампом должен считаться свежим');
     }
 
     private function admin(): \Illuminate\Contracts\Auth\Authenticatable
