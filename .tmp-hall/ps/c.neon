@@ -1,5 +1,0 @@
-parameters:
-    level: 5
-    universalObjectCratesClasses:
-        - Ps\Plain
-        - Illuminate\Database\Eloquent\Model
