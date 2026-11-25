@@ -84,7 +84,7 @@ final class TicketTemplateDefaults
                 ['type' => 'text', 'x' => 24, 'y' => 288, 'width' => 352, 'height' => 14, 'fontSize' => 10, 'fontWeight' => 'bold', 'color' => '#94a3b8', 'content' => 'МЕСТО'],
                 ['type' => 'text', 'x' => 24, 'y' => 304, 'width' => 352, 'height' => 20, 'fontSize' => 15, 'fontWeight' => 'bold', 'color' => '#0f172a', 'content' => '{{seat.info}}'],
                 ['type' => 'text', 'x' => 24, 'y' => 338, 'width' => 352, 'height' => 14, 'fontSize' => 10, 'fontWeight' => 'bold', 'color' => '#94a3b8', 'content' => 'СТОИМОСТЬ'],
-                ['type' => 'text', 'x' => 24, 'y' => 354, 'width' => 352, 'height' => 28, 'fontSize' => 20, 'fontWeight' => 'bold', 'color' => $accent, 'content' => '{{ticket.price}} {{ticket.currency}}'],
+                ['type' => 'text', 'x' => 24, 'y' => 354, 'width' => 352, 'height' => 28, 'fontSize' => 20, 'fontWeight' => 'bold', 'color' => $accent, 'content' => '{{ticket.price}}'],
 
                 // Отрывная часть: линия, панель под QR, подписи.
                 ['type' => 'line', 'x' => 24, 'y' => 396, 'x2' => 376, 'y2' => 396, 'stroke' => '#e2e8f0', 'strokeWidth' => 1],

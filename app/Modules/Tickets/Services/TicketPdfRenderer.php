@@ -5,13 +5,17 @@ declare(strict_types=1);
 namespace Nabilet\Modules\Tickets\Services;
 
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
+use Symfony\Component\Process\Process;
 use Nabilet\Core\Support\CssColor;
-use Nabilet\Core\Support\Money;
+use Nabilet\Modules\Media\Models\MediaAsset;
+use Nabilet\Modules\Tickets\Domain\Barcode\Code128Encoder;
 use Nabilet\Modules\Tickets\Domain\Qr\QrEncoder;
 use Nabilet\Modules\Tickets\Domain\Qr\QrPngRenderer;
+use Nabilet\Modules\Tickets\Domain\TicketTemplateConfig;
 use Nabilet\Modules\Tickets\Domain\TicketTemplateDefaults;
+use Nabilet\Modules\Tickets\Domain\TicketVariableResolver;
 use Nabilet\Modules\Tickets\Models\Ticket;
-use Nabilet\Modules\Tickets\Models\TicketTemplate;
 
 /**
  * Рендер билета в PDF для вложения в письмо покупателю.
@@ -58,15 +62,9 @@ final class TicketPdfRenderer
     public function render(Ticket $ticket): ?string
     {
         $data = $this->generator->generateTicketData($ticket);
+        $config = $this->configForTicket($ticket, $data);
 
-        $template = $this->resolver->resolveForTicket($ticket);
-        $config = is_array($template?->template_json) ? $template->template_json : null;
-
-        if (! is_array($config) || ! is_array($config['elements'] ?? null) || $config['elements'] === []) {
-            $config = $this->defaultConfig($data);
-        }
-
-        return $this->buildPdf($config, $data);
+        return $this->buildPdf($config, $data, (int) ($ticket->organization_id ?? 0));
     }
 
     /**
@@ -77,7 +75,37 @@ final class TicketPdfRenderer
      */
     public function renderFromConfig(array $config, array $data): ?string
     {
-        return $this->buildPdf($config, $data);
+        return $this->buildPdf(
+            TicketTemplateConfig::normalize($config),
+            $data,
+            (int) ($data['organization_id'] ?? 0),
+        );
+    }
+
+    /**
+     * Разрешить шаблон билета и привести его к ЕДИНОМУ контракту.
+     *
+     * Размер всегда берётся из canvas; поля модели width/height используются
+     * только как запасной источник для legacy-шаблонов. Больше никаких
+     * «в модели 800×400, а в PDF 400×600».
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    private function configForTicket(Ticket $ticket, array $data): array
+    {
+        $template = $this->resolver->resolveForTicket($ticket);
+        $raw = is_array($template?->template_json) ? $template->template_json : [];
+
+        if (! is_array($raw['elements'] ?? null) || $raw['elements'] === []) {
+            return TicketTemplateConfig::normalize($this->defaultConfig($data));
+        }
+
+        return TicketTemplateConfig::normalize(
+            $raw,
+            isset($template->width) ? (int) $template->width : null,
+            isset($template->height) ? (int) $template->height : null,
+        );
     }
 
     /**
@@ -90,14 +118,12 @@ final class TicketPdfRenderer
     public function renderHtml(Ticket $ticket): string
     {
         $data = $this->generator->generateTicketData($ticket);
-        $template = $this->resolver->resolveForTicket($ticket);
-        $config = is_array($template?->template_json) ? $template->template_json : null;
 
-        if (! is_array($config) || ! is_array($config['elements'] ?? null) || $config['elements'] === []) {
-            $config = $this->defaultConfig($data);
-        }
-
-        return $this->buildHtml($config, $data);
+        return $this->buildHtml(
+            $this->configForTicket($ticket, $data),
+            $data,
+            (int) ($ticket->organization_id ?? 0),
+        );
     }
 
     /**
@@ -108,7 +134,11 @@ final class TicketPdfRenderer
      */
     public function renderHtmlFromConfig(array $config, array $data): string
     {
-        return $this->buildHtml($config, $data);
+        return $this->buildHtml(
+            TicketTemplateConfig::normalize($config),
+            $data,
+            (int) ($data['organization_id'] ?? 0),
+        );
     }
 
     /**
@@ -120,28 +150,48 @@ final class TicketPdfRenderer
     public function renderPng(Ticket $ticket): ?string
     {
         $data = $this->generator->generateTicketData($ticket);
+        $config = $this->configForTicket($ticket, $data);
 
-        $template = $this->resolver->resolveForTicket($ticket);
-        $config = is_array($template?->template_json) ? $template->template_json : null;
-
-        if (! is_array($config) || ! is_array($config['elements'] ?? null) || $config['elements'] === []) {
-            $config = $this->defaultConfig($data);
-        }
-
-        $html = $this->buildHtml($config, $data);
+        $html = $this->buildHtml($config, $data, (int) ($ticket->organization_id ?? 0));
         if ($html === '') {
             return null;
         }
 
-        return $this->htmlToPng($html, (int) ($config['width'] ?? 400), (int) ($config['height'] ?? 600));
+        return $this->htmlToPng(
+            $html,
+            (int) ($config['canvas']['width'] ?? 400),
+            (int) ($config['canvas']['height'] ?? 600),
+        );
+    }
+
+    /**
+     * PNG по канонической конфигурации (серверный предпросмотр).
+     *
+     * @param  array<string, mixed>  $config
+     * @param  array<string, mixed>  $data
+     */
+    public function renderPngFromConfig(array $config, array $data, int $organizationId = 0): ?string
+    {
+        $canonical = TicketTemplateConfig::normalize($config);
+        $html = $this->buildHtml($canonical, $data, $organizationId);
+
+        return $this->htmlToPng(
+            $html,
+            (int) ($canonical['canvas']['width'] ?? 400),
+            (int) ($canonical['canvas']['height'] ?? 600),
+        );
     }
 
     /**
      * Строит HTML и конвертирует в PDF через headless-Chrome.
      */
-    private function buildPdf(array $config, array $data): ?string
+    /**
+     * @param  array<string, mixed>  $config
+     * @param  array<string, mixed>  $data
+     */
+    private function buildPdf(array $config, array $data, int $organizationId): ?string
     {
-        $html = $this->buildHtml($config, $data);
+        $html = $this->buildHtml($config, $data, $organizationId);
         if ($html === '') {
             return null;
         }
@@ -152,15 +202,22 @@ final class TicketPdfRenderer
     /**
      * Вёрстка билета из конфигурации холста.
      */
-    private function buildHtml(array $config, array $data): string
+    /**
+     * @param  array<string, mixed>  $config
+     * @param  array<string, mixed>  $data
+     */
+    private function buildHtml(array $config, array $data, int $organizationId): string
     {
-        $width = (int) ($config['width'] ?? 400);
-        $height = (int) ($config['height'] ?? 600);
+        $canvas = is_array($config['canvas'] ?? null) ? $config['canvas'] : [];
+        $width = (int) ($canvas['width'] ?? 400);
+        $height = (int) ($canvas['height'] ?? 600);
         $bg = $this->resolveBackground($config);
 
         $elements = '';
-        foreach (($config['elements'] ?? []) as $el) {
-            $elements .= $this->renderElement($el, $data);
+        $ordered = $config['elements'] ?? [];
+        usort($ordered, static fn (array $a, array $b): int => ((float) ($a['z'] ?? 0)) <=> ((float) ($b['z'] ?? 0)));
+        foreach ($ordered as $el) {
+            $elements .= $this->renderElement($el, $data, $organizationId);
         }
 
         // Если в макете нет QR-элемента, добавляем его сами — билет без
@@ -203,9 +260,23 @@ HTML;
      *
      * @param  mixed  $el
      */
-    private function renderElement(mixed $el, array $data): string
+    /**
+     * Один элемент канонического конфигуратора → HTML.
+     *
+     * Геометрия всех типов теперь читается из одного объекта: x/y — левый
+     * верхний угол, width/height — габарит, r — радиус круга, x1/y1/x2/y2 —
+     * линия. Rotation/opacity/visibility применяются ОДИНАКОВО ко всем
+     * элементам через обёртку, поэтому PDF наконец совпадает с конструктором.
+     */
+    private function renderElement(mixed $el, array $data, int $organizationId): string
     {
         if (! is_array($el)) {
+            return '';
+        }
+        if (($el['visible'] ?? true) === false) {
+            return '';
+        }
+        if (! $this->visibilityMatches($el['when'] ?? null, $data)) {
             return '';
         }
 
@@ -213,16 +284,79 @@ HTML;
         $x = (float) ($el['x'] ?? 0);
         $y = (float) ($el['y'] ?? 0);
 
-        return match ($type) {
+        $inner = match ($type) {
             'text' => $this->textElement($el, $data),
             'qr' => $this->qrElement($el, $data),
             'rectangle' => $this->shapeElement($el, $x, $y, $this->radiusValue($el['borderRadius'] ?? null)),
-            'circle' => $this->shapeElement($el, $x, $y, '50%'),
+            // Радиус — единственный источник размера круга (не width/height).
+            'circle' => $this->circleElement($el),
             'line' => $this->lineElement($el, $x, $y),
-            'image' => $this->placeholderElement($el, $x, $y, 'IMG'),
-            'barcode' => $this->placeholderElement($el, $x, $y, '||  ||  ||'),
+            'image' => $this->imageElement($el, $x, $y, $organizationId),
+            'barcode' => $this->barcodeElement($el, $x, $y, $data),
             default => $this->shapeElement($el, $x, $y, '0'),
         };
+
+        return $this->wrapTransform($inner, $el, $x, $y);
+    }
+
+    /**
+     * Правила условного отображения: variable == value / variable != value / exists.
+     * Неизвестные переменные => элемент скрыт (fail-closed).
+     *
+     * @param  array<string, mixed>|null  $when
+     * @param  array<string, mixed>  $data
+     */
+    private function visibilityMatches(mixed $when, array $data): bool
+    {
+        if (! is_array($when) || $when === []) {
+            return true;
+        }
+        $variables = TicketVariableResolver::variables($data);
+        foreach ($when as $key => $expected) {
+            if (! is_string($key)) {
+                continue;
+            }
+            $actual = $variables[$key] ?? '';
+            if (is_array($expected)) {
+                if (! in_array($actual, array_map('strval', $expected), true)) {
+                    return false;
+                }
+                continue;
+            }
+            if ((string) $expected === '__exists__' && $actual === '') {
+                return false;
+            }
+            if ((string) $expected !== $actual) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Общая обёртка трансформации. Поворот — вокруг центра элемента,
+     * прозрачность — 0..1. Оба свойства отсутствуют только в legacy-схемах.
+     *
+     * @param  array<string, mixed>  $el
+     */
+    private function wrapTransform(string $inner, array $el, float $x, float $y): string
+    {
+        $rotation = (float) ($el['rotation'] ?? 0);
+        $opacity = max(0.0, min(1.0, (float) ($el['opacity'] ?? 1)));
+        $style = '';
+        if ($rotation !== 0.0) {
+            $cx = $x + (float) ($el['width'] ?? 100) / 2;
+            $cy = $y + (float) ($el['height'] ?? 100) / 2;
+            $style .= sprintf('transform-origin:%Fpx %Fpx;transform:rotate(%Fdeg);', $cx, $cy, $rotation);
+        }
+        if ($opacity < 1.0) {
+            $style .= sprintf('opacity:%F;', $opacity);
+        }
+
+        return $style === ''
+            ? $inner
+            : sprintf('<div style="%s">%s</div>', $style, $inner);
     }
 
     /**
@@ -257,11 +391,14 @@ HTML;
         $color = $this->safeColor($el['color'] ?? null, '#111827');
         $fontFamily = $this->safeFontFamily($el['fontFamily'] ?? null);
         $content = $this->renderText((string) ($el['content'] ?? ''), $data);
+        $align = is_string($el['textAlign'] ?? null) && in_array($el['textAlign'], ['left', 'center', 'right'], true)
+            ? 'text-align:' . $el['textAlign'] . ';'
+            : '';
 
         $style = sprintf(
             'position:absolute;left:%1$Fpx;top:%2$Fpx;width:%3$Fpx;min-height:%4$Fpx;'
             . 'font-size:%5$Fpx;font-weight:%6$s;color:%7$s;line-height:1.2;white-space:pre-wrap;'
-            . 'word-break:break-word;overflow:hidden;',
+            . 'word-break:break-word;overflow:hidden;' . $align,
             $el['x'] ?? 0, $el['y'] ?? 0, $w, $h, $fs, $weight, $color
         );
         if ($fontFamily !== '') {
@@ -332,20 +469,26 @@ HTML;
      */
     private function lineElement(array $el, float $x, float $y): string
     {
-        $w = (float) ($el['width'] ?? 200);
-        $h = (float) ($el['height'] ?? 200);
-        $x2 = (float) ($el['x2'] ?? ($x + $w));
-        $y2 = (float) ($el['y2'] ?? $y);
+        // Единая геометрия линии: x1/y1 → x2/y2. Раньше PDF читал x/y и
+        // игнорировал y1, из-за чего линия «Минимализма» уходила из (0,80)
+        // в (0,0), а в конструкторе она же считалась через NaN.
+        $x1 = (float) ($el['x1'] ?? $x);
+        $y1 = (float) ($el['y1'] ?? $y);
+        $x2 = (float) ($el['x2'] ?? ($x1 + (float) ($el['width'] ?? 200)));
+        $y2 = (float) ($el['y2'] ?? $y1);
         $sw = (float) ($el['strokeWidth'] ?? (($el['stroke'] ?? null) ? 1 : 0));
         $stroke = $this->safeColor($el['stroke'] ?? $el['color'] ?? null, '#111827');
-        $canvasW = max($w, $x2 - $x, 1) + 4;
-        $canvasH = max($h, $y2 - $y, 1) + 4;
+        $minX = min($x1, $x2) - $sw;
+        $minY = min($y1, $y2) - $sw;
+        $boxW = max(abs($x2 - $x1), $sw * 2, 1) + $sw * 2;
+        $boxH = max(abs($y2 - $y1), $sw * 2, 1) + $sw * 2;
 
         return sprintf(
-            '<svg style="position:absolute;left:0;top:0;width:%Fpx;height:%Fpx;overflow:visible;" '
-            . 'viewBox="0 0 %F %F"><line x1="%F" y1="%F" x2="%F" y2="%F" stroke="%s" '
+            '<svg style="position:absolute;left:%Fpx;top:%Fpx;width:%Fpx;height:%Fpx;overflow:visible;" '
+            . 'viewBox="%F %F %F %F"><line x1="%F" y1="%F" x2="%F" y2="%F" stroke="%s" '
             . 'stroke-width="%F" /></svg>',
-            $canvasW, $canvasH, $canvasW, $canvasH, $x, $y, $x2, $y2, $stroke, max($sw, 1)
+            $minX, $minY, $boxW, $boxH, $minX, $minY, $boxW, $boxH,
+            $x1, $y1, $x2, $y2, $stroke, max($sw, 1)
         );
     }
 
@@ -366,6 +509,122 @@ HTML;
     }
 
     /**
+     * Круг: радиус r — единственный источник размера. legacy-схемы без r
+     * получают радиус из width/2 (см. TicketTemplateConfig::normalize).
+     *
+     * @param  array<string, mixed>  $el
+     */
+    private function circleElement(array $el): string
+    {
+        $r = (float) ($el['r'] ?? 50);
+        $x = (float) ($el['x'] ?? 0);
+        $y = (float) ($el['y'] ?? 0);
+        $size = max(1.0, $r * 2);
+        $shape = $this->shapeElement(
+            ['width' => $size, 'height' => $size] + $el,
+            $x,
+            $y,
+            '50%',
+        );
+
+        return $shape;
+    }
+
+    /**
+     * Изображение: только доверенный медиаресурс своей организации.
+     *
+     * Сервер НЕ загружает произвольный URL из template_json (SSRF и утечка
+     * покупательских IP). В конфигураторе хранится media_id; здесь мы
+     * проверяем принадлежность файла организации билета и вкладываем байты
+     * data-URI, чтобы Chrome не делал внешних запросов при печати.
+     *
+     * @param  array<string, mixed>  $el
+     */
+    private function imageElement(array $el, float $x, float $y, int $organizationId): string
+    {
+        $mediaId = (string) ($el['media_id'] ?? '');
+        $uri = '';
+        if ($mediaId !== '' && $organizationId > 0) {
+            $asset = MediaAsset::query()
+                ->where('public_id', $mediaId)
+                ->where('organization_id', $organizationId)
+                ->first();
+            if ($asset !== null) {
+                $mime = is_string($asset->mime_type) && str_starts_with($asset->mime_type, 'image/')
+                    ? $asset->mime_type
+                    : 'image/png';
+                $disk = is_string($asset->disk) && $asset->disk !== '' ? $asset->disk : 'public';
+                $bytes = Storage::disk($disk)->get((string) $asset->path);
+                if (is_string($bytes) && strlen($bytes) <= 8_000_000) {
+                    $uri = 'data:' . $mime . ';base64,' . base64_encode($bytes);
+                }
+            }
+        }
+
+        if ($uri === '') {
+            // Legacy-шаблоны хранили /storage/… вместо media_id. Такой путь
+            // принадлежит доверенному хранилищу и читается локально, без HTTP.
+            $src = (string) ($el['src'] ?? '');
+            if (str_starts_with($src, '/storage/')) {
+                $relative = substr($src, strlen('/storage/'));
+                $bytes = Storage::disk('public')->get($relative);
+                if (is_string($bytes) && strlen($bytes) <= 8_000_000) {
+                    $mime = $this->mimeForPath($relative);
+                    $uri = 'data:' . $mime . ';base64,' . base64_encode($bytes);
+                }
+            }
+        }
+
+        if ($uri === '') {
+            // Fail-closed: не рисуем «картинку» с чужого адреса и не выводим
+            // покупателю сломанный <img> с пустым src.
+            return $this->placeholderElement($el, $x, $y, 'IMG');
+        }
+
+        $w = (float) ($el['width'] ?? 100);
+        $h = (float) ($el['height'] ?? 100);
+        $alt = htmlspecialchars((string) ($el['alt'] ?? ''), ENT_QUOTES);
+
+        return sprintf(
+            '<img src="%s" alt="%s" style="position:absolute;left:%Fpx;top:%Fpx;width:%Fpx;height:%Fpx;display:block;object-fit:contain;">',
+            htmlspecialchars($uri, ENT_QUOTES), $alt, $x, $y, $w, $h,
+        );
+    }
+
+    /**
+     * Настоящий CODE128-B, локально. Контролёр НЕ проверяет билет по штрихкоду —
+     * это информационный элемент, подписанный QR остаётся единственным пропуском.
+     *
+     * @param  array<string, mixed>  $el
+     */
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function barcodeElement(array $el, float $x, float $y, array $data): string
+    {
+        $value = (string) ($el['data'] ?? $el['content'] ?? '');
+        if ($value === '' && is_array($el['binding'] ?? null)) {
+            $variable = (string) ($el['binding']['variable'] ?? '');
+            $variables = TicketVariableResolver::variables($data);
+            $value = $variables[$variable] ?? '';
+        }
+        $value = TicketVariableResolver::render($value, $data);
+        if ($value === '') {
+            return $this->placeholderElement($el, $x, $y, 'BARCODE');
+        }
+
+        $w = (float) ($el['width'] ?? 200);
+        $h = (float) ($el['height'] ?? 50);
+        $color = $this->safeColor($el['color'] ?? null, '#111827');
+        $uri = Code128Encoder::dataUri($value, $w, $h, $color);
+
+        return sprintf(
+            '<img src="%s" alt="barcode" style="position:absolute;left:%Fpx;top:%Fpx;width:%Fpx;height:%Fpx;display:block;">',
+            htmlspecialchars($uri, ENT_QUOTES), $x, $y, $w, $h,
+        );
+    }
+
+    /**
      * Подстановка {{переменных}} в текст элемента.
      *
      * Набор переменных совпадает с тем, что предлагает конструктор
@@ -379,35 +638,12 @@ HTML;
      */
     private function renderText(string $content, array $data): string
     {
-        $currency = strtoupper((string) ($data['currency'] ?? 'RUB'));
+        // Один источник переменных для PDF, PNG, письма и личного кабинета.
+        // Неизвестные плейсхолдеры заменяются пустой строкой, а не печатаются
+        // покупателю как сырой {{...}}.
+        $text = TicketVariableResolver::render($content, $data);
 
-        $flat = [
-            'event.name' => (string) ($data['event_name'] ?? ''),
-            'event.date' => (string) ($data['event_date'] ?? ''),
-            'event.time' => (string) ($data['event_time'] ?? ''),
-            'event.venue' => (string) ($data['venue_name'] ?? ''),
-            'ticket.number' => (string) ($data['ticket_number'] ?? ''),
-            'ticket.holder' => (string) ($data['customer_name'] ?? ''),
-            // «3 500» — без копеек, если они нулевые: на билете они не нужны, а
-            // «3 500,00» занимает место и читается хуже. Правило форматирования
-            // цены — СОБСТВЕННОСТЬ Money::format(): копия не выводила бы символ
-            // валюты и расходилась бы с письмом заказа.
-            'ticket.price' => $data['price']->format('ru_RU', omitWholeKopecks: true),
-            // Символ валюты — СОБСТВЕННОСТЬ Money::symbolFor(). Раньше здесь была
-            // своя ветка выбора символа для RUB, дублирующая карту символов Money;
-            // копия молча расходилась бы при добавлении валюты (USD→$ и т.п.).
-            'ticket.currency' => Money::symbolFor($currency),
-            'seat.row' => (string) ($data['seat_row'] ?? ''),
-            'seat.number' => (string) ($data['seat_number'] ?? ''),
-            'seat.info' => (string) ($data['seats'] ?? ''),
-            'order.id' => (string) ($data['order_id'] ?? ''),
-        ];
-
-        $text = preg_replace_callback('/\{\{([\w.]+)\}\}/', static function (array $m) use ($flat): string {
-            return $flat[$m[1]] ?? $m[0];
-        }, $content);
-
-        return htmlspecialchars((string) $text, ENT_QUOTES);
+        return htmlspecialchars($text, ENT_QUOTES);
     }
 
     private function hasQr(array $config): bool
@@ -447,7 +683,8 @@ HTML;
      */
     private function resolveBackground(array $config): string
     {
-        $gradient = $config['backgroundGradient'] ?? null;
+        $background = is_array($config['background'] ?? null) ? $config['background'] : [];
+        $gradient = $background['gradient'] ?? $config['backgroundGradient'] ?? null;
 
         if (is_array($gradient) && isset($gradient['from'], $gradient['to'])) {
             $from = $this->safeColor($gradient['from'], '#ffffff');
@@ -459,7 +696,7 @@ HTML;
             return "linear-gradient({$direction}, {$from}, {$to})";
         }
 
-        return $this->safeColor($config['backgroundColor'] ?? null, '#ffffff');
+        return $this->safeColor($background['color'] ?? $config['backgroundColor'] ?? null, '#ffffff');
     }
 
     /**
@@ -541,38 +778,46 @@ HTML;
             return null;
         }
 
-        $cmd = sprintf(
-            '"%s" --headless --no-sandbox --disable-gpu --no-first-run --no-pdf-header-footer '
-            . '--user-data-dir="%s" --print-to-pdf="%s" "file:///%s"',
+        $process = new Process([
             $chrome,
-            $prof,
-            $pdfPath,
-            str_replace('\\', '/', $htmlPath)
-        );
+            '--headless',
+            '--no-sandbox',
+            '--disable-gpu',
+            '--no-first-run',
+            '--disable-dev-shm-usage',
+            '--no-pdf-header-footer',
+            '--user-data-dir=' . $prof,
+            '--print-to-pdf=' . $pdfPath,
+            'file:///' . str_replace('\\', '/', $htmlPath),
+        ]);
+        $process->setTimeout(self::chromeTimeout());
 
-        $exit = 0;
-        $out = [];
-        exec($cmd . ' 2>&1', $out, $exit);
-
-        $pdf = is_file($pdfPath) ? file_get_contents($pdfPath) : null;
-
-        foreach ([$htmlPath, $pdfPath] as $f) {
-            if (is_file($f)) {
-                @unlink($f);
+        $pdf = null;
+        try {
+            // Очистка ВСЕГДА, даже при исключении/тайм-ауте: иначе временные
+            // профили Chrome копятся до исчерпания диска.
+            $process->run();
+            if (is_file($pdfPath)) {
+                $bytes = file_get_contents($pdfPath);
+                $pdf = $bytes === false ? null : $bytes;
             }
-        }
-        if (is_dir($prof)) {
-            @array_map('unlink', glob($prof . '/*') ?: []);
-            @rmdir($prof);
-        }
+            if ($pdf === null || str_starts_with($pdf, '%PDF-') === false) {
+                Log::warning('PDF билета: Chrome не вернул PDF.', [
+                    'exit' => $process->getExitCode(),
+                    'error' => $process->getErrorOutput(),
+                ]);
 
-        if ($pdf === false || $pdf === null || str_starts_with($pdf, '%PDF-') === false) {
-            Log::warning('PDF билета: Chrome не вернул PDF.', ['exit' => $exit, 'out' => implode("\n", $out)]);
+                return null;
+            }
+
+            return $pdf;
+        } catch (\Throwable $e) {
+            Log::warning('PDF билета: ошибка headless Chrome.', ['message' => $e->getMessage()]);
 
             return null;
+        } finally {
+            $this->cleanupFiles([$htmlPath, $pdfPath], $prof);
         }
-
-        return $pdf;
     }
 
     /**
@@ -602,41 +847,92 @@ HTML;
             return null;
         }
 
-        $cmd = sprintf(
-            '"%s" --headless --no-sandbox --disable-gpu --no-first-run --hide-scrollbars '
-            . '--force-device-scale-factor=2 --window-size=%d,%d --user-data-dir="%s" '
-            . '--screenshot="%s" "file:///%s"',
+        $process = new Process([
             $chrome,
-            $width,
-            $height,
-            $prof,
-            str_replace('\\', '/', $pngPath),
-            str_replace('\\', '/', $htmlPath)
-        );
+            '--headless',
+            '--no-sandbox',
+            '--disable-gpu',
+            '--no-first-run',
+            '--disable-dev-shm-usage',
+            '--hide-scrollbars',
+            '--force-device-scale-factor=2',
+            '--window-size=' . $width . ',' . $height,
+            '--user-data-dir=' . $prof,
+            '--screenshot=' . $pngPath,
+            'file:///' . str_replace('\\', '/', $htmlPath),
+        ]);
+        $process->setTimeout(self::chromeTimeout());
 
-        $exit = 0;
-        $out = [];
-        exec($cmd . ' 2>&1', $out, $exit);
+        try {
+            $process->run();
+            $bytes = is_file($pngPath) ? file_get_contents($pngPath) : false;
+            if ($bytes === false || ! str_starts_with($bytes, "\x89PNG\r\n\x1a\n")) {
+                Log::warning('PNG билета: Chrome не вернул PNG.', [
+                    'exit' => $process->getExitCode(),
+                    'error' => $process->getErrorOutput(),
+                ]);
 
-        $png = is_file($pngPath) ? file_get_contents($pngPath) : null;
-
-        foreach ([$htmlPath, $pngPath] as $f) {
-            if (is_file($f)) {
-                @unlink($f);
+                return null;
             }
-        }
-        if (is_dir($prof)) {
-            @array_map('unlink', glob($prof . '/*') ?: []);
-            @rmdir($prof);
-        }
 
-        if ($png === false || $png === null || str_starts_with($png, "\x89PNG\r\n\x1a\n") === false) {
-            Log::warning('PNG билета: Chrome не вернул PNG.', ['exit' => $exit, 'out' => implode("\n", $out)]);
+            return $bytes;
+        } catch (\Throwable $e) {
+            Log::warning('PNG билета: ошибка headless Chrome.', ['message' => $e->getMessage()]);
 
             return null;
+        } finally {
+            $this->cleanupFiles([$htmlPath, $pngPath], $prof);
         }
+    }
 
-        return $png;
+    /** MIME-тип по расширению локального файла (только изображения). */
+    private function mimeForPath(string $path): string
+    {
+        return match (strtolower((string) pathinfo($path, PATHINFO_EXTENSION))) {
+            'jpg', 'jpeg' => 'image/jpeg',
+            'gif' => 'image/gif',
+            'webp' => 'image/webp',
+            'svg' => 'image/svg+xml',
+            default => 'image/png',
+        };
+    }
+
+    /** Тайм-аут headless Chrome — защита от зависшего рендера в очереди. */
+    private static function chromeTimeout(): float
+    {
+        return max(5.0, (float) (config('nabilet.tickets.chrome_timeout_seconds', 20)));
+    }
+
+    /**
+     * Рекурсивная очистка временных файлов и профиля Chrome.
+     *
+     * Старый cleanup удалял только файлы верхнего уровня и вызывал rmdir —
+     * профили с вложенными Default/Crashpad оставались на диске навсегда.
+     *
+     * @param  list<string>  $files
+     */
+    private function cleanupFiles(array $files, string $profileDir): void
+    {
+        foreach ($files as $file) {
+            if (is_file($file)) {
+                @unlink($file);
+            }
+        }
+        if (! is_dir($profileDir)) {
+            return;
+        }
+        $iterator = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($profileDir, \FilesystemIterator::SKIP_DOTS),
+            \RecursiveIteratorIterator::CHILD_FIRST,
+        );
+        foreach ($iterator as $item) {
+            if ($item->isDir()) {
+                @rmdir($item->getPathname());
+            } else {
+                @unlink($item->getPathname());
+            }
+        }
+        @rmdir($profileDir);
     }
 
     /**

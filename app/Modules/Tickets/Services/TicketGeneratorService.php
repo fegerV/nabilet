@@ -89,9 +89,9 @@ class TicketGeneratorService
         $ticket->loadMissing([
             'order.user',
             'orderItem',
-            'event',
+            'event.organization',
             'session.venue',
-            'seat.row',
+            'seat.row.sector',
             'standingZone',
         ]);
 
@@ -143,6 +143,22 @@ class TicketGeneratorService
             // видел на макете время, а покупатель не видел ничего.
             'event_time' => RuText::clock($session?->starts_at) ?? '',
             'venue_name' => (string) ($session?->venue?->name ?? ''),
+            'venue_address' => trim(
+                (string) ($session?->venue?->address ?? '')
+                . ((string) ($session?->venue?->city ?? '') !== '' ? ', ' . (string) $session->venue->city : '')
+            ),
+            'venue_city' => (string) ($session?->venue?->city ?? ''),
+            'organizer_name' => (string) ($event?->organization?->name ?? ''),
+            'organizer_logo' => '',
+            'timezone' => (string) ($session?->timezone ?? config('app.timezone', 'UTC')),
+            'age_limit' => (string) ($event?->age_limit ?? ''),
+            'entry_rules' => '',
+            'sector_name' => (string) ($seat?->row?->sector?->name ?? ''),
+            'standing_zone' => $standingZone !== null ? (string) $standingZone->name : '',
+            'barcode_value' => (string) ($ticket->ticket_number ?? ''),
+            'order_public_id' => (string) ($order->public_id ?? ''),
+            'order_number' => (string) ($order->order_number ?? $order->public_id ?? ''),
+            'organization_id' => (int) ($order->organization_id ?? $ticket->organization_id ?? 0),
             'seats' => $seatLabel,
             // Ряд и место по отдельности — для макетов, где они стоят в разных
             // блоках. `seats` остаётся склеенной строкой для «одной строкой».
@@ -177,6 +193,55 @@ class TicketGeneratorService
                 'background_color' => $palette->background,
                 'accent_color' => $palette->accent,
             ],
+        ];
+    }
+
+    /**
+     * Тестовые данные для серверного предпросмотра конструктора.
+     *
+     * QR строится по ЗАВЕДОМО НЕДЕЙСТВИТЕЛЬНОМУ payload: предпросмотр
+     * не должен выдавать код, который контролёр примет как пропуск.
+     *
+     * @return array<string, mixed>
+     */
+    public function previewData(): array
+    {
+        $currency = 'RUB';
+        $payload = 'SAMPLE-NOT-VALID-FOR-CHECKIN';
+
+        return [
+            'organization_id' => 0,
+            'order_id' => 0,
+            'order_number' => 'NB-ПРИМЕР-0001',
+            'order_public_id' => 'SAMPLE_ORDER',
+            'ticket_number' => 'SAMPLE-0001',
+            'event_name' => 'Пример мероприятия — длинное название для проверки переноса',
+            'event_date' => '25 декабря, 19:00',
+            'event_time' => '19:00',
+            'venue_name' => 'Пример площадки',
+            'venue_address' => 'ул. Примерная, 1, Москва',
+            'venue_city' => 'Москва',
+            'organizer_name' => 'Организатор примера',
+            'organizer_logo' => '',
+            'timezone' => 'Europe/Moscow',
+            'age_limit' => '12+',
+            'entry_rules' => 'Пример правил посещения',
+            'sector_name' => 'Партер',
+            'standing_zone' => '',
+            'seats' => 'Ряд 5, Место 12',
+            'seat_row' => '5',
+            'seat_number' => '12',
+            'price' => Money::of(350_000, $currency),
+            'currency' => $currency,
+            'customer_name' => 'Иван Иванов — длинное имя покупателя для проверки',
+            'customer_email' => 'sample@example.test',
+            'qr_payload' => $payload,
+            'qr_data_uri' => $this->qrDataUri($payload),
+            'poster_url' => null,
+            'ticket_url' => '',
+            'barcode_value' => 'SAMPLE-0001',
+            'template' => null,
+            'sample' => true,
         ];
     }
 

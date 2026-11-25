@@ -41,8 +41,13 @@ final class CurrencySymbolSingleOwnerTest extends TestCase
             'В TicketPdfRenderer найдена ручная ветка валюты→символ — должна идти через Money::symbolFor().'
         );
 
-        // Единственный владелец карты символов действительно вызывается.
-        $this->assertStringContainsString('Money::symbolFor', $src);
+        // Рендерер больше не знает о валютах: он делегирует подстановку
+        // единому TicketVariableResolver, а тот уже зовёт Money::symbolFor().
+        $this->assertStringContainsString('TicketVariableResolver::render', $src);
+        $resolver = (string) file_get_contents(
+            dirname(__DIR__, 2) . '/app/Modules/Tickets/Domain/TicketVariableResolver.php'
+        );
+        $this->assertStringContainsString('Money::symbolFor', $resolver);
     }
 
     public function test_symbol_map_is_locked(): void

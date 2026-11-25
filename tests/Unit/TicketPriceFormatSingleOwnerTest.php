@@ -42,14 +42,17 @@ final class TicketPriceFormatSingleOwnerTest extends TestCase
             'Письмо обязано звать Money::format() владельца.');
     }
 
-    public function test_pdf_renderer_delegates_price_to_money_format_and_has_no_inline_number_format(): void
+    public function test_pdf_renderer_delegates_price_to_the_shared_variable_resolver(): void
     {
         $src = $this->projectFile('app/Modules/Tickets/Services/TicketPdfRenderer.php');
 
         static::assertSame(0, preg_match('/number_format\s*\(/', $src),
-            'Цена в PDF не должна форматироваться вручную — только через Money::format().');
-        static::assertStringContainsString("->format('ru_RU', omitWholeKopecks: true)", $src,
-            'PDF обязан звать Money::format() с флагом опущения копеек.');
+            'Цена в PDF не должна форматироваться вручную.');
+        static::assertStringContainsString('TicketVariableResolver::render', $src,
+            'PDF обязан подставлять переменные через единый резолвер.');
+        $resolver = $this->projectFile('app/Modules/Tickets/Domain/TicketVariableResolver.php');
+        static::assertStringContainsString("->format('ru_RU', omitWholeKopecks: true)", $resolver,
+            'Резолвер обязан звать Money::format() с флагом опущения копеек.');
     }
 
     public function test_generator_emits_money_not_a_float_division(): void

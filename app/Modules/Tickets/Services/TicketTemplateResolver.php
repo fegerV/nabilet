@@ -133,6 +133,13 @@ class TicketTemplateResolver
             return null;
         }
 
+        // Отключённый макет НЕ должен оформлять билеты: default-ветка уже
+        // проверяет active, а назначенная — нет. В результате админ выключал
+        // шаблон, а покупатели продолжали получать старый дизайн.
+        if (! $template->active) {
+            return null;
+        }
+
         return $template;
     }
 
