@@ -6,7 +6,7 @@ namespace Nabilet\Core\Http\Middleware;
 
 use Closure;
 use Illuminate\Http\Request;
-use Nabilet\Core\Support\StaffRole;
+use Nabilet\Modules\Core\Users\Support\StaffRole;
 use Symfony\Component\HttpFoundation\Response;
 
 /**

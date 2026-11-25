@@ -6,7 +6,7 @@ namespace Nabilet\Modules\Checkin\Http\Controllers\Admin;
 
 use Nabilet\Core\Errors\ValidationError;
 use Nabilet\Core\Support\Paging;
-use Nabilet\Core\Support\UserOrganization;
+use Nabilet\Modules\Core\Users\Support\UserOrganization;
 use Nabilet\Core\Tenancy\OrganizationContext;
 
 use Illuminate\Http\JsonResponse;

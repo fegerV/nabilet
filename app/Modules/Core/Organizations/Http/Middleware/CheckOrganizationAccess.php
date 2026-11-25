@@ -67,7 +67,7 @@ class CheckOrganizationAccess
             throw new AuthError('Access denied to this organization.', 'FORBIDDEN', 403);
         }
 
-        if ($mode === 'admin' && ! \Nabilet\Core\Support\StaffRole::isStaff($user, (int) $organization->id)) {
+        if ($mode === 'admin' && ! \Nabilet\Modules\Core\Users\Support\StaffRole::isStaff($user, (int) $organization->id)) {
             throw new AuthError('Administrator role is required in this organization.', 'FORBIDDEN', 403);
         }
 

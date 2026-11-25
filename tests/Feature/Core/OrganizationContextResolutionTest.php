@@ -8,7 +8,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Nabilet\Modules\Core\Users\Models\User;
-use Nabilet\Core\Support\UserOrganization;
+use Nabilet\Modules\Core\Users\Support\UserOrganization;
 use Tests\TestCase;
 
 /**

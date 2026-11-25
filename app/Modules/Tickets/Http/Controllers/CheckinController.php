@@ -8,7 +8,7 @@ use Nabilet\Modules\Tickets\Models\Ticket;
 use Nabilet\Modules\Tickets\Services\TicketScanService;
 use Nabilet\Core\Errors\NotFoundError;
 use Nabilet\Core\Errors\ValidationError;
-use Nabilet\Core\Support\UserOrganization;
+use Nabilet\Modules\Core\Users\Support\UserOrganization;
 use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Tickets\Models\CheckinDevice;
 use Illuminate\Http\JsonResponse;

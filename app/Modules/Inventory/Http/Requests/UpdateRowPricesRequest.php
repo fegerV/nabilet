@@ -6,7 +6,7 @@ namespace Nabilet\Modules\Inventory\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
 use Nabilet\Core\Errors\ValidationError;
-use Nabilet\Core\Support\StaffRole;
+use Nabilet\Modules\Core\Users\Support\StaffRole;
 
 /**
  * PATCH /inventory/sessions/{sessionId}/prices

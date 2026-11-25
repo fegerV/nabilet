@@ -18,7 +18,7 @@ use Nabilet\Tests\Support\TestCase;
  * `EnsureAdminRole` и `StaffRole::ROLES`). Добавление роли `organizer`
  * потребовало бы правки пяти файлов, и типичная ошибка — поправить четыре.
  *
- * Владелец — `Core/Support/StaffRole`: он знает и список (`ROLES`), и то, что
+ * Владелец — `Modules/Core/Users/Support/StaffRole`: он знает и список (`ROLES`), и то, что
  * «сотрудник» — класс доступа, а не владелец ресурса.
  *
  * Сторож держит оба конца правила: форму запроса (`roles()->pluck`) и сам
@@ -30,7 +30,7 @@ use Nabilet\Tests\Support\TestCase;
  */
 final class StaffRoleCopyTest extends TestCase
 {
-    private const OWNER = '/Core/Support/StaffRole.php';
+    private const OWNER = '/Modules/Core/Users/Support/StaffRole.php';
 
     public function testTheStaffCheckIsNotCopiedIntoAQueryForm(): void
     {

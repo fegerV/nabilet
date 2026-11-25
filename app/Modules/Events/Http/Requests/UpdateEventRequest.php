@@ -6,8 +6,8 @@ namespace Nabilet\Modules\Events\Http\Requests;
 
 use Nabilet\Modules\Events\Http\Requests\Concerns\EventFormMessages;
 use Nabilet\Modules\Events\Http\Requests\Concerns\PreparesEventPayload;
-use Nabilet\Core\Support\UserOrganization;
-use Nabilet\Core\Support\StaffRole;
+use Nabilet\Modules\Core\Users\Support\UserOrganization;
+use Nabilet\Modules\Core\Users\Support\StaffRole;
 use Nabilet\Modules\Events\Models\Event;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;

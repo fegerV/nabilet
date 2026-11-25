@@ -7,7 +7,7 @@ namespace Nabilet\Modules\Storefront\Http\Controllers;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
-use Nabilet\Core\Support\UserOrganization;
+use Nabilet\Modules\Core\Users\Support\UserOrganization;
 use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Storefront\Services\StorefrontService;
 use Throwable;

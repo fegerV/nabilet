@@ -6,9 +6,9 @@ namespace Nabilet\Modules\Events\Http\Controllers;
 
 use Nabilet\Core\Errors\NotFoundError;
 use Nabilet\Core\Errors\ValidationError;
-use Nabilet\Core\Support\StaffRole;
+use Nabilet\Modules\Core\Users\Support\StaffRole;
 use Nabilet\Core\Support\Paging;
-use Nabilet\Core\Support\UserOrganization;
+use Nabilet\Modules\Core\Users\Support\UserOrganization;
 use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Content\Models\Redirect;
 use Nabilet\Modules\Events\Domain\EventStatus;

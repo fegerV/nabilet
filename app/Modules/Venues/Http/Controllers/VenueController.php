@@ -10,7 +10,7 @@ use Nabilet\Core\Errors\ValidationError;
 use Nabilet\Core\Support\LikePattern;
 use Nabilet\Core\Support\Paging;
 use Nabilet\Core\Support\PublicationStatus;
-use Nabilet\Core\Support\UserOrganization;
+use Nabilet\Modules\Core\Users\Support\UserOrganization;
 use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Venues\Models\Hall;
 use Nabilet\Modules\Venues\Models\Venue;

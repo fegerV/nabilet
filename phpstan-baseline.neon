@@ -42,9 +42,11 @@ parameters:
 			path: app/Core/Http/Middleware/ApplySecurityHeaders.php
 
 		-
+			# Два входа с relationLoaded('roles'): несохранённый пользователь и
+			# пользователь без организации. PHPStan не выводит свойство на object.
 			message: "#^Access to an undefined property object\\:\\:\\$roles\\.$#"
-			count: 1
-			path: app/Core/Support/StaffRole.php
+			count: 2
+			path: app/Modules/Core/Users/Support/StaffRole.php
 
 		-
 			message: "#^Call to static method table\\(\\) on an unknown class DB\\.$#"

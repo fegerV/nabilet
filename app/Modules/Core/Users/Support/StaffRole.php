@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Nabilet\Core\Support;
+namespace Nabilet\Modules\Core\Users\Support;
 
 use Illuminate\Support\Facades\DB;
 

@@ -8,7 +8,7 @@ use Closure;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Http\Request;
 use Nabilet\Core\Tenancy\OrganizationContext;
-use Nabilet\Core\Support\UserOrganization;
+use Nabilet\Modules\Core\Users\Support\UserOrganization;
 use Symfony\Component\HttpFoundation\Response;
 
 /**

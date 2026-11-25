@@ -1,0 +1,12 @@
+refactor(core): StaffRole/UserOrganization перенесены в модуль
+
+Оба класса реально используют DB/config/app, поэтому не могут жить в
+framework-agnostic ядре app/Core (verify-purity был красным с v1.9.0).
+Перенесены в app/Modules/Core/Users/Support, обновлены все ссылки (26
+файлов), OWNER в StaffRoleCopyTest и путь в phpstan-baseline.
+
+Дополнительно: UserOrganization явно проверяет method_exists перед
+getAuthIdentifier; baseline StaffRole уточнён до 2 вхождений.
+
+verify-purity 0 / PHPUnit 1435 / composer verify / kernel 1086 зелёные.
+PHPStan: 66 -> 37 ошибок (остальные — отдельная задолженность).

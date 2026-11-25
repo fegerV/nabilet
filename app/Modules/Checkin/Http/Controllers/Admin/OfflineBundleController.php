@@ -10,7 +10,7 @@ use Illuminate\Routing\Controller;
 use Nabilet\Core\Errors\AuthError;
 use Nabilet\Core\Errors\NotFoundError;
 use Nabilet\Core\Database\IdentifierLookup;
-use Nabilet\Core\Support\StaffRole;
+use Nabilet\Modules\Core\Users\Support\StaffRole;
 use Nabilet\Core\Support\Paging;
 use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Checkin\Domain\CheckinDevice as CheckinDeviceStatus;

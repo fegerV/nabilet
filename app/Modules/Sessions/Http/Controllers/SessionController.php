@@ -38,7 +38,7 @@ class SessionController extends Controller
         // Гость витрины видит только сеансы опубликованных мероприятий,
         // Administrator — все. Раньше публичный список отдавал черновики
         // вместе с сырыми внутренними связями.
-        if (! \Nabilet\Core\Support\StaffRole::isStaff($request->user())) {
+        if (! \Nabilet\Modules\Core\Users\Support\StaffRole::isStaff($request->user())) {
             // Подзапрос по ТАБЛИЦЕ, а не whereHas по Eloquent-модели Event:
             // модель tenant-scoped, и её global scope сработал бы внутри
             // безконтекстного запроса витрины (TenantContextMissingError).
@@ -93,7 +93,7 @@ class SessionController extends Controller
         if ($model === null) {
             throw new NotFoundError('Session', (string) $session);
         }
-        if (! \Nabilet\Core\Support\StaffRole::isStaff(request()->user())) {
+        if (! \Nabilet\Modules\Core\Users\Support\StaffRole::isStaff(request()->user())) {
             $eventStatus = app(OrganizationContext::class)->withoutScope(
                 fn () => $model->event?->status
             );

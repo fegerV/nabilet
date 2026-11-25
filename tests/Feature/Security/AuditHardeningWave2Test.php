@@ -7,7 +7,7 @@ namespace Tests\Feature\Security;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
-use Nabilet\Core\Support\StaffRole;
+use Nabilet\Modules\Core\Users\Support\StaffRole;
 use Nabilet\Modules\Core\Users\Models\User;
 use Nabilet\Tests\Support\SellableSeatFixtures;
 use Tests\TestCase;

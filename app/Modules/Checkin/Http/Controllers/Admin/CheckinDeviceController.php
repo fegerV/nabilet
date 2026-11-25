@@ -11,7 +11,7 @@ use Nabilet\Core\Database\IdentifierLookup;
 use Nabilet\Core\Errors\ValidationError;
 use Nabilet\Core\Http\ContentType;
 use Nabilet\Core\Support\Paging;
-use Nabilet\Core\Support\UserOrganization;
+use Nabilet\Modules\Core\Users\Support\UserOrganization;
 use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Checkin\Domain\CheckinDevice as DevicePolicy;
 use Nabilet\Modules\Checkin\Services\ConfigQrGenerator;

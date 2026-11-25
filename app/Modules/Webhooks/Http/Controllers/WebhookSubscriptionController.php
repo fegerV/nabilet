@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Nabilet\Core\Errors\DomainRuleViolation;
-use Nabilet\Core\Support\UserOrganization;
+use Nabilet\Modules\Core\Users\Support\UserOrganization;
 use Nabilet\Modules\Webhooks\Domain\DeliveryAttempt;
 use Nabilet\Modules\Webhooks\Services\WebhookDispatchService;
 use Nabilet\Modules\Webhooks\Services\WebhookEndpointGuard;

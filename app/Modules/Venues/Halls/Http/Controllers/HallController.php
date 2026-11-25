@@ -309,7 +309,7 @@ class HallController extends Controller
         // Редактор правит черновик, поэтому полную геометрию черновика видят
         // только сотрудники; публичный витринный путь — только published.
         $user = request()->user();
-        $maySeeDraft = $user !== null && \Nabilet\Core\Support\StaffRole::isStaff($user);
+        $maySeeDraft = $user !== null && \Nabilet\Modules\Core\Users\Support\StaffRole::isStaff($user);
         if ($version === null || ($version->status !== 'published' && ! $maySeeDraft)) {
             throw new NotFoundError('HallSchemaVersion', $versionId);
         }

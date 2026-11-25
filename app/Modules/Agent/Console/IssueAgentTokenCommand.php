@@ -6,7 +6,7 @@ namespace Nabilet\Modules\Agent\Console;
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
-use Nabilet\Core\Support\StaffRole;
+use Nabilet\Modules\Core\Users\Support\StaffRole;
 use Nabilet\Modules\Core\Users\Models\User;
 
 /**

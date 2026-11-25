@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Nabilet\Core\Support;
+namespace Nabilet\Modules\Core\Users\Support;
 
 use Illuminate\Support\Facades\DB;
 
@@ -69,7 +69,14 @@ final class UserOrganization
         // пользователя есть роль admin — иначе admin org A с рядовым
         // membership в org B (меньший id) получил бы контекст B.
         $adminRoleId = DB::table('roles')->where('slug', 'admin')->value('id');
-        $userId = $user->id ?? $user->getAuthIdentifier();
+        // PHPStan не выводит getAuthIdentifier() из `object`: метод проверяем
+        // явно, иначе на объекте без него был бы 500 вместо null.
+        $userId = $user->id ?? (method_exists($user, 'getAuthIdentifier')
+            ? $user->getAuthIdentifier()
+            : null);
+        if ($userId === null) {
+            return null;
+        }
 
         if ($adminRoleId !== null) {
             $adminOrgId = DB::table('user_organization')
