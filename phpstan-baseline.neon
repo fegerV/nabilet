@@ -304,11 +304,6 @@ parameters:
 			path: app/Modules/Inventory/Services/InventoryService.php
 
 		-
-			message: "#^Call to an undefined static method Nabilet\\\\Modules\\\\Inventory\\\\Models\\\\InventoryItem\\:\\:where\\(\\)\\.$#"
-			count: 1
-			path: app/Modules/Inventory/Services/InventoryService.php
-
-		-
 			message: "#^Call to an undefined static method Nabilet\\\\Modules\\\\Venues\\\\Models\\\\HallRow\\:\\:create\\(\\)\\.$#"
 			count: 1
 			path: app/Modules/Inventory/Services/InventoryService.php
@@ -759,11 +754,6 @@ parameters:
 			path: app/Modules/Sessions/Http/Controllers/SessionController.php
 
 		-
-			message: "#^Call to an undefined static method Nabilet\\\\Modules\\\\Venues\\\\Models\\\\HallSchemaVersion\\:\\:findOrFail\\(\\)\\.$#"
-			count: 2
-			path: app/Modules/Sessions/Http/Controllers/SessionController.php
-
-		-
 			message: "#^Method Nabilet\\\\Modules\\\\Storefront\\\\Services\\\\StorefrontService\\:\\:findRow\\(\\) should return Nabilet\\\\Modules\\\\Storefront\\\\Models\\\\StorefrontSetting\\|null but returns stdClass\\|null\\.$#"
 			count: 1
 			path: app/Modules/Storefront/Services/StorefrontService.php
@@ -872,11 +862,6 @@ parameters:
 			message: "#^Method Nabilet\\\\Modules\\\\Tickets\\\\Services\\\\TicketTemplateService\\:\\:ensureDefaultTemplate\\(\\) should return Nabilet\\\\Modules\\\\Tickets\\\\Models\\\\TicketTemplate but returns stdClass\\.$#"
 			count: 1
 			path: app/Modules/Tickets/Services/TicketTemplateService.php
-
-		-
-			message: "#^Call to an undefined method Nabilet\\\\Modules\\\\Venues\\\\Models\\\\Hall\\:\\:create\\(\\)\\.$#"
-			count: 1
-			path: app/Modules/Venues/Halls/Repositories/HallRepository.php
 
 		-
 			message: "#^Call to an undefined method Nabilet\\\\Modules\\\\Venues\\\\Models\\\\Hall\\:\\:where\\(\\)\\.$#"

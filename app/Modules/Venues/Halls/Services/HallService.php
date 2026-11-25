@@ -39,6 +39,16 @@ use Illuminate\Support\Facades\DB;
  */
 class HallService
 {
+    /** Серверные ограничения схемы: защита от OOM и бесконечных редакторских сессий. */
+    private const MAX_SECTORS = 200;
+    private const MAX_SEATS = 20_000;
+    private const MAX_STATIC_OBJECTS = 500;
+    private const MAX_STANDING_CAPACITY = 10_000;
+    private const MAX_CANVAS_DIMENSION = 20_000;
+    private const MAX_OBJECT_SIZE = 20_000;
+    /** Поддерживаемые версии контракта: строка редактора и число legacy-экспорта. */
+    private const SUPPORTED_FORMAT_VERSIONS = ['1', '1.0', 1];
+
     public function __construct(
         protected HallRepository $repository,
         protected SchemaVersionPolicy $schemaPolicy
@@ -285,12 +295,11 @@ class HallService
          */
         public function findAll(): LengthAwarePaginator
         {
-            // Публичный маршрут `GET /halls` (решение видимости в
-            // docs/REVIEW-spec-bundle.md не закрыто) — у гостя контекста нет:
-            // читаем в bypass, контракт ответа не меняет.
-            return app(OrganizationContext::class)->withoutScope(
-                fn () => $this->repository->paginate(100)
-            );
+            // Административная выборка для формы сеанса. Роут переведён под
+            // `auth:api` + `admin` (I-3): обход скоупа здесь означал бы, что
+            // admin организации A видит залы организации B. Контекст есть —
+            // читаем через глобальный tenant scope.
+            return $this->repository->paginate(100);
         }
 
     public function findByPublicId(string $publicId): ?Hall
@@ -485,7 +494,11 @@ class HallService
                 $this->refuse($decision, 'SCHEMA_VERSION_NOT_DRAFT');
             }
 
-            $this->validateSchemaPayload($version->schema_json ?? []);
+            // Публикация — более жёсткая граница: черновик может быть
+            // незавершённым, но published-схема обязана укладываться в тот же
+            // предельный размер, что и сохраняемый черновик.
+            $this->assertPayloadSize($version->schema_json ?? []);
+            $this->validateSchemaPayload($version->schema_json ?? [], true);
 
             return $this->repository->publishSchemaVersion($version);
         });
@@ -559,9 +572,19 @@ class HallService
      *
      * @param array<string, mixed> $payload
      */
-    protected function validateSchemaPayload(array $payload): void
+    protected function validateSchemaPayload(array $payload, bool $strict = false): void
     {
         $errors = [];
+        $problemObjects = [];
+
+        // Версия контракта. Отсутствие поля — легаси-схема до версионирования
+        // (её продолжаем принимать), но явно неподдерживаемая версия ломает
+        // round-trip и обязана отвергаться с предсказуемым кодом.
+        if (array_key_exists('version', $payload)
+            && ! in_array($payload['version'], self::SUPPORTED_FORMAT_VERSIONS, true)) {
+            $errors['version'] = ['Неподдерживаемая версия формата схемы. Ожидается "1.0".'];
+            $problemObjects[] = ['id' => 'schema', 'field' => 'version'];
+        }
 
         // Canvas dimensions, when present, must be sane positive integers.
         if (array_key_exists('canvas', $payload) && !is_array($payload['canvas'])) {
@@ -569,8 +592,10 @@ class HallService
         }
         $canvas = is_array($payload['canvas'] ?? null) ? $payload['canvas'] : [];
         foreach (['width', 'height'] as $dim) {
-            if (array_key_exists($dim, $canvas) && !$this->isPositiveInt($canvas[$dim])) {
-                $errors["canvas.$dim"] = ["canvas.$dim must be a positive integer"];
+            if (array_key_exists($dim, $canvas)
+                && (!$this->isPositiveInt($canvas[$dim]) || $canvas[$dim] > self::MAX_CANVAS_DIMENSION)) {
+                $errors["canvas.$dim"] = ["canvas.$dim must be a positive integer no greater than " . self::MAX_CANVAS_DIMENSION];
+                $problemObjects[] = ['id' => 'canvas', 'field' => "canvas.$dim"];
             }
         }
 
@@ -581,7 +606,13 @@ class HallService
         }
         $sectors = is_array($payload['sectors'] ?? null) ? $payload['sectors'] : [];
 
+        if (count($sectors) > self::MAX_SECTORS) {
+            $errors['sectors'] = ['Слишком много секторов: максимум ' . self::MAX_SECTORS . '.'];
+            $problemObjects[] = ['id' => 'sectors', 'field' => 'sectors'];
+        }
+
         $globalSeatIds = [];
+        $totalSeats = 0;
         // Overlap is a property of the CANVAS, so seat positions must be
         // compared in canvas space across every sector of the schema.
         //
@@ -651,6 +682,7 @@ class HallService
             $editorSeats = is_array($sector['seats'] ?? null) ? $sector['seats'] : [];
             $seatNumbers = [];
             foreach ($editorSeats as $j => $seat) {
+                $totalSeats++;
                 if (!is_array($seat)) {
                     $errors["sectors.$i.seats.$j"] = ['Seat must be an object'];
                     continue;
@@ -783,6 +815,7 @@ class HallService
 
                 $rowSeatNumbers = [];
                 foreach ($rowSeats as $j => $seat) {
+                    $totalSeats++;
                     if (!is_array($seat)) {
                         $errors["sectors.$i.rows.$rowNo.seats.$j"] = ['Seat must be an object'];
                         continue;
@@ -820,32 +853,129 @@ class HallService
             }
         }
 
+        if ($totalSeats > self::MAX_SEATS) {
+            $errors['seats'] = ['Слишком много мест: максимум ' . self::MAX_SEATS . ' на схему.'];
+            $problemObjects[] = ['id' => 'seats', 'field' => 'seats'];
+        }
+
         if (array_key_exists('staticObjects', $payload) && !is_array($payload['staticObjects'])) {
             $errors['staticObjects'] = ['staticObjects must be an array'];
         }
         $staticObjects = is_array($payload['staticObjects'] ?? null) ? $payload['staticObjects'] : [];
+        if (count($staticObjects) > self::MAX_STATIC_OBJECTS) {
+            $errors['staticObjects'] = ['Слишком много объектов: максимум ' . self::MAX_STATIC_OBJECTS . '.'];
+            $problemObjects[] = ['id' => 'staticObjects', 'field' => 'staticObjects'];
+        }
+
+        $allowedKinds = ['stage', 'entrance', 'label', 'table', 'standing', 'text'];
+        $staticIds = [];
         foreach ($staticObjects as $i => $object) {
             if (!is_array($object)) {
                 $errors["staticObjects.$i"] = ['Static object must be an object'];
                 continue;
             }
-            if (($object['kind'] ?? null) !== 'standing') {
+            $objectId = (string) ($object['id'] ?? "index:$i");
+            $kind = (string) ($object['kind'] ?? '');
+            if (!in_array($kind, $allowedKinds, true)) {
+                $errors["staticObjects.$i.kind"] = ['Unknown static object kind: ' . $kind];
+                $problemObjects[] = ['id' => $objectId, 'field' => "staticObjects.$i.kind"];
+            }
+            if (isset($object['id'])) {
+                if (!is_string($object['id']) || $object['id'] === '') {
+                    $errors["staticObjects.$i.id"] = ['Static object id must be a non-empty string'];
+                    $problemObjects[] = ['id' => $objectId, 'field' => "staticObjects.$i.id"];
+                } elseif (isset($staticIds[$object['id']])) {
+                    $errors["staticObjects.$i.id"] = ['Static object id must be unique within the schema'];
+                    $problemObjects[] = ['id' => $objectId, 'field' => "staticObjects.$i.id"];
+                }
+                $staticIds[(string) $object['id']] = true;
+            }
+            foreach (['x', 'y', 'width', 'height', 'rotation', 'opacity'] as $field) {
+                if (!array_key_exists($field, $object)) {
+                    continue;
+                }
+                $value = $object[$field];
+                if (!is_int($value) && !is_float($value)) {
+                    $errors["staticObjects.$i.$field"] = ["Static object $field must be a finite number"];
+                    $problemObjects[] = ['id' => $objectId, 'field' => "staticObjects.$i.$field"];
+                    continue;
+                }
+                if (!is_finite((float) $value) || abs((float) $value) > self::MAX_OBJECT_SIZE) {
+                    $errors["staticObjects.$i.$field"] = ["Static object $field is out of allowed bounds"];
+                    $problemObjects[] = ['id' => $objectId, 'field' => "staticObjects.$i.$field"];
+                }
+            }
+
+            if ($kind !== 'standing') {
                 continue;
             }
 
             $capacity = $object['capacity'] ?? null;
             if (!$this->isPositiveInt($capacity)) {
                 $errors["staticObjects.$i.capacity"] = ['A sellable standing zone requires a positive integer capacity'];
+                $problemObjects[] = ['id' => $objectId, 'field' => "staticObjects.$i.capacity"];
+                continue;
+            }
+            if ($capacity > self::MAX_STANDING_CAPACITY) {
+                $errors["staticObjects.$i.capacity"] = ['Standing zone capacity exceeds the server limit of ' . self::MAX_STANDING_CAPACITY];
+                $problemObjects[] = ['id' => $objectId, 'field' => "staticObjects.$i.capacity"];
                 continue;
             }
             $price = SchemaPrice::ofNode($object);
             if ($price === null || !$price->isSellable()) {
                 $errors["staticObjects.$i.priceMinor"] = ['A sellable standing zone requires a positive integer price in minor units'];
+                $problemObjects[] = ['id' => $objectId, 'field' => "staticObjects.$i.priceMinor"];
+            }
+        }
+
+        // Фоновая подложка: только ссылка на файл или data-URI ограниченного
+        // размера. Большой base64 в `background` превращал autosave в 422 и
+        // раздувал JSON до 2 МБ.
+        $backgrounds = [];
+        foreach (['background', 'backgrounds'] as $key) {
+            if (!array_key_exists($key, $payload)) {
+                continue;
+            }
+            $value = $payload[$key];
+            $list = $key === 'backgrounds' && is_array($value) ? $value : [$value];
+            if ($key === 'background' && is_array($value)) {
+                $list = [$value];
+            }
+            foreach ($list as $index => $background) {
+                if ($background === null) {
+                    continue;
+                }
+                if (is_string($background)) {
+                    $isDataUri = str_starts_with($background, 'data:image/');
+                    if (! $isDataUri && ! preg_match('~^https?://~i', $background)) {
+                        $errors[$key . ($key === 'backgrounds' ? ".$index" : '')] = ['Background must be an image URL or data URI'];
+                        continue;
+                    }
+                    if ($isDataUri && strlen($background) > 1_500_000) {
+                        $errors[$key . ($key === 'backgrounds' ? ".$index" : '')] = ['Background image is too large; upload it through the media library'];
+                        continue;
+                    }
+                    $backgrounds[] = $background;
+                    continue;
+                }
+                if (!is_array($background)) {
+                    $errors[$key . ($key === 'backgrounds' ? ".$index" : '')] = ['Background must be an object, URL or null'];
+                    continue;
+                }
+                $src = (string) ($background['src'] ?? '');
+                if ($src === '' || strlen($src) > 1_500_000) {
+                    $errors[$key . ($key === 'backgrounds' ? ".$index.src" : '.src')] = ['Background src is empty or too large'];
+                }
             }
         }
 
         if ($errors !== []) {
-            throw new ValidationError($errors, 'Hall schema validation failed');
+            throw new ValidationError(
+                $errors,
+                'Hall schema validation failed',
+                ['objects' => array_values($problemObjects)],
+                'SCHEMA_VALIDATION_FAILED',
+            );
         }
     }
 

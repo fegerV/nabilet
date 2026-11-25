@@ -12,6 +12,7 @@ import {
   DANCE_BOX_MIN_WIDTH,
   DANCE_BOX_PAD_X,
   DANCE_LINE_Y,
+  danceZoneBoxAt,
   danceZoneLayout,
   danceZonesLayout,
   estimateTextWidth,
@@ -34,6 +35,39 @@ describe('estimateTextWidth', () => {
 
   it('пустая строка имеет нулевую ширину', () => {
     expect(estimateTextWidth('', 12)).toBe(0)
+  })
+})
+
+describe('danceZoneBoxAt', () => {
+  it('places the box at the stored geometry instead of the bottom strip', () => {
+    const box = danceZoneBoxAt(text(), { x: 150, y: 90 }, {
+      canvasWidth: CANVAS,
+      canvasHeight: 400,
+      pad: 30,
+    })
+
+    expect(box.x + box.w / 2).toBeCloseTo(150, 5)
+    expect(box.y + box.h / 2).toBeCloseTo(90, 5)
+  })
+
+  it('keeps two zones with identical labels at different positions', () => {
+    const left = danceZoneBoxAt(text(), { x: 80, y: 120 }, { canvasWidth: CANVAS, canvasHeight: 400 })
+    const right = danceZoneBoxAt(text(), { x: 480, y: 300 }, { canvasWidth: CANVAS, canvasHeight: 400 })
+
+    expect(left.x).toBeLessThan(right.x)
+    expect(left.y).toBeLessThan(right.y)
+  })
+
+  it('clamps the box inside the canvas', () => {
+    const box = danceZoneBoxAt(text(), { x: -500, y: 1000 }, {
+      canvasWidth: CANVAS,
+      canvasHeight: 400,
+      pad: 30,
+    })
+
+    expect(box.x).toBeGreaterThanOrEqual(0)
+    expect(box.x + box.w).toBeLessThanOrEqual(CANVAS)
+    expect(box.y + box.h).toBeLessThanOrEqual(400)
   })
 })
 

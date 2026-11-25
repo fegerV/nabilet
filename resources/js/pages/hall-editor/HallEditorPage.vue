@@ -77,6 +77,7 @@ import {
   validateSchema,
 } from './schemaSerialization'
 import { useEditorHistory } from './useEditorHistory'
+import { useEditorRequestToken } from './composables/useEditorRequestToken'
 import {
   BACKGROUND_MAX_DATA_URL_BYTES,
   backgroundDataUrlBytes,
@@ -1381,6 +1382,8 @@ const editRevision = ref(0)
 const persistedEditRevision = ref(0)
 const hasUnsavedChanges = computed(() => editRevision.value > persistedEditRevision.value)
 let persistInFlight: Promise<boolean> | null = null
+// Запоздавший ответ старого запроса не должен перезаписать состояние другой площадки.
+const requestToken = useEditorRequestToken()
 let isHydratingSchema = false
 function scheduleAutosave(): void {
   // Пока идёт публикация, модель обязана быть неизменной: UI блокирует ввод,
@@ -1426,6 +1429,7 @@ async function persistSchema(): Promise<boolean> {
   }
 
   const requestedEditRevision = editRevision.value
+  const requestedLoadToken = requestToken.current()
   const versionId = currentVersionId
   const payload: Record<string, unknown> = { payload: buildSchemaPayload() }
   if (versionId !== null) {
@@ -1440,6 +1444,10 @@ async function persistSchema(): Promise<boolean> {
         'POST',
         payload,
       )
+      // Площадку переключили, пока запрос был в полёте: ответ относится к
+      // предыдущему редактору. Применять его revision/id/version опасно —
+      // следующий autosave уйдёт с несуществующим base_revision.
+      if (!requestToken.isCurrent(requestedLoadToken)) return false
       const d = res.data
       if (typeof d === 'object' && d) {
         if (typeof d.id === 'number') {
@@ -1457,6 +1465,7 @@ async function persistSchema(): Promise<boolean> {
       lastSavedAt.value = Date.now()
       return true
     } catch (e) {
+      if (!requestToken.isCurrent(requestedLoadToken)) return false
       if (e instanceof ApiError && e.status === 409 && e.code === 'SCHEMA_DRAFT_CONFLICT') {
         draftConflict.value = true
         autosave.value = 'error'
@@ -1689,6 +1698,9 @@ function applyServerSchema(raw: unknown): void {
 /** Загрузить зал и его версии с сервера. */
 async function loadFromServer(): Promise<void> {
   if (saveTimer) { clearTimeout(saveTimer); saveTimer = null }
+  // Все запросы, уже ушедшие на сервер, становятся «чужими»: их ответы не
+  // должны трогать текущее состояние редактора.
+  requestToken.next()
   hallLoadState.value = 'loading'
   const pid = route.params.publicId
   if (typeof pid !== 'string' || !pid) {

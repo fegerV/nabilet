@@ -661,7 +661,12 @@ $knownExtensions = [
             'primary_session_id', 'schema_version_id', 'sales_start_at', 'sales_end_at',
         ],
         // 1.5.0: имя технической строки схемы хранится в площадке (000800).
-        'venues' => ['hall_name'],
+        // 2026_11_26_000100: поля бывшего halls перенесены на реальную таблицу,
+        // чтобы запись не шла в VIEW.
+        'venues' => [
+            'hall_name', 'capacity', 'width', 'height',
+            'exterior_photo_url', 'interior_photo_url',
+        ],
         'media_assets' => ['folder_id'], // 1.7.5: виртуальная папка файла
         'hall_schema_versions' => ['venue_id'],
         // 1.5.0: заказ = билет (000300), публичный идентификатор позиции (000400).

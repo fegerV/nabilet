@@ -58,6 +58,12 @@ class Venue extends Model
         'latitude',
         'longitude',
         'status',
+        // Поля бывшей таблицы halls (миграция 2026_11_26_000100): зал = площадка.
+        'capacity',
+        'width',
+        'height',
+        'exterior_photo_url',
+        'interior_photo_url',
     ];
 
     /**

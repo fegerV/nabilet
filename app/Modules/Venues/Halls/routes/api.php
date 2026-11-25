@@ -30,13 +30,16 @@ Route::get('/venues/{publicId}/schema-versions', [HallController::class, 'venueS
 Route::get('/venues/{publicId}/schema-versions/{versionId}', [HallController::class, 'venueSchemaVersion'])
     ->name('venues.schema-versions.show')
     ->whereNumber('versionId');
-Route::get('/halls', [HallController::class, 'indexAll'])->name('halls.all');
 Route::get('/halls/{publicId}', [HallController::class, 'show'])->name('halls.show');
 // Публичная схема для витрины мест (B10): только опубликованная версия.
 Route::get('/halls/{publicId}/schema', [HallController::class, 'publishedSchema'])->name('halls.schema.published');
 
 // Protected hall management routes
 Route::middleware(['auth:api', 'admin'])->group(function () {
+    // Полный список залов — административная выборка: раньше публичный роут
+    // отдавал все залы всех организаций вместе с venue.organizational_id
+    // (аудит 2026-11-25, I-3). Публичный каталог — /venues/{id}/halls.
+    Route::get('/halls', [HallController::class, 'indexAll'])->name('halls.all');
     Route::post('/halls', [HallController::class, 'store'])->name('halls.store');
     Route::put('/halls/{publicId}', [HallController::class, 'update'])->name('halls.update');
     Route::delete('/halls/{publicId}', [HallController::class, 'destroy'])->name('halls.destroy');

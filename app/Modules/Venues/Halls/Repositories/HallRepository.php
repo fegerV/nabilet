@@ -7,6 +7,7 @@ namespace Nabilet\Modules\Venues\Halls\Repositories;
 use Nabilet\Modules\HallSchemas\Domain\SchemaVersionState;
 use Nabilet\Modules\Venues\Models\Hall;
 use Nabilet\Modules\Venues\Models\HallSchemaVersion;
+use Nabilet\Modules\Venues\Models\Venue;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
 
@@ -68,20 +69,98 @@ class HallRepository
                 return $this->model->with(['venue'])->paginate($limit);
             }
 
+    /**
+     * Запись идёт только в реальную таблицу venues (2026_11_18_000800):
+     * `halls` — VIEW, INSERT в неё запрещён, а `name` вычисляется через
+     * COALESCE и не обновляется. Возвращаем совместимую in-memory Hall.
+     * Специфические поля зала живут в halls_name/capacity/width/height/photo
+     * колонках площадки (миграция 2026_11_26_000100).
+     *
+     * @param  array<string, mixed>  $data
+     */
     public function create(array $data): Hall
     {
-        return $this->model->create($data);
+        $venue = Venue::query()->create([
+            'public_id' => $data['public_id'] ?? (string) \Nabilet\Modules\Core\Support\PublicId::generate(),
+            'organization_id' => $data['organization_id'] ?? app(\Nabilet\Core\Tenancy\OrganizationContext::class)->id(),
+            'name' => $data['name'],
+            'hall_name' => $data['name'],
+            'slug' => \Illuminate\Support\Str::slug($data['name']) . '-' . \Illuminate\Support\Str::lower(\Illuminate\Support\Str::random(6)),
+            'description' => $data['description'] ?? null,
+            'city' => $data['city'] ?? null,
+            'address' => $data['address'] ?? null,
+            'capacity' => $data['capacity'] ?? null,
+            'width' => $data['width'] ?? null,
+            'height' => $data['height'] ?? null,
+            'exterior_photo_url' => $data['exterior_photo_url'] ?? null,
+            'interior_photo_url' => $data['interior_photo_url'] ?? null,
+            'status' => $data['status'] ?? \Nabilet\Core\Support\PublicationStatus::ACTIVE,
+        ]);
+
+        return $this->shadowHall($venue);
     }
 
+    /**
+     * @param  array<string, mixed>  $data
+     */
     public function update(Hall $hall, array $data): Hall
     {
-        $hall->update($data);
-        return $hall->fresh();
+        $venue = Venue::query()->findOrFail($hall->venue_id ?: $hall->id);
+        $venue->update($this->toVenueAttributes($data));
+
+        return $this->shadowHall($venue->fresh());
     }
 
     public function delete(Hall $hall): bool
     {
-        return $hall->delete();
+        // VIEW удаляет строку площадки, но обходит сервисный запрет на
+        // замороженные схемы. Удаляем из таблицы — БД-триггер ещё один барьер.
+        return (bool) Venue::query()->whereKey($hall->venue_id ?: $hall->id)->delete();
+    }
+
+    /** @param  array<string, mixed>  $data  @return array<string, mixed> */
+    private function toVenueAttributes(array $data): array
+    {
+        $map = [
+            'name' => 'hall_name',
+            'description' => 'description',
+            'city' => 'city',
+            'address' => 'address',
+            'capacity' => 'capacity',
+            'width' => 'width',
+            'height' => 'height',
+            'exterior_photo_url' => 'exterior_photo_url',
+            'interior_photo_url' => 'interior_photo_url',
+            'status' => 'status',
+        ];
+        $attributes = [];
+        foreach ($map as $from => $to) {
+            if (array_key_exists($from, $data)) {
+                $attributes[$to] = $data[$from];
+            }
+        }
+
+        return $attributes;
+    }
+
+    private function shadowHall(Venue $venue): Hall
+    {
+        return (new Hall())->forceFill([
+            'id' => $venue->id,
+            'public_id' => $venue->public_id,
+            'venue_id' => $venue->id,
+            'name' => $venue->hall_name ?? $venue->name,
+            'description' => $venue->description,
+            'city' => $venue->city,
+            'address' => $venue->address,
+            'capacity' => $venue->capacity,
+            'width' => $venue->width,
+            'height' => $venue->height,
+            'exterior_photo_url' => $venue->exterior_photo_url,
+            'interior_photo_url' => $venue->interior_photo_url,
+            'organization_id' => $venue->organization_id,
+            'status' => $venue->status,
+        ]);
     }
 
     public function getSchemaVersions(Hall $hall): Collection

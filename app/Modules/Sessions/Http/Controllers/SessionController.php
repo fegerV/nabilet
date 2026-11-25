@@ -11,6 +11,7 @@ use Nabilet\Core\Support\Paging;
 use Nabilet\Modules\HallSchemas\Domain\SchemaVersionState;
 use Nabilet\Modules\Sessions\Models\Session;
 use Nabilet\Modules\Sessions\StateMachines\SessionStateMachine;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Inventory\Services\InventoryService;
@@ -38,7 +39,13 @@ class SessionController extends Controller
         // Гость витрины видит только сеансы опубликованных мероприятий,
         // Administrator — все. Раньше публичный список отдавал черновики
         // вместе с сырыми внутренними связями.
-        if (! \Nabilet\Modules\Core\Users\Support\StaffRole::isStaff($request->user())) {
+        $isStaff = \Nabilet\Modules\Core\Users\Support\StaffRole::isStaff($request->user());
+        if ($isStaff) {
+            // Админ видит сеансы ТОЛЬКО своей организации. Раньше ветка staff
+            // вообще не фильтровала, а исполнялась в bypass: admin A получал
+            // список сеансов admin'а B вместе с venue/schemaVersion (I-4).
+            $query->where('organization_id', app(OrganizationContext::class)->id());
+        } else {
             // Подзапрос по ТАБЛИЦЕ, а не whereHas по Eloquent-модели Event:
             // модель tenant-scoped, и её global scope сработал бы внутри
             // безконтекстного запроса витрины (TenantContextMissingError).
@@ -93,7 +100,11 @@ class SessionController extends Controller
         if ($model === null) {
             throw new NotFoundError('Session', (string) $session);
         }
-        if (! \Nabilet\Modules\Core\Users\Support\StaffRole::isStaff(request()->user())) {
+        if (\Nabilet\Modules\Core\Users\Support\StaffRole::isStaff(request()->user())) {
+            // Админ чужой организации не должен получать карточку сеанса
+            // (вместе с инвентарём и схемой) только по числовому id.
+            app(OrganizationContext::class)->assertCanAccess($model->organization_id, 'Session', $session);
+        } else {
             $eventStatus = app(OrganizationContext::class)->withoutScope(
                 fn () => $model->event?->status
             );
@@ -175,16 +186,29 @@ class SessionController extends Controller
         // инвентарь строился из неожиданной геометрии.
         $this->assertExplicitSchemaVersion($data);
 
-        $session = Session::create($data);
+        // Сеанс и инвентарь — ОДНА транзакция. Раньше строка сеанса
+        // коммитилась до генерации мест, и при любой ошибке генерации
+        // (FK, конфликт геометрии, нехватка памяти) оставался сеанс без
+        // инвентаря: витрина показывала его, но купить в нём было нечего.
+        // Повтор запроса создавал ещё один такой же «пустой» сеанс.
+        $session = DB::transaction(function () use ($data): Session {
+            /** @var Session $session */
+            $session = Session::create($data);
 
-        // Создаём места (геометрия + инвентарь) из схемы зала.
-        // Канвасный формат редактора конвертируется в rows автоматически
-        // (HallSchemaVersion::toInventoryFormat).
-        if ($session->schema_version_id !== null) {
-            $schemaVersion = HallSchemaVersion::findOrFail($session->schema_version_id);
-            $this->inventoryService->generateFromSchema($schemaVersion, $session);
-        }
-                                $session->load(['event', 'hall', 'schemaVersion']);
+            // Создаём места (геометрия + инвентарь) из схемы зала.
+            // Канвасный формат редактора конвертируется в rows автоматически
+            // (HallSchemaVersion::toInventoryFormat).
+            if ($session->schema_version_id !== null) {
+                /** @var HallSchemaVersion $schemaVersion */
+                $schemaVersion = HallSchemaVersion::query()
+                    ->whereKey($session->schema_version_id)
+                    ->lockForUpdate()
+                    ->firstOrFail();
+                $this->inventoryService->generateFromSchema($schemaVersion, $session);
+            }
+
+            return $session->load(['event', 'hall', 'schemaVersion']);
+        });
 
         return response()->json(['success' => true, 'data' => $session], 201);
     }
@@ -206,60 +230,77 @@ class SessionController extends Controller
             'status' => ['sometimes', 'string', Rule::in(SessionStateMachine::all())],
         ]);
 
-        // БД требует venue_id NOT NULL; при смене зала обновляем площадку зала.
-        if (empty($data['venue_id']) && !empty($data['hall_id'])) {
-            $data['venue_id'] = Hall::query()
-                ->where('id', $data['hall_id'])
-                ->value('venue_id');
-        }
+        // Вся операция — в одной транзакции с локом строки сеанса. Порядок
+        // критичен: проверка «можно ли пересобрать», UPDATE сеанса и генерация
+        // инвентаря обязаны видеть ОДНО и то же состояние. Раньше проверка и
+        // UPDATE коммитились до генерации; если генерация падала (например,
+        // на уставшей геометрии), сеанс оставался с НОВОЙ схемой и СТАРЫМ
+        // инвентарём. Без лока строки два параллельных PATCH могло бы оба
+        // решить, что схема меняется с одной и той же версии.
+        $session = DB::transaction(function () use ($session, &$data): Session {
+            // БД требует venue_id NOT NULL; при смене зала обновляем площадку зала.
+            if (empty($data['venue_id']) && !empty($data['hall_id'])) {
+                $data['venue_id'] = Hall::query()
+                    ->where('id', $data['hall_id'])
+                    ->value('venue_id');
+            }
 
-        // Явно присланный null не обязан означать «обнулить» (колонка NOT NULL,
-        // иначе SQL-ошибка 500): PATCH без смены зала трактует null как «не
-        // менять». При смене зала null заполнится последней published-схемой ниже.
-        if (array_key_exists('schema_version_id', $data) && $data['schema_version_id'] === null && empty($data['hall_id'])) {
-            unset($data['schema_version_id']);
-        }
+            // Явно присланный null не обязан означать «обнулить» (колонка NOT NULL,
+            // иначе SQL-ошибка 500): PATCH без смены зала трактует null как «не
+            // менять». При смене зала null заполнится последней published-схемой ниже.
+            if (array_key_exists('schema_version_id', $data) && $data['schema_version_id'] === null && empty($data['hall_id'])) {
+                unset($data['schema_version_id']);
+            }
 
-        // БД требует schema_version_id NOT NULL — берём последнюю published схему зала.
-        // Тот же `SchemaVersionState`, что и при создании.
-        if (empty($data['schema_version_id']) && !empty($data['hall_id'])) {
-            $data['schema_version_id'] = HallSchemaVersion::query()
-                ->where('hall_id', $data['hall_id'])
-                ->where('status', SchemaVersionState::PUBLISHED)
-                ->orderByDesc('version')
-                ->value('id');
-        }
+            // БД требует schema_version_id NOT NULL — берём последнюю published схему зала.
+            // Тот же `SchemaVersionState`, что и при создании.
+            if (empty($data['schema_version_id']) && !empty($data['hall_id'])) {
+                $data['schema_version_id'] = HallSchemaVersion::query()
+                    ->where('hall_id', $data['hall_id'])
+                    ->where('status', SchemaVersionState::PUBLISHED)
+                    ->orderByDesc('version')
+                    ->value('id');
+            }
 
-        // Сверка пары нужна и здесь: PATCH может прислать ТОЛЬКО `venue_id` (зал
-        // остаётся прежним) или ТОЛЬКО `hall_id` (площадка выводится из зала),
-        // поэтому берём ИТОГОВЫЕ значения, а не тело запроса.
-        $this->assertHallBelongsToVenue([
-            'venue_id' => $data['venue_id'] ?? $session->venue_id,
-            'hall_id' => $data['hall_id'] ?? $session->hall_id,
-        ]);
-        $this->assertHallHasPublishedSchema($data);
-        $this->assertExplicitSchemaVersion($data, $session);
+            /** @var Session $locked */
+            $locked = Session::query()->whereKey($session->id)->lockForUpdate()->firstOrFail();
 
-        // Итоговая версия схемы после PATCH: присланная или прежняя. Смена
-        // версии — единственный триггер пересборки инвентаря: правка даты или
-        // статуса не должна трогать места.
-        $effectiveSchemaId = (int) ($data['schema_version_id'] ?? $session->schema_version_id);
-        $schemaChanged = $effectiveSchemaId !== (int) $session->schema_version_id;
+            // Сверка пары нужна и здесь: PATCH может прислать ТОЛЬКО `venue_id`
+            // (зал остаётся прежним) или ТОЛЬКО `hall_id` (площадка выводится
+            // из зала), поэтому берём ИТОГОВЫЕ значения, а не тело запроса.
+            $this->assertHallBelongsToVenue([
+                'venue_id' => $data['venue_id'] ?? $locked->venue_id,
+                'hall_id' => $data['hall_id'] ?? $locked->hall_id,
+            ]);
+            $this->assertHallHasPublishedSchema($data);
+            $this->assertExplicitSchemaVersion($data, $locked);
 
-        // Проверка ДО update(): иначе при 409 сеанс остался бы с новой версией
-        // схемы, а места — от прежней: рассинхрон, который видит покупатель.
-        if ($schemaChanged) {
-            $this->assertInventoryRegenerable($session);
-        }
+            // Итоговая версия схемы после PATCH: присланная или прежняя. Смена
+            // версии — единственный триггер пересборки инвентаря: правка даты
+            // или статуса не должна трогать места.
+            $effectiveSchemaId = (int) ($data['schema_version_id'] ?? $locked->schema_version_id);
+            $schemaChanged = $effectiveSchemaId !== (int) $locked->schema_version_id;
 
-        $session->update($data);
+            // Проверка ДО update(), но УЖЕ под локом: бронирование блокирует
+            // те же строки инвентаря, поэтому гонка «пересборка vs бронь»
+            // сериализуется, а при 409 транзакция откатывает ВСЁ.
+            if ($schemaChanged) {
+                $this->assertInventoryRegenerable($locked);
+            }
 
-        if ($schemaChanged) {
-            $schemaVersion = HallSchemaVersion::findOrFail($effectiveSchemaId);
-            $this->inventoryService->generateFromSchema($schemaVersion, $session);
-        }
+            $locked->update($data);
 
-        $session->load(['event', 'hall', 'schemaVersion']);
+            if ($schemaChanged) {
+                /** @var HallSchemaVersion $schemaVersion */
+                $schemaVersion = HallSchemaVersion::query()
+                    ->whereKey($effectiveSchemaId)
+                    ->lockForUpdate()
+                    ->firstOrFail();
+                $this->inventoryService->generateFromSchema($schemaVersion, $locked);
+            }
+
+            return $locked->load(['event', 'hall', 'schemaVersion']);
+        });
 
         return response()->json(['success' => true, 'data' => $session]);
     }

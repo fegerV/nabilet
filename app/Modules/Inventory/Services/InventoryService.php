@@ -6,6 +6,7 @@ namespace Nabilet\Modules\Inventory\Services;
 
 use Nabilet\Core\Errors\ConflictError;
 use Nabilet\Core\Errors\NotFoundError;
+use Nabilet\Core\Support\HoldGrace;
 use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Core\Support\PublicId;
 use Nabilet\Modules\Cart\Models\Cart;
@@ -28,6 +29,9 @@ class InventoryService
 {
     public function assertRegenerable(Session $session): void
     {
+        // Вызов обязан происходить ВНУТРИ транзакции: `lockForUpdate()` в
+        // autocommit живёт ровно до конца SELECT и не защищает от гонки с
+        // бронированием (CartItemService блокирует те же строки инвентаря).
         $itemIds = $session->inventoryItems()->lockForUpdate()->pluck('id');
 
         if ($itemIds->isEmpty()) {
@@ -51,14 +55,69 @@ class InventoryService
             );
         }
 
+        // Истёкшие и уже снятые держки НЕ блокируют пересборку: sweeper только
+        // помечает их `released_at`, строки остаются в БД (FK restrict), и без
+        // этого фильтра сеанс нельзя было бы пересобрать никогда. Граница
+        // активности — то же grace-окно, что используют sweeper и оплата.
         $hasHolds = \Nabilet\Modules\Orders\Models\SeatHold::query()
             ->whereIn('inventory_item_id', $itemIds)
+            ->whereNull('released_at')
+            ->whereNull('converted_at')
+            ->where('expires_at', '>', HoldGrace::cutoff()->toDateTimeString())
             ->exists();
 
         if ($hasHolds) {
             throw new ConflictError(
-                'Нельзя изменить схему зала: места сеанса находятся в корзинах покупателей. Попробуйте позже или дождитесь очистки корзин.',
+                'Нельзя изменить схему зала: места сеанса находятся в активных бронях покупателей. Попробуйте позже или дождитесь истечения брони.',
                 'SESSION_SCHEMA_HELD',
+            );
+        }
+    }
+
+    /**
+     * Удалить неактивные держки и позиции корзин, мешающие пересборке.
+     *
+     * `seat_holds` и `cart_items` держат `inventory_items` через RESTRICT, поэтому
+     * один лишь фильтр в `assertRegenerable()` не достаточно: снятая держка всё
+     * равно делает `DELETE FROM inventory_items` невозможным. Удаляем только
+     * строки, которые уже нельзя конвертировать в оплату (снятые, конвертированные
+     * или старше grace-окна), и только для позиций ЭТОГО сеанса.
+     *
+     * @param  array<int, int|string>  $itemIds
+     */
+    private function purgeStaleReservations(array $itemIds): void
+    {
+        if ($itemIds === []) {
+            return;
+        }
+
+        $stale = \Nabilet\Modules\Orders\Models\SeatHold::query()
+            ->whereIn('inventory_item_id', $itemIds)
+            ->where(static function ($query): void {
+                $query->whereNotNull('released_at')
+                    ->orWhereNotNull('converted_at')
+                    ->orWhere('expires_at', '<=', HoldGrace::cutoff()->toDateTimeString());
+            })
+            ->get(['id', 'cart_id']);
+
+        if ($stale->isNotEmpty()) {
+            $cartIds = $stale->pluck('cart_id')->filter()->unique()->all();
+            if ($cartIds !== []) {
+                DB::table('cart_items')
+                    ->whereIn('cart_id', $cartIds)
+                    ->whereIn('inventory_item_id', $itemIds)
+                    ->delete();
+            }
+            \Nabilet\Modules\Orders\Models\SeatHold::query()
+                ->whereIn('id', $stale->pluck('id')->all())
+                ->delete();
+        }
+
+        // Оставшиеся позиции корзин — живые резервы: их silently удалять нельзя.
+        if (DB::table('cart_items')->whereIn('inventory_item_id', $itemIds)->exists()) {
+            throw new ConflictError(
+                'Нельзя изменить схему зала: места ещё лежат в активных корзинах.',
+                'SESSION_SCHEMA_ACTIVE_CARTS',
             );
         }
     }
@@ -86,6 +145,17 @@ class InventoryService
     public function generateFromSchema(HallSchemaVersion $schemaVersion, Session $session): int
     {
         return DB::transaction(function () use ($schemaVersion, $session) {
+            // СЕРИАЛИЗАЦИЯ ПО ВЕРСИИ СХЕМЫ. Два сеанса, созданные одновременно
+            // из одной версии, обязаны материализовать геометрию ровно один раз.
+            // Без лока оба видели «геометрии нет» и оба вставляли сектора с
+            // одинаковыми кодами (нарушение uq_sector_schema_code), а сеанс первого
+            // запроса оставался в БД без инвентаря.
+            /** @var HallSchemaVersion $schemaVersion */
+            $schemaVersion = HallSchemaVersion::query()
+                ->whereKey($schemaVersion->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
             $this->assertRegenerable($session);
             $schema = $schemaVersion->schema_json ?? [];
 
@@ -99,7 +169,9 @@ class InventoryService
             // Проданные билеты по-прежнему защищены: у `tickets.seat_id` тоже
             // RESTRICT, поэтому пересборка зала с продажами падает — но уже
             // явно и не разрушая данные.
-            InventoryItem::where('session_id', $session->id)->delete();
+            $itemIds = InventoryItem::query()->where('session_id', $session->id)->pluck('id')->all();
+            $this->purgeStaleReservations($itemIds);
+            InventoryItem::query()->where('session_id', $session->id)->delete();
 
             // 1. Геометрия — ОДИН раз на версию схемы (см. docblock метода).
             //
@@ -132,7 +204,10 @@ class InventoryService
                 ]);
                 $sectorModels[] = $sector;
 
-                                $capacity = 0;
+                                // Стоячая зона — ОДНА позиция с вместимостью, а не N фейковых
+                                // мест. Легаси-схемы с array_fill считаются по числу строк.
+                                $isStandingLegacy = ($sectorData['type'] ?? 'seated') === 'standing';
+                                $capacity = $isStandingLegacy ? (int) ($sectorData['standing_capacity'] ?? 0) : 0;
                                                 $isStanding = ($sectorData['type'] ?? 'seated') === 'standing';
                                                 $standingPrice = 0;
                                 foreach ($sectorData['rows'] ?? [] as $rowData) {
@@ -220,6 +295,17 @@ class InventoryService
             // Прежний инвентарь уже снят шагом 0 (до удаления геометрии).
                                     $seatItems = [];
                                     $standingItems = [];
+                                    // Геометрия standing-зоны живёт в схеме, а не в
+                                    // таблице standing_zones. Прокидываем её в
+                                    // metadata инвентаря, чтобы витрина рисовала
+                                    // зону ТАМ, где её поставили в конструкторе.
+                                    $standingGeometry = [];
+                                    foreach ($sectors as $sectorData) {
+                                        if (($sectorData['type'] ?? '') !== 'standing' || ! is_array($sectorData['standing_zone'] ?? null)) {
+                                            continue;
+                                        }
+                                        $standingGeometry[(string) ($sectorData['name'] ?? '')] = $sectorData['standing_zone'];
+                                    }
                                                 foreach ($sectorModels as $sector) {
                                                     // Стоячая зона: одна standing-зона + один inventory-item standing
                                                     // с capacity = вместимость зоны (сколько билетов продать).
@@ -256,6 +342,7 @@ class InventoryService
                                                                 'sector_name' => $sector->name,
                                                                 'row_label' => 'Танцпол',
                                                                 'seat_number' => null,
+                                                                'standing_zone' => $standingGeometry[$sector->name] ?? null,
                                                             ]),
                                                             'created_at' => now(),
                                                             'updated_at' => now(),

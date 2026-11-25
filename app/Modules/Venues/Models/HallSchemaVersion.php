@@ -104,6 +104,10 @@ class HallSchemaVersion extends Model
 
             $sectors = [];
                         $seatCounter = 0;
+            // Стабильные идентификаторы standing-объектов. Раньше зоны
+            // сопоставлялись по NAME/text: две зоны с одинаковой подписью
+            // сливались в одну, а переименование создавало дубликат.
+            $coveredStandingIds = [];
                         foreach ($payload['sectors'] ?? [] as $sectorRaw) {
                 // B7/C1: «сироты» без мест (сектор только под подпись/рамку)
                 // раньше молча выбрасывались из инвентаря. Если у такого
@@ -138,7 +142,13 @@ class HallSchemaVersion extends Model
                                 continue;
                             }
                             $cap = max(0, (int) ($obj['capacity'] ?? 0));
-                            if ($cap === 0) {
+                            $zoneId = (string) ($obj['id'] ?? '');
+                            // Легаси-объекты без id сопоставляются по подписи —
+                            // только так; новые схемы используют стабильный id.
+                            $coverageKey = $zoneId !== ''
+                                ? 'id:' . $zoneId
+                                : 'text:' . (string) ($obj['text'] ?? '');
+                            if ($cap === 0 || isset($coveredStandingIds[$coverageKey])) {
                                 continue;
                             }
                             // ВАЖНО: поднимаем тип на самом секторе, а не только в
@@ -147,25 +157,21 @@ class HallSchemaVersion extends Model
                             // standing-«мест» — и InventoryService пытается
                             // вставить их в `seats` с type='standing', нарываясь
                             // на ck_seats_type (допустимы только
-                            // standard/vip/wheelchair/companion/custom). Плюс
-                            // нижний цикл по staticObjects тогда видит «чужую»
-                            // standing-зону и дублирует её вторым pseudo-сектором.
-                            // С type='standing' на секторе он же закроет
-                            // `alreadyCovered` и второй зоны не будет.
+                            // standard/vip/wheelchair/companion/custom).
+                            $coveredStandingIds[$coverageKey] = true;
                             $sector['type'] = 'standing';
                             $type = 'standing';
+                            // Стоячая зона — ОДНА сущность с вместимостью, а не
+                            // массив виртуальных посетителей. `array_fill()` здесь
+                            // создавал 2 000 000 фейковых «мест» для вместимости
+                            // 2 000 000 (OOM) и терял геометрию зоны.
+                            $sector['standing_capacity'] = $cap;
+                            $sector['standing_zone'] = $this->standingZoneDescriptor($obj, $sector, $unit);
                             $sector['rows'] = [[
                                 'number' => '1',
                                 'label' => (string) ($obj['text'] ?? 'Танцпол'),
                                 'price_amount' => SchemaPrice::forStandingZone($obj, $sector)?->minorUnits() ?? 0,
-                                'seats' => array_fill(0, $cap, [
-                                    'id' => null,
-                                    'number' => '',
-                                    'label' => '',
-                                    'type' => 'standing',
-                                    'x' => 0,
-                                    'y' => 0,
-                                ]),
+                                'seats' => [],
                             ]];
                             break;
                         }
@@ -316,16 +322,16 @@ class HallSchemaVersion extends Model
                     continue;
                 }
                 // Не дублируем зону, уже «подхваченную» сектором-обёрткой выше.
-                $alreadyCovered = false;
-                foreach ($sectors as $sec) {
-                    if (($sec['type'] ?? '') === 'standing' && ($sec['name'] ?? '') === (string) ($objRaw['text'] ?? '')) {
-                        $alreadyCovered = true;
-                        break;
-                    }
-                }
-                if ($alreadyCovered) {
+                // Ключ — стабильный id объекта, а не его подпись: две зоны
+                // «Танцпол» обязаны остаться двумя зонами.
+                $zoneId = (string) ($objRaw['id'] ?? '');
+                $coverageKey = $zoneId !== ''
+                    ? 'id:' . $zoneId
+                    : 'text:' . (string) ($objRaw['text'] ?? '');
+                if (isset($coveredStandingIds[$coverageKey])) {
                     continue;
                 }
+                $coveredStandingIds[$coverageKey] = true;
                 $sectors[] = [
                     'name' => (string) ($objRaw['text'] ?? 'Стоячая зона'),
                     'code' => '',
@@ -334,18 +340,13 @@ class HallSchemaVersion extends Model
                     'height' => 40,
                     'x' => 0,
                     'y' => 0,
+                    'standing_capacity' => $cap,
+                    'standing_zone' => $this->standingZoneDescriptor($objRaw, [], $unit),
                     'rows' => [[
                         'number' => '1',
                         'label' => (string) ($objRaw['text'] ?? 'Танцпол'),
                         'price_amount' => SchemaPrice::forStandingZone($objRaw)?->minorUnits() ?? 0,
-                        'seats' => array_fill(0, $cap, [
-                            'id' => null,
-                            'number' => '',
-                            'label' => '',
-                            'type' => 'standing',
-                            'x' => 0,
-                            'y' => 0,
-                        ]),
+                        'seats' => [],
                     ]],
                 ];
             }
@@ -373,6 +374,39 @@ class HallSchemaVersion extends Model
         unset($sec);
 
         return $sectors;
+    }
+
+    /**
+     * Геометрия standing-зоны для inventory-позиции.
+     *
+     * Раньше из конвертации выбрасывались x/y/width/height/rotation/id, и
+     * витрина рисовала все зоны нижней полосой независимо от конструктора.
+     * Дескриптор едет в `inventory_items.metadata_json`, не меняя схему БД.
+     *
+     * @param  array<string, mixed>  $object
+     * @param  array<string, mixed>  $sector  резервные координаты для старых схем без x/y
+     * @return array<string, mixed>
+     */
+    private function standingZoneDescriptor(array $object, array $sector = [], float $unit = 1.0): array
+    {
+        // Координаты переводим в ту же нормализованную сетку, что и места:
+        // витрина проецирует и места, и зоны одним `fit`.
+        $scale = static fn (mixed $value): float => round(
+            (is_numeric($value) ? (float) $value : 0.0) * $unit,
+            3,
+        );
+
+        return [
+            'id' => (string) ($object['id'] ?? ''),
+            'name' => (string) ($object['text'] ?? 'Стоячая зона'),
+            'x' => $scale($object['x'] ?? ($sector['x'] ?? 0)),
+            'y' => $scale($object['y'] ?? ($sector['y'] ?? 0)),
+            'width' => $scale($object['width'] ?? 0),
+            'height' => $scale($object['height'] ?? 0),
+            'rotation' => is_numeric($object['rotation'] ?? null) ? (float) $object['rotation'] : 0.0,
+            'opacity' => is_numeric($object['opacity'] ?? null) ? (float) $object['opacity'] : 1.0,
+            'locked' => (bool) ($object['locked'] ?? false),
+        ];
     }
 
     /**
