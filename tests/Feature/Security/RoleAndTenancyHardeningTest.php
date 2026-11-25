@@ -35,13 +35,9 @@ class RoleAndTenancyHardeningTest extends TestCase
         $managerSlug = 'manager';
         $managerId = $this->roleId($managerSlug);
 
-        if ($managerId === null) {
-            // Роль удалена миграцией — это и есть ожидаемое состояние.
-            $this->assertNull($managerId);
-            return;
-        }
-
-        $user = $this->userWithRole((int) $managerId, $org);
+        // roleId() создаёт роль, если её нет: проверяем именно поведение, а не
+        // отсутствие роли — manager обязан получить 403 на админ-API.
+        $user = $this->userWithRole($managerId, $org);
         $this->actingAs($user, 'api')
             ->getJson('/api/v1/admin/system/status')
             ->assertStatus(403);

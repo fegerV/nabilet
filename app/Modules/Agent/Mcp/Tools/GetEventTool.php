@@ -86,7 +86,7 @@ class GetEventTool extends Tool
             return $event->sessions()
                 ->orderBy('starts_at')
                 ->get()
-                ->map(function (Session $session) use ($capacityBySession): array {
+                ->map(function ($session) use ($capacityBySession): array {
                     $inv = $capacityBySession->get($session->id);
 
                     return [

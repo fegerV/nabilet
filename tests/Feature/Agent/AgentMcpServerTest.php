@@ -255,7 +255,8 @@ class AgentMcpServerTest extends TestCase
             ->assertOk()
             ->assertStructuredContentCount(1, 'orders')
             ->assertStructuredContentPath('orders.0.public_id', $paidOwn['orderPublicId'])
-            ->assertDontSee($paidForeign['orderPublicId'], 'чужой заказ неотличим от несуществующего');
+            // Чужой заказ неотличим от несуществующего.
+            ->assertDontSee($paidForeign['orderPublicId']);
     }
 
     public function test_get_order_returns_customer_and_tickets_but_never_qr_access(): void

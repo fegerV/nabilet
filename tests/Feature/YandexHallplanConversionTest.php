@@ -27,11 +27,10 @@ final class YandexHallplanConversionTest extends TestCase
         self::assertSame($schema, $converter->convert(['result' => ['hallplan' => $source]]));
         $reflection = new \ReflectionClass(HallService::class);
         $service = $reflection->newInstanceWithoutConstructor();
-        try {
-            $reflection->getMethod('validateSchemaPayload')->invoke($service, $schema);
-        } catch (\Nabilet\Core\Errors\ValidationError $error) {
-            self::fail(json_encode($error->errors, JSON_UNESCAPED_UNICODE));
-        }
+        // ValidationError, если схема невалидна, просто упадёт тестом —
+        // перехватывать её через Reflection бессмысленно (PHPStan считает
+        // такой catch мёртвым, потому что не видит исключение сквозь invoke).
+        $reflection->getMethod('validateSchemaPayload')->invoke($service, $schema);
         self::assertGreaterThan(0, $schema['canvas']['width']);
         self::assertGreaterThan(0, $schema['canvas']['height']);
     }

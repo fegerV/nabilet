@@ -506,9 +506,12 @@ final class RaffleService
                 $query->where('user_id', $user->getKey());
                 if ($email !== '') {
                     $query->orWhere(function ($query) use ($email): void {
-                        $query->whereNull('user_id')->whereHas(
-                            'order',
-                            static fn ($q) => $q->where('customer_email', $email),
+                        // Подзапрос вместо whereHas: без Larastan PHPStan не знает
+                        // whereHas на_builder из замыкания, а по сути это тот же
+                        // EXISTS по order.customer_email.
+                        $query->whereNull('user_id')->whereIn(
+                            'order_id',
+                            Order::query()->where('customer_email', $email)->select('id'),
                         );
                     });
                 }
@@ -522,23 +525,28 @@ final class RaffleService
             return [];
         }
 
-        return Raffle::query()
+        /** @var \Illuminate\Database\Eloquent\Builder<Raffle> $query */
+        $query = Raffle::query()->with('orderedPrizes')->withCount('entries');
+
+        return $query
             ->visible()
             ->whereKey($raffleIds)
-            ->with('orderedPrizes')
-            ->withCount('entries')
             ->get()
             ->map(function (Raffle $raffle) use ($entryIds): array {
-                $won = RaffleWinner::query()
+                /** @var \Illuminate\Database\Eloquent\Builder<RaffleWinner> $winnerQuery */
+                $winnerQuery = RaffleWinner::query()->with('prize');
+                $won = $winnerQuery
                     ->where('raffle_id', $raffle->getKey())
                     ->whereIn('entry_id', $entryIds)
-                    ->with('prize')
                     ->get()
-                    ->map(fn (RaffleWinner $winner): array => [
-                        'place' => (int) ($winner->prize?->place ?? 0),
-                        'prize_title' => (string) ($winner->prize?->title ?? ''),
-                        'notified' => $winner->isNotified(),
-                    ])
+                    ->map(static function ($winner): array {
+                        /** @var RaffleWinner $winner */
+                        return [
+                            'place' => (int) ($winner->prize?->place ?? 0),
+                            'prize_title' => (string) ($winner->prize?->title ?? ''),
+                            'notified' => $winner->isNotified(),
+                        ];
+                    })
                     ->all();
 
                 return [

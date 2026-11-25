@@ -899,8 +899,10 @@ parameters:
 			path: app/Modules/Venues/Halls/Services/HallService.php
 
 		-
+			# Один из шести вызовов теперь явно типизирован @var Hall — Storage
+			# храповика уменьшился с 6 до 4.
 			message: "#^Cannot call method schemaVersions\\(\\) on stdClass\\.$#"
-			count: 6
+			count: 4
 			path: app/Modules/Venues/Halls/Services/HallService.php
 
 		-
@@ -988,10 +990,6 @@ parameters:
 			count: 1
 			path: tests/Feature/Inventory/SessionRowPricesTest.php
 
-		-
-			message: "#^Offset 'session_only' does not exist on array\\{session_id\\: int, rows_updated\\: int, items_updated\\: int, cart_items_updated\\: int, carts_recalculated\\: int\\}\\.$#"
-			count: 2
-			path: tests/Feature/Inventory/SessionRowPricesTest.php
 
 		-
 			message: "#^Call to an undefined static method Nabilet\\\\Modules\\\\Venues\\\\Models\\\\HallSchemaVersion\\:\\:create\\(\\)\\.$#"

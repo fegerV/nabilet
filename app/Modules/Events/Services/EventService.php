@@ -218,8 +218,11 @@ class EventService
         }
 
         return DB::transaction(function () use ($event, $data): Event {
+            /** @var \Illuminate\Database\Eloquent\Builder<Event> $query */
+            $query = Event::query();
+            $query->lockForUpdate();
             /** @var Event $locked */
-            $locked = Event::query()->lockForUpdate()->findOrFail($event->id);
+            $locked = $query->findOrFail($event->id);
             $updated = $this->eventRepository->update($locked, $data);
             $this->syncPrimarySession($updated);
             return $updated->fresh();

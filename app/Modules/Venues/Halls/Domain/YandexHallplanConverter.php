@@ -750,7 +750,7 @@ final class YandexHallplanConverter
             // Ценомерная лестница: ряды, проданные целиком (анкеров нет), получают
             // цену ближайшего известного ряда того же уровня — тарифы в залe идут
             // «фронт дороже» и не скачут между соседними рядами.
-            if (isset($rowPrices) && $rowPrices !== []) {
+            if ($rowPrices !== []) {
                 foreach ($rows as $rowMeta) {
                     $rowNo = (string) $rowMeta['row'];
                     if (isset($rowPrices[$rowNo])) {
@@ -776,7 +776,9 @@ final class YandexHallplanConverter
             // Медиана цен рядов уровня; конкретные ряды переопределяют её (rowPrices).
             $levelPrices = [];
             foreach ($rowPrices as $p) {
-                if (is_int($p) && $p > 0) {
+                // Выше в prices кладём только $rowPrice > 0, поэтому после
+                // is_int() сравнение с нулём всегда истинно.
+                if (is_int($p)) {
                     $levelPrices[] = $p;
                 }
             }
@@ -793,7 +795,7 @@ final class YandexHallplanConverter
                 'type' => 'seated',
                 'shape' => 'grid',
                 'seats' => $sectorSeats,
-                'rowPrices' => $rowPrices ?? [],
+                'rowPrices' => $rowPrices,
             ];
         }
 

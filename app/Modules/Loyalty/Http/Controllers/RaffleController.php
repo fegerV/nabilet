@@ -73,7 +73,7 @@ class RaffleController extends Controller
                 ->orderByDesc('id')
                 ->limit(50)
                 ->get(['public_id', 'title', 'status', 'starts_at', 'ends_at'])
-                ->map(static fn (Raffle $r): array => [
+                ->map(static fn ($r): array => [
                     'public_id' => (string) $r->public_id,
                     'title' => (string) $r->title,
                     'status' => (string) $r->status,

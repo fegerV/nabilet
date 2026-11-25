@@ -61,6 +61,9 @@ final class RefundService
                 fn (): Payment => $this->refundScoped($payment, $amount, $reason, $refundPublicId, $providerCalled)
             );
         } catch (\Throwable $e) {
+            // Флаг меняется ПО ССЫЛКЕ внутри замыкания above — PHPStan не
+            // отслеживает эту мутацию и считает значение всегда false.
+            /** @var bool $providerCalled */
             if ($providerCalled) {
                 $this->recordCompensation($payment, $amount, $reason, $refundPublicId, $e);
             }

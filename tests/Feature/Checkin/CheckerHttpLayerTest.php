@@ -575,7 +575,7 @@ class CheckerHttpLayerTest extends TestCase
     /**
      * Мероприятие, сеанс, склад и выпущенный билет.
      *
-     * @return array{0: int, 1: int, 2: int, 3: int, 4: Ticket}
+     * @return array{0: int, 1: int, 2: int, 3: int, 4: \Nabilet\Modules\Orders\Models\OrderItem}
      */
     private function seedTicket(): array
     {

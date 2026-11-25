@@ -93,7 +93,7 @@ class SearchEventsTool extends Tool
                 $builder->where('status', $status);
             }
 
-            return $builder->get()->map(fn (Event $event): array => [
+            return $builder->get()->map(fn ($event): array => [
                 'public_id' => (string) $event->public_id,
                 'title' => (string) $event->title,
                 'slug' => (string) $event->slug,

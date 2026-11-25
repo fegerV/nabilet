@@ -341,12 +341,14 @@ class HallService
 
             // Serialise draft creation, draft edits, publish and archive per hall.
             // This also closes the race where two first autosaves both see no draft.
+            /** @var Hall|null $lockedHall */
             $lockedHall = Hall::query()->whereKey($hall->id)->lockForUpdate()->first();
             if ($lockedHall === null) {
                 throw new NotFoundError('Hall', (string) $hall->public_id);
             }
 
             if ($versionId !== null) {
+                /** @var HallSchemaVersion|null $target */
                 $target = $lockedHall->schemaVersions()
                     ->where('id', $versionId)
                     ->lockForUpdate()

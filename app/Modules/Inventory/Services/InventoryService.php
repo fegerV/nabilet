@@ -461,7 +461,7 @@ class InventoryService
      *                             «разовые под конкретный концерт»: со значением true
      *                             будущие сеансы того же зала наследуют базовую сетку
      *                             схемы, а не эту лесенку.
-     * @return array{session_id:int, rows_updated:int, items_updated:int, cart_items_updated:int, carts_recalculated:int}
+     * @return array{session_id:int, rows_updated:int, items_updated:int, items_kept_individual:int, cart_items_updated:int, carts_recalculated:int, session_only:bool}
      */
     public function updateRowPrices(int|string $sessionId, array $rows, bool $sessionOnly = false): array
     {
