@@ -1,9 +1,0 @@
-chore(phpstan): статика зелёная — 66 -> 0 ошибок
-
-Правки по последним 17 находкам: Eloquent-типы через @var где Larastan
-недоступен, подзапрос вместо whereHas, упрощение избыточных проверок в
-YandexHallplanConverter, типы в тестах и открытых корзин. Храповик baseline
-сжат ещё на 2 записи.
-
-Проверки: PHPUnit 1435 / kernel 1086 / Vitest 593 / typecheck /
-composer verify / PHPStan level 5 / все verifiers — зелёные.
