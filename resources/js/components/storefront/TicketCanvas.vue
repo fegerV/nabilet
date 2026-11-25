@@ -113,7 +113,15 @@ const variables = computed<TicketVariables>(() => ({
     date: props.ticket.sessionAt ? dateTime(props.ticket.sessionAt) : '',
     time: props.ticket.sessionAt ? time(props.ticket.sessionAt) : '',
     venue: props.ticket.venue,
+    address: '',
+    organizer: '',
+    poster: '',
+    age: '',
+    rules: '',
+    timezone: '',
   },
+  venue: { name: props.ticket.venue, address: '', city: '' },
+  organizer: { name: '', logo: '' },
   ticket: {
     number: props.ticket.code,
     holder: props.ticket.holder ?? '',
@@ -127,17 +135,28 @@ const variables = computed<TicketVariables>(() => ({
     // `minorToRub()` возвращает точное значение, округляет вызывающий.
     price: new Intl.NumberFormat('ru-RU').format(minorToRub(props.ticket.priceMinor ?? 0)),
     currency: '₽',
+    // Серверная Money::format() включает символ; здесь число без символа,
+    // чтобы старый макет «{{ticket.price}} {{ticket.currency}}» не печатал ₽ дважды.
+    priceWithCurrency: new Intl.NumberFormat('ru-RU').format(minorToRub(props.ticket.priceMinor ?? 0)) + ' ₽',
+    barcode: props.ticket.code,
+    url: '',
   },
   seat: {
     row: props.ticket.row ? String(props.ticket.row) : '',
     number: props.ticket.seat ? String(props.ticket.seat) : '',
+    sector: props.ticket.sector ?? '',
+    zone: '',
     info: [
       props.ticket.sector,
       props.ticket.row ? `Ряд ${props.ticket.row}` : '',
       props.ticket.seat ? `Место ${props.ticket.seat}` : '',
     ].filter(Boolean).join(', '),
   },
-  order: { id: props.ticket.orderId != null ? String(props.ticket.orderId) : '' },
+  order: {
+    id: props.ticket.orderId != null ? String(props.ticket.orderId) : '',
+    public_id: props.ticket.orderId != null ? String(props.ticket.orderId) : '',
+    number: props.ticket.orderId != null ? String(props.ticket.orderId) : '',
+  },
 }))
 
 const background = computed(() => {
@@ -154,7 +173,7 @@ const flat = computed(() => flattenVariables(variables.value))
 
 function renderText(content?: unknown): string {
   if (typeof content !== 'string' || !content) return ''
-  return content.replace(/\{\{([\w.]+)\}\}/g, (whole, key: string) => flat.value[key] ?? whole)
+  return content.replace(/\{\{([\w.]+)\}\}/g, (_whole, key: string) => flat.value[key] ?? '')
 }
 
 function num(value: unknown, fallback = 0): number {

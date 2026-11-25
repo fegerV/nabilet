@@ -118,18 +118,22 @@ describe('duplicateAsElement', () => {
 })
 
 describe('renderTextContent', () => {
-  it('substitutes known variables and leaves unknown ones intact', () => {
+  it('substitutes known variables and hides unknown ones', () => {
     const v = DEFAULT_TICKET_VARIABLES
     expect(renderTextContent('{{event.name}} — {{seat.info}}', v)).toBe('Название события — Ряд 5, Место 12')
     // Цена и валюта — раздельные переменные: макет ставит их сам, а не
     // склеенной строкой, иначе символ нельзя вынести отдельным блоком.
     expect(renderTextContent('{{ticket.price}} {{ticket.currency}}', v)).toBe('3 500 ₽')
     expect(renderTextContent('{{order.id}}', v)).toBe('1042')
-    expect(renderTextContent('{{unknown.var}}', v)).toBe('{{unknown.var}}')
+    expect(renderTextContent('{{unknown.var}}', v)).toBe('')
     expect(renderTextContent(undefined, v)).toBe('')
   })
-  it('flattenVariables exposes all twelve keys', () => {
-    expect(Object.keys(flattenVariables(DEFAULT_TICKET_VARIABLES))).toHaveLength(12)
+  it('flattenVariables exposes the full versioned variable set', () => {
+    const flat = flattenVariables(DEFAULT_TICKET_VARIABLES)
+    expect(Object.keys(flat)).toHaveLength(30)
+    expect(flat['event.address']).toBeTruthy()
+    expect(flat['order.number']).toBeTruthy()
+    expect(flat['ticket.priceWithCurrency']).toContain('₽')
   })
 })
 

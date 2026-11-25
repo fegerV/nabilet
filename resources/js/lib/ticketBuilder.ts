@@ -30,11 +30,32 @@ export interface CanvasConfig {
 }
 
 export interface TicketVariables {
-  event: { name: string; date: string; time: string; venue: string }
-  ticket: { number: string; holder: string; price: string; currency: string }
-  seat: { row: string; number: string; info: string }
+  event: {
+    name: string
+    date: string
+    time: string
+    venue: string
+    address: string
+    organizer: string
+    poster: string
+    age: string
+    rules: string
+    timezone: string
+  }
+  venue: { name: string; address: string; city: string }
+  organizer: { name: string; logo: string }
+  ticket: {
+    number: string
+    holder: string
+    price: string
+    currency: string
+    priceWithCurrency: string
+    barcode: string
+    url: string
+  }
+  seat: { row: string; number: string; info: string; sector: string; zone: string }
   /** Номер заказа: печатается в футере билета рядом с номером билета. */
-  order: { id: string }
+  order: { id: string; public_id: string; number: string }
 }
 
 /** Пресеты размера холста — единственный источник истины для select в тулбаре. */
@@ -62,10 +83,31 @@ export const FONT_STACKS: ReadonlyArray<{ key: string; label: string; css: strin
 ]
 
 export const DEFAULT_TICKET_VARIABLES: TicketVariables = {
-  event: { name: 'Название события', date: '01.01.2024', time: '19:00', venue: 'Концертный зал' },
-  ticket: { number: 'A001234', holder: 'Иван Иванов', price: '3 500', currency: '₽' },
-  seat: { row: '5', number: '12', info: 'Ряд 5, Место 12' },
-  order: { id: '1042' },
+  event: {
+    name: 'Название события',
+    date: '01.01.2024',
+    time: '19:00',
+    venue: 'Концертный зал',
+    address: 'ул. Примерная, 1',
+    organizer: 'Организатор',
+    poster: '',
+    age: '12+',
+    rules: 'Правила посещения',
+    timezone: 'Europe/Moscow',
+  },
+  venue: { name: 'Концертный зал', address: 'ул. Примерная, 1', city: 'Москва' },
+  organizer: { name: 'Организатор', logo: '' },
+  ticket: {
+    number: 'A001234',
+    holder: 'Иван Иванов',
+    price: '3 500',
+    currency: '₽',
+    priceWithCurrency: '3 500 ₽',
+    barcode: 'A001234',
+    url: '',
+  },
+  seat: { row: '5', number: '12', info: 'Ряд 5, Место 12', sector: 'Партер', zone: '' },
+  order: { id: '1042', public_id: '01JEXAMPLE', number: 'NB-20260101-ABC12345' },
 }
 
 /**
@@ -526,16 +568,34 @@ export function flattenVariables(vars: TicketVariables): Record<string, string> 
     'event.date': vars.event.date,
     'event.time': vars.event.time,
     'event.venue': vars.event.venue,
+    'event.address': vars.event.address,
+    'event.organizer': vars.event.organizer,
+    'event.poster': vars.event.poster,
+    'event.age': vars.event.age,
+    'event.rules': vars.event.rules,
+    'event.timezone': vars.event.timezone,
+    'venue.name': vars.venue.name,
+    'venue.address': vars.venue.address,
+    'venue.city': vars.venue.city,
+    'organizer.name': vars.organizer.name,
+    'organizer.logo': vars.organizer.logo,
     'ticket.number': vars.ticket.number,
     'ticket.holder': vars.ticket.holder,
-    // Цена и валюта — раздельно: «3 500» + «₽» позволяет поставить символ
-    // отдельным блоком или вовсе убрать его, не трогая число.
+    // Серверный Money::format() уже включает символ валюты; отдельная
+    // переменная остаётся для старых макетов и новых комбинаций.
     'ticket.price': vars.ticket.price,
     'ticket.currency': vars.ticket.currency,
+    'ticket.priceWithCurrency': vars.ticket.priceWithCurrency,
+    'ticket.barcode': vars.ticket.barcode,
+    'ticket.url': vars.ticket.url,
     'seat.row': vars.seat.row,
     'seat.number': vars.seat.number,
     'seat.info': vars.seat.info,
+    'seat.sector': vars.seat.sector,
+    'seat.zone': vars.seat.zone,
     'order.id': vars.order.id,
+    'order.public_id': vars.order.public_id,
+    'order.number': vars.order.number,
   }
 }
 
@@ -543,7 +603,9 @@ export function flattenVariables(vars: TicketVariables): Record<string, string> 
 export function renderTextContent(content: string | undefined, vars: TicketVariables): string {
   if (!content) return ''
   const flat = flattenVariables(vars)
-  return content.replace(/\{\{([\w.]+)\}\}/g, (whole, key: string) => flat[key] ?? whole)
+  // Неизвестную переменную НЕ показываем покупателю сырым текстом —
+  // серверный TicketVariableResolver делает так же.
+  return content.replace(/\{\{([\w.]+)\}\}/g, (_whole, key: string) => flat[key] ?? '')
 }
 
 // ЗДЕСЬ БЫЛА `getQrCodeUrl()`, ВОЗВРАЩАВШАЯ ССЫЛКУ НА api.qrserver.com.
