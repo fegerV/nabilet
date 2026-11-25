@@ -298,6 +298,57 @@ describe('normalizeBackground', () => {
   })
 })
 
+describe('import provenance', () => {
+  it('keeps source/confidence fields for reconstructed seats and standing zones through round-trip', () => {
+    const sector = gridSector()
+    sector.seats[0] = {
+      ...sector.seats[0],
+      source: 'reconstructed',
+      source_id: 'src:9:1:7',
+      source_row: 'А',
+      source_number: '7',
+      source_x: 100,
+      source_y: 200,
+      confidence: 'inferred',
+      coordinate_source: 'interpolated',
+      price_source: 'row_median',
+    }
+    const zone: EStatic = {
+      id: 'standing-4',
+      kind: 'standing',
+      x: 10,
+      y: 10,
+      width: 100,
+      height: 60,
+      capacity: 50,
+      priceMinor: 0,
+      source_id: 'standing-4',
+      source_kind: 'yandex_admission',
+      capacity_source: 'availableSeatCount',
+      capacity_confirmed: false,
+      price_source: 'unknown',
+      tariffs: [{ name: 'Танцпол', available_seat_count: 50, price_minor: 0 }],
+    }
+    const file = serializeSchema(state([sector], [zone]))
+    const parsed = parseSchemaPayload(JSON.parse(JSON.stringify(file)))
+
+    const seat = parsed.sectors[0].seats[0] as Record<string, unknown>
+    expect(seat.source).toBe('reconstructed')
+    expect(seat.source_id).toBe('src:9:1:7')
+    expect(seat.source_row).toBe('А')
+    expect(seat.source_number).toBe('7')
+    expect(seat.source_x).toBe(100)
+    expect(seat.confidence).toBe('inferred')
+    expect(seat.price_source).toBe('row_median')
+
+    const parsedZone = parsed.statics[0] as Record<string, unknown>
+    expect(parsedZone.capacity_confirmed).toBe(false)
+    expect(parsedZone.capacity_source).toBe('availableSeatCount')
+    expect(parsedZone.price_source).toBe('unknown')
+    expect(parsedZone.tariffs).toHaveLength(1)
+  })
+})
+
 describe('validateSchema: отказ на битых файлах', () => {
   it('отвергает не-объект', () => {
     expect(validateSchema([])).not.toBeNull()

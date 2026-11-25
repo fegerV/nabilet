@@ -101,10 +101,13 @@ final class YandexHallplanConverter
             $maxY = max($maxY, $y + $h);
         };
 
-        foreach ($hallplan['levels'] as $level) {
+        foreach ($hallplan['levels'] as $levelIndex => $level) {
             $seatsIn = $level['seats'] ?? [];
             $rows = $level['rows'] ?? [];
             $rowPrices = [];
+            // Буквенные ряды разделяются на отдельные секторы; исходное
+            // обозначение сохраняется здесь и едет в each seat как source_row.
+            $sourceRowLabel = (string) ($level['_sourceRowLabel'] ?? '');
 
             // ── Стоячая зона (admission: true): «мест» нет, есть вместимость ─────
             // Выражается staticObjects kind 'standing' — InventoryService и
@@ -125,13 +128,19 @@ final class YandexHallplanConverter
                     $zoneCx /= count($seatsIn);
                     $zoneCy /= count($seatsIn);
                 }
-                foreach (($level['categories'] ?? []) as $ci => $cat) {
-                    $capacity = (int) ($cat['availableSeatCount'] ?? 0);
-                    if ($capacity <= 0) {
+                // ОДНА физическая зона на уровень, даже если несколько тарифов.
+                // Раньше каждая категория становилась отдельной зоной: у «Вавилона»
+                // «Танцпол» и «Танцпол + ранний вход» удваивали вместимость.
+                $categories = is_array($level['categories'] ?? null) ? $level['categories'] : [];
+                $tariffs = [];
+                foreach ($categories as $ci => $cat) {
+                    if (! is_array($cat)) {
                         continue;
                     }
-                    // Цены в КОПЕЙКАХ лежат в верхнем hallplan.categories (у уровневых
-                    // priceInfos пуст); берём первую (базовую) цену категории.
+                    // availableSeatCount — остаток сторонней системы, а не
+                    // подтверждённая полная вместимость. Сохраняем как оценочную
+                    // величину и явно помечаем как неподтверждённую.
+                    $available = max(0, (int) ($cat['availableSeatCount'] ?? 0));
                     $price = 0;
                     foreach ($cat['priceInfos'] ?? [] as $pi) {
                         if ((int) ($pi['price']['value'] ?? 0) > 0) {
@@ -151,16 +160,32 @@ final class YandexHallplanConverter
                             }
                         }
                     }
-                    if ($price <= 0) {
-                        continue;
-                    }
+                    $tariffs[] = [
+                        'source_id' => (string) ($cat['id'] ?? (string) $ci),
+                        'name' => (string) ($cat['name'] ?? 'Тариф'),
+                        'available_seat_count' => $available,
+                        'price_minor' => $price,
+                        'price_known' => $price > 0,
+                    ];
+                }
+                if ($tariffs !== []) {
+                    // Берём МАКСИМУМ остатков тарифов, никогда не суммируем их.
+                    $capacity = max(array_column($tariffs, 'available_seat_count'));
+                    $priced = array_values(array_filter($tariffs, static fn (array $t): bool => $t['price_known']));
+                    $zonePrice = $priced[0]['price_minor'] ?? 0;
                     $pendingStanding[] = [
-                        'id' => 'standing-' . (count($pendingStanding) + 1),
-                        'text' => trim((string) ($cat['name'] ?? 'Стоячая зона')) . ' · ' . $capacity,
+                        'id' => 'standing-' . (string) ($level['id'] ?? count($pendingStanding) + 1),
+                        'text' => trim((string) ($level['name'] ?? 'Стоячая зона')),
                         'capacity' => $capacity,
-                        'priceMinor' => $price,
+                        'priceMinor' => $zonePrice,
                         'cx' => $zoneCx * $SCALE,
                         'cy' => $zoneCy * $SCALE,
+                        'source_id' => (string) ($level['id'] ?? ''),
+                        'source_kind' => 'yandex_admission',
+                        'capacity_source' => 'availableSeatCount',
+                        'capacity_confirmed' => false,
+                        'price_source' => $zonePrice > 0 ? 'yandex_priceInfo' : 'unknown',
+                        'tariffs' => $tariffs,
                     ];
                 }
                 continue;
@@ -419,7 +444,12 @@ final class YandexHallplanConverter
                         } else {
                             continue;
                         }
-                        $tableSeats[] = ['place' => $p, 'x' => $px, 'y' => $py];
+                        $tableSeats[] = [
+                            'place' => $p,
+                            'x' => $px,
+                            'y' => $py,
+                            'known' => isset($known[$p]),
+                        ];
                     }
 
                     // Цена стола: у анкеров точная; целиком проданный — у соседа.
@@ -432,8 +462,21 @@ final class YandexHallplanConverter
                     foreach ($tableSeats as $ts) {
                         $x = (int) round($ts['x'] * $SCALE - $SEAT / 2);
                         $y = (int) round($ts['y'] * $SCALE - $SEAT / 2);
+                        $isKnownTableSeat = $ts['known'];
                         $seatPayload = [
                             'id' => $seatId(),
+                            'source_id' => 'src:' . (string) ($level['id'] ?? $levelIndex)
+                                . ':table:' . $rowNo . ':' . $ts['place'],
+                            'source_row' => $sourceRowLabel !== '' ? $sourceRowLabel : 'Стол ' . $rowNo,
+                            'source_number' => (string) $ts['place'],
+                            'source' => $isKnownTableSeat ? 'yandex_exact' : 'reconstructed',
+                            'confidence' => $isKnownTableSeat ? 'exact' : 'inferred',
+                            'coordinate_source' => $isKnownTableSeat ? 'yandex_exact' : 'ring_reconstructed',
+                        'source_x' => $isKnownTableSeat ? $known[$ts['place']]['x'] : null,
+                        'source_y' => $isKnownTableSeat ? $known[$ts['place']]['y'] : null,
+                            'price_source' => $tablePrice > 0
+                                ? ($isKnownTableSeat ? 'yandex_exact' : 'table_neighbor')
+                                : 'unknown',
                             'row' => 1,
                             'number' => $ts['place'],
                             'x' => $x,
@@ -722,8 +765,29 @@ final class YandexHallplanConverter
                     }
                     $x = (int) round($x - $SEAT / 2);
                     $y = (int) round($y - $SEAT / 2);
+                    $isKnown = isset($anchors[$p]);
+                    $sourceRow = $sourceRowLabel !== '' ? $sourceRowLabel : $rowNo;
+                    $sourceId = 'src:' . (string) ($level['id'] ?? $levelIndex)
+                        . ':' . $sourceRow . ':' . $placeName;
+                    $priceSource = 'unknown';
+                    if ($isKnown && $price > 0) {
+                        $priceSource = 'yandex_exact';
+                    } elseif (! $isKnown && $uniform && $rowPrice > 0) {
+                        $priceSource = 'row_median';
+                    } elseif ($rowPrice > 0) {
+                        $priceSource = 'row_price';
+                    }
                     $sectorSeats[] = [
                         'id' => $seatId(),
+                        'source_id' => $sourceId,
+                        'source_row' => $sourceRow,
+                        'source_number' => $placeName,
+                        'source' => $isKnown ? 'yandex_exact' : 'reconstructed',
+                        'confidence' => $isKnown ? 'exact' : 'inferred',
+                        'coordinate_source' => $isKnown ? 'yandex_exact' : 'interpolated',
+                        'source_x' => $isKnown ? $anchors[$p]['x'] : null,
+                        'source_y' => $isKnown ? $anchors[$p]['y'] : null,
+                        'price_source' => $priceSource,
                         'row' => (int) $rowNo,
                         'number' => $p,
                         'x' => $x,
@@ -842,6 +906,12 @@ final class YandexHallplanConverter
                     'height' => (int) round($zoneH),
                     'capacity' => $zone['capacity'],
                     'priceMinor' => $zone['priceMinor'],
+                    'source_id' => $zone['source_id'],
+                    'source_kind' => $zone['source_kind'],
+                    'capacity_source' => $zone['capacity_source'],
+                    'capacity_confirmed' => false,
+                    'price_source' => $zone['price_source'],
+                    'tariffs' => $zone['tariffs'],
                 ];
                 $extendBounds($cursorX, $zoneY, $w, $zoneH);
                 $cursorX += $w + $gap;
@@ -896,6 +966,8 @@ final class YandexHallplanConverter
 
         $schema = [
             'version' => 1,
+            // Валюта исходника: даже если она не RUB, терять её нельзя.
+            'currency' => $this->sourceCurrency($hallplan),
             'canvas' => [
                 'width' => (int) ceil($maxX + 60),
                 'height' => (int) ceil($maxY + 60),
@@ -904,9 +976,125 @@ final class YandexHallplanConverter
             'backgrounds' => [],
             'sectors' => $sectors,
             'staticObjects' => $staticObjects,
+            'import' => $this->buildImportReport($hallplan, $sectors, $staticObjects),
         ];
 
         return $schema;
+    }
+
+    /** @param  array<string, mixed>  $hallplan */
+    private function sourceCurrency(array $hallplan): string
+    {
+        foreach ((array) ($hallplan['categories'] ?? []) as $category) {
+            if (! is_array($category)) {
+                continue;
+            }
+            foreach ((array) ($category['priceInfos'] ?? []) as $info) {
+                if (! is_array($info)) {
+                    continue;
+                }
+                foreach (['price', 'total'] as $key) {
+                    $code = (string) ($info[$key]['currencyCode'] ?? '');
+                    if ($code !== '') {
+                        return strtoupper($code);
+                    }
+                }
+            }
+        }
+
+        return 'RUB';
+    }
+
+    /**
+     * Отчёт импорта: какие данные точные, какие восстановлены, чего не хватает.
+     *
+     * Отчёт НЕ меняет геометрию и НЕ делает реконструкцию «достоверной» — он
+     * нужен мастеру импорта и личного кабинета, чтобы показать расхождения.
+     *
+     * @param  array<string, mixed>  $hallplan
+     * @param  array<int, array<string, mixed>>  $sectors
+     * @param  array<int, array<string, mixed>>  $staticObjects
+     * @return array<string, mixed>
+     */
+    private function buildImportReport(array $hallplan, array $sectors, array $staticObjects): array
+    {
+        $known = 0;
+        $reconstructed = 0;
+        $unknownPrices = 0;
+        $rows = 0;
+        $duplicateNumbers = [];
+        foreach ($sectors as $sector) {
+            // Сектора редактора хранят плоский `seats` и карту `rowPrices`,
+            // а не вложенные `rows` — считать строки надо по местам.
+            $uniqueRows = [];
+            $seen = [];
+            foreach ((array) ($sector['seats'] ?? []) as $seat) {
+                if (! is_array($seat)) {
+                    continue;
+                }
+                if (($seat['source'] ?? null) === 'yandex_exact') {
+                    $known++;
+                } else {
+                    $reconstructed++;
+                }
+                if (! isset($seat['priceMinor']) || ($seat['price_source'] ?? 'unknown') === 'unknown') {
+                    $unknownPrices++;
+                }
+                $uniqueRows[(string) ($seat['row'] ?? '')] = true;
+                $key = ((string) ($seat['row'] ?? '')) . ':' . ((string) ($seat['number'] ?? ''));
+                if (isset($seen[$key])) {
+                    $duplicateNumbers[] = $key;
+                }
+                $seen[$key] = true;
+            }
+            $rows += count($uniqueRows);
+        }
+
+        $unknownCapacity = 0;
+        $standingZones = 0;
+        foreach ($staticObjects as $obj) {
+            if (($obj['kind'] ?? null) !== 'standing') {
+                continue;
+            }
+            $standingZones++;
+            if (($obj['capacity_confirmed'] ?? false) !== true) {
+                $unknownCapacity++;
+            }
+        }
+
+        $warnings = [];
+        if ($reconstructed > 0) {
+            $warnings[] = sprintf(
+                'Восстановлено мест по геометрии соседних рядов/столов: %d. Их координаты и номера требуют проверки.',
+                $reconstructed,
+            );
+        }
+        if ($unknownPrices > 0) {
+            $warnings[] = sprintf('У %d мест цена неизвестна или взята из тарифа ряда — подтвердите тарифы организатора.', $unknownPrices);
+        }
+        if ($unknownCapacity > 0) {
+            $warnings[] = sprintf('У %d standing-зон вместимость взята из остатка сторонней системы и не подтверждена.', $unknownCapacity);
+        }
+        if ($duplicateNumbers !== []) {
+            $warnings[] = 'Обнаружены дублирующие номера мест: ' . implode(', ', array_slice($duplicateNumbers, 0, 10));
+        }
+
+        return [
+            'source_levels' => count((array) ($hallplan['levels'] ?? [])),
+            'source_sectors' => count((array) ($hallplan['levels'] ?? [])),
+            'result_sectors' => count($sectors),
+            'rows' => $rows,
+            'known_seats' => $known,
+            'reconstructed_seats' => $reconstructed,
+            'standing_zones' => $standingZones,
+            'unknown_prices' => $unknownPrices,
+            'unknown_capacity' => $unknownCapacity,
+            'duplicate_numbers' => $duplicateNumbers,
+            'coordinate_changes' => $reconstructed,
+            'warnings' => $warnings,
+            'errors' => [],
+            'exactness' => $reconstructed === 0 && $unknownPrices === 0 && $unknownCapacity === 0 ? 'exact' : 'reconstructed',
+        ];
     }
 
     private function validateInput(mixed $hallplan): void
@@ -975,6 +1163,7 @@ final class YandexHallplanConverter
                 sort($prices);
                 $single['_fallbackPrice'] = $prices === [] ? 0 : $prices[intdiv(count($prices), 2)];
                 $single['id'] = ($level['id'] ?? $levelIndex) . '-named-' . $rowIndex;
+                $single['_sourceRowLabel'] = $label;
                 $single['name'] = ($level['name'] ?? 'Сектор') . ' · ряд ' . $label;
                 $row['row'] = '1';
                 $single['rows'] = [$row];
