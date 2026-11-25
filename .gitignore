@@ -29,6 +29,12 @@ vendor/
 # создаётся локально. В репозитории она бессмысленна и ломается на чужой ОС.
 /public/storage
 
+# Рабочие файлы self-update: архивы, staging, маркеры и скрипт аварийного
+# отката создаются на сервере при первом обновлении (источник — scripts/).
+/storage/app/updates/
+/storage/framework/updates/
+/storage/framework/updater/
+
 # Кеш PHPUnit: результат предыдущего прогона, к коду отношения не имеет.
 .phpunit.result.cache
 

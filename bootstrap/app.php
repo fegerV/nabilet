@@ -165,6 +165,10 @@ return Application::configure(basePath: dirname(__DIR__))
         // по той же причине, что у команд выше: модульные провайдеры не
         // бутятся, и Laravel не находит команды вне `app/Console/Commands/` сам.
         \Nabilet\Modules\Agent\Console\IssueAgentTokenCommand::class,
+        // Шаги self-update по расписанию. Не queue job: на шаред-хостинге воркер
+        // очереди выходит через --max-time=50, а обновление идёт дольше. Без
+        // явной регистрации `schedule:run` упадёт на неизвестной команде.
+        \Nabilet\Modules\Updater\Console\UpdateTickCommand::class,
     ])
     ->withMiddleware(function (Middleware $middleware): void {
         // ── Global stack, in order ───────────────────────────────────────────

@@ -405,10 +405,33 @@ class YandexDiskBackupService
      */
     public function createFullBackup(bool $deleteLocal = true, bool $encrypt = false)
     {
+        $archive = $this->buildFullArchive($encrypt);
+        $remoteDir = rtrim((string) config('services.yandex_disk.backups_path', '/backups'), '/');
+
+        return $this->uploadToYandexDisk($archive['path'], "{$remoteDir}/{$archive['name']}", $deleteLocal);
+    }
+
+    /**
+     * Полный бэкап БЕЗ выгрузки во внешнее хранилище.
+     *
+     * Используется self-update на установках, где Яндекс.Диск не подключён:
+     * обновление не блокируется, но копия остаётся на том же сервере. Это
+     * слабее, чем 3-2-1, и честно помечается как локальная в интерфейсе.
+     *
+     * @return array{path: string, name: string}
+     */
+    public function createFullBackupLocal(bool $encrypt = false): array
+    {
+        return $this->buildFullArchive($encrypt);
+    }
+
+    /** @return array{path: string, name: string} */
+    private function buildFullArchive(bool $encrypt): array
+    {
         $timestamp = date('Y-m-d_H-i-s');
         $backupDir = storage_path("app/backups/full_{$timestamp}");
-        
-        if (!is_dir($backupDir)) {
+
+        if (! is_dir($backupDir)) {
             mkdir($backupDir, 0755, true);
         }
 
@@ -427,20 +450,16 @@ class YandexDiskBackupService
         // Очищаем временную директорию
         $this->deleteDirectory($backupDir);
 
-        // Шифрование архива перед выгрузкой.
-        $uploadPath = $archivePath;
-        $remoteName = "full_{$timestamp}.zip";
+        $path = $archivePath;
+        $name = "full_{$timestamp}.zip";
 
         if ($encrypt) {
-            $uploadPath = $this->encryptor()->encryptFile($archivePath);
+            $path = $this->encryptor()->encryptFile($archivePath);
             @unlink($archivePath);
-            $remoteName .= '.enc';
+            $name .= '.enc';
         }
 
-        // Загружаем на Яндекс.Диск
-        $remoteDir = rtrim((string) config('services.yandex_disk.backups_path', '/backups'), '/');
-
-        return $this->uploadToYandexDisk($uploadPath, "{$remoteDir}/{$remoteName}", $deleteLocal);
+        return ['path' => $path, 'name' => $name];
     }
 
     /**

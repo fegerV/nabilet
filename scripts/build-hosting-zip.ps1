@@ -100,8 +100,127 @@ try {
 } finally { $zip.Dispose() }
 $hash = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
 [IO.File]::WriteAllText("$zipPath.sha256", "$hash  $([IO.Path]::GetFileName($zipPath))`n")
+
+# --- One-click update manifest -------------------------------------------------
+# Generated AFTER the sidecar so the manifest carries the verified hash of the
+# final zip. The file is a "latest release" pointer in the same releases/ dir.
+$releaseManifestPath = Join-Path $releaseDir 'manifest.json'
+$phpMin = '8.3.0'
+$phpMaxExclusive = '9.0.0'
+$phpExtensions = @('curl', 'json', 'mbstring', 'openssl', 'pdo', 'zip') | Sort-Object
+$channel = 'stable'
+$artifactName = [IO.Path]::GetFileName($zipPath)
+$sizeBytes = (Get-Item -LiteralPath $zipPath).Length
+$releasedAt = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+
+# Optional explicit upgrade path (comma-separated, trimmed). Empty means any
+# lower version is accepted; downgrade itself is still blocked by the client.
+$fromVersions = @()
+if ($env:NABILET_UPDATE_FROM_VERSIONS) {
+    $fromVersions = @($env:NABILET_UPDATE_FROM_VERSIONS -split ',' |
+        ForEach-Object { $_.Trim() } |
+        Where-Object { $_ -ne '' })
+}
+
+# Migration count: prefer the staged copy, fall back to the repository copy.
+$migrationsDir = Join-Path $stage 'database/migrations'
+if (-not (Test-Path -LiteralPath $migrationsDir)) {
+    $migrationsDir = Join-Path $repo 'database/migrations'
+}
+$migrations = 0
+if (Test-Path -LiteralPath $migrationsDir) {
+    $migrations = @(Get-ChildItem -LiteralPath $migrationsDir -File).Count
+}
+
+# Force real JSON arrays (ConvertTo-Json collapses single-element arrays).
+function ConvertTo-JsonLiteral {
+    param([AllowNull()][object]$Value)
+    if ($null -eq $Value) { return 'null' }
+    return (ConvertTo-Json -InputObject $Value -Compress)
+}
+function ConvertTo-JsonArrayLiteral {
+    param([AllowNull()][object[]]$Values)
+    if ($null -eq $Values -or $Values.Count -eq 0) { return '[]' }
+    return '[' + (($Values | ForEach-Object { ConvertTo-JsonLiteral $_ }) -join ',') + ']'
+}
+
+# Signature is optional: only when NABILET_UPDATE_PRIVATE_KEY points to a PEM
+# key. Never fail the release because signing is unavailable — emit '' instead
+# (the release then works via manual upload + sha256 verification only).
+$signature = ''
+$privateKey = $env:NABILET_UPDATE_PRIVATE_KEY
+if ($privateKey) {
+    if (-not (Test-Path -LiteralPath $privateKey)) {
+        Write-Warning "NABILET_UPDATE_PRIVATE_KEY not found: $privateKey - emitting an empty signature."
+    } elseif (-not (Get-Command openssl -ErrorAction SilentlyContinue)) {
+        Write-Warning 'openssl is unavailable - emitting an empty signature (manual upload + sha256 only).'
+    } else {
+        try {
+            # Exact canonical bytes shared with the PHP verifier: UTF-8, LF,
+            # no trailing newline, sorted extensions, versions as given.
+            $canonical = @(
+                'NABILET-UPDATE-V1'
+                'schema=1'
+                "version=$Version"
+                "released_at=$releasedAt"
+                "channel=$channel"
+                "artifact=$artifactName"
+                "sha256=$hash"
+                "size_bytes=$sizeBytes"
+                "php_min=$phpMin"
+                "php_max=$phpMaxExclusive"
+                'extensions=' + ($phpExtensions -join ',')
+                'from_versions=' + ($fromVersions -join ',')
+                "migrations=$migrations"
+            ) -join "`n"
+
+            $canonicalPath = Join-Path $stage '.update-canonical.bin'
+            $signaturePath = Join-Path $stage '.update-signature.bin'
+            $utf8NoBom = [Text.UTF8Encoding]::new($false)
+            [IO.File]::WriteAllBytes($canonicalPath, $utf8NoBom.GetBytes($canonical))
+
+            & openssl dgst -sha256 -sign $privateKey -out $signaturePath $canonicalPath 2>$null
+            if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $signaturePath)) {
+                throw "openssl dgst failed (exit $LASTEXITCODE)."
+            }
+            $signature = [Convert]::ToBase64String([IO.File]::ReadAllBytes($signaturePath))
+        } catch {
+            Write-Warning "Update manifest signing failed ($($_.Exception.Message)) - emitting an empty signature."
+            $signature = ''
+        }
+    }
+}
+
+$manifestJson = @"
+{
+  "schema": 1,
+  "version": $(ConvertTo-JsonLiteral $Version),
+  "released_at": $(ConvertTo-JsonLiteral $releasedAt),
+  "channel": $(ConvertTo-JsonLiteral $channel),
+  "artifact": $(ConvertTo-JsonLiteral $artifactName),
+  "sha256": $(ConvertTo-JsonLiteral $hash),
+  "size_bytes": $sizeBytes,
+  "php": {
+    "min": $(ConvertTo-JsonLiteral $phpMin),
+    "max_exclusive": $(ConvertTo-JsonLiteral $phpMaxExclusive),
+    "extensions": $(ConvertTo-JsonArrayLiteral $phpExtensions)
+  },
+  "from_versions": $(ConvertTo-JsonArrayLiteral $fromVersions),
+  "migrations": $migrations,
+  "signature": $(ConvertTo-JsonLiteral $signature)
+}
+"@
+[IO.File]::WriteAllText($releaseManifestPath, $manifestJson + "`n", [Text.UTF8Encoding]::new($false))
+
+# Self-check: the manifest must parse and carry the sidecar's hash.
+$parsedManifest = Get-Content -LiteralPath $releaseManifestPath -Raw | ConvertFrom-Json
+if ($parsedManifest.sha256 -ne $hash) {
+    throw 'Manifest verification failed: sha256 differs from the .sha256 sidecar.'
+}
+
 Write-Host "OK: $zipPath"
 Write-Host "SHA256: $hash"
+Write-Host "Manifest: $releaseManifestPath"
 Write-Host 'Extract into the site directory ABOVE public_html. Storage contains no customer data.'
 
 # The stage is a full release copy (vendor/, dist/, 9k files). Leaving it in

@@ -132,6 +132,9 @@ $moduleRoutes = [
     // ИИ-агент: управление токенами и отложенными действиями из админки
     // (без SSH на шаред-хостинге). MCP-трафик агента — отдельно, routes/ai.php.
     __DIR__ . '/../app/Modules/Agent/routes/api.php',
+    // Self-update: одна кнопка обновления системы. Под ключом admin/platform-admin,
+    // тяжёлые шаги выполняются отдельной artisan-командой по крону.
+    __DIR__ . '/../app/Modules/Updater/routes/api.php',
 ];
 
 foreach ($moduleRoutes as $routeFile) {

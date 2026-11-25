@@ -1,0 +1,11 @@
+{
+  "name": "updater",
+  "title": "Обновление системы",
+  "version": "1.0.0",
+  "enabled": true,
+  "priority": 200,
+  "requires": ["backups", "security"],
+  "permissions": ["settings.manage"],
+  "provides": ["update.started", "update.completed", "update.failed"],
+  "description": "Self-update из админки: подписанный манифест релиза, загрузка архива, подготовка в staging, замена каталогов с откатом, миграции и проверка отдельными тиками nabilet:update:tick по крону. Конфиденциальные файлы и пользовательские данные не перезаписываются."
+}

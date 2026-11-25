@@ -126,6 +126,9 @@ const NAV_GROUPS: NavGroup[] = [
       // Бэкапы: список локальных копий и скачивание. Авто-выгрузка на
       // Яндекс.Диск идёт cron-ом, страница показывает статус и инструкцию.
       { label: 'Бэкапы', to: '/admin/backups', icon: '⛁' },
+      // Обновления: проверка ленты и установка без терминала. Бейдж с доступной
+      // версией подставляется из /admin/system/update/check (см. groups).
+      { label: 'Обновления', to: '/admin/updates', icon: '↻' },
       // Информационный центр: настройка системы, запуск концерта, все разделы.
       // Статическая страница — под ограничением доступа не нуждается в бэкенде.
       { label: 'Центр помощи', to: '/admin/help', icon: '?' },
@@ -153,14 +156,21 @@ const currentOrg = usePersistedRef('admin.org', '')
 /** Заказы, ждущие оплаты: реальный счётчик для бейджа. */
 const awaitingOrders = ref<number | null>(null)
 
+/** Доступная версия обновления: бейдж в пункте меню «Обновления». */
+const availableUpdate = ref<string | null>(null)
+
 const groups = computed(() =>
   NAV_GROUPS.map((group) => ({
     ...group,
-    items: group.items.map((item) =>
-      item.to === '/admin/orders' && awaitingOrders.value
-        ? { ...item, badge: String(awaitingOrders.value) }
-        : item,
-    ),
+    items: group.items.map((item) => {
+      if (item.to === '/admin/orders' && awaitingOrders.value) {
+        return { ...item, badge: String(awaitingOrders.value) }
+      }
+      if (item.to === '/admin/updates' && availableUpdate.value) {
+        return { ...item, badge: availableUpdate.value }
+      }
+      return item
+    }),
   })),
 )
 
@@ -220,10 +230,29 @@ async function loadVersion(): Promise<void> {
   }
 }
 
+/**
+ * Проверка обновлений для бейджа — Best effort: лента может быть не настроена,
+ * и сам selfcheck не должен ломать загрузку админки из-за недоступного сервера.
+ */
+async function loadUpdateBadge(): Promise<void> {
+  try {
+    const res = await get<unknown>('/admin/system/update/check')
+    const raw = res.data as {
+      available?: { version?: string } | null
+      data?: { available?: { version?: string } | null }
+    } | null
+    const payload = raw?.data?.available ? raw.data : raw
+    availableUpdate.value = payload?.available?.version ?? null
+  } catch {
+    availableUpdate.value = null
+  }
+}
+
 onMounted(() => {
   void loadOrganizations()
   void loadAwaitingOrders()
   void loadVersion()
+  void loadUpdateBadge()
 })
 </script>
 

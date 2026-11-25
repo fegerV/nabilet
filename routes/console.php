@@ -125,3 +125,14 @@ Schedule::command('system:selfcheck')->everyTenMinutes()->withoutOverlapping(5);
 // переобходит страницу события не чаще, чем раз в несколько часов.
 Schedule::command('events:sync-status')->hourly()->withoutOverlapping(30);
 
+/*
+ * Self-update: один шаг конечного автомата раз в минуту. HTTP-эндпоинты только
+ * создают запись и возвращают 202; скачивание, проверка подписи, подмена файлов,
+ * миграции и проверка выполняются здесь. `--max-time=50` у воркера очереди
+ * означал бы обрыв обновления на середине, поэтому это НЕ очередь.
+ *
+ * `withoutOverlapping(5)` защищает от гонки двух кронов; дополнительно в БД есть
+ * `system_updates.locked_at` для случая нескольких узлов.
+ */
+Schedule::command('nabilet:update:tick')->everyMinute()->withoutOverlapping(5);
+

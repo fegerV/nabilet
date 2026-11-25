@@ -168,6 +168,7 @@ const APPLICATION_ONLY_TABLES = [
     'kiosk_sales',         // 1.6.0: продажи киосков, DDL в database/migrations/2026_11_19_000200
     'agent_actions',       // 1.7.0: двухфазные действия агента, DDL в миграциях приложения
     'media_folders',       // 1.7.5: виртуальные папки медиатеки, DDL в 2026_11_20_050000
+    'system_updates',      // self-update: журнал обновлений, DDL в 2026_11_25_000100 (системная, не арендаторская)
 ];
 
 const INVENTED_FIELDS = [

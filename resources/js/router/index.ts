@@ -286,6 +286,9 @@ const routes: RouteRecordRaw[] = [
       { path: 'agent', name: 'admin-agent', component: () => import('@/pages/admin/AdminAgentPage.vue') },
       // Бэкапы: список локальных копий, скачивание и статус авто-выгрузки.
       { path: 'backups', name: 'admin-backups', component: () => import('@/pages/admin/AdminBackupsPage.vue') },
+      // Обновление системы в один клик: проверка ленты, установка, откат.
+      // Объявлен до :section, иначе catch-all показывал бы «Раздел не найден».
+      { path: 'updates', name: 'admin-updates', component: () => import('@/pages/admin/AdminUpdatesPage.vue'), meta: { title: 'Обновления системы' } },
       // Возврат из Яндекс OAuth: токен приходит во фрагменте URL.
       {
         path: 'backups/oauth',
