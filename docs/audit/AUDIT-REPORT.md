@@ -24,7 +24,7 @@
 
 | Проверка | Результат |
 |---|---|
-| `php -d memory_limit=1G vendor/bin/phpunit` | **1468 тестов / 6391 утверждений, 0 падений** |
+| `php -d memory_limit=1G vendor/bin/phpunit` | **1469 тестов / 6396 утверждений, 0 падений** |
 | `php -d memory_limit=1G tests/run.php` | 1091 метод / 2795 утверждений, 0 падений |
 | `npm run test -- --run` | 56 файлов / 599 тестов, 0 падений |
 | `npm run typecheck` | успешно |
@@ -53,6 +53,7 @@ b7c785f2 fix(venues): finish the halls to venues view migration
 3eb67931 fix(storefront): render standing zones at their designed coordinates
 79045e3b chore(security): stop tracking local debug tokens and stale builds
 01365bba chore(ci): keep PHPStan green after audit fixes
+e6f6a04a docs(audit): add findings, contract and honest status reports
 ```
 
 Слияние с `main` не выполнялось — требуется согласование.
