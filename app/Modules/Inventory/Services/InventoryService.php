@@ -204,7 +204,10 @@ class InventoryService
                 ]);
                 $sectorModels[] = $sector;
 
-                                $capacity = 0;
+                                // Стоячая зона — ОДНА позиция с вместимостью, а не N фейковых
+                                // мест. Легаси-схемы с array_fill считаются по числу строк.
+                                $isStandingLegacy = ($sectorData['type'] ?? 'seated') === 'standing';
+                                $capacity = $isStandingLegacy ? (int) ($sectorData['standing_capacity'] ?? 0) : 0;
                                                 $isStanding = ($sectorData['type'] ?? 'seated') === 'standing';
                                                 $standingPrice = 0;
                                 foreach ($sectorData['rows'] ?? [] as $rowData) {
@@ -292,6 +295,17 @@ class InventoryService
             // Прежний инвентарь уже снят шагом 0 (до удаления геометрии).
                                     $seatItems = [];
                                     $standingItems = [];
+                                    // Геометрия standing-зоны живёт в схеме, а не в
+                                    // таблице standing_zones. Прокидываем её в
+                                    // metadata инвентаря, чтобы витрина рисовала
+                                    // зону ТАМ, где её поставили в конструкторе.
+                                    $standingGeometry = [];
+                                    foreach ($sectors as $sectorData) {
+                                        if (($sectorData['type'] ?? '') !== 'standing' || ! is_array($sectorData['standing_zone'] ?? null)) {
+                                            continue;
+                                        }
+                                        $standingGeometry[(string) ($sectorData['name'] ?? '')] = $sectorData['standing_zone'];
+                                    }
                                                 foreach ($sectorModels as $sector) {
                                                     // Стоячая зона: одна standing-зона + один inventory-item standing
                                                     // с capacity = вместимость зоны (сколько билетов продать).
@@ -328,6 +342,7 @@ class InventoryService
                                                                 'sector_name' => $sector->name,
                                                                 'row_label' => 'Танцпол',
                                                                 'seat_number' => null,
+                                                                'standing_zone' => $standingGeometry[$sector->name] ?? null,
                                                             ]),
                                                             'created_at' => now(),
                                                             'updated_at' => now(),

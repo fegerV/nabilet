@@ -47,7 +47,7 @@ final class EventOwnsPrimarySessionTest extends TestCase
             ],
         ])->assertSuccessful();
         $schemaId = (int) $draft->json('data.id');
-        $this->postJson("/api/v1/halls/{$hallPublicId}/schema-versions/{$schemaId}/publish", [])->assertSuccessful();
+        $this->postJson("/api/v1/halls/{$hallPublicId}/schema-versions/{$schemaId}/publish", ['base_revision' => 1])->assertSuccessful();
 
         $response = $this->postJson('/api/v1/events', [
             'title' => 'Новый концерт',

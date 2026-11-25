@@ -411,6 +411,58 @@ final class HallSchemaLifecycleTest extends TestCase
         }
     }
 
+    public function test_unsupported_schema_format_version_is_rejected_with_a_stable_code(): void
+    {
+        $payload = $this->sellableSchema(1000);
+        $payload['version'] = '999';
+
+        try {
+            $this->scoped(fn () => $this->service->createSchemaDraft($this->hall, $payload, 1));
+            self::fail('Неподдерживаемая версия формата была принята.');
+        } catch (ValidationError $error) {
+            self::assertSame('SCHEMA_VALIDATION_FAILED', $error->errorCode);
+            self::assertArrayHasKey('version', $error->errors);
+            self::assertSame('schema', $error->context['objects'][0]['id']);
+        }
+    }
+
+    public function test_standing_capacity_above_the_server_limit_is_rejected(): void
+    {
+        $payload = [
+            'canvas' => ['width' => 900, 'height' => 520],
+            'sectors' => [],
+            'staticObjects' => [[
+                'id' => 'zone-1', 'kind' => 'standing', 'text' => 'Танцпол',
+                'capacity' => 2_000_000, 'priceMinor' => 100000,
+            ]],
+        ];
+
+        try {
+            $this->scoped(fn () => $this->service->createSchemaDraft($this->hall, $payload, 1));
+            self::fail('Огромная вместимость standing-зоны (OOM-вектор) была принята.');
+        } catch (ValidationError $error) {
+            self::assertArrayHasKey('staticObjects.0.capacity', $error->errors);
+            self::assertSame('zone-1', $error->context['objects'][0]['id']);
+        }
+    }
+
+    public function test_duplicate_static_object_ids_are_rejected(): void
+    {
+        $payload = $this->sellableSchema(1000);
+        $payload['staticObjects'] = [
+            ['id' => 'dup', 'kind' => 'stage', 'x' => 10, 'y' => 10],
+            ['id' => 'dup', 'kind' => 'entrance', 'x' => 20, 'y' => 20],
+        ];
+
+        try {
+            $this->scoped(fn () => $this->service->createSchemaDraft($this->hall, $payload, 1));
+            self::fail('Дублирующиеся id объектов были приняты.');
+        } catch (ValidationError $error) {
+            self::assertArrayHasKey('staticObjects.1.id', $error->errors);
+            self::assertSame('dup', $error->context['objects'][0]['id']);
+        }
+    }
+
     /** @return array<string, mixed> */
     private function sellableSchema(int $priceMinor): array
     {

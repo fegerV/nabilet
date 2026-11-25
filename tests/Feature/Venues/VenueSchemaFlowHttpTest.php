@@ -67,7 +67,7 @@ final class VenueSchemaFlowHttpTest extends TestCase
         $versionId = (int) $draft->json('data.id');
         self::assertGreaterThan(0, $versionId, 'Черновик схемы должен вернуть id версии');
 
-        $this->postJson("/api/v1/halls/{$hallPublicId}/schema-versions/{$versionId}/publish")
+        $this->postJson("/api/v1/halls/{$hallPublicId}/schema-versions/{$versionId}/publish", ['base_revision' => 1])
             ->assertSuccessful();
 
         return $versionId;
@@ -171,7 +171,7 @@ final class VenueSchemaFlowHttpTest extends TestCase
         $list = $this->getJson("/api/v1/venues/{$venuePublicId}/schema-versions")->assertOk();
         self::assertCount(1, $list->json('data'));
 
-        $this->postJson("/api/v1/venues/{$venuePublicId}/schema-versions/{$versionId}/publish", [])
+        $this->postJson("/api/v1/venues/{$venuePublicId}/schema-versions/{$versionId}/publish", ['base_revision' => 1])
             ->assertSuccessful()
             ->assertJsonPath('data.status', 'published');
     }
@@ -233,6 +233,26 @@ final class VenueSchemaFlowHttpTest extends TestCase
         $this->getJson("/api/v1/venues/{$venuePublicId}/schema-versions")
             ->assertOk()
             ->assertJsonCount(0, 'data');
+    }
+
+    public function test_publish_without_a_base_revision_is_rejected(): void
+    {
+        $organizationId = $this->seedOrganization();
+        $this->actingAsStaff($organizationId);
+
+        $created = $this->postJson('/api/v1/venues', ['name' => 'Площадка без ревизии'])->assertCreated();
+        $hallPublicId = (string) $created->json('hall.public_id');
+        $draft = $this->postJson("/api/v1/halls/{$hallPublicId}/schema-versions/draft", [
+            'payload' => $this->schemaPayload(400000),
+        ])->assertSuccessful();
+        $versionId = (int) $draft->json('data.id');
+
+        // Аудит 2026-11-25 (5.4): публикация без токена ревизии больше не
+        // допускается — stale-редактор не должен перезаписывать чужие правки.
+        $this->postJson("/api/v1/halls/{$hallPublicId}/schema-versions/{$versionId}/publish", [])
+            ->assertStatus(422)
+            ->assertJsonStructure(['error' => ['details' => ['fields' => ['base_revision']]]]);
+        $this->assertSame('draft', (string) DB::table('hall_schema_versions')->where('id', $versionId)->value('status'));
     }
 
     public function test_schema_draft_and_publish_over_http(): void

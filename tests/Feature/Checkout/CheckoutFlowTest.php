@@ -214,7 +214,7 @@ final class CheckoutFlowTest extends TestCase
         $versionId = (int) $draft->json('data.id');
         self::assertGreaterThan(0, $versionId);
 
-        $this->postJson("/api/v1/halls/{$hallPublicId}/schema-versions/{$versionId}/publish")
+        $this->postJson("/api/v1/halls/{$hallPublicId}/schema-versions/{$versionId}/publish", ['base_revision' => 1])
             ->assertSuccessful();
 
         return $versionId;

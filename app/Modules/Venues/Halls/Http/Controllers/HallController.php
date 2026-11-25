@@ -227,8 +227,11 @@ class HallController extends Controller
      */
     public function publishSchemaVersion(Request $request, string $publicId, int $versionId): SchemaVersionResource
     {
-        $validated = $request->validate(['base_revision' => ['sometimes', 'integer', 'min:1']]);
-        $version = $this->service->publishSchemaVersion($versionId, $request->user()->id, $publicId, isset($validated['base_revision']) ? (int) $validated['base_revision'] : null);
+        // `base_revision` обязателен (аудит 2026-11-25, 5.4): публикация без
+        // токена ревизии позволяла опубликовать устаревший черновик даже если
+        // другой редактор уже сохранил новые правки.
+        $validated = $request->validate(['base_revision' => ['required', 'integer', 'min:1']]);
+        $version = $this->service->publishSchemaVersion($versionId, $request->user()->id, $publicId, (int) $validated['base_revision']);
 
         return new SchemaVersionResource($version);
     }
@@ -380,13 +383,13 @@ class HallController extends Controller
     /** POST /venues/{publicId}/schema-versions/{versionId}/publish. */
     public function publishVenueSchemaVersion(Request $request, string $publicId, int $versionId): SchemaVersionResource
     {
-        $validated = $request->validate(['base_revision' => ['sometimes', 'integer', 'min:1']]);
+        $validated = $request->validate(['base_revision' => ['required', 'integer', 'min:1']]);
         $venue = $this->venueOrFail($publicId);
         $this->assertVenueOwnership($venue);
         $hall = $this->shadowHall($venue);
 
         return new SchemaVersionResource(
-            $this->service->publishSchemaVersion($versionId, $request->user()->id, $hall->public_id, isset($validated['base_revision']) ? (int) $validated['base_revision'] : null)
+            $this->service->publishSchemaVersion($versionId, $request->user()->id, $hall->public_id, (int) $validated['base_revision'])
         );
     }
 

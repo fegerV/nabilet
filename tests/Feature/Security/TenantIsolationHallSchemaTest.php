@@ -92,7 +92,7 @@ final class TenantIsolationHallSchemaTest extends TestCase
             'payload' => ['sectors' => [], 'staticObjects' => []],
         ])->assertStatus(404);
 
-        $this->postJson("/api/v1/venues/{$this->venueBPublicId}/schema-versions/{$this->publishedBId}/publish")
+        $this->postJson("/api/v1/venues/{$this->venueBPublicId}/schema-versions/{$this->publishedBId}/publish", ['base_revision' => 1])
             ->assertStatus(404);
     }
 

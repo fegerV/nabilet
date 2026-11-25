@@ -143,8 +143,43 @@ class HallSchemaVersionToInventoryTest extends TestCase
         $this->assertSame('Манеж', $out[0]['name']);
         $this->assertCount(1, $out[0]['rows']);
         $this->assertSame(120000, $out[0]['rows'][0]['price_amount']);
-        // Вместимость зоны живёт в количестве «мест» ряда.
-        $this->assertCount(800, $out[0]['rows'][0]['seats']);
-        $this->assertSame('standing', $out[0]['rows'][0]['seats'][0]['type']);
+        // Аудит 2026-11-25: стоячая зона — ОДНА сущность с вместимостью, а не
+        // массив из 800 виртуальных посетителей.
+        $this->assertSame(800, $out[0]['standing_capacity']);
+        $this->assertCount(0, $out[0]['rows'][0]['seats']);
+        $this->assertSame(40.0, $out[0]['standing_zone']['x']);
+        $this->assertSame(40.0, $out[0]['standing_zone']['y']);
+        $this->assertSame(680.0, $out[0]['standing_zone']['width']);
+    }
+
+    public function test_two_standing_zones_with_the_same_label_but_different_ids_are_kept(): void
+    {
+        $v = $this->makeVersion([
+            'version' => '1.0',
+            'canvas' => ['width' => 900, 'height' => 600],
+            'sectors' => [],
+            'staticObjects' => [
+                [
+                    'id' => 'zone-left', 'kind' => 'standing', 'text' => 'Танцпол',
+                    'capacity' => 100, 'priceMinor' => 100000,
+                    'x' => 40, 'y' => 60, 'width' => 200, 'height' => 120,
+                ],
+                [
+                    'id' => 'zone-right', 'kind' => 'standing', 'text' => 'Танцпол',
+                    'capacity' => 150, 'priceMinor' => 120000,
+                    'x' => 500, 'y' => 300, 'width' => 200, 'height' => 120,
+                ],
+            ],
+        ]);
+
+        $out = $v->toInventoryFormat();
+
+        $this->assertCount(2, $out, 'зоны с одинаковой подписью слились в одну');
+        $this->assertSame(100, $out[0]['standing_capacity']);
+        $this->assertSame(150, $out[1]['standing_capacity']);
+        $this->assertSame('zone-left', $out[0]['standing_zone']['id']);
+        $this->assertSame('zone-right', $out[1]['standing_zone']['id']);
+        $this->assertSame(300.0, $out[1]['standing_zone']['y'], 'геометрия зоны потеряна');
+        $this->assertSame(0, count($out[0]['rows'][0]['seats']), 'созданы фиктивные места');
     }
 }
