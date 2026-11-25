@@ -92,7 +92,7 @@ class EventService
 
         return DB::transaction(function () use ($data): Event {
             $event = $this->eventRepository->create($data);
-            $this->syncPrimarySession($event, $data);
+            $this->syncPrimarySession($event);
             return $event->fresh();
         });
     }
@@ -102,16 +102,16 @@ class EventService
      * корзины, инвентарь, билеты и чек-ин ссылаются на session_id. Поэтому
      * дата/площадка мероприятия синхронизируются со скрытым основным сеансом.
      *
-     * @param  array<string, mixed>  $data
      */
-    private function syncPrimarySession(Event $event, array $data): void
+    private function syncPrimarySession(Event $event): void
     {
         if ($event->starts_at === null || $event->venue_id === null) {
             return;
         }
 
-        DB::transaction(function () use ($event, $data): void {
+        DB::transaction(function () use ($event): void {
             \Nabilet\Modules\Venues\Models\Venue::query()->findOrFail($event->venue_id);
+            /** @var Session|null $session */
             $session = $event->primary_session_id !== null
                 ? Session::query()->lockForUpdate()->find($event->primary_session_id)
                 : null;
@@ -218,9 +218,10 @@ class EventService
         }
 
         return DB::transaction(function () use ($event, $data): Event {
+            /** @var Event $locked */
             $locked = Event::query()->lockForUpdate()->findOrFail($event->id);
             $updated = $this->eventRepository->update($locked, $data);
-            $this->syncPrimarySession($updated, $data);
+            $this->syncPrimarySession($updated);
             return $updated->fresh();
         });
     }

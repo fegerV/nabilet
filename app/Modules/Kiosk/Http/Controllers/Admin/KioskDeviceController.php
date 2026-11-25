@@ -42,7 +42,7 @@ final class KioskDeviceController extends Controller
     public function index(Request $request): JsonResponse
     {
         $organizationId = $this->organizationId($request);
-        $perPage = Paging::limit((int) $request->query('per_page', 50), 50, 100);
+        $perPage = Paging::limit((int) $request->query('per_page', '50'), 50, 100);
 
         $requested = $request->query('organization_id');
 
@@ -261,7 +261,7 @@ final class KioskDeviceController extends Controller
     public function sales(Request $request, string $kiosk): JsonResponse
     {
         $device = $this->find($kiosk);
-        $perPage = Paging::limit((int) $request->query('per_page', 50), 50, 200);
+        $perPage = Paging::limit((int) $request->query('per_page', '50'), 50, 200);
 
         $query = KioskSale::query()
             ->where('kiosk_device_id', $device->id)

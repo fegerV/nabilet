@@ -126,7 +126,7 @@ final class AgentAdminController extends Controller
             return response()->json(['data' => [], 'meta' => ['total' => 0]]);
         }
 
-        $perPage = Paging::limit((int) $request->query('per_page', 50), 50, 100);
+        $perPage = Paging::limit((int) $request->query('per_page', '50'), 50, 100);
         $query = AgentAction::query()
             ->whereIn('organization_id', $scope->organizationIds)
             ->orderByDesc('id');
