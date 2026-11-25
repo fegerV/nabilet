@@ -351,7 +351,6 @@ class FollowNotificationTest extends TestCase
             'organization_id' => $organizationId,
             'hall_id' => $hallId,
             'venue_id' => $hallId,
-            'venue_id' => $hallId,
             'version' => ((int) \Illuminate\Support\Facades\DB::table('hall_schema_versions')->where('hall_id', $hallId)->max('version')) + 1,
             'status' => 'published',
             'schema_json' => json_encode(['rows' => []]),
@@ -361,10 +360,8 @@ class FollowNotificationTest extends TestCase
 
         $attributes = [
             'event_id' => $eventId,
-            'venue_id' => $venueId,
+            'venue_id' => $hallId,
             'hall_id' => $hallId,
-            'venue_id' => $hallId,
-            'venue_id' => $hallId,
             'schema_version_id' => $schemaVersionId,
             'starts_at' => self::STARTS_AT,
             'sales_start_at' => $salesStartAt?->toDateTimeString(),

@@ -64,7 +64,6 @@ final class HallSchemaSingleLiveVersionTest extends TestCase
         return HallSchemaVersion::create([
             'hall_id' => $this->hall->id,
             'venue_id' => $this->hall->id,
-            'venue_id' => $this->hall->id,
             'version' => $version,
             'revision' => 1,
             'status' => $status,

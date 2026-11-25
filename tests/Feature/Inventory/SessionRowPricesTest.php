@@ -407,7 +407,6 @@ final class SessionRowPricesTest extends TestCase
             'event_id' => $this->eventId,
             'hall_id' => $hallId,
             'venue_id' => $hallId,
-            'venue_id' => $hallId,
             'starts_at' => $startsAt,
             'status' => 'scheduled',
         ]);
@@ -515,7 +514,6 @@ final class SessionRowPricesTest extends TestCase
     {
         $version = HallSchemaVersion::create([
             'hall_id' => $hallId,
-            'venue_id' => $hallId,
             'venue_id' => $hallId,
             'version' => ((int) \Illuminate\Support\Facades\DB::table('hall_schema_versions')->where('hall_id', $hallId)->max('version')) + 1,
             'revision' => 1,

@@ -1615,7 +1615,6 @@ final class TenantScopedReadTest extends TestCase
             'public_id' => (string) Str::ulid()->toBase32(),
             'hall_id' => $hallId,
             'venue_id' => $hallId,
-            'venue_id' => $hallId,
             'version' => ((int) \Illuminate\Support\Facades\DB::table('hall_schema_versions')->where('hall_id', $hallId)->max('version')) + 1,
             'schema_json' => json_encode(['sectors' => []]),
             'created_at' => $now,

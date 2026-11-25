@@ -109,14 +109,13 @@ final class EnsureIdempotency
                 if ($decision === IdempotencyDecision::CONFLICT) {
                     throw ConflictError::idempotencyConflict($key);
                 }
-                // IN_FLIGHT (или PROCEED, если победитель уже освободил лок
-                // после 5xx). Во втором случае пробуем занять лок ещё раз.
-                if ($decision !== IdempotencyDecision::PROCEED || ! $this->lock($scoped, $keyHash, $requestHash, $now)) {
-                    throw ConflictError::alreadyProcessed(
-                        'request',
-                        ['detail' => 'A request with this idempotency key is still being processed.']
-                    );
-                }
+                // IN_FLIGHT — победитель ещё исполняет хендлер. Редкий PROCEED
+                // (победитель уже освободил лок после 5xx) тоже сводим к 409:
+                // клиент повторит запрос и спокойно получит новый лок.
+                throw ConflictError::alreadyProcessed(
+                    'request',
+                    ['detail' => 'A request with this idempotency key is still being processed.']
+                );
             }
         }
 

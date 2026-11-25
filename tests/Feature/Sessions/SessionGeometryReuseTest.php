@@ -170,9 +170,8 @@ final class SessionGeometryReuseTest extends TestCase
     {
         $this->postJson('/api/v1/sessions', [
             'event_id' => $this->eventId,
-            'venue_id' => $this->venueId,
-            'hall_id' => $this->hallId,
             'venue_id' => $this->hallId,
+            'hall_id' => $this->hallId,
             'starts_at' => '2026-11-20 19:00',
         ])->assertStatus(201);
 
@@ -392,9 +391,8 @@ final class SessionGeometryReuseTest extends TestCase
             'public_id' => (string) Str::ulid()->toBase32(),
             'organization_id' => $this->organizationId,
             'event_id' => $this->eventId,
-            'venue_id' => $this->venueId,
-            'hall_id' => $hallId,
             'venue_id' => $hallId,
+            'hall_id' => $hallId,
             'schema_version_id' => $schemaVersionId,
             'starts_at' => '2026-12-01 19:00:00',
             'timezone' => 'Asia/Almaty',

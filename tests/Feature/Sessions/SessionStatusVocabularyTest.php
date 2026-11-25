@@ -80,7 +80,6 @@ final class SessionStatusVocabularyTest extends TestCase
             'event_id' => $this->eventId,
             'hall_id' => $this->hallId,
             'venue_id' => $this->hallId,
-            'venue_id' => $this->hallId,
             'starts_at' => '2026-12-01 19:00:00',
         ]);
 
@@ -141,7 +140,6 @@ final class SessionStatusVocabularyTest extends TestCase
             'event_id' => $this->eventId,
             'hall_id' => $this->hallId,
             'venue_id' => $this->hallId,
-            'venue_id' => $this->hallId,
             'starts_at' => '2026-12-01 19:00:00',
         ];
 
@@ -161,7 +159,6 @@ final class SessionStatusVocabularyTest extends TestCase
             'event_id' => $this->eventId,
             'hall_id' => $this->hallId,
             'venue_id' => $this->hallId,
-            'venue_id' => $this->hallId,
             'starts_at' => '2026-12-01 19:00:00',
         ]);
 
@@ -175,7 +172,6 @@ final class SessionStatusVocabularyTest extends TestCase
     {
         $version = HallSchemaVersion::create([
             'hall_id' => $hallId,
-            'venue_id' => $hallId,
             'venue_id' => $hallId,
             'version' => ((int) \Illuminate\Support\Facades\DB::table('hall_schema_versions')->where('hall_id', $hallId)->max('version')) + 1,
             'revision' => 1,
