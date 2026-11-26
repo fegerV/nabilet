@@ -60,7 +60,7 @@ return [
      * Максимальный возраст полной резервной копии. 26 часов признаны
      * неприемлемо долгим окном: за это время могли пройти новые продажи.
      */
-    'backup_max_age_hours' => max(1, min(72, (int) env('NABILET_UPDATE_BACKUP_MAX_AGE_HOURS', 24))),
+    'backup_max_age_hours' => max(1, min(72, (int) env('NABILET_UPDATE_BACKUP_MAX_AGE_HOURS', 6))),
 
     /*
      * Без свежей full-копии обновление не стартует. Это не удобство, а единственный

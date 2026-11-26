@@ -298,6 +298,21 @@ final class UpdateOrchestrator
             return ['handled' => false];
         }
 
+        try {
+            // Автооткат обязан проходить те же проверки, что и ручной: иначе
+            // он снял бы код до устаревшей версии при уже применённых миграциях.
+            $this->assertRollbackAllowed($stuck);
+        } catch (ConflictError $e) {
+            // Режим обслуживания НЕ снимаем: совместимость кода и БД не подтверждена.
+            Log::channel('alerts')->error('self-update: автоматический откат заблокирован', [
+                'update_id' => $stuck->id,
+                'code' => $e->errorCode,
+                'message' => $e->getMessage(),
+            ]);
+
+            return ['handled' => false, 'update_id' => (int) $stuck->id, 'status' => (string) $stuck->status, 'message' => $e->getMessage()];
+        }
+
         $this->transition($stuck, UpdateStatus::ROLLING_BACK, 'auto_rollback');
 
         Log::channel('alerts')->warning('self-update: автоматический откат после ошибки', [
@@ -335,6 +350,42 @@ final class UpdateOrchestrator
         Log::channel('security')->info('Обновление системы отменено', ['update_id' => $updateId]);
     }
 
+    /**
+     * Единая проверка допустимости отката для ручного, автоматического и
+     * аварийного контуров. Раньше autoRollbackStuck обходил её и мог откатить
+     * файлы после применённых миграций или поверх более новой версии.
+     */
+    private function assertRollbackAllowed(SystemUpdate $update): void
+    {
+        if (! in_array((string) $update->status, [UpdateStatus::DONE, UpdateStatus::FAILED_AFTER_SWAP], true)) {
+            throw new ConflictError('Откат доступен только после обновления или ошибки после замены файлов.', 'UPDATE_NOT_ROLLBACKABLE');
+        }
+
+        $latestId = (int) SystemUpdate::query()
+            ->whereIn('status', [UpdateStatus::DONE, UpdateStatus::FAILED_AFTER_SWAP, UpdateStatus::ROLLED_BACK])
+            ->max('id');
+        if ((int) $update->id !== $latestId) {
+            throw new ConflictError(
+                'Нельзя откатить устаревшее обновление: после него были установлены другие версии.',
+                'UPDATE_STALE_ROLLBACK',
+                ['update_id' => (int) $update->id, 'latest_update_id' => $latestId],
+            );
+        }
+
+        $state = $this->journal->migrationState((int) $update->id);
+        if ($state !== 'not_started') {
+            throw new ConflictError(
+                'Миграции находятся в состоянии ' . $state . '. Откат файлов возможен только после ручного восстановления БД из проверенной копии.',
+                'UPDATE_ROLLBACK_REQUIRES_DB_RESTORE',
+                ['update_id' => (int) $update->id, 'migration_state' => $state],
+            );
+        }
+
+        if (SystemUpdate::query()->whereIn('status', UpdateStatus::ACTIVE)->exists()) {
+            throw new ConflictError('Другое обновление уже выполняется.', 'UPDATE_IN_PROGRESS');
+        }
+    }
+
     /** Поставить откат в очередь тика (не выполнять в HTTP-запросе). */
     public function requestRollback(int $updateId): SystemUpdate
     {
@@ -350,36 +401,7 @@ final class UpdateOrchestrator
     {
         /** @var SystemUpdate $update */
         $update = SystemUpdate::query()->findOrFail($updateId);
-        if (! in_array((string) $update->status, [UpdateStatus::DONE, UpdateStatus::FAILED_AFTER_SWAP], true)) {
-            throw new ConflictError('Откат доступен только после обновления или ошибки после замены файлов.', 'UPDATE_NOT_ROLLBACKABLE');
-        }
-
-        // Откат более старого релиза поверх последующего вернул бы код назад,
-        // но оставил бы новую схему БД и проданные по ней билеты.
-        $latestId = (int) SystemUpdate::query()
-            ->whereIn('status', [UpdateStatus::DONE, UpdateStatus::FAILED_AFTER_SWAP, UpdateStatus::ROLLED_BACK])
-            ->max('id');
-        if ($updateId !== $latestId) {
-            throw new ConflictError(
-                'Нельзя откатить устаревшее обновление: после него были установлены другие версии.',
-                'UPDATE_STALE_ROLLBACK',
-                ['update_id' => $updateId, 'latest_update_id' => $latestId],
-            );
-        }
-
-        // Миграции не транзакционны в MySQL: после их применения откат только
-        // файлов оставит несовместимую пару «новый код / старый код + новая БД».
-        if ($this->journal->migrationApplied($updateId)) {
-            throw new ConflictError(
-                'Миграции уже применены. Откат файлов невозможен без восстановления БД из проверенной копии.',
-                'UPDATE_ROLLBACK_REQUIRES_DB_RESTORE',
-                ['update_id' => $updateId],
-            );
-        }
-
-        if (SystemUpdate::query()->whereIn('status', UpdateStatus::ACTIVE)->exists()) {
-            throw new ConflictError('Другое обновление уже выполняется.', 'UPDATE_IN_PROGRESS');
-        }
+        $this->assertRollbackAllowed($update);
 
         $this->transition($update, UpdateStatus::ROLLING_BACK, 'rollback_queued');
 
@@ -515,10 +537,23 @@ final class UpdateOrchestrator
     /** @return array{handled: bool, status: string, message: string} */
     private function migrate(SystemUpdate $update): array
     {
+        // Фиксируем НАЧАЛО миграций до вызова Artisan: DDL в MySQL не
+        // транзакционен, поэтому прерванный процесс оставляет неопределённое
+        // состояние, которое нельзя назвать «миграций не было».
+        $this->journal->record((int) $update->id, 'migrate', [
+            'status' => 'started',
+            'from_version' => (string) $update->from_version,
+            'to_version' => (string) $update->to_version,
+        ]);
+
         $exit = Artisan::call('migrate', ['--force' => true]);
         $output = trim(Artisan::output());
 
         if ($exit !== 0) {
+            $this->journal->record((int) $update->id, 'migrate', [
+                'status' => 'uncertain',
+                'output' => mb_substr($output, -1000),
+            ]);
             Log::error('Миграция при обновлении завершилась с ошибкой', [
                 'update_id' => $update->id,
                 'output' => mb_substr($output, -4000),
@@ -549,13 +584,17 @@ final class UpdateOrchestrator
         $target = (string) $update->to_version;
         $healthy = ! in_array($this->probe->status(), [HealthProbe::DOWN, HealthProbe::ERROR], true);
         $filesOk = is_file(base_path('vendor/autoload.php')) && is_file(base_path('public_html/index.php'));
+        $migrationState = $this->journal->migrationState((int) $update->id);
+        $dbCompatible = ! in_array($migrationState, ['started', 'partial', 'uncertain'], true)
+            && ! $this->hasPendingMigrations();
 
-        if (! hash_equals($target, $installed) || ! $healthy || ! $filesOk) {
+        if (! hash_equals($target, $installed) || ! $healthy || ! $filesOk || ! $dbCompatible) {
             $this->fail($update, sprintf(
-                'Проверка не прошла: версия %s, ожидалась %s, состояние зависимостей %s.',
+                'Проверка не прошла: версия %s, ожидалась %s, состояние зависимостей %s, миграции %s.',
                 $installed,
                 $target,
                 $this->probe->status(),
+                $migrationState . ($this->hasPendingMigrations() ? ' (есть неприменённые)' : ''),
             ), true);
 
             return ['handled' => true, 'status' => UpdateStatus::FAILED_AFTER_SWAP, 'message' => 'Миграции не применены'];
@@ -595,6 +634,27 @@ final class UpdateOrchestrator
         Log::channel('security')->warning('Обновление системы откачено', ['update_id' => $update->id]);
 
         return ['handled' => true, 'status' => UpdateStatus::ROLLED_BACK, 'message' => 'Откат завершён'];
+    }
+
+    /** Есть ли миграции, которые не зафиксированы в таблице migrations. */
+    private function hasPendingMigrations(): bool
+    {
+        try {
+            if (! \Illuminate\Support\Facades\Schema::hasTable('migrations')) {
+                return true;
+            }
+            $ran = array_map('strval', DB::table('migrations')->pluck('migration')->all());
+            foreach (glob(database_path('migrations/*.php')) ?: [] as $path) {
+                if (! in_array(basename($path, '.php'), $ran, true)) {
+                    return true;
+                }
+            }
+
+            return false;
+        } catch (\Throwable) {
+            // Нет соединения с БД — совместимость подтвердить нельзя.
+            return true;
+        }
     }
 
     private function manifestFor(SystemUpdate $update): ReleaseManifest

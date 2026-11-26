@@ -108,7 +108,7 @@ final class UpdatePreflight
         $remoteFresh = ($remote['status'] ?? '') === 'success'
             && ($remote['mode'] ?? '') === 'full'
             && $remoteAt !== false
-            && $remoteAt >= time() - (int) config('updates.backup_max_age_hours', 24) * 3600;
+            && $remoteAt >= time() - (int) config('updates.backup_max_age_hours', 6) * 3600;
         $fresh = $localFresh || $remoteFresh;
 
         return [
@@ -123,7 +123,7 @@ final class UpdatePreflight
     public function hasFreshLocalFullBackup(): bool
     {
         $dir = storage_path('app/backups');
-        $threshold = time() - (int) config('updates.backup_max_age_hours', 24) * 3600;
+        $threshold = time() - (int) config('updates.backup_max_age_hours', 6) * 3600;
 
         foreach (['full_*.zip', 'full_*.zip.enc'] as $pattern) {
             foreach (glob($dir . '/' . $pattern) ?: [] as $file) {
