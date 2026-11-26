@@ -550,8 +550,11 @@ HTML;
     private function imageElement(array $el, float $x, float $y, int $organizationId): string
     {
         $mediaId = (string) ($el['media_id'] ?? '');
-        $uri = '';
-        if ($mediaId !== '' && $organizationId > 0) {
+        // Снимок билета уже содержит байты изображения: исходный медиаресурс
+        // мог быть удалён после продажи, но билет обязан остаться прежним.
+        $embedded = (string) ($el['src'] ?? '');
+        $uri = str_starts_with($embedded, 'data:image/') ? $embedded : '';
+        if ($uri === '' && $mediaId !== '' && $organizationId > 0) {
             $asset = MediaAsset::query()
                 ->where('public_id', $mediaId)
                 ->where('organization_id', $organizationId)
