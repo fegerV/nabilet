@@ -2798,7 +2798,7 @@ ALTER TABLE privacy_requests
 -- 2026_11_26_000200: неизменяемый снимок оформления на момент выпуска билета.
 -- Динамические данные (дата/площадка/цена) читаются из сеанса/заказа.
 ALTER TABLE order_items
-  ADD COLUMN template_snapshot_json JSON NULL AFTER ticket_status;
+  ADD COLUMN template_snapshot_json JSON NULL AFTER seat_snapshot_json;
 ALTER TABLE tickets
   ADD COLUMN template_snapshot_json JSON NULL AFTER qr_payload;
 
