@@ -21,6 +21,8 @@ use Nabilet\Core\Tenancy\OrganizationContext;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
+use Nabilet\Modules\Media\Models\MediaAsset;
 
 class TicketService
 {
@@ -224,11 +226,55 @@ class TicketService
         }
         $raw = is_array($template->template_json) ? $template->template_json : [];
 
-        return TicketTemplateConfig::normalize(
+        $config = TicketTemplateConfig::normalize(
             $raw,
             isset($template->width) ? (int) $template->width : null,
             isset($template->height) ? (int) $template->height : null,
         );
+
+        // Заморозить не только геометрию, но и байты изображений: удаление
+        // медиаресурса или смена файла после продажи не должно менять билет.
+        return $this->embedImages($config, (int) $order->organization_id);
+    }
+
+    /**
+     * @param  array<string, mixed>  $config
+     * @return array<string, mixed>
+     */
+    private function embedImages(array $config, int $organizationId): array
+    {
+        // По индексу, а не по ссылке на временную копию массива из `?? []`:
+        // итерация по ссылке временного выражения не изменила бы сам конфиг.
+        foreach ($config['elements'] ?? [] as $index => $element) {
+            if (! is_array($element) || ($element['type'] ?? null) !== 'image') {
+                continue;
+            }
+            $mediaId = (string) ($element['media_id'] ?? '');
+            if ($mediaId === '' || $organizationId <= 0) {
+                continue;
+            }
+            // Медиа читается по capabilities билета, а не по контексту HTTP:
+            // выпуск идёт из вебхука/очереди без арендатора запроса.
+            $asset = app(OrganizationContext::class)->withoutScope(
+                fn () => MediaAsset::query()
+                    ->where('public_id', $mediaId)
+                    ->where('organization_id', $organizationId)
+                    ->first()
+            );
+            if ($asset === null) {
+                continue;
+            }
+            $mime = is_string($asset->mime_type) && str_starts_with($asset->mime_type, 'image/')
+                ? $asset->mime_type
+                : 'image/png';
+            $disk = is_string($asset->disk) && $asset->disk !== '' ? $asset->disk : 'public';
+            $bytes = Storage::disk($disk)->get((string) $asset->path);
+            if (is_string($bytes) && strlen($bytes) <= 8_000_000) {
+                $config['elements'][$index]['src'] = 'data:' . $mime . ';base64,' . base64_encode($bytes);
+            }
+        }
+
+        return $config;
     }
 
     /**

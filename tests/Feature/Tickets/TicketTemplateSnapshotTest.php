@@ -6,6 +6,7 @@ namespace Tests\Feature\Tickets;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Tickets\Models\Ticket;
@@ -58,6 +59,67 @@ final class TicketTemplateSnapshotTest extends TestCase
 
         $this->assertStringContainsString('СТАРЫЙ_ДИЗАЙН', $html);
         $this->assertStringNotContainsString('НОВЫЙ_ДИЗАЙН', $html);
+    }
+
+    public function test_snapshot_embeds_image_bytes_and_survives_media_deletion(): void
+    {
+        Storage::fake('public');
+        Storage::disk('public')->put('templates/poster.png', 'PNG-BYTES');
+        $mediaId = 'poster-asset-' . Str::random(6);
+        $now = now()->toDateTimeString();
+        $assetId = (int) DB::table('media_assets')->insertGetId([
+            'public_id' => $mediaId,
+            'organization_id' => $this->organizationId,
+            'disk' => 'public',
+            'path' => 'templates/poster.png',
+            'filename' => 'poster.png',
+            'mime_type' => 'image/png',
+            'size_bytes' => 10,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+
+        $config = \Nabilet\Modules\Tickets\Domain\TicketTemplateConfig::normalize([
+            'elements' => [[
+                'id' => 'poster', 'type' => 'image', 'x' => 10, 'y' => 10,
+                'width' => 100, 'height' => 100, 'media_id' => $mediaId,
+            ]],
+        ]);
+        DB::table('ticket_templates')->where('id', $this->newTemplateId)->update([
+            'template_json' => json_encode($config),
+        ]);
+
+        $found = app(OrganizationContext::class)->withoutScope(
+            fn () => \Nabilet\Modules\Media\Models\MediaAsset::query()->where('public_id', $mediaId)->first()
+        );
+        $this->assertNotNull($found, 'Медиаресурс должен быть доступен выпуску билета');
+        $this->assertTrue(Storage::disk('public')->exists('templates/poster.png'));
+        $orderId = $this->seedOrder();
+        $this->seedOrderItem($orderId, $this->inventoryId);
+        $order = app(OrganizationContext::class)->withoutScope(
+            fn () => \Nabilet\Modules\Orders\Models\Order::query()->findOrFail($orderId)
+        );
+        $issued = app(\Nabilet\Modules\Tickets\Services\TicketService::class)->issueTicketsForOrder($order);
+        $this->assertNotEmpty($issued);
+
+        $snapshot = DB::table('order_items')
+            ->where('order_id', $orderId)->whereNotNull('template_snapshot_json')
+            ->value('template_snapshot_json');
+        $this->assertNotNull($snapshot);
+        $decodedSnapshot = json_decode((string) $snapshot, true);
+        $this->assertStringStartsWith(
+            'data:image/png;base64,',
+            (string) ($decodedSnapshot['elements'][0]['src'] ?? ''),
+        );
+
+        // Удаляем исходный ресурс; билет обязан сохранить встроенные байты.
+        DB::table('media_assets')->where('id', $assetId)->delete();
+        Storage::disk('public')->delete('templates/poster.png');
+        $ticket = app(OrganizationContext::class)->withoutScope(
+            fn (): Ticket => Ticket::query()->findOrFail($issued[0]->id)
+        );
+        $html = app(TicketPdfRenderer::class)->renderHtml($ticket);
+        $this->assertStringContainsString('data:image/png;base64', $html);
     }
 
     public function test_legacy_ticket_without_snapshot_uses_the_live_template(): void
