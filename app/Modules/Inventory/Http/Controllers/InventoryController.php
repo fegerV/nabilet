@@ -5,7 +5,10 @@ declare(strict_types=1);
 namespace Nabilet\Modules\Inventory\Http\Controllers;
 
 use Nabilet\Modules\Inventory\Http\Requests\UpdateRowPricesRequest;
+use Nabilet\Core\Errors\NotFoundError;
 use Nabilet\Core\Tenancy\OrganizationContext;
+use Nabilet\Modules\Core\Users\Support\StaffRole;
+use Nabilet\Modules\Events\Domain\EventStatus;
 use Nabilet\Modules\Inventory\StateMachines\InventoryItemStateMachine;
 use Nabilet\Modules\Inventory\Models\InventoryItem;
 use Nabilet\Modules\Inventory\Services\InventoryService;
@@ -39,6 +42,7 @@ class InventoryController extends Controller
         ]);
 
         $perPage = (int) ($validated['per_page'] ?? 50);
+        $this->assertSessionVisible((int) $validated['session_id']);
 
         // Витрина карты зала: гость работает без тенант-контекста (маршрут
         // без auth), инвентарь сеанса — скоупнутая модель — выборка и пагинация
@@ -115,6 +119,36 @@ class InventoryController extends Controller
      * середины партера. Нет сцены в схеме (танцпол, клуб) — остаётся `top`,
      * как было.
      */
+    /**
+     * AUD-021: `session_id` в публичном API инвентаря — capability, а не просто
+     * фильтр. Гость видит только сеансы опубликованных мероприятий; сотрудник —
+     * только своей организации. Чужой сеанс неотличим от несуществующего.
+     */
+    private function assertSessionVisible(int $sessionId): void
+    {
+        $session = app(OrganizationContext::class)->withoutScope(
+            fn (): ?Session => Session::query()->find($sessionId)
+        );
+        if ($session === null) {
+            throw new NotFoundError('Session', (string) $sessionId);
+        }
+
+        if (StaffRole::isStaff(request()->user())) {
+            if (! app(OrganizationContext::class)->allows($session->organization_id)) {
+                throw new NotFoundError('Session', (string) $sessionId);
+            }
+
+            return;
+        }
+
+        $eventStatus = app(OrganizationContext::class)->withoutScope(
+            fn () => $session->event?->status
+        );
+        if ($eventStatus === null || ! EventStatus::isPubliclyVisible((string) $eventStatus)) {
+            throw new NotFoundError('Session', (string) $sessionId);
+        }
+    }
+
     private function stageSide(?string $sessionId): string
     {
         if ($sessionId === null || $sessionId === '') {
@@ -156,6 +190,7 @@ class InventoryController extends Controller
         $inventoryItem = app(OrganizationContext::class)->withoutScope(
             fn () => InventoryItem::query()->whereKey($inventoryItem)->firstOrFail()
         );
+        $this->assertSessionVisible((int) $inventoryItem->session_id);
 
         $inventoryItem->load(['session', 'seat.row.sector', 'standingZone']);
 
@@ -196,6 +231,7 @@ class InventoryController extends Controller
      */
     public function availability(int $sessionId): JsonResponse
     {
+        $this->assertSessionVisible($sessionId);
         // Витрина билборда: гость без контекста, счётчики позиций — в bypass
         // (со счётчиком sold-билетов ниже уже так с шага Ticket).
         $availability = app(OrganizationContext::class)->withoutScope(function () use ($sessionId): array {

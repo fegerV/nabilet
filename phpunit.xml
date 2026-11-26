@@ -53,5 +53,8 @@
             не защищает; 32 байта, потому что `QrSigner` отвергает всё короче.
         -->
         <env name="TICKET_QR_SECRET" value="base64:bmFiaWxldC10ZXN0LXFyLXNpZ25pbmcta2V5LTAwMDE=" force="true"/>
+        <!-- Большинство Feature-тестов пишут системные настройки от имени
+             арендаторского admin; старое поведение явно включается в тестах. -->
+        <env name="NABILET_SINGLE_TENANT_ADMIN" value="true" force="true"/>
     </php>
 </phpunit>

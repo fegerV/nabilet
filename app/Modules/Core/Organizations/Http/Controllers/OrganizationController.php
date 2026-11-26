@@ -15,6 +15,8 @@ use Nabilet\Modules\Core\Organizations\Http\Requests\UpdateOrganizationRequest;
 use Nabilet\Modules\Core\Organizations\Http\Resources\OrganizationResource;
 use Nabilet\Modules\Core\Organizations\Http\Resources\OrganizationCollection;
 use Nabilet\Modules\Core\Users\Repositories\UserRepository;
+use Nabilet\Modules\Core\Users\Support\StaffRole;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -45,12 +47,35 @@ class OrganizationController extends Controller
         // Без клампа `?limit=1000000` уходил в пагинатор как есть (см. `Paging`).
         $limit = Paging::limit((int) $request->get('limit', 15), 15, 100);
 
+        // AUD-022: список всех организаций — привилегия платформенного
+        // администратора. Обычный покупатель/сотрудник видит только те
+        // организации, к которым он реально принадлежит.
+        if (! StaffRole::isPlatformAdmin($request->user())) {
+            $ids = DB::table('user_organization')
+                ->where('user_id', $request->user()?->id)
+                ->pluck('organization_id')
+                ->all();
+
+            return new OrganizationCollection(
+                Organization::query()->whereIn('id', $ids)->paginate($limit)
+            );
+        }
+
         return new OrganizationCollection($this->service->all($limit));
     }
 
     public function show(string $publicId): OrganizationResource
     {
-        return new OrganizationResource($this->findOrFail($publicId));
+        $organization = $this->findOrFail($publicId);
+        if (! StaffRole::isPlatformAdmin(request()->user())
+            && ! DB::table('user_organization')
+                ->where('user_id', request()->user()?->id)
+                ->where('organization_id', $organization->id)
+                ->exists()) {
+            throw new NotFoundError('Organization', $publicId);
+        }
+
+        return new OrganizationResource($organization);
     }
 
     public function store(StoreOrganizationRequest $request): OrganizationResource

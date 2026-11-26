@@ -10,12 +10,20 @@ return [
      * читать бэкапы всех арендаторов, системные логи и менять глобальные
      * настройки (оплата, почта, Диск). Пустой список = обратная совместимость
      * с одноарендаторской установкой (любой admin). На multi-client хостинге
-     * список ОБЯЗАТЕЛЬНО должен быть задан.
+     * список ОБЯЗАТЕЛЬНО должен быть задан. Пустой список НЕ даёт права
+     * арендаторским администраторам — это явно отказ, а не fallback.
      */
     'platform_admins' => array_values(array_filter(array_map(
         static fn (string $email): string => strtolower(trim($email)),
         explode(',', (string) env('NABILET_PLATFORM_ADMINS', '')),
     ))),
+
+    /*
+     * Явный opt-in для одноарендаторской установки: без списка platform_admins
+     * любой admin считается платформенным ТОЛЬКО если этот флаг включён.
+     * По умолчанию выключен — multi-client установка обязана задать список.
+     */
+    'single_tenant_admin' => filter_var(env('NABILET_SINGLE_TENANT_ADMIN', false), FILTER_VALIDATE_BOOL),
 
     /*
      * Шифрование бэкапов (AES-256-CBC). Ключ — из `.env`:

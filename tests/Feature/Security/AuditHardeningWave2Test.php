@@ -122,15 +122,18 @@ class AuditHardeningWave2Test extends TestCase
         }
     }
 
-    public function test_platform_fallback_keeps_single_tenant_installations_working(): void
+    public function test_empty_platform_admin_list_denies_global_settings(): void
     {
         config()->set('nabilet.platform_admins', []);
+        config()->set('nabilet.single_tenant_admin', false);
 
         $admin = $this->admin('tenant-admin@example.com');
         $this->actingAs($admin, 'api');
 
-        self::assertTrue(StaffRole::isPlatformAdmin($admin));
-        $this->getJson('/api/v1/admin/backups/settings')->assertOk();
+        // AUD-020: арендаторский admin не становится платформенным только
+        // потому, что список не настроен.
+        self::assertFalse(StaffRole::isPlatformAdmin($admin));
+        $this->getJson('/api/v1/admin/backups/settings')->assertForbidden();
     }
 
     // ── фикстуры ───────────────────────────────────────────────────────────
