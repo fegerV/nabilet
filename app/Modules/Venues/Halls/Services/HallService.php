@@ -913,9 +913,21 @@ class HallService
             }
 
             $capacity = $object['capacity'] ?? null;
-            $capacityUnconfirmed = ($object['capacity_confirmed'] ?? true) !== true
-                || ($object['capacity_source'] ?? null) === 'availableSeatCount';
+            // Легасные зоны без provenance не помечаются как неподтверждённые:
+            // их создавал оператор вручную. Неподтверждённой считается зона,
+            // у которой явно указан источник «остаток Афиши» или флаг false.
+            $capacityUnconfirmed = ($object['capacity_source'] ?? null) === 'availableSeatCount'
+                || (array_key_exists('capacity_confirmed', $object) && ($object['capacity_confirmed'] ?? false) !== true);
             $priceUnconfirmed = ($object['price_source'] ?? null) === 'unknown';
+            $organizerConfirmed = ($object['confirmed_by_organizer'] ?? false) === true;
+
+            // Положительные capacity/priceMinor ещё НЕ значат, что данные
+            // подтверждены: значения пришли из остатка и тарифа Афиши.
+            if ($strict && $capacityUnconfirmed && ! $organizerConfirmed) {
+                $errors["staticObjects.$i.confirmed_by_organizer"] = ['Подтвердите вместимость и тариф standing-зоны перед публикацией.'];
+                $problemObjects[] = ['id' => $objectId, 'field' => "staticObjects.$i.confirmed_by_organizer"];
+                continue;
+            }
 
             // Черновик импорта обязан сохранять зоны с неизвестной вместимостью
             // и ценой — иначе администратор не сможет их подтвердить вручную.

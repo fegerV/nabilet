@@ -185,12 +185,74 @@ final class YandexHallplanConversionTest extends TestCase
         $zone['capacity_confirmed'] = true;
         $zone['priceMinor'] = 50000;
         $zone['price_source'] = 'organizer_confirmed';
+        $zone['confirmed_by_organizer'] = true;
         unset($zone);
 
         $reflection = new \ReflectionClass(HallService::class);
         $service = $reflection->newInstanceWithoutConstructor();
         $reflection->getMethod('validateSchemaPayload')->invoke($service, $schema, true);
         self::assertTrue(true);
+    }
+
+    public function test_even_odd_and_sparse_numbering_is_preserved(): void
+    {
+        $cases = [
+            [[2, 4, 6, 8], [2, 4, 6, 8]],       // чётные
+            [[1, 3, 5, 7], [1, 3, 5, 7]],       // нечётные
+            [[7, 8, 11, 15], [7, 8, 11, 15]],   // непоследовательные
+        ];
+        foreach ($cases as [$known, $expectedKnown]) {
+            $seats = [];
+            foreach ($known as $i => $place) {
+                $seats[] = [
+                    'seat' => ['row' => '1', 'place' => (string) $place, 'xCoord' => 100 + $i * 20, 'yCoord' => 200],
+                    'priceInfo' => ['price' => ['value' => 100000]],
+                ];
+            }
+            $schema = (new YandexHallplanConverter())->convert(['levels' => [[
+                'id' => 1, 'name' => 'Партер',
+                // seatCount > 12, чтобы не включился режим «каждый row — стол».
+                'rows' => [['row' => '1', 'seatCount' => 16, 'xCoord' => 100, 'yCoord' => 200]],
+                'seats' => $seats,
+            ]]]);
+            $numbers = array_map(
+                static fn (array $seat): int => (int) $seat['number'],
+                $schema['sectors'][0]['seats'],
+            );
+            foreach ($expectedKnown as $place) {
+                self::assertContains($place, $numbers, 'Известный номер ' . $place . ' потерян');
+            }
+            $knownSeats = array_values(array_filter(
+                $schema['sectors'][0]['seats'],
+                static fn (array $seat): bool => $seat['source'] === 'yandex_exact',
+            ));
+            self::assertCount(count($known), $knownSeats);
+            foreach ($knownSeats as $seat) {
+                self::assertSame('yandex_exact', $seat['number_source']);
+            }
+        }
+    }
+
+    public function test_source_ids_survive_reordering_of_source_seats(): void
+    {
+        $make = static fn (array $places): array => ['levels' => [[
+            'id' => 1, 'name' => 'Партер',
+            'rows' => [['row' => '1', 'seatCount' => 4, 'xCoord' => 100, 'yCoord' => 200]],
+            'seats' => array_map(
+                static fn (int $place): array => [
+                    'seat' => ['row' => '1', 'place' => (string) $place, 'xCoord' => 100 + $place * 20, 'yCoord' => 200],
+                    'priceInfo' => ['price' => ['value' => 100000]],
+                ],
+                $places,
+            ),
+        ]]];
+        $first = (new YandexHallplanConverter())->convert($make([1, 2, 3, 4]));
+        $second = (new YandexHallplanConverter())->convert($make([4, 3, 2, 1]));
+        $ids = static fn (array $schema): array => array_map(
+            static fn (array $seat): string => (string) $seat['source_id'],
+            $schema['sectors'][0]['seats'],
+        );
+        self::assertEqualsCanonicalizing($ids($first), $ids($second));
     }
 
     public function test_rejects_excessive_json_depth(): void
