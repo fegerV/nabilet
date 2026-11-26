@@ -59,7 +59,7 @@
 | `fix/yandex-hallplan-import` | 45851626046 | **success** |
 | `fix/ticket-builder-audit` | 45852429635 | ожидается (прогон после правки `EXPECT_COLUMNS`) |
 
-Прогон 45850449673 выявил ещё один дефект: `EXPECT_COLUMNS=953` в `.github/workflows/ci.yml` не учитывал два столбца снимка шаблона; исправлено на 955. Ссылка на все прогоны: `https://github.com/fegerV/nabilet/actions`.
+Прогон 45850449673 выявил ещё один дефект: `EXPECT_COLUMNS=953` в `.github/workflows/ci.yml` не учитывал два столбца снимка шаблона; исправлено на 955. Прогон 45852429635 показал, что split-бандл `nabilet_core_spec/migrations/*.sql` всё ещё давал 953 колонки — добавлен `027_ticket_template_snapshot.sql`, после чего top-level и split-бандлы снова согласованы (88 таблиц / 955 колонок). Ссылка на все прогоны: `https://github.com/fegerV/nabilet/actions`.
 
 ## 4. Оставшиеся ограничения
 
