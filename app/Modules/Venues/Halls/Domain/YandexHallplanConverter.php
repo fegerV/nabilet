@@ -469,6 +469,7 @@ final class YandexHallplanConverter
                                 . ':table:' . $rowNo . ':' . $ts['place'],
                             'source_row' => $sourceRowLabel !== '' ? $sourceRowLabel : 'Стол ' . $rowNo,
                             'source_number' => (string) $ts['place'],
+                            'number_source' => $isKnownTableSeat ? 'yandex_exact' : 'inferred',
                             'source' => $isKnownTableSeat ? 'yandex_exact' : 'reconstructed',
                             'confidence' => $isKnownTableSeat ? 'exact' : 'inferred',
                             'coordinate_source' => $isKnownTableSeat ? 'yandex_exact' : 'ring_reconstructed',
@@ -563,8 +564,9 @@ final class YandexHallplanConverter
                 $keys = array_keys($anchors);
                 $minP = min($keys);
                 $maxP = max($keys);
+                $placeSequence = $this->buildPlaceSequence($anchors, $count, $rowMeta);
 
-                for ($p = 1; $p <= $count; $p++) {
+                foreach ($placeSequence as $p) {
                     if (isset($points[$p])) {
                         continue;
                     }
@@ -659,9 +661,11 @@ final class YandexHallplanConverter
                 }
 
                 // Прямая от первого места — запасной вариант, когда донора нет или
-                // перенос вылезает за контур, а прямая нет.
+                // перенос вылезает за контур, а прямая нет. Нумерация может быть
+                // чётной/нечётной/с пропусками — sequence строится по анкерам.
+                $placeSequence = $this->buildPlaceSequence($anchors, $count, $rowMeta);
                 $line = [];
-                for ($p = 1; $p <= $count; $p++) {
+                foreach ($placeSequence as $p) {
                     $line[$p] = [$start['x'] + $step * ($p - $p0), $start['y']];
                 }
 
@@ -678,7 +682,7 @@ final class YandexHallplanConverter
                     $tailDy = $lastP === $prevP ? 0.0 : ($donor[$lastP][1] - $donor[$prevP][1]) / ($lastP - $prevP);
 
                     $shifted = [];
-                    for ($p = 1; $p <= $count; $p++) {
+                    foreach ($placeSequence as $p) {
                         if (isset($donor[$p])) {
                             $shifted[$p] = [$donor[$p][0] + $shiftX, $donor[$p][1] + $shiftY];
                         } else {
@@ -733,8 +737,9 @@ final class YandexHallplanConverter
                 sort($rowPricesArr);
                 $rowPrice = $rowPricesArr === [] ? 0 : $rowPricesArr[intdiv(count($rowPricesArr), 2)];
                 $uniform = $rowPricesArr !== [] && count(array_unique($rowPricesArr)) === 1;
+                $placeSequence = $this->buildPlaceSequence($anchors, $count, $rowMeta);
 
-                for ($p = 1; $p <= $count; $p++) {
+                foreach ($placeSequence as $p) {
                     if (!isset($points[$p])) {
                         continue;
                     }
@@ -782,6 +787,7 @@ final class YandexHallplanConverter
                         'source_id' => $sourceId,
                         'source_row' => $sourceRow,
                         'source_number' => $placeName,
+                        'number_source' => $isKnown ? 'yandex_exact' : 'inferred',
                         'source' => $isKnown ? 'yandex_exact' : 'reconstructed',
                         'confidence' => $isKnown ? 'exact' : 'inferred',
                         'coordinate_source' => $isKnown ? 'yandex_exact' : 'interpolated',
@@ -910,6 +916,7 @@ final class YandexHallplanConverter
                     'source_kind' => $zone['source_kind'],
                     'capacity_source' => $zone['capacity_source'],
                     'capacity_confirmed' => false,
+                    'confirmed_by_organizer' => false,
                     'price_source' => $zone['price_source'],
                     'tariffs' => $zone['tariffs'],
                 ];
@@ -980,6 +987,65 @@ final class YandexHallplanConverter
         ];
 
         return $schema;
+    }
+
+    /**
+     * Номера мест НЕ обязаны быть 1..seatCount: встречаются чётные, нечётные
+     * и разреженные ряды. Строим последовательность по известным номерам и
+     * метаданным ряда, сохраняя каждое известное значение как есть.
+     *
+     * @param  array<int, array<string, mixed>>  $anchors
+     * @param  array<string, mixed>  $rowMeta
+     * @return list<int>
+     */
+    private function buildPlaceSequence(array $anchors, int $count, array $rowMeta): array
+    {
+        $known = array_map('intval', array_keys($anchors));
+        sort($known);
+        $first = isset($rowMeta['firstPlace']) && is_numeric($rowMeta['firstPlace'])
+            ? (int) $rowMeta['firstPlace']
+            : ($known[0] ?? 1);
+        $step = isset($rowMeta['seatStep']) && is_numeric($rowMeta['seatStep'])
+            ? max(1, (int) $rowMeta['seatStep'])
+            : 1;
+        if ($step === 1 && count($known) >= 2) {
+            $diffs = [];
+            for ($i = 1, $n = count($known); $i < $n; $i++) {
+                $d = $known[$i] - $known[$i - 1];
+                if ($d > 0) {
+                    $diffs[] = $d;
+                }
+            }
+            if ($diffs !== []) {
+                $gcd = $diffs[0];
+                foreach (array_slice($diffs, 1) as $d) {
+                    $gcd = self::gcd($gcd, $d);
+                }
+                $step = max(1, $gcd);
+            }
+        }
+
+        $sequence = [];
+        for ($i = 0; $i < $count; $i++) {
+            $sequence[] = $first + $i * $step;
+        }
+        // Известные номера имеют приоритет над реконструированной прогрессией.
+        foreach ($known as $place) {
+            $sequence[] = $place;
+        }
+        $sequence = array_values(array_unique($sequence));
+        sort($sequence);
+
+        return $sequence;
+    }
+
+    private static function gcd(int $a, int $b): int
+    {
+        while ($b !== 0) {
+            [$a, $b] = [$b, $a % $b];
+        }
+
+        return abs($a);
     }
 
     /**

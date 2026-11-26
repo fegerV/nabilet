@@ -172,6 +172,7 @@ export function normalizeStaticObject(o: unknown): EStatic | null {
     ...(typeof rec.source_kind === 'string' ? { source_kind: rec.source_kind } : {}),
     ...(typeof rec.capacity_source === 'string' ? { capacity_source: rec.capacity_source } : {}),
     ...(typeof rec.capacity_confirmed === 'boolean' ? { capacity_confirmed: rec.capacity_confirmed } : {}),
+    ...(typeof rec.confirmed_by_organizer === 'boolean' ? { confirmed_by_organizer: rec.confirmed_by_organizer } : {}),
     ...(typeof rec.price_source === 'string' ? { price_source: rec.price_source } : {}),
     ...(Array.isArray(rec.tariffs) ? { tariffs: rec.tariffs as Array<Record<string, unknown>> } : {}),
   }

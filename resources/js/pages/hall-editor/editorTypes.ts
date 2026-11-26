@@ -102,6 +102,7 @@ export interface EStatic {
   source_kind?: string
   capacity_source?: string
   capacity_confirmed?: boolean
+  confirmed_by_organizer?: boolean
   price_source?: string
   tariffs?: Array<Record<string, unknown>>
 }
