@@ -6,6 +6,7 @@ namespace Tests\Feature\Updater;
 
 use Illuminate\Contracts\Foundation\MaintenanceMode;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Nabilet\Modules\Updater\Services\UpdateApplier;
 use Nabilet\Modules\Updater\Services\UpdateJournal;
@@ -144,6 +145,71 @@ final class UpdaterReliabilityTest extends TestCase
             'Старый аварийный скрипт должен заменяться новой версией'
         );
         @unlink($target);
+    }
+
+    public function test_unconfirmed_pending_operation_is_restored_from_actual_disk_state(): void
+    {
+        // Имитация SIGKILL после rename(), но до записи status=done.
+        $storage = app(UpdateStorage::class);
+        $journal = app(UpdateJournal::class);
+        $backup = $storage->backup(self::UPDATE_ID) . '/app/config.php';
+        $this->makeDir(dirname($backup));
+        $this->writeTo(dirname($backup), 'config.php', 'original config');
+        $this->write('app/config.php', 'new config');
+
+        $journal->record(self::UPDATE_ID, 'swap_file', [
+            'status' => 'pending',
+            'path' => 'app/config.php',
+            'backup' => $backup,
+            'original_present' => true,
+        ]);
+
+        app(UpdateApplier::class)->rollback(self::UPDATE_ID, $this->root);
+
+        $this->assertSame('original config', $this->read('app/config.php'));
+    }
+
+    public function test_migration_states_distinguish_started_partial_and_uncertain(): void
+    {
+        $journal = app(UpdateJournal::class);
+        $this->assertSame('not_started', $journal->migrationState(self::UPDATE_ID));
+
+        $journal->record(self::UPDATE_ID, 'migrate', ['status' => 'started']);
+        $this->assertSame('started', $journal->migrationState(self::UPDATE_ID));
+        $this->assertTrue($journal->migrationApplied(self::UPDATE_ID));
+
+        $journal->record(self::UPDATE_ID, 'migrate', ['status' => 'uncertain']);
+        $this->assertSame('uncertain', $journal->migrationState(self::UPDATE_ID));
+
+        $journal->record(self::UPDATE_ID, 'migrate', ['status' => 'done']);
+        $this->assertSame('completed', $journal->migrationState(self::UPDATE_ID));
+    }
+
+    public function test_rollback_is_blocked_when_migration_was_started(): void
+    {
+        $this->markTestSkippedIfNoOrchestrator();
+        $id = (int) DB::table('system_updates')->insertGetId([
+            'from_version' => '1.0.0', 'to_version' => '1.1.0',
+            'source' => 'upload', 'status' => 'done', 'step' => 'verified',
+            'artifact' => 'release.zip', 'artifact_sha256' => str_repeat('a', 64),
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        app(UpdateJournal::class)->record($id, 'migrate', ['status' => 'started']);
+
+        try {
+            app(\Nabilet\Modules\Updater\Services\UpdateOrchestrator::class)->requestRollback($id);
+            $this->fail('Откат после начала миграций должен быть заблокирован');
+        } catch (\Nabilet\Core\Errors\ConflictError $e) {
+            $this->assertSame('UPDATE_ROLLBACK_REQUIRES_DB_RESTORE', $e->errorCode);
+            $this->assertSame('started', $e->context['migration_state'] ?? null);
+        }
+    }
+
+    private function markTestSkippedIfNoOrchestrator(): void
+    {
+        if (! class_exists(\Nabilet\Modules\Updater\Services\UpdateOrchestrator::class)) {
+            $this->markTestSkipped('UpdateOrchestrator недоступен');
+        }
     }
 
     public function test_global_lock_is_exclusive_and_non_blocking(): void

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Updater\Services;
 
+use Nabilet\Core\Support\SignedPayload;
+
 /**
  * Долговечный журнал обновления (не зависит от Laravel, БД и vendor).
  *
@@ -41,13 +43,15 @@ final class UpdateJournal
     {
         $entries = $this->entries($updateId);
         $seq = count($entries) + 1;
-        $this->append($updateId, [
+        // array_merge, а не '+' — иначе дефолтный 'pending' перекрывал
+        // переданный вызывающим статус, и все записи становились «неподтверждёнными».
+        $this->append($updateId, array_merge([
             'seq' => $seq,
             'op' => $op,
-            'status' => (string) ($data['status'] ?? 'pending'),
+            'status' => 'pending',
             'update_id' => $updateId,
             'time' => time(),
-        ] + $data);
+        ], $data));
     }
 
     /**
@@ -76,35 +80,55 @@ final class UpdateJournal
     }
 
     /**
-     * Подтверждённые замены, которые нужно откатить в обратном порядке.
+     * Все операции, которые МОГЛИ изменить файловую систему.
+     *
+     * Раньше брались только `status=done`. Но процесс мог умереть после
+     * `rename()` и до записи подтверждения — в этом случае unfinished-операция
+     * терялась, и сайт оставался в смешанном состоянии. Теперь берём и pending,
+     * устраняя дубли по (op, path): последняя запись побеждает. Фактическое
+     * восстановление решает `UpdateApplier` по состоянию файлов на диске.
      *
      * @return list<array<string, mixed>>
      */
     public function reversibleEntries(int $updateId): array
     {
         $entries = $this->entries($updateId);
-        $out = [];
+        $byKey = [];
         foreach ($entries as $entry) {
-            if (($entry['status'] ?? null) !== 'done') {
+            $op = (string) ($entry['op'] ?? '');
+            if (! in_array($op, ['backup_dir', 'backup_file', 'swap_dir', 'swap_file', 'assets'], true)) {
                 continue;
             }
-            if (in_array((string) ($entry['op'] ?? ''), ['backup_dir', 'backup_file', 'swap_dir', 'swap_file', 'assets'], true)) {
-                $out[] = $entry;
-            }
+            $key = $op . ':' . (string) ($entry['path'] ?? '');
+            $byKey[$key] = $entry + ['confirmed' => ($entry['status'] ?? null) === 'done'];
         }
 
-        return array_reverse($out);
+        return array_reverse(array_values($byKey));
+    }
+
+    /** Состояние миграций: not_started|started|partial|completed|uncertain. */
+    public function migrationState(int $updateId): string
+    {
+        $state = 'not_started';
+        foreach ($this->entries($updateId) as $entry) {
+            if (($entry['op'] ?? null) !== 'migrate') {
+                continue;
+            }
+            $status = (string) ($entry['status'] ?? '');
+            if (in_array($status, ['started', 'partial', 'done', 'completed', 'uncertain'], true)) {
+                $state = $status === 'done' ? 'completed' : $status;
+            }
+        }
+        if ($state === 'not_started' && $this->completed($updateId)) {
+            return 'uncertain';
+        }
+
+        return $state;
     }
 
     public function migrationApplied(int $updateId): bool
     {
-        foreach ($this->entries($updateId) as $entry) {
-            if (($entry['op'] ?? null) === 'migrate' && ($entry['status'] ?? null) === 'done') {
-                return true;
-            }
-        }
-
-        return false;
+        return $this->migrationState($updateId) !== 'not_started';
     }
 
     public function completed(int $updateId): bool
@@ -131,8 +155,11 @@ final class UpdateJournal
             if (! flock($handle, LOCK_EX)) {
                 throw new \RuntimeException('Не удалось заблокировать журнал обновления.');
             }
-            $line = json_encode($entry, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-            if ($line === false || fwrite($handle, $line . PHP_EOL) === false) {
+            // Сериализация через владельца канонических байтов: копия флагов
+            // подписи в Domain/сервисах ломает HmacSignatureCopyTest и может
+            // расходиться с подписывающей стороной.
+            $line = SignedPayload::encode($entry);
+            if ($line === null || fwrite($handle, $line . PHP_EOL) === false) {
                 throw new \RuntimeException('Не удалось записать журнал обновления.');
             }
             fflush($handle);
