@@ -982,6 +982,33 @@ final class YandexHallplanConverter
         return $schema;
     }
 
+    /**
+     * Защита от глубокого/раздутого JSON до начала реконструкции.
+     * O(узлы), без рекурсии — вложенность и число узлов ограничены заранее.
+     */
+    private function assertJsonComplexity(mixed $value): void
+    {
+        $stack = [[$value, 0]];
+        $nodes = 0;
+        while ($stack !== []) {
+            [$item, $depth] = array_pop($stack);
+            if (! is_array($item)) {
+                continue;
+            }
+            if (++$depth > 20) {
+                throw new \InvalidArgumentException('Слишком большая вложенность hallplan.');
+            }
+            foreach ($item as $child) {
+                if (++$nodes > 50000) {
+                    throw new \InvalidArgumentException('Слишком много узлов в hallplan.');
+                }
+                if (is_array($child)) {
+                    $stack[] = [$child, $depth];
+                }
+            }
+        }
+    }
+
     /** @param  array<string, mixed>  $hallplan */
     private function sourceCurrency(array $hallplan): string
     {
@@ -1099,6 +1126,7 @@ final class YandexHallplanConverter
 
     private function validateInput(mixed $hallplan): void
     {
+        $this->assertJsonComplexity($hallplan);
         if (!is_array($hallplan) || !is_array($hallplan['levels'] ?? null) || count($hallplan['levels']) > 100) {
             throw new \InvalidArgumentException('Ожидается hallplan.levels (не более 100 уровней).');
         }

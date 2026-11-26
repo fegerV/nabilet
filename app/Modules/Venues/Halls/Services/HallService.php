@@ -496,7 +496,9 @@ class HallService
 
             // Публикация — более жёсткая граница: черновик может быть
             // незавершённым, но published-схема обязана укладываться в тот же
-            // предельный размер, что и сохраняемый черновик.
+            // предельный размер, что и сохраняемый черновик. Неподтверждённые
+            // standing-зоны (остаток Афиши/неизвестная цена) должны быть
+            // подтверждены организатором до публикации.
             $this->assertPayloadSize($version->schema_json ?? []);
             $this->validateSchemaPayload($version->schema_json ?? [], true);
 
@@ -911,6 +913,16 @@ class HallService
             }
 
             $capacity = $object['capacity'] ?? null;
+            $capacityUnconfirmed = ($object['capacity_confirmed'] ?? true) !== true
+                || ($object['capacity_source'] ?? null) === 'availableSeatCount';
+            $priceUnconfirmed = ($object['price_source'] ?? null) === 'unknown';
+
+            // Черновик импорта обязан сохранять зоны с неизвестной вместимостью
+            // и ценой — иначе администратор не сможет их подтвердить вручную.
+            // Публикация остаётся строгой: продавать «зону с 0 мест» нельзя.
+            if (! $strict && $capacityUnconfirmed && ! $this->isPositiveInt($capacity)) {
+                continue;
+            }
             if (!$this->isPositiveInt($capacity)) {
                 $errors["staticObjects.$i.capacity"] = ['A sellable standing zone requires a positive integer capacity'];
                 $problemObjects[] = ['id' => $objectId, 'field' => "staticObjects.$i.capacity"];
@@ -922,6 +934,9 @@ class HallService
                 continue;
             }
             $price = SchemaPrice::ofNode($object);
+            if (! $strict && $priceUnconfirmed && ($price === null || ! $price->isSellable())) {
+                continue;
+            }
             if ($price === null || !$price->isSellable()) {
                 $errors["staticObjects.$i.priceMinor"] = ['A sellable standing zone requires a positive integer price in minor units'];
                 $problemObjects[] = ['id' => $objectId, 'field' => "staticObjects.$i.priceMinor"];
