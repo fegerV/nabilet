@@ -49,7 +49,17 @@
 | `verify-purity.php`, `verify-error-envelope.php` | 0 нарушений |
 | `verify-migrations.php`, `verify-contract-schema.php`, `verify-spec-parity.php`, `verify-models-schema.php` | PASS |
 
-Ссылки на фактические CI-прогоны после push: см. `https://github.com/fegerV/nabilet/actions` и коммиты PR #111–#114. Если в момент чтения отчёта CI ещё выполняется, статус ниже не считается подтверждённым.
+## 3.1. Фактические CI-прогоны после исправлений
+
+| Ветка | Run | Результат |
+|---|---|---|
+| `fix/stabilization` | 45848167772 | success |
+| `fix/stabilization` (docs commit) | 45849022859 | success |
+| `fix/updater-reliability` | 45851414918 | **success** |
+| `fix/yandex-hallplan-import` | 45851626046 | **success** |
+| `fix/ticket-builder-audit` | 45852429635 | ожидается (прогон после правки `EXPECT_COLUMNS`) |
+
+Прогон 45850449673 выявил ещё один дефект: `EXPECT_COLUMNS=953` в `.github/workflows/ci.yml` не учитывал два столбца снимка шаблона; исправлено на 955. Ссылка на все прогоны: `https://github.com/fegerV/nabilet/actions`.
 
 ## 4. Оставшиеся ограничения
 
