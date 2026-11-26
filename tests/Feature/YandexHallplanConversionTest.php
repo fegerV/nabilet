@@ -149,6 +149,64 @@ final class YandexHallplanConversionTest extends TestCase
         self::assertSame($ids($first), $ids($second));
     }
 
+    /** @return array<string, mixed> */
+    private function unconfirmedZoneSchema(): array
+    {
+        return (new YandexHallplanConverter())->convert(['levels' => [[
+            'id' => 3, 'name' => 'Фан-зона', 'admission' => true, 'rows' => [], 'seats' => [],
+            'categories' => [['id' => 11, 'name' => 'Вход', 'availableSeatCount' => 0, 'priceInfos' => []]],
+        ]]]);
+    }
+
+    public function test_unconfirmed_standing_zone_survives_draft_validation(): void
+    {
+        $reflection = new \ReflectionClass(HallService::class);
+        $service = $reflection->newInstanceWithoutConstructor();
+        // Черновик сохраняет неподтверждённую зону, чтобы её можно было заполнить вручную.
+        $reflection->getMethod('validateSchemaPayload')->invoke($service, $this->unconfirmedZoneSchema());
+        self::assertTrue(true, 'Валидация черновика не должна отклонять неподтверждённую зону');
+    }
+
+    public function test_publication_rejects_unconfirmed_standing_zone(): void
+    {
+        $schema = $this->unconfirmedZoneSchema();
+        $reflection = new \ReflectionClass(HallService::class);
+        $service = $reflection->newInstanceWithoutConstructor();
+
+        $this->expectException(\Nabilet\Core\Errors\ValidationError::class);
+        $reflection->getMethod('validateSchemaPayload')->invoke($service, $schema, true);
+    }
+
+    public function test_confirmed_zone_passes_strict_validation(): void
+    {
+        $schema = $this->unconfirmedZoneSchema();
+        $zone = &$schema['staticObjects'][0];
+        $zone['capacity'] = 100;
+        $zone['capacity_confirmed'] = true;
+        $zone['priceMinor'] = 50000;
+        $zone['price_source'] = 'organizer_confirmed';
+        unset($zone);
+
+        $reflection = new \ReflectionClass(HallService::class);
+        $service = $reflection->newInstanceWithoutConstructor();
+        $reflection->getMethod('validateSchemaPayload')->invoke($service, $schema, true);
+        self::assertTrue(true);
+    }
+
+    public function test_rejects_excessive_json_depth(): void
+    {
+        $deep = ['levels' => []];
+        $cursor = &$deep;
+        for ($i = 0; $i < 30; $i++) {
+            $cursor['next'] = [];
+            $cursor = &$cursor['next'];
+        }
+        unset($cursor);
+
+        $this->expectException(\InvalidArgumentException::class);
+        (new YandexHallplanConverter())->convert($deep);
+    }
+
     public function test_rejects_unbounded_seat_generation(): void
     {
         $this->expectException(\InvalidArgumentException::class);

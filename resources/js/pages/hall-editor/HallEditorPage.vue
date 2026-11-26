@@ -193,6 +193,8 @@ const isImporting = ref(false)
 const importWarning = ref<string | null>(null)
 /** Структурированный отчёт конвертера: точные/восстановленные места и предупреждения. */
 const importReport = ref<Record<string, unknown> | null>(null)
+/** Diff повторного импорта против текущего черновика (только чтение). */
+const importDiff = ref<Record<string, unknown> | null>(null)
 const editorBusy = computed(() => isPublishing.value || isLeaving.value || isImporting.value || hallLoadState.value !== 'ok')
 
 const selectedSectorId = ref<string | null>(null)
@@ -1830,6 +1832,7 @@ function exportSchema(): void {
     // Отчёт предыдущего hallplan импорта не должен «залипать» на новом файле.
     importWarning.value = null
     importReport.value = null
+    importDiff.value = null
     if (file.size > 5 * 1024 * 1024) {
       ui.notify('rose', 'Файл слишком большой', 'Размер JSON не должен превышать 5 МБ')
       return
@@ -1852,6 +1855,21 @@ function exportSchema(): void {
           data = response.data.schema
           importWarning.value = response.data.warning
           importReport.value = response.data.report ?? null
+          // Повторный импорт показываем как сравнение с черновиком;
+          // ошибка сравнения не должна разрушать уже сконвертированную схему.
+          importDiff.value = null
+          if (hallPublicId.value) {
+            try {
+              const comparison = await send<{ diff: Record<string, unknown> }>('/venues/import-hallplan/compare', 'POST', {
+                hallplan: data,
+                venue_public_id: hallPublicId.value,
+                base_revision: currentSchemaRevision,
+              })
+              importDiff.value = comparison.data.diff
+            } catch {
+              // Схема импортируется и без сравнения (например, новый зал).
+            }
+          }
         } catch (error) {
           ui.notify('rose', 'Импорт отклонён', error instanceof Error ? error.message : 'Не удалось преобразовать hallplan')
           return
@@ -3480,6 +3498,10 @@ function reassignSelectedSeats(targetSectorId: string): void {
       <ul v-if="Array.isArray(importReport.warnings)" class="mt-1 list-disc pl-4">
         <li v-for="(warning, i) in importReport.warnings" :key="i">{{ warning }}</li>
       </ul>
+      <p v-if="importDiff" class="mt-1">
+        Сравнение с черновиком: добавлено {{ importDiff.added_count }}, удалено {{ importDiff.removed_count }},
+        перемещено {{ importDiff.moved_count }}, изменено {{ importDiff.changed_count }}.
+      </p>
     </div>
     <ul
       v-if="autosave === 'error' && autosaveErrors.length > 0"

@@ -25,6 +25,8 @@ final class VenueAfishaImportTest extends TestCase
 {
     use RefreshDatabase;
 
+    private int $organizationId;
+
     public function test_hallplan_preview_converts_without_creating_venues(): void
     {
         $before = DB::table('venues')->count();
@@ -37,6 +39,52 @@ final class VenueAfishaImportTest extends TestCase
         self::assertGreaterThan(0, (int) $response->json('data.report.reconstructed_seats'));
         self::assertNotEmpty($response->json('data.report.warnings'));
         self::assertSame($before, DB::table('venues')->count());
+    }
+
+    public function test_reimport_compares_against_the_current_draft_without_writing_it(): void
+    {
+        $source = json_decode(file_get_contents(base_path('tests/Fixtures/hallplans/surgu.json')), true);
+        $converted = (new \Nabilet\Modules\Venues\Halls\Domain\YandexHallplanConverter())->convert($source);
+        $venueId = (int) DB::table('venues')->insertGetId([
+            'public_id' => (string) Str::ulid()->toBase32(),
+            'organization_id' => $this->organizationId,
+            'name' => 'Сравнение импорта',
+            'slug' => 'import-compare-' . Str::random(6),
+            'status' => 'active',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $versionId = (int) DB::table('hall_schema_versions')->insertGetId([
+            'public_id' => (string) Str::ulid()->toBase32(),
+            'organization_id' => $this->organizationId,
+            'hall_id' => $venueId,
+            'venue_id' => $venueId,
+            'version' => 1,
+            'revision' => 3,
+            'status' => 'draft',
+            'schema_json' => json_encode($converted),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $response = $this->postJson('/api/v1/venues/import-hallplan/compare', [
+            'hallplan' => $source,
+            'venue_public_id' => (string) DB::table('venues')->where('id', $venueId)->value('public_id'),
+            'base_revision' => 3,
+        ])->assertOk();
+
+        self::assertSame(0, (int) $response->json('data.diff.added_count'));
+        self::assertSame(0, (int) $response->json('data.diff.removed_count'));
+        self::assertSame($versionId, (int) $response->json('data.current_version_id'));
+        self::assertSame(3, (int) $response->json('data.current_revision'));
+
+        // Сравнение ничего не записало, а устаревшая ревизия отклоняется.
+        self::assertSame(3, (int) DB::table('hall_schema_versions')->where('id', $versionId)->value('revision'));
+        $this->postJson('/api/v1/venues/import-hallplan/compare', [
+            'hallplan' => $source,
+            'venue_public_id' => (string) DB::table('venues')->where('id', $venueId)->value('public_id'),
+            'base_revision' => 2,
+        ])->assertStatus(409)->assertJsonPath('error.code', 'SCHEMA_DRAFT_CONFLICT');
     }
 
     public function test_malformed_hallplan_is_a_validation_error(): void
@@ -80,7 +128,7 @@ final class VenueAfishaImportTest extends TestCase
             'updated_at' => $now,
         ]);
 
-        $organizationId = (int) DB::table('organizations')->insertGetId([
+        $this->organizationId = (int) DB::table('organizations')->insertGetId([
             'public_id' => (string) Str::ulid()->toBase32(),
             'name' => 'Сургут-Концерт',
             'slug' => 'surgut-' . Str::random(6),
@@ -100,7 +148,7 @@ final class VenueAfishaImportTest extends TestCase
 
         DB::table('user_roles')->insert([
             'user_id' => $userId,
-            'organization_id' => $organizationId,
+            'organization_id' => $this->organizationId,
             'role_id' => (int) $roleId,
             'created_at' => $now,
         ]);
@@ -108,7 +156,7 @@ final class VenueAfishaImportTest extends TestCase
         // Членство обязательно: без него OrganizationContext не выставит арендатора.
         DB::table('user_organization')->insertOrIgnore([
             'user_id' => $userId,
-            'organization_id' => $organizationId,
+            'organization_id' => $this->organizationId,
             'role_id' => (int) $roleId,
             'created_at' => $now,
         ]);

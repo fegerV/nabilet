@@ -8,9 +8,12 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Http;
+use Nabilet\Core\Errors\ConflictError;
 use Nabilet\Core\Errors\DomainRuleViolation;
 use Nabilet\Core\Errors\ValidationError;
 use Nabilet\Modules\Venues\Domain\ExternalPrice;
+use Nabilet\Modules\Venues\Models\HallSchemaVersion;
+use Nabilet\Modules\Venues\Models\Venue;
 
 /**
  * Импорт площадки со страницы события Яндекс.Афиши.
@@ -68,6 +71,114 @@ class VenueImportController extends Controller
             'report' => $schema['import'] ?? [],
             'warning' => 'Часть координат восстановлена расчётом. Вместимость стоячих зон взята из доступного остатка. Перед публикацией сверьте номера, геометрию, полную вместимость и задайте свои цены. Импорт не переносит продажи Яндекса.',
         ]]);
+    }
+
+    /**
+     * Сравнение нового hallplan с текущим черновиком площадки.
+     *
+     * Ничего не записывает: возвращает сконвертированную схему, отчёт и diff,
+     * чтобы мастер импорта показал добавленные/удалённые/перемещённые/изменённые
+     * места до сохранения. Повторный импорт остаётся черновиком с проверкой
+     * ревизии; published-версии, сеансы и билеты не трогаются.
+     */
+    public function compare(Request $request): JsonResponse
+    {
+        if (strlen($request->getContent()) > 5 * 1024 * 1024) {
+            throw new ValidationError(['hallplan' => ['Размер JSON не должен превышать 5 МБ.']]);
+        }
+        $data = $request->validate([
+            'hallplan' => ['required', 'array'],
+            'venue_public_id' => ['required', 'string', 'max:64'],
+            'base_revision' => ['nullable', 'integer', 'min:1'],
+        ]);
+
+        $hallplan = $data['hallplan'];
+        $venue = Venue::query()->where('public_id', $data['venue_public_id'])->first();
+        if ($venue === null) {
+            throw new ValidationError(['venue_public_id' => ['Площадка не найдена в вашей организации.']]);
+        }
+
+        /** @var HallSchemaVersion|null $current */
+        $current = HallSchemaVersion::query()
+            ->where('venue_id', $venue->id)
+            ->where('status', 'draft')
+            ->orderByDesc('id')
+            ->first();
+
+        if ($current !== null && $data['base_revision'] !== null
+            && (int) ($current->revision ?? 1) !== (int) $data['base_revision']) {
+            throw new ConflictError(
+                'Черновик изменён другим редактором. Перезагрузите схему перед повторным импортом.',
+                'SCHEMA_DRAFT_CONFLICT',
+                ['expected' => (int) $data['base_revision'], 'current' => (int) ($current->revision ?? 1)],
+            );
+        }
+
+        try {
+            $schema = (new \Nabilet\Modules\Venues\Halls\Domain\YandexHallplanConverter())->convert($hallplan);
+        } catch (\InvalidArgumentException $error) {
+            throw new ValidationError(['hallplan' => [$error->getMessage()]]);
+        }
+
+        $oldMap = $this->seatMap(is_array($current?->schema_json) ? $current->schema_json : []);
+        $newMap = $this->seatMap($schema);
+        $added = array_diff_key($newMap, $oldMap);
+        $removed = array_diff_key($oldMap, $newMap);
+        $moved = [];
+        $changed = [];
+        foreach ($newMap as $key => $seat) {
+            if (! isset($oldMap[$key])) {
+                continue;
+            }
+            $old = $oldMap[$key];
+            if (abs((float) ($seat['x'] ?? 0) - (float) ($old['x'] ?? 0)) > 2
+                || abs((float) ($seat['y'] ?? 0) - (float) ($old['y'] ?? 0)) > 2) {
+                $moved[] = ['id' => $key, 'from' => [$old['x'] ?? 0, $old['y'] ?? 0], 'to' => [$seat['x'] ?? 0, $seat['y'] ?? 0]];
+            }
+            if (($seat['number'] ?? null) !== ($old['number'] ?? null)
+                || ($seat['row'] ?? null) !== ($old['row'] ?? null)
+                || ($seat['priceMinor'] ?? null) !== ($old['priceMinor'] ?? null)) {
+                $changed[] = ['id' => $key, 'from' => $old, 'to' => $seat];
+            }
+        }
+
+        return response()->json(['data' => [
+            'schema' => $schema,
+            'report' => $schema['import'] ?? [],
+            'current_version_id' => $current?->id,
+            'current_revision' => $current === null ? null : (int) ($current->revision ?? 1),
+            'diff' => [
+                'added' => array_slice(array_keys($added), 0, 50),
+                'removed' => array_slice(array_keys($removed), 0, 50),
+                'moved' => array_slice($moved, 0, 50),
+                'changed' => array_slice($changed, 0, 50),
+                'added_count' => count($added),
+                'removed_count' => count($removed),
+                'moved_count' => count($moved),
+                'changed_count' => count($changed),
+            ],
+            'warning' => 'Сравнение не изменяет черновик. Публикация и проданные билеты не затрагиваются.',
+        ]]);
+    }
+
+    /** @return array<string, array<string, mixed>> */
+    private function seatMap(array $schema): array
+    {
+        $map = [];
+        foreach ((array) ($schema['sectors'] ?? []) as $sector) {
+            if (! is_array($sector)) {
+                continue;
+            }
+            foreach ((array) ($sector['seats'] ?? []) as $seat) {
+                if (! is_array($seat)) {
+                    continue;
+                }
+                $key = (string) ($seat['source_id'] ?? ($sector['name'] ?? '') . ':' . ($seat['row'] ?? '') . ':' . ($seat['number'] ?? ''));
+                $map[$key] = $seat;
+            }
+        }
+
+        return $map;
     }
 
     public function parse(Request $request): JsonResponse
