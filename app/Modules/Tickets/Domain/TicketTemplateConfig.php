@@ -233,13 +233,9 @@ final class TicketTemplateConfig
         if (! is_string($value) || $value === '') {
             return null;
         }
+        // Domain не должен вызывать config(): базовый URL — забота вызывающего.
         if (str_starts_with($value, '/storage/') || str_starts_with($value, 'data:image/')) {
             return $value;
-        }
-        // Абсолютная ссылка на этот же сайт /storage/…
-        $prefix = rtrim((string) config('app.url', ''), '/') . '/storage/';
-        if ($prefix !== '/storage/' && str_starts_with($value, $prefix)) {
-            return '/' . ltrim(substr($value, strlen($prefix)), '/');
         }
 
         return null;
