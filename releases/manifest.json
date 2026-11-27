@@ -1,0 +1,26 @@
+{
+    "schema": 1,
+    "version": "1.16.0",
+    "released_at": "2026-11-27T14:00:05Z",
+    "build_date": "2026-11-27T14:00:05Z",
+    "commit_sha": "15264c1cde77589a8e02e2f92906b56cdcbb4392",
+    "channel": "stable",
+    "artifact": "nabilet-hosting-v1.16.0-20261127-140002.zip",
+    "sha256": "48ed7755c29cfa1f86227011bc07475fbdbc9bc24690791232fa7f341d769c8f",
+    "size_bytes": 16608777,
+    "php": {
+        "min": "8.3.0",
+        "max_exclusive": "9.0.0",
+        "extensions": [
+            "curl",
+            "json",
+            "mbstring",
+            "openssl",
+            "pdo",
+            "zip"
+        ]
+    },
+    "from_versions": [],
+    "migrations": 70,
+    "signature": ""
+}
