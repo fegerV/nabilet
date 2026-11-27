@@ -10,10 +10,26 @@ use Laravel\Mcp\Server\Attributes\Name;
 use Laravel\Mcp\Server\Attributes\Version;
 use Nabilet\Modules\Agent\Mcp\Tools\ConfirmAgentActionTool;
 use Nabilet\Modules\Agent\Mcp\Tools\CreateEventTool;
+use Nabilet\Modules\Agent\Mcp\Tools\GetApiCapabilitiesTool;
+use Nabilet\Modules\Agent\Mcp\Tools\GetApplicationVersionTool;
+use Nabilet\Modules\Agent\Mcp\Tools\GetBackupStatusTool;
+use Nabilet\Modules\Agent\Mcp\Tools\GetCronStatusTool;
+use Nabilet\Modules\Agent\Mcp\Tools\GetDatabaseStatusTool;
 use Nabilet\Modules\Agent\Mcp\Tools\GetEventTool;
+use Nabilet\Modules\Agent\Mcp\Tools\GetFailedJobsTool;
+use Nabilet\Modules\Agent\Mcp\Tools\GetInstallationReportTool;
+use Nabilet\Modules\Agent\Mcp\Tools\GetIntegrationStatusTool;
+use Nabilet\Modules\Agent\Mcp\Tools\GetModuleStatusTool;
 use Nabilet\Modules\Agent\Mcp\Tools\GetOrderTool;
+use Nabilet\Modules\Agent\Mcp\Tools\GetQueueStatusTool;
+use Nabilet\Modules\Agent\Mcp\Tools\GetRecentErrorsTool;
+use Nabilet\Modules\Agent\Mcp\Tools\GetRouteStatusTool;
+use Nabilet\Modules\Agent\Mcp\Tools\GetSystemRequirementsTool;
+use Nabilet\Modules\Agent\Mcp\Tools\GetSystemStatusTool;
+use Nabilet\Modules\Agent\Mcp\Tools\GetUpdateStatusTool;
 use Nabilet\Modules\Agent\Mcp\Tools\PublishSchemaTool;
 use Nabilet\Modules\Agent\Mcp\Tools\RefundTool;
+use Nabilet\Modules\Agent\Mcp\Tools\RunReadonlySelfcheckTool;
 use Nabilet\Modules\Agent\Mcp\Tools\SalesSummaryTool;
 use Nabilet\Modules\Agent\Mcp\Tools\SearchEventsTool;
 use Nabilet\Modules\Agent\Mcp\Tools\SearchOrdersTool;
@@ -51,6 +67,11 @@ use Nabilet\Modules\Agent\Mcp\Tools\SearchOrdersTool;
     .'в админке (раздел «ИИ-агент» → «Ожидают подтверждения»); для возврата он вводит REFUND. '
     .'Только после одобрения вызовите confirm_agent_action с action_public_id. '
     .'Никогда не обещайте, что изменение уже применено, пока confirm не вернул результат. '
+    .'ДИАГНОСТИКА (только чтение): run_readonly_selfcheck — быстрая проверка; get_system_status, '
+    .'get_system_requirements, get_cron_status, get_queue_status, get_recent_errors, get_failed_jobs, '
+    .'get_database_status, get_module_status, get_integration_status, get_backup_status, '
+    .'get_update_status, get_application_version, get_api_capabilities, get_installation_report, '
+    .'get_route_status. Диагностика не содержит секретов и персональных данных. '
     .'Идентификаторы — public_id (26 символов), не числовые id.'
 )]
 class NabiletAgentServer extends Server
@@ -70,5 +91,22 @@ class NabiletAgentServer extends Server
         PublishSchemaTool::class,
         RefundTool::class,
         ConfirmAgentActionTool::class,
+        // Диагностика (read-only, без секретов и персональных данных).
+        GetApplicationVersionTool::class,
+        GetSystemStatusTool::class,
+        GetSystemRequirementsTool::class,
+        GetCronStatusTool::class,
+        GetQueueStatusTool::class,
+        GetRecentErrorsTool::class,
+        GetFailedJobsTool::class,
+        GetDatabaseStatusTool::class,
+        GetModuleStatusTool::class,
+        GetIntegrationStatusTool::class,
+        GetBackupStatusTool::class,
+        GetUpdateStatusTool::class,
+        GetApiCapabilitiesTool::class,
+        GetInstallationReportTool::class,
+        RunReadonlySelfcheckTool::class,
+        GetRouteStatusTool::class,
     ];
 }
