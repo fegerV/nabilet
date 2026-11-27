@@ -36,10 +36,21 @@ SHA-256 и manifest, проверяет архив распаковкой и ч�
 
 ## 3. Подпись (обязательна для автоматических обновлений)
 
-Секрет `NABILET_UPDATE_PRIVATE_KEY_PEM` (PEM, `\n` допустимы как литералы).
-Без него `signature` пустая: ручная загрузка ZIP по SHA-256 работает,
-лента обновлений отвергает манифест (`UPDATE_SIGNATURE_MISSING`).
-Для strict-режима: `workflow_dispatch` с `require_signature=true`.
+Один раз сгенерировать пару ключей (вне репозитория):
+
+```bash
+php scripts/generate-update-keys.php --out-dir=/secure/path
+```
+
+- `update-private.pem` → секрет GitHub `NABILET_UPDATE_PRIVATE_KEY_PEM`
+  (никогда не коммитить и не класть в архив).
+- `update-public.pem` → `NABILET_UPDATE_PUBLIC_KEY` на сайте (окружение хоста).
+
+Без ключа `signature` пустая: ручная загрузка ZIP по SHA-256 работает, лента
+обновлений отвергает манифест (`UPDATE_SIGNATURE_MISSING`). Релизы **по тегу
+`v*` теперь не публикуются без подписи**; для ручного `workflow_dispatch`
+доступен `require_signature=true`. При утечке ключа сгенерируйте новую пару и
+переподпишите актуальный релиз.
 
 ## 4. Приёмка
 

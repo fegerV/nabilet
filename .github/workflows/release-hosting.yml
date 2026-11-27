@@ -97,7 +97,9 @@ jobs:
         shell: bash
         env:
           PRIVATE_KEY_PEM: ${{ secrets.NABILET_UPDATE_PRIVATE_KEY_PEM }}
-          REQUIRE_SIGNATURE: ${{ inputs.require_signature == true }}
+          # A public release (tag) must be signed: automatic updates refuse an
+          # unsigned manifest. Manual dispatch may opt into the same strictness.
+          REQUIRE_SIGNATURE: ${{ startsWith(github.ref, 'refs/tags/v') || inputs.require_signature == true }}
         run: |
           set -e
           if [ -n "$PRIVATE_KEY_PEM" ]; then
@@ -126,6 +128,18 @@ jobs:
         run: |
           ls -lh release-artifacts
           php -r '$m = json_decode((string) file_get_contents("release-artifacts/manifest.json"), true); if (!is_array($m) || ($m["version"] ?? "") === "" || !preg_match("/^[a-f0-9]{64}$/", (string) ($m["sha256"] ?? ""))) { exit(1); } echo "manifest OK: ", $m["version"], " ", $m["commit_sha"], PHP_EOL;'
+
+      - name: Require a signed manifest for tag releases
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          set -e
+          SIGNED=$(php -r '$m = json_decode((string) file_get_contents("release-artifacts/manifest.json"), true); echo ($m["signature"] ?? "") === "" ? "no" : "yes";')
+          if [ "$SIGNED" != "yes" ]; then
+            echo "::error::Публичный релиз без подписи: настройте секрет NABILET_UPDATE_PRIVATE_KEY_PEM."
+            exit 1
+          fi
+          echo "release manifest is signed"
 
       - uses: actions/upload-artifact@v4
         with:

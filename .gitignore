@@ -68,3 +68,7 @@ tools/.tmp-*
 # Playwright E2E: артефакты прогонов, не исходники.
 /playwright-report/
 /test-results/
+
+# Ключи подписи релизов: только вне репозитория; приватный ключ — в CI-секрете.
+/update-keys/
+*update-private.pem
