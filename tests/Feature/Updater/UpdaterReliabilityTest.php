@@ -205,6 +205,22 @@ final class UpdaterReliabilityTest extends TestCase
         }
     }
 
+    public function test_fresh_migrating_state_is_not_mistaken_for_an_interrupted_update(): void
+    {
+        $id = (int) DB::table('system_updates')->insertGetId([
+            'from_version' => '1.16.0', 'to_version' => '1.16.1',
+            'source' => 'upload', 'status' => 'migrating', 'step' => 'swap_done',
+            'artifact' => 'release.zip', 'artifact_sha256' => str_repeat('b', 64),
+            'locked_at' => now(), 'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        app(\Nabilet\Modules\Updater\Services\UpdateOrchestrator::class)->tick();
+
+        $row = DB::table('system_updates')->where('id', $id)->first();
+        $this->assertSame('migrating', (string) $row->status);
+        $this->assertNull($row->error);
+    }
+
     private function markTestSkippedIfNoOrchestrator(): void
     {
         if (! class_exists(\Nabilet\Modules\Updater\Services\UpdateOrchestrator::class)) {

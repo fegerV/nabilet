@@ -17,11 +17,11 @@ use Tests\TestCase;
  * Архив — враждебный ввод: `safeName()` решает, что попадёт в staging.
  * Он выбрасывает AppError для путей с `..`, для файлов вне whitelist и для
  * скрытых файлов внутри каталогов релиза, но МОЛЧА ПРОПУСКАЕТ
- * `bootstrap/cache/**` и неразрешённые файлы в `public_html` (например,
- * `public_html/images/**`). Записи `storage/**` на деле тоже ОТКЛОНЯЮТСЯ:
- * проверка whitelist каталогов выполняется раньше ветки `return ''`, хотя
- * комментарий в коде обещает пропуск. Тесты фиксируют фактическое поведение:
- * «пропустить» и «отклонить» — разные контракты, и подменять одно другим нельзя.
+ * `bootstrap/cache/**`, `storage/**` и неразрешённые файлы в `public_html`
+ * (например, `public_html/images/**`). Служебные `.gitignore` и метаданные
+ * сторонних пакетов в `vendor/` разрешены: иначе реальный архив с prod-
+ * зависимостями не проходит распаковку. `scripts/updater-recover.php` входит
+ * в whitelist, потому что Updater копирует его в `storage/` при старте.
  */
 final class ReleaseExtractorTest extends TestCase
 {
@@ -110,16 +110,17 @@ final class ReleaseExtractorTest extends TestCase
         );
     }
 
-    public function test_storage_entry_is_rejected_and_unlisted_docroot_files_are_skipped(): void
+    public function test_storage_entry_is_skipped_and_unlisted_docroot_files_are_skipped(): void
     {
-        // `storage` не входит в whitelist каталогов, поэтому safeName() бросает
-        // AppError раньше, чем доходит до ветки возврата пустого имени.
+        // Архив содержит пустые .gitignore-каркасы storage/, но ни один файл
+        // оттуда не должен попасть в staging и заменить данные установки.
         $storageZip = $this->writeZip($this->requiredFiles() + [
+            'storage/app/public/.gitignore' => "*\n!.gitignore\n",
             'storage/secret.txt' => 'user data must survive the update',
         ]);
 
-        $error = $this->extractExpecting('UPDATE_ARCHIVE_UNSAFE', $storageZip);
-        $this->assertStringContainsString('вне разрешённых каталогов', $error->getMessage());
+        $result = app(ReleaseExtractor::class)->extract($storageZip, self::UPDATE_ID);
+        $this->assertSame(6, $result['entries'], 'Записи storage/ пропускаются');
         $this->assertFileDoesNotExist(
             app(UpdateStorage::class)->staging(self::UPDATE_ID) . '/storage/secret.txt',
             'Пользовательские данные не должны попадать в staging'
@@ -138,6 +139,25 @@ final class ReleaseExtractorTest extends TestCase
             app(UpdateStorage::class)->staging(self::UPDATE_ID) . '/public_html/images/poster.jpg',
             'Картинки витрины не входят в whitelist публичных файлов'
         );
+    }
+
+    public function test_real_release_entries_are_allowed(): void
+    {
+        // ровно то, что кладёт scripts/build-hosting-zip.php в архив
+        $zip = $this->writeZip($this->requiredFiles() + [
+            '.env.example' => 'APP_NAME=NABILET',
+            'vendor/laravel/framework/.gitignore' => "*\n",
+            'vendor/laravel/mcp/.agents/resume' => '{}',
+            'dist/storage/.gitignore' => "*\n",
+            'scripts/updater-recover.php' => '<?php // emergency recovery',
+        ]);
+
+        $result = app(ReleaseExtractor::class)->extract($zip, self::UPDATE_ID);
+        $this->assertSame(11, $result['entries']);
+        $staging = app(UpdateStorage::class)->staging(self::UPDATE_ID);
+        $this->assertFileExists($staging . '/scripts/updater-recover.php');
+        $this->assertFileExists($staging . '/vendor/laravel/mcp/.agents/resume');
+        $this->assertFileExists($staging . '/.env.example');
     }
 
     public function test_missing_required_file_is_rejected(): void

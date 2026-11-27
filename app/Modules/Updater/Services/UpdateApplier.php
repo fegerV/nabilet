@@ -24,7 +24,7 @@ final class UpdateApplier
 {
     private const CODE_DIRS = [
         'app', 'bootstrap', 'config', 'database', 'lang',
-        'resources', 'routes', 'dist', 'vendor', 'public',
+        'resources', 'routes', 'dist', 'vendor', 'public', 'scripts',
     ];
 
     private const ROOT_FILES = [

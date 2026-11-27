@@ -19,7 +19,7 @@ final class ReleaseExtractor
     /** Каталоги, которые релиз вправе перезаписать. */
     private const DIRS = [
         'app', 'bootstrap', 'config', 'database', 'lang', 'resources',
-        'routes', 'dist', 'vendor', 'public', 'public_html',
+        'routes', 'dist', 'vendor', 'public', 'public_html', 'scripts',
     ];
 
     /** Корневые файлы релиза. */
@@ -165,12 +165,17 @@ final class ReleaseExtractor
             return $name;
         }
 
+        // `storage` — данные установки: ни один файл из архива не должен их
+        // перезаписать (в архиве лежат только пустые .gitignore-каркасы).
+        if ($top === 'storage') {
+            return '';
+        }
+
         if (! in_array($top, self::DIRS, true)) {
             throw new AppError('Архив содержит файл вне разрешённых каталогов.', 'UPDATE_ARCHIVE_UNSAFE', 422);
         }
 
-        // `storage` не входит в DIRS и отвергается выше. Кэш не должен
-        // приезжать из архива ни при каких обстоятельствах — это данные установки.
+        // Кэш не должен приезжать из архива ни при каких обстоятельствах.
         if ($top === 'bootstrap' && ($parts[1] ?? '') === 'cache') {
             return '';
         }
@@ -187,11 +192,14 @@ final class ReleaseExtractor
         }
 
         // Скрытые файлы внутри каталогов релиза не нужны (и не должны
-        // перезаписывать пользовательские .htaccess/.user.ini).
+        // перезаписывать пользовательские .htaccess/.user.ini). Исключения:
+        // служебные .gitignore и метаданные сторонних пакетов в vendor/.
         foreach ($parts as $part) {
-            if (str_starts_with($part, '.')) {
-                throw new AppError('Архив обновления содержит скрытый файл.', 'UPDATE_ARCHIVE_UNSAFE', 422);
+            if (! str_starts_with($part, '.') || $part === '.gitignore' || $top === 'vendor') {
+                continue;
             }
+
+            throw new AppError('Архив обновления содержит скрытый файл.', 'UPDATE_ARCHIVE_UNSAFE', 422);
         }
 
         return $name;

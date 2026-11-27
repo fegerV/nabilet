@@ -195,11 +195,13 @@ final class UpdateOrchestrator
     private function recoverInterrupted(): void
     {
         $staleMinutes = max(5, (int) config('updates.lock_stale_minutes', 15));
+        // `locked_at` снимается на границе тиков по дизайну (каждый тик — новый
+        // процесс), поэтому его отсутствие НЕ признак прерывания. Истинный
+        // признак — давность последнего сохранения статуса: нормальный тик
+        // обновляет `updated_at`, а SIGKILL оставляет старую метку.
         $stale = SystemUpdate::query()
             ->whereIn('status', [UpdateStatus::APPLYING, UpdateStatus::MIGRATING, UpdateStatus::VERIFYING])
-            ->where(static function ($q) use ($staleMinutes): void {
-                $q->whereNull('locked_at')->orWhere('locked_at', '<=', now()->subMinutes($staleMinutes));
-            })
+            ->where('updated_at', '<=', now()->subMinutes($staleMinutes))
             ->orderBy('id')
             ->get();
 
