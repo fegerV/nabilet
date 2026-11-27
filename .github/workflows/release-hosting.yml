@@ -1,0 +1,226 @@
+name: Release hosting ZIP
+
+# Сборка установочного архива для shared hosting.
+#
+# Принципы:
+#   1. Все обязательные гейты запускаются через workflow_call из ci.yml —
+#      Checks подтверждаются для того же SHA, из которого собран архив.
+#   2. Чистый checkout; dist удаляется и пересобирается; зависимости только по
+#      lock-файлам. Устаревший dist из предыдущей сборки не используется.
+#   3. Один портативный сборщик (PHP) и для CI, и для локальных Windows-сборок:
+#      никакого robocopy и внешнего zip.
+#   4. Архив проверяется распаковкой и чистой установкой на отдельной БД.
+#
+# Публикация: артефакт загружается всегда; GitHub Release создаётся только по
+# тегу vX.Y.Z. Подпись манифеста включается, если настроен секрет
+# NABILET_UPDATE_PRIVATE_KEY_PEM — без неё автоматическое обновление из ленты
+# невозможно (ManifestVerifier отвергает манифест без подписи).
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'SemVer, должен совпадать с config/nabilet.php и package.json'
+        required: true
+        type: string
+      require_signature:
+        description: 'Прервать сборку, если ключ подписи не настроен'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  gates:
+    name: All mandatory checks (same commit)
+    uses: ./.github/workflows/ci.yml
+
+  package:
+    name: Build portable hosting archive
+    needs: gates
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.version.outputs.value }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: json, mbstring, openssl, pdo, pdo_mysql, curl, zip
+          coverage: none
+          tools: composer:v2
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Resolve release version
+        id: version
+        shell: bash
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            V='${{ inputs.version }}'
+          else
+            V="${GITHUB_REF_NAME#v}"
+          fi
+          echo "value=$V" >> "$GITHUB_OUTPUT"
+          echo "Release version: $V"
+
+      - name: Version consistency (strict, dated CHANGELOG section required)
+        run: php tools/verify-release-version.php --version=${{ steps.version.outputs.value }}
+
+      - name: Build SPA from a clean tree
+        shell: bash
+        run: |
+          set -e
+          rm -rf dist
+          npm ci --no-audit --no-fund
+          npm run typecheck
+          npm run test
+          npm run build
+          for needle in '<div id="app"></div>' '<title>' '<meta name="description"' '</head>'; do
+            grep -qF "$needle" dist/index.html || { echo "::error::dist/index.html lost '$needle'"; exit 1; }
+          done
+          test -d dist/assets || { echo "::error::dist/assets was not produced"; exit 1; }
+
+      - name: Sign manifest when a release key is configured
+        shell: bash
+        env:
+          PRIVATE_KEY_PEM: ${{ secrets.NABILET_UPDATE_PRIVATE_KEY_PEM }}
+          REQUIRE_SIGNATURE: ${{ inputs.require_signature == true }}
+        run: |
+          set -e
+          if [ -n "$PRIVATE_KEY_PEM" ]; then
+            printf '%s' "$PRIVATE_KEY_PEM" > "$RUNNER_TEMP/update-private-key.pem"
+            chmod 600 "$RUNNER_TEMP/update-private-key.pem"
+            echo "NABILET_UPDATE_PRIVATE_KEY=$RUNNER_TEMP/update-private-key.pem" >> "$GITHUB_ENV"
+            echo "Manifest will be signed."
+          elif [ "$REQUIRE_SIGNATURE" = "true" ]; then
+            echo "::error::Внешний обновлятор требует подпись, но секрет NABILET_UPDATE_PRIVATE_KEY_PEM не задан."
+            exit 1
+          else
+            echo "::warning::Манифест будет без подписи: доступна только ручная загрузка архива."
+          fi
+
+      - name: Build ZIP, SHA-256 and manifest
+        shell: bash
+        run: |
+          set -e
+          mkdir -p release-artifacts
+          php scripts/build-hosting-zip.php \
+            --version=${{ steps.version.outputs.value }} \
+            --output-dir=release-artifacts
+
+      - name: List release artifacts
+        shell: bash
+        run: |
+          ls -lh release-artifacts
+          php -r '$m = json_decode((string) file_get_contents("release-artifacts/manifest.json"), true); if (!is_array($m) || ($m["version"] ?? "") === "" || !preg_match("/^[a-f0-9]{64}$/", (string) ($m["sha256"] ?? ""))) { exit(1); } echo "manifest OK: ", $m["version"], " ", $m["commit_sha"], PHP_EOL;'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hosting-release-${{ steps.version.outputs.value }}
+          path: release-artifacts/*
+          if-no-files-found: error
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          gh release create "$GITHUB_REF_NAME" release-artifacts/* \
+            --verify-tag \
+            --title "NABILET ${{ steps.version.outputs.value }}" \
+            --notes "Установочный архив для shared hosting. Распаковывать в каталог сайта на уровень выше public_html. SHA-256 — в .sha256, состав и подпись — в manifest.json. Подпись присутствует только при настроенном ключе релиза."
+
+  smoke:
+    name: Clean install from the published archive
+    needs: package
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: rootpass
+        ports:
+          - 3307:3306
+        options: >-
+          --health-cmd="mysqladmin ping -prootpass"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP for the smoke stand
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: json, mbstring, openssl, pdo, pdo_mysql, curl, zip
+          coverage: none
+          tools: none
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: hosting-release-${{ needs.package.outputs.version }}
+          path: ${{ runner.temp }}/release-artifact
+
+      - name: Unpack into a separate site directory
+        shell: bash
+        run: |
+          set -e
+          mkdir -p "$RUNNER_TEMP/site"
+          unzip -q "$RUNNER_TEMP/release-artifact"/*.zip -d "$RUNNER_TEMP/site"
+          test -f "$RUNNER_TEMP/site/public_html/index.php"
+          test -f "$RUNNER_TEMP/site/vendor/autoload.php"
+          test ! -e "$RUNNER_TEMP/site/.env"
+          cp scripts/smoke/router-smoke.php "$RUNNER_TEMP/site/public_html/router-smoke.php"
+
+      - name: Prepare a clean database
+        run: php scripts/smoke/db-setup-smoke.php
+
+      - name: Start the stand (emulates .htaccess from public_html)
+        shell: bash
+        run: |
+          set -e
+          cd "$RUNNER_TEMP/site/public_html"
+          php -S 127.0.0.1:8088 router-smoke.php > "$RUNNER_TEMP/php-server.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/server.pid"
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8088/robots.txt > /dev/null 2>&1; then
+              echo "stand ready after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          cat "$RUNNER_TEMP/php-server.log"
+          exit 1
+
+      - name: Run the full installer smoke scenario
+        shell: bash
+        run: |
+          set -e
+          cp scripts/smoke/smoke-install.php "$RUNNER_TEMP/smoke-install.php"
+          php "$RUNNER_TEMP/smoke-install.php"
+
+      - name: Upload stand logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-stand-logs
+          path: |
+            ${{ runner.temp }}/php-server.log
+            ${{ runner.temp }}/site/storage/logs/*.log
+          if-no-files-found: ignore

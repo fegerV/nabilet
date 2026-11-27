@@ -5,6 +5,9 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+  # Called by the hosting-release workflow so every mandatory gate is proven
+  # for the exact commit the archive is built from.
+  workflow_call:
 
 # Nothing here needs credentials. The checks below are deliberately runnable
 # without Composer: the kernel and every verifier are dependency-free by design,
@@ -134,6 +137,13 @@ jobs:
 
       - name: Composer manifest is valid
         run: composer validate --no-check-publish --no-check-lock
+
+      # The source of truth is config/nabilet.php. A release whose package.json
+      # or CHANGELOG says a different version is refused by the release job;
+      # here we catch the same drift on every ordinary commit. [Unreleased] is
+      # accepted between releases; a tagged build must have a dated section.
+      - name: Version numbers stay in sync
+        run: php tools/verify-release-version.php --allow-unreleased
 
   # ───────────────────────────────────────────────────────────────────────────
   # Static analysis. Deliberately its own job: the `verify` job above runs
