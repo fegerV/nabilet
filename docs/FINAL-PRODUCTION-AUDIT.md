@@ -29,8 +29,13 @@
 | Clean install из ZIP (распакован, отдельная БД `install_smoke`) | **45/45**, health 1.16.0, `/install` → 404/405 |
 
 Сборка архива: `scripts/build-hosting-zip.php` (портативная, без robocopy),
-9231→9249 записей, production `vendor` по `composer.lock`, пустое `storage/`,
+9249 записей, production `vendor` по `composer.lock`, пустое `storage/`,
 `.env` отсутствует. Manifest содержит версию, `commit_sha`, дату, SHA-256.
+
+Итоговый артефакт: `releases/nabilet-hosting-v1.16.0-20261127-140002.zip`,
+SHA-256 `48ed7755c29cfa1f86227011bc07475fbdbc9bc24690791232fa7f341d769c8f`,
+собран из коммита `15264c1cde77589a8e02e2f92906b56cdcbb4392`. Хэш сверен с
+`.sha256` и `manifest.json`; распакованный архив прошёл тот же smoke 45/45.
 Подпись манифеста пустая: ключ релиза в этой среде не настроен — автоматическое
 обновление из ленты невозможно, доступна ручная загрузка ZIP.
 
