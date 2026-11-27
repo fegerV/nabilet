@@ -1,12 +1,12 @@
 {
     "schema": 1,
     "version": "1.16.1",
-    "released_at": "2026-11-27T14:19:54Z",
-    "build_date": "2026-11-27T14:19:54Z",
-    "commit_sha": "f69061fb46d951e2ef602e960071d70831263215",
+    "released_at": "2026-11-27T14:22:44Z",
+    "build_date": "2026-11-27T14:22:44Z",
+    "commit_sha": "b9f7d93f34033b98c88567c10c1757fd3b4a4b2c",
     "channel": "stable",
-    "artifact": "nabilet-hosting-v1.16.1-20261127-141951.zip",
-    "sha256": "10198e278ffdcc7f11733aa8d715aa7f9180b2404650a54856ca12ed23ceec01",
+    "artifact": "nabilet-hosting-v1.16.1-20261127-142240.zip",
+    "sha256": "e99a9ef536944ddcec7af2edb204992c3767c41e74c70dbd4ad8dc1ee1052625",
     "size_bytes": 16629663,
     "php": {
         "min": "8.3.0",

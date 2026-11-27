@@ -215,7 +215,7 @@ zip (мастер не запускается), та же зачистка вы�
 
   ```bash
   cd /home/c/ce99429/vertex-art.ru                 # НЕ public_html!
-  unzip -q ~/nabilet-hosting-v1.16.1-20261127-141951.zip  # создаст/перезапишет public_html/ и соседние каталоги
+  unzip -q ~/nabilet-hosting-v1.16.1-20261127-142240.zip  # создаст/перезапишет public_html/ и соседние каталоги
   rm -f public_html/index.html                     # заглушка хостинга, если есть
   # проверка: ./app/, ./vendor/, ./storage/ лежат ЗДЕСЬ; ./public_html/index.php — внутри docroot; .env нет
   chmod -R ug+w storage bootstrap/cache
