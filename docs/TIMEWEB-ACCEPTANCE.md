@@ -3,7 +3,7 @@
 Статус: **не выполнена**. Документ — протокол для ответственного владельца, а
 не доказательство готовности. Заполняется на конкретном аккаунте/домене.
 
-Archiv: `releases/nabilet-hosting-v1.16.0-<дата>.zip`, SHA-256 из `.sha256`,
+Archiv: `releases/nabilet-hosting-v1.16.1-<дата>.zip`, SHA-256 из `.sha256`,
 состав — `manifest.json` (версия, commit_sha, дата сборки).
 
 ## 0. До распаковки
@@ -27,7 +27,7 @@ Archiv: `releases/nabilet-hosting-v1.16.0-<дата>.zip`, SHA-256 из `.sha256
 | Шаг БД: хост из панели (не `localhost`) | test-database success; на 5.7 — предупреждение | |
 | Региональный каталог | галочка только если нужен Сургут | |
 | Завершение | `redirect: /admin`, `storage/install.lock`, `.env` с APP_KEY | |
-| `GET /api/v1/health` | JSON `"version":"1.16.0"`, не исходник PHP | |
+| `GET /api/v1/health` | JSON `"version":"1.16.1"`, не исходник PHP | |
 | `GET/POST /install` после установки | 404 / 405 | |
 | `GET /.env`, `/vendor/...`, `/config/...` | 403 | |
 | `GET /storage/<файл>` | отдаёт медиа; приватное — недоступно | |

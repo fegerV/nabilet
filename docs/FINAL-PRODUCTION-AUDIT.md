@@ -1,6 +1,7 @@
 # NABILET — итоговый аудит готовности (2026-11-27)
 
-Версия: 1.16.0. База: ветка `fix/stabilization` (потомок `origin/main` @ 5f2a4291).
+Версия: 1.16.1. База: `main` (включает `fix/stabilization` и перенесённые коммиты
+из `fix/ticket-builder-audit`, `fix/yandex-hallplan-import`, `fix/updater-reliability`).
 Исторические отчёты (`AUDIT-2026-11-19.md`, `PRODUCTION-READINESS.md`, `docs/audit/*`)
 использованы как список вопросов, **не** как доказательство. Каждый пункт ниже
 проверен на актуальном коде или явно помечен как непроверенный.
@@ -21,20 +22,20 @@
 | `verify-migrations / state-machines / openapi ×2 / spec-parity / contract-schema ×2 / models-schema / autoload / module-structure / route-ownership` | все PASS |
 | `composer validate` | valid |
 | PHPStan level 5 | No errors |
-| Full PHPUnit (MariaDB 11.4, отдельная БД) | **1485 тестов / 6521 утверждений**, 0 падений |
+| Full PHPUnit (MariaDB 11.4, отдельная БД) | **1513 тестов / 6671 утверждений**, 0 падений |
 | `npm run typecheck` | exit 0 |
-| Vitest | 56 файлов / 599 тестов, 0 падений |
+| Vitest | 56 файлов / 600 тестов, 0 падений |
 | `npm run build` | dist/index.html + assets, 559 модулей |
-| Version gate | config / package / CHANGELOG согласованы (1.16.0) |
-| Clean install из ZIP (распакован, отдельная БД `install_smoke`) | **45/45**, health 1.16.0, `/install` → 404/405 |
+| Version gate | config / package / CHANGELOG согласованы (1.16.1) |
+| Clean install из ZIP (распакован, отдельная БД `install_smoke`) | **45/45**, health 1.16.1, `/install` → 404/405 |
 
 Сборка архива: `scripts/build-hosting-zip.php` (портативная, без robocopy),
-9249 записей, production `vendor` по `composer.lock`, пустое `storage/`,
+9257 записей, production `vendor` по `composer.lock`, пустое `storage/`,
 `.env` отсутствует. Manifest содержит версию, `commit_sha`, дату, SHA-256.
 
-Итоговый артефакт: `releases/nabilet-hosting-v1.16.0-20261127-140002.zip`,
-SHA-256 `48ed7755c29cfa1f86227011bc07475fbdbc9bc24690791232fa7f341d769c8f`,
-собран из коммита `15264c1cde77589a8e02e2f92906b56cdcbb4392`. Хэш сверен с
+Итоговый артефакт: `releases/nabilet-hosting-v1.16.1-20261127-141951.zip`,
+SHA-256 `10198e278ffdcc7f11733aa8d715aa7f9180b2404650a54856ca12ed23ceec01`,
+собран из коммита `f69061fb46d951e2ef602e960071d70831263215`. Хэш сверен с
 `.sha256` и `manifest.json`; распакованный архив прошёл тот же smoke 45/45.
 Подпись манифеста пустая: ключ релиза в этой среде не настроен — автоматическое
 обновление из ленты невозможно, доступна ручная загрузка ZIP.
@@ -74,6 +75,7 @@ SHA-256 `48ed7755c29cfa1f86227011bc07475fbdbc9bc24690791232fa7f341d769c8f`,
 | Версии config/package/CHANGELOG могли расходиться | нет единого гейта | `tools/lib/release-version.php`, `tools/verify-release-version.php` | strict + `--allow-unreleased` режимы | `verify-release-version` | — |
 | MCP не давал диагностики системы | 9 инструментов только по данным/записи | `AgentDiagnostics.php`, `DiagnosticsTool.php`, 16 tool-классов, `NabiletAgentServer.php`, `AgentDiagnosticsToolsTest.php` | 16 read-only срезов без секретов | 19 тестов / 150 утверждений | content-инструменты (`prepare_*`) ещё не добавлены |
 | ARCH-verifier мог пропустить новые классы | — | `verify-autoload`, `verify-module-structure`, `verify-route-ownership` | PASS | полный прогон | — |
+| Исправления PR #111–#113 оставались в отдельных ветках | ветки были старше `main`, merge целиком стёр бы новые файлы | cherry-pick 13 коммитов в `fix/integrate-pending-branches` | заморозка билета/QR, валидация импорта, журнал обновлений; SQL-бандлы 955 колонок, `EXPECT_COLUMNS=955` | PHPUnit 1513 / 6671, Vitest 600, PHPStan 0, все verifiers | обновление 1.16.0 → 1.16.1 не прогонялось |
 
 ## 4. Блокирующие факторы для продакшена
 
@@ -85,9 +87,8 @@ SHA-256 `48ed7755c29cfa1f86227011bc07475fbdbc9bc24690791232fa7f341d769c8f`,
 5. Подпись релиза (приватный ключ) для автоматических обновлений.
 6. Браузерные E2E-сценарии из раздела 20 в CI — текущие два spec'а требуют
    подготовленный стенд и по умолчанию пропускаются.
-7. Три ветки с пользовательскими исправлениями (`fix/ticket-builder-audit`,
-   `fix/yandex-hallplan-import`, `fix/updater-reliability`) ещё не слиты в эту
-   линию: важно сверить SQL-бандлы (953/955 колонок) и ожидания CI до финального
-   релиза. Текущий архив собран без них.
+7. Сквозное обновление 1.16.0 → 1.16.1 на отдельном стенде: исправления из
+   трёх веток перенесены и SQL-бандлы согласованы (955 колонок), но сам переход
+   через `/admin/updates` не проверен на реальном хостинге.
 
 Ни один из этих пунктов не скрыт и не заменён заглушкой.

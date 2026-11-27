@@ -27,7 +27,7 @@
 
 | Возможность | Где | Как использовать |
 |---|---|---|
-| Версия приложения | `config/nabilet.php` → `version` (1.16.0), дублируется в `package.json`; отдаётся в `/api/v1/health` и `/admin/system/status` | Единственный источник «текущая версия» и проверки после обновления |
+| Версия приложения | `config/nabilet.php` → `version` (1.16.1), дублируется в `package.json`; отдаётся в `/api/v1/health` и `/admin/system/status` | Единственный источник «текущая версия» и проверки после обновления |
 | Админ-роуты | `app/Modules/System/routes/api.php`: `auth:api` + `admin` + `EnsurePlatformAdmin` | Новые эндпоинты — в этом же файле или в новом, но обязательно добавить в `$moduleRoutes` в `routes/api.php` (иначе не будет префикса `/api/v1`) |
 | Подтверждение опасного действия | `confirm_phrase` === `MIGRATE` в `SystemStatusController::migrate()`, `REFUND` в `AgentActionService::approve()` + поле в `AdminAgentPage.vue` | Фразы `UPDATE` / `ROLLBACK` через `strtoupper(trim(...))`, 422 `CONFIRMATION_REQUIRED` |
 | Аудит | `Log::channel('security')->warning(...)` с `user_id` и `ip`, читается в админке «Логи» | Каждое действие обновления пишется сюда |
