@@ -59,7 +59,7 @@ abstract class DiagnosticsTool extends Tool
             'installationReport' => $diagnostics->installationReport(),
             'readonlySelfcheck' => $diagnostics->readonlySelfcheck(),
             'routeStatus' => $diagnostics->routeStatus(),
-            default => ['error' => 'Неизвестный диагностический раздел.'],
+            default => ['error_message' => 'Неизвестный диагностический раздел.'],
         };
 
         return Response::structured([

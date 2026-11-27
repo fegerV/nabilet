@@ -196,7 +196,7 @@ final class AgentDiagnostics
             $applied = $this->countTable('migrations');
             $files = count(glob(base_path('database/migrations/*.php')) ?: []);
         } catch (\Throwable $e) {
-            return ['reachable' => false, 'error' => 'База данных недоступна: ' . get_class($e)];
+            return ['reachable' => false, 'error_message' => 'База данных недоступна: ' . get_class($e)];
         }
 
         return [

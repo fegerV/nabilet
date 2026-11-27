@@ -73,14 +73,14 @@ abstract class ContentTool extends Tool
             'validateEvent' => $service->validateEvent($payload),
             'validateTicketTemplate' => $service->validateTicketTemplate($payload),
             'validatePaymentConfiguration' => $service->validatePaymentConfiguration(),
-            default => ['error' => 'Неизвестный контентный раздел.'],
+            default => ['error_message' => 'Неизвестный контентный раздел.'],
         };
 
         if (($report['found'] ?? true) === false) {
             return Response::error('Объект не найден в организациях вашего токена.');
         }
-        if (isset($report['error'])) {
-            return Response::error((string) $report['error']);
+        if (isset($report['error_message'])) {
+            return Response::error((string) $report['error_message']);
         }
 
         return Response::structured([

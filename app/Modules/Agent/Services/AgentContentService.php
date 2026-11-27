@@ -353,7 +353,7 @@ final class AgentContentService
     {
         $scope = AgentScope::resolve($user);
         if ($scope === null) {
-            return ['error' => 'Токен не привязан ни к одной организации.'];
+            return ['error_message' => 'Токен не привязан ни к одной организации.'];
         }
 
         /** @var array<string, mixed> $result */
