@@ -8,6 +8,27 @@
 
 ### Added
 
+- Портативный сборщик установочного архива `scripts/build-hosting-zip.php`
+  и workflow `.github/workflows/release-hosting.yml`: сборка из чистого
+  checkout, `npm ci`/typecheck/тесты/production build, production `composer
+  install` строго по `composer.lock`, явный список файлов (секреты, логи,
+  бэкапы, пользовательские медиа и dev-пакеты физически не попадают в
+  staging), проверка ZIP и распаковка с чистой установкой на отдельной БД.
+  Манифест содержит `version`, `commit_sha`, `released_at`, SHA-256 и
+  подпись при наличии ключа. `scripts/build-hosting-zip.ps1` стал тонкой
+  обёрткой над тем же сборщиком — больше нет robocopy и второй реализации.
+- Гейт согласования версий `tools/verify-release-version.php` (config,
+  package.json, CHANGELOG). В CI проверяется на каждом коммите, в релизном
+  workflow — строго, с датированным разделом CHANGELOG.
+- 16 read-only диагностических инструментов MCP (`get_system_status`,
+  `get_system_requirements`, `get_cron_status`, `get_queue_status`,
+  `get_recent_errors`, `get_failed_jobs`, `get_database_status`,
+  `get_module_status`, `get_integration_status`, `get_backup_status`,
+  `get_update_status`, `get_application_version`, `get_api_capabilities`,
+  `get_installation_report`, `run_readonly_selfcheck`, `get_route_status`)
+  на базе одного обезличенного `AgentDiagnostics`. Секреты, payload задач,
+  стектейсы и персональные данные в ответ не попадают.
+
 - One-click обновление системы (`/admin/updates`, `docs/ONE_CLICK_UPDATE.md`):
   подписанный манифест релиза, загрузка ZIP вручную как fallback, подготовка в
   staging, замена каталогов с откатом, миграции и проверка отдельными тиками
@@ -34,6 +55,12 @@
 
 ### Tests
 
+- `AgentDiagnosticsToolsTest`: регистрация и `#[IsReadOnly]` всех 16 новых
+  инструментов, обезличенность отчёта, отсутствие payload и exception в
+  `get_failed_jobs`, presence критических маршрутов. Полный PHPUnit — 1485
+  тестов / 6521 утверждений.
+- чистый smoke-прогон распакованного архива на отдельной БД — 45/45 проверок
+  (мастер, отказ установщика после завершения, health 1.16.0, витрина).
 - `ConcurrentBookingTest`: детерминированная гонка двух покупателей за последнее
   место. Второй резерв внедряется на чтении сеанса внутри транзакции первого и
   получает 409 `SEAT_UNAVAILABLE` — ровно один активный холд, доступность не
