@@ -50,6 +50,19 @@ const CAPABILITIES = [
   { value: 'agent:actions:confirm', label: 'Исполнять подтверждённые действия', hint: 'Без неё агент не сможет выполнить даже одобренное.' },
 ]
 
+interface AgentConnection {
+  endpoint: string
+  transport: string
+  auth_header: string
+  capabilities: Record<string, string>
+  groups: Record<string, Array<{ name: string; description: string; read_only: boolean }>>
+  client_config: Record<string, unknown>
+  rate_limit: string
+  checks: { route_registered: boolean; active_tokens: number; ok: boolean; message: string }
+  docs: string
+}
+
+const connection = ref<AgentConnection | null>(null)
 const tokens = ref<AgentToken[]>([])
 const actions = ref<AgentAction[]>([])
 const loading = ref(false)
@@ -68,10 +81,12 @@ async function load(): Promise<void> {
   loading.value = true
   error.value = null
   try {
-    const [t, a] = await Promise.all([
+    const [c, t, a] = await Promise.all([
+      get<AgentConnection>('/admin/agent/connection'),
       get<AgentToken[]>('/admin/agent/tokens'),
       get<AgentAction[]>('/admin/agent/actions?per_page=50'),
     ])
+    connection.value = c.data
     tokens.value = t.data
     actions.value = a.data
   } catch (e) {
@@ -197,6 +212,51 @@ onMounted(load)
     </header>
 
     <p v-if="error" role="alert" class="rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-300">{{ error }}</p>
+
+    <section v-if="connection" class="rounded-xl border border-line bg-surface p-4">
+      <div class="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 class="text-base font-semibold text-content">Подключение MCP</h2>
+          <p class="mt-1 text-sm text-subtle">{{ connection.transport }} · {{ connection.rate_limit }}</p>
+        </div>
+        <NBadge :tone="connection.checks.ok ? 'mint' : 'sun'">
+          {{ connection.checks.ok ? 'Готово к подключению' : 'Требуется настройка' }}
+        </NBadge>
+      </div>
+      <p class="mt-3 text-sm" :class="connection.checks.ok ? 'text-mint-300' : 'text-sun-300'">
+        {{ connection.checks.message }}
+      </p>
+      <dl class="mt-4 grid gap-3 text-sm sm:grid-cols-2">
+        <div>
+          <dt class="text-xs uppercase tracking-wide text-subtle">Адрес сервера</dt>
+          <dd class="mt-1 break-all font-mono text-content">{{ connection.endpoint }}</dd>
+        </div>
+        <div>
+          <dt class="text-xs uppercase tracking-wide text-subtle">Заголовок авторизации</dt>
+          <dd class="mt-1 break-all font-mono text-content">{{ connection.auth_header }}</dd>
+        </div>
+      </dl>
+      <details class="mt-4 text-sm">
+        <summary class="cursor-pointer text-subtle">Конфигурация клиента (OpenCode / Codex)</summary>
+        <pre class="mt-2 overflow-x-auto rounded-lg bg-surface-2 p-3 text-xs text-content">{{ JSON.stringify(connection.client_config, null, 2) }}</pre>
+      </details>
+      <div class="mt-4 grid gap-4 text-sm md:grid-cols-2">
+        <div v-for="(tools, group) in connection.groups" :key="group">
+          <h3 class="text-xs uppercase tracking-wide text-subtle">
+            {{ group === 'diagnostics' ? 'Диагностика (read-only)' : 'Данные и подготовка действий' }}
+          </h3>
+          <ul class="mt-2 space-y-1">
+            <li v-for="tool in tools" :key="tool.name" class="text-content">
+              <code class="text-xs">{{ tool.name }}</code>
+              <span v-if="tool.read_only" class="ml-1 text-xs text-subtle">· только чтение</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+      <p class="mt-4 text-xs text-subtle">
+        Инструкция: <code>{{ connection.docs }}</code>. Назначение полномочий — выше в списке токенов.
+      </p>
+    </section>
 
     <section>
       <h2 class="mb-3 text-base font-semibold text-content">Ожидают подтверждения</h2>

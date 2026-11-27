@@ -17,6 +17,7 @@ use Nabilet\Modules\Agent\Http\Controllers\Admin\AgentAdminController;
  * эти два канала намеренно разные: человек управляет доступом, агент им пользуется.
  */
 Route::prefix('admin/agent')->middleware(['auth:api', 'admin'])->group(function (): void {
+    Route::get('connection', [AgentAdminController::class, 'connection']);
     Route::get('tokens', [AgentAdminController::class, 'tokens']);
     Route::post('tokens', [AgentAdminController::class, 'issueToken']);
     Route::delete('tokens/{token}', [AgentAdminController::class, 'revokeToken'])->whereNumber('token');

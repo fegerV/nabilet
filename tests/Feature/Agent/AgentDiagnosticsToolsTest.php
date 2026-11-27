@@ -78,7 +78,7 @@ class AgentDiagnosticsToolsTest extends TestCase
         NabiletAgentServer::actingAs($user)
             ->tool(GetApplicationVersionTool::class)
             ->assertOk()
-            ->assertStructuredContentPath('data.version', '1.16.0')
+            ->assertStructuredContentPath('data.version', (string) config('nabilet.version'))
             ->assertStructuredContentMissingPaths([
                 'data.env',
                 'data.app_key',
@@ -145,7 +145,7 @@ class AgentDiagnosticsToolsTest extends TestCase
         NabiletAgentServer::actingAs($user)
             ->tool(GetInstallationReportTool::class)
             ->assertOk()
-            ->assertStructuredContentPath('data.application.version', '1.16.0')
+            ->assertStructuredContentPath('data.application.version', (string) config('nabilet.version'))
             ->assertStructuredContentMissingPaths([
                 'data.integrations.payments.yookassa.secret_key',
                 'data.integrations.smtp.password',
@@ -168,6 +168,35 @@ class AgentDiagnosticsToolsTest extends TestCase
             ->assertStructuredContentCount(4, 'data.critical')
             ->assertStructuredContentPath('data.critical.0.present', true)
             ->assertStructuredContentPath('data.critical.1.present', true);
+    }
+
+    public function test_admin_connection_endpoint_lists_real_tools_and_checks_route(): void
+    {
+        $user = $this->seedStaff();
+
+        $response = $this->actingAs($user, 'api')
+            ->getJson('/api/v1/admin/agent/connection')
+            ->assertOk()
+            ->assertJsonPath('data.checks.route_registered', true)
+            ->assertJsonPath('data.checks.active_tokens', 0)
+            ->assertJsonPath('data.transport', 'Streamable HTTP');
+
+        $groups = $response->json('data.groups');
+        $this->assertContains('sales_summary', array_column($groups['core'], 'name'));
+        $this->assertCount(16, $groups['diagnostics']);
+        $this->assertTrue($groups['diagnostics'][0]['read_only']);
+    }
+
+    public function test_connection_check_sees_an_active_agent_token(): void
+    {
+        $user = $this->seedStaff();
+        $user->createToken('agent', ['agent:read']);
+
+        $this->actingAs($user, 'api')
+            ->getJson('/api/v1/admin/agent/connection')
+            ->assertOk()
+            ->assertJsonPath('data.checks.active_tokens', 1)
+            ->assertJsonPath('data.checks.ok', true);
     }
 
     private function seedStaff(): User

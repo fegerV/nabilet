@@ -8,9 +8,13 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Route;
+use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 use Nabilet\Core\Errors\NotFoundError;
 use Nabilet\Core\Errors\ValidationError;
 use Nabilet\Core\Support\Paging;
+use Nabilet\Modules\Agent\Mcp\NabiletAgentServer;
+use Nabilet\Modules\Agent\Mcp\Tools\DiagnosticsTool;
 use Nabilet\Modules\Agent\Models\AgentAction;
 use Nabilet\Modules\Agent\Services\AgentActionService;
 use Nabilet\Modules\Agent\Support\AgentCapabilities;
@@ -60,6 +64,88 @@ final class AgentAdminController extends Controller
             ->all();
 
         return response()->json(['data' => $tokens]);
+    }
+
+    /**
+     * Данные для раздела «Подключение»: адрес MCP, конфиг клиента и реестр
+     * инструментов. Состав берётся из самого сервера через reflection — вторая
+     * ручная копия списка инструментов неизбежно разошлась бы с реестром.
+     */
+    public function connection(Request $request): JsonResponse
+    {
+        $property = new \ReflectionProperty(NabiletAgentServer::class, 'tools');
+        /** @var array<int, class-string> $classes */
+        $classes = $property->getDefaultValue();
+        $groups = ['core' => [], 'diagnostics' => []];
+
+        foreach ($classes as $class) {
+            if (! is_string($class) || ! class_exists($class)) {
+                continue;
+            }
+            $instance = new $class();
+            $group = is_subclass_of($class, DiagnosticsTool::class) ? 'diagnostics' : 'core';
+            $groups[$group][] = [
+                'name' => $instance->name(),
+                'description' => $instance->description(),
+                'read_only' => (new \ReflectionClass($class))->getAttributes(IsReadOnly::class) !== [],
+            ];
+        }
+
+        $routeRegistered = true;
+        try {
+            Route::getRoutes()->match(Request::create('/mcp', 'POST'));
+        } catch (\Throwable) {
+            $routeRegistered = false;
+        }
+
+        $activeTokens = 0;
+        $scope = AgentScope::resolve($request->user());
+        if ($scope !== null) {
+            $userIds = DB::table('user_organization')
+                ->whereIn('organization_id', $scope->organizationIds)
+                ->pluck('user_id')
+                ->all();
+            $activeTokens = (int) DB::table('personal_access_tokens')
+                ->whereIn('tokenable_id', $userIds)
+                ->where('tokenable_type', User::class)
+                ->where('abilities', 'like', '%agent:read%')
+                ->where(function ($query): void {
+                    $query->whereNull('expires_at')->orWhere('expires_at', '>', now());
+                })
+                ->count();
+        }
+
+        $ok = $routeRegistered && $activeTokens > 0;
+
+        return response()->json(['data' => [
+            'endpoint' => url('/mcp'),
+            'transport' => 'Streamable HTTP',
+            'auth_header' => 'Authorization: Bearer <токен>',
+            'capabilities' => AgentCapabilities::labels(),
+            'groups' => $groups,
+            'client_config' => [
+                'mcp' => [
+                    'nabilet' => [
+                        'type' => 'remote',
+                        'url' => url('/mcp'),
+                        'headers' => ['Authorization' => 'Bearer {env:NABILET_AGENT_TOKEN}'],
+                        'enabled' => true,
+                    ],
+                ],
+            ],
+            'rate_limit' => '60 запросов/мин на токен',
+            'checks' => [
+                'route_registered' => $routeRegistered,
+                'active_tokens' => $activeTokens,
+                'ok' => $ok,
+                'message' => $ok
+                    ? 'Маршрут /mcp доступен и есть активный токен с agent:read.'
+                    : (!$routeRegistered
+                        ? 'Маршрут /mcp не зарегистрирован: проверьте маршруты приложения.'
+                        : 'Нет активного токена с agent:read — выпустите токен выше.'),
+            ],
+            'docs' => 'docs/MCP-INTEGRATION.md',
+        ]]);
     }
 
     public function issueToken(Request $request): JsonResponse
