@@ -8,6 +8,10 @@
 
 ### Added
 
+- Браузерный Playwright-сценарий `install-smoke.spec.ts` на только что
+  установленный стенд и его запуск в job'е `smoke` релизного workflow
+  (вместе со снимками/трассировками при падении). Локальный прогон в этой среде
+  блокируется песочницей браузера (`ERR_NETWORK_ACCESS_DENIED` на loopback).
 - 13 read-only контентных инструментов MCP: `search_pages`, `get_page`,
   `search_media`, `get_site_settings`, `get_theme_settings`, `get_seo_report`,
   `search_venues`, `search_halls`, `get_hall_schema`, `validate_hall_schema`,

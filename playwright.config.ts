@@ -23,6 +23,8 @@ export default defineConfig({
   expect: { timeout: 15_000 },
   use: {
     baseURL: baseURL || 'http://127.0.0.1:8080',
+    // Loopback may be blocked by the browser sandbox in restricted runners.
+    launchOptions: { args: ['--no-sandbox', '--disable-dev-shm-usage'] },
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
