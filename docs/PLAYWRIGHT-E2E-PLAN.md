@@ -1,6 +1,6 @@
 # План Playwright E2E для NABILET
 
-Статус: **план и критерии готовности**, инфраструктура ещё не подключена к CI (см. `docs/audit/STABILIZATION-REPORT.md`).
+Статус: **инфраструктура создана, CI-job ещё не подключён**. Конфиг `playwright.config.ts`, два сценария в `tests/e2e/` и команда `npm run e2e` добавлены; тесты пропускаются без `E2E_BASE_URL`, чтобы исключить случайный прогон по рабочей среде. См. `docs/audit/STABILIZATION-REPORT.md`.
 
 ## 1. Принципы
 
@@ -11,7 +11,7 @@
 
 ## 2. Инфраструктура
 
-1. Добавить `@playwright/test` в `devDependencies`, `playwright.config.ts` с `baseURL` test-стенда и `webServer` для локального прогона.
+1. ✅ `@playwright/test` добавлен в `devDependencies`, `playwright.config.ts` создан (`webServer` настраивается через `E2E_BASE_URL`).
 2. Отдельный `.env.e2e`: `APP_ENV=testing`, тестовая БД, `NABILET_TEST_PAYMENTS=1`, demo-провайдер оплаты.
 3. CI-job `e2e` после `phpunit`/`frontend`: поднять MySQL, применить SQL-бандл, собрать hosting-релиз, развернуть в каталоге, emulation shared hosting, запустить Playwright, загрузить screenshots/trace как artifacts.
 4. Стабильные `data-testid` на ключевых элементах: installer, login, venue form, hall editor canvas, publish, event form, seat map, checkout, ticket PDF, checker.
