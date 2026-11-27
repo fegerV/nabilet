@@ -363,6 +363,15 @@ try {
             throw new RuntimeException("Нет входного файла: {$file}");
         }
     }
+    // Updater копирует этот файл в storage/ при старте обновления. Без него
+    // аварийный откат невозможен, и self-update падает до первой миграции.
+    if (! is_dir($stage . '/scripts') && ! mkdir($stage . '/scripts', 0775, true)) {
+        throw new RuntimeException('Не удалось создать scripts/.');
+    }
+    if (! is_file($repo . '/scripts/updater-recover.php')
+        || ! copy($repo . '/scripts/updater-recover.php', $stage . '/scripts/updater-recover.php')) {
+        throw new RuntimeException('Нет входного файла: scripts/updater-recover.php');
+    }
 
     if (! is_dir($stage . '/public') && ! mkdir($stage . '/public', 0775, true)) {
         throw new RuntimeException('Не удалось создать public/.');
@@ -408,6 +417,7 @@ try {
         '.env.example',
         'composer.lock',
         'artisan',
+        'scripts/updater-recover.php',
     ];
     foreach ($required as $entry) {
         if (! in_array($entry, $files, true)) {
