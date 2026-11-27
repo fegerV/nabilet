@@ -35,6 +35,7 @@ Route::get('/health', [HealthController::class, 'show']);
  */
 Route::prefix('admin/system')->middleware(['auth:api', 'admin', \Nabilet\Core\Http\Middleware\EnsurePlatformAdmin::class])->group(function () {
     Route::get('/status', [SystemStatusController::class, 'status']);
+    Route::get('/diagnostics/export', [SystemStatusController::class, 'exportDiagnostics']);
     Route::get('/logs', [SystemStatusController::class, 'viewLogs']);
     Route::post('/cache/clear', [SystemStatusController::class, 'clearCache']);
     // Применение ожидающих миграций без SSH (шаред-хостинг). Требует фразы

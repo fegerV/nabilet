@@ -16,6 +16,7 @@
 | MCP read-only диагностика | `AgentDiagnosticsToolsTest` | 19 тестов / 150 утверждений |
 | MCP контент и валидаторы | `AgentContentToolsTest` | 5 тестов / 72 утверждения |
 | MCP запись контента | `AgentContentWriteFlowTest` | 4 теста / 37 утверждений (prepare → approve → confirm, scope) |
+| Экспорт диагностики | `DiagnosticsExportTest` | 2 теста / 9 утверждений (только админ, без секретов, no-store) |
 | Браузер: чистый стенд → health → логин администратора | Playwright `install-smoke.spec.ts` в `release-hosting.yml` | подключено; локально не прогонялось (песочница браузера блокирует loopback) |
 
 ## Сценарии продаж (покрытие в PHPUnit/Feature)

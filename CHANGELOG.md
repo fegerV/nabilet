@@ -8,6 +8,9 @@
 
 ### Added
 
+- Экспорт обезличенной диагностики `GET /api/v1/admin/system/diagnostics/export`:
+  файл JSON без паролей, токенов и персональных данных, с `Cache-Control: no-store`.
+  Отчёт собирается тем же сервисом, что и MCP `get_installation_report`.
 - Пять двухфазных инструментов подготовки контента (`prepare_create_page`,
   `prepare_update_page`, `prepare_update_theme`, `prepare_update_seo`,
   `prepare_update_event`) под полномочие `agent:content:write`. Как и остальные
@@ -37,7 +40,8 @@
   подключения; `AgentContentToolsTest`: 5 тестов / 72 утверждения (скоуп,
   маскирование, валидаторы); `AgentContentWriteFlowTest`: 4 теста / 37
   утверждений (prepare → approve → confirm, идемпотентность, scope);
-  полный PHPUnit — 1524 теста / 6790 утверждений.
+  `DiagnosticsExportTest`: 2 теста / 9 утверждений; полный PHPUnit — 1526
+  тестов / 6799 утверждений.
 
 ## [1.16.1] - 2026-11-27
 

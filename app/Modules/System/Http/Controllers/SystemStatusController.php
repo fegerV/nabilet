@@ -10,6 +10,7 @@ use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Log;
 use Nabilet\Core\Support\Paging;
+use Nabilet\Modules\Agent\Services\AgentDiagnostics;
 use Nabilet\Modules\System\Services\HealthProbe;
 use Nabilet\Modules\System\Services\HostChecks;
 use Nabilet\Modules\System\Services\LogReader;
@@ -104,6 +105,27 @@ class SystemStatusController extends Controller
             ],
             'version' => (string) config('nabilet.version', '0.0.0'),
             'timestamp' => now()->toIso8601String(),
+        ]);
+    }
+
+    /**
+     * Обезличенный экспорт диагностики для поддержки/аудита.
+     *
+     * Отчёт собирается тем же сервисом, что и MCP `get_installation_report`:
+     * одна копия правил маскирования, иначе «экспорт для поддержки» легко
+     * становится вторым каналом утечки секретов. Ответ отдаётся файлом и не
+     * кешируется — конфигурация файла меняется после обновлений.
+     */
+    public function exportDiagnostics(AgentDiagnostics $diagnostics): JsonResponse
+    {
+        $report = $diagnostics->installationReport();
+        $report['exported_at'] = now()->toIso8601String();
+        $report['note'] = 'Отчёт обезличен: пароли, токены и персональные данные исключены.';
+
+        return response()->json($report, 200, [
+            'Content-Disposition' => 'attachment; filename="nabilet-diagnostics-'
+                . gmdate('Ymd-His') . '.json"',
+            'Cache-Control' => 'no-store, no-cache, must-revalidate',
         ]);
     }
 
