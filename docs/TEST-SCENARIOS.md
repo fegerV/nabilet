@@ -15,6 +15,7 @@
 | Чистая установка из распакованного ZIP | `scripts/smoke/smoke-install.php`, MariaDB 11.4 | 45/45 |
 | MCP read-only диагностика | `AgentDiagnosticsToolsTest` | 19 тестов / 150 утверждений |
 | MCP контент и валидаторы | `AgentContentToolsTest` | 5 тестов / 72 утверждения |
+| MCP запись контента | `AgentContentWriteFlowTest` | 4 теста / 37 утверждений (prepare → approve → confirm, scope) |
 | Браузер: чистый стенд → health → логин администратора | Playwright `install-smoke.spec.ts` в `release-hosting.yml` | подключено; локально не прогонялось (песочница браузера блокирует loopback) |
 
 ## Сценарии продаж (покрытие в PHPUnit/Feature)

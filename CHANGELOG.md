@@ -8,6 +8,13 @@
 
 ### Added
 
+- Пять двухфазных инструментов подготовки контента (`prepare_create_page`,
+  `prepare_update_page`, `prepare_update_theme`, `prepare_update_seo`,
+  `prepare_update_event`) под полномочие `agent:content:write`. Как и остальные
+  write-инструменты, они только сохраняют неизменяемый снимок; исполнение —
+  после одобрения человеком через `confirm_agent_action`. Страницы создаются
+  черновиками, тема объединяется с существующими настройками, SEO — в
+  organization scope.
 - Браузерный Playwright-сценарий `install-smoke.spec.ts` на только что
   установленный стенд и его запуск в job'е `smoke` релизного workflow
   (вместе со снимками/трассировками при падении). Локальный прогон в этой среде
@@ -28,7 +35,9 @@
 
 - `AgentDiagnosticsToolsTest`: 8 тестов / 92 утверждения, включая endpoint
   подключения; `AgentContentToolsTest`: 5 тестов / 72 утверждения (скоуп,
-  маскирование, валидаторы); полный PHPUnit — 1520 тестов / 6753 утверждений.
+  маскирование, валидаторы); `AgentContentWriteFlowTest`: 4 теста / 37
+  утверждений (prepare → approve → confirm, идемпотентность, scope);
+  полный PHPUnit — 1524 теста / 6790 утверждений.
 
 ## [1.16.1] - 2026-11-27
 

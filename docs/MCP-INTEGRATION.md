@@ -35,6 +35,12 @@
 `get_update_status`, `get_application_version`, `get_api_capabilities`,
 `get_installation_report`, `run_readonly_selfcheck`, `get_route_status`.
 
+Подготовка контента (двухфазная, требуется `agent:content:write`):
+`prepare_create_page`, `prepare_update_page`, `prepare_update_theme`,
+`prepare_update_seo`, `prepare_update_event`. Страницы создаются только
+черновиками, тема объединяется с существующим конфигом (посторонние ключи не
+трогаются), SEO и мероприятия проверяются на принадлежность организации токена.
+
 Write-инструменты двухфазные: подготовка создаёт неизменяемый снимок в
 `agent_actions`, человек одобряет его в админке, `confirm_agent_action`
 исполняет ровно снимок. Повторный confirm идемпотентен, срок — 30 минут.
@@ -65,8 +71,8 @@ Write-инструменты двухфазные: подготовка созд
 }
 ```
 
-Первый вызов — `initialize`, затем `tools/list`: должно быть 38 инструментов
-(9 базовых + 16 диагностических + 13 контентных).
+Первый вызов — `initialize`, затем `tools/list`: должно быть 43 инструмента
+(9 базовых + 16 диагностических + 13 контентных + 5 подготовок контента).
 Быстрая проверка работоспособности — `run_readonly_selfcheck`, затем
 `get_installation_report`. Агент не должен обещать, что изменение применено,
 пока `confirm_agent_action` не вернул результат.

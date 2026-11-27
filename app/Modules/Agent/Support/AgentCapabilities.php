@@ -23,6 +23,7 @@ final class AgentCapabilities
     public const SCHEMAS_PUBLISH = 'agent:schemas:publish';
     public const REFUNDS_WRITE = 'agent:refunds:write';
     public const ACTIONS_CONFIRM = 'agent:actions:confirm';
+    public const CONTENT_WRITE = 'agent:content:write';
 
     /** @return array<string, string> capability => человекочитаемое название */
     public static function labels(): array
@@ -33,6 +34,7 @@ final class AgentCapabilities
             self::SCHEMAS_PUBLISH => 'Публикация схем залов',
             self::REFUNDS_WRITE => 'Подготовка возвратов',
             self::ACTIONS_CONFIRM => 'Исполнение подтверждённых действий',
+            self::CONTENT_WRITE => 'Подготовка изменений контента и витрины',
         ];
     }
 

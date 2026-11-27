@@ -33,6 +33,11 @@ use Nabilet\Modules\Agent\Mcp\Tools\GetRouteStatusTool;
 use Nabilet\Modules\Agent\Mcp\Tools\GetSystemRequirementsTool;
 use Nabilet\Modules\Agent\Mcp\Tools\GetSystemStatusTool;
 use Nabilet\Modules\Agent\Mcp\Tools\GetUpdateStatusTool;
+use Nabilet\Modules\Agent\Mcp\Tools\PrepareCreatePageTool;
+use Nabilet\Modules\Agent\Mcp\Tools\PrepareUpdateEventTool;
+use Nabilet\Modules\Agent\Mcp\Tools\PrepareUpdatePageTool;
+use Nabilet\Modules\Agent\Mcp\Tools\PrepareUpdateSeoTool;
+use Nabilet\Modules\Agent\Mcp\Tools\PrepareUpdateThemeTool;
 use Nabilet\Modules\Agent\Mcp\Tools\PublishSchemaTool;
 use Nabilet\Modules\Agent\Mcp\Tools\RefundTool;
 use Nabilet\Modules\Agent\Mcp\Tools\RunReadonlySelfcheckTool;
@@ -90,6 +95,9 @@ use Nabilet\Modules\Agent\Mcp\Tools\ValidateTicketTemplateTool;
     .'get_site_settings, get_theme_settings, get_seo_report, search_venues → search_halls → '
     .'get_hall_schema; validate_hall_schema, validate_event, validate_ticket_template, '
     .'validate_payment_configuration. Все данные ограничены организациями владельца токена. '
+    .'ПОДГОТОВКА КОНТЕНТА (requires agent:content:write): prepare_create_page, prepare_update_page, '
+    .'prepare_update_theme, prepare_update_seo, prepare_update_event — только готовят действие, '
+    .'человек одобряет его в админке, затем confirm_agent_action. '
     .'Идентификаторы — public_id (26 символов), не числовые id.'
 )]
 class NabiletAgentServer extends Server
@@ -140,5 +148,11 @@ class NabiletAgentServer extends Server
         ValidateEventTool::class,
         ValidateTicketTemplateTool::class,
         ValidatePaymentConfigurationTool::class,
+        // Подготовка контентных изменений (write, только после одобрения человеком).
+        PrepareCreatePageTool::class,
+        PrepareUpdatePageTool::class,
+        PrepareUpdateThemeTool::class,
+        PrepareUpdateSeoTool::class,
+        PrepareUpdateEventTool::class,
     ];
 }

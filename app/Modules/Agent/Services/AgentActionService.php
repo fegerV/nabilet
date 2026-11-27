@@ -5,12 +5,14 @@ declare(strict_types=1);
 namespace Nabilet\Modules\Agent\Services;
 
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Nabilet\Core\Errors\NotFoundError;
 use Nabilet\Core\Errors\ValidationError;
 use Nabilet\Core\Tenancy\OrganizationContext;
 use Nabilet\Modules\Agent\Models\AgentAction;
 use Nabilet\Modules\Agent\Support\AgentCapabilities;
 use Nabilet\Modules\Agent\Support\AgentScope;
+use Nabilet\Modules\Events\Models\Event;
 use Nabilet\Modules\Events\Services\EventService;
 use Nabilet\Modules\Orders\Models\Order;
 use Nabilet\Modules\Payments\Models\Payment;
@@ -37,6 +39,11 @@ final class AgentActionService
     public const ACTION_CREATE_EVENT = 'create_event';
     public const ACTION_PUBLISH_SCHEMA = 'publish_schema';
     public const ACTION_REFUND = 'refund';
+    public const ACTION_CREATE_PAGE = 'create_page';
+    public const ACTION_UPDATE_PAGE = 'update_page';
+    public const ACTION_UPDATE_THEME = 'update_theme';
+    public const ACTION_UPDATE_SEO = 'update_seo';
+    public const ACTION_UPDATE_EVENT = 'update_event';
 
     public function __construct(
         private readonly EventService $events,
@@ -190,6 +197,11 @@ final class AgentActionService
                 'create_event' => $this->executeCreateEvent($action),
                 'publish_schema' => $this->executePublishSchema($action, $user),
                 'refund' => $this->executeRefund($action),
+                self::ACTION_CREATE_PAGE => $this->executeCreatePage($action),
+                self::ACTION_UPDATE_PAGE => $this->executeUpdatePage($action),
+                self::ACTION_UPDATE_THEME => $this->executeUpdateTheme($action, $user),
+                self::ACTION_UPDATE_SEO => $this->executeUpdateSeo($action),
+                self::ACTION_UPDATE_EVENT => $this->executeUpdateEvent($action),
                 default => throw new ValidationError(['action' => ['Неизвестный тип действия.']]),
             });
 
@@ -224,8 +236,127 @@ final class AgentActionService
             'create_event' => $this->validateCreateEvent($payload, $organizationId),
             'publish_schema' => $this->validatePublishSchema($payload, $organizationId),
             'refund' => $this->validateRefund($payload, $organizationId),
+            self::ACTION_CREATE_PAGE => $this->validateCreatePage($payload, $organizationId),
+            self::ACTION_UPDATE_PAGE => $this->validateUpdatePage($payload, $organizationId),
+            self::ACTION_UPDATE_THEME => $this->validateUpdateTheme($payload),
+            self::ACTION_UPDATE_SEO => $this->validateUpdateSeo($payload, $organizationId),
+            self::ACTION_UPDATE_EVENT => $this->validateUpdateEvent($payload, $organizationId),
             default => throw new ValidationError(['action' => ['Неизвестный тип действия.']]),
         };
+    }
+
+    /** @param array<string, mixed> $p @return array<string, mixed> */
+    private function validateCreatePage(array $p, int $org): array
+    {
+        $v = validator($p, [
+            'title' => ['required', 'string', 'max:500'],
+            'slug' => ['nullable', 'string', 'max:255', 'regex:/^[a-z0-9]+(?:-[a-z0-9]+)*$/'],
+            'content' => ['nullable', 'string', 'max:60000'],
+        ])->validate();
+
+        $slug = $v['slug'] ?? Str::slug((string) $v['title']);
+        if ($slug === '') {
+            $slug = 'page-' . Str::lower(Str::random(8));
+        }
+        if (DB::table('pages')->where('organization_id', $org)->where('slug', $slug)->exists()) {
+            throw new ValidationError(['slug' => ['Такой адрес страницы уже есть в организации.']]);
+        }
+
+        return [
+            'title' => $v['title'],
+            'slug' => $slug,
+            'content' => $v['content'] ?? '',
+            'organization_id' => $org,
+            'status' => 'draft',
+        ];
+    }
+
+    /** @param array<string, mixed> $p @return array<string, mixed> */
+    private function validateUpdatePage(array $p, int $org): array
+    {
+        $v = validator($p, [
+            'public_id' => ['required', 'string', 'max:64'],
+            'title' => ['sometimes', 'string', 'max:500'],
+            'slug' => ['sometimes', 'string', 'max:255', 'regex:/^[a-z0-9]+(?:-[a-z0-9]+)*$/'],
+            'content' => ['sometimes', 'string', 'max:60000'],
+        ])->validate();
+
+        $page = DB::table('pages')->where('organization_id', $org)->where('public_id', $v['public_id'])->first();
+        if ($page === null) {
+            throw new ValidationError(['public_id' => ['Страница не найдена в вашей организации.']]);
+        }
+        if (isset($v['slug']) && DB::table('pages')
+            ->where('organization_id', $org)->where('slug', $v['slug'])
+            ->where('id', '!=', (int) $page->id)->exists()) {
+            throw new ValidationError(['slug' => ['Такой адрес уже занят.']]);
+        }
+
+        // Only fields actually present may be applied; the snapshot is frozen.
+        return array_intersect_key($v, array_flip(['public_id', 'title', 'slug', 'content'])) + ['organization_id' => $org];
+    }
+
+    /** @param array<string, mixed> $p @return array<string, mixed> */
+    private function validateUpdateTheme(array $p): array
+    {
+        $v = validator($p, [
+            'config' => ['required', 'array', 'min:1', 'max:100'],
+        ])->validate();
+
+        foreach (array_keys($v['config']) as $key) {
+            if (! is_string($key) || ! str_starts_with($key, 'theme')) {
+                throw new ValidationError(['config' => ['Разрешены только ключи с префиксом theme.']]);
+            }
+        }
+
+        return ['config' => $v['config']];
+    }
+
+    /** @param array<string, mixed> $p @return array<string, mixed> */
+    private function validateUpdateSeo(array $p, int $org): array
+    {
+        $v = validator($p, [
+            'entity_type' => ['required', 'string', 'in:page,event'],
+            'entity_id' => ['required', 'integer', 'min:1'],
+            'locale' => ['sometimes', 'string', 'max:10'],
+            'title' => ['sometimes', 'nullable', 'string', 'max:500'],
+            'description' => ['sometimes', 'nullable', 'string', 'max:1000'],
+            'canonical_url' => ['sometimes', 'nullable', 'url', 'max:2048'],
+            'og_image' => ['sometimes', 'nullable', 'url', 'max:2048'],
+        ])->validate();
+
+        $table = $v['entity_type'] === 'page' ? 'pages' : 'events';
+        $exists = DB::table($table)
+            ->where('id', $v['entity_id'])->where('organization_id', $org)->exists();
+        if (! $exists) {
+            throw new ValidationError(['entity_id' => ['Объект не найден в вашей организации.']]);
+        }
+
+        $v['locale'] = $v['locale'] ?? 'ru';
+
+        return $v;
+    }
+
+    /** @param array<string, mixed> $p @return array<string, mixed> */
+    private function validateUpdateEvent(array $p, int $org): array
+    {
+        $v = validator($p, [
+            'public_id' => ['required', 'string', 'max:64'],
+            'title' => ['sometimes', 'string', 'max:255'],
+            'description' => ['sometimes', 'nullable', 'string', 'max:60000'],
+            'short_description' => ['sometimes', 'nullable', 'string', 'max:1000'],
+            'starts_at' => ['sometimes', 'date'],
+            'ends_at' => ['sometimes', 'nullable', 'date', 'after_or_equal:starts_at'],
+            'timezone' => ['sometimes', 'string', 'max:64'],
+        ])->validate();
+
+        $eventId = DB::table('events')->where('organization_id', $org)
+            ->where('public_id', $v['public_id'])->value('id');
+        if ($eventId === null) {
+            throw new ValidationError(['public_id' => ['Мероприятие не найдено в вашей организации.']]);
+        }
+        $v['id'] = (int) $eventId;
+
+        return $v;
     }
 
     /** @param array<string, mixed> $p */
@@ -330,6 +461,113 @@ final class AgentActionService
         if ((int) $venueOrg !== $org) {
             throw new ValidationError(['venue_id' => ['Площадка другой организации.']]);
         }
+    }
+
+    /** @return array<string, mixed> */
+    private function executeCreatePage(AgentAction $action): array
+    {
+        $p = $action->payload_json;
+        $publicId = \Nabilet\Modules\Core\Support\PublicId::generate();
+        $now = now();
+        DB::table('pages')->insert([
+            'public_id' => $publicId,
+            'organization_id' => $p['organization_id'],
+            'title' => $p['title'],
+            'slug' => $p['slug'],
+            'content' => $p['content'] ?? '',
+            'status' => 'draft',
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+
+        return [
+            'page_public_id' => $publicId,
+            'slug' => $p['slug'],
+            'status' => 'draft',
+            'message' => 'Черновик страницы создан; публикацию выполняет администратор.',
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function executeUpdatePage(AgentAction $action): array
+    {
+        $p = $action->payload_json;
+        $fields = array_intersect_key($p, array_flip(['title', 'slug', 'content']));
+        $fields['updated_at'] = now();
+        DB::table('pages')->where('public_id', $p['public_id'])
+            ->where('organization_id', $p['organization_id'])->update($fields);
+
+        return ['page_public_id' => $p['public_id'], 'updated_fields' => array_keys($fields)];
+    }
+
+    /** @return array<string, mixed> */
+    private function executeUpdateTheme(AgentAction $action, object $user): array
+    {
+        $p = $action->payload_json;
+        $orgId = (int) $action->organization_id;
+        $row = DB::table('storefront_settings')->where('organization_id', $orgId)->first(['config']);
+        $config = $row === null ? [] : (json_decode((string) $row->config, true) ?: []);
+        foreach ($p['config'] as $key => $value) {
+            $config[$key] = $value;
+        }
+
+        $values = [
+            'config' => json_encode($config, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR),
+            'updated_by' => (int) $user->getAuthIdentifier(),
+            'updated_at' => now(),
+        ];
+        $existing = DB::table('storefront_settings')->where('organization_id', $orgId)->value('id');
+        if ($existing === null) {
+            DB::table('storefront_settings')->insert(['organization_id' => $orgId] + $values);
+        } else {
+            DB::table('storefront_settings')->where('id', $existing)->update($values);
+        }
+
+        return ['updated_keys' => array_keys($p['config']), 'message' => 'Настройки темы обновлены.'];
+    }
+
+    /** @return array<string, mixed> */
+    private function executeUpdateSeo(AgentAction $action): array
+    {
+        $p = $action->payload_json;
+        $values = [];
+        foreach (['title', 'description', 'canonical_url', 'og_image'] as $field) {
+            if (array_key_exists($field, $p)) {
+                $values[$field] = $p[$field];
+            }
+        }
+        $keys = [
+            'entity_type' => $p['entity_type'],
+            'entity_id' => $p['entity_id'],
+            'locale' => $p['locale'],
+        ];
+        $existing = DB::table('seo_meta')->where($keys)->value('id');
+        if ($existing === null) {
+            DB::table('seo_meta')->insert($keys + $values);
+        } else {
+            DB::table('seo_meta')->where('id', $existing)->update($values);
+        }
+
+        return [
+            'entity_type' => $p['entity_type'],
+            'entity_id' => $p['entity_id'],
+            'locale' => $p['locale'],
+            'updated_fields' => array_keys($values),
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function executeUpdateEvent(AgentAction $action): array
+    {
+        $p = $action->payload_json;
+        /** @var Event $event */
+        $event = $this->tenant->withoutScope(fn (): Event => Event::query()->findOrFail($p['id']));
+        $fields = array_intersect_key($p, array_flip([
+            'title', 'description', 'short_description', 'starts_at', 'ends_at', 'timezone',
+        ]));
+        $updated = $this->events->update($event, $fields);
+
+        return ['event_public_id' => $updated->public_id, 'updated_fields' => array_keys($fields)];
     }
 
     /** @return array<string, mixed> */

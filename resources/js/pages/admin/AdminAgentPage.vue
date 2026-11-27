@@ -48,6 +48,7 @@ const CAPABILITIES = [
   { value: 'agent:schemas:publish', label: 'Публиковать схемы залов', hint: 'Фиксирует геометрию версии после одобрения человеком.' },
   { value: 'agent:refunds:write', label: 'Готовить возвраты', hint: 'Возврат требует отдельного подтверждения REFUND.' },
   { value: 'agent:actions:confirm', label: 'Исполнять подтверждённые действия', hint: 'Без неё агент не сможет выполнить даже одобренное.' },
+  { value: 'agent:content:write', label: 'Подготавливать изменения контента и витрины', hint: 'Черновики страниц/событий, тема и SEO. Применение после одобрения человеком.' },
 ]
 
 interface AgentConnection {
