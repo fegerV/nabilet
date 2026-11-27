@@ -243,7 +243,7 @@ onMounted(load)
       <div class="mt-4 grid gap-4 text-sm md:grid-cols-2">
         <div v-for="(tools, group) in connection.groups" :key="group">
           <h3 class="text-xs uppercase tracking-wide text-subtle">
-            {{ group === 'diagnostics' ? 'Диагностика (read-only)' : 'Данные и подготовка действий' }}
+            {{ group === 'diagnostics' ? 'Диагностика (read-only)' : (group === 'content' ? 'Контент и проверки (read-only)' : 'Данные и подготовка действий') }}
           </h3>
           <ul class="mt-2 space-y-1">
             <li v-for="tool in tools" :key="tool.name" class="text-content">

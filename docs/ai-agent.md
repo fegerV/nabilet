@@ -85,6 +85,18 @@
 | `get_api_capabilities` | транспорт, полномочия и список запрещённых операций |
 | `get_route_status` | наличие критических маршрутов без HTTP-вызовов |
 
+### Контент и проверки (read-only)
+
+| Инструмент | Что показывает |
+|---|---|
+| `search_pages` → `get_page` | поиск страниц и получение содержимого с SEO |
+| `search_media` | медиатека организации (без путей на диске) |
+| `get_site_settings`, `get_theme_settings` | настройки витрины; ключи с password/token/secret замаскированы |
+| `get_seo_report` | покрытие страниц описаниями, canonical и Open Graph |
+| `search_venues` → `search_halls` → `get_hall_schema` | площадки, залы и опубликованная схема |
+| `validate_hall_schema`, `validate_event`, `validate_ticket_template` | проверка до изменения; правила те же, что у приложения |
+| `validate_payment_configuration` | факт наличия конфигурации без самих ключей |
+
 ### Запись (двухфазная, с подтверждением человека)
 
 | Инструмент | Что делает | Нужна способность |

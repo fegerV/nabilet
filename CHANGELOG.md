@@ -8,6 +8,13 @@
 
 ### Added
 
+- 13 read-only контентных инструментов MCP: `search_pages`, `get_page`,
+  `search_media`, `get_site_settings`, `get_theme_settings`, `get_seo_report`,
+  `search_venues`, `search_halls`, `get_hall_schema`, `validate_hall_schema`,
+  `validate_event`, `validate_ticket_template`, `validate_payment_configuration`.
+  Все данные ограничены организациями владельца токена; настройки маскируют
+  ключи с password/token/secret; валидация схемы вызывает правила редактора,
+  а шаблона билета — домен `TicketTemplateConfig`.
 - Панель «Подключение MCP» в админке (`GET /api/v1/admin/agent/connection`):
   адрес и транспорт сервера, готовый конфиг клиента, реальный перечень
   инструментов из реестра `NabiletAgentServer` и проверка готовности (маршрут
@@ -16,7 +23,8 @@
 ### Tests
 
 - `AgentDiagnosticsToolsTest`: 8 тестов / 92 утверждения, включая endpoint
-  подключения; полный PHPUnit — 1515 тестов / 6681 утверждений.
+  подключения; `AgentContentToolsTest`: 5 тестов / 72 утверждения (скоуп,
+  маскирование, валидаторы); полный PHPUnit — 1520 тестов / 6753 утверждений.
 
 ## [1.16.1] - 2026-11-27
 

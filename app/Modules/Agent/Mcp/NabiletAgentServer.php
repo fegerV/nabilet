@@ -9,10 +9,16 @@ use Laravel\Mcp\Server\Attributes\Instructions;
 use Laravel\Mcp\Server\Attributes\Name;
 use Laravel\Mcp\Server\Attributes\Version;
 use Nabilet\Modules\Agent\Mcp\Tools\ConfirmAgentActionTool;
+use Nabilet\Modules\Agent\Mcp\Tools\ContentTool;
 use Nabilet\Modules\Agent\Mcp\Tools\CreateEventTool;
 use Nabilet\Modules\Agent\Mcp\Tools\GetApiCapabilitiesTool;
 use Nabilet\Modules\Agent\Mcp\Tools\GetApplicationVersionTool;
 use Nabilet\Modules\Agent\Mcp\Tools\GetBackupStatusTool;
+use Nabilet\Modules\Agent\Mcp\Tools\GetHallSchemaTool;
+use Nabilet\Modules\Agent\Mcp\Tools\GetPageTool;
+use Nabilet\Modules\Agent\Mcp\Tools\GetSeoReportTool;
+use Nabilet\Modules\Agent\Mcp\Tools\GetSiteSettingsTool;
+use Nabilet\Modules\Agent\Mcp\Tools\GetThemeSettingsTool;
 use Nabilet\Modules\Agent\Mcp\Tools\GetCronStatusTool;
 use Nabilet\Modules\Agent\Mcp\Tools\GetDatabaseStatusTool;
 use Nabilet\Modules\Agent\Mcp\Tools\GetEventTool;
@@ -32,7 +38,15 @@ use Nabilet\Modules\Agent\Mcp\Tools\RefundTool;
 use Nabilet\Modules\Agent\Mcp\Tools\RunReadonlySelfcheckTool;
 use Nabilet\Modules\Agent\Mcp\Tools\SalesSummaryTool;
 use Nabilet\Modules\Agent\Mcp\Tools\SearchEventsTool;
+use Nabilet\Modules\Agent\Mcp\Tools\SearchHallsTool;
+use Nabilet\Modules\Agent\Mcp\Tools\SearchMediaTool;
 use Nabilet\Modules\Agent\Mcp\Tools\SearchOrdersTool;
+use Nabilet\Modules\Agent\Mcp\Tools\SearchPagesTool;
+use Nabilet\Modules\Agent\Mcp\Tools\SearchVenuesTool;
+use Nabilet\Modules\Agent\Mcp\Tools\ValidateEventTool;
+use Nabilet\Modules\Agent\Mcp\Tools\ValidateHallSchemaTool;
+use Nabilet\Modules\Agent\Mcp\Tools\ValidatePaymentConfigurationTool;
+use Nabilet\Modules\Agent\Mcp\Tools\ValidateTicketTemplateTool;
 
 /**
  * MCP-сервер NABILET для внешнего ИИ-агента.
@@ -72,6 +86,10 @@ use Nabilet\Modules\Agent\Mcp\Tools\SearchOrdersTool;
     .'get_database_status, get_module_status, get_integration_status, get_backup_status, '
     .'get_update_status, get_application_version, get_api_capabilities, get_installation_report, '
     .'get_route_status. Диагностика не содержит секретов и персональных данных. '
+    .'КОНТЕНТ И ПРОВЕРКИ (read-only): search_pages → get_page, search_media, '
+    .'get_site_settings, get_theme_settings, get_seo_report, search_venues → search_halls → '
+    .'get_hall_schema; validate_hall_schema, validate_event, validate_ticket_template, '
+    .'validate_payment_configuration. Все данные ограничены организациями владельца токена. '
     .'Идентификаторы — public_id (26 символов), не числовые id.'
 )]
 class NabiletAgentServer extends Server
@@ -108,5 +126,19 @@ class NabiletAgentServer extends Server
         GetInstallationReportTool::class,
         RunReadonlySelfcheckTool::class,
         GetRouteStatusTool::class,
+        // Контент и валидаторы (read-only, organization scope).
+        SearchPagesTool::class,
+        GetPageTool::class,
+        SearchMediaTool::class,
+        GetSiteSettingsTool::class,
+        GetThemeSettingsTool::class,
+        GetSeoReportTool::class,
+        SearchVenuesTool::class,
+        SearchHallsTool::class,
+        GetHallSchemaTool::class,
+        ValidateHallSchemaTool::class,
+        ValidateEventTool::class,
+        ValidateTicketTemplateTool::class,
+        ValidatePaymentConfigurationTool::class,
     ];
 }

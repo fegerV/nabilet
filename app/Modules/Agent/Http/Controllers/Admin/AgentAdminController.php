@@ -14,6 +14,7 @@ use Nabilet\Core\Errors\NotFoundError;
 use Nabilet\Core\Errors\ValidationError;
 use Nabilet\Core\Support\Paging;
 use Nabilet\Modules\Agent\Mcp\NabiletAgentServer;
+use Nabilet\Modules\Agent\Mcp\Tools\ContentTool;
 use Nabilet\Modules\Agent\Mcp\Tools\DiagnosticsTool;
 use Nabilet\Modules\Agent\Models\AgentAction;
 use Nabilet\Modules\Agent\Services\AgentActionService;
@@ -76,14 +77,16 @@ final class AgentAdminController extends Controller
         $property = new \ReflectionProperty(NabiletAgentServer::class, 'tools');
         /** @var array<int, class-string> $classes */
         $classes = $property->getDefaultValue();
-        $groups = ['core' => [], 'diagnostics' => []];
+        $groups = ['core' => [], 'diagnostics' => [], 'content' => []];
 
         foreach ($classes as $class) {
             if (! is_string($class) || ! class_exists($class)) {
                 continue;
             }
             $instance = new $class();
-            $group = is_subclass_of($class, DiagnosticsTool::class) ? 'diagnostics' : 'core';
+            $group = is_subclass_of($class, DiagnosticsTool::class)
+                ? 'diagnostics'
+                : (is_subclass_of($class, ContentTool::class) ? 'content' : 'core');
             $groups[$group][] = [
                 'name' => $instance->name(),
                 'description' => $instance->description(),

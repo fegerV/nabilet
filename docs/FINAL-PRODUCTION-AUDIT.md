@@ -22,7 +22,7 @@
 | `verify-migrations / state-machines / openapi ×2 / spec-parity / contract-schema ×2 / models-schema / autoload / module-structure / route-ownership` | все PASS |
 | `composer validate` | valid |
 | PHPStan level 5 | No errors |
-| Full PHPUnit (MariaDB 11.4, отдельная БД) | **1515 тестов / 6681 утверждений**, 0 падений |
+| Full PHPUnit (MariaDB 11.4, отдельная БД) | **1520 тестов / 6753 утверждений**, 0 падений |
 | `npm run typecheck` | exit 0 |
 | Vitest | 56 файлов / 600 тестов, 0 падений |
 | `npm run build` | dist/index.html + assets, 559 модулей |
@@ -57,7 +57,7 @@ SHA-256 `7c0e000bd3e55e7c7b497d4ff314dffc06a7a8c61b1952eddae0dc230cbb8d85`,
 | Установщик | VERIFIED | 45/45 чистая установка из архива, закрытие маршрутов, APP_KEY |
 | Обновления (Updater) | IMPLEMENTED | конечный автомат, подпись в `ManifestVerifier`, ZIP Slip guards; обновление предыдущего релиза не прогонялось |
 | Cron / очередь на shared hosting | IMPLEMENTED | `schedule:run`, `--max-time=50`, heartbeat; на Timeweb не проверялось → HOST_DEPENDENT |
-| MCP / ИИ-агент | VERIFIED (ядро) + IMPLEMENTED (расширение) | HTTP 401/403/200, двухфазные write, 16 read-only инструментов, панель подключения в админке, тесты |
+| MCP / ИИ-агент | VERIFIED (ядро) + IMPLEMENTED (расширение) | HTTP 401/403/200, двухфазные write, 38 инструментов (9+16+13), панель подключения, тесты |
 | SEO / аналитика | IMPLEMENTED | серверная выдача метаданных, sitemap/canonical; живые проверки поисковика не проводились |
 | Android Checker / киоски | IMPLEMENTED (API) | API и политика покрыты; оборудование не проверялось |
 | Резервное копирование / восстановление | IMPLEMENTED | код и ротация есть; восстановление на отдельной БД не выполнялось |
@@ -75,7 +75,7 @@ SHA-256 `7c0e000bd3e55e7c7b497d4ff314dffc06a7a8c61b1952eddae0dc230cbb8d85`,
 | Версии config/package/CHANGELOG могли расходиться | нет единого гейта | `tools/lib/release-version.php`, `tools/verify-release-version.php` | strict + `--allow-unreleased` режимы | `verify-release-version` | — |
 | MCP не давал диагностики системы | 9 инструментов только по данным/записи | `AgentDiagnostics.php`, `DiagnosticsTool.php`, 16 tool-классов, `NabiletAgentServer.php`, `AgentDiagnosticsToolsTest.php` | 16 read-only срезов без секретов | 19 тестов / 150 утверждений | content-инструменты (`prepare_*`) ещё не добавлены |
 | ARCH-verifier мог пропустить новые классы | — | `verify-autoload`, `verify-module-structure`, `verify-route-ownership` | PASS | полный прогон | — |
-| Исправления PR #111–#113 оставались в отдельных ветках | ветки были старше `main`, merge целиком стёр бы новые файлы | cherry-pick 13 коммитов в `fix/integrate-pending-branches` | заморозка билета/QR, валидация импорта, журнал обновлений; SQL-бандлы 955 колонок, `EXPECT_COLUMNS=955` | PHPUnit 1515 / 6681, Vitest 600, PHPStan 0, все verifiers | обновление 1.16.0 → 1.16.1 не прогонялось |
+| Исправления PR #111–#113 оставались в отдельных ветках | ветки были старше `main`, merge целиком стёр бы новые файлы | cherry-pick 13 коммитов в `fix/integrate-pending-branches` | заморозка билета/QR, валидация импорта, журнал обновлений; SQL-бандлы 955 колонок, `EXPECT_COLUMNS=955` | PHPUnit 1520 / 6753, Vitest 600, PHPStan 0, все verifiers | обновление 1.16.0 → 1.16.1 не прогонялось |
 
 ## 4. Блокирующие факторы для продакшена
 

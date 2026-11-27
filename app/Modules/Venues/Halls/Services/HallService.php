@@ -574,6 +574,25 @@ class HallService
      *
      * @param array<string, mixed> $payload
      */
+    /**
+     * Read-only validation for the MCP agent. Delegates to the same private
+     * rules the editor uses, so the agent can never approve a schema that the
+     * application itself would reject (or vice versa).
+     *
+     * @param  array<string, mixed>  $payload
+     * @return array{valid: bool, errors: array<string, mixed>, message: string}
+     */
+    public function validateForAgent(array $payload): array
+    {
+        try {
+            $this->validateSchemaPayload($payload, true);
+
+            return ['valid' => true, 'errors' => [], 'message' => 'Схема корректна.'];
+        } catch (ValidationError $e) {
+            return ['valid' => false, 'errors' => $e->errors, 'message' => $e->getMessage()];
+        }
+    }
+
     protected function validateSchemaPayload(array $payload, bool $strict = false): void
     {
         $errors = [];

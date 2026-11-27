@@ -20,6 +20,14 @@
 Базовые (9): `sales_summary`, `search_events`, `get_event`, `search_orders`,
 `get_order`, `create_event`, `publish_schema`, `refund`, `confirm_agent_action`.
 
+Контентные и валидаторы (13, read-only): `search_pages`, `get_page`,
+`search_media`, `get_site_settings`, `get_theme_settings`, `get_seo_report`,
+`search_venues`, `search_halls`, `get_hall_schema`, `validate_hall_schema`,
+`validate_event`, `validate_ticket_template`, `validate_payment_configuration`.
+`search_pages` → `get_page`, `search_halls` → `get_hall_schema` — последовательные
+шаги. Настройки возвращаются с замаскированными ключами; валидаторы не пишут
+в БД и используют те же правила, что редактор залов и домен билета.
+
 Диагностические (16, read-only): `get_system_status`,
 `get_system_requirements`, `get_cron_status`, `get_queue_status`,
 `get_recent_errors`, `get_failed_jobs`, `get_database_status`,
@@ -57,7 +65,8 @@ Write-инструменты двухфазные: подготовка созд
 }
 ```
 
-Первый вызов — `initialize`, затем `tools/list`: должно быть 25 инструментов.
+Первый вызов — `initialize`, затем `tools/list`: должно быть 38 инструментов
+(9 базовых + 16 диагностических + 13 контентных).
 Быстрая проверка работоспособности — `run_readonly_selfcheck`, затем
 `get_installation_report`. Агент не должен обещать, что изменение применено,
 пока `confirm_agent_action` не вернул результат.
