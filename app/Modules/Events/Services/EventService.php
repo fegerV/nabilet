@@ -90,6 +90,11 @@ class EventService
         // Default to draft if no status provided
         $data['status'] = $data['status'] ?? EventStatus::DRAFT;
 
+        // Часовой пояс из мастера установки (APP_TIMEZONE). Раньше events.timezone
+        // оставался NULL, а сеанс молча получал UTC из DEFAULT БД: витрина и
+        // билеты показывали время не того пояса, который выбрал владелец.
+        $data['timezone'] = ($data['timezone'] ?? null) ?: config('app.timezone', 'UTC');
+
         return DB::transaction(function () use ($data): Event {
             $event = $this->eventRepository->create($data);
             $this->syncPrimarySession($event);

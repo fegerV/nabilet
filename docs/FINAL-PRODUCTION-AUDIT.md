@@ -22,7 +22,7 @@
 | `verify-migrations / state-machines / openapi ×2 / spec-parity / contract-schema ×2 / models-schema / autoload / module-structure / route-ownership` | все PASS |
 | `composer validate` | valid |
 | PHPStan level 5 | No errors |
-| Full PHPUnit (отдельная БД) | **1558 тестов / 6933 утверждений**, 0 падений (1 skip по среде) |
+| Full PHPUnit (отдельная БД) | **1559 тестов / 6935 утверждений**, 0 падений (1 skip по среде) |
 | `npm run typecheck` | exit 0 |
 | Vitest | 56 файлов / 600 тестов, 0 падений |
 | `npm run build` | dist/index.html + assets, 559 модулей |
@@ -76,9 +76,10 @@ run) вносятся сюда и в `releases/manifest.json` из фактич�
 | Версии config/package/CHANGELOG могли расходиться | нет единого гейта | `tools/lib/release-version.php`, `tools/verify-release-version.php` | strict + `--allow-unreleased` режимы | `verify-release-version` | — |
 | MCP не давал диагностики системы | 9 инструментов только по данным/записи | `AgentDiagnostics.php`, `DiagnosticsTool.php`, 16 tool-классов, `NabiletAgentServer.php`, `AgentDiagnosticsToolsTest.php` | 16 read-only срезов без секретов | 19 тестов / 150 утверждений | 13 read-only контентных + 5 подготовок добавлены; публикация/медиа остаются в админке |
 | ARCH-verifier мог пропустить новые классы | — | `verify-autoload`, `verify-module-structure`, `verify-route-ownership` | PASS | полный прогон | — |
-| Исправления PR #111–#113 оставались в отдельных ветках | ветки были старше `main`, merge целиком стёр бы новые файлы | cherry-pick 13 коммитов в `fix/integrate-pending-branches` | заморозка билета/QR, валидация импорта, журнал обновлений; SQL-бандлы 955 колонок, `EXPECT_COLUMNS=955` | PHPUnit 1558 / 6933, Vitest 600, PHPStan 0, все verifiers | обновление 1.16.3 на хостинге не прогонялось |
+| Исправления PR #111–#113 оставались в отдельных ветках | ветки были старше `main`, merge целиком стёр бы новые файлы | cherry-pick 13 коммитов в `fix/integrate-pending-branches` | заморозка билета/QR, валидация импорта, журнал обновлений; SQL-бандлы 955 колонок, `EXPECT_COLUMNS=955` | PHPUnit 1559 / 6935, Vitest 600, PHPStan 0, все verifiers | обновление 1.16.3 на хостинге не прогонялось |
 | 1.16.3: установка давала права системного администратора всем админам | `NABILET_PLATFORM_ADMINS` задаётся из e-mail владельца мастера; обычные админы организаций права не наследуют | `InstallerController::buildEnvContent`, `InstallerFinalizationTest` | только владелец в списке | feature + smoke `.env` | настройка прав проверяется только после чистой установки |
 | 1.16.3: гонка на удалении файла блокировки | файл удалялся, пока `flock` ещё удерживался | `InstallerController::clearInstallState`, `InstallerKeySecurityTest` | файл переиспользуется, новый inode не создаётся | feature-тест с удерживаемым `flock` | — |
+| 1.16.3: выбранный часовой пояс не доходил до мероприятия | `events.timezone` оставался NULL, сеанс падал на UTC из DEFAULT | `EventService::create`, `EventTimezoneDefaultTest` | дефолт `app.timezone` (из мастера), явное значение не перетирается | feature-тест | сеансы без даты по-прежнему не синхронизируются |
 | 1.16.3: частичная установка создавала дубликаты и маскировала ошибки | fail-soft при создании организации/сидеров | `bootstrapOrganization`, `createAdminUser`, `finalDiagnostics` | повтор идемпотентен; обязательные шаги падают; симлинк остаётся опциональным | 6 новых тестов | `backup:run` по-прежнему непроверен |
 | 1.16.3: универсальный токен и чужая роль давали системную диагностику | Sanctum `tokenCan('*') == true`; админка выдавала `system:read` без проверки | `AgentCapabilities::has`, `AgentAdminController::guardSystemRead`, `IssueAgentTokenCommand`, `AgentPermissionSplitTest`, `AgentTokenCommandTest` | `*` → 403 на `/mcp`; `system:read` только для platform-admin | 6 новых тестов + живой хендшейк `@modelcontextprotocol/sdk` 1.30.1 на чистой установке | совместимость с конкретным клиентом (Codex/ChatGPT) не проверялась |
 
