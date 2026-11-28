@@ -1,6 +1,6 @@
 # NABILET — итоговый аудит готовности (2026-11-27)
 
-Версия: 1.16.2. База: `main` (включает `fix/stabilization` и перенесённые коммиты
+Версия: 1.16.3. База: `main` (включает `fix/stabilization` и перенесённые коммиты
 из `fix/ticket-builder-audit`, `fix/yandex-hallplan-import`, `fix/updater-reliability`).
 Исторические отчёты (`AUDIT-2026-11-19.md`, `PRODUCTION-READINESS.md`, `docs/audit/*`)
 использованы как список вопросов, **не** как доказательство. Каждый пункт ниже
@@ -26,8 +26,8 @@
 | `npm run typecheck` | exit 0 |
 | Vitest | 56 файлов / 600 тестов, 0 падений |
 | `npm run build` | dist/index.html + assets, 559 модулей |
-| Version gate | config / package / CHANGELOG согласованы (1.16.2) |
-| Clean install из ZIP (распакован, отдельная БД `install_smoke`) | **48/48**, health 1.16.2, `/install` → 404/405 |
+| Version gate | config / package / CHANGELOG согласованы (1.16.3) |
+| Clean install из ZIP (распакован, отдельная БД `install_smoke`) | **48/48**, health 1.16.3, `/install` → 404/405 |
 
 Сборка архива: `scripts/build-hosting-zip.php` (портативная, без robocopy),
 9257 записей, production `vendor` по `composer.lock`, пустое `storage/`,
@@ -98,7 +98,7 @@ https://github.com/fegerV/nabilet/actions/runs/46154449288 — commit `51614045`
    браузера в этой среде блокируется песочницей (loopback недоступен).
 7. Обновление с неизменного оригинального архива 1.16.1 → 1.16.2 выполнено
    локально **без ручной подмены файлов**: `preparing → ready → migrating →
-   verifying → done`, health 1.16.2, данные покупателя сохранены. Прерванное
+   verifying → done`, health 1.16.3, данные покупателя сохранены. Прерванное
    обновление переводится в `failed_after_swap`; откат кода блокируется после
    начатых миграций, пока БД не восстановлена из копии. Логический дамп
    восстановлен на отдельной БД и сверен по 99 базовым таблицам. Команда

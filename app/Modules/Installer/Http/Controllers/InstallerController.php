@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Nabilet\Modules\Installer\Http\Controllers;
 
+use DateTimeZone;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Artisan;
@@ -13,6 +14,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Routing\Controller;
 use Illuminate\Validation\ValidationException;
+use Nabilet\Core\Errors\ValidationError;
 use Nabilet\Core\Support\DatabaseInvariants;
 use Nabilet\Core\Support\PublicationStatus;
 use Nabilet\Modules\Core\Support\PublicId;
@@ -64,6 +66,9 @@ APP_URL={APP_URL}
 APP_LOCALE={APP_LOCALE}
 APP_FALLBACK_LOCALE={APP_FALLBACK_LOCALE}
 APP_TIMEZONE={APP_TIMEZONE}
+NABILET_LOCALE={NABILET_LOCALE}
+NABILET_REGION={NABILET_REGION}
+NABILET_CURRENCY={NABILET_CURRENCY}
 
 LOG_CHANNEL={LOG_CHANNEL}
 LOG_LEVEL={LOG_LEVEL}
@@ -93,6 +98,11 @@ SESSION_LIFETIME=120
 
 # Региональный каталог площадок (выбор заказчика на шаге установки).
 NABILET_SEED_SURGUT={NABILET_SEED_SURGUT}
+# Платформенный администратор назначается только владельцу, созданному мастером.
+NABILET_PLATFORM_ADMINS={NABILET_PLATFORM_ADMINS}
+# Обновления: только публичный ключ и адрес ленты. Приватный ключ НЕ хранится на сайте.
+NABILET_UPDATE_PUBLIC_KEY={NABILET_UPDATE_PUBLIC_KEY}
+NABILET_UPDATE_FEED_URL={NABILET_UPDATE_FEED_URL}
 
 MAIL_MAILER={MAIL_MAILER}
 MAIL_HOST={MAIL_HOST}
@@ -144,6 +154,7 @@ ENV;
             'requirements' => $requirements['details'],
             'installKey' => InstallKey::instructions(),
             'partialInstall' => $this->installState(),
+            'nextSteps' => $this->nextSteps(),
         ]);
     }
 
@@ -168,7 +179,22 @@ ENV;
             return $denied;
         }
 
-        $result = $this->withInstallLock(fn (): JsonResponse => $this->performInstall($request));
+        // Блокировка взята — проверяем состояние ЕЩЁ РАЗ: другой запрос мог
+        // завершить установку, пока мы ждали захвата, или отозвать ключ.
+        $result = $this->withInstallLock(function () use ($request): JsonResponse {
+            if ($this->isInstalled()) {
+                return response()->json(['error' => [
+                    'code' => 'ALREADY_INSTALLED',
+                    'message' => 'Система уже установлена',
+                    'details' => [],
+                ]], 403);
+            }
+            if ($denied = $this->guardInstallKey($request)) {
+                return $denied;
+            }
+
+            return $this->performInstall($request);
+        });
         if ($result === null) {
             return response()->json(['error' => [
                 'code' => 'INSTALL_IN_PROGRESS',
@@ -245,6 +271,12 @@ ENV;
                 // установки и ляжет (tickets + платежи обязаны жить на HTTPS).
                 // Отсекаем это НА форме, а не 500-й после неё.
                 'app_url' => ['required', 'url', 'max:255', 'starts_with:https://'],
+                'timezone' => ['required', 'string', 'max:64'],
+                'locale' => ['required', 'string', 'in:ru,en'],
+                'region' => ['nullable', 'string', 'max:120'],
+                'currency' => ['required', 'string', 'size:3', 'regex:/^[A-Z]{3}$/'],
+                'updates_feed_url' => ['nullable', 'url', 'max:2048', 'starts_with:https://'],
+                'updates_public_key' => ['nullable', 'string', 'max:8192'],
                 // Региональный каталог — выбор заказчика, а не свойство движка.
                 // Чекбокс визарда присылает boolean; его absence означает false.
                 'seed_surgut' => ['nullable', 'boolean'],
@@ -271,6 +303,14 @@ ENV;
                 'app_url.starts_with' => 'APP_URL должен начинаться с https:// — приложение '
                     . 'отдаёт билеты и принимает оплату; по http оно откажется подниматься.',
             ]);
+
+            if (! in_array($validated['timezone'], DateTimeZone::listIdentifiers(), true)) {
+                throw new ValidationError(['timezone' => ['Неизвестный часовой пояс.']]);
+            }
+            $publicKey = trim((string) ($validated['updates_public_key'] ?? ''));
+            if ($publicKey !== '' && openssl_pkey_get_public($this->normalizePublicKey($publicKey)) === false) {
+                throw new ValidationError(['updates_public_key' => ['Не удалось прочитать публичный ключ обновлений (ожидается PEM или base64 DER).']]);
+            }
 
             // Шаг 1: Проверка подключения к БД
             //
@@ -355,12 +395,13 @@ ENV;
                 // Не блокируем установку, если symlink не работает
             }
 
-            // Шаг 7: Запуск сидеров (если есть)
-            try {
-                Artisan::call('db:seed', ['--force' => true]);
-            } catch (\Throwable $e) {
-                Log::warning('Installer: Сидеры не выполнены', ['exception' => $e->getMessage()]);
+            // Шаг 7: Обязательные сидеры. Роли/ права и системные справочники
+            // не являются опциональными: без них установка НЕ завершается.
+            $seedExit = Artisan::call('db:seed', ['--force' => true]);
+            if ($seedExit !== 0) {
+                throw new \RuntimeException('Обязательные сидеры не выполнены (exit ' . $seedExit . ')');
             }
+            $this->writeInstallState('seeded');
 
             // Шаг 8: Генерация APP_KEY если не был указан
             if (empty(config('app.key'))) {
@@ -389,6 +430,10 @@ ENV;
                 // норма: в архиве этих файлов нет, они появляются только руками
                 // хостера/администратора (см. SetupArtifactCleaner).
                 'removed_setup_files' => $removed,
+                // Итоговая диагностика: критическое ≠ предупреждение. Критические
+                // находки означают, что установка НЕ может считаться готовой.
+                'diagnostics' => $this->finalDiagnostics($validated),
+                'next_steps' => $this->nextSteps(),
             ]);
 
         } catch (ValidationException $e) {
@@ -703,9 +748,15 @@ ENV;
             '{APP_DEBUG}' => 'false',
             '{APP_URL}' => $this->envValue((string) $data['app_url']),
             '{NABILET_SEED_SURGUT}' => ! empty($data['seed_surgut']) ? 'true' : 'false',
-            '{APP_LOCALE}' => 'ru',
-            '{APP_FALLBACK_LOCALE}' => 'en',
-            '{APP_TIMEZONE}' => 'Europe/Moscow',
+            '{APP_LOCALE}' => (string) $data['locale'],
+            '{APP_FALLBACK_LOCALE}' => (string) $data['locale'] === 'en' ? 'ru' : 'en',
+            '{APP_TIMEZONE}' => (string) $data['timezone'],
+            '{NABILET_LOCALE}' => (string) $data['locale'],
+            '{NABILET_REGION}' => $this->envValue(trim((string) ($data['region'] ?? ''))),
+            '{NABILET_CURRENCY}' => (string) $data['currency'],
+            '{NABILET_PLATFORM_ADMINS}' => $this->envValue(strtolower(trim((string) $data['admin_email']))),
+            '{NABILET_UPDATE_PUBLIC_KEY}' => $this->publicKeyForEnv(trim((string) ($data['updates_public_key'] ?? ''))),
+            '{NABILET_UPDATE_FEED_URL}' => $this->envValue(trim((string) ($data['updates_feed_url'] ?? ''))),
             '{LOG_CHANNEL}' => 'stack',
             '{LOG_LEVEL}' => 'debug',
             '{DB_CONNECTION}' => 'mysql',
@@ -764,11 +815,54 @@ ENV;
         ) . '"';
     }
 
+    /** Публичный ключ: PEM, \n-as-text или base64 DER — всё приводится к PEM. */
+    private function normalizePublicKey(string $raw): string
+    {
+        $raw = str_replace('\\n', "\n", trim($raw));
+        if (str_contains($raw, 'BEGIN PUBLIC KEY')) {
+            return $raw;
+        }
+        $decoded = base64_decode($raw, true);
+        if ($decoded === false) {
+            return '';
+        }
+
+        return str_contains($decoded, 'BEGIN PUBLIC KEY')
+            ? $decoded
+            : "-----BEGIN PUBLIC KEY-----\n" . chunk_split(base64_encode($decoded), 64, "\n") . "-----END PUBLIC KEY-----\n";
+    }
+
+    /** Сохранить публичный ключ одной строкой base64 DER (без переводов строк в .env). */
+    private function publicKeyForEnv(string $raw): string
+    {
+        if ($raw === '') {
+            return '';
+        }
+        $key = openssl_pkey_get_public($this->normalizePublicKey($raw));
+        if ($key === false) {
+            return '';
+        }
+        $pem = (string) (openssl_pkey_get_details($key)['key'] ?? '');
+        $der = preg_replace('/-----[^-]+-----|\s+/', '', $pem) ?: '';
+
+        return base64_encode(base64_decode($der, true) ?: $der);
+    }
+
     /**
      * Создать пользователя-администратора
      */
     private function createAdminUser(string $email, string $password, string $orgName): void
     {
+        // Повтор после частичной установки: админ уже создан — не дублируем,
+        // а переиспользуем его и доводим связи до нужного состояния.
+        $existing = DB::table('users')->where('email', $email)->first();
+        if ($existing !== null) {
+            $this->bootstrapOrganization((int) $existing->id, $orgName);
+            Log::info('Installer: существующий администратор переиспользован', ['id' => $existing->id]);
+
+            return;
+        }
+
         $userId = null;
 
         // Каноничная модель — единственная, через которую теперь создаётся
@@ -812,18 +906,20 @@ ENV;
      * The app is multi-tenant (every tenant-scoped row carries organization_id) and
      * ResolveOrganizationContext resolves the active org from the user's membership.
      * Without this the freshly installed admin would have no org context and
-     * tenant-scoped queries would throw TenantContextMissingError. We create one
-     * org + link the admin; fail-soft so the install never blocks.
+     * tenant-scoped queries would throw TenantContextMissingError. Organization
+     * and role assignment are mandatory; a retry reuses existing rows instead of
+     * creating duplicates.
      */
     private function bootstrapOrganization(int $userId, string $orgName): void
     {
-        try {
-            $slug = Str::slug($orgName) ?: 'organization';
-            if (DB::table('organizations')->where('slug', $slug)->exists()) {
-                $slug .= '-' . substr(md5((string) $userId . $orgName), 0, 6);
-            }
+        $slug = Str::slug($orgName) ?: 'organization';
+        $existingOrg = DB::table('organizations')->where('name', $orgName)->first()
+            ?? DB::table('organizations')->where('slug', $slug)->first();
 
-            $organizationId = DB::table('organizations')->insertGetId([
+        if ($existingOrg !== null) {
+            $organizationId = (int) $existingOrg->id;
+        } else {
+            $organizationId = (int) DB::table('organizations')->insertGetId([
                 'public_id' => PublicId::generate(),
                 'name' => $orgName,
                 'slug' => $slug,
@@ -831,38 +927,40 @@ ENV;
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
-
-            $roleId = DB::table('roles')->where('slug', 'admin')->value('id');
-            if ($roleId === null) {
-                $roleId = DB::table('roles')->insertGetId([
-                    'name' => 'Administrator',
-                    'slug' => 'admin',
-                    'description' => 'Full access (created by installer)',
-                ]);
-            }
-
-            DB::table('user_organization')->updateOrInsert(
-                ['user_id' => $userId, 'organization_id' => $organizationId],
-                ['role_id' => $roleId, 'created_at' => now()]
-            );
-
-            DB::table('user_roles')->updateOrInsert(
-                ['user_id' => $userId, 'organization_id' => $organizationId, 'role_id' => $roleId],
-                ['granted_by' => null, 'created_at' => now()]
-            );
-
-            Log::info('Installer: Организация создана и админ привязан', [
-                'organization_id' => $organizationId,
-                'role_id' => $roleId,
-                'user_id' => $userId,
-            ]);
-        } catch (\Throwable $e) {
-            Log::warning('Installer: Не удалось создать организацию для админа', [
-                'exception' => $e->getMessage(),
-            ]);
-            // Не блокируем установку: админ уже создан, организацию можно
-            // дособрать позже из админки.
         }
+
+        $roleId = DB::table('roles')->where('slug', 'admin')->value('id');
+        if ($roleId === null) {
+            $roleId = (int) DB::table('roles')->insertGetId([
+                'name' => 'Administrator',
+                'slug' => 'admin',
+                'description' => 'Full access (created by installer)',
+            ]);
+        }
+
+        DB::table('user_organization')->updateOrInsert(
+            ['user_id' => $userId, 'organization_id' => $organizationId],
+            ['role_id' => $roleId, 'created_at' => now()]
+        );
+        DB::table('user_roles')->updateOrInsert(
+            ['user_id' => $userId, 'organization_id' => $organizationId, 'role_id' => $roleId],
+            ['granted_by' => null, 'created_at' => now()]
+        );
+
+        // Обязательное условие успешной установки: у владельца есть роль admin
+        // в organisation scope, иначе tenant-scoped API immediately falls apart.
+        $hasRole = DB::table('user_roles')
+            ->where('user_id', $userId)->where('organization_id', $organizationId)
+            ->where('role_id', $roleId)->exists();
+        if (! $hasRole) {
+            throw new \RuntimeException('Не удалось назначить роль администратора организации.');
+        }
+
+        Log::info('Installer: Организация создана и админ привязан', [
+            'organization_id' => $organizationId,
+            'role_id' => $roleId,
+            'user_id' => $userId,
+        ]);
     }
 
     /**
@@ -984,6 +1082,114 @@ ENV;
     /**
      * Проверить, установлена ли система
      */
+    /**
+     * Итоговая диагностика установки.
+     *
+     * Критические находки — отсутствующий lock, .env, БД, миграции, admin,
+     * platform admin — означают «установка не завершена». Остальные пункты
+     * (cron, MCP, обновления, SMTP) — предупреждения с конкретным действием.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array{ok: bool, critical: list<string>, warnings: list<string>, checks: array<string, bool>}
+     */
+    private function finalDiagnostics(array $data): array
+    {
+        $critical = [];
+        $warnings = [];
+        $checks = [];
+
+        $checks['install_lock'] = $this->isInstalled();
+        if (! $checks['install_lock']) {
+            $critical[] = 'Файл storage/install.lock не создан — установщик остаётся открытым.';
+        }
+
+        $env = File::exists(base_path('.env')) ? (string) File::get(base_path('.env')) : '';
+        $checks['env'] = str_contains($env, 'APP_KEY=base64:');
+        if (! $checks['env']) {
+            $critical[] = 'Файл .env отсутствует или в нём нет APP_KEY.';
+        }
+
+        try {
+            DB::connection()->select('select 1');
+            $checks['database'] = true;
+        } catch (\Throwable) {
+            $checks['database'] = false;
+            $critical[] = 'База данных недоступна после установки. Проверьте DB_* в .env.';
+        }
+
+        try {
+            $tables = DB::select("select table_name from information_schema.tables where table_schema = database()");
+            $checks['migrations'] = count($tables) > 90;
+        } catch (\Throwable) {
+            $checks['migrations'] = false;
+        }
+        if (! $checks['migrations']) {
+            $critical[] = 'Миграции не применились полностью (ожидается более 90 таблиц).';
+        }
+
+        $adminEmail = strtolower(trim((string) $data['admin_email']));
+        try {
+            $checks['admin'] = DB::table('users')->where('email', $adminEmail)->exists();
+            $checks['organization'] = DB::table('organizations')->count() > 0;
+            $checks['admin_role'] = DB::table('user_roles')
+                ->join('roles', 'roles.id', '=', 'user_roles.role_id')
+                ->join('users', 'users.id', '=', 'user_roles.user_id')
+                ->where('users.email', $adminEmail)->where('roles.slug', 'admin')->exists();
+        } catch (\Throwable) {
+            $checks['admin'] = $checks['organization'] = $checks['admin_role'] = false;
+        }
+        if (! $checks['admin']) {
+            $critical[] = 'Администратор не создан.';
+        }
+        if (! $checks['organization']) {
+            $critical[] = 'Организация не создана — tenant-scoped API будет недоступен.';
+        }
+        if (! $checks['admin_role']) {
+            $critical[] = 'Роль admin не назначена владельцу установки.';
+        }
+
+        $platformAdmins = array_map('strtolower', (array) config('nabilet.platform_admins', []));
+        $checks['platform_admin'] = in_array($adminEmail, $platformAdmins, true)
+            || str_contains($env, 'NABILET_PLATFORM_ADMINS=' . $adminEmail);
+        if (! $checks['platform_admin']) {
+            $critical[] = 'Владелец не назначен системным администратором (NABILET_PLATFORM_ADMINS).';
+        }
+
+        $checks['storage_writable'] = is_writable(storage_path()) && is_writable(base_path('bootstrap/cache'));
+        if (! $checks['storage_writable']) {
+            $warnings[] = 'Проверьте права на запись: storage/ и bootstrap/cache.';
+        }
+        if (! str_contains($env, 'MAIL_MAILER=smtp')) {
+            $warnings[] = 'SMTP не настроен: письма пока пишутся в лог. Укажите MAIL_* позже.';
+        }
+        if (trim((string) config('updates.feed_url', '')) === '') {
+            $warnings[] = 'Адрес ленты обновлений не задан: доступна ручная загрузка ZIP.';
+        }
+        if (trim((string) config('updates.public_key', '')) === '') {
+            $warnings[] = 'Публичный ключ обновлений не задан: автоматические обновления недоступны.';
+        }
+        $warnings[] = 'Настройте cron: php artisan schedule:run каждую минуту.';
+        $warnings[] = 'Для ИИ-агента выпустите токен с нужными полномочиями в разделе «ИИ-агент».';
+
+        return [
+            'ok' => $critical === [],
+            'critical' => $critical,
+            'warnings' => $warnings,
+            'checks' => $checks,
+        ];
+    }
+
+    /** @return array<string, string> */
+    private function nextSteps(): array
+    {
+        return [
+            'cron' => '* * * * * cd ' . base_path() . ' && php artisan schedule:run >> /dev/null 2>&1',
+            'mcp' => 'POST /mcp с заголовком Authorization: Bearer <токен>; токен выпускается в админке → «ИИ-агент».',
+            'updates' => 'На целевом сайте задайте NABILET_UPDATE_PUBLIC_KEY (публичный PEM/base64 DER) '
+                . 'и NABILET_UPDATE_FEED_URL (HTTPS-адрес manifest.json). Приватный ключ хранится только в CI.',
+        ];
+    }
+
     private function isInstalled(): bool
     {
         return File::exists(storage_path('install.lock'));

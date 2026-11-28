@@ -28,24 +28,39 @@ final class InstallKey
     public static function ensure(): string
     {
         $path = self::path();
-        if (is_file($path)) {
-            $existing = trim((string) file_get_contents($path));
-            if ($existing !== '') {
-                return $existing;
-            }
-        }
-
-        $key = bin2hex(random_bytes(32)); // 256 бит энтропии
         $dir = dirname($path);
         if (! is_dir($dir) && ! mkdir($dir, 0775, true) && ! is_dir($dir)) {
             throw new \RuntimeException('Не удалось создать каталог storage/ для ключа установки.');
         }
-        if (file_put_contents($path, $key . "\n", LOCK_EX) === false) {
-            throw new \RuntimeException('Не удалось записать ключ установки в storage/' . self::FILE . '.');
-        }
-        @chmod($path, 0600);
 
-        return $key;
+        // 'x' создаёт файл только если его ещё нет: два параллельных запроса
+        // не могут перезаписать ключ друг друга.
+        $handle = @fopen($path, 'x');
+        if ($handle !== false) {
+            $key = bin2hex(random_bytes(32)); // 256 бит энтропии
+            fwrite($handle, $key . "\n");
+            fflush($handle);
+            flock($handle, LOCK_EX | LOCK_NB);
+            fclose($handle);
+            @chmod($path, 0600);
+
+            return $key;
+        }
+
+        // Файл уже создан другим запросом — читаем его с общей блокировкой.
+        $handle = @fopen($path, 'rb');
+        if ($handle === false) {
+            throw new \RuntimeException('Не удалось прочитать ключ установки.');
+        }
+        flock($handle, LOCK_SH);
+        $existing = trim(stream_get_contents($handle));
+        flock($handle, LOCK_UN);
+        fclose($handle);
+        if ($existing === '') {
+            throw new \RuntimeException('Ключ установки пуст — удалите storage/install.key вручную.');
+        }
+
+        return $existing;
     }
 
     public static function verify(?string $candidate): bool

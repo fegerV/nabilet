@@ -346,6 +346,30 @@
                                         <label class="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-200">URL сайта <span class="text-rose-500">*</span></label>
                                         <input name="app_url" required type="url" class="field" placeholder="https://mysite.ru">
                                     </div>
+                                    <div>
+                                        <label class="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-200">Часовой пояс <span class="text-rose-500">*</span></label>
+                                        <select name="timezone" required class="field">
+                                            @foreach (DateTimeZone::listIdentifiers() as $tz)
+                                                <option value="{{ $tz }}" @selected($tz === 'Europe/Moscow')>{{ $tz }}</option>
+                                            @endforeach
+                                        </select>
+                                        <span class="mt-1 block text-xs text-slate-500">Используется для дат мероприятий и сеансов.</span>
+                                    </div>
+                                    <div>
+                                        <label class="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-200">Язык <span class="text-rose-500">*</span></label>
+                                        <select name="locale" required class="field">
+                                            <option value="ru" selected>Русский</option>
+                                            <option value="en">English</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-200">Регион</label>
+                                        <input name="region" class="field" placeholder="например, Сургут">
+                                    </div>
+                                    <div>
+                                        <label class="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-200">Валюта <span class="text-rose-500">*</span></label>
+                                        <input name="currency" required maxlength="3" pattern="[A-Z]{3}" value="RUB" class="field">
+                                    </div>
                                 </div>
 
                                 <label class="mt-4 flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 bg-white p-3.5 dark:border-slate-700 dark:bg-slate-800/40">
@@ -372,6 +396,21 @@
                                         <label class="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-200">Секретный ключ</label>
                                         <input name="yookassa_api_key" class="field" placeholder="live_xxx">
                                     </div>
+                                </div>
+                            </details>
+
+                            <!-- Обновления (опционально): только публичный ключ -->
+                            <details class="group rounded-xl border border-slate-200 dark:border-slate-700">
+                                <summary class="flex cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-medium text-slate-700 dark:text-slate-200">
+                                    <span>Автоматические обновления (опционально)</span>
+                                    <svg class="h-4 w-4 text-slate-400 transition group-open:rotate-180 dark:text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 9l6 6 6-6"/></svg>
+                                </summary>
+                                <div class="space-y-3 border-t border-slate-100 px-4 py-4 dark:border-slate-700">
+                                    <p class="text-xs text-slate-500 dark:text-slate-400">
+                                        Приватный ключ НЕ вводится здесь и НЕ хранится на сайте — он остаётся в CI.
+                                    </p>
+                                    <input name="updates_feed_url" class="field" placeholder="https://updates.example.com/manifest.json">
+                                    <textarea name="updates_public_key" rows="3" class="field" placeholder="-----BEGIN PUBLIC KEY----- …"></textarea>
                                 </div>
                             </details>
 
@@ -536,7 +575,17 @@
                                 <svg class="h-11 w-11 text-emerald-600 dark:text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
                             </div>
                             <h3 class="mt-5 text-2xl font-extrabold text-slate-900 dark:text-white">Установка завершена!</h3>
-                            <p class="mt-1.5 text-sm text-slate-500 dark:text-slate-400">Система готова к работе. Можно переходить в панель администратора.</p>
+                            <p class="mt-1.5 text-sm text-slate-500 dark:text-slate-400">Проверьте диагностику и настройте cron перед реальной эксплуатацией.</p>
+                            <div id="install-diagnostics" class="mt-5 hidden space-y-2 text-left"></div>
+                            <div class="mt-5 rounded-xl border border-slate-200 bg-white p-4 text-left text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-800/40 dark:text-slate-300">
+                                <p class="font-semibold text-slate-800 dark:text-slate-100">Дальше</p>
+                                <p class="mt-2 font-semibold">Cron (один раз в минуту)</p>
+                                <code class="mt-1 block break-all rounded bg-slate-100 p-2 dark:bg-slate-900">{{ $nextSteps['cron'] }}</code>
+                                <p class="mt-3 font-semibold">ИИ-агент (MCP)</p>
+                                <p class="mt-1">{{ $nextSteps['mcp'] }}</p>
+                                <p class="mt-3 font-semibold">Обновления</p>
+                                <p class="mt-1">{{ $nextSteps['updates'] }}</p>
+                            </div>
                             <a href="/admin" class="btn btn-primary mt-6 inline-flex">Перейти в админку →</a>
                         </div>
 
@@ -702,7 +751,7 @@
         /* ---------- Шаг 2: БД ---------- */
         function validateDb() {
             const f = $('#db-form');
-            const required = ['db_host', 'db_database', 'db_username', 'db_password', 'app_name', 'app_url'];
+            const required = ['db_host', 'db_database', 'db_username', 'db_password', 'app_name', 'app_url', 'timezone', 'locale', 'currency'];
             let ok = true;
             required.forEach(name => {
                 const el = f.elements[name];
@@ -833,6 +882,12 @@
                 install_key: ($('#install-key')?.value || '').trim(),
                 app_name: db.elements['app_name'].value,
                 app_url: db.elements['app_url'].value,
+                timezone: db.elements['timezone'].value,
+                locale: db.elements['locale'].value,
+                region: db.elements['region'].value,
+                currency: db.elements['currency'].value,
+                updates_feed_url: db.elements['updates_feed_url'].value,
+                updates_public_key: db.elements['updates_public_key'].value,
                 seed_surgut: db.elements['seed_surgut'].checked,
                 db_host: db.elements['db_host'].value,
                 db_port: parseInt(db.elements['db_port'].value, 10),
@@ -867,6 +922,17 @@
                 markDone('row-migrate');
                 setTimeout(() => markDone('row-admin'), 500);
                 setTimeout(() => markDone('row-storage'), 1000);
+                const diag = result.diagnostics;
+                if (diag) {
+                    const box = $('#install-diagnostics');
+                    const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+                    let html = '';
+                    (diag.critical || []).forEach(m => { html += '<div class="rounded-lg border border-rose-200 bg-rose-50 p-3 text-rose-700">Критично: ' + esc(m) + '</div>'; });
+                    (diag.warnings || []).forEach(m => { html += '<div class="rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-700">Внимание: ' + esc(m) + '</div>'; });
+                    if (!html) html = '<div class="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-emerald-700">Все проверки пройдены.</div>';
+                    box.innerHTML = html;
+                    box.classList.remove('hidden');
+                }
                 setTimeout(() => {
                     markDone('row-finalize');
                     $('#progress-block').classList.add('hidden');

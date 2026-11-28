@@ -40,6 +40,10 @@ class InstallerHardeningTest extends TestCase
         return [
             'app_name' => 'My Tickets',
             'app_url' => 'https://tickets.example.com',
+            'timezone' => 'Europe/Moscow',
+            'locale' => 'ru',
+            'region' => 'Сургут',
+            'currency' => 'RUB',
             'db_host' => '127.0.0.1',
             'db_port' => 3306,
             'db_database' => 'nabilet',

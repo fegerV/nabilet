@@ -3,7 +3,12 @@
 declare(strict_types=1);
 
 return [
-    'version' => '1.16.2',
+    'version' => '1.16.3',
+
+    // Региональные defaults мастера установки (не привязывают систему к городу).
+    'locale' => env('NABILET_LOCALE', 'ru'),
+    'region' => env('NABILET_REGION', ''),
+    'currency' => env('NABILET_CURRENCY', 'RUB'),
 
     /*
      * Платформенные администраторы: e-mail через запятую. Только они могут

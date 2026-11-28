@@ -146,6 +146,10 @@ check('GET /install/log до установки -> 200 и массив entries',
 $payload = $creds + [
     'app_name' => 'Nabilet Smoke',
     'app_url' => 'https://daragent.ru',
+    'timezone' => 'Europe/Moscow',
+    'locale' => 'ru',
+    'region' => 'Сургут',
+    'currency' => 'RUB',
     'admin_email' => 'admin@smoke.local',
     'admin_password' => 'adminpass123',
     'mail_host' => '',
@@ -209,6 +213,13 @@ $trimmed = trim((string) $body);
 check('POST /install ответ начинается с { (JSON без посторонних баннеров)', $trimmed !== '' && $trimmed[0] === '{', 'first=' . substr($trimmed, 0, 20));
 $installResponse = json_decode($trimmed, true);
 check('POST /install ответ валидный JSON', json_last_error() === JSON_ERROR_NONE, 'err=' . json_last_error_msg());
+check('финальная диагностика: критических ошибок нет',
+    is_array($installResponse) && ($installResponse['diagnostics']['ok'] ?? false) === true
+    && ($installResponse['diagnostics']['critical'] ?? ['x']) === [],
+    'critical=' . json_encode($installResponse['diagnostics']['critical'] ?? [], JSON_UNESCAPED_UNICODE));
+check('инструкции cron/MCP/обновлений присутствуют',
+    is_array($installResponse)
+    && isset($installResponse['next_steps']['cron'], $installResponse['next_steps']['mcp'], $installResponse['next_steps']['updates']));
 check(
     'POST /install сообщает, что удалил info.php и install/',
     is_array($installResponse)
@@ -225,6 +236,8 @@ check('.env: APP_URL=https://daragent.ru', str_contains($env, 'APP_URL=https://d
 check('.env: DB_HOST=127.0.0.1 / DB_PORT=3307', str_contains($env, 'DB_HOST=127.0.0.1') && str_contains($env, 'DB_PORT=3307'));
 check('.env: DB_CHARSET/DB_COLLATION заполнены', str_contains($env, 'DB_CHARSET=utf8mb4') && str_contains($env, 'DB_COLLATION=utf8mb4_unicode_ci'));
 check('.env: APP_KEY сгенерирован', (bool) preg_match('/^APP_KEY=base64:.+/m', $env));
+check('.env: владелец назначен системным администратором', str_contains($env, 'NABILET_PLATFORM_ADMINS=admin@smoke.local'));
+check('.env: нет приватного ключа обновлений', ! str_contains($env, 'PRIVATE KEY'));
 
 check('storage/install.lock существует', is_file($siteDir . '/storage/install.lock'));
 
