@@ -1,12 +1,12 @@
 {
     "schema": 1,
     "version": "1.16.1",
-    "released_at": "2026-11-28T00:34:07Z",
-    "build_date": "2026-11-28T00:34:07Z",
-    "commit_sha": "ecd1ef5b29c052a87282dd356151dd7349443dc9",
+    "released_at": "2026-11-28T00:48:59Z",
+    "build_date": "2026-11-28T00:48:59Z",
+    "commit_sha": "f1501cf4948e1139e0c9c77c7cb97d5ef9916e83",
     "channel": "stable",
-    "artifact": "nabilet-hosting-v1.16.1-20261128-003403.zip",
-    "sha256": "32e133df01a755318f750d3d0ec7c74f002441c789dd7b5975a806089d2df741",
+    "artifact": "nabilet-hosting-v1.16.1-20261128-004855.zip",
+    "sha256": "21ee52d3ebbd2a9b52fdcbc3433879809688ef861f351df11881e3c8091acfb8",
     "size_bytes": 16661272,
     "php": {
         "min": "8.3.0",
@@ -22,5 +22,5 @@
     },
     "from_versions": [],
     "migrations": 71,
-    "signature": ""
+    "signature": "q2n7tCebgf57w45xuj/D5zWs+qIbTpRfnJirmu4HPHOVwY/LI191lxNpy1lXulDfIaq7K2JT2sKt7UDtT47HcQrkWvLJMqroZr3fFogA9txpNbN6DdTnoivinyvwSidZnSYB5Jizp624XC9c4lgSbDdOPwsNnBTg6VyD7fCCS/YbnpGXAITSTlQnsKrjZMlEp0zeF9/+TbebmaxjN5gifQL632piOjyHj7ggrcPdm5eS/u8daFBJ6orqHMyU1Z5puHE0FwTjQ9vMT3c1bSUL8MsgwzAHX83pkhBzUnizYPyQBzPs/KqEAQPsNa0rj6HTm5pW1JIFh41OyzzYZl35DA=="
 }
