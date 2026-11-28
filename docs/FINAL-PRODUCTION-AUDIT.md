@@ -17,7 +17,7 @@
 |---|---|
 | PHP syntax lint + implicit nullable | 1161 файл, 0 ошибок |
 | `php tests/run.php` (dependency-free kernel) | 1094 метода / 2806 утверждений, 0 падений |
-| `php tools/verify-purity.php` | 166 файлов, 0 нарушений (domen не знает Laravel) |
+| `php tools/verify-purity.php` | 166 файлов, 0 нарушений (domain не знает Laravel) |
 | `tools/verify-error-envelope.php`, `modules.php --validate` | 0 нарушений, граф валиден |
 | `verify-migrations / state-machines / openapi ×2 / spec-parity / contract-schema ×2 / models-schema / autoload / module-structure / route-ownership` | все PASS |
 | `composer validate` | valid |
@@ -30,16 +30,26 @@
 | Clean install из ZIP (распакован, отдельная БД `install_smoke`) | **52/52**, health 1.16.3, `/install` → 404/405 |
 
 Сборка архива: `scripts/build-hosting-zip.php` (портативная, без robocopy),
-9304 записи, production `vendor` по `composer.lock`, пустое `storage/`,
+8690 записей, production `vendor` по `composer.lock`, пустое `storage/`,
 `.env` отсутствует. Manifest содержит версию, `commit_sha`, дату, SHA-256.
 
-Итоговый артефакт 1.16.3 публикуется **только после** успешного прогона полного
-workflow на финальной ревизии: реквизиты (имя ZIP, SHA-256, commit SHA, ссылка на
-run) вносятся сюда и в `releases/manifest.json` из фактического артефакта CI.
-Ранее подписанный архив 1.16.2 (`...-20261128-142812.zip`) снят с публикации.
-Приватный ключ находится только в секрете GitHub
-`NABILET_UPDATE_PRIVATE_KEY_PEM`; для автоматических обновлений владелец задаёт
-`NABILET_UPDATE_PUBLIC_KEY` на сайте (мастер 1.16.3 умеет записать его сам).
+Итоговый артефакт 1.16.3 собран и подписан **только после** полного зелёного
+прогона workflow на финальной ревизии `53617b90ec41aaba9e5f661e8f0f02945ea938e3`:
+
+```
+releases/nabilet-hosting-v1.16.3-20261128-164832.zip
+SHA-256: e3cd3a69e86de492cb0ee4881dbfc5164435a45dcdac44ff07d9fbb16db5f335
+CI:      https://github.com/fegerV/nabilet/actions/runs/46166730927 (success, все job'ы)
+```
+
+Хэш сверен с `.sha256` и `manifest.json`, подпись проверена
+`tools/verify-release-artifact.php --check-signature`, распакованный архив прошёл
+smoke 52/52 и браузерный E2E в CI. Ранее подписанный архив 1.16.2 (`...-20261128-142812.zip`) остаётся в
+`releases/` только как точка отката и больше не является рекомендуемым.
+Приватный ключ находится только в
+секрете GitHub `NABILET_UPDATE_PRIVATE_KEY_PEM`; для автоматических обновлений
+владелец задаёт `NABILET_UPDATE_PUBLIC_KEY` на сайте (мастер 1.16.3 умеет
+записать его сам).
 
 ## 2. Матрица готовности модулей
 
