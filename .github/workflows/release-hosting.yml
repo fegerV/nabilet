@@ -277,16 +277,16 @@ jobs:
           php scripts/smoke/db-setup-smoke.php
           mysql -h 127.0.0.1 -P 3307 -uroot -prootpass -e "SET GLOBAL log_bin_trust_function_creators = 1;"
           cp scripts/smoke/smoke-install.php "$RUNNER_TEMP/smoke-install.php"
-          php "$RUNNER_TEMP/smoke-install.php"
           cd "$RUNNER_TEMP/site/public_html"
           php -S 127.0.0.1:8088 router-smoke.php > "$RUNNER_TEMP/php-server.log" 2>&1 &
           echo $! > "$RUNNER_TEMP/server.pid"
+          READY=0
           for i in $(seq 1 30); do
-            if curl -fsS http://127.0.0.1:8088/robots.txt > /dev/null 2>&1; then exit 0; fi
+            if curl -fsS http://127.0.0.1:8088/robots.txt > /dev/null 2>&1; then READY=1; break; fi
             sleep 1
           done
-          cat "$RUNNER_TEMP/php-server.log"
-          exit 1
+          if [ "$READY" != "1" ]; then cat "$RUNNER_TEMP/php-server.log"; exit 1; fi
+          php "$RUNNER_TEMP/smoke-install.php"
 
       - name: Run browser scenarios
         shell: bash
