@@ -17,6 +17,7 @@ use Nabilet\Core\Support\DatabaseInvariants;
 use Nabilet\Core\Support\PublicationStatus;
 use Nabilet\Modules\Core\Support\PublicId;
 use Nabilet\Modules\Core\Users\Domain\UserStatus;
+use Nabilet\Modules\Installer\Support\InstallKey;
 use Nabilet\Modules\Installer\Support\PreinstallAppKey;
 use Nabilet\Modules\Installer\Support\SetupArtifactCleaner;
 
@@ -122,6 +123,9 @@ ENV;
                 : redirect('/')->with('error', 'Система уже установлена');
         }
 
+        // Ключ создаётся при первом открытии мастера, но НЕ возвращается в
+        // ответе: его читает владелец из storage/install.key вне DocumentRoot.
+        InstallKey::ensure();
         $requirements = $this->checkRequirements();
         $passed = $requirements['passed'];
 
@@ -130,21 +134,28 @@ ENV;
                 'step' => 'requirements',
                 'passed' => $passed,
                 'requirements' => $requirements['details'],
+                'install_key' => InstallKey::instructions(),
+                'partial_install' => $this->installState(),
             ]);
         }
 
         return view('installer::install', [
             'passed' => $passed,
             'requirements' => $requirements['details'],
+            'installKey' => InstallKey::instructions(),
+            'partialInstall' => $this->installState(),
         ]);
     }
 
     /**
-     * Обработать форму установки
+     * Обработать форму установки.
+     *
+     * Одноразовый ключ + неблокирующая файловая блокировка: без ключа мастер
+     * может захватить посторонний посетитель, а без блокировки два параллельных
+     * запроса могут одновременно писать .env и гонять миграции.
      */
     public function install(Request $request): JsonResponse
     {
-        // Если уже установлено — блокируем
         if ($this->isInstalled()) {
             return response()->json(['error' => [
                 'code' => 'ALREADY_INSTALLED',
@@ -152,6 +163,69 @@ ENV;
                 'details' => [],
             ]], 403);
         }
+
+        if ($denied = $this->guardInstallKey($request)) {
+            return $denied;
+        }
+
+        $result = $this->withInstallLock(fn (): JsonResponse => $this->performInstall($request));
+        if ($result === null) {
+            return response()->json(['error' => [
+                'code' => 'INSTALL_IN_PROGRESS',
+                'message' => 'Установка уже выполняется другим запросом. Повторите после его завершения.',
+                'details' => [],
+            ]], 409);
+        }
+
+        return $result;
+    }
+
+    /** @return JsonResponse|null Ответ-отказ или null, если ключ корректен. */
+    private function guardInstallKey(Request $request): ?JsonResponse
+    {
+        $candidate = $request->header(InstallKey::HEADER) ?: $request->input('install_key');
+        if (InstallKey::verify(is_string($candidate) ? $candidate : null)) {
+            return null;
+        }
+
+        return response()->json(['error' => [
+            'code' => 'INSTALL_KEY_INVALID',
+            'message' => 'Неверный или отсутствующий ключ установки. Прочитайте storage/install.key через файловый менеджер или SSH и введите его в мастере.',
+            'details' => InstallKey::instructions(),
+        ]], 403);
+    }
+
+    /**
+     * @template T
+     * @param  callable(): T  $callback
+     * @return T|null
+     */
+    private function withInstallLock(callable $callback): mixed
+    {
+        $path = storage_path('framework/install-in-progress.lock');
+        if (! is_dir(dirname($path)) && ! mkdir(dirname($path), 0775, true) && ! is_dir(dirname($path))) {
+            return null;
+        }
+        $handle = @fopen($path, 'c+b');
+        if ($handle === false || ! flock($handle, LOCK_EX | LOCK_NB)) {
+            if ($handle !== false) {
+                fclose($handle);
+            }
+
+            return null;
+        }
+
+        try {
+            return $callback();
+        } finally {
+            flock($handle, LOCK_UN);
+            fclose($handle);
+        }
+    }
+
+    private function performInstall(Request $request): JsonResponse
+    {
+        $this->writeInstallState('started');
 
         try {
             // Лимит PHP (по умолчанию 30 с у php-fpm на шаред-хостинге) считает
@@ -228,6 +302,7 @@ ENV;
 
             // Шаг 2: Запись .env файла (возвращает сгенерированный APP_KEY)
             $appKey = $this->writeEnvFile($validated);
+            $this->writeInstallState('env_written');
 
             // Перед запуском Artisan-команд подменяем in-memory-конфиг реальными
             // учётными данными из формы. `config:clear` удаляет только кэш-файл, но
@@ -266,9 +341,11 @@ ENV;
             if ($migrateExitCode !== 0) {
                 throw new \RuntimeException('Не удалось выполнить миграции базы данных');
             }
+            $this->writeInstallState('migrated');
 
             // Шаг 5: Создание администратора и его организации
             $this->createAdminUser($validated['admin_email'], $validated['admin_password'], $validated['app_name']);
+            $this->writeInstallState('admin_created');
 
             // Шаг 6: Создание symbolic link для storage
             try {
@@ -322,6 +399,10 @@ ENV;
             ]], 422);
 
         } catch (\Throwable $e) {
+            // Состояние сохраняется ДО ответа: после обрыва PHP/перезагрузки
+            // страницы владелец увидит, на каком шаге остановилась установка,
+            // и сможет повторить её теми же данными (миграции идемпотентны).
+            $this->writeInstallState('failed', $e->getMessage());
             Log::error('Installer: Критическая ошибка установки', [
                 'exception' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
@@ -353,6 +434,10 @@ ENV;
                 'message' => 'Система уже установлена',
                 'details' => [],
             ]], 403);
+        }
+
+        if ($denied = $this->guardInstallKey($request)) {
+            return $denied;
         }
 
         try {
@@ -804,6 +889,10 @@ ENV;
             ]], 403);
         }
 
+        if ($denied = $this->guardInstallKey($request)) {
+            return $denied;
+        }
+
         // Вчерашний день тоже: установка, начатая в 23:50, падает в 00:05.
         $files = [
             storage_path('logs/laravel-' . now()->subDay()->format('Y-m-d') . '.log'),
@@ -900,6 +989,44 @@ ENV;
         return File::exists(storage_path('install.lock'));
     }
 
+    private function statePath(): string
+    {
+        return storage_path('framework/install-state.json');
+    }
+
+    /** @return array<string, mixed>|null */
+    private function installState(): ?array
+    {
+        $path = $this->statePath();
+        if (! File::exists($path)) {
+            return null;
+        }
+        $state = json_decode((string) File::get($path), true);
+
+        return is_array($state) ? $state : null;
+    }
+
+    private function writeInstallState(string $step, ?string $error = null): void
+    {
+        $state = [
+            'step' => $step,
+            'updated_at' => now()->toIso8601String(),
+            'error' => $error === null ? null : mb_substr($error, 0, 1000),
+        ];
+        $path = $this->statePath();
+        $dir = dirname($path);
+        if (! is_dir($dir) && ! mkdir($dir, 0775, true) && ! is_dir($dir)) {
+            return;
+        }
+        File::put($path, json_encode($state, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+    }
+
+    private function clearInstallState(): void
+    {
+        File::delete($this->statePath());
+        File::delete(storage_path('framework/install-in-progress.lock'));
+    }
+
     /**
      * Пометить систему как установленную и закрыть за собой все входы.
      *
@@ -913,6 +1040,8 @@ ENV;
     private function markAsInstalled(): array
     {
         File::put(storage_path('install.lock'), now()->toIso8601String());
+        InstallKey::forget();
+        $this->clearInstallState();
         Log::info('Installer: Система помечена как установленная');
 
         // Временный ключ на окно установки больше не нужен: реальный APP_KEY

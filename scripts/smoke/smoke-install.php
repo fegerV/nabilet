@@ -16,6 +16,9 @@ declare(strict_types=1);
 
 $base = 'http://127.0.0.1:8088';
 $siteDir = __DIR__ . '/site';
+$cookieJar = sys_get_temp_dir() . '/nabilet-smoke-cookies-' . getmypid() . '.txt';
+$csrfToken = '';
+$installKey = '';
 
 $checks = [];
 $fail = 0;
@@ -33,10 +36,19 @@ function check(string $name, bool $ok, string $note = ''): void
 /** @return array{0:int,1:string,2:string} */
 function http(string $method, string $url, array $post = [], array $headers = []): array
 {
+    global $cookieJar, $csrfToken, $installKey;
     $ch = curl_init($url);
     $allHeaders = $headers;
     if ($post !== []) {
         $allHeaders[] = 'Content-Type: application/x-www-form-urlencoded';
+    }
+    // Мастер защищён CSRF и одноразовым ключом из storage/install.key.
+    // Cookie-файл сохраняет сессию между GET /install и POST-фазой.
+    if ($csrfToken !== '') {
+        $allHeaders[] = 'X-CSRF-TOKEN: ' . $csrfToken;
+    }
+    if ($installKey !== '') {
+        $allHeaders[] = 'X-Install-Key: ' . $installKey;
     }
     curl_setopt_array($ch, [
         CURLOPT_CUSTOMREQUEST => $method,
@@ -44,6 +56,8 @@ function http(string $method, string $url, array $post = [], array $headers = []
         CURLOPT_HEADER => true,
         CURLOPT_TIMEOUT => 300,
         CURLOPT_FOLLOWLOCATION => false,
+        CURLOPT_COOKIEJAR => $cookieJar,
+        CURLOPT_COOKIEFILE => $cookieJar,
         CURLOPT_HTTPHEADER => $allHeaders,
     ]);
     if ($post !== []) {
@@ -64,6 +78,19 @@ function http(string $method, string $url, array $post = [], array $headers = []
 
 [$status, $body, $head] = http('GET', $base . '/install');
 check('GET /install -> 200 HTML', $status === 200 && (str_contains($body, '<!DOCTYPE') || str_contains($body, '<html')), 'status=' . $status);
+
+// Ключ установки и CSRF-токен reader-only: оба создаются сервером при открытии
+// мастера, в STM-ответе ключ НЕ публикуется.
+if (preg_match('/<meta name="csrf-token" content="([^"]+)"/', $body, $m) === 1) {
+    $csrfToken = html_entity_decode($m[1], ENT_QUOTES | ENT_HTML5, 'UTF-8');
+}
+$keyFile = $siteDir . '/storage/install.key';
+check('одноразовый ключ создан в storage/install.key', is_file($keyFile) && trim((string) file_get_contents($keyFile)) !== '');
+if (is_file($keyFile)) {
+    $installKey = trim((string) file_get_contents($keyFile));
+}
+check('ключ не раскрывается в HTML мастера', $installKey === '' || ! str_contains($body, $installKey));
+check('CSRF-токен присутствует в разметке', $csrfToken !== '');
 
 check('мастер самодостаточен: installer-tailwind.js в разметке', str_contains($body, '/installer-tailwind.js'));
 check('нет внешних CDN (tailwindcss.com / googleapis)', ! str_contains($body, 'cdn.tailwindcss.com') && ! str_contains($body, 'googleapis'));
@@ -274,6 +301,8 @@ check('неизвестный путь -> 404 (брендированная, н�
 
 [$status, $body, $head] = http('GET', $base . '/favicon.svg');
 check('GET /favicon.svg -> 200', $status === 200, 'status=' . $status);
+
+@unlink($cookieJar);
 
 // Итог
 $total = count($checks);

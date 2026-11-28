@@ -98,6 +98,8 @@ return Application::configure(basePath: dirname(__DIR__))
     // `seats:clear-expired`, and an artisan schedule that references an unregistered
     // command fails as a whole — so this one is wired up here by hand.
     ->withCommands([
+        // Контролируемая процедура повторной установки (только с --force).
+        \Nabilet\Modules\Installer\Console\UnlockInstallerCommand::class,
         \Nabilet\Modules\Inventory\Console\ClearExpiredHoldsCommand::class,
         // Поднимает повторы доставки вебхуков по next_retry_at. Зарегистрирован
         // здесь по той же причине, что и очистка холдов: провайдеры модулей не
@@ -201,7 +203,9 @@ return Application::configure(basePath: dirname(__DIR__))
         // шлёт JSON без CSRF-токена (как и положено установщику), поэтому
         // PreventRequestForgery для /install отключаем. Повторный запуск всё равно
         // блокируется контроллером по install.lock.
-        $middleware->validateCsrfTokens(except: ['install', 'install/*']);
+        // Установщик больше НЕ исключён из CSRF: ключ из storage/install.key
+        // и сессионный CSRF-токен защищают захват мастера посторонним.
+        // Форма отдаёт токен в <meta name="csrf-token"> и шлёт его в заголовке.
 
         // ── Aliases ──────────────────────────────────────────────────────────
         // Only kernel middleware are aliased here. Modules register their own

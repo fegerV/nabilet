@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="theme-color" content="#4f46e5">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>Установка Nabilet — мастер настройки</title>
 
     <!-- Установщик самодостаточен: скрипт Tailwind лежит в корне docroot
@@ -266,6 +267,22 @@
                         <div id="requirements-error" class="mt-4 hidden rounded-xl border border-rose-200 bg-rose-50 p-4 dark:border-rose-500/30 dark:bg-rose-500/10">
                             <p class="text-sm font-semibold text-rose-700 dark:text-rose-300">Обнаружены проблемы:</p>
                             <ul id="requirements-error-list" class="mt-1.5 list-disc pl-5 text-sm text-rose-600 dark:text-rose-300/90"></ul>
+                        </div>
+
+                        <div class="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-500/30 dark:bg-amber-500/10">
+                            <p class="text-sm font-semibold text-amber-800 dark:text-amber-200">Ключ установки (обязательно)</p>
+                            <p class="mt-1 text-xs text-amber-700 dark:text-amber-300">{{ $installKey['hint'] }}</p>
+                            <input id="install-key" autocomplete="off" spellcheck="false"
+                                   placeholder="Содержимое {{ $installKey['file'] }}"
+                                   class="field mt-3 font-mono text-xs">
+                            <p id="install-key-error" class="mt-2 hidden text-xs text-rose-600"></p>
+                            @if (!empty($partialInstall))
+                                <p class="mt-3 text-xs text-amber-800 dark:text-amber-200">
+                                    Предыдущая установка прервалась на шаге
+                                    <code>{{ e($partialInstall['step'] ?? 'unknown') }}</code>.
+                                    Можно повторить с теми же данными.
+                                </p>
+                            @endif
                         </div>
                     </div>
 
@@ -547,6 +564,27 @@
 
         const state = { step: 1, passed: false, dbTested: false };
 
+        function apiHeaders(extra) {
+            return Object.assign({
+                'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '',
+                'X-Install-Key': ($('#install-key')?.value || '').trim()
+            }, extra || {});
+        }
+
+        function requireInstallKey() {
+            const key = ($('#install-key')?.value || '').trim();
+            const box = $('#install-key-error');
+            if (!key) {
+                box.textContent = 'Введите ключ из storage/install.key.';
+                box.classList.remove('hidden');
+                return false;
+            }
+            box.classList.add('hidden');
+            return true;
+        }
+
         /* ---------- Тема ---------- */
         function applyTheme(theme) {
             const root = document.documentElement;
@@ -685,7 +723,7 @@
 
         /* ---------- Шаг 2: реальная проверка подключения к БД ---------- */
         async function testDatabase(btn) {
-            if (!validateDb()) return;
+            if (!validateDb() || !requireInstallKey()) return;
             const f = $('#db-form');
             const err = $('#db-error');
             const warnBox = $('#db-warning');
@@ -700,8 +738,9 @@
                 // заведомо неверных кредах (аудит установщика W-3).
                 const res = await fetch('/install/test-database', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    headers: apiHeaders({ 'Content-Type': 'application/json' }),
                     body: JSON.stringify({
+                        install_key: ($('#install-key')?.value || '').trim(),
                         db_host: f.elements['db_host'].value,
                         db_port: parseInt(f.elements['db_port'].value, 10),
                         db_database: f.elements['db_database'].value,
@@ -756,6 +795,7 @@
         }
 
         function submitInstallation() {
+            if (!validateDb() || !requireInstallKey()) return;
             const f = $('#admin-form');
             const email = f.elements['admin_email'];
             const pw = f.elements['admin_password'];
@@ -790,6 +830,7 @@
             const db = $('#db-form');
             const adm = $('#admin-form');
             const payload = {
+                install_key: ($('#install-key')?.value || '').trim(),
                 app_name: db.elements['app_name'].value,
                 app_url: db.elements['app_url'].value,
                 seed_surgut: db.elements['seed_surgut'].checked,
@@ -817,7 +858,7 @@
             try {
                 const res = await fetch('/install', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    headers: apiHeaders({ 'Content-Type': 'application/json' }),
                     body: JSON.stringify(payload)
                 });
                 const result = await res.json();
@@ -849,7 +890,7 @@
             body.textContent = 'Загружаю журнал…';
 
             try {
-                const res = await fetch('/install/log', { headers: { 'Accept': 'application/json' } });
+                const res = await fetch('/install/log', { headers: apiHeaders() });
                 const data = await res.json();
 
                 if (!res.ok) {

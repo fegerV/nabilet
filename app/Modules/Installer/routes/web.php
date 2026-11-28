@@ -13,9 +13,9 @@ declare(strict_types=1);
 //
 // It is loaded from routes/web.php (NOT routes/api.php) on purpose: routes there
 // carry no api/v1 prefix, so the wizard stays reachable at the clean URL /install
-// instead of /api/v1/install. CSRF on POST /install is disabled in
-// bootstrap/app.php (validateCsrfTokens except) because the installer is a
-// one-time, pre-auth setup endpoint gated by storage/install.lock.
+// instead of /api/v1/install. POST routes are protected by BOTH the one-time
+// key from storage/install.key and the standard CSRF token (no exceptions in
+// bootstrap/app.php); storage/install.lock removes these routes entirely.
 
 use Illuminate\Support\Facades\Route;
 use Nabilet\Modules\Installer\Http\Controllers\InstallerController;
