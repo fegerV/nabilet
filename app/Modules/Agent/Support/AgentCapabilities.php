@@ -68,8 +68,23 @@ final class AgentCapabilities
     /** Токен владеет способностью? */
     public static function has(?object $user, string $capability): bool
     {
-        return $user !== null
-            && method_exists($user, 'tokenCan')
-            && $user->tokenCan($capability);
+        if ($user === null || ! method_exists($user, 'tokenCan') || ! self::isKnown($capability)) {
+            return false;
+        }
+
+        // Sanctum считает ability '*' универсальным: tokenCan() возвращает true
+        // для ЛЮБОЙ строки. Такой токен обходит явное разделение полномочий и
+        // получает доступ к глобальной диагностике. Универсальные токены не
+        // являются носителями агентных способностей — способности выдаются
+        // только списком agent:* из админки/команды.
+        if (method_exists($user, 'currentAccessToken')) {
+            $token = $user->currentAccessToken();
+            if (is_object($token) && isset($token->abilities)
+                && in_array('*', (array) $token->abilities, true)) {
+                return false;
+            }
+        }
+
+        return $user->tokenCan($capability);
     }
 }

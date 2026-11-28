@@ -6,6 +6,7 @@ namespace Nabilet\Modules\Agent\Console;
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
+use Nabilet\Modules\Agent\Support\AgentCapabilities;
 use Nabilet\Modules\Core\Users\Support\StaffRole;
 use Nabilet\Modules\Core\Users\Models\User;
 
@@ -95,11 +96,16 @@ class IssueAgentTokenCommand extends Command
             return self::FAILURE;
         }
         foreach ($abilities as $ability) {
-            if (! \Nabilet\Modules\Agent\Support\AgentCapabilities::isKnown($ability)) {
+            if (! AgentCapabilities::isKnown($ability)) {
                 $this->error('Неизвестное полномочие: ' . $ability);
 
                 return self::FAILURE;
             }
+        }
+        if (in_array(AgentCapabilities::SYSTEM_READ, $abilities, true) && ! StaffRole::isPlatformAdmin($user)) {
+            $this->error('agent:system:read выдаётся только системному администратору (NABILET_PLATFORM_ADMINS).');
+
+            return self::FAILURE;
         }
         $token = $user->createToken($name, $abilities);
 

@@ -92,6 +92,77 @@ final class AgentPermissionSplitTest extends TestCase
             ->assertOk()->assertJsonPath('result.isError', true);
     }
 
+    public function test_universal_wildcard_token_cannot_reach_global_diagnostics(): void
+    {
+        // Sanctum считает '*' универсальным ability и отдаёт tokenCan() == true
+        // для любого полномочия. Такой токен не проходит агентный гейт вообще.
+        $sys = $this->staff('sysadmin@example.test');
+        $headers = $this->headers($sys, ['*']);
+
+        $this->mcp('tools/list', [], $headers)
+            ->assertStatus(403)
+            ->assertJsonPath('error.code', 'FORBIDDEN');
+        $this->mcp('tools/call', ['name' => 'get_system_status', 'arguments' => []], $headers)
+            ->assertStatus(403);
+    }
+
+    public function test_org_admin_cannot_issue_a_system_read_token(): void
+    {
+        $actor = $this->staff('org-a@example.test');
+
+        $this->actingAs($actor, 'api')
+            ->postJson('/api/v1/admin/agent/tokens', [
+                'name' => 'privileged',
+                'abilities' => [AgentCapabilities::READ, AgentCapabilities::SYSTEM_READ],
+            ])
+            ->assertStatus(403)
+            ->assertJsonPath('error.code', 'FORBIDDEN');
+
+        $this->assertSame(0, (int) DB::table('personal_access_tokens')
+            ->where('name', 'privileged')->count());
+    }
+
+    public function test_platform_admin_can_issue_system_read_token_after_clean_install(): void
+    {
+        // Мастер 1.16.3 записывает владельца в NABILET_PLATFORM_ADMINS — ровно
+        // это состояние и воспроизводит config() в setUp().
+        $owner = $this->staff('sysadmin@example.test');
+        $response = $this->actingAs($owner, 'api')
+            ->postJson('/api/v1/admin/agent/tokens', [
+                'name' => 'diagnostics',
+                'abilities' => [AgentCapabilities::READ, AgentCapabilities::SYSTEM_READ],
+            ]);
+        $response->assertStatus(201)
+            ->assertJsonPath('data.abilities', [AgentCapabilities::READ, AgentCapabilities::SYSTEM_READ]);
+        $token = (string) $response->json('data.token');
+        $this->assertNotSame('', $token);
+
+        \Illuminate\Support\Facades\Auth::forgetGuards();
+        $this->postJson('/mcp', [
+            'jsonrpc' => '2.0', 'id' => 501, 'method' => 'tools/call',
+            'params' => ['name' => 'get_system_status', 'arguments' => new \stdClass()],
+        ], ['Authorization' => 'Bearer ' . $token, 'Accept' => 'application/json, text/event-stream'])
+            ->assertOk()
+            ->assertJsonPath('result.isError', false)
+            ->assertJsonPath('result.structuredContent.section', 'systemStatus');
+    }
+
+    public function test_system_read_cannot_be_issued_for_a_foreign_role(): void
+    {
+        $sys = $this->staff('sysadmin@example.test');
+        $this->staff('org-a@example.test');
+
+        $this->actingAs($sys, 'api')
+            ->postJson('/api/v1/admin/agent/tokens', [
+                'name' => 'for-other',
+                'email' => 'org-a@example.test',
+                'abilities' => [AgentCapabilities::READ, AgentCapabilities::SYSTEM_READ],
+            ])
+            ->assertStatus(422);
+        $this->assertSame(0, (int) DB::table('personal_access_tokens')
+            ->where('name', 'for-other')->count());
+    }
+
     /** @param list<string> $abilities @return array<string, string> */
     private function headers(\Nabilet\Modules\Core\Users\Models\User $user, array $abilities): array
     {

@@ -10,6 +10,7 @@ use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
+use Nabilet\Core\Errors\AuthError;
 use Nabilet\Core\Errors\NotFoundError;
 use Nabilet\Core\Errors\ValidationError;
 use Nabilet\Core\Support\Paging;
@@ -20,6 +21,7 @@ use Nabilet\Modules\Agent\Models\AgentAction;
 use Nabilet\Modules\Agent\Services\AgentActionService;
 use Nabilet\Modules\Agent\Support\AgentCapabilities;
 use Nabilet\Modules\Agent\Support\AgentScope;
+use Nabilet\Modules\Core\Users\Support\StaffRole;
 use Nabilet\Modules\Core\Users\Models\User;
 
 /**
@@ -175,6 +177,8 @@ final class AgentAdminController extends Controller
             }
         }
 
+        $this->guardSystemRead($request->user(), $abilities, $owner);
+
         $token = $owner->createToken((string) $validated['name'], $abilities);
 
         return response()->json(['data' => [
@@ -183,6 +187,27 @@ final class AgentAdminController extends Controller
             'abilities' => $abilities,
             'token' => $token->plainTextToken,
         ]], 201);
+    }
+
+    /**
+     * Глобальная диагностика — не «ещё одна способность админки».
+     *
+     * Её может выдать только системный администратор и только системному
+     * администратору. Иначе обычный админ организации создаст токен с
+     * agent:system:read «на вырост»: как только его e-mail добавят в
+     * NABILET_PLATFORM_ADMINS, старый токен молча получит доступ к логам,
+     * бэкапам и глобальным настройкам всех арендаторов.
+     *
+     * @param list<string> $abilities
+     */
+    private function guardSystemRead(?\Illuminate\Contracts\Auth\Authenticatable $actor, array $abilities, User $owner): void
+    {
+        if (! in_array(AgentCapabilities::SYSTEM_READ, $abilities, true)) {
+            return;
+        }
+        if (! StaffRole::isPlatformAdmin($actor) || ! StaffRole::isPlatformAdmin($owner)) {
+            throw AuthError::forbidden('agent:system:read');
+        }
     }
 
     public function revokeToken(Request $request, int $token): JsonResponse
@@ -199,6 +224,7 @@ final class AgentAdminController extends Controller
         $abilities = json_decode((string) $row->abilities, true) ?: [AgentCapabilities::READ];
 
         $owner = User::query()->findOrFail((int) $row->tokenable_id);
+        $this->guardSystemRead($request->user(), $abilities, $owner);
         DB::table('personal_access_tokens')->where('id', $token)->delete();
         $issued = $owner->createToken((string) $row->name, $abilities);
 

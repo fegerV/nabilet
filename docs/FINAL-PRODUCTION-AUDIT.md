@@ -1,4 +1,4 @@
-# NABILET — итоговый аудит готовности (2026-11-27)
+# NABILET — итоговый аудит готовности (2026-11-28)
 
 Версия: 1.16.3. База: `main` (включает `fix/stabilization` и перенесённые коммиты
 из `fix/ticket-builder-audit`, `fix/yandex-hallplan-import`, `fix/updater-reliability`).
@@ -22,28 +22,24 @@
 | `verify-migrations / state-machines / openapi ×2 / spec-parity / contract-schema ×2 / models-schema / autoload / module-structure / route-ownership` | все PASS |
 | `composer validate` | valid |
 | PHPStan level 5 | No errors |
-| Full PHPUnit (MariaDB 11.4, отдельная БД) | **1544 теста / 6886 утверждения**, 0 падений |
+| Full PHPUnit (отдельная БД) | **1557 тестов / 6928 утверждений**, 0 падений (1 skip по среде) |
 | `npm run typecheck` | exit 0 |
 | Vitest | 56 файлов / 600 тестов, 0 падений |
 | `npm run build` | dist/index.html + assets, 559 модулей |
 | Version gate | config / package / CHANGELOG согласованы (1.16.3) |
-| Clean install из ZIP (распакован, отдельная БД `install_smoke`) | **48/48**, health 1.16.3, `/install` → 404/405 |
+| Clean install из ZIP (распакован, отдельная БД `install_smoke`) | **52/52**, health 1.16.3, `/install` → 404/405 |
 
 Сборка архива: `scripts/build-hosting-zip.php` (портативная, без robocopy),
-9257 записей, production `vendor` по `composer.lock`, пустое `storage/`,
+9304 записи, production `vendor` по `composer.lock`, пустое `storage/`,
 `.env` отсутствует. Manifest содержит версию, `commit_sha`, дату, SHA-256.
 
-Итоговый артефакт: `releases/nabilet-hosting-v1.16.2-20261128-142812.zip`,
-SHA-256 `8650fbd3fc6661fc37dc315507ad07ce29166986c974a1e577d7a4b610ea9841`,
-собран CI из коммита `51614045518edf5767dea9b72c74fb5a6f1fc5b7`. Хэш сверен с
-`.sha256` и `manifest.json`; распакованный архив прошёл smoke 48/48 и браузерный E2E в CI.
-Манифест подписан ключом из секрета CI (`signed=true`); проверка
-`tools/verify-release-artifact.php --check-signature` прошла. Приватный ключ
-находится только в секрете GitHub `NABILET_UPDATE_PRIVATE_KEY_PEM`; для работы
-автоматического обновления владелец должен задать `NABILET_UPDATE_PUBLIC_KEY` на сайте.
-
-Успешный прогон полного workflow (все стадии, включая публикацию):
-https://github.com/fegerV/nabilet/actions/runs/46154449288 — commit `51614045`.
+Итоговый артефакт 1.16.3 публикуется **только после** успешного прогона полного
+workflow на финальной ревизии: реквизиты (имя ZIP, SHA-256, commit SHA, ссылка на
+run) вносятся сюда и в `releases/manifest.json` из фактического артефакта CI.
+Ранее подписанный архив 1.16.2 (`...-20261128-142812.zip`) снят с публикации.
+Приватный ключ находится только в секрете GitHub
+`NABILET_UPDATE_PRIVATE_KEY_PEM`; для автоматических обновлений владелец задаёт
+`NABILET_UPDATE_PUBLIC_KEY` на сайте (мастер 1.16.3 умеет записать его сам).
 
 ## 2. Матрица готовности модулей
 
@@ -53,19 +49,19 @@ https://github.com/fegerV/nabilet/actions/runs/46154449288 — commit `51614045`
 | Каталог, площадки, залы, схемы, версии | VERIFIED | PHPUnit + `verify-state-machines`, smoke (96+ таблиц) |
 | Конструктор залов (Vue) | IMPLEMENTED | Vitest + PHP контракт; браузерные сценарии редактора в CI пока не запускаются |
 | Импорт Яндекс Афиши | IMPLEMENTED | конвертер и fixtures покрыты; живой источник (сеть/капча) не проверен |
-| Конструктор билетов / рендеринг | VERIFIED | PHPUnit + внешний декодер QR по PNG; PDF-rasterizer в CI отсутствует |
+| Конструктор билетов / рендеринг | VERIFIED | PHPUnit + внешний декодер QR по PNG и по напечатанному PDF (pymupdf + OpenCV, job `pdf-qr`) |
 | Продажи, резервы, платежи, возвраты | VERIFIED* | PHPUnit/Feature гонки и идемпотентность; *живой ЮKassa не проверялся → HOST_DEPENDENT |
 | Уведомления, SMTP | IMPLEMENTED | шаблоны и очередь покрыты; реальная доставка HOST_DEPENDENT |
 | Лояльность, бонусы, рефералы, розыгрыши | VERIFIED | Feature-тесты начислений/возвратов/анти-накрутки |
 | Админка (CRUD, состояния) | IMPLEMENTED | маршруты и права проверены; сплошной UI-аудит не проводился |
 | Диагностический центр | IMPLEMENTED | `SystemStatusController`, 16 MCP-срезов, экспорт обезличенного JSON в админке |
-| Установщик | VERIFIED | 48/48 чистая установка из архива, закрытие маршрутов, APP_KEY |
-| Обновления (Updater) | IMPLEMENTED | конечный автомат, подпись в `ManifestVerifier`, ZIP Slip guards; обновление предыдущего релиза не прогонялось |
+| Установщик | VERIFIED | 52/52 чистая установка из архива; 1.16.3: platform-admin только владельцу, регион, atomic key, идемпотентный повтор, честные ошибки, финальная диагностика |
+| Обновления (Updater) | IMPLEMENTED | конечный автомат, подпись в `ManifestVerifier`, ZIP Slip guards; переход 1.16.1 → 1.16.2 проверен локально, 1.16.3 на хостинге не проверялся |
 | Cron / очередь на shared hosting | IMPLEMENTED | `schedule:run`, `--max-time=50`, heartbeat; на Timeweb не проверялось → HOST_DEPENDENT |
-| MCP / ИИ-агент | VERIFIED (ядро) + IMPLEMENTED (расширение) | HTTP 401/403/200, двухфазные write, 43 инструмента (9+16+13+5), панель подключения, тесты |
+| MCP / ИИ-агент | VERIFIED (ядро) + IMPLEMENTED (расширение) | HTTP 401/403/200, 43 инструмента (9+16+13+5), двухфазные write; `agent:system:read` только у platform-admin, универсальные `*` токены отклоняются |
 | SEO / аналитика | IMPLEMENTED | серверная выдача метаданных, sitemap/canonical; живые проверки поисковика не проводились |
 | Android Checker / киоски | IMPLEMENTED (API) | API и политика покрыты; оборудование не проверялось |
-| Резервное копирование / восстановление | IMPLEMENTED | код и ротация есть; восстановление на отдельной БД не выполнялось |
+| Резервное копирование / восстановление | IMPLEMENTED | логический дамп восстановлен и сверен по 99 таблицам; `backup:run` не прогонялся (нет `mysqldump`) |
 | CI и сборка релиза | VERIFIED | gates + release-hosting workflow, version gate, smoke при сборке |
 | A/B, heatmaps, мультиязычные URL | PARTIAL | модули объявлены, часть отключена по дизайну (см. KNOWN-LIMITATIONS) |
 | AUD-023 (байты медиа по статическому `/storage/`) | PARTIAL | публичный контракт витрины; смена на подписанные URL требует решения |
@@ -78,9 +74,12 @@ https://github.com/fegerV/nabilet/actions/runs/46154449288 — commit `51614045`
 | `config()` в Domain (`TicketTemplateConfig.php:240`) ломал CI 45705478509 | доменный слой читал framework-хелпер | `c6d596cc` (уже в ветке) | purity 166/166, ci green | `verify-purity.php` | — |
 | Сборка ZIP зависела от Windows + robocopy, вторая реализация манифеста | локальный скрипт был единственным путём сборки | `scripts/build-hosting-zip.php`, `scripts/build-hosting-zip.ps1`, `.github/workflows/release-hosting.yml`, `.github/workflows/ci.yml` | один портативный сборщик для CI и Windows; гейты через `workflow_call`; манифест с commit SHA/датой | полный набор гейтов + 48/48 smoke | подпись требует секрет `NABILET_UPDATE_PRIVATE_KEY_PEM` |
 | Версии config/package/CHANGELOG могли расходиться | нет единого гейта | `tools/lib/release-version.php`, `tools/verify-release-version.php` | strict + `--allow-unreleased` режимы | `verify-release-version` | — |
-| MCP не давал диагностики системы | 9 инструментов только по данным/записи | `AgentDiagnostics.php`, `DiagnosticsTool.php`, 16 tool-классов, `NabiletAgentServer.php`, `AgentDiagnosticsToolsTest.php` | 16 read-only срезов без секретов | 19 тестов / 150 утверждений | content-инструменты (`prepare_*`) ещё не добавлены |
+| MCP не давал диагностики системы | 9 инструментов только по данным/записи | `AgentDiagnostics.php`, `DiagnosticsTool.php`, 16 tool-классов, `NabiletAgentServer.php`, `AgentDiagnosticsToolsTest.php` | 16 read-only срезов без секретов | 19 тестов / 150 утверждений | 13 read-only контентных + 5 подготовок добавлены; публикация/медиа остаются в админке |
 | ARCH-verifier мог пропустить новые классы | — | `verify-autoload`, `verify-module-structure`, `verify-route-ownership` | PASS | полный прогон | — |
-| Исправления PR #111–#113 оставались в отдельных ветках | ветки были старше `main`, merge целиком стёр бы новые файлы | cherry-pick 13 коммитов в `fix/integrate-pending-branches` | заморозка билета/QR, валидация импорта, журнал обновлений; SQL-бандлы 955 колонок, `EXPECT_COLUMNS=955` | PHPUnit 1544 / 6886, Vitest 600, PHPStan 0, все verifiers | обновление 1.16.0 → 1.16.2 не прогонялось |
+| Исправления PR #111–#113 оставались в отдельных ветках | ветки были старше `main`, merge целиком стёр бы новые файлы | cherry-pick 13 коммитов в `fix/integrate-pending-branches` | заморозка билета/QR, валидация импорта, журнал обновлений; SQL-бандлы 955 колонок, `EXPECT_COLUMNS=955` | PHPUnit 1557 / 6928, Vitest 600, PHPStan 0, все verifiers | обновление 1.16.3 на хостинге не прогонялось |
+| 1.16.3: установка давала права системного администратора всем админам | `NABILET_PLATFORM_ADMINS` задаётся из e-mail владельца мастера; обычные админы организаций права не наследуют | `InstallerController::buildEnvContent`, `InstallerFinalizationTest` | только владелец в списке | feature + smoke `.env` | настройка прав проверяется только после чистой установки |
+| 1.16.3: частичная установка создавала дубликаты и маскировала ошибки | fail-soft при создании организации/сидеров | `bootstrapOrganization`, `createAdminUser`, `finalDiagnostics` | повтор идемпотентен; обязательные шаги падают; симлинк остаётся опциональным | 6 новых тестов | `backup:run` по-прежнему непроверен |
+| 1.16.3: универсальный токен и чужая роль давали системную диагностику | Sanctum `tokenCan('*') == true`; админка выдавала `system:read` без проверки | `AgentCapabilities::has`, `AgentAdminController::guardSystemRead`, `IssueAgentTokenCommand`, `AgentPermissionSplitTest`, `AgentTokenCommandTest` | `*` → 403 на `/mcp`; `system:read` только для platform-admin | 6 новых тестов | хендшейк через реальный SDK — см. KNOWN-LIMITATIONS |
 
 ## 4. Блокирующие факторы для продакшена
 
@@ -89,16 +88,17 @@ https://github.com/fegerV/nabilet/actions/runs/46154449288 — commit `51614045`
 2. Живой платёж + webhook + возврат с тестовыми ключами провайдера.
 3. Реальный SMTP и доставка писем.
 4. Проверенное восстановление бэкапа на отдельной БД (RTO/RPO).
-5. Ключ подписи релиза: пара сгенерирована, текущий архив подписан, подпись
-   проверена. Осталось занести приватный ключ в секрет CI
-   `NABILET_UPDATE_PRIVATE_KEY_PEM` и публичный — в `NABILET_UPDATE_PUBLIC_KEY`
-   на сайте; без этого лента обновлений отвергнет манифест на целевом сайте.
+5. Ключ подписи релиза: пара сгенерирована, архив подписан, подпись проверена.
+   Приватный ключ **уже** лежит в секрете CI `NABILET_UPDATE_PRIVATE_KEY_PEM`.
+   На целевом сайте нужно задать публичный `NABILET_UPDATE_PUBLIC_KEY` (мастер
+   1.16.3 умеет сделать это сам); без него лента отвергнет манифест.
 6. Полный набор браузерных E2E из раздела 20: в CI включён только сценарий
    чистого стенда; остальные требуют подготовленного стенда. Локальный прогон
    браузера в этой среде блокируется песочницей (loopback недоступен).
 7. Обновление с неизменного оригинального архива 1.16.1 → 1.16.2 выполнено
    локально **без ручной подмены файлов**: `preparing → ready → migrating →
-   verifying → done`, health 1.16.3, данные покупателя сохранены. Прерванное
+   verifying → done`, health целевой версии, данные покупателя сохранены.
+   Прерванное
    обновление переводится в `failed_after_swap`; откат кода блокируется после
    начатых миграций, пока БД не восстановлена из копии. Логический дамп
    восстановлен на отдельной БД и сверен по 99 базовым таблицам. Команда
@@ -109,7 +109,7 @@ https://github.com/fegerV/nabilet/actions/runs/46154449288 — commit `51614045`
 
 PR #111 (freeze ticket design), #112 (reliable updater), #113 (hallplan import)
 были проверены по фактическим коммитам: изменения перенесены в `main` через
-`cherry-pick`, покрыты регрессионными тестами и вошли в 1.16.2. Устаревшие
+`cherry-pick`, покрыты регрессионными тестами и вошли в 1.16.2/1.16.3. Устаревшие
 ветки НЕ сливались автоматически; дублирующие PR закрыты с пояснением.
 
 Ни один из пунктов не скрыт и не заменён заглушкой.

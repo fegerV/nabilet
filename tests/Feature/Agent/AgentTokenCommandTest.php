@@ -58,6 +58,30 @@ class AgentTokenCommandTest extends TestCase
             ->assertExitCode(1);
     }
 
+    public function test_system_read_is_refused_for_an_ordinary_org_admin(): void
+    {
+        $user = $this->seedStaffUser();
+        config(['nabilet.platform_admins' => [], 'nabilet.single_tenant_admin' => false]);
+
+        $this->artisan('nabilet:agent-token', [
+            'email' => self::EMAIL,
+            '--abilities' => 'agent:read,agent:system:read',
+        ])->assertExitCode(1);
+        $this->assertSame(0, $this->tokenCount($user));
+    }
+
+    public function test_system_read_is_issued_to_a_platform_admin(): void
+    {
+        $user = $this->seedStaffUser();
+        config(['nabilet.platform_admins' => [self::EMAIL], 'nabilet.single_tenant_admin' => false]);
+
+        $this->artisan('nabilet:agent-token', [
+            'email' => self::EMAIL,
+            '--abilities' => 'agent:read,agent:system:read',
+        ])->assertExitCode(0);
+        $this->assertSame(1, $this->tokenCount($user));
+    }
+
     private function tokenCount(object $user): int
     {
         return (int) DB::table('personal_access_tokens')
