@@ -619,3 +619,44 @@ jobs:
           test -f dist/index.html || { echo "::error::dist/index.html was not produced"; exit 1; }
           test -d dist/assets || { echo "::error::dist/assets was not produced"; exit 1; }
           echo "built: $(find dist/assets -name '*.js' | wc -l) JS chunks, $(find dist/assets -name '*.css' | wc -l) CSS files"
+
+  pdf-qr:
+    name: QR readability from printed PDF
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: json, mbstring, openssl, pdo, pdo_mysql
+          coverage: none
+          tools: none
+
+      - name: Set up Node and Chromium
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: |
+          npm ci --no-audit --no-fund
+          npx playwright install --with-deps chromium
+
+      - name: Install dependencies from the lock
+        run: |
+          composer install --prefer-dist --no-interaction --no-progress --no-scripts
+          composer dump-autoload --optimize --no-scripts
+
+      - name: Install an external PDF rasterizer and QR decoder
+        env:
+          PIP_BREAK_SYSTEM_PACKAGES: '1'
+        run: python3 -m pip install --quiet opencv-python-headless pymupdf numpy
+
+      - name: Decode the QR after printing to PDF
+        shell: bash
+        run: |
+          set -e
+          CHROME=$(find "$HOME/.cache/ms-playwright" -type f -name chrome | head -1)
+          test -n "$CHROME" || { echo "::error::Chromium not found"; exit 1; }
+          TICKET_PDF_CHROME_BIN="$CHROME" php vendor/bin/phpunit tests/Feature/Tickets/TicketQrDecodeTest.php
