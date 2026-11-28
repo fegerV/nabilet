@@ -33,9 +33,9 @@
 9257 записей, production `vendor` по `composer.lock`, пустое `storage/`,
 `.env` отсутствует. Manifest содержит версию, `commit_sha`, дату, SHA-256.
 
-Итоговый артефакт: `releases/nabilet-hosting-v1.16.2-20261128-102033.zip`,
-SHA-256 `b598c6da197b7436087a30564622b07c2a4aac5633de5df4e46038a5d567193f`,
-собран CI из коммита `9c7630aecbe8ad625dc3eb80e135f91509f9f769`. Хэш сверен с
+Итоговый артефакт: `releases/nabilet-hosting-v1.16.2-20261128-142812.zip`,
+SHA-256 `8650fbd3fc6661fc37dc315507ad07ce29166986c974a1e577d7a4b610ea9841`,
+собран CI из коммита `51614045518edf5767dea9b72c74fb5a6f1fc5b7`. Хэш сверен с
 `.sha256` и `manifest.json`; распакованный архив прошёл smoke 48/48 и браузерный E2E в CI.
 Манифест подписан ключом из секрета CI (`signed=true`); проверка
 `tools/verify-release-artifact.php --check-signature` прошла. Приватный ключ
@@ -43,7 +43,7 @@ SHA-256 `b598c6da197b7436087a30564622b07c2a4aac5633de5df4e46038a5d567193f`,
 автоматического обновления владелец должен задать `NABILET_UPDATE_PUBLIC_KEY` на сайте.
 
 Успешный прогон полного workflow (все стадии, включая публикацию):
-https://github.com/fegerV/nabilet/actions/runs/46134392881 — commit `9c7630ae`.
+https://github.com/fegerV/nabilet/actions/runs/46154449288 — commit `51614045`.
 
 ## 2. Матрица готовности модулей
 
