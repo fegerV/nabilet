@@ -33,14 +33,17 @@
 9257 записей, production `vendor` по `composer.lock`, пустое `storage/`,
 `.env` отсутствует. Manifest содержит версию, `commit_sha`, дату, SHA-256.
 
-Итоговый артефакт: `releases/nabilet-hosting-v1.16.2-20261128-004855.zip`,
-SHA-256 `21ee52d3ebbd2a9b52fdcbc3433879809688ef861f351df11881e3c8091acfb8`,
-собран из коммита `f1501cf4948e1139e0c9c77c7cb97d5ef9916e83`. Хэш сверен с
-`.sha256` и `manifest.json`; распакованный архив прошёл тот же smoke 48/48.
-Манифест текущего архива подписан сгенерированным ключом (`signed=true`);
-проверка `tools/verify-release-signature.php` прошла. Для работы автоматического
-обновления владелец должен занести приватный ключ в секрет CI
-`NABILET_UPDATE_PRIVATE_KEY_PEM`, а публичный — в `NABILET_UPDATE_PUBLIC_KEY` на сайте.
+Итоговый артефакт: `releases/nabilet-hosting-v1.16.2-20261128-102033.zip`,
+SHA-256 `b598c6da197b7436087a30564622b07c2a4aac5633de5df4e46038a5d567193f`,
+собран CI из коммита `9c7630aecbe8ad625dc3eb80e135f91509f9f769`. Хэш сверен с
+`.sha256` и `manifest.json`; распакованный архив прошёл smoke 48/48 и браузерный E2E в CI.
+Манифест подписан ключом из секрета CI (`signed=true`); проверка
+`tools/verify-release-artifact.php --check-signature` прошла. Приватный ключ
+находится только в секрете GitHub `NABILET_UPDATE_PRIVATE_KEY_PEM`; для работы
+автоматического обновления владелец должен задать `NABILET_UPDATE_PUBLIC_KEY` на сайте.
+
+Успешный прогон полного workflow (все стадии, включая публикацию):
+https://github.com/fegerV/nabilet/actions/runs/46134392881 — commit `9c7630ae`.
 
 ## 2. Матрица готовности модулей
 
