@@ -28,7 +28,8 @@ test.describe('smoke stand', () => {
 
     await page.goto('/admin/login')
     await page.getByLabel('Email').fill(process.env.E2E_ADMIN_EMAIL ?? 'admin@smoke.local')
-    await page.getByLabel('Пароль').fill(process.env.E2E_ADMIN_PASSWORD ?? 'adminpass123')
+    // На форме два поля с меткой «Пароль» (пароль и подтверждение): берём первое.
+    await page.locator('input[type=password]').first().fill(process.env.E2E_ADMIN_PASSWORD ?? 'adminpass123')
     await page.getByRole('button', { name: /войти/i }).click()
 
     await expect(page).toHaveURL(/\/admin/)
