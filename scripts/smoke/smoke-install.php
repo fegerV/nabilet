@@ -281,7 +281,9 @@ check('GET /install/log после установки -> 404 (журнал за�
 // Route::fallback() в Laravel регистрируется только на GET, поэтому POST без
 // маршрута даёт 405. Главное — ни 200, ни 403 «ALREADY_INSTALLED»: мастера
 // больше нет даже как ресурса.
-check('повторный POST /install -> 405 (маршрута нет)', $status === 405, 'status=' . $status);
+// После смены APP_KEY старый CSRF-токен мог стать недействительным (419) —
+// главное, что повторная установка невозможна.
+check('повторный POST /install -> 405/419 (маршрута нет)', in_array($status, [405, 419], true), 'status=' . $status);
 
 [$status, $body, $head] = http('GET', $base . '/');
 check('витрина GET / -> 200', $status === 200, 'status=' . $status);
