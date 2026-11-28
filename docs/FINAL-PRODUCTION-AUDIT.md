@@ -22,7 +22,7 @@
 | `verify-migrations / state-machines / openapi ×2 / spec-parity / contract-schema ×2 / models-schema / autoload / module-structure / route-ownership` | все PASS |
 | `composer validate` | valid |
 | PHPStan level 5 | No errors |
-| Full PHPUnit (MariaDB 11.4, отдельная БД) | **1526 тестов / 6799 утверждений**, 0 падений |
+| Full PHPUnit (MariaDB 11.4, отдельная БД) | **1528 тестов / 6817 утверждений**, 0 падений |
 | `npm run typecheck` | exit 0 |
 | Vitest | 56 файлов / 600 тестов, 0 падений |
 | `npm run build` | dist/index.html + assets, 559 модулей |
@@ -75,7 +75,7 @@ SHA-256 `e8469a2f02eebf99307bd21b745013c33f1f2e4c6025fdcf2d967436f1af80fb`,
 | Версии config/package/CHANGELOG могли расходиться | нет единого гейта | `tools/lib/release-version.php`, `tools/verify-release-version.php` | strict + `--allow-unreleased` режимы | `verify-release-version` | — |
 | MCP не давал диагностики системы | 9 инструментов только по данным/записи | `AgentDiagnostics.php`, `DiagnosticsTool.php`, 16 tool-классов, `NabiletAgentServer.php`, `AgentDiagnosticsToolsTest.php` | 16 read-only срезов без секретов | 19 тестов / 150 утверждений | content-инструменты (`prepare_*`) ещё не добавлены |
 | ARCH-verifier мог пропустить новые классы | — | `verify-autoload`, `verify-module-structure`, `verify-route-ownership` | PASS | полный прогон | — |
-| Исправления PR #111–#113 оставались в отдельных ветках | ветки были старше `main`, merge целиком стёр бы новые файлы | cherry-pick 13 коммитов в `fix/integrate-pending-branches` | заморозка билета/QR, валидация импорта, журнал обновлений; SQL-бандлы 955 колонок, `EXPECT_COLUMNS=955` | PHPUnit 1526 / 6799, Vitest 600, PHPStan 0, все verifiers | обновление 1.16.0 → 1.16.1 не прогонялось |
+| Исправления PR #111–#113 оставались в отдельных ветках | ветки были старше `main`, merge целиком стёр бы новые файлы | cherry-pick 13 коммитов в `fix/integrate-pending-branches` | заморозка билета/QR, валидация импорта, журнал обновлений; SQL-бандлы 955 колонок, `EXPECT_COLUMNS=955` | PHPUnit 1528 / 6817, Vitest 600, PHPStan 0, все verifiers | обновление 1.16.0 → 1.16.1 не прогонялось |
 
 ## 4. Блокирующие факторы для продакшена
 
