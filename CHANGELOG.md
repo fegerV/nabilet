@@ -36,10 +36,13 @@
 - Проверка читаемости QR из напечатанного PDF (`tests/Support/decode_qr_pdf.py`,
   job `pdf-qr` в CI): pymupdf растеризует страницу, OpenCV декодирует QR.
   Внешний декодер проверяет и PNG, и PDF.
+- Живой хендшейк MCP через `@modelcontextprotocol/sdk` 1.30.1 на чистой
+  установке: `connect → tools/list → tools/call`, `/mcp` отдаёт инструменты
+  страницами по 15 (`nextCursor`).
 
 ### Tests
 
-- Полный PHPUnit — 1545 тестов / 6889 утверждений.
+- Полный PHPUnit — 1557 тестов / 6928 утверждений (1 skip по среде).
 
 ## [1.16.2] - 2026-11-28
 
