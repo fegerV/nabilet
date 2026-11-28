@@ -5,12 +5,13 @@ declare(strict_types=1);
 namespace Tests\Feature\Installer;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Nabilet\Modules\Installer\Http\Controllers\InstallerController;
 use Nabilet\Modules\Installer\Support\InstallKey;
 use Tests\TestCase;
 
 /**
  * Защита первоначальной установки: одноразовый ключ из storage/install.key,
- * отказ постороннему посетителю, блокировкапараллельного запуска и CSRF.
+ * отказ постороннему посетителю, блокировка параллельного запуска и CSRF.
  */
 final class InstallerKeySecurityTest extends TestCase
 {
@@ -75,6 +76,32 @@ final class InstallerKeySecurityTest extends TestCase
             $this->postJson('/install', $this->payload() + ['install_key' => $key])
                 ->assertStatus(409)
                 ->assertJsonPath('error.code', 'INSTALL_IN_PROGRESS');
+        } finally {
+            flock($holder, LOCK_UN);
+            fclose($holder);
+        }
+    }
+
+    public function test_lock_file_is_never_deleted_while_its_flock_is_held(): void
+    {
+        $path = storage_path('framework/install-in-progress.lock');
+        $holder = fopen($path, 'c+b');
+        self::assertIsResource($holder);
+        self::assertTrue(flock($holder, LOCK_EX | LOCK_NB));
+
+        try {
+            // Раньше очистка состояния удаляла файл, пока дескриптор держит
+            // блокировку: другой запрос открывал бы новый inode и получал
+            // свою блокировку параллельно с первой установкой.
+            (new \ReflectionMethod(InstallerController::class, 'clearInstallState'))
+                ->invoke(new InstallerController());
+            $this->assertFileExists($path);
+
+            $contender = fopen($path, 'c+b');
+            self::assertIsResource($contender);
+            $this->assertFalse(flock($contender, LOCK_EX | LOCK_NB));
+            flock($contender, LOCK_UN);
+            fclose($contender);
         } finally {
             flock($holder, LOCK_UN);
             fclose($holder);

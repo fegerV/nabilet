@@ -1230,7 +1230,10 @@ ENV;
     private function clearInstallState(): void
     {
         File::delete($this->statePath());
-        File::delete(storage_path('framework/install-in-progress.lock'));
+        // НЕ удаляем install-in-progress.lock: он удаляется, пока withInstallLock()
+        // ещё держит flock на открытом дескрипторе. На Unix другой запрос создал
+        // бы НОВЫЙ inode и получил бы свою блокировку параллельно с первой.
+        // Файл остаётся и переиспользуется через fopen('c+b') + flock.
     }
 
     /**
