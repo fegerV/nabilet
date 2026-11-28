@@ -79,18 +79,24 @@ function http(string $method, string $url, array $post = [], array $headers = []
 [$status, $body, $head] = http('GET', $base . '/install');
 check('GET /install -> 200 HTML', $status === 200 && (str_contains($body, '<!DOCTYPE') || str_contains($body, '<html')), 'status=' . $status);
 
-// Ключ установки и CSRF-токен reader-only: оба создаются сервером при открытии
-// мастера, в STM-ответе ключ НЕ публикуется.
-if (preg_match('/<meta name="csrf-token" content="([^"]+)"/', $body, $m) === 1) {
-    $csrfToken = html_entity_decode($m[1], ENT_QUOTES | ENT_HTML5, 'UTF-8');
-}
+// Ключ установки и CSRF-токен создаются сервером при открытии мастера;
+// значение ключа в HTML НЕ публикуется.
+$readCsrf = static function (string $html) use (&$csrfToken): void {
+    if (preg_match('/<meta name="csrf-token" content="([^"]+)"/', $html, $m) === 1) {
+        $csrfToken = html_entity_decode($m[1], ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    }
+};
+$readCsrf($body);
 $keyFile = $siteDir . '/storage/install.key';
-check('одноразовый ключ создан в storage/install.key', is_file($keyFile) && trim((string) file_get_contents($keyFile)) !== '');
-if (is_file($keyFile)) {
-    $installKey = trim((string) file_get_contents($keyFile));
+// Архивы до 1.16.2 не имели ключа/CSRF: smoke остаётся пригодным и для них.
+if ($csrfToken !== '') {
+    check('одноразовый ключ создан в storage/install.key', is_file($keyFile) && trim((string) file_get_contents($keyFile)) !== '');
+    if (is_file($keyFile)) {
+        $installKey = trim((string) file_get_contents($keyFile));
+    }
+    check('ключ не раскрывается в HTML мастера', $installKey === '' || ! str_contains($body, $installKey));
+    check('CSRF-токен присутствует в разметке', true);
 }
-check('ключ не раскрывается в HTML мастера', $installKey === '' || ! str_contains($body, $installKey));
-check('CSRF-токен присутствует в разметке', $csrfToken !== '');
 
 check('мастер самодостаточен: installer-tailwind.js в разметке', str_contains($body, '/installer-tailwind.js'));
 check('нет внешних CDN (tailwindcss.com / googleapis)', ! str_contains($body, 'cdn.tailwindcss.com') && ! str_contains($body, 'googleapis'));
@@ -150,6 +156,11 @@ $badPayload['db_password'] = 'wrongpass';
 
 sleep(61); // чистое окно throttle:5,1 для фазы POST /install
 
+// .env с новым APP_KEY уже записан первой фазой: старый CSRF-токен мог стать
+// недействительным. Переоткрываем мастер и берём свежий токен.
+[$status, $body, $head] = http('GET', $base . '/install');
+$readCsrf($body);
+
 [$status, $body, $head] = http('POST', $base . '/install', $badPayload);
 check('POST /install с неверными кредами -> 500 INSTALL_FAILED', $status === 500 && str_contains($body, 'INSTALL_FAILED'), 'status=' . $status);
 
@@ -185,6 +196,10 @@ check(
 @mkdir($siteDir . '/install', 0777, true);
 file_put_contents($siteDir . '/info.php', "<?php phpinfo();\n");
 file_put_contents($siteDir . '/install/index.php', "<?php echo 'legacy installer';\n");
+
+// Перед успешной фазой снова обновляем CSRF: ключ мог измениться.
+[$status, $body, $head] = http('GET', $base . '/install');
+$readCsrf($body);
 
 [$status, $body, $head] = http('POST', $base . '/install', $payload);
 check('POST /install -> 200 success:true', $status === 200 && str_contains($body, '"success":true'), 'status=' . $status . ($status !== 200 ? ' body=' . substr($body, 0, 300) : ''));
