@@ -46,6 +46,15 @@ php scripts/generate-update-keys.php --out-dir=/secure/path
   (никогда не коммитить и не класть в архив).
 - `update-public.pem` → `NABILET_UPDATE_PUBLIC_KEY` на сайте (окружение хоста).
 
+Проверить готовый артефакт можно без Laravel:
+
+```bash
+php tools/verify-release-signature.php \
+  --manifest=releases/manifest.json \
+  --public-key=/secure/path/update-public.pem \
+  --artifact=releases/nabilet-hosting-vX.Y.Z.zip
+```
+
 Без ключа `signature` пустая: ручная загрузка ZIP по SHA-256 работает, лента
 обновлений отвергает манифест (`UPDATE_SIGNATURE_MISSING`). Релизы **по тегу
 `v*` теперь не публикуются без подписи**; для ручного `workflow_dispatch`

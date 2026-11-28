@@ -21,6 +21,9 @@
 
 ### Added
 
+- `tools/verify-release-signature.php`: локальная проверка подписи манифеста и
+  SHA-256 архива без Laravel. Полный контур «генерация ключей → подпись при
+  сборке → проверка верификатором» проверен сквозно.
 - Экспорт обезличенной диагностики `GET /api/v1/admin/system/diagnostics/export`:
   файл JSON без паролей, токенов и персональных данных, с `Cache-Control: no-store`.
   Отчёт собирается тем же сервисом, что и MCP `get_installation_report`.
@@ -53,8 +56,8 @@
   подключения; `AgentContentToolsTest`: 5 тестов / 72 утверждения (скоуп,
   маскирование, валидаторы); `AgentContentWriteFlowTest`: 4 теста / 37
   утверждений (prepare → approve → confirm, идемпотентность, scope);
-  `DiagnosticsExportTest`: 2 теста / 9 утверждений; полный PHPUnit — 1526
-  тестов / 6799 утверждений.
+  `DiagnosticsExportTest`: 2 теста / 9 утверждений; ManifestVerifierTest: 4 теста / 25 утверждений; полный PHPUnit — 1532
+  теста / 6842 утверждений.
 
 ## [1.16.1] - 2026-11-27
 
