@@ -12,6 +12,7 @@ use Laravel\Mcp\Response;
 use Laravel\Mcp\Server\Attributes\Description;
 use Laravel\Mcp\Server\Attributes\Name;
 use Laravel\Mcp\Server\Tool;
+use Nabilet\Modules\Agent\Mcp\Tools\Concerns\RequiresAgentRead;
 use Laravel\Mcp\Server\Tools\Annotations\IsIdempotent;
 use Laravel\Mcp\Server\Tools\Annotations\IsOpenWorld;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
@@ -38,6 +39,8 @@ use Nabilet\Modules\Events\Models\Event;
 #[Description('Ищет события организации по названию (частичное совпадение), статусу или без фильтров. Возвращает public_id каждого события — он нужен для get_event.')]
 class SearchEventsTool extends Tool
 {
+    use RequiresAgentRead;
+
     public function schema(JsonSchema $schema): array
     {
         return [
@@ -56,6 +59,9 @@ class SearchEventsTool extends Tool
 
     public function handle(Request $request)
     {
+        if ($denied = $this->guardAgentRead($request)) {
+            return $denied;
+        }
         $validated = $request->validate(
             [
                 'query' => ['nullable', 'string', 'max:200'],

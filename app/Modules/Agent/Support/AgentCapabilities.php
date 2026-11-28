@@ -19,6 +19,8 @@ namespace Nabilet\Modules\Agent\Support;
 final class AgentCapabilities
 {
     public const READ = 'agent:read';
+    public const SYSTEM_READ = 'agent:system:read';
+    public const CONTENT_READ = 'agent:content:read';
     public const EVENTS_WRITE = 'agent:events:write';
     public const SCHEMAS_PUBLISH = 'agent:schemas:publish';
     public const REFUNDS_WRITE = 'agent:refunds:write';
@@ -29,7 +31,9 @@ final class AgentCapabilities
     public static function labels(): array
     {
         return [
-            self::READ => 'Чтение данных организации',
+            self::READ => 'Чтение бизнес-данных своей организации',
+            self::SYSTEM_READ => 'Глобальная системная диагностика (только системный администратор)',
+            self::CONTENT_READ => 'Чтение контента своей организации',
             self::EVENTS_WRITE => 'Создание черновиков мероприятий',
             self::SCHEMAS_PUBLISH => 'Публикация схем залов',
             self::REFUNDS_WRITE => 'Подготовка возвратов',
@@ -47,6 +51,18 @@ final class AgentCapabilities
     public static function isKnown(string $capability): bool
     {
         return array_key_exists($capability, self::labels());
+    }
+
+    /** @param list<string> $capabilities */
+    public static function hasAny(?object $user, array $capabilities): bool
+    {
+        foreach ($capabilities as $capability) {
+            if (self::has($user, $capability)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /** Токен владеет способностью? */

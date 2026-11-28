@@ -95,8 +95,8 @@ class AgentWriteFlowTest extends TestCase
             'name' => 'create_event',
             'arguments' => ['title' => 'X', 'venue_id' => 1, 'starts_at' => now()->toDateTimeString()],
         ], ['Authorization' => 'Bearer '.$token, 'Accept' => 'application/json, text/event-stream'])
-            ->assertOk()
-            ->assertJsonPath('result.isError', true);
+            // Инструмент не перечислен в tools/list для токена без write-прав.
+            ->assertStatus(400);
 
         $this->assertSame(0, DB::table('agent_actions')->count());
     }

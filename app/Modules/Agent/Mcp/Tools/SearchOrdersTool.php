@@ -12,6 +12,7 @@ use Laravel\Mcp\Response;
 use Laravel\Mcp\Server\Attributes\Description;
 use Laravel\Mcp\Server\Attributes\Name;
 use Laravel\Mcp\Server\Tool;
+use Nabilet\Modules\Agent\Mcp\Tools\Concerns\RequiresAgentRead;
 use Laravel\Mcp\Server\Tools\Annotations\IsIdempotent;
 use Laravel\Mcp\Server\Tools\Annotations\IsOpenWorld;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
@@ -36,6 +37,8 @@ use Nabilet\Modules\Orders\StateMachines\OrderStateMachine;
 #[Description('Ищет заказы за последние N дней: фильтры по статусу и событию. Возвращает public_id заказа (ключ для get_order), номер, статус и сумму.')]
 class SearchOrdersTool extends Tool
 {
+    use RequiresAgentRead;
+
     public function schema(JsonSchema $schema): array
     {
         return [
@@ -65,6 +68,9 @@ class SearchOrdersTool extends Tool
 
     public function handle(Request $request)
     {
+        if ($denied = $this->guardAgentRead($request)) {
+            return $denied;
+        }
         $statuses = implode(',', [
             OrderStateMachine::PENDING,
             OrderStateMachine::AWAITING_PAYMENT,

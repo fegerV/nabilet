@@ -11,6 +11,7 @@ use Illuminate\Support\Str;
 use Nabilet\Modules\Agent\Models\AgentAction;
 use Nabilet\Modules\Agent\Support\AgentCapabilities;
 use Nabilet\Modules\Core\Users\Models\User;
+use Laravel\Sanctum\PersonalAccessToken;
 use Tests\TestCase;
 
 /**
@@ -79,7 +80,7 @@ class AgentContentWriteFlowTest extends TestCase
         $this->mcp('tools/call', [
             'name' => 'prepare_create_page',
             'arguments' => ['title' => 'Нет прав'],
-        ], $headers)->assertOk()->assertJsonPath('result.isError', true);
+        ], $headers)->assertStatus(400); // инструмент скрыт без agent:content:write
 
         $this->assertSame(0, DB::table('agent_actions')->count());
     }
@@ -203,6 +204,10 @@ class AgentContentWriteFlowTest extends TestCase
 
         /** @var User $user */
         $user = User::query()->findOrFail($userId);
+        $user->withAccessToken(new PersonalAccessToken(['name' => 'test', 'token' => hash('sha256', 'test'), 'abilities' => [
+            'agent:read', 'agent:system:read', 'agent:content:read', 'agent:events:write',
+            'agent:schemas:publish', 'agent:refunds:write', 'agent:actions:confirm', 'agent:content:write',
+            ]]));
 
         return [$orgId, $user];
     }

@@ -156,7 +156,7 @@ final class AgentAdminController extends Controller
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'email' => ['nullable', 'email', 'max:255'],
-            'abilities' => ['required', 'array', 'min:1', 'max:5'],
+            'abilities' => ['required', 'array', 'min:1', 'max:8'],
             'abilities.*' => ['string', 'max:64'],
         ]);
 
@@ -166,7 +166,9 @@ final class AgentAdminController extends Controller
             throw new ValidationError(['email' => ['Нет организации для выпуска токена.']]);
         }
 
-        $abilities = array_values(array_unique(array_merge([AgentCapabilities::READ], $validated['abilities'])));
+        // Полномочия назначаются ЯВНО: agent:read больше не добавляется молча.
+        // Иначе токен «только для диагностики» получил бы доступ к заказам.
+        $abilities = array_values(array_unique($validated['abilities']));
         foreach ($abilities as $ability) {
             if (! AgentCapabilities::isKnown($ability)) {
                 throw new ValidationError(['abilities' => ['Неизвестная способность: ' . $ability]]);

@@ -44,6 +44,9 @@ interface AgentAction {
 }
 
 const CAPABILITIES = [
+  { value: 'agent:read', label: 'Чтение бизнес-данных своей организации', hint: 'Заказы, события, продажи; только организации владельца токена.' },
+  { value: 'agent:system:read', label: 'Системная диагностика (только системный администратор)', hint: 'Журналы, очередь, бэкапы, путь сервера, глобальные настройки.' },
+  { value: 'agent:content:read', label: 'Чтение контента своей организации', hint: 'Страницы, медиа, залы, схемы, SEO.' },
   { value: 'agent:events:write', label: 'Создавать черновики мероприятий', hint: 'Новая карточка сохраняется как черновик, без публикации.' },
   { value: 'agent:schemas:publish', label: 'Публиковать схемы залов', hint: 'Фиксирует геометрию версии после одобрения человеком.' },
   { value: 'agent:refunds:write', label: 'Готовить возвраты', hint: 'Возврат требует отдельного подтверждения REFUND.' },
@@ -72,7 +75,7 @@ const error = ref<string | null>(null)
 const issueOpen = ref(false)
 const issueName = ref('Дежурный агент')
 const issueEmail = ref('')
-const selectedCapabilities = ref<string[]>(['agent:actions:confirm'])
+const selectedCapabilities = ref<string[]>(['agent:read'])
 const oneTimeToken = ref<string | null>(null)
 
 const approving = ref<AgentAction | null>(null)
@@ -100,7 +103,7 @@ async function load(): Promise<void> {
 function openIssue(): void {
   issueName.value = 'Дежурный агент'
   issueEmail.value = ''
-  selectedCapabilities.value = ['agent:actions:confirm']
+  selectedCapabilities.value = ['agent:read']
   oneTimeToken.value = null
   issueOpen.value = true
 }

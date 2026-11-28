@@ -11,6 +11,8 @@ use Laravel\Mcp\Server\Attributes\Version;
 use Nabilet\Modules\Agent\Mcp\Tools\ConfirmAgentActionTool;
 use Nabilet\Modules\Agent\Mcp\Tools\ContentTool;
 use Nabilet\Modules\Agent\Mcp\Tools\CreateEventTool;
+use Nabilet\Modules\Agent\Mcp\Tools\DiagnosticsTool;
+use Nabilet\Modules\Agent\Mcp\Tools\PrepareContentTool;
 use Nabilet\Modules\Agent\Mcp\Tools\GetApiCapabilitiesTool;
 use Nabilet\Modules\Agent\Mcp\Tools\GetApplicationVersionTool;
 use Nabilet\Modules\Agent\Mcp\Tools\GetBackupStatusTool;
@@ -102,6 +104,59 @@ use Nabilet\Modules\Agent\Mcp\Tools\ValidateTicketTemplateTool;
 )]
 class NabiletAgentServer extends Server
 {
+    /**
+     * tools/list показывает только те инструменты, на которые у токена есть
+     * полномочие. Без этого скрытый инструмент всё равно светится в перечне —
+     * разведка перед атакой, даже если tools/call потом вернёт отказ.
+     */
+    public function createContext(): \Laravel\Mcp\Server\ServerContext
+    {
+        $user = \Illuminate\Support\Facades\Auth::guard('sanctum')->user() ?? \Illuminate\Support\Facades\Auth::user();
+        $allowed = [];
+        foreach ($this->tools as $tool) {
+            $capability = $this->requiredCapability($tool);
+            if ($capability === null || \Nabilet\Modules\Agent\Support\AgentCapabilities::has($user, $capability)) {
+                $allowed[] = $tool;
+            }
+        }
+        $configured = $this->tools;
+        $this->tools = $allowed;
+        try {
+            return parent::createContext();
+        } finally {
+            $this->tools = $configured;
+        }
+    }
+
+    private function requiredCapability(string $class): ?string
+    {
+        $capabilities = \Nabilet\Modules\Agent\Support\AgentCapabilities::class;
+
+        if (is_subclass_of($class, DiagnosticsTool::class)) {
+            $method = new \ReflectionMethod($class, 'section');
+            $section = (string) $method->invoke(new $class());
+            return in_array($section, ['applicationVersion', 'apiCapabilities'], true)
+                ? $capabilities::READ
+                : $capabilities::SYSTEM_READ;
+        }
+        if (is_subclass_of($class, ContentTool::class)) {
+            return $capabilities::CONTENT_READ;
+        }
+        if (is_subclass_of($class, PrepareContentTool::class)) {
+            return $capabilities::CONTENT_WRITE;
+        }
+
+        return match ($class) {
+            SalesSummaryTool::class, SearchEventsTool::class, GetEventTool::class,
+            SearchOrdersTool::class, GetOrderTool::class => $capabilities::READ,
+            CreateEventTool::class => $capabilities::EVENTS_WRITE,
+            PublishSchemaTool::class => $capabilities::SCHEMAS_PUBLISH,
+            RefundTool::class => $capabilities::REFUNDS_WRITE,
+            ConfirmAgentActionTool::class => $capabilities::ACTIONS_CONFIRM,
+            default => null,
+        };
+    }
+
     /**
      * The tools registered with this MCP server.
      *

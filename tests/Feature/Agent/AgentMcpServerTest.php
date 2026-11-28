@@ -15,6 +15,7 @@ use Nabilet\Modules\Agent\Mcp\Tools\SalesSummaryTool;
 use Nabilet\Modules\Agent\Mcp\Tools\SearchEventsTool;
 use Nabilet\Modules\Agent\Mcp\Tools\SearchOrdersTool;
 use Nabilet\Modules\Core\Users\Models\User;
+use Laravel\Sanctum\PersonalAccessToken;
 use Tests\TestCase;
 
 /**
@@ -77,7 +78,7 @@ class AgentMcpServerTest extends TestCase
         ])
             ->assertStatus(403)
             ->assertJsonPath('error.code', 'FORBIDDEN')
-            ->assertJsonPath('error.message', fn (string $message) => str_contains($message, 'agent:read'));
+            ->assertJsonPath('error.message', fn (string $message) => str_contains($message, 'agent-'));
     }
 
     /**
@@ -269,7 +270,7 @@ class AgentMcpServerTest extends TestCase
         NabiletAgentServer::actingAs($user)
             ->tool(GetOrderTool::class, ['public_id' => $order['orderPublicId']])
             ->assertOk()
-            ->assertStructuredContentPath('customer.email', 'ivan@example.test')
+            ->assertStructuredContentPath('customer.email', 'i***@example.test')
             ->assertStructuredContentCount(2, 'tickets')
             ->assertStructuredContentPath('tickets.0.ticket_number', fn ($v) => is_string($v) && $v !== '')
             // QR-пейлоад — сам доступ к билету: агент, просматривающий заказ,
@@ -363,7 +364,13 @@ class AgentMcpServerTest extends TestCase
             ]);
         }
 
-        return User::query()->findOrFail($userId);
+        $user = User::query()->findOrFail($userId);
+        $user->withAccessToken(new PersonalAccessToken(['name' => 'test', 'token' => hash('sha256', 'test'), 'abilities' => [
+            'agent:read', 'agent:system:read', 'agent:content:read', 'agent:events:write',
+            'agent:schemas:publish', 'agent:refunds:write', 'agent:actions:confirm', 'agent:content:write',
+            ]]));
+
+        return $user;
     }
 
     /**

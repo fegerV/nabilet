@@ -26,6 +26,7 @@ use Nabilet\Modules\Agent\Mcp\Tools\GetSystemStatusTool;
 use Nabilet\Modules\Agent\Mcp\Tools\GetUpdateStatusTool;
 use Nabilet\Modules\Agent\Mcp\Tools\RunReadonlySelfcheckTool;
 use Nabilet\Modules\Core\Users\Models\User;
+use Laravel\Sanctum\PersonalAccessToken;
 use Tests\TestCase;
 
 /**
@@ -236,6 +237,10 @@ class AgentDiagnosticsToolsTest extends TestCase
 
         /** @var User $user */
         $user = User::query()->findOrFail($userId);
+        $user->withAccessToken(new PersonalAccessToken(['name' => 'test', 'token' => hash('sha256', 'test'), 'abilities' => [
+            'agent:read', 'agent:system:read', 'agent:content:read', 'agent:events:write',
+            'agent:schemas:publish', 'agent:refunds:write', 'agent:actions:confirm', 'agent:content:write',
+            ]]));
 
         return $user;
     }

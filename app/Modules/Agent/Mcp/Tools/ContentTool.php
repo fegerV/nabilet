@@ -42,6 +42,16 @@ abstract class ContentTool extends Tool
             'hall_id' => ['sometimes', 'integer', 'min:1'],
             'payload' => ['sometimes', 'array'],
         ]);
+        if (! \Nabilet\Modules\Agent\Support\AgentCapabilities::has(
+            $request->user(),
+            \Nabilet\Modules\Agent\Support\AgentCapabilities::CONTENT_READ,
+        )) {
+            return Response::error(
+                'Для чтения контента нужна способность agent:content:read. '
+                . 'Перевыпустите токен в разделе «ИИ-агент».'
+            );
+        }
+
         $service = app(AgentContentService::class);
         $section = $this->section();
 

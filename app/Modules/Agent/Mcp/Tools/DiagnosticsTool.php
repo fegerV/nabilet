@@ -9,6 +9,7 @@ use Laravel\Mcp\Request;
 use Laravel\Mcp\Response;
 use Laravel\Mcp\Server\Tool;
 use Nabilet\Modules\Agent\Services\AgentDiagnostics;
+use Nabilet\Modules\Agent\Support\AgentCapabilities;
 
 /**
  * Общая основа для read-only диагностических инструментов агента.
@@ -38,6 +39,25 @@ abstract class DiagnosticsTool extends Tool
         );
         $limit = (int) ($validated['limit'] ?? 10);
         $diagnostics = app(AgentDiagnostics::class);
+        $section = $this->section();
+
+        // Версия и список возможностей — безопасные общие сведения. Остальные
+        // срезы включают системные журналы, очередь, бэкапы, пути и глобальные
+        // настройки: только agent:system:read + системный администратор.
+        if (! in_array($section, ['applicationVersion', 'apiCapabilities'], true)) {
+            if (! AgentCapabilities::has($request->user(), AgentCapabilities::SYSTEM_READ)) {
+                return Response::error(
+                    'Для системной диагностики нужна способность agent:system:read. '
+                    . 'Перевыпустите токен в разделе «ИИ-агент».'
+                );
+            }
+            if (! \Nabilet\Modules\Core\Users\Support\StaffRole::isPlatformAdmin($request->user())) {
+                return Response::error(
+                    'Системная диагностика доступна только системному администратору '
+                    . '(NABILET_PLATFORM_ADMINS).'
+                );
+            }
+        }
 
         // Явный match вместо динамического вызова: PHPStan видит реальные
         // сигнатуры и не даёт «обезличенному» tools-слою стать прыжком в любую

@@ -31,12 +31,10 @@ use Nabilet\Modules\Core\Users\Models\User;
  */
 class IssueAgentTokenCommand extends Command
 {
-    /** В строке abilities Sanctum хранит JSON-массив — совпадение подстрокой честно. */
-    private const ABILITY = 'agent:read';
-
     protected $signature = 'nabilet:agent-token
         {email : E-mail staff-пользователя, от имени которого работает агент}
         {--name=AI agent : Название токена (видно владельцу в списке)}
+         {--abilities=agent:read : Список полномочий через запятую}
         {--revoke-all : Отозвать ВСЕ agent-токены и выйти (для инцидента; новый не выпускается)}
         {--rotate : Отозвать прежние agent-токены и выпустить новый}
         {--list : Только показать активные agent-токены, ничего не выпускать}';
@@ -87,7 +85,23 @@ class IssueAgentTokenCommand extends Command
         }
 
         $name = trim((string) $this->option('name')) ?: 'AI agent';
-        $token = $user->createToken($name, [self::ABILITY]);
+        $abilities = array_values(array_unique(array_filter(array_map(
+            static fn (string $ability): string => trim($ability),
+            explode(',', (string) $this->option('abilities')),
+        ))));
+        if ($abilities === []) {
+            $this->error('Укажите хотя бы одно полномочие через --abilities.');
+
+            return self::FAILURE;
+        }
+        foreach ($abilities as $ability) {
+            if (! \Nabilet\Modules\Agent\Support\AgentCapabilities::isKnown($ability)) {
+                $this->error('Неизвестное полномочие: ' . $ability);
+
+                return self::FAILURE;
+            }
+        }
+        $token = $user->createToken($name, $abilities);
 
         $this->info('Токен выпущен. Скопируйте его СЕЙЧАС — позже он не показывается:');
         $this->line('');
@@ -138,6 +152,6 @@ class IssueAgentTokenCommand extends Command
         return DB::table('personal_access_tokens')
             ->where('tokenable_type', $user::class)
             ->where('tokenable_id', $user->id)
-            ->where('abilities', 'like', '%'.self::ABILITY.'%');
+            ->where('abilities', 'like', '%agent:%');
     }
 }

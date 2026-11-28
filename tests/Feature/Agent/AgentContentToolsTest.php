@@ -23,6 +23,7 @@ use Nabilet\Modules\Agent\Mcp\Tools\ValidateHallSchemaTool;
 use Nabilet\Modules\Agent\Mcp\Tools\ValidatePaymentConfigurationTool;
 use Nabilet\Modules\Agent\Mcp\Tools\ValidateTicketTemplateTool;
 use Nabilet\Modules\Core\Users\Models\User;
+use Laravel\Sanctum\PersonalAccessToken;
 use Tests\TestCase;
 
 /**
@@ -178,6 +179,10 @@ class AgentContentToolsTest extends TestCase
 
         /** @var User $user */
         $user = User::query()->findOrFail($userId);
+        $user->withAccessToken(new PersonalAccessToken(['name' => 'test', 'token' => hash('sha256', 'test'), 'abilities' => [
+            'agent:read', 'agent:system:read', 'agent:content:read', 'agent:events:write',
+            'agent:schemas:publish', 'agent:refunds:write', 'agent:actions:confirm', 'agent:content:write',
+            ]]));
 
         return [$orgId, $user];
     }

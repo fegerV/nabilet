@@ -11,6 +11,7 @@ use Laravel\Mcp\Response;
 use Laravel\Mcp\Server\Attributes\Description;
 use Laravel\Mcp\Server\Attributes\Name;
 use Laravel\Mcp\Server\Tool;
+use Nabilet\Modules\Agent\Mcp\Tools\Concerns\RequiresAgentRead;
 use Laravel\Mcp\Server\Tools\Annotations\IsIdempotent;
 use Laravel\Mcp\Server\Tools\Annotations\IsOpenWorld;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
@@ -35,6 +36,8 @@ use Illuminate\Support\Facades\DB;
 #[Description('Детали заказа по public_id: позиции, билеты (номер, статус), контакты покупателя. Заказы чужих организаций неотличимы от несуществующих.')]
 class GetOrderTool extends Tool
 {
+    use RequiresAgentRead;
+
     public function schema(JsonSchema $schema): array
     {
         return [
@@ -46,6 +49,9 @@ class GetOrderTool extends Tool
 
     public function handle(Request $request)
     {
+        if ($denied = $this->guardAgentRead($request)) {
+            return $denied;
+        }
         $validated = $request->validate(
             ['public_id' => ['required', 'string', 'max:26']],
             ['public_id.required' => 'Укажите public_id заказа — получить его можно инструментом search_orders.'],
@@ -103,10 +109,12 @@ class GetOrderTool extends Tool
             'fee_amount' => (int) $order->fee_amount,
             'total_amount' => (int) $order->total_amount,
             'currency' => (string) $order->currency,
+            // Контакты частично маскируются: агенту достаточно формата и
+            //-domain/последних цифр, полные ПДн остаются в админке организации.
             'customer' => [
-                'name' => $order->customer_name !== null ? (string) $order->customer_name : null,
-                'email' => $order->customer_email !== null ? (string) $order->customer_email : null,
-                'phone' => $order->customer_phone !== null ? (string) $order->customer_phone : null,
+                'name' => $this->maskName($order->customer_name ?? null),
+                'email' => $this->maskEmail($order->customer_email ?? null),
+                'phone' => $this->maskPhone($order->customer_phone ?? null),
             ],
             'created_at' => (string) $order->created_at,
             'paid_at' => $order->paid_at !== null ? (string) $order->paid_at : null,
@@ -122,9 +130,45 @@ class GetOrderTool extends Tool
                 'public_id' => (string) $ticket->public_id,
                 'ticket_number' => (string) $ticket->ticket_number,
                 'status' => (string) $ticket->status,
-                'holder_name' => $ticket->holder_name !== null ? (string) $ticket->holder_name : null,
+                'holder_name' => $this->maskName($ticket->holder_name ?? null),
                 'used_at' => $ticket->used_at !== null ? (string) $ticket->used_at : null,
             ])->all(),
         ]);
+    }
+
+    private function maskName(mixed $value): ?string
+    {
+        if ($value === null || trim((string) $value) === '') {
+            return null;
+        }
+        $text = (string) $value;
+
+        return mb_substr($text, 0, 1) . '***';
+    }
+
+    private function maskEmail(mixed $value): ?string
+    {
+        if ($value === null || trim((string) $value) === '') {
+            return null;
+        }
+        $parts = explode('@', (string) $value, 2);
+        if (count($parts) !== 2) {
+            return '***';
+        }
+
+        return mb_substr($parts[0], 0, 1) . '***@' . $parts[1];
+    }
+
+    private function maskPhone(mixed $value): ?string
+    {
+        if ($value === null || trim((string) $value) === '') {
+            return null;
+        }
+        $digits = preg_replace('/\D+/', '', (string) $value) ?: '';
+        if (strlen($digits) < 5) {
+            return '***';
+        }
+
+        return substr($digits, 0, 2) . '***' . substr($digits, -4);
     }
 }

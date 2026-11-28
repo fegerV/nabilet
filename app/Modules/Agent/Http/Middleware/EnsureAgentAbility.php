@@ -57,11 +57,18 @@ class EnsureAgentAbility
             ], 403);
         }
 
-        if (! method_exists($user, 'tokenCan') || ! $user->tokenCan('agent:read')) {
+        // Разные группы инструментов требуют разных полномочий: бизнес-чтение,
+        // системная диагностика, чтение контента или одна из write-способностей.
+        // Гейт маршрута проверяет наличие ЛЮБОЙ из них; конкретный инструмент
+        // обязан потребовать свою (иначе system:read дал бы доступ к заказам).
+        if (! \Nabilet\Modules\Agent\Support\AgentCapabilities::hasAny(
+            $user,
+            \Nabilet\Modules\Agent\Support\AgentCapabilities::all(),
+        )) {
             return response()->json([
                 'error' => [
                     'code' => 'FORBIDDEN',
-                    'message' => 'This token does not carry the "agent:read" ability.',
+                    'message' => 'Токен не несёт ни одного agent-полномочия. Перевыпустите его в разделе «ИИ-агент».',
                 ],
             ], 403);
         }

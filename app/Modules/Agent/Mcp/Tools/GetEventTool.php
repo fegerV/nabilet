@@ -11,6 +11,7 @@ use Laravel\Mcp\Response;
 use Laravel\Mcp\Server\Attributes\Description;
 use Laravel\Mcp\Server\Attributes\Name;
 use Laravel\Mcp\Server\Tool;
+use Nabilet\Modules\Agent\Mcp\Tools\Concerns\RequiresAgentRead;
 use Laravel\Mcp\Server\Tools\Annotations\IsIdempotent;
 use Laravel\Mcp\Server\Tools\Annotations\IsOpenWorld;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
@@ -37,6 +38,8 @@ use Nabilet\Modules\Sessions\Models\Session;
 #[Description('Детали события по public_id: описание, статусы сеансов, вместимость и остатки мест. События чужих организаций неотличимы от несуществующих.')]
 class GetEventTool extends Tool
 {
+    use RequiresAgentRead;
+
     public function schema(JsonSchema $schema): array
     {
         return [
@@ -48,6 +51,9 @@ class GetEventTool extends Tool
 
     public function handle(Request $request)
     {
+        if ($denied = $this->guardAgentRead($request)) {
+            return $denied;
+        }
         $validated = $request->validate(
             ['public_id' => ['required', 'string', 'max:26']],
             ['public_id.required' => 'Укажите public_id события — получить его можно инструментом search_events.'],

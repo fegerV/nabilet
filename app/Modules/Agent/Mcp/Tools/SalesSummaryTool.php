@@ -11,6 +11,7 @@ use Laravel\Mcp\Response;
 use Laravel\Mcp\Server\Attributes\Description;
 use Laravel\Mcp\Server\Attributes\Name;
 use Laravel\Mcp\Server\Tool;
+use Nabilet\Modules\Agent\Mcp\Tools\Concerns\RequiresAgentRead;
 use Laravel\Mcp\Server\Tools\Annotations\IsIdempotent;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 use Laravel\Mcp\Server\Tools\Annotations\IsOpenWorld;
@@ -38,6 +39,8 @@ use Nabilet\Modules\Orders\StateMachines\OrderStateMachine;
 #[Description('Сводные продажи за последние N дней: выручка (оплаченные заказы), число заказов по статусам, проданные билеты. Период — целое число дней, по умолчанию 30.')]
 class SalesSummaryTool extends Tool
 {
+    use RequiresAgentRead;
+
     public function schema(JsonSchema $schema): array
     {
         return [
@@ -49,6 +52,9 @@ class SalesSummaryTool extends Tool
 
     public function handle(Request $request)
     {
+        if ($denied = $this->guardAgentRead($request)) {
+            return $denied;
+        }
         $validated = $request->validate(
             ['days' => ['integer', 'min:1', 'max:365']],
             ['days.max' => 'Период ограничен 365 днями; для более длинного окна сузьте запрос.'],
