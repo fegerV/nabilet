@@ -1,20 +1,9 @@
 name: Release hosting ZIP
 
-# Сборка установочного архива для shared hosting.
-#
-# Принципы:
-#   1. Все обязательные гейты запускаются через workflow_call из ci.yml —
-#      Checks подтверждаются для того же SHA, из которого собран архив.
-#   2. Чистый checkout; dist удаляется и пересобирается; зависимости только по
-#      lock-файлам. Устаревший dist из предыдущей сборки не используется.
-#   3. Один портативный сборщик (PHP) и для CI, и для локальных Windows-сборок:
-#      никакого robocopy и внешнего zip.
-#   4. Архив проверяется распаковкой и чистой установкой на отдельной БД.
-#
-# Публикация: артефакт загружается всегда; GitHub Release создаётся только по
-# тегу vX.Y.Z. Подпись манифеста включается, если настроен секрет
-# NABILET_UPDATE_PRIVATE_KEY_PEM — без неё автоматическое обновление из ленты
-# невозможно (ManifestVerifier отвергает манифест без подписи).
+# Пайплайн: gates → package → smoke → browser E2E → publish.
+# Публикация НИКОГДА не происходит из job'а package: артефакт сначала
+# проходит чистую установку и браузерные сценарии, и только затем
+# публикуется тот же самый ZIP с проверенными SHA-256/подписью/commit SHA.
 
 on:
   push:
@@ -43,8 +32,6 @@ jobs:
     name: Build portable hosting archive
     needs: gates
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     outputs:
       version: ${{ steps.version.outputs.value }}
     steps:
@@ -97,8 +84,6 @@ jobs:
         shell: bash
         env:
           PRIVATE_KEY_PEM: ${{ secrets.NABILET_UPDATE_PRIVATE_KEY_PEM }}
-          # A public release (tag) must be signed: automatic updates refuse an
-          # unsigned manifest. Manual dispatch may opt into the same strictness.
           REQUIRE_SIGNATURE: ${{ startsWith(github.ref, 'refs/tags/v') || inputs.require_signature == true }}
         run: |
           set -e
@@ -123,23 +108,15 @@ jobs:
             --version=${{ steps.version.outputs.value }} \
             --output-dir=release-artifacts
 
-      - name: List release artifacts
-        shell: bash
-        run: |
-          ls -lh release-artifacts
-          php -r '$m = json_decode((string) file_get_contents("release-artifacts/manifest.json"), true); if (!is_array($m) || ($m["version"] ?? "") === "" || !preg_match("/^[a-f0-9]{64}$/", (string) ($m["sha256"] ?? ""))) { exit(1); } echo "manifest OK: ", $m["version"], " ", $m["commit_sha"], PHP_EOL;'
-
-      - name: Require a signed manifest for tag releases
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Verify the built archive before any publication
         shell: bash
         run: |
           set -e
-          SIGNED=$(php -r '$m = json_decode((string) file_get_contents("release-artifacts/manifest.json"), true); echo ($m["signature"] ?? "") === "" ? "no" : "yes";')
-          if [ "$SIGNED" != "yes" ]; then
-            echo "::error::Публичный релиз без подписи: настройте секрет NABILET_UPDATE_PRIVATE_KEY_PEM."
-            exit 1
-          fi
-          echo "release manifest is signed"
+          ls -lh release-artifacts
+          php tools/verify-release-artifact.php \
+            --manifest=release-artifacts/manifest.json \
+            --expected-version=${{ steps.version.outputs.value }} \
+            --expected-commit="$GITHUB_SHA"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -147,20 +124,8 @@ jobs:
           path: release-artifacts/*
           if-no-files-found: error
 
-      - name: Publish GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -e
-          gh release create "$GITHUB_REF_NAME" release-artifacts/* \
-            --verify-tag \
-            --title "NABILET ${{ steps.version.outputs.value }}" \
-            --notes "Установочный архив для shared hosting. Распаковывать в каталог сайта на уровень выше public_html. SHA-256 — в .sha256, состав и подпись — в manifest.json. Подпись присутствует только при настроенном ключе релиза."
-
   smoke:
-    name: Clean install from the published archive
+    name: Clean install from the exact release ZIP
     needs: package
     runs-on: ubuntu-latest
     services:
@@ -186,28 +151,19 @@ jobs:
           coverage: none
           tools: none
 
-      - name: Set up Node for browser E2E
-        uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-          cache: npm
-
-      - name: Install test runner and Chromium
-        shell: bash
-        run: |
-          set -e
-          npm ci --no-audit --no-fund
-          npx playwright install --with-deps chromium
-
       - uses: actions/download-artifact@v4
         with:
           name: hosting-release-${{ needs.package.outputs.version }}
           path: ${{ runner.temp }}/release-artifact
 
-      - name: Unpack into a separate site directory
+      - name: Verify downloaded artifact and unpack it
         shell: bash
         run: |
           set -e
+          php tools/verify-release-artifact.php \
+            --manifest="$RUNNER_TEMP/release-artifact/manifest.json" \
+            --expected-version=${{ needs.package.outputs.version }} \
+            --expected-commit="$GITHUB_SHA"
           mkdir -p "$RUNNER_TEMP/site"
           unzip -q "$RUNNER_TEMP/release-artifact"/*.zip -d "$RUNNER_TEMP/site"
           test -f "$RUNNER_TEMP/site/public_html/index.php"
@@ -242,23 +198,12 @@ jobs:
           cp scripts/smoke/smoke-install.php "$RUNNER_TEMP/smoke-install.php"
           php "$RUNNER_TEMP/smoke-install.php"
 
-      - name: Browser E2E on the freshly installed stand
+      - name: Verify the installer key was consumed
         shell: bash
-        env:
-          E2E_BASE_URL: http://127.0.0.1:8088
-          E2E_ADMIN_EMAIL: admin@smoke.local
-          E2E_ADMIN_PASSWORD: adminpass123
-        run: npm run e2e -- --grep "smoke stand"
-
-      - name: Upload browser traces and screenshots
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: playwright-report
-          path: |
-            playwright-report
-            test-results
-          if-no-files-found: ignore
+        run: |
+          set -e
+          test ! -e "$RUNNER_TEMP/site/storage/install.key"
+          test -e "$RUNNER_TEMP/site/storage/install.lock"
 
       - name: Upload stand logs on failure
         if: failure()
@@ -269,3 +214,152 @@ jobs:
             ${{ runner.temp }}/php-server.log
             ${{ runner.temp }}/site/storage/logs/*.log
           if-no-files-found: ignore
+
+  browser-e2e:
+    name: Browser E2E on a freshly installed stand
+    needs: [package, smoke]
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: rootpass
+        ports:
+          - 3307:3306
+        options: >-
+          --health-cmd="mysqladmin ping -prootpass"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: json, mbstring, openssl, pdo, pdo_mysql, curl, zip
+          coverage: none
+          tools: none
+
+      - name: Set up Node and Chromium
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - run: |
+          npm ci --no-audit --no-fund
+          npx playwright install --with-deps chromium
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: hosting-release-${{ needs.package.outputs.version }}
+          path: ${{ runner.temp }}/release-artifact
+
+      - name: Install the exact ZIP and start the stand
+        shell: bash
+        run: |
+          set -e
+          php tools/verify-release-artifact.php \
+            --manifest="$RUNNER_TEMP/release-artifact/manifest.json" \
+            --expected-version=${{ needs.package.outputs.version }} \
+            --expected-commit="$GITHUB_SHA"
+          mkdir -p "$RUNNER_TEMP/site"
+          unzip -q "$RUNNER_TEMP/release-artifact"/*.zip -d "$RUNNER_TEMP/site"
+          cp scripts/smoke/router-smoke.php "$RUNNER_TEMP/site/public_html/router-smoke.php"
+          php scripts/smoke/db-setup-smoke.php
+          cp scripts/smoke/smoke-install.php "$RUNNER_TEMP/smoke-install.php"
+          php "$RUNNER_TEMP/smoke-install.php"
+          cd "$RUNNER_TEMP/site/public_html"
+          php -S 127.0.0.1:8088 router-smoke.php > "$RUNNER_TEMP/php-server.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/server.pid"
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8088/robots.txt > /dev/null 2>&1; then exit 0; fi
+            sleep 1
+          done
+          cat "$RUNNER_TEMP/php-server.log"
+          exit 1
+
+      - name: Run browser scenarios
+        shell: bash
+        env:
+          E2E_BASE_URL: http://127.0.0.1:8088
+          E2E_ADMIN_EMAIL: admin@smoke.local
+          E2E_ADMIN_PASSWORD: adminpass123
+        run: npm run e2e -- --grep "smoke stand"
+
+      - name: Upload browser traces on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report
+            test-results
+          if-no-files-found: ignore
+
+  publish:
+    name: Publish only after all gates pass
+    needs: [gates, package, smoke, browser-e2e]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: json, mbstring, openssl, pdo, pdo_mysql, curl, zip
+          coverage: none
+          tools: composer:v2
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: hosting-release-${{ needs.package.outputs.version }}
+          path: ${{ runner.temp }}/release-artifact
+
+      - name: Derive public key from the release secret
+        shell: bash
+        env:
+          PRIVATE_KEY_PEM: ${{ secrets.NABILET_UPDATE_PRIVATE_KEY_PEM }}
+        run: |
+          set -e
+          if [ -n "$PRIVATE_KEY_PEM" ]; then
+            printf '%s' "$PRIVATE_KEY_PEM" > "$RUNNER_TEMP/update-private-key.pem"
+            chmod 600 "$RUNNER_TEMP/update-private-key.pem"
+            openssl pkey -in "$RUNNER_TEMP/update-private-key.pem" -pubout -out "$RUNNER_TEMP/update-public.pem"
+            echo "PUBLIC_KEY=$RUNNER_TEMP/update-public.pem" >> "$GITHUB_ENV"
+            echo "CHECK_SIGNATURE=--check-signature" >> "$GITHUB_ENV"
+          else
+            echo "PUBLIC_KEY=" >> "$GITHUB_ENV"
+            echo "CHECK_SIGNATURE=" >> "$GITHUB_ENV"
+            echo "::warning::Ключ подписи не настроен: подпись не проверяется."
+          fi
+
+      - name: Final verification of the ZIP to be published
+        shell: bash
+        env:
+          VERSION: ${{ needs.package.outputs.version }}
+        run: |
+          set -e
+          php tools/verify-release-artifact.php \
+            --manifest="$RUNNER_TEMP/release-artifact/manifest.json" \
+            --expected-version="$VERSION" \
+            --expected-commit="$GITHUB_SHA" \
+            --public-key="$PUBLIC_KEY" $CHECK_SIGNATURE
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.package.outputs.version }}
+        run: |
+          set -e
+          gh release create "$GITHUB_REF_NAME" "$RUNNER_TEMP/release-artifact"/* \
+            --verify-tag \
+            --title "NABILET $VERSION" \
+            --notes "Установочный архив для shared hosting. Распаковывать в каталог сайта на уровень выше public_html. SHA-256 — в .sha256, подпись и commit SHA — в manifest.json."
