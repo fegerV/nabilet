@@ -257,6 +257,7 @@ class InstallerHardeningTest extends TestCase
         $connection = config('database.connections.mysql');
 
         $this->postJson('/install/test-database', [
+            'install_key' => \Nabilet\Modules\Installer\Support\InstallKey::ensure(),
             'db_host' => $connection['host'],
             'db_port' => (int) $connection['port'],
             'db_database' => $connection['database'],
@@ -268,6 +269,7 @@ class InstallerHardeningTest extends TestCase
     public function test_test_database_endpoint_reports_bad_credentials(): void
     {
         $this->postJson('/install/test-database', [
+            'install_key' => \Nabilet\Modules\Installer\Support\InstallKey::ensure(),
             'db_host' => '127.0.0.1',
             'db_port' => 3307,
             'db_database' => 'nabilet_test_suite',
@@ -288,6 +290,7 @@ class InstallerHardeningTest extends TestCase
         $connection = config('database.connections.mysql');
 
         $this->post('/install/test-database', [
+            'install_key' => \Nabilet\Modules\Installer\Support\InstallKey::ensure(),
             'db_host' => (string) $connection['host'],
             'db_port' => (string) $connection['port'],
             'db_database' => (string) $connection['database'],

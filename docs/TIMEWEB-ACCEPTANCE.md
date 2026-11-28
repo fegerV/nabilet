@@ -3,7 +3,7 @@
 Статус: **не выполнена**. Документ — протокол для ответственного владельца, а
 не доказательство готовности. Заполняется на конкретном аккаунте/домене.
 
-Archiv: `releases/nabilet-hosting-v1.16.1-<дата>.zip`, SHA-256 из `.sha256`,
+Archiv: `releases/nabilet-hosting-v1.16.2-<дата>.zip`, SHA-256 из `.sha256`,
 состав — `manifest.json` (версия, commit_sha, дата сборки).
 
 ## 0. До распаковки
@@ -23,11 +23,14 @@ Archiv: `releases/nabilet-hosting-v1.16.1-<дата>.zip`, SHA-256 из `.sha256
 | Распаковка **в каталог сайта**, не в `public_html/` | `./app/`, `./vendor/`, `./storage/` рядом с `public_html/` | |
 | Удалить заглушку хостинга `public_html/index.html` | — | |
 | `chmod -R ug+w storage bootstrap/cache` | — | |
-| `https://домен/install` | визард, requirements зелёные | |
+| `https://домен/install` | визард, requirements зелёные; создан `storage/install.key` | |
+| Прочитать ключ через файловый менеджер или SSH | `cat storage/install.key` — 64 hex-символа; ввести в поле «Ключ установки» | |
+| Ключ не раскрывается по HTTP | HTML мастера не содержит значение ключа | |
 | Шаг БД: хост из панели (не `localhost`) | test-database success; на 5.7 — предупреждение | |
+| Повторная отправка формы | 409 `INSTALL_IN_PROGRESS` при параллельном запросе | |
 | Региональный каталог | галочка только если нужен Сургут | |
 | Завершение | `redirect: /admin`, `storage/install.lock`, `.env` с APP_KEY | |
-| `GET /api/v1/health` | JSON `"version":"1.16.1"`, не исходник PHP | |
+| `GET /api/v1/health` | JSON `"version":"1.16.2"`, не исходник PHP | |
 | `GET/POST /install` после установки | 404 / 405 | |
 | `GET /.env`, `/vendor/...`, `/config/...` | 403 | |
 | `GET /storage/<файл>` | отдаёт медиа; приватное — недоступно | |

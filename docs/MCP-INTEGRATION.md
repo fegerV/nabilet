@@ -5,14 +5,23 @@
 - Endpoint: `POST https://ваш-домен/mcp` (Streamable HTTP, одного сервера —
   второго параллельного MCP нет).
 - Аутентификация: `Authorization: Bearer <токен>` (Sanctum).
-- Минимальное полномочие: `agent:read`. Write-способности выдаются узко:
-  `agent:events:write`, `agent:schemas:publish`, `agent:refunds:write`,
-  `agent:actions:confirm`.
-- Без токена → 401; не-сотрудник или токен без `agent:read` → 403 (включая
-  `tools/list`). Лимит — 60 вызовов/мин на токен.
+- Полномочия назначаются ЯВНО (раньше `agent:read` добавлялся молча):
+  - `agent:read` — бизнес-данные своей организации;
+  - `agent:system:read` — глобальная системная диагностика, только
+    системный администратор (`NABILET_PLATFORM_ADMINS`);
+  - `agent:content:read` — чтение контента своей организации;
+  - `agent:content:write` — подготовка изменений контента;
+  - `agent:events:write`, `agent:schemas:publish`, `agent:refunds:write`,
+    `agent:actions:confirm` — специализированные write-полномочия.
+- Инструменты без полномочия **скрываются из `tools/list`**; вызов через
+  `tools/call` возвращает «Tool not found». Без токена → 401, не-сотрудник или
+  токен без любого agent-полномочия → 403. Лимит — 60 вызовов/мин на токен.
+- Системные журналы, очередь, бэкапы, пути сервера и глобальные настройки
+  недоступны обычному сотруднику организации. Контакты покупателя в
+  `get_order` частично маскируются.
 
 Токен выпускается в админке «ИИ-агент» (plaintext показывается один раз) или
-командой `php artisan nabilet:agent-token <email> [--list|--rotate|--revoke-all]`.
+командой `php artisan nabilet:agent-token <email> [--abilities=…] [--list|--rotate|--revoke-all]`.
 Отзыв действует немедленно, но не «отматывает» уже скопированные агентом данные.
 
 ## Инструменты
