@@ -22,7 +22,7 @@
 | `verify-migrations / state-machines / openapi ×2 / spec-parity / contract-schema ×2 / models-schema / autoload / module-structure / route-ownership` | все PASS |
 | `composer validate` | valid |
 | PHPStan level 5 | No errors |
-| Full PHPUnit (MariaDB 11.4, отдельная БД) | **1528 тестов / 6817 утверждений**, 0 падений |
+| Full PHPUnit (MariaDB 11.4, отдельная БД) | **1532 теста / 6842 утверждения**, 0 падений |
 | `npm run typecheck` | exit 0 |
 | Vitest | 56 файлов / 600 тестов, 0 падений |
 | `npm run build` | dist/index.html + assets, 559 модулей |
@@ -33,9 +33,9 @@
 9257 записей, production `vendor` по `composer.lock`, пустое `storage/`,
 `.env` отсутствует. Manifest содержит версию, `commit_sha`, дату, SHA-256.
 
-Итоговый артефакт: `releases/nabilet-hosting-v1.16.1-20261127-235944.zip`,
-SHA-256 `e8469a2f02eebf99307bd21b745013c33f1f2e4c6025fdcf2d967436f1af80fb`,
-собран из коммита `4be4d47d2d8ca382145729fcd8639bee0ba42440`. Хэш сверен с
+Итоговый артефакт: `releases/nabilet-hosting-v1.16.1-20261128-003403.zip`,
+SHA-256 `32e133df01a755318f750d3d0ec7c74f002441c789dd7b5975a806089d2df741`,
+собран из коммита `ecd1ef5b29c052a87282dd356151dd7349443dc9`. Хэш сверен с
 `.sha256` и `manifest.json`; распакованный архив прошёл тот же smoke 45/45.
 Подпись манифеста пустая: ключ релиза в этой среде не настроен — автоматическое
 обновление из ленты невозможно, доступна ручная загрузка ZIP.
@@ -75,7 +75,7 @@ SHA-256 `e8469a2f02eebf99307bd21b745013c33f1f2e4c6025fdcf2d967436f1af80fb`,
 | Версии config/package/CHANGELOG могли расходиться | нет единого гейта | `tools/lib/release-version.php`, `tools/verify-release-version.php` | strict + `--allow-unreleased` режимы | `verify-release-version` | — |
 | MCP не давал диагностики системы | 9 инструментов только по данным/записи | `AgentDiagnostics.php`, `DiagnosticsTool.php`, 16 tool-классов, `NabiletAgentServer.php`, `AgentDiagnosticsToolsTest.php` | 16 read-only срезов без секретов | 19 тестов / 150 утверждений | content-инструменты (`prepare_*`) ещё не добавлены |
 | ARCH-verifier мог пропустить новые классы | — | `verify-autoload`, `verify-module-structure`, `verify-route-ownership` | PASS | полный прогон | — |
-| Исправления PR #111–#113 оставались в отдельных ветках | ветки были старше `main`, merge целиком стёр бы новые файлы | cherry-pick 13 коммитов в `fix/integrate-pending-branches` | заморозка билета/QR, валидация импорта, журнал обновлений; SQL-бандлы 955 колонок, `EXPECT_COLUMNS=955` | PHPUnit 1528 / 6817, Vitest 600, PHPStan 0, все verifiers | обновление 1.16.0 → 1.16.1 не прогонялось |
+| Исправления PR #111–#113 оставались в отдельных ветках | ветки были старше `main`, merge целиком стёр бы новые файлы | cherry-pick 13 коммитов в `fix/integrate-pending-branches` | заморозка билета/QR, валидация импорта, журнал обновлений; SQL-бандлы 955 колонок, `EXPECT_COLUMNS=955` | PHPUnit 1532 / 6842, Vitest 600, PHPStan 0, все verifiers | обновление 1.16.0 → 1.16.1 не прогонялось |
 
 ## 4. Блокирующие факторы для продакшена
 
